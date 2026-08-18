@@ -558,7 +558,8 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
-	for _, ent := range s.Store.List(mirror.IsTaskish) {
+	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
+	for _, ent := range entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System) {
 		if ent.Ref.Kind() == mirror.RunKind {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,
@@ -695,9 +696,9 @@ type resumedRun struct{ subject, chain string }
 // are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
 // worth fixing when scoped resume is, since both are the same gap.
 func (s *Server) reconcileClaims(resumed []resumedRun) {
-	for _, ent := range s.Store.List(func(r entity.Ref) bool {
+	for _, ent := range entity.ListUnder(s.Store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.ClaimKind
-	}) {
+	}, entity.VerseRoot, mirror.System) {
 		if claimIsLive(ent, resumed) {
 			continue
 		}
@@ -2298,12 +2299,12 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	for _, ent := range s.scopedStore(r).List(func(ref entity.Ref) bool {
+	for _, ent := range entity.ListUnder(s.scopedStore(r), func(ref entity.Ref) bool {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
 		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
-	}) {
+	}, entity.VerseRoot, resolver.System) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -2436,9 +2437,9 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// machinery for a reader that no longer exists; what they were evidence of is in the
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
-	for _, ent := range store.List(func(ref entity.Ref) bool {
+	for _, ent := range entity.ListUnder(store, func(ref entity.Ref) bool {
 		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
-	}) {
+	}, entity.VerseRoot, resolver.System) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
@@ -2836,9 +2837,9 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		}
 	}
 	out := make([]task.Instance, 0)
-	for _, ent := range store.List(func(r entity.Ref) bool {
+	for _, ent := range entity.ListUnder(store, func(r entity.Ref) bool {
 		return mirror.IsTask(r)
-	}) {
+	}, entity.VerseRoot, mirror.System) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -2904,9 +2905,9 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 // store — the scope's membership.
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
-	for _, e := range store.List(func(ref entity.Ref) bool {
+	for _, e := range entity.ListUnder(store, func(ref entity.Ref) bool {
 		return mirror.IsTask(ref)
-	}) {
+	}, entity.VerseRoot, mirror.System) {
 		ids[e.Ref.ID()] = true
 	}
 	return ids

@@ -475,3 +475,23 @@ func atDepth(at *kpath.KPath) int {
 	}
 	return Depth
 }
+
+// ListUnder enumerates the entities beneath a literal prefix, at the depth that prefix implies:
+// three segments in the world's half, four in verse's own where the reserved root is a level of
+// its own.
+//
+// It exists because Reader.List is a Match on the ROOT — the whole verse across the wire,
+// filtered by the caller — and almost every caller knows the slice it wants. That difference is
+// not small on a store carrying reflected repositories: verse spent 88 seconds restoring itself
+// before it served anything, and the phases that cost it were exactly the ones reading at the
+// root for records that live in one (system, kind).
+//
+// A caller that genuinely spans slices — an ownership claim with a wildcard system, a read at a
+// path naming nothing — keeps List, which is what it is for.
+func ListUnder(r Reader, pred func(Ref) bool, at ...string) []Entity {
+	depth := Depth
+	if len(at) > 0 && at[0] == VerseRoot {
+		depth = Depth + 1
+	}
+	return r.ListAt(at, depth, pred)
+}

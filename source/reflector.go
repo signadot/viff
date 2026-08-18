@@ -416,10 +416,17 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 	out := map[entity.Ref]entity.Payload{}
 	// Not verse's own half, for the reason Claimed says at length: a system name is not a half,
 	// and this map is what `covered` decides tombstones from.
-	for _, e := range rf.store.List(func(ref entity.Ref) bool {
-		return !ref.Reserved() && systems[ref.System()]
-	}) {
-		out[e.Ref] = e.Payload
+	//
+	// ONE READ PER SYSTEM rather than one at the root. A source writes one system in the
+	// ordinary case, so this is the same number of round trips and a fraction of the payload;
+	// where it writes several it is one read each, which is still what it asked for rather
+	// than the whole verse. This runs on every pass.
+	for system := range systems {
+		for _, e := range entity.ListUnder(rf.store, func(ref entity.Ref) bool {
+			return !ref.Reserved() && systems[ref.System()]
+		}, system) {
+			out[e.Ref] = e.Payload
+		}
 	}
 	return out
 }

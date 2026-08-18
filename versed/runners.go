@@ -207,9 +207,9 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 // so that removing the entity cannot strand it.
 func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	var out []string
-	for _, ent := range r.List(func(e entity.Ref) bool {
+	for _, ent := range entity.ListUnder(r, func(e entity.Ref) bool {
 		return mirror.IsTask(e)
-	}) {
+	}, entity.VerseRoot, mirror.System) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -252,9 +252,9 @@ func cancelOn(url string, ids []string, why string) (cancelled, unreachable []st
 func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
 	var running, total int
 	var last string
-	for _, ent := range r.List(func(e entity.Ref) bool {
+	for _, ent := range entity.ListUnder(r, func(e entity.Ref) bool {
 		return mirror.IsTask(e)
-	}) {
+	}, entity.VerseRoot, mirror.System) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue

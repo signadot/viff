@@ -291,6 +291,14 @@ func (p Pattern) Select(r Reader) []Ref {
 		// selects entities four deep, and the literal head of it is the prefix to read under.
 		ents = r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
 	} else {
+		// AT THE ROOT, and it has to be: a Pattern names a system and a kind but not which HALF
+		// it is about, and verse's own half puts the reserved root in front as a segment of its
+		// own (`verse.task.instance` against `task.instance`). Narrowing on the system alone
+		// reads the wrong place and finds nothing there, which is a silent wrong answer rather
+		// than a slow one — it broke a completion sweep before this comment existed.
+		//
+		// Narrowing this wants the half on the pattern, which is a change to the type and to
+		// everything that builds one.
 		ents = r.List(pick)
 	}
 	skipVanishing := !namesVanishing(p.Predicate)

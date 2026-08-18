@@ -722,9 +722,9 @@ func (e *Engine) persistStratum(s Stratum) error {
 // asked to be checked against is not in force in this federation.
 func (e *Engine) LoadStrata() error {
 	var errs []error
-	for _, ent := range e.store.List(func(r entity.Ref) bool {
+	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == StrataSystem && r.Kind() == StrataKind
-	}) {
+	}, entity.VerseRoot, StrataSystem) {
 		if !e.ownRecord(ent) {
 			continue
 		}

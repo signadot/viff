@@ -204,9 +204,12 @@ func (e *Engine) forget(name string) {
 // question about what a scope means, and a restore is not where it gets decided.
 func (e *Engine) LoadCharter() error {
 	var errs []error
-	for _, ent := range e.store.List(func(r entity.Ref) bool {
+	// At the charter's own slice. A restore is the one moment the store is largest and
+	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
+	// startup — with restorePackages paying it again per package.
+	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
-	}) {
+	}, entity.VerseRoot, CharterSystem) {
 		if !e.ownRecord(ent) {
 			continue
 		}

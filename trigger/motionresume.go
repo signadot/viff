@@ -50,9 +50,11 @@ const motionOrphaned = "orphaned"
 //     rule that DOES re-fire alongside this resolves one motion and starts one task.
 func (e *Engine) ResumeMotions() int {
 	resumed := 0
-	for _, ent := range e.store.List(func(r entity.Ref) bool {
+	// The motions slice. At the root this was a flat 10.001s on staging — the session budget,
+	// so a timeout rather than work.
+	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == motionSystem && r.Kind() == motionChannelKind
-	}) {
+	}, entity.VerseRoot, motionSystem) {
 		p := ent.Payload
 		if entity.Str(p, "outcome") != "" {
 			continue // closed: terminal-once, and nothing is waiting on a decided motion
