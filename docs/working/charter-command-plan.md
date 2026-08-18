@@ -131,9 +131,63 @@ what it wrote is the world's and stays — which is already true of a single fil
 the same sentence `uninstall` prints about what a package wrote. "All or none" is a promise
 about the CHARTER, never about the writes its rules made while it stood.
 
+## One charter operation at a time
+
+Nothing serializes charter mutation today. `scopeMu` guards the map of engines, not what is
+done to one: two `charter add`s at the same address both take the engine and mutate it, and
+their undo lists interleave — so a refusal in one puts back state the other installed, and the
+"nothing was installed" line is then false in both directions. `uninstall` is in the same
+position, and it now sweeps the store as well as the engine.
+
+That is a hole in what is there, not one recursion opens. Recursion widens it: an operation that
+was one package and one engine becomes a directory and several, so the window goes from
+milliseconds to as long as the biggest charter takes.
+
+**A single server-side lock over charter mutation — install and uninstall, every address, every
+scope.** Not per address: a recursive install spans addresses and so does `rm -r`, so a
+per-address lock would need a canonical acquisition order to stay deadlock-free, and it would
+buy concurrency between operations that are operator actions taken seconds apart.
+
+**Acquired against a context, not blocked on.** A `sync.Mutex` cannot be waited for with a
+deadline, so the lock is a `chan struct{}` of capacity one and the acquisition is a `select`
+over it and `ctx.Done()`. An HTTP request carries no deadline of its own, so the handler makes
+one:
+
+    ctx, cancel := context.WithTimeout(r.Context(), charterLockWait)
+
+and a request that does not get in answers **503 with `Retry-After`**, saying that another
+charter operation is in progress — a temporary condition about the server, which is what 503
+means, rather than a conflict in what was asked. A caller that waits forever behind an install
+is how a CLI hangs with nothing to report, and the wait is exactly the kind of thing that turns
+into "verse charter times out" with no way to tell waiting from wedged.
+
+`charterLockWait` is 30s, the same as the store's write budget
+([entity/logdstore.go](../../entity/logdstore.go)) and for the same reason: a charter install is
+a sequence of writes, each of which may already be waiting behind other writes, so the wait has
+to exceed a whole install rather than a single write.
+
+Two rules that come with it, both worth stating because getting either wrong is silent:
+
+- **The charter lock is the OUTER lock.** `packageEngine` takes `scopeMu`; the charter lock is
+  taken before it and never from inside it. Nothing may acquire it while holding an engine lock.
+- **Reads do not take it.** `GET /charter` sees whatever is installed at the moment it asks,
+  half-applied included — which is what it would see of any concurrent write, and no worse.
+  Putting reads behind the mutation lock is how a listing wedges behind an install, which is the
+  same shape as the readiness probe that read `/status` and made health a function of load.
+
 ## Order of work
 
 Each step leaves a working tree, a runnable verse and a green smoke.
+
+### 0. The lock (independent of everything below)
+
+The section above, against today's code: install and uninstall both take it, the acquisition is
+context-bounded, 503 on the timeout. It lands on its own — it fixes a hole that exists now, and
+every step below inherits it rather than needing it.
+
+Tests: two concurrent installs at one address, both of which must report truthfully; a held lock
+answering 503 rather than hanging; and a canary that the charter lock is never taken while
+`scopeMu` is held.
 
 ### 1. The server resolves a path (no CLI change)
 
@@ -176,7 +230,8 @@ to sort by (above).
 Tests: a directory of two packages, one of which is refused → nothing installed, and no engine
 left standing at either address; a package reading another in the same directory installs
 regardless of file order; a rule that fired in the window is not undone, which is the limit
-stated rather than a bug.
+stated rather than a bug; and the whole walk holds the lock from step 0 for its duration, so a
+second operator's install waits or is told to come back.
 
 ## What this does not do
 
