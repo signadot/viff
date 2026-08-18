@@ -16,7 +16,7 @@ import (
 // A SCOPE'S OWN CHARTER SURVIVES A RESTART, the way baseline's does.
 //
 // `verse c -a --scope me` writes the rule into the scope — it is durable, it is listed,
-// and `verse state get trigger:rule:x --scope me` reads it back. What it did not do is RUN
+// and `verse data trigger:rule:x --scope me` reads it back. What it did not do is RUN
 // after a restart: a scope's engine is created on demand and never restored anything, so the
 // dev came back to a scope holding a written-down charter that nothing was interpreting. No
 // error anywhere; the rule was simply not installed in the engine that would have fired it.

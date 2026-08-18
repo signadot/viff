@@ -79,7 +79,7 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 
 // A path fixes some segments and the document carries the rest; Entities interleaves them. The
 // wildcard case is the one that needs saying out loud — the fixed and carried segments are not
-// a prefix and a suffix, they interleave — and it is what `verse state 'demo.pr.*.stage'`
+// a prefix and a suffix, they interleave — and it is what `verse data 'demo.pr.*.stage'`
 // rests on.
 func TestEntitiesInterleavesFixedAndCarriedSegments(t *testing.T) {
 	doc := Doc{Node: mustParseNode(t, `{demo: {pr: {1: {stage: open}, 2: {stage: merged}}}}`)}
@@ -119,8 +119,8 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 }
 
 // The steps a `--paths` listing prints come back as ONE TOKEN when a script quotes them, which
-// is the correct shell idiom — `ref=$(verse state --paths demo.pr | head -1)` and then `verse
-// state get "$ref"`. So the address grammar takes a space as a delimiter by the same
+// is the correct shell idiom — `ref=$(verse data --paths demo.pr | head -1)` and then `verse
+// data "$ref"`. So the address grammar takes a space as a delimiter by the same
 // whichever-comes-first rule as `:` and `.`, and the two ways a shell can hand over the same
 // address name the same entity.
 func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
@@ -150,7 +150,7 @@ func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
 		}
 	}
 
-	// A field path is steps too, so `verse state get demo pr 1 labels urgent` quoted whole
+	// A field path is steps too, so `verse data demo pr 1 labels urgent` quoted whole
 	// reaches the field rather than being refused as a fourth segment.
 	p, err := ParsePath("demo pr 1 labels urgent")
 	if err != nil || p.Ref != RefAt("demo", "pr", "1") || strings.Join(p.Field, ".") != "labels.urgent" {

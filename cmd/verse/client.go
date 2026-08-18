@@ -548,7 +548,7 @@ func watchCmd() *cli.Command {
 
 // query renders the filters as the watch route's parameters. The cursor is watch's own; the
 // rest is the selector every read-plane route takes, path included — `verse watch demo.pr` and
-// `verse state demo.pr` name the same entities and differ only in when they answer.
+// `verse data demo.pr` name the same entities and differ only in when they answer.
 func (cfg *watchConfig) query(at string) (url.Values, error) {
 	q := url.Values{}
 	if cfg.Since != "" {
@@ -637,7 +637,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 // everywhere else.
 //
 // Single-line per event stays, which is not the same question. A stream is read as it scrolls
-// and grepped afterwards; the block form belongs to `state get`, where the document is the
+// and grepped afterwards; the block form belongs to `data`, where the document is the
 // whole answer rather than one of a thousand.
 //
 // A line it cannot parse is passed through as it arrived. On a live stream a surprising line
@@ -747,76 +747,14 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 
 // ── entity ───────────────────────────────────────────────────────────────────
 
-type entityGetConfig struct{ *cli.Command }
-
-func entityGetCmd() *cli.Command {
-	cfg := &entityGetConfig{}
-	return cli.NewCommandAt(&cfg.Command, "get").
-		WithOpts(filterOpts()...).
-		WithSynopsis("get one place: get <path> (demo:pr:1 · demo.pr.1.labels · merge.proposal.X.votes(scott))").
-		WithRun(cfg.run)
-}
-
-// get names ONE place and answers what stands there, at whatever depth the path reaches. It
-// goes through /state, which is the read that takes a whole path — so `--at` is gone, and a
-// keyed array element (`votes(scott)`) is reachable, which no verse address could do at all
-// before. Nothing stands there is a 404, because a path this deep names a thing.
-func (cfg *entityGetConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	if len(args) < 1 {
-		return fmt.Errorf("%w: state get wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
-	}
-	addr, err := address(args)
-	if err != nil {
-		return err
-	}
-	at, kp, err := readAt(addr)
-	if err != nil {
-		return fmt.Errorf("%w: state get: %s", cli.ErrUsage, err)
-	}
-	// get names ONE place, so it wants a path that reaches one. A shorter path describes a
-	// slice, and the bare read is what answers those.
-	if entity.AtDepth(kp) < entity.Depth {
-		return fmt.Errorf("%w: state get names one place — %q names a slice, so ask `verse state %s`",
-			cli.ErrUsage, args[0], at)
-	}
-	resp, err := httpGet("/state", url.Values{"at": {at}})
-	if err != nil {
-		return fmt.Errorf("state get: %w", err)
-	}
-	return printBody(cc, resp)
-}
-
 // readAt is entity.ReadPath — the one grammar decision, made where the two spellings are
 // defined rather than here.
 func readAt(s string) (string, *kpath.KPath, error) { return entity.ReadPath(s) }
 
-type entityPutConfig struct {
-	*cli.Command
-	Create bool   `cli:"name=create desc='only if nothing is there yet — the write loses a race rather than clobbering'"`
-	Update bool   `cli:"name=update desc='only if something is already there'"`
-	If     string `cli:"name=if desc='only if what is there matches this tony pattern'"`
-}
-
-func entityPutCmd() *cli.Command {
-	cfg := &entityPutConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "put").
-		WithSynopsis("put at a path: put <path> <payload> [--create|--update] [--if <pattern>]").
-		WithOpts(opts...).
-		WithRun(cfg.run)
-}
-
 // conditions renders the guard flags as the wire's preconditions. --create and --update are
 // opposite answers to the same question, so asking both is a contradiction rather than a
 // pair of conditions that can never hold — say so from the flags, before anything is sent.
-func (cfg *entityPutConfig) conditions() ([]api.Condition, error) {
+func (cfg *stateConfig) conditions() ([]api.Condition, error) {
 	var out []api.Condition
 	if cfg.Create && cfg.Update {
 		return nil, fmt.Errorf("%w: --create and --update are opposites; pass one", cli.ErrUsage)
@@ -825,125 +763,14 @@ func (cfg *entityPutConfig) conditions() ([]api.Condition, error) {
 		exists := cfg.Update
 		out = append(out, api.Condition{Exists: &exists})
 	}
-	if cfg.If != "" {
-		pattern, err := codec.ParseNode([]byte(cfg.If), inFmt())
+	if cfg.Expect != "" {
+		pattern, err := codec.ParseNode([]byte(cfg.Expect), inFmt())
 		if err != nil {
-			return nil, fmt.Errorf("--if: %w", err)
+			return nil, fmt.Errorf("--expect: %w", err)
 		}
 		out = append(out, api.Condition{Pattern: pattern})
 	}
 	return out, nil
-}
-
-func (cfg *entityPutConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	if len(args) < 2 {
-		return fmt.Errorf("%w: state put wants a path and a payload", cli.ErrUsage)
-	}
-	// ONE ADDRESS, all the way down: `state put demo.pr.1.labels.urgent true` is what
-	// `--at labels.urgent` used to spell. The wire keeps {ref, field[]} — it has no reason to
-	// re-parse what the CLI has already split, and the structured form is what the store's
-	// writePath consumes — so this is the one parser, and Path.String is its inverse.
-	//
-	// The PAYLOAD IS LAST, which is what lets the address be a vector of steps here too:
-	// `state put demo pr 1 '{stage: open}'`. It is the one command where the address is not
-	// the end of the line, and the rule that keeps it unambiguous is positional rather than
-	// syntactic — everything up to the final argument is the address.
-	addr, err := address(args[:len(args)-1])
-	if err != nil {
-		return err
-	}
-	at, err := entity.ParsePath(addr)
-	if err != nil {
-		return fmt.Errorf("%w: state put: %s", cli.ErrUsage, err)
-	}
-	// A payload typed on the command line names no format of its own, so it is read as
-	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
-	// keeps working whichever the default is.
-	//
-	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
-	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
-	// though the store and the wire both accept them.
-	payload, err := codec.ParseNode([]byte(args[len(args)-1]), inFmt())
-	if err != nil {
-		return fmt.Errorf("state put: payload: %w", err)
-	}
-	when, err := cfg.conditions()
-	if err != nil {
-		return fmt.Errorf("state put: %w", err)
-	}
-	// THE WHOLE ADDRESS AS A PATH, which is what a write at any depth needs: `state put
-	// verse-dev drift head abc` names a place four segments down, and a ref can spell three.
-	// The field path rides along as it did — a write may still address inside a payload.
-	// THE WHOLE ADDRESS IS THE PLACE. `state put verse-dev drift head abc '{…}'` writes there,
-	// and so does `state put demo.pr.1.labels.urgent true` — a write is a value at a path, and
-	// where the entity "ends" is a question this command does not have to answer. The answer
-	// comes back from the address written, so a put still shows the merge wherever the address
-	// IS an entity, which is the ordinary case.
-	//
-	// `ref` rides along for a server that predates `path`, carrying the first three segments as
-	// it always did.
-	resp, err := httpPost("/entity", api.PutEntity{
-		Ref:     at.Ref.String(),
-		Path:    append(at.Ref.Segs(), at.Field...),
-		Payload: payload,
-		When:    when,
-	})
-	if err != nil {
-		return fmt.Errorf("state put: %w", err)
-	}
-	return printBody(cc, resp)
-}
-
-type entityRmConfig struct{ *cli.Command }
-
-func entityRmCmd() *cli.Command {
-	cfg := &entityRmConfig{}
-	return cli.NewCommandAt(&cfg.Command, "rm").
-		WithSynopsis("rm — remove what stands at a path: rm <path> (an entity, or one field of one)").
-		WithRun(cfg.run)
-}
-
-func (cfg *entityRmConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	if len(args) < 1 {
-		return fmt.Errorf("%w: state rm wants a path (demo:pr:1, or demo.pr.1.labels.urgent)", cli.ErrUsage)
-	}
-	addr, err := address(args)
-	if err != nil {
-		return err
-	}
-	at, err := entity.ParsePath(addr)
-	if err != nil {
-		return fmt.Errorf("%w: state rm: %s", cli.ErrUsage, err)
-	}
-	q := url.Values{"ref": {at.Ref.String()}}
-	for _, f := range at.Field {
-		q.Add("field", f)
-	}
-	resp, err := httpDelete("/entity", q)
-	if err != nil {
-		return fmt.Errorf("state rm: %w", err)
-	}
-	defer resp.Body.Close()
-	// A REFUSAL IS NOT A REMOVAL, and this printed "removed" whatever came back. The one that
-	// matters is the reserved half: `verse state rm verse task instance <id>` is answered 403 —
-	// verse's own records are written by the verbs that own them — and the CLI said the record
-	// was gone while it stood there untouched. An operator reading that has been told the
-	// opposite of the truth about a store they are trying to clean up.
-	if resp.StatusCode != http.StatusNoContent {
-		return statusError(resp, "state rm")
-	}
-	// Nothing stands there now — which is all there is to say, and is equally true of a path
-	// that held nothing to begin with.
-	fmt.Fprintf(cc.Out, "removed %s\n", at)
-	return nil
 }
 
 // state is the one collection with filters of its own, so it does not go through
@@ -953,10 +780,12 @@ type stateConfig struct {
 	// The same pair `watch` takes, meaning the same thing (filterBy) — the read and the stream
 	// are one selector asked at two times.
 	//
-	// `state put --if` is a DIFFERENT --if, and they do not collide: a parent stops parsing
-	// flags at its first positional, so `state put <ref> <payload> --if <pattern>` hands the
-	// flag to `put`, where it is a precondition rather than a filter. Pinned by
-	// TestStatePutKeepsItsOwnIf.
+	// `--if` is the FILTER, and it is the only one now. It used to have a namesake: `put` was
+	// a subcommand with an `--if` of its own — a precondition rather than a filter — and the
+	// two did not collide only because a parent stops parsing flags at its first positional.
+	// With the actions as flags on this command there is no boundary left to keep them apart,
+	// so the precondition is `--expect`, which also puts it in the family it belongs to:
+	// --create expects nothing, --update expects something, --expect names what.
 	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
@@ -965,32 +794,47 @@ type stateConfig struct {
 	// one is a property of the question (docs/working/entity-tree.md). Unset answers at the
 	// depth an address has always had, which is what every listing written before this wants.
 	Depth int `cli:"name=depth desc='with --paths: how many segments an address has (default: 3, or 4 under verse)'"`
+
+	// WHAT TO DO IS A FLAG, and the positional is a path in every case — the same reason
+	// `verse c` says it that way. `get`, `put` and `rm` were verbs, and a path's first segment
+	// is a SYSTEM name, so `verse data put` could not be told from a system called `put`
+	// except by a `--` the operator had to know about (client.go's address()).
+	//
+	// It also retires the rule that made `put` the exception among addresses: its payload was
+	// the LAST positional, so "everything up to the final argument is the address" was a rule
+	// this one command had. The payload is `--put`, and every positional is the address again.
+	Put string `cli:"name=put desc='write this payload at the path (a tony/json value)'"`
+	Rm  bool   `cli:"name=rm desc='remove what stands at the path (an entity, or one field of one)'"`
+	// The preconditions, which only a write reads. A family: --create expects nothing to be
+	// there, --update expects something, --expect names what.
+	Create bool   `cli:"name=create desc='with --put: only if nothing is there yet — the write loses a race rather than clobbering'"`
+	Update bool   `cli:"name=update desc='with --put: only if something is already there'"`
+	Expect string `cli:"name=expect desc='with --put: only if what is there matches this tony pattern'"`
 }
 
-// stateCmd is `verse state`: the verse's state at a path.
+// dataCmd is `verse data`: the verse's data at a path.
 //
 // It replaces `verse entity`, and the noun went with the answer. The old command listed rows of
 // a table that the store does not hold — `[{ref, payload}, …]`, flattened out of the document it
 // does hold — and addressed them in three vocabularies: `--system`/`--kind` to narrow a listing,
 // `system:kind:id` to name one, `--at` to reach inside it. They are one kinded path asked at
-// different depths, so that is what this takes: `verse state`, `verse state demo`,
-// `verse state demo.pr`, `verse state demo.pr.1`, `verse state demo.pr.1.labels.urgent`,
-// `verse state 'demo.pr.*.stage'`.
+// different depths, so that is what this takes: `verse data`, `verse data demo`,
+// `verse data demo.pr`, `verse data demo.pr.1`, `verse data demo.pr.1.labels.urgent`,
+// `verse data 'demo.pr.*.stage'`.
 //
 // A ref is that same path with `:` for a delimiter, which is why get/put/rm still take one and
 // why nothing about identity moved (see entity/doc.go).
-func stateCmd() *cli.Command {
+func dataCmd() *cli.Command {
 	cfg := &stateConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "state").WithAliases("s").
-		WithSynopsis("state — the verse at a path: state [--if <pattern>] [--paths] [<path>]; get|put|rm one by <ref>").
-		// --trim only, for the reason watch takes only that: `state --if` is the server's
+	return cli.NewCommandAt(&cfg.Command, "data").WithAliases("d").
+		WithSynopsis("data — the verse at a path: data [<path>] [--if <pattern>] [--paths]; --put|--rm one").
+		// --trim only, for the reason watch takes only that: `data --if` is the server's
 		// selector, and it names WHICH ENTITIES rather than what to print of them.
 		WithOpts(append(opts, trimOpt()...)...).
-		WithSubs(entityGetCmd(), entityPutCmd(), entityRmCmd()).
 		WithRun(cfg.run)
 }
 
@@ -1005,13 +849,13 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	// FLAGS MAY FOLLOW THE PATH, which takes a second Parse to pick up.
 	//
 	// A command with subcommands stops parsing at its first positional, and has to: that is
-	// what hands `state put <ref> <payload> --if <pattern>` to put's own --if — a precondition
+	// what hands `data --expect <pattern>` --expect — <ref> <payload> to put's own a --put precondition
 	// on the write — rather than eating it as this command's filter. dispatch above is where
 	// that case leaves.
 	//
 	// What is left here is the read, whose positional is an ADDRESS rather than a verb, so
 	// nothing after it belongs to anyone else. Parsing the tail is the whole fix, and it runs
-	// up the command tree exactly as the first pass did — `verse state lineage --scope m` picks
+	// up the command tree exactly as the first pass did — `verse data lineage --scope m` picks
 	// up a root option as readily as one of ours.
 	// EVERY positional is the address: one token, or a vector of steps (`state demo pr 1`).
 	// The flags are parsed off first — the tail parse below is what lets them sit on either
@@ -1039,27 +883,119 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 				"after it", cli.ErrUsage, args[0])
 		}
 	}
-	// Parsed HERE as well as at the server, so a malformed path is a usage error against the
-	// command the operator typed rather than a 400 from a route they did not.
-	kp, err := entity.ParseAt(at)
+	switch {
+	case cfg.Put != "" && cfg.Rm:
+		return fmt.Errorf("%w: data does one thing at a time: --put writes, --rm removes",
+			cli.ErrUsage)
+	case cfg.Put != "":
+		return cfg.put(cc, at)
+	case cfg.Rm:
+		return cfg.rm(cc, at)
+	}
+	if cfg.Create || cfg.Update || cfg.Expect != "" {
+		return fmt.Errorf("%w: --create, --update and --expect are conditions on a WRITE; "+
+			"add --put <payload>", cli.ErrUsage)
+	}
+	// BOTH SPELLINGS OF AN ADDRESS, through the one grammar decision (entity.ReadPath), which
+	// is what `get` did and this did not: `verse data demo:pr:1` answered `{}` where `verse
+	// data demo.pr.1` answered the entity, because a ref is not a kpath until something says
+	// so. That difference is most of why `get` existed.
+	at, kp, err := readAt(at)
 	if err != nil {
-		return fmt.Errorf("state: %w", err)
+		return fmt.Errorf("%w: data: %s", cli.ErrUsage, err)
 	}
 	q := url.Values{}
 	if at != "" {
 		q.Set("at", at)
 	}
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
-		return fmt.Errorf("state: %w", err)
+		return fmt.Errorf("data: %w", err)
 	}
 	resp, err := httpGet("/state", q)
 	if err != nil {
-		return fmt.Errorf("state: %w", err)
+		return fmt.Errorf("data: %w", err)
 	}
 	if cfg.Paths {
 		return printPaths(cc, resp, kp, cfg.Depth)
 	}
 	return printDoc(cc, resp, kp)
+}
+
+// put writes a payload at the path.
+func (cfg *stateConfig) put(cc *cli.Context, addr string) error {
+	if addr == "" {
+		return fmt.Errorf("%w: --put wants a path to write at (demo:pr:1, demo pr 1, or "+
+			"demo.pr.1.labels.urgent)", cli.ErrUsage)
+	}
+	at, err := entity.ParsePath(addr)
+	if err != nil {
+		return fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
+	}
+	// A payload typed on the command line names no format of its own, so it is read as
+	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
+	// keeps working whichever the default is.
+	//
+	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
+	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
+	// though the store and the wire both accept them.
+	payload, err := codec.ParseNode([]byte(cfg.Put), inFmt())
+	if err != nil {
+		return fmt.Errorf("data --put: payload: %w", err)
+	}
+	when, err := cfg.conditions()
+	if err != nil {
+		return fmt.Errorf("data --put: %w", err)
+	}
+	// THE WHOLE ADDRESS IS THE PLACE. `verse data verse-dev drift head abc --put '{…}'` writes
+	// there, and so does `verse data demo.pr.1.labels.urgent --put true` — a write is a value
+	// at a path, and where the entity "ends" is a question this command does not answer. The
+	// answer comes back from the address written, so a put still shows the merge wherever the
+	// address IS an entity, which is the ordinary case.
+	//
+	// `ref` rides along for a server that predates `path`, carrying the first three segments as
+	// it always did.
+	resp, err := httpPost("/entity", api.PutEntity{
+		Ref:     at.Ref.String(),
+		Path:    append(at.Ref.Segs(), at.Field...),
+		Payload: payload,
+		When:    when,
+	})
+	if err != nil {
+		return fmt.Errorf("data --put: %w", err)
+	}
+	return printBody(cc, resp)
+}
+
+// rm removes what stands at the path — an entity, or one field of one.
+func (cfg *stateConfig) rm(cc *cli.Context, addr string) error {
+	if addr == "" {
+		return fmt.Errorf("%w: --rm wants a path (demo:pr:1, or demo.pr.1.labels.urgent)",
+			cli.ErrUsage)
+	}
+	at, err := entity.ParsePath(addr)
+	if err != nil {
+		return fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
+	}
+	q := url.Values{"ref": {at.Ref.String()}}
+	for _, f := range at.Field {
+		q.Add("field", f)
+	}
+	resp, err := httpDelete("/entity", q)
+	if err != nil {
+		return fmt.Errorf("data --rm: %w", err)
+	}
+	defer resp.Body.Close()
+	// A REFUSAL IS NOT A REMOVAL, and this printed "removed" whatever came back. The one that
+	// matters is the reserved half: `verse data verse task instance <id> --rm` is answered 403
+	// — verse's own records are written by the verbs that own them — and the CLI said the
+	// record was gone while it stood there untouched.
+	if resp.StatusCode != http.StatusNoContent {
+		return statusError(resp, "data --rm")
+	}
+	// Nothing stands there now — which is all there is to say, and is equally true of a path
+	// that held nothing to begin with.
+	fmt.Fprintf(cc.Out, "removed %s\n", at)
+	return nil
 }
 
 // stateAt reads the verse at a path and hands back the entities standing there.
@@ -1119,8 +1055,8 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	// AS STEPS, which is the spelling this command line takes on the way in: `verse state
-	// --paths | xargs -L1 verse state get` round-trips, and no address in the listing needs
+	// AS STEPS, which is the spelling this command line takes on the way in: `verse data
+	// --paths | xargs -L1 verse data get` round-trips, and no address in the listing needs
 	// quoting to be usable — a step is a whole word whatever is inside it, where the colon form
 	// needs quoting the moment an id holds a dot and the dotted form the moment it holds one
 	// too. The colon form stays what a ref renders as inside a DOCUMENT, which is read by a
@@ -1145,12 +1081,12 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 // own quoting is the only quoting anybody does.
 //
 // It is accepted where the address is the LAST thing on the line, which is every read; a
-// command that takes something after it (`state put <addr…> <payload>`) takes the address as
+// command that takes something after it (`data <addr…> <payload>`) takes the address --put as
 // everything before that.
 //
 // A STEP ABOVE THE ID MAY NOT HOLD A DELIMITER, and that is the ref grammar's own rule rather
 // than a new one: a system and a kind may not contain `:` while an id may. So a dot or a colon
-// in one of those steps means the two spellings have been mixed — `verse state demo.pr 1` — and
+// in one of those steps means the two spellings have been mixed — `verse data demo.pr 1` — and
 // the address somebody typed is not the one that would be read.
 //
 // From the id down, anything goes: an id holds dots and colons (`x@git:ref:y`), and the field

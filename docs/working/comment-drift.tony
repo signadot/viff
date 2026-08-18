@@ -539,7 +539,7 @@ reads: [git, verse-dev.drift]
 #
 # WHAT IT COSTS, stated rather than discovered: a person approves a batch rather than a change.
 # `says` is what keeps that honest — the branches are listed on the entity the docket renders —
-# and the per-proposal record is untouched, so `verse state verse-dev.merge.proposal` still says
+# and the per-proposal record is untouched, so `verse data verse-dev.merge.proposal` still says
 # what each one is and what became of it.
 - name: train-cut
   stratum: reflected

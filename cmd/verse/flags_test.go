@@ -124,7 +124,7 @@ func TestCollectionsRefuseAVerbTheyDoNotHave(t *testing.T) {
 	for singular := range collections {
 		// `charter` takes an ADDRESS where the others take a verb or nothing (`verse charter
 		// verse-dev drift`), so a word it does not know is a place with no charter rather than
-		// a verb it does not have — the same trade `verse state` makes, and the reason it is
+		// a verb it does not have — the same trade `verse data` makes, and the reason it is
 		// not in this list either. Its own refusals are tested at TestTheCharterListsAsATree.
 		if singular == "charter" {
 			continue
@@ -228,18 +228,18 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 	}
 }
 
-// `verse state` takes an ADDRESS, which is what makes it not a collection.
+// `verse data` takes an ADDRESS, which is what makes it not a collection.
 //
 // Every other listing refuses a positional, because there a positional could only be a verb it
 // does not have. Here it is the whole point: one kinded path, asked at whatever depth, in place
 // of the `--system`/`--kind` pair that could only ever ask at two.
 func TestStateTakesAPath(t *testing.T) {
-	cmd := rootCmd().FindSub(cli.DefaultContext(), "state")
+	cmd := rootCmd().FindSub(cli.DefaultContext(), "data")
 	if cmd == nil {
-		t.Fatal("verse state: no such command")
+		t.Fatal("verse data: no such command")
 	}
 	if cmd.Hooks.Run == nil {
-		t.Fatal("verse state: no run — bare it answers the whole verse")
+		t.Fatal("verse data: no run — bare it answers the whole verse")
 	}
 	// No server is running, so a path that PARSES fails at the dial and a path that does not
 	// fails before it — which is how this tells the guard from the request.
@@ -258,7 +258,7 @@ func TestStateTakesAPath(t *testing.T) {
 // a verb, so nothing after it belongs to anyone else.
 //
 // It is asked of a ROOT option as well as one of state's own, because that is the case that
-// prompted it — `verse state lineage --scope m` — and the second Parse runs up the command tree
+// prompted it — `verse data lineage --scope m` — and the second Parse runs up the command tree
 // exactly as the first did.
 func TestStateTakesFlagsAfterThePath(t *testing.T) {
 	// The flags under test are GLOBAL ones, so parsing them writes to g — restored here, or
@@ -266,7 +266,7 @@ func TestStateTakesFlagsAfterThePath(t *testing.T) {
 	defer func(addr, scope string) { g.Addr, g.Scope = addr, scope }(g.Addr, g.Scope)
 	defer func(f string) { g.OFmt = f }(g.OFmt)
 
-	cmd := rootCmd().FindSub(cli.DefaultContext(), "state")
+	cmd := rootCmd().FindSub(cli.DefaultContext(), "data")
 	for _, args := range [][]string{
 		{"demo.pr", "--paths"},
 		{"--paths", "demo.pr"},
@@ -277,7 +277,7 @@ func TestStateTakesFlagsAfterThePath(t *testing.T) {
 		// No server is running, so reaching the dial is proof the parse got that far: a usage
 		// error would mean it did not.
 		if err := cmd.Hooks.Run(cli.DefaultContext(), args); errors.Is(err, cli.ErrUsage) {
-			t.Errorf("verse state %v: %v — the flag did not parse", args, err)
+			t.Errorf("verse data %v: %v — the flag did not parse", args, err)
 		}
 	}
 	// A second POSITIONAL is still an error: one path is what it takes.
@@ -330,7 +330,7 @@ func TestAnAddressMayBeWrittenAsSteps(t *testing.T) {
 	}
 }
 
-// Mixing the spellings is refused rather than read as something else: `verse state demo.pr 1`
+// Mixing the spellings is refused rather than read as something else: `verse data demo.pr 1`
 // would otherwise address a system literally called `demo.pr`, which is not what anybody typed.
 // The refusal names the step and offers the one-token form.
 func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
@@ -349,7 +349,7 @@ func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
 
 // A command that takes ONE token refuses a second rather than answering about args[0].
 //
-// `verse state` takes an address as separate steps and these take one, so the spelling that
+// `verse data` takes an address as separate steps and these take one, so the spelling that
 // works next door is the one somebody types here — and `verse flow show demo seq 1` used to
 // send the subject `demo` and answer, truthfully, with every flow in the system. A wrong answer
 // that looks right is the failure mode worth a test.

@@ -856,7 +856,7 @@ func oneArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (stri
 	}
 	if len(args) > 1 {
 		return "", fmt.Errorf("%w: %s — and this takes ONE token, so %q is after it. (An address "+
-			"as separate steps is `verse state`'s; here it is one argument.)",
+			"as separate steps is `verse data`'s; here it is one argument.)",
 			cli.ErrUsage, want, args[1])
 	}
 	return args[0], nil

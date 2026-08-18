@@ -31,7 +31,7 @@ import (
 //     the same walk a read uses, so it works at whatever depth the path reaches and across both
 //     halves of the tree.
 //   - `watch` answers a stream: an item is one frame.
-//   - anything else answers one document, which is one item — so `state get --trim '{stage:
+//   - anything else answers one document, which is one item — so `data --trim '{stage:
 //     null}'` projects a payload, and `--if` on it prints the entity or nothing.
 //
 // EXIT 0 EITHER WAY, unlike `o list`, which exits 1 when nothing survived. An empty docket is a

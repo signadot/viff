@@ -1,4 +1,4 @@
-# `verse state`: one document, one kinded path
+# `verse data`: one document, one kinded path
 
 Status: **built** (branch `verse-state`), in the three commits below. What the plan got wrong,
 and what building it settled, is recorded in "What landed" at the foot of this note — the plan
@@ -77,9 +77,9 @@ and `validTriggerName` already exist for. With a delimiter option, you pick one 
 not spend and nothing needs quoting or rewriting:
 
 ```
-verse state demo:pr:1                       # ':' — the ref spelling, unchanged
-verse state ,demo,pr,comment-drift@drift:head:head-moved@git:head:verse,stage
-verse state demo.pr.1.labels.urgent         # '.' — the default
+verse data demo:pr:1                       # ':' — the ref spelling, unchanged
+verse data ,demo,pr,comment-drift@drift:head:head-moved@git:head:verse,stage
+verse data demo.pr.1.labels.urgent         # '.' — the default
 ```
 
 **So there is no identity clobber in this plan.** `Ref.String()`, stored refs, charter subjects
@@ -103,9 +103,9 @@ assembled for the wire.
 **One reach.** `[i]`, `{i}` and `(key)` continue into arrays inside a payload, which no verse
 address can do today: a proposal's `votes: !key(voter) […]` is `merge.proposal.X.votes(scott)`.
 
-**One noun.** `verse entity` becomes **`verse state`**: the command answers with the verse's state
+**One noun.** `verse entity` becomes **`verse data`**: the command answers with the verse's state
 at a path, not with rows of a table. `entity` stays in the Go API, the wire and the source
-protocol, where a single addressed thing genuinely is the unit. (`verse state` sits close to
+protocol, where a single addressed thing genuinely is the unit. (`verse data` sits close to
 `verse status`; if that grates, rename `status` — its strata/runners/health summary is the smaller
 surface and the worse fit for its name.)
 
@@ -139,7 +139,7 @@ deletion needs a spelling that is not a bare null before a null payload can be l
 `Absent()` (`entity/store.go:129`, `!irtype null`) needs revisiting — once an entity may *be*
 null, "nothing is there" and "the value is null" stop being one match.
 
-## Commit 1 — `verse state <path>` answers the document
+## Commit 1 — `verse data <path>` answers the document
 
 `Tier: contract`. `GET /state?at=<kpath>` (the route renames with the command) answers the subtree
 at that path:
@@ -207,8 +207,8 @@ commit body so nobody "finishes the job".
 
 ## Commit 2 — one address, all the way down
 
-`Tier: contract`. `verse state get|put|rm` take the whole path, subsuming `--at`:
-`verse state get merge.proposal.X.votes(scott)`. `entity.ParsePath` is the one parser
+`Tier: contract`. `verse data get|put|rm` take the whole path, subsuming `--at`:
+`verse data merge.proposal.X.votes(scott)`. `entity.ParsePath` is the one parser
 (`kpath.Parse`; the first three segments are the ref, the rest the field path), and
 `Path.String()` (`entity/write.go:28-35`) is already its inverse — it renders
 `demo:pr:1.labels.urgent` and already calls that *"the form the CLI accepts"*, which `ParseRef`'s
@@ -257,26 +257,26 @@ which nothing pins today. `schema`/`versed`: `TestCuratedSetEqualsCustomCodecTyp
 
 **`make smoke-all`** (both renderings), with checks beside the existing entity block: the document
 carries `stage` and not `ref:`; the id is a key; raw curl on `/state?at=demo.pr` agrees;
-`verse state nosuch` is `{}` and exit 0 (`scripts/attached-resolver.sh:394` uses the bare read as
-a liveness probe); `--paths` round-trips back into `verse state get`.
+`verse data nosuch` is `{}` and exit 0 (`scripts/attached-resolver.sh:394` uses the bare read as
+a liveness probe); `--paths` round-trips back into `verse data get`.
 
 **Live:**
 
 ```sh
 ./scripts/seed-entities.sh
-verse state | head -40             # the whole document
-verse state demo.pr                # {id: payload}
-verse state 'demo.pr.*.stage'      # a wildcard, one grammar
-verse state demo.pr --if '{stage: open}' -o yaml
-verse state get 'merge.proposal.X.votes(scott)'
-o d -loop 'verse state' -loopUntil …
+verse data | head -40             # the whole document
+verse data demo.pr                # {id: payload}
+verse data 'demo.pr.*.stage'      # a wildcard, one grammar
+verse data demo.pr --if '{stage: open}' -o yaml
+verse data 'merge.proposal.X.votes(scott)'
+o d -loop 'verse data' -loopUntil …
 ./scripts/lineage.sh && ./scripts/lineage.sh --clean
 ```
 
 ## Trailers
 
 `Breaks:` per commit — **0**: an entity may hold a null payload; a null leaf is no longer read as
-a tombstone. **1**: `verse entity` is `verse state` and `/entities` is `/state`; the answer is a
+a tombstone. **1**: `verse entity` is `verse data` and `/entities` is `/state`; the answer is a
 document keyed by system/kind/id, not an array of `{ref, payload}`; `--system`/`--kind` become a
 positional path; `--refs` is `--paths`. **2**: `get`/`put`/`rm` take a whole path and `--at` is
 gone. Each needs a `Notice:` filed before the push, per
@@ -316,11 +316,11 @@ id", arrived at from the other side.
 **`!key` does not survive an ordinary write.** The plan said to annotate payloads that hold
 arrays worth addressing. `!key` is a registered merge operator, so a write EXECUTES it: logd
 merges the array by key and stores it untagged. `(key)` reach works against a payload written as
-DATA (`entity.Raw`), which is what the engine's own writers do, and `verse state put` cannot
+DATA (`entity.Raw`), which is what the engine's own writers do, and `verse data put` cannot
 leave one. Said in [reference/entities.md](../reference/entities.md) and in the refusal itself.
 
-Two smaller ones. **Flags come before the path** (`verse state --paths demo.pr`): a command with
+Two smaller ones. **Flags come before the path** (`verse data --paths demo.pr`): a command with
 subcommands stops parsing flags at its first positional, and that rule is what routes
-`state put <ref> <payload> --if` to the write's precondition — so it is named in the error rather
+`data --if` <ref> <payload> to the write's precondition — so it is named in the error --put rather
 than bent. And **`--paths` prints refs**, since a ref is the same address with `:` for a
 delimiter and that is what `get`/`put`/`rm` take.

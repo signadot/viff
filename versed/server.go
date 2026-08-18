@@ -1201,7 +1201,7 @@ func queryPattern(q url.Values) (entity.Pattern, error) {
 // predicate over the payloads standing at it.
 //
 // It is ONE type because the streaming face and the listing face must name the SAME set —
-// `verse watch --if X demo.pr` and `verse state --if X demo.pr` differ in when they answer, not
+// `verse watch --if X demo.pr` and `verse data --if X demo.pr` differ in when they answer, not
 // in what they pick. That was true of the pattern alone before the path existed; it has to stay
 // true now that the narrowing lives in two places, and it is no longer visible by eye, so
 // TestStateAndWatchNameTheSameSet says it instead.
@@ -1387,7 +1387,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 //
 // A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
 // answers the empty one, indistinguishable from a verse holding nothing. That is how a store
-// with an unreplayable patch in its log presents — `verse state` empty, `verse charter` a
+// with an unreplayable patch in its log presents — `verse data` empty, `verse charter` a
 // charter of no rules, every write still reporting success. Asking the store turns it into an
 // answer somebody can act on.
 func storeUnreadable(st entity.Reader) error {

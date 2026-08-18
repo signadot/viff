@@ -183,7 +183,7 @@ type LogdStore struct {
 	// answers the empty one — which is what a verse holding nothing answers too.
 	//
 	// That confusion is not theoretical. A store whose log holds a patch it cannot replay
-	// (raw.go, and the guard that now refuses to write one) reads as EMPTY: `verse state
+	// (raw.go, and the guard that now refuses to write one) reads as EMPTY: `verse data
 	// --paths` prints nothing, `verse charter` shows a charter of no rules, and writes go
 	// on reporting success — a verse that looks alive and answers nothing, diagnosable only by
 	// reading docd's log. Remembering the failure is what lets the surfaces above say "this
@@ -405,7 +405,7 @@ func payloadToNode(p Payload) *ir.Node {
 // It has to happen HERE, at the one boundary every payload verse hands out is made at, because
 // a head comment WRAPS the value it precedes in a CommentType node. A payload standing behind
 // one is not an object as far as anything that asks: Get, Str, Fields and IsObj all answer
-// empty, `verse state demo.pr.1.stage` refuses the field, and a `$stage` binding comes back
+// empty, `verse data demo.pr.1.stage` refuses the field, and a `$stage` binding comes back
 // blank. Worse, tony.Match sees through comments, so a trigger SELECTS the entity and then
 // reads nothing out of it — a rule that fires on the right subject and acts on nothing.
 //
@@ -895,7 +895,7 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// NOT_FOUND IS AN ANSWER, not an outage: it says the path is empty, and a read that FAILS
 	// says the store could not be read (libctl's own distinction). They are only ever confused
 	// upward: `unreadable` turns a recorded read error into a 503, so a read at a path nothing
-	// stands at — `verse state other`, an install listing a slice no source has written yet —
+	// stands at — `verse data other`, an install listing a slice no source has written yet —
 	// reported the verse as unavailable. List at the ROOT never met this, because the root
 	// always exists; asking at a path is what makes it reachable.
 	if isNotFound(err) {

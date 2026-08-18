@@ -115,7 +115,7 @@ var pr1 = entity.RefAt("demo", "pr", "1")
 func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 	store := serve(t)
 
-	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: open, env: prod}`); err != nil {
+	if _, err := runCLI(t, "data", "demo:pr:1", "--put", `{stage: open, env: prod}`); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if got := payloadOf(t, store, pr1); got["stage"] != "open" || got["env"] != "prod" {
@@ -123,7 +123,7 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 	}
 
 	// A second put naming one field leaves the rest alone.
-	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: reviewed}`); err != nil {
+	if _, err := runCLI(t, "data", "demo:pr:1", "--put", `{stage: reviewed}`); err != nil {
 		t.Fatalf("merge put: %v", err)
 	}
 	if got := payloadOf(t, store, pr1); got["stage"] != "reviewed" || got["env"] != "prod" {
@@ -132,7 +132,7 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 
 	// ONE ADDRESS, all the way down: the path writes inside the payload, which is what
 	// `--at labels.urgent` used to spell.
-	if _, err := runCLI(t, "state", "put", "demo.pr.1.labels.urgent", "true"); err != nil {
+	if _, err := runCLI(t, "data", "demo.pr.1.labels.urgent", "--put", "true"); err != nil {
 		t.Fatalf("deep put: %v", err)
 	}
 	labels, _ := payloadOf(t, store, pr1)["labels"].(map[string]any)
@@ -141,7 +141,7 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 	}
 
 	// and a path takes one field away, leaving the entity.
-	if _, err := runCLI(t, "state", "rm", "demo.pr.1.labels.urgent"); err != nil {
+	if _, err := runCLI(t, "data", "demo.pr.1.labels.urgent", "--rm"); err != nil {
 		t.Fatalf("rm field: %v", err)
 	}
 	got := payloadOf(t, store, pr1)
@@ -155,7 +155,7 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 
 	// A path that stops at the entity removes the entity itself — and the ref spelling is that
 	// same address, which is why it still works.
-	if _, err := runCLI(t, "state", "rm", "demo:pr:1"); err != nil {
+	if _, err := runCLI(t, "data", "demo:pr:1", "--rm"); err != nil {
 		t.Fatalf("rm: %v", err)
 	}
 	if got := payloadOf(t, store, pr1); got != nil {
@@ -168,10 +168,10 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 // output, so it is pinned here rather than left to drift.
 func TestEntityPutPrintsTheEntity(t *testing.T) {
 	serve(t)
-	if _, err := runCLI(t, "state", "put", "demo:pr:1", `{stage: open}`); err != nil {
+	if _, err := runCLI(t, "data", "demo:pr:1", "--put", `{stage: open}`); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	out, err := runCLI(t, "state", "put", "demo:pr:1", `{owner: ana}`)
+	out, err := runCLI(t, "data", "demo:pr:1", "--put", `{owner: ana}`)
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
@@ -188,27 +188,27 @@ func TestEntityPutPrintsTheEntity(t *testing.T) {
 func TestEntityPutGuards(t *testing.T) {
 	store := serve(t)
 
-	if _, err := runCLI(t, "state", "put", "--update", "demo:pr:1", `{stage: open}`); err == nil {
+	if _, err := runCLI(t, "data", "--update", "demo:pr:1", "--put", `{stage: open}`); err == nil {
 		t.Fatal("--update on an absent entity should have been refused")
 	}
 	if got := payloadOf(t, store, pr1); got != nil {
 		t.Fatalf("a refused --update wrote anyway: %+v", got)
 	}
 
-	if _, err := runCLI(t, "state", "put", "--create", "demo:pr:1", `{stage: open}`); err != nil {
+	if _, err := runCLI(t, "data", "--create", "demo:pr:1", "--put", `{stage: open}`); err != nil {
 		t.Fatalf("--create on an absent entity: %v", err)
 	}
-	if _, err := runCLI(t, "state", "put", "--create", "demo:pr:1", `{stage: hijacked}`); err == nil {
+	if _, err := runCLI(t, "data", "--create", "demo:pr:1", "--put", `{stage: hijacked}`); err == nil {
 		t.Fatal("--create on an existing entity should have been refused")
 	}
 	if got := payloadOf(t, store, pr1); got["stage"] != "open" {
 		t.Fatalf("a refused --create wrote anyway: %+v", got)
 	}
 
-	if _, err := runCLI(t, "state", "put", "--if", `{stage: open}`, "demo:pr:1", `{stage: reviewed}`); err != nil {
+	if _, err := runCLI(t, "data", "--expect", `{stage: open}`, "demo:pr:1", "--put", `{stage: reviewed}`); err != nil {
 		t.Fatalf("--if on a matching entity: %v", err)
 	}
-	if _, err := runCLI(t, "state", "put", "--if", `{stage: open}`, "demo:pr:1", `{stage: deployed}`); err == nil {
+	if _, err := runCLI(t, "data", "--expect", `{stage: open}`, "demo:pr:1", "--put", `{stage: deployed}`); err == nil {
 		t.Fatal("--if should have been refused: the stage has moved on")
 	}
 	if got := payloadOf(t, store, pr1); got["stage"] != "reviewed" {
@@ -220,7 +220,7 @@ func TestEntityPutGuards(t *testing.T) {
 // contradiction — refused from the flags, before anything is sent.
 func TestEntityPutRefusesContradictoryGuards(t *testing.T) {
 	serve(t)
-	_, err := runCLI(t, "state", "put", "--create", "--update", "demo:pr:1", `{stage: open}`)
+	_, err := runCLI(t, "data", "--create", "--update", "demo:pr:1", "--put", `{stage: open}`)
 	if err == nil {
 		t.Fatal("--create --update should be a usage error")
 	}
@@ -229,7 +229,7 @@ func TestEntityPutRefusesContradictoryGuards(t *testing.T) {
 	}
 }
 
-// A REFUSED REMOVAL IS NOT A REMOVAL, and `state rm` said "removed" whatever came back.
+// A REFUSED REMOVAL IS NOT A REMOVAL, and `data --rm` said "removed" whatever came back.
 //
 // The case that matters is verse's own half: the entity routes refuse a write under `verse:*`
 // with 403 — those records are written by the verbs that own them — and the CLI printed
@@ -237,7 +237,7 @@ func TestEntityPutRefusesContradictoryGuards(t *testing.T) {
 // cleaning up a store was told the opposite of the truth, and the store agreed with neither.
 func TestStateRmReportsARefusal(t *testing.T) {
 	serve(t)
-	out, err := runCLI(t, "state", "rm", "verse", "task", "instance", "run-nope")
+	out, err := runCLI(t, "data", "verse", "task", "instance", "run-nope", "--rm")
 	if err == nil {
 		t.Fatalf("a removal in verse's own half was reported as done: %q", out)
 	}
@@ -253,14 +253,14 @@ func TestStateRmReportsARefusal(t *testing.T) {
 // is the same state afterwards and the same sentence.
 func TestStateRmStillRemoves(t *testing.T) {
 	serve(t)
-	if _, err := runCLI(t, "state", "put", "demo", "rmme", "1", "{x: 1}"); err != nil {
+	if _, err := runCLI(t, "data", "demo", "rmme", "1", "--put", "{x: 1}"); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	out, err := runCLI(t, "state", "rm", "demo", "rmme", "1")
+	out, err := runCLI(t, "data", "demo", "rmme", "1", "--rm")
 	if err != nil || !strings.Contains(out, "removed") {
 		t.Fatalf("rm: %q %v", out, err)
 	}
-	if out, err := runCLI(t, "state", "rm", "demo", "rmme", "404"); err != nil || !strings.Contains(out, "removed") {
+	if out, err := runCLI(t, "data", "demo", "rmme", "404", "--rm"); err != nil || !strings.Contains(out, "removed") {
 		t.Fatalf("rm of an absent entity: %q %v", out, err)
 	}
 }

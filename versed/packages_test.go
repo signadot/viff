@@ -290,7 +290,7 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 
 // A store that cannot be READ answers the empty slice, which is what a verse holding nothing
 // answers — so a listing built on `Store.List` reports "there is nothing here" for a store that
-// is simply unreadable. That is how an unreplayable patch in the log presents: `verse state`
+// is simply unreadable. That is how an unreplayable patch in the log presents: `verse data`
 // empty, the charter tree showing no rules, every write still reporting success.
 //
 // The surfaces ask the store instead, and answer 503.
@@ -364,7 +364,7 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 	}
 
 	// What it WROTE is not its to take away, which is why nothing here asserts otherwise:
-	// a charter's writes are the world's, and `verse state rm` is how they go.
+	// a charter's writes are the world's, and `verse data rm` is how they go.
 }
 
 // A charter under an address is a package of its own, so removing the one above it is refused

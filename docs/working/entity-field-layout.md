@@ -51,7 +51,7 @@ one that survives work for a scalar.
 
 **Identity is the address, not a field.** `system:kind:id` names the entity, so there is no
 `metadata.name`, no `namespace`, no `kind:` in the payload — k8s carries those because its
-addressing is weak. Verse's is not, and `verse state demo.pr.1` is the proof: the address is
+addressing is weak. Verse's is not, and `verse data demo.pr.1` is the proof: the address is
 outside the document and the document is the value.
 
 **No `apiVersion`.** One schema, served by the verse itself (`/schema`), versioned by the
@@ -95,7 +95,7 @@ holding a set nobody can enumerate — `value` is any document, `status` grows p
 `charter` grows a key per rule, so it folds under `status` as `status.charter.<rule>`. A single
 fact with one meaning does not: `vanishing` is an instant, `derivedFrom` is a pair, `source` is
 a ref. Grouping those under `meta` is a k8s import that buys a level of nesting and answers no
-question — `verse state demo.pr.1.vanishing` is the address, and `.meta.` in the middle of it is
+question — `verse data demo.pr.1.vanishing` is the address, and `.meta.` in the middle of it is
 a word nobody needed to type.
 
 It is also what the tree already found out the hard way and half-applied. Today's reserved
@@ -106,7 +106,7 @@ document was at the root. The envelope removes the reason for the prefix; the ru
 the reason for `meta`.
 
 **Nothing collides, because the top level is verse's.** A writer never addresses it: `verse
-state put demo:pr:1 '{stage: open}'` means the VALUE, and the write surface envelopes it. That is
+data demo:pr:1 '{stage: open}' ` means the VALUE, and the write surface envelopes it. That --put is
 what makes a new reserved sibling a cheap addition later rather than a break — there is nothing
 of the author's up there to collide with.
 
@@ -181,11 +181,11 @@ are here for the eclipse anyway.
 
 So a virtual field is Go, registered against a `(system, kind)`, answering at read. That weakens
 the case for a kind-level ENTITY rather than making it: code needs no place in the store to be
-declared. What a kind entity would still buy is discoverability — somewhere for `verse state
+declared. What a kind entity would still buy is discoverability — somewhere for `verse data
 git-issue.repo` to say which of its fields are computed and which are held — and later an
 `accept:` schema. Worth wanting, not required by this.
 
-**Cost control.** A virtual field over a whole kind is a sweep per read, and `verse state`
+**Cost control.** A virtual field over a whole kind is a sweep per read, and `verse data`
 answers the whole verse — so if every kind carries one, a bare read becomes N sweeps. Whatever
 the answer is (evaluate only under the path asked for, cache by revision, refuse one above some
 depth), it has to be decided before this is offered rather than after.
@@ -256,8 +256,8 @@ head comment.
 ## What breaks## What breaks
 
 Everything reads one level deeper — but exactly one, which is the point of collapsing `meta`.
-`verse state demo.pr.1` answers `{value: …, status: …}` rather than the payload;
-`verse state demo.pr.1.value.stage` is the field, and `demo.pr.1.vanishing` is the marker that
+`verse data demo.pr.1` answers `{value: …, status: …}` rather than the payload;
+`verse data demo.pr.1.value.stage` is the field, and `demo.pr.1.vanishing` is the marker that
 is three levels deep today (`verse.meta.vanishing`) and one after this. A charter's
 `value: {…}` predicate keeps working by construction — that is why the name was chosen — but
 `--if '{stage: open}'` roots at the payload today and would need to root at `value`, which is a

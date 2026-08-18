@@ -83,7 +83,7 @@ func charterCmd() *cli.Command {
 			}
 			// THE POSITIONALS ARE A PATH, whatever is being done with it: the address, then a
 			// reach into what stands there (`verse-dev.drift rules watcher`), which is the
-			// grammar `verse state` has. A flag among them ends it — which is what lets
+			// grammar `verse data` has. A flag among them ends it — which is what lets
 			// `--depth`/`-r`/`--trim` sit on either side — and a bare `--` is not a flag: it
 			// says where the ADDRESS ends, which is the one thing the server's split cannot
 			// work out on its own.
@@ -159,7 +159,7 @@ func printCharter(cc *cli.Context, steps []string) error {
 
 // joinSteps is the path as one token: the steps, dot-joined.
 //
-// PLAIN JOINING, where `verse state`'s address() refuses to MIX the two spellings — `demo.pr a.b`
+// PLAIN JOINING, where `verse data`'s address() refuses to MIX the two spellings — `demo.pr a.b`
 // is an error there, because an entity id may contain a dot and `a.b` could be one step or two.
 // No charter name may hold a delimiter (a rule or a level called `v1.2` is refused at install:
 // a name is a bare kpath field, since a chain addresses the action inside a rule as

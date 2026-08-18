@@ -12,7 +12,7 @@ package trigger
 //	ref:    !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
 //
 // ONE ADDRESS, all the way down. A verse is one document — `{system: {kind: {id: payload}}}`
-// (entity/doc.go, and `verse state` answers it) — so an entity address is a path prefix and the
+// (entity/doc.go, and `verse data` answers it) — so an entity address is a path prefix and the
 // path simply continues it into the payload. That used to need the object form's `path:` key,
 // because an id may contain dots and the colon spelling could not say where the id ended; the
 // dot spelling can, quoting where it must, so a whole address fits in one string (see

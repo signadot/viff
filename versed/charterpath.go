@@ -14,7 +14,7 @@ import (
 // ONE PATH INTO THE CHARTER.
 //
 // `?path=` is an address followed by a reach INTO the document standing at it, in one list of
-// segments — the grammar `verse state demo.pr.1.stage` already has, where nobody had to be told
+// segments — the grammar `verse data demo.pr.1.stage` already has, where nobody had to be told
 // that `.stage` was a different kind of step:
 //
 //	verse-dev.drift                 the charter installed there

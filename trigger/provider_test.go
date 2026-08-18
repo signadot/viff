@@ -163,7 +163,7 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 	if !strings.Contains(got, "no provider:review:* is registered") {
 		t.Errorf("empty registry: %q", got)
 	}
-	if !strings.Contains(got, "verse state put provider:review:") {
+	if !strings.Contains(got, "verse data provider:review:") {
 		t.Errorf("empty registry should show how to register one: %q", got)
 	}
 

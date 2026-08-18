@@ -199,7 +199,7 @@ the arrangement above, is not a loop.
 through it is not a loop between packages and this cannot see it — which is the same reason
 baseline is unconfined in what it writes.
 
-`verse charter` reads the charter AT AN ADDRESS, the way `verse state` reads the verse at one —
+`verse charter` reads the charter AT AN ADDRESS, the way `verse data` reads the verse at one —
 because the charter is one document with a place for every package, so "what is installed here"
 is the same question at every depth, and every node answers the same shape.
 
@@ -241,7 +241,7 @@ verse c drift rules merge-proposal
 ```
 
 A package comes off whole, too — its rules, its levels, what it reads, and the engine running
-them. What it WROTE stays: a charter's writes are the world's, and `verse state rm` is how those
+them. What it WROTE stays: a charter's writes are the world's, and `verse data rm` is how those
 go.
 
 ```sh
@@ -277,7 +277,7 @@ intact and nothing left to react to it.
 
 One entity per rule, because that is what the operations already are: an install writes one,
 a removal deletes one, and neither reads the others — so two installs cannot lose each
-other, and a rule is addressable (`verse state get verse:trigger:rule:review`).
+other, and a rule is addressable (`verse data verse:trigger:rule:review`).
 
 **A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
 possible, and it is worth saying why it is needed. A write is a tony *patch* — the property
@@ -296,7 +296,7 @@ its own operators the moment anything else about it changed). Raw also *replaces
 merging, so re-installing a rule cannot leave a field of the version before it standing in the
 version after.
 
-The gain is that the record is the rule: `verse state get verse:trigger:rule:review` shows a
+The gain is that the record is the rule: `verse data verse:trigger:rule:review` shows a
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 
@@ -582,8 +582,8 @@ subject: { at: verse.gate.question }                   # …and in verse's own h
 subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 ```
 
-`!verse-path [demo pr 1]` is an address written as STEPS — the spelling `verse state --paths`
-answers with and `verse state` takes, so an address read off a listing pastes into a charter
+`!verse-path [demo pr 1]` is an address written as STEPS — the spelling `verse data --paths`
+answers with and `verse data` takes, so an address read off a listing pastes into a charter
 without being re-punctuated. It goes wherever the string form goes:
 
 ```tony
@@ -1492,7 +1492,7 @@ back as an ordinary live entity, stripped to whatever the rule wrote, with no ma
 React to a departure by writing somewhere else: an audit record, an archive. The thing that is
 going is not a subject.
 
-The raw read (`verse state`) still shows it — making the intent visible is the whole
+The raw read (`verse data`) still shows it — making the intent visible is the whole
 point; only the rule-facing selection hides it.
 
 **The removal itself is inert.** When the entity finally goes, a predicate over it falls from

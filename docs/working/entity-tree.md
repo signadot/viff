@@ -23,7 +23,7 @@ Two ways out, and they are genuinely different systems:
    about where things are, which every writer has to maintain and every migration has to move.
 2. **The question carries it.** A rule's subject pattern has a path of N segments, so its
    subjects are the nodes at depth N. A watch is on a subtree and emits at the depth it was
-   asked for. `verse state --paths` lists at the depth it read at. Nothing in the store says
+   asked for. `verse data --paths` lists at the depth it read at. Nothing in the store says
    where an entity ends, because nothing needs to: entity-hood is a LENS, not a stored fact.
 
 **Taken: 2.** No marker, no index, nothing to migrate — and two rules may legitimately look at
@@ -88,7 +88,7 @@ Each lands with the suite green.
    than splitting it at three. The answer is what stands at the address written, which keeps a
    merge visible wherever the address IS an entity.
 
-   `verse state --paths --depth N` lists at a depth, through `Doc.EntitiesAt`; unset answers at
+   `verse data --paths --depth N` lists at a depth, through `Doc.EntitiesAt`; unset answers at
    the depth an address has always had, which is what every listing written before this wants.
 
    **Watches** report at the fixed depth, so a live change four segments down arrives as a
@@ -123,5 +123,5 @@ Each lands with the suite green.
    reading as a four-segment entity would swallow.
 
    Also left, and smaller: `Doc.Entities` (the fixed-depth walk every listing still uses),
-   `WatchSubtree`'s reporting depth (precision, see §5), and `verse state --paths` defaulting to
+   `WatchSubtree`'s reporting depth (precision, see §5), and `verse data --paths` defaulting to
    three.

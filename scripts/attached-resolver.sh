@@ -133,7 +133,7 @@ setup() {
 
 	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
-	v state put "$SUBJECT" '{area: payments, title: "raise the retry budget"}' >/dev/null
+	v data "$SUBJECT" --put '{area: payments, title: "raise the retry budget"}' >/dev/null
 	ok "subject $SUBJECT"
 
 	# A run that stops at its first action, so there is a real question to answer.
@@ -164,7 +164,7 @@ setup() {
 # The mirror is in verse's own half (`verse:task:instance:*`) and `--paths` answers in steps,
 # so the id is the last step of each line.
 run_id() {
-	v state --paths --if "{flow: \"$SUBJECT\", pending: null}" verse.task.instance 2>/dev/null |
+	v data --paths --if "{flow: \"$SUBJECT\", pending: null}" verse.task.instance 2>/dev/null |
 		awk 'NF {print $NF}' | head -1
 }
 
@@ -202,14 +202,14 @@ question_id() {
 	done
 }
 
-field() { v state get "verse:gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
+field() { v data "verse:gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
 
 state() {
 	step "the bindings — who may answer, and for what"
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v state verse.resolvers.instance
-	printf '\n  the address is `<name>@<origin>`, so one `verse state verse.resolvers` shows both what is\n'
+	v data verse.resolvers.instance
+	printf '\n  the address is `<name>@<origin>`, so one `verse data verse.resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
 	q=$(question_id)
@@ -218,7 +218,7 @@ state() {
 		return
 	fi
 	step "the question — an entity, and it knows who owns it"
-	v state get "verse:gate:question:$q"
+	v data "verse:gate:question:$q"
 	printf '\n  resolver:      the owner. absent means ⊤, the docket a person reads.\n'
 	printf '  escalatesAt:   its clock, if the owner has a deadline. absolute, so a restart cannot slide it.\n'
 	printf '  reownedFrom/Why: the handover, once it has changed hands.\n'
@@ -356,7 +356,7 @@ clean() {
 	for kn in security:reviewer security:payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done
-	v state rm "$SUBJECT" >/dev/null 2>&1 || true
+	v data "$SUBJECT" --rm >/dev/null 2>&1 || true
 	ok "removed the bindings, the run and $SUBJECT"
 	printf '  answered questions are kept: a docket that forgets is one nobody can audit.\n\n'
 }
@@ -386,7 +386,7 @@ fi
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
 if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
-	die "$BIN does not have \`verse state\` — it predates the one-document read.
+	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
@@ -417,7 +417,7 @@ v() { "$BIN" --addr "$ADDR" "${scope[@]}" "$@"; }
 addr() { echo "http://$ADDR"; }
 
 command -v curl >/dev/null || die "this one needs curl: a resolver dials in over HTTP"
-v state >/dev/null 2>&1 || die "no verse at $ADDR — start one with \`./verse up\`, or set VERSE_ADDR to name another"
+v data >/dev/null 2>&1 || die "no verse at $ADDR — start one with \`./verse up\`, or set VERSE_ADDR to name another"
 
 case "${1:-}" in
 "" | list)

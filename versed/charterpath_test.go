@@ -45,7 +45,7 @@ func pathFixture(t *testing.T) (*Server, string) {
 }
 
 // A PATH IS AN ADDRESS AND THEN A REACH INTO WHAT STANDS THERE, in one list of segments, which
-// is the grammar `verse state demo.pr.1.stage` already has. The split is the server's: it is the
+// is the grammar `verse data demo.pr.1.stage` already has. The split is the server's: it is the
 // end that knows the tree.
 func TestACharterPathReachesIntoTheNodeAtIt(t *testing.T) {
 	_, url := pathFixture(t)

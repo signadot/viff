@@ -410,7 +410,7 @@ func (d *Doc) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 }
 
 // ParseAt parses the positional path a read is addressed by. The empty string is the empty
-// path — the whole verse — which is what a bare `verse state` asks for.
+// path — the whole verse — which is what a bare `verse data` asks for.
 func ParseAt(s string) (*kpath.KPath, error) {
 	at, err := kpath.Parse(s)
 	if err != nil {

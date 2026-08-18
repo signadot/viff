@@ -95,7 +95,7 @@ fi
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
 if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
-	die "$BIN does not have \`verse state\` — it predates the one-document read.
+	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
@@ -146,10 +146,10 @@ if $clean; then
 	# handed over whole. Splitting on whitespace would tear each address into three words.
 	for sys in lineage lintag; do
 		while IFS= read -r e; do
-			[ -n "$e" ] && v state rm "$e" >/dev/null 2>&1 || true
-		done < <(v state --paths "$sys" 2>/dev/null)
+			[ -n "$e" ] && v data "$e" --rm >/dev/null 2>&1 || true
+		done < <(v data --paths "$sys" 2>/dev/null)
 	done
-	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
+	for e in "${ENTITIES[@]}"; do v data "$e" --rm >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
 	for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
@@ -276,15 +276,15 @@ step "two systems, two id schemes, no coordination"
 # `github:pr:<org>/<repo>#<n>` with `merged`/`headSha`/`base`/`title`. Both spellings are
 # copied from what those sources produce, so a charter written against this demo is a charter
 # that works — which is the whole reason not to invent a vocabulary here.
-v state put "git:commit:widget/$A" "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
-v state put "git:commit:widget/$B" "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
-v state put "git:commit:widget/$C" "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
+v data "git:commit:widget/$A" "{sha: $A, msg: \" add the token TTL\", author: ana, repo: --put widget}" >/dev/null
+v data "git:commit:widget/$B" "{sha: $B, msg: \" fix the docket label\", author: bo, repo: --put widget}" >/dev/null
+v data "git:commit:widget/$C" "{sha: $C, msg: \" widen the gate vector\", author: cy, repo: --put widget}" >/dev/null
 ok "three commits — git ids them <repo>/<sha>, because a sha alone is not a cross-repo key"
 
-v state put "$PR" "{merged: true,  headSha: $A, base: main, title: \"token TTL\",       number: 42, repo: acme/widget, state: closed}" >/dev/null
-v state put "github:pr:acme/widget#45" "{merged: true,  headSha: $C, base: main, title: \"gate vector\",     number: 45, repo: acme/widget, state: closed}" >/dev/null
-v state put "github:pr:acme/widget#43" "{merged: true,  headSha: $B, base: next, title: \"docket label\",    number: 43, repo: acme/widget, state: closed}" >/dev/null
-v state put "github:pr:acme/widget#44" "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
+v data "$PR" "{merged: true,  headSha: $A, base: main, title: \" token TTL\", number: 42, repo: acme/widget, state: --put closed}" >/dev/null
+v data "github:pr:acme/widget#45" "{merged: true,  headSha: $C, base: main, title: \" gate vector\", number: 45, repo: acme/widget, state: --put closed}" >/dev/null
+v data "github:pr:acme/widget#43" "{merged: true,  headSha: $B, base: next, title: \" docket label\", number: 43, repo: acme/widget, state: --put closed}" >/dev/null
+v data "github:pr:acme/widget#44" "{merged: false, headSha: $A, base: main, title: \" still in review\", number: 44, repo: acme/widget, state: --put open}" >/dev/null
 ok "four PRs — GitHub ids them <org>/<repo>#<n>; :42 and :45 onto main, :43 onto next, :44 unmerged"
 note "a pull request carries a BARE headSha, and the commit's id has a repo in front of it"
 
@@ -303,17 +303,17 @@ tref=
 for _ in $(seq 1 100); do
 	while IFS= read -r t; do
 		[ -n "$t" ] || continue
-		if v state get "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
+		if v data "$t" -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
 			tref=$t
 			break 2
 		fi
-	done < <(v state --paths lineage 2>/dev/null)
+	done < <(v data --paths lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||
 	die "no trace about $PR — is the engine running, and did lin-pr-lineage install?"
 ok "$tref"
-v state get "$tref"
+v data "$tref"
 printf '\n'
 ok "one entity names a GitHub number and a git sha, each still in its own system's spelling"
 note "the message and author came from git by a PREDICATE on sha, not by naming an id: the"
@@ -353,10 +353,10 @@ step "the release: three ids reassembled without a fourth"
 rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
 [ -n "$rev" ] || die "could not read storeRev — is this verse answering \`$BIN status\`?"
 REL="lintag:release:v1.4.$rev"
-v state put "$REL" '{stage: cut, target: main}' >/dev/null
+v data "$REL" --put '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
-	bash -c "$BIN ${scope[*]} state get '$REL' 2>/dev/null | grep -q shipped"
-v state get "$REL"
+	bash -c "$BIN ${scope[*]} data '$REL' 2>/dev/null | grep -q shipped"
+v data "$REL"
 printf '\n'
 ok "the release carries the PRs and the commits, each still in its own system's id scheme"
 # Look at `authors` against `commits`: one nests and the other does not, and the difference is
@@ -369,7 +369,7 @@ note "authors nests and commits does not: the join answers with a list, and the 
 # The predicate did the narrowing: #43 is merged and traced, and is not in this release
 # because its base was `next`. That is a different exclusion from #44's, which is not traced
 # at all — one is the read's predicate, the other is the rule's subject.
-v state get "$REL" | grep -qF 'github:pr:acme/widget#43' &&
+v data "$REL" | grep -qF 'github:pr:acme/widget#43' &&
 	die "a trace onto next is in a release cut from main — the read's predicate did not narrow"
 ok "#43 is traced but absent: it went onto next, and this release asked for its own branch"
 
@@ -379,7 +379,7 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 step "the flow, which is keyed by exactly one of them"
 # If this is what fails, the release is a subject the engine already had a task for — see the
 # loop above, which exists to make that impossible.
-until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse state get verse:task:instance:lin-release-manifest@$REL)" \
+until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse data verse:task:instance:lin-release-manifest@$REL)" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
 v flow
 ok "the flow's subject is $REL — one id, not a merged one"
@@ -415,8 +415,8 @@ EDGES
 step "poke at it"
 cat <<EOF
   $BIN state lineage                       every correlation verse has written
-  $BIN state get $tref
-  $BIN state get $REL    the reassembled chain
+  $BIN data $tref
+  $BIN data $REL    the reassembled chain
   $BIN flows                               the flow, keyed by one id
   ./scripts/lineage.sh --clean             put it all back
 EOF

@@ -41,7 +41,7 @@ verse:task:instance:run-a1b2   a leading `verse` is the reserved root, and the t
 holding `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c` — or one at `a.b` whose payload
 happens to be nested — and nothing in it says which. So a rule's pattern says how deep its
 subjects are (`{path: [verse-dev, drift, head, "*"]}` selects four-segment entities), a write
-names the place it writes, and a listing is asked (`verse state --paths --depth 4`). Where
+names the place it writes, and a listing is asked (`verse data --paths --depth 4`). Where
 nothing says, the answer is the three an address has always had. See
 [working/entity-tree.md](../working/entity-tree.md) for why it is this way round rather than a
 marker in the store.
@@ -51,18 +51,18 @@ marker in the store.
 | | |
 |---|---|
 | a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
-| a path | any depth, and anywhere the address may continue into the payload: `verse state demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
-| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse state get verse-dev drift head abc` |
+| a path | any depth, and anywhere the address may continue into the payload: `verse data demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
+| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc` |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
-Steps are what `verse state --paths` prints, so a listing pipes back into a read. A whole line
+Steps are what `verse data --paths` prints, so a listing pipes back into a read. A whole line
 handed back as ONE quoted token is read as steps too, which is what makes the shell idiom work
 either way:
 
 ```sh
-ref=$(verse state --paths demo.pr | head -1)
-verse state get "$ref"      # one token holding spaces
-verse state get $ref        # or split by the shell — the same entity
+ref=$(verse data --paths demo.pr | head -1)
+verse data "$ref"      # one token holding spaces
+verse data $ref        # or split by the shell — the same entity
 ```
 
 `*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
@@ -82,9 +82,9 @@ any other in all three spellings, so an address in verse's half is FOUR segments
 three:
 
 ```sh
-verse state get verse task instance run-a1b2       # steps
-verse state get verse:task:instance:run-a1b2       # …as a ref
-verse state verse.task.instance                    # …and as a path, at whatever depth
+verse data verse task instance run-a1b2       # steps
+verse data verse:task:instance:run-a1b2       # …as a ref
+verse data verse.task.instance                    # …and as a path, at whatever depth
 ```
 
 Two consequences worth knowing before they surprise you:
@@ -92,7 +92,7 @@ Two consequences worth knowing before they surprise you:
 - **No world system may be called `verse`.** `verse:x:1` does not parse as an entity — it reads
   as the root plus two segments, and says so: *"an address starts with system.kind.id … and this
   names 3 of the 4"*.
-- **The address parses; the WRITE is refused.** `verse state put verse task instance x '{…}'` is
+- **The address parses; the WRITE is refused.** `verse data verse task instance x '{…}' ` --put is
   a well-formed address and a 403: what verse writes about itself is written by the verbs that
   own it (`trigger add`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
 
@@ -121,7 +121,7 @@ below it", where `[demo, "*", 1]` means "any one segment, then this".
 
 | | |
 |---|---|
-| `verse state`, `state get/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
+| `verse data`, `data/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
 | `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>:<name>`, or the address as stored |
 | `verse charter [<address>]` | an address in the CHARTER tree, any depth: `verse charter verse-dev drift` |
@@ -133,7 +133,7 @@ The root has one reserved key. Everything **verse writes about its own running**
 `verse:`; everything **the world is about** lives beside it, at whatever address you choose.
 
 ```sh
-verse state --paths
+verse data --paths
 # demo:pr:1                          the world's half: yours
 # verse:task:instance:run-a1b2       verse's own
 # verse:trigger:rule:review
@@ -153,7 +153,7 @@ not a record verse keeps, which is why casting one is an ordinary write. And `pr
 registry of doers is written by whoever runs the verse.
 
 **The reserved half is read like anything else and written only through the verbs that own
-it.** `verse state get verse:trigger:rule:review` reads a rule; `verse state put` at any
+it.** `verse data verse:trigger:rule:review` reads a rule; `verse data put` at any
 `verse:` address is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
 boundary had a name, anyone who could reach the store could install a rule, stamp a task record
@@ -174,21 +174,21 @@ its own root with no history — see below.
 
 ## Reading
 
-A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
+A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
 path. The path is a [kinded path](https://signadot.github.io/tony-format/) in any of the three
 spellings [above](#addressing), and it is the same address at every depth: a system, a kind, an
 entity, a place inside a payload.
 
 ```sh
-verse state                                         # the whole document
-verse state demo                                    # {kind: {id: payload}}
-verse state demo.pr                                 # {id: payload}
-verse state demo.pr.1                               # one payload
-verse state demo.pr.1.labels.urgent                 # one place inside it
-verse state 'demo.pr.*.stage'                       # one field of each, still keyed by id
-verse state --paths demo.pr                         # one address per line
-verse state --if '{stage: open}'                    # by what it says
-verse state --if '{urgent: true}' --if-at labels    # …rooted inside the payload
+verse data                                         # the whole document
+verse data demo                                    # {kind: {id: payload}}
+verse data demo.pr                                 # {id: payload}
+verse data demo.pr.1                               # one payload
+verse data demo.pr.1.labels.urgent                 # one place inside it
+verse data 'demo.pr.*.stage'                       # one field of each, still keyed by id
+verse data --paths demo.pr                         # one address per line
+verse data --if '{stage: open}'                    # by what it says
+verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
 ```
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
@@ -206,7 +206,7 @@ and why nothing about identity changed: `demo:pr:1` and `demo.pr.1` are one gram
 ways.
 
 ```sh
-verse state get demo:pr:1
+verse data demo:pr:1
 ```
 
 `--if` narrows WHICH ENTITIES the document holds, per entity, before the nesting — it never
@@ -226,17 +226,17 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 `(key)` addresses an array element by identity, and `[0]` by position:
 
 ```sh
-verse state get 'merge.proposal.X.votes(scott)'
-verse state get 'merge.proposal.X.votes[0].choice'
+verse data 'merge.proposal.X.votes(scott)'
+verse data 'merge.proposal.X.votes[0].choice'
 ```
 
 `(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been STORED.
 That is not automatic: `!key` is a tony merge operator, so an ordinary write EXECUTES it — the
 array is merged by key and kept without the tag — which means an array put through
-`verse state put` is not keyed afterwards. A payload meant to stay addressable this way is
+`verse data put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
-Writing into an array is a different matter, and `state put` refuses `[0]` and `(scott)` —
+Writing into an array is a different matter, and `data --put` refuses `[0]` and `(scott)` —
 though not for the reason it used to.
 
 | a write at | what logd does |
@@ -260,8 +260,8 @@ answers so the reasoning is checked at each go-tony bump rather than inherited.
 
 Mount-owned slices are not in it. `verse connect`'s content slice (`local:dir-content-*`) is
 served by a controller under a separate root with no history, and the read walks the entity
-root only — so a mounted entity is addressable by `verse state get` and absent from
-`verse state`. Saying "the document, whole" would make that pre-existing gap into a claim that
+root only — so a mounted entity is addressable by `verse data get` and absent from
+`verse data`. Saying "the document, whole" would make that pre-existing gap into a claim that
 is not quite true. Unioning the second read is a real decision, not a detail.
 
 ## Writing
@@ -270,17 +270,17 @@ A put **merges**: fields it does not name are left alone. That is why it answers
 stands AT THE ADDRESS YOU WROTE rather than an echo of what you sent, and why two writers
 advancing one entity do not clobber each other.
 
-The address may be as deep as the tree: `verse state put verse-dev drift head abc '{sha: …}'`
+The address may be as deep as the tree: `verse data verse-dev drift head abc '{sha: …}' --put `
 writes there, and the answer is that place. A write is a value at a path, so where an entity
 "ends" is not a question a write has to answer — see
 [working/entity-tree.md](../working/entity-tree.md).
 
 ```sh
-verse state put demo pr 1 '{stage: open}'             # as steps: nothing needs quoting
-verse state put demo:pr:1 '{owner: ana}'             # …or by ref: adds an owner, keeps the stage
-verse state put demo.pr.1.labels.urgent true         # write INSIDE the payload
-verse state rm  demo.pr.1.labels.urgent              # remove one field
-verse state rm demo pr 1                             # the whole entity
+verse data demo pr 1 --put '{stage: open}' # as steps: nothing needs quoting
+verse data demo:pr:1 --put '{owner: ana}' # …or by ref: adds an owner, keeps the stage
+verse data demo.pr.1.labels.urgent --put true # write INSIDE the payload
+verse data rm  demo.pr.1.labels.urgent              # remove one field
+verse data demo --rm pr 1                             # the whole entity
 ```
 
 A payload typed on the command line names no file, so it is read in the default input format
@@ -300,9 +300,9 @@ Each condition is checked *with* the write, in one step at the store, so nothing
 in between. A refused write says so, leaves the entity alone, and exits non-zero.
 
 ```sh
-verse state put --create demo pr 1 '{stage: open}'                # only if nothing is there yet
-verse state put --update demo pr 1 '{stage: open}'                # only if something is
-verse state put --if '{stage: draft}' demo pr 2 '{stage: open}'   # only if it still looks like this
+verse data --create demo pr 1 --put '{stage: open}' # only if nothing is there yet
+verse data --update demo pr 1 --put '{stage: open}' # only if something is
+verse data --expect '{stage: draft}' demo pr 2 --put '{stage: open}' # only if it still looks like this
 # write refused: a condition did not hold
 ```
 

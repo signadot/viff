@@ -58,7 +58,7 @@ func TestAtPrefix(t *testing.T) {
 //
 // logd distinguishes them — not_found says the path is empty, a failure says the store could
 // not be read — and verse folds the second into a 503. Recording the first as a read error
-// made `verse state <a system nothing has written>` report the verse as unavailable, which
+// made `verse data <a system nothing has written>` report the verse as unavailable, which
 // only became reachable once reads went to their path instead of to the root.
 func TestReadAtAnAbsentPathIsNotAnOutage(t *testing.T) {
 	s := entitytest.Store(t)

@@ -391,7 +391,7 @@ func (s *Server) restorePackageImports() {
 // to go (which is right, and is why the order is not free).
 //
 // WHAT IT DOES NOT TAKE is what the package WROTE. A charter's writes are the world's — a
-// package that derived `drift:head:*` leaves those entities standing, and `verse state rm` is
+// package that derived `drift:head:*` leaves those entities standing, and `verse data rm` is
 // how they go. This mirrors a source's `--keep`, and the reasoning is the same: verse cannot
 // tell "the reflection is over" from "the same truth is arriving another way", so it does not
 // guess on the operator's behalf.

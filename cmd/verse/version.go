@@ -27,7 +27,7 @@ var verse = &http.Client{Transport: skewCheck{mine: api.Version()}}
 var (
 	skewWarned = new(sync.Once)
 	// warnTo is where that line goes. It is a variable so a test can read it, and stderr rather
-	// than stdout because a `verse state | jq` that grew a warning in its input would be a
+	// than stdout because a `verse data | jq` that grew a warning in its input would be a
 	// worse bug than the skew.
 	warnTo io.Writer = os.Stderr
 )

@@ -239,7 +239,7 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		// THROUGH THE KPATH PARSER, not strings.Split: a segment may contain a dot
 		// (`verse-dev.drift.rules."v1.2-check"`), so the only correct split is the one that
 		// knows the quoting — which is the same reason entity.PathSegs exists and the same
-		// reason `verse state` writes an address as steps when an id holds a delimiter.
+		// reason `verse data` writes an address as steps when an id holds a delimiter.
 		segs, err := entity.PathSegs(p)
 		if err != nil {
 			http.Error(w, "path: "+err.Error(), http.StatusBadRequest)

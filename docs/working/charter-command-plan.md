@@ -59,7 +59,7 @@ That is goals 2 and 3 at once, and neither is a feature: `rules`/`strata` reach 
 every address because they are keys in the document every node already prints, and `show` stops
 existing because `verse c <path>` was always going to be able to answer it.
 
-It is the grammar `verse state` has. `verse state demo.pr.1.stage` is an address followed by a
+It is the grammar `verse data` has. `verse data demo.pr.1.stage` is an address followed by a
 reach into the payload at it, and nobody had to be told that `.stage` was a different kind of
 step. A charter node is a document; a path indexes it.
 
@@ -291,7 +291,7 @@ package named `rules` and the `--` escape; the not-found message naming the othe
 
 - The reach did not stop at a rule. `rules.watcher.action` walks INTO the rule for free, because
   once a list is indexed by its elements' `name` the rest is ordinary object indexing — the same
-  reason `verse state demo.pr.1.stage` never needed a rule for `.stage`.
+  reason `verse data demo.pr.1.stage` never needed a rule for `.stage`.
 - `--` is `?at=` on the wire. The client sends the address it means and the reach separately,
   which is the only thing the greedy split cannot express, rather than a second grammar.
 - The 404 does two different things and had to be told apart: a first segment that is not a
@@ -391,7 +391,7 @@ from step 0 for its duration, so a second operator's install waits or is told to
 
 ## Open
 
-- Does `verse c <path>` want `--paths` (one address per line, as `verse state` has) for
+- Does `verse c <path>` want `--paths` (one address per line, as `verse data` has) for
   scripting? Probably, and it is cheap; left out above to keep the first cut small.
 - `rm` of a rule that a stratum still holds is refused today by the engine. The message should
   name the path to the stratum now that there is one.

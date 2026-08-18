@@ -207,7 +207,7 @@ fi
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
 if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
-	die "$BIN does not have \`verse state\` — it predates the one-document read.
+	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
@@ -246,25 +246,25 @@ install_shape() {
 # world put in the right order, which is itself the point of those shapes.
 drive_shape() {
 	case "$1" in
-	patch) v state put demo:patch:1 '{stage: open, title: "a triage"}' >/dev/null ;;
-	latch) v state put demo:latch:1 '{stage: open, title: "a review"}' >/dev/null ;;
-	ask) v state put demo:ask:1 '{stage: open, title: "a gated review"}' >/dev/null ;;
-	seq) v state put demo:seq:1 '{stage: ready, title: "a build"}' >/dev/null ;;
+	patch) v data demo:patch:1 --put '{stage: open, title: "a triage"}' >/dev/null ;;
+	latch) v data demo:latch:1 --put '{stage: open, title: "a review"}' >/dev/null ;;
+	ask) v data demo:ask:1 --put '{stage: open, title: "a gated review"}' >/dev/null ;;
+	seq) v data demo:seq:1 --put '{stage: ready, title: "a build"}' >/dev/null ;;
 	when)
-		v state put demo:when:1 '{stage: ready, title: "a release"}' >/dev/null
-		v state put ci:status:shapes '{state: green}' >/dev/null
+		v data demo:when:1 --put '{stage: ready, title: "a release"}' >/dev/null
+		v data ci:status:shapes --put '{state: green}' >/dev/null
 		;;
 	on)
 		# An edge has to RISE, so drop it first: a `ci:status:release` left green by an
 		# earlier run is a predicate that never becomes true again, and the rule that reads
 		# it would look broken rather than edge-triggered.
-		v state put ci:status:release '{state: red}' >/dev/null
-		v state put demo:on:1 '{stage: waiting, title: "an edge"}' >/dev/null
+		v data ci:status:release --put '{state: red}' >/dev/null
+		v data demo:on:1 --put '{stage: waiting, title: "an edge"}' >/dev/null
 		sleep 1
-		v state put ci:status:release '{state: green}' >/dev/null
+		v data ci:status:release --put '{state: green}' >/dev/null
 		;;
-	vote) v state put demo:vote:1 '{stage: shipped, title: "a merge"}' >/dev/null ;;
-	derive) v state put demo:derive:1 '{stage: open, title: "a feature request"}' >/dev/null ;;
+	vote) v data demo:vote:1 --put '{stage: shipped, title: "a merge"}' >/dev/null ;;
+	derive) v data demo:derive:1 --put '{stage: open, title: "a feature request"}' >/dev/null ;;
 	esac
 	ok "drove shape-$1"
 }
@@ -274,14 +274,14 @@ drive_shape() {
 next_steps() {
 	local sub="demo:$1:1" c="$BIN"
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
-	printf '\nwhat it did:\n\n  %s state get %s\n' "$c" "$sub"
+	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub"
 	case "$1" in
 	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as you\n' "$c" "$c" ;;
 	vote) printf '  %s docket                 ← it is waiting for a tally\n  %s vote <motion> approve --as alice\n  %s vote <motion> approve --as bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)
-		printf '  %s state get derived:feature:shape-derive@demo:derive:1\n' "$c"
+		printf '  %s data derived:feature:shape-derive@demo:derive:1\n' "$c"
 		printf '  %s strata                 ← the ordering it was checked against\n' "$c"
 		printf '\n  the derived id is the ENGINE'"'"'s — f(rule, subject) — so the rule name and the\n'
 		printf '  subject are both in it, and no two rules can ever address the same entity.\n'
@@ -341,13 +341,13 @@ clean)
 	step "clean"
 	for s in "${SHAPES[@]}"; do
 		remove_shape "$s"
-		v state rm "demo:$s:1" >/dev/null 2>&1 || true
+		v data "demo:$s:1" --rm >/dev/null 2>&1 || true
 	done
-	v state rm ci:status:shapes >/dev/null 2>&1 || true
-	v state rm ci:status:release >/dev/null 2>&1 || true
+	v data ci:status:shapes --rm >/dev/null 2>&1 || true
+	v data ci:status:release --rm >/dev/null 2>&1 || true
 	# The derived entity is addressed by the ENGINE — id = f(rule, subject) — so it is named
 	# here rather than guessed at: nothing else in the verse knows to clean it up.
-	v state rm 'derived:feature:shape-derive@demo:derive:1' >/dev/null 2>&1 || true
+	v data 'derived:feature:shape-derive@demo:derive:1' --rm >/dev/null 2>&1 || true
 	ok "every shape trigger and the entities they acted on are gone"
 	;;
 *)

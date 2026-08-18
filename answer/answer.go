@@ -102,7 +102,7 @@ func Parse(doc *ir.Node) (*Contract, error) {
 	// up front and in a repair afterwards. Rendered rather than carried as the author's own
 	// keystrokes because the author no longer writes text: a contract arrives as the
 	// document it is, so this is the only text there is, and it is the same text `verse
-	// state get` prints for the rule.
+	// data` prints for the rule.
 	src, err := render(s.Accept)
 	if err != nil {
 		return nil, fmt.Errorf("render answer contract: %w", err)

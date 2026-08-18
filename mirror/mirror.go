@@ -63,7 +63,7 @@ func RunRef(id string, occurrence int64) entity.Ref {
 //
 // NOTHING PRUNES THESE, and that is a decision rather than an omission. Growth is one small
 // record per completed run — bounded by runs, not by events or by time — and both ways to
-// remove them already exist: `verse state rm`, and a charter matching on age that writes
+// remove them already exist: `verse data rm`, and a charter matching on age that writes
 // `verse.meta.vanishing` and acts on the edge. Choosing a retention count here would be
 // picking a number for how much history is worth keeping before anybody has felt the want of
 // it, in the one place a reader cannot override.

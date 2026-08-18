@@ -49,7 +49,7 @@ first binding *by name* owns the questions they both cover.
 | `verse:resolvers:<kind>:<name>` | the binding — what is installed |
 | `verse:resolvers:instance:<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
-One `verse state resolvers` shows both, which is why the instance is a reserved
+One `verse data resolvers` shows both, which is why the instance is a reserved
 *kind* inside the system rather than a second system with a singular/plural pair to mistype.
 
 The origin is the **run** for a run's gates (`payments-review@review-8f30…`) and the **subject**
@@ -136,13 +136,13 @@ verse resolver add <file>                       # install one (- = stdin)
 verse resolver show   verse:resolvers:security:review # or security:review
 verse resolver remove verse:resolvers:security:review
 
-verse state verse.resolvers.instance            # who is watching what
+verse data verse.resolvers.instance            # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
 verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
 ```
 
 A resolver ref is typed the way it is stored — `verse:resolvers:security:review` — because an
-operator reading `verse state` and one typing `verse resolver show` should not have to know two
+operator reading `verse data` and one typing `verse resolver show` should not have to know two
 spellings of one thing. The leading `verse:resolvers:` may be dropped, leaving `<kind>:<name>`.
 
 ## Binding one to work

@@ -26,7 +26,7 @@ when a controller reaches docd by another address than verse does. See
 
 The store maps each entity to a kinded path `verse.<system>.<kind>.<id>`, reads and writes via
 Match/Patch, and drives the change stream and revision cursor from a single logd watch. That
-mapping is the whole of what `verse state` publishes: the document it answers with IS this one,
+mapping is the whole of what `verse data` publishes: the document it answers with IS this one,
 addressed by the same path ([entities.md](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking

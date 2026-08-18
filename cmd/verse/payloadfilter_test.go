@@ -72,7 +72,7 @@ func TestWatchQueryKeepsOperators(t *testing.T) {
 	}
 }
 
-// --if-at goes on the wire a SEGMENT AT A TIME, as `state rm --at` sends its path: the
+// --if-at goes on the wire a SEGMENT AT A TIME, as a removal sends its path: the
 // address is a list there, so a field name is never re-split at the far end.
 func TestWatchQuerySendsThePathBySegment(t *testing.T) {
 	defer func(f string) { g.IFmt = f }(g.IFmt)
@@ -111,7 +111,7 @@ func TestWatchRejectsAMalformedPredicate(t *testing.T) {
 	}
 }
 
-// runState drives `verse state …` through the COMMAND's own Run, rather than walking to
+// runState drives `verse data …` through the COMMAND's own Run, rather than walking to
 // the leaf as runCLI does. The walk is what makes runCLI usable for the leaves, and it is also
 // what makes it blind here: a flag on a group, and a group's decision about what to do with a
 // flag meant for its subcommand, both happen in the parent's Parse — which the walk skips.
@@ -124,7 +124,7 @@ func runState(t *testing.T, args ...string) (string, error) {
 	}
 	cmd := rootCmd()
 	g.Addr = testAddr // after rootCmd, which re-reads it from the config layers
-	sub := cmd.FindSub(cc, "state")
+	sub := cmd.FindSub(cc, "data")
 	if sub == nil {
 		t.Fatal("no `state` command")
 	}
@@ -134,7 +134,7 @@ func runState(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// `verse state --if` reads by what an entity SAYS. It is the same filter `verse watch --if`
+// `verse data --if` reads by what an entity SAYS. It is the same filter `verse watch --if`
 // streams by, and the reason to have it on the read too is that the two answer different
 // questions about one selector: what is true now, and what becomes true next.
 func TestStateFiltersOnThePayload(t *testing.T) {
@@ -146,8 +146,8 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 		{"demo pr 2", `{stage: merged, labels: {urgent: false}}`},
 		{"demo pr 3", `{stage: open}`},
 	} {
-		args := append([]string{"state", "put"}, strings.Fields(e.ref)...)
-		if _, err := runCLI(t, append(args, e.payload)...); err != nil {
+		args := append([]string{"data"}, strings.Fields(e.ref)...)
+		if _, err := runCLI(t, append(args, "--put", e.payload)...); err != nil {
 			t.Fatalf("put %s: %v", e.ref, err)
 		}
 	}
@@ -179,33 +179,36 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	}
 }
 
-// `verse state` and `verse state put` both take an --if, and they mean different things:
+// `verse data` and `verse data put` both take an --if, and they mean different things:
 // a filter on the listing, a precondition on the write. They do not collide, because a parent
-// stops parsing flags at its first positional — so `state put …` hands the whole tail,
+// stops parsing flags at its first positional — so `data …` hands the whole tail,
 // flags included, to `put`.
 //
 // This is the pin for that, and it is worth pinning rather than trusting: if the parent ever
 // swallowed the flag, the precondition would not fail — it would VANISH, and a guarded write
 // would silently become an unguarded one.
-func TestStatePutKeepsItsOwnIf(t *testing.T) {
+func TestAWritesPreconditionIsNotTheReadsFilter(t *testing.T) {
 	store := serve(t)
 	ref := entity.RefAt("demo", "pr", "1")
-	if _, err := runCLI(t, "state", "put", "demo", "pr", "1", `{stage: open}`); err != nil {
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "--put", `{stage: open}`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	// A precondition that does NOT hold. Through the collection, with the flag after the
-	// positionals, exactly as someone would type it.
-	if _, err := runState(t, "put", "demo", "pr", "1", `{stage: deployed}`, "--if", `{stage: closed}`); err == nil {
-		t.Error("a put whose --if does not hold was reported as succeeding")
+	// A precondition that does NOT hold, with the flag after the positionals, exactly as
+	// someone would type it. It is `--expect` rather than `--if` because the two used to be
+	// told apart by a subcommand boundary — `put` had an --if of its own — and folding the
+	// verbs into flags took that boundary away. --create expects nothing, --update expects
+	// something, --expect names what.
+	if _, err := runState(t, "demo", "pr", "1", "--put", `{stage: deployed}`, "--expect", `{stage: closed}`); err == nil {
+		t.Error("a write whose --expect does not hold was reported as succeeding")
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "open" {
 		t.Fatalf("stage = %v, want open — the precondition was dropped and the write went through", got)
 	}
 
 	// And one that does hold still writes, so the pin is not just "everything fails".
-	if _, err := runState(t, "put", "demo", "pr", "1", `{stage: reviewed}`, "--if", `{stage: open}`); err != nil {
-		t.Fatalf("a put whose --if holds was refused: %v", err)
+	if _, err := runState(t, "demo", "pr", "1", "--put", `{stage: reviewed}`, "--expect", `{stage: open}`); err != nil {
+		t.Fatalf("a write whose --expect holds was refused: %v", err)
 	}
 	if got := payloadOf(t, store, ref)["stage"]; got != "reviewed" {
 		t.Fatalf("stage = %v, want reviewed", got)
@@ -279,7 +282,8 @@ func TestStateTrimsEachEntitysPayload(t *testing.T) {
 		{"demo", "pr", "1", `{stage: open, owner: ana}`},
 		{"demo", "pr", "2", `{stage: merged, owner: dee}`},
 	} {
-		if _, err := runCLI(t, append([]string{"state", "put"}, e...)...); err != nil {
+		args := append([]string{"data"}, e[:len(e)-1]...)
+		if _, err := runCLI(t, append(args, "--put", e[len(e)-1])...); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 	}

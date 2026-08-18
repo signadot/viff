@@ -37,7 +37,7 @@ import (
 // Ref names the entity; Field goes further, naming a place INSIDE its payload
 // ({"labels","urgent"}), so a write can be a whole entity or one field of one.
 //
-// THE WIRE STAYS SPLIT while the CLI takes one address. `verse state put
+// THE WIRE STAYS SPLIT while the CLI takes one address. `verse data put
 // demo.pr.1.labels.urgent true` is one kinded path, and entity.ParsePath is the one parser
 // that reads it — the wire has no reason to re-parse what the CLI has already split, and the
 // structured form is what the store's writePath consumes. A list rather than a dotted string
@@ -49,7 +49,7 @@ import (
 // so, by writing null at it.
 //
 // Payload is a tony node, not a map: an entity payload is ANY tony value (see
-// entity.Payload), so `verse state put demo:count:1 42` has to survive the wire as the
+// entity.Payload), so `verse data demo:count:1 --put 42` has to survive the wire as the
 // number it is. A map here would have re-imposed on the wire exactly the object constraint
 // the store just dropped.
 //

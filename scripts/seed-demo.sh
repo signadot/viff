@@ -75,7 +75,7 @@ fi
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
 if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
-	die "$BIN does not have \`verse state\` — it predates the one-document read.
+	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
@@ -97,7 +97,7 @@ if $clean; then
 	step "clean"
 	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
-	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
+	for e in "${ENTITIES[@]}"; do v data "$e" --rm >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
 	printf '\nseeded state is gone. Live tasks and answered gates are not touched.\n'
 	exit 0
@@ -132,17 +132,17 @@ ok "demo-review (ask: a human approves) + demo-escalate (auto)"
 
 # ── the world the charter is about ───────────────────────────────────────────
 step "entities"
-v state put demo:pr:1 '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
-v state put demo:pr:2 '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
+v data demo:pr:1 --put '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
+v data demo:pr:2 --put '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
 ok "demo:pr:1 (open — demo-review fires on it), demo:pr:2 (draft — it does not)"
-v state put demo:task:hotfix-1 '{priority: high, title: "expiring cert"}' >/dev/null
-v state put demo:task:cleanup-1 '{priority: low, title: "tidy the fixtures"}' >/dev/null
+v data demo:task:hotfix-1 --put '{priority: high, title: "expiring cert"}' >/dev/null
+v data demo:task:cleanup-1 --put '{priority: low, title: "tidy the fixtures"}' >/dev/null
 ok "demo:task:hotfix-1 (high — demo-escalate fires), demo:task:cleanup-1 (low — it does not)"
 
 # Providers are ordinary entities, which is the point: `verse provider` is a view of the
 # store, and a spawn that SELECTS its doer picks from these by capability and attributes.
-v state put provider:review:claude '{driver: llm, tier: premium}' >/dev/null
-v state put provider:review:cheapo '{driver: scripted, tier: basic}' >/dev/null
+v data provider:review:claude --put '{driver: llm, tier: premium}' >/dev/null
+v data provider:review:cheapo --put '{driver: scripted, tier: basic}' >/dev/null
 ok "two review providers (premium + basic) in the registry"
 
 # ── what the seed produced ───────────────────────────────────────────────────
@@ -151,14 +151,14 @@ ok "two review providers (premium + basic) in the registry"
 step "the engine reacts"
 escalated=
 for _ in $(seq 1 50); do
-	if v state get demo:task:hotfix-1 2>/dev/null | grep -q escalated; then
+	if v data demo:task:hotfix-1 2>/dev/null | grep -q escalated; then
 		escalated=1
 		break
 	fi
 	sleep 0.2
 done
 [ -n "$escalated" ] && ok "demo-escalate advanced demo:task:hotfix-1 → escalated (auto: nobody was asked)" ||
-	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse state get demo:task:hotfix-1`\n'
+	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse data demo:task:hotfix-1`\n'
 
 GID=
 for _ in $(seq 1 50); do
@@ -175,7 +175,7 @@ cat <<EOF
 
 seeded. What to type next:
 
-  $BIN$scope_note state                        what is there (also: state demo)
+  $BIN$scope_note data                        what is there (also: state demo)
   $BIN$scope_note charter                      the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
   $BIN$scope_note gate approve ${GID:-<id>} --as you
@@ -190,7 +190,7 @@ Watch it move (another terminal, before approving):
 
 Then drive it yourself — a put is how you speak to the verse:
 
-  $BIN$scope_note state put demo pr 2 '{stage: open}'     open the draft; demo-review fires again
+  $BIN$scope_note data demo pr 2 '{stage: open}' open the draft; demo-review fires --put again
 
 Undo it all with: $0 --clean
 EOF

@@ -60,20 +60,20 @@ The path narrows by *where* an entity lives; `--if` narrows by *what it says*,
 as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 
 ```sh
-verse state                                         # the whole verse, one document
-verse state demo.pr                                 # by where it lives
-verse state demo pr 1                               # …or as steps, which need no quoting
-verse state 'demo.pr.*.stage'                       # one field of each, keyed by id
-verse state --if '{stage: open}'                    # by what it says
-verse state --if '{stage: !or [open, merged]}'      # …an operator, not just equality
-verse state --if '{urgent: true}' --if-at labels    # …rooted inside the payload
-verse state demo.pr --trim '{stage: null}'          # …and how much of each entity to print
-verse state --paths demo.pr                         # just the addresses
-verse state get demo pr 1                           # one entity, whole
-verse state get demo:pr:1                           # …the same address written as a ref
+verse data                                         # the whole verse, one document
+verse data demo.pr                                 # by where it lives
+verse data demo pr 1                               # …or as steps, which need no quoting
+verse data 'demo.pr.*.stage'                       # one field of each, keyed by id
+verse data --if '{stage: open}'                    # by what it says
+verse data --if '{stage: !or [open, merged]}'      # …an operator, not just equality
+verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
+verse data demo.pr --trim '{stage: null}'          # …and how much of each entity to print
+verse data --paths demo.pr                         # just the addresses
+verse data demo pr 1                           # one entity, whole
+verse data demo:pr:1                           # …the same address written as a ref
 ```
 
-A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse state` answers it at a
+A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
 for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take
@@ -84,12 +84,12 @@ AN ADDRESS MAY BE TYPED AS STEPS, which is what `--paths` answers with — so a 
 back into a read, and nothing needs escaping on the way:
 
 ```sh
-verse state --paths demo.pr | xargs -L1 verse state get
-verse state get demo pr a.b labels urgent           # an id with a dot in it, unquoted
+verse data --paths demo.pr | xargs -L1 verse data get
+verse data demo pr a.b labels urgent           # an id with a dot in it, unquoted
 ```
 
-Flags go on either side of the path — `verse state --paths demo.pr` and
-`verse state demo.pr --paths` are the same command.
+Flags go on either side of the path — `verse data --paths demo.pr` and
+`verse data demo.pr --paths` are the same command.
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
 subtree need not restate the shape above it: `--if-at labels --if '{urgent: true}'` is
@@ -107,10 +107,10 @@ A put **merges**. Fields you do not name are left alone, which is why the answer
 entity as it now stands rather than an echo of what you sent:
 
 ```sh
-verse state put demo pr 1 '{owner: dee}'             # changes the owner, keeps the stage
-verse state put demo.pr.1.labels.urgent true         # one field, deep
-verse state rm  demo.pr.1.labels.urgent              # and gone again
-verse state rm demo scratch 1                        # the whole entity
+verse data demo pr 1 --put '{owner: dee}' # changes the owner, keeps the stage
+verse data demo.pr.1.labels.urgent --put true # one field, deep
+verse data rm  demo.pr.1.labels.urgent              # and gone again
+verse data demo --rm scratch 1                        # the whole entity
 ```
 
 A payload typed on the command line is read as tony, which is why `{stage: open}` needs no
@@ -122,11 +122,11 @@ A write can also refuse to happen. Each condition is checked *with* the write, i
 the store, so nothing can change in between:
 
 ```sh
-verse state put --create demo pr 1  '{stage: open}'   # only if nothing is there yet → refused
-verse state put --update demo pr 99 '{stage: open}'   # only if something is        → refused
+verse data --create demo pr 1 --put '{stage: open}' # only if nothing is there yet → refused
+verse data --update demo pr 99 --put '{stage: open}' # only if something is → refused
 # write refused: a condition did not hold
 
-verse state put --if '{stage: merged}' demo pr 4 '{owner: dee}'   # only if it still looks like this
+verse data --expect '{stage: merged}' demo pr 4 --put '{owner: dee}' # only if it still looks like this
 ```
 
 That is how two writers advance one entity without losing each other's fields — CAS spelled
@@ -155,7 +155,7 @@ updated) or `delete`.
 Now, in another terminal, write to it and watch the line arrive:
 
 ```sh
-verse state put demo pr 2 '{stage: open}'
+verse data demo pr 2 --put '{stage: open}'
 ```
 
 Then advance it past the filter (`'{stage: reviewing}'`) and note that nothing arrives: the
@@ -228,8 +228,8 @@ about its own running — so observing the fleet is observing entities:
 
 ```sh
 verse watch verse.task                        # the whole fleet's lifecycle
-verse state get verse task instance <id>      # its result, still there after it finished
-verse state verse.task --trim '{status: null}'   # …or just where everything got to
+verse data verse task instance <id>      # its result, still there after it finished
+verse data verse.task --trim '{status: null}'   # …or just where everything got to
 ```
 
 ```tony
@@ -328,7 +328,7 @@ at once without them arguing over an entity.
 
 ```sh
 ./scripts/charter-shapes.sh run patch
-verse state get demo patch 1     # stage: triaged
+verse data demo patch 1     # stage: triaged
 ```
 
 The action has no target of its own: it acts on the condition's `subject`.
@@ -337,10 +337,10 @@ A rule also acts on the **backlog**, which is worth seeing rather than being tol
 
 ```sh
 ./scripts/charter-shapes.sh remove patch          # nothing is watching
-verse state put demo patch 2 '{stage: open}'
-verse state get demo patch 2                    # stage: open — nobody reacted
+verse data demo patch 2 --put '{stage: open}'
+verse data demo patch 2                    # stage: open — nobody reacted
 ./scripts/charter-shapes.sh install patch
-verse state get demo patch 2                    # stage: triaged — installing it acted
+verse data demo patch 2                    # stage: triaged — installing it acted
 ```
 
 A trigger's observation replays what it reads when it opens, so a rule is a statement about
@@ -496,10 +496,10 @@ rising edge:
 
 ```sh
 ./scripts/charter-shapes.sh run on
-verse state get demo on 1                        # stage: released
+verse data demo on 1                        # stage: released
 
-verse state put demo on 2 '{stage: waiting}'     # CI is still green…
-verse state get demo on 2                        # …and this one stays `waiting`
+verse data demo on 2 --put '{stage: waiting}' # CI is still green…
+verse data demo on 2                        # …and this one stays `waiting`
 ```
 
 Two properties, and both are the point of choosing `on` over `when`. **An edge does not
@@ -544,7 +544,7 @@ write in a circle, it comes with the thing that bounds it: a **stratum**, a decl
 ```sh
 ./scripts/charter-shapes.sh run derive
 verse charter                                                  # the ordering
-verse state get derived feature shape-derive@demo:derive:1
+verse data derived feature shape-derive@demo:derive:1
 ```
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
@@ -645,7 +645,7 @@ naming its voter, since a motion must be settled attributably:
 ```sh
 verse vote 8f306077 approve --as alice    # 1 of 2 — still open
 verse vote 8f306077 approve --as bob      # 2 of 2 → carries
-verse state get demo vote 1              # stage: merged
+verse data demo vote 1              # stage: merged
 ```
 
 The motion then reads `status: closed`, `outcome: proceed`, `tally: 2` and a `witness` naming

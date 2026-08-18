@@ -219,7 +219,7 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 // scope's name on the record answers it exactly, at the one moment the answer is known: the
 // install itself.
 //
-// A record carrying `scope: me` also answers the same question for a reader — `verse state
+// A record carrying `scope: me` also answers the same question for a reader — `verse data
 // get trigger:rule:x --scope me` says which federation the rule belongs to rather than
 // leaving it to be inferred from which listing it turned up in.
 func (e *Engine) SetScope(name string) { e.scope = name }
@@ -1332,7 +1332,7 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 	}, "provider", p.Capability))
 	if registered == 0 {
 		return fmt.Sprintf("no provider:%s:* is registered (register one, e.g. "+
-			"`verse state put provider:%s:<id> '{driver: llm}'`)", p.Capability, p.Capability)
+			"`verse data provider:%s:<id> --put '{driver: llm}'`)", p.Capability, p.Capability)
 	}
 	return fmt.Sprintf("all %d registered provider:%s:* were excluded by match %s",
 		registered, p.Capability, matchText(p.Match))

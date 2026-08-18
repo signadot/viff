@@ -12,7 +12,7 @@ package trigger
 // It is one entity per rule rather than one charter document, because that is what the
 // operations already are: installing writes one entity, removing deletes one, and neither
 // needs to read the others (no read-modify-write, so two installs cannot lose each other).
-// It also makes a rule addressable — `verse state get trigger:rule:review` — and a charter
+// It also makes a rule addressable — `verse data trigger:rule:review` — and a charter
 // change an ordinary observable fact.
 
 import (
@@ -52,7 +52,7 @@ func CharterRef(name string) entity.Ref { return CharterRefAt("", name) }
 // what a package is FOR, so the address is what has to carry the package.
 //
 // The package goes FIRST, so a listing sorted by address groups a package's rules together —
-// which is the order somebody reading `verse state verse.trigger.rule` wants. The id may hold
+// which is the order somebody reading `verse data verse.trigger.rule` wants. The id may hold
 // colons (ParseRef splits the first two and the rest is the id), so nothing else has to change.
 func CharterRefAt(at, name string) entity.Ref {
 	return entity.VerseRef(CharterSystem, CharterKind, recordID(at, name))
@@ -94,7 +94,7 @@ func recordID(at, name string) string {
 // is what forced the text form here, and `!raw` is the escape that lifts it — the subtree is
 // stored verbatim, tags intact, interpreting nothing at any depth.
 //
-// Structure rather than text because the record is then the rule itself: `verse state get
+// Structure rather than text because the record is then the rule itself: `verse data get
 // trigger:rule:review` shows a document a person can read field by field, a charter change is
 // an ordinary observable fact about a shape rather than about a string, and nothing has to
 // re-parse to ask a question about it. Raw also REPLACES, so re-installing a rule cannot

@@ -60,11 +60,11 @@ verse
 
     verse ps --if '{status: running}' --trim '{id: null, status: null}'
     verse docket --if '{axis: whether}'
-    verse state demo.pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
+    verse data demo.pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
     verse watch demo --trim '{ref: null, to: null}'
 
   On `state` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
-  about, before any of them cross the wire — so those two take `--trim` alone. On `state put`,
+  about, before any of them cross the wire — so those two take `--trim` alone. On `data --put`,
   `--if` is a write precondition, which is its own thing again.
 
   Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
@@ -161,7 +161,7 @@ verse
           <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
           demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
-          the shell would expand, so it is the ref spelling here and `verse state`'s vector
+          the shell would expand, so it is the ref spelling here and `verse data`'s vector
           spelling there. A second positional is refused rather than read as a step
   docket                                     the motions on the docket (votes + provider
                                              selections), open and settled — a settled one
@@ -188,12 +188,12 @@ Flags may appear before or after positionals (`gate approve <id> --as you --say 
 
 The PATH narrows by where an entity lives. `--if` narrows by what it says: a tony match
 against the payload, which is the same predicate a charter carries in `value` — in its
-`subject`, its `on` or its `when`. So `verse state --if X` names exactly what
+`subject`, its `on` or its `when`. So `verse data --if X` names exactly what
 `verse watch --if X` streams, and both name what a rule with that predicate would select.
 
 ```sh
-verse state --if '{stage: !or [open, merged]}'   # an operator, not just equality
-verse state --if '{urgent: true}' --if-at labels # rooted inside the payload
+verse data --if '{stage: !or [open, merged]}'   # an operator, not just equality
+verse data --if '{urgent: true}' --if-at labels # rooted inside the payload
 verse watch --if '{stage: open}' demo            # the same selector, as it happens
 ```
 

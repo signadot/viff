@@ -71,7 +71,7 @@ fi
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
 if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
-	die "$BIN does not have \`verse state\` — it predates the one-document read.
+	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
@@ -101,7 +101,7 @@ WORLD=(
 
 if $clean; then
 	step "clean"
-	for w in "${WORLD[@]}"; do v state rm "${w%%|*}" >/dev/null 2>&1 || true; done
+	for w in "${WORLD[@]}"; do v data "${w%% --rm|*}" >/dev/null 2>&1 || true; done
 	ok "removed ${#WORLD[@]} seeded entities"
 	exit 0
 fi
@@ -116,7 +116,7 @@ fi
 
 step "seeding ${#WORLD[@]} entities"
 for w in "${WORLD[@]}"; do
-	v state put "${w%%|*}" "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
+	v data "${w%%|*}" --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
 done
 ok "demo:pr:1–5        three open, one draft, one merged; nested labels"
 ok "demo:task:*        two high-priority, one low"
@@ -129,19 +129,19 @@ cat <<EOF
 
 seeded. Now select over it:
 
-  $BIN$scope_note state                                     the whole verse, one document
-  $BIN$scope_note state demo.pr                             by where it lives
-  $BIN$scope_note state demo.pr.1                           one of them
-  $BIN$scope_note state 'demo.pr.*.stage'                   one field of each, keyed by id
-  $BIN$scope_note state --if '{stage: open}'                by what it says
-  $BIN$scope_note state --if '{stage: !or [open, merged]}'      …with an operator
-  $BIN$scope_note state --if '{urgent: true}' --if-at labels     …rooted inside the payload
-  $BIN$scope_note state --paths demo.pr                     just the addresses
+  $BIN$scope_note data                                     the whole verse, one document
+  $BIN$scope_note data demo.pr                             by where it lives
+  $BIN$scope_note data demo.pr.1                           one of them
+  $BIN$scope_note data 'demo.pr.*.stage'                   one field of each, keyed by id
+  $BIN$scope_note data --if '{stage: open}'                by what it says
+  $BIN$scope_note data --if '{stage: !or [open, merged]}'      …with an operator
+  $BIN$scope_note data --if '{urgent: true}' --if-at labels     …rooted inside the payload
+  $BIN$scope_note data --paths demo.pr                     just the addresses
 
 And watch it move (another terminal), then write to it:
 
   $BIN$scope_note watch --if '{stage: open}' demo
-  $BIN$scope_note state put demo:pr:2 '{stage: open}'
+  $BIN$scope_note data demo:pr:2 --put '{stage: open}'
 
 Undo it all with: $0 --clean
 EOF

@@ -99,7 +99,7 @@ func (p Path) KPath() string {
 // answers the substrate gives so the reasoning is checked rather than inherited.
 //
 // Reading into an array is a different matter and is offered: it navigates a materialized
-// document here rather than at the substrate, and `verse state` takes both spellings.
+// document here rather than at the substrate, and `verse data` takes both spellings.
 func ParsePath(s string) (Path, error) {
 	s = fromSteps(s)
 	if colonFirst(s) {
@@ -148,7 +148,7 @@ func ParsePath(s string) (Path, error) {
 //
 // It is here rather than only in the CLI's argv walk because that walk sees steps only when
 // the shell split them, and the shell does that only when nobody quoted the address. `verse
-// state --paths` answers in steps, and `ref=$(… | head -1); verse state get "$ref"` is what a
+// state --paths` answers in steps, and `ref=$(… | head -1); verse data "$ref"` is what a
 // script then writes — the quoted form, which is the correct shell idiom and used to arrive
 // here as one token holding spaces. One rule, so the two forms are the same address.
 //
@@ -474,7 +474,7 @@ func withRemovals(next, old Payload) Payload {
 // JoinSegs renders a VECTOR OF STEPS as the kinded path they name, quoting each segment as
 // kpath needs it.
 //
-// It is what lets an address be typed as separate words — `verse state demo pr 1` — and it is
+// It is what lets an address be typed as separate words — `verse data demo pr 1` — and it is
 // more than a convenience: a segment handed over whole never has to be escaped by the person
 // typing it. `demo.pr."a.b"` and `git.ref."x@git:ref:y"` are what the quoting is FOR, and both
 // are exactly the addresses that are hardest to type correctly in one token. As a vector they

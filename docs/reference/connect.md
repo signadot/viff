@@ -46,8 +46,8 @@ In a third (using the scope `connect` printed):
 ```sh
 verse task                                           # a validator per file
 verse task get <id>                                  # the agent's read-and-validated report
-verse --scope <scope> state local                   # your files, as dir-status entities
-verse state get local dir-content-<scope> README.md # a file's bytes, served on demand
+verse --scope <scope> data local                   # your files, as dir-status entities
+verse data local dir-content-<scope> README.md # a file's bytes, served on demand
 ```
 
 Touch or add a file and its validator fires, reading the file through the verse. Ctrl-c
@@ -71,8 +71,8 @@ the scope without touching baseline, so your local changes and flows stay isolat
 ```sh
 verse connect . --scope me
 verse watch --scope me
-verse state put demo x 1 '{k: v}' --scope me      # in the scope only
-verse state get demo x 1                          # baseline: not there
+verse data --scope demo x 1 '{k: v}' --put me # in the scope only
+verse data demo x 1                          # baseline: not there
 verse disconnect --scope me                        # drop the whole overlay
 ```
 
@@ -89,12 +89,12 @@ The scope's engine observes via per-trigger subtree watches, each watching exact
 ## The charter a scope runs
 
 A scope runs **the rules installed into it**, and only those. `verse c -a --scope me`
-writes the rule into the scope's own layer, where it is durable and addressable (`verse state
+writes the rule into the scope's own layer, where it is durable and addressable (`verse data
 get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is what says whose
 it is.
 
 Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store
-layers baseline underneath, so `verse state get verse:trigger:rule:x --scope me` answers for a
+layers baseline underneath, so `verse data verse:trigger:rule:x --scope me` answers for a
 rule the scope never installed, and the `scope` field on the record is what tells the two
 apart. Whether a federation *should* inherit baseline's program is open, and the reason it is
 open is cost rather than taste — a scoped subtree watch is seeded
