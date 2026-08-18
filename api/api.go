@@ -418,6 +418,15 @@ type Status struct {
 	Strata  []string `tony:"field=strata,omitzero"`
 	Runners []string `tony:"field=runners,omitzero"`
 	Sources []string `tony:"field=sources,omitzero"`
+	// Charter is the top level of the charter tree: the addresses something is installed at,
+	// `baseline` first when the unpackaged charter has anything, then a package per address.
+	//
+	// It is here because `triggers` above counts BASELINE's rules and nothing else — a package
+	// runs in an engine of its own — so a verse whose whole program is packaged reported
+	// `triggers: 0` and looked like a verse with no charter at all. That is the same shape the
+	// three lines above exist for: what somebody installed, on the reading where its absence is
+	// invisible.
+	Charter []string `tony:"field=charter,omitzero"`
 
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`

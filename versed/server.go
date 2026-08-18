@@ -2554,6 +2554,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Strata:   strataNames(s.Eng.Strata()),
 		Runners:  runnerRefs(s.scopedStore(r)),
 		Sources:  sourceRefs(s.scopedStore(r)),
+		Charter:  s.charterAddrs(),
 		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
@@ -2567,6 +2568,21 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// charterAddrs is the top level of the charter tree: `baseline` when the unpackaged charter
+// holds anything, then one entry per package address.
+//
+// Names rather than counts, for the reason the other three installed-lines give: status is an
+// orientation and `verse charter` is what answers what a charter IS. What it adds over
+// `triggers` is the packaged half, which that count cannot see — a package runs in an engine
+// of its own, so a verse running ten packaged rules reported none.
+func (s *Server) charterAddrs() []string {
+	var out []string
+	if len(s.Eng.Triggers()) > 0 || len(s.Eng.Strata()) > 0 {
+		out = append(out, "baseline")
+	}
+	return append(out, s.packagesSeen()...)
 }
 
 // strataNames is the installed levels, low to high — Strata() already sorts, and the order is

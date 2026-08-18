@@ -168,6 +168,7 @@ signature:
 context:
 - tony-format/context
 define:
+  charter: .[array(string)]
   docd: .[nullable(verse-docd)]
   fired: .[int]
   flows: .[int]

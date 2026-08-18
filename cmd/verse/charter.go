@@ -45,7 +45,7 @@ func charterCmd() *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	trig = &charterFlags{Depth: -1} // per-invocation, like the filter flags
 	return cli.NewCommandAt(&cfg.Command, "charter").
-		WithAliases("charters").
+		WithAliases("charters", "c").
 		WithSynopsis("charter — the installed charter at an address; add|show|remove|uninstall").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
 		WithSubs(charterAddCmd(), charterShowCmd(), charterRemoveCmd(), charterUninstallCmd()).
