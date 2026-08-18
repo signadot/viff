@@ -277,6 +277,11 @@ func (s *Server) getCharterItem(w http.ResponseWriter, r *http.Request) {
 
 // deleteCharterItem removes one rule or one level by name, at an address.
 func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
+	release, ok := s.lockCharterHTTP(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	eng, err := s.engForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -313,6 +318,11 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 // first standing — a charter nobody wrote down, and (once the levels were in and the rules were
 // not) a package an operator could not remove by correcting the file.
 func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
+	release, ok := s.lockCharterHTTP(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	docs, err := codec.ReadNodes(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -521,6 +531,11 @@ func (tx *charterTx) refuse(code int, err error) (int, error) {
 
 // deleteCharter uninstalls the charter package at an address — see Server.removePackage.
 func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
+	release, ok := s.lockCharterHTTP(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	at := r.URL.Query().Get("at")
 	if at == "" {
 		http.Error(w, "uninstall: `?at=` is required — it names the charter to remove",

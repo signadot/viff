@@ -121,6 +121,19 @@ func (s *Server) resumeMotions() {
 // It runs after the baseline charter is loaded, and takes only the records stamped with an
 // address; the baseline load takes only the unstamped ones (Engine.ownRecord).
 func (s *Server) restorePackages() {
+	// THE CHARTER LOCK, because versed serves while it restores — that is what /healthz
+	// distinguishes — so an operator's install can arrive in the middle of this and race the
+	// charter it is being installed alongside. Taken here rather than inside the loop: the
+	// restore is one charter operation, and half of one is what the lock is for.
+	//
+	// Before scopeMu below, never inside it (charterlock.go).
+	release, err := s.lockCharter(s.ctxOrBackground())
+	if err != nil {
+		logPackage("charter packages: %v", err)
+		return
+	}
+	defer release()
+
 	// EVERY ADDRESS THAT HAS RECORDS, not only those with rules: a package whose levels are
 	// installed and whose rules were refused is still a package, and one that did not come back
 	// at a restart would be a set of levels nobody could see or remove. packagesSeen is the one

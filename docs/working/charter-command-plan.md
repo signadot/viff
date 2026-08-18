@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **proposal, nothing here is built.** The charter command as it stands is
+Status: **step 0 is built** (branch `charter-path`); the rest is proposal. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -234,6 +234,23 @@ Tests: two concurrent installs at one address, both of which must report truthfu
 answering 503 rather than hanging; an install arriving during a restore; and a canary that the
 charter lock is never taken while `scopeMu` is held. Plus the limit, pinned rather than assumed:
 a rule that fired between installing and a later refusal keeps what it wrote.
+
+**Built** ([versed/charterlock.go](../../versed/charterlock.go)). Three things the building
+found:
+
+- The ordering rule needed no enforcing anywhere: `restorePackages` already released `scopeMu`
+  before loading charters, for its own stated reason. The canary stays, since what is habit
+  today is a bug tomorrow.
+- The refusal could not be observed in a test without sitting out the 30s wait, so the wait is a
+  `Server` field defaulting to the constant. That is the only thing in the design that exists
+  for a test, and it is one field rather than a global a parallel test could race.
+- `release` has to be idempotent. Every handler defers it, and the lock is taken before the
+  paths that return early, so a second call is reachable by ordinary editing rather than by
+  mistake.
+
+Not asserted, deliberately: that two RACED installs interleave. A test that wins a race by
+timing proves nothing on a loaded machine, so the assertion is on the lock — the second caller
+does not get in while the first holds it, and gets in the moment it lets go.
 
 ### 1. The server resolves a path (no CLI change)
 

@@ -94,6 +94,13 @@ type Server struct {
 	restored  atomic.Bool
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// charterMu serializes charter MUTATION — one operation at a time, across every address
+	// and scope. A capacity-one channel rather than a mutex, so it can be waited for with a
+	// deadline; see charterlock.go for what it does and does not promise.
+	charterMu chan struct{}
+	// charterWait overrides charterLockWait, for a test that has to observe the refusal
+	// rather than sit out the real one. Zero is the constant, which is every other caller.
+	charterWait time.Duration
 	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
 	// is the only handle on a goroutine that WRITES a slice — so a remove that forgets to stop
 	// one leaks a second writer past the disjointness check the install just made.
@@ -159,6 +166,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	taskd := taskd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd,
 		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
+		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
 		// check at every use: a source installed on a server nobody started still needs a
 		// context to run under, and one that is never cancelled would be worse than one
