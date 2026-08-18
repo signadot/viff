@@ -1,8 +1,8 @@
 # One path into the charter: a plan for `verse c`
 
 Status: **all of it is built** (branch `charter-path`). What is written under each step is the reasoning it was built from, with what the building found noted under it. The charter command as it stands is
-[cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
-([versed/charter.go](../../versed/charter.go)).
+`cmd/verse/charter.go`; the tree it prints is the server's
+(`versed/charter.go`).
 
 The charter became one thing when `verse charter` and `verse stratum` merged: rules and levels
 are installed from one file, confined by one address, and they come and go together. The
@@ -188,7 +188,7 @@ is how a CLI hangs with nothing to report, and the wait is exactly the kind of t
 into "verse charter times out" with no way to tell waiting from wedged.
 
 `charterLockWait` is 30s, the same as the store's write budget
-([entity/logdstore.go](../../entity/logdstore.go)) and for the same reason: a charter install is
+(`entity/logdstore.go`) and for the same reason: a charter install is
 a sequence of writes, each of which may already be waiting behind other writes, so the wait has
 to exceed a whole install rather than a single write.
 
@@ -261,7 +261,7 @@ answering 503 rather than hanging; an install arriving during a restore; and a c
 charter lock is never taken while `scopeMu` is held. Plus the limit, pinned rather than assumed:
 a rule that fired between installing and a later refusal keeps what it wrote.
 
-**Built** ([versed/charterlock.go](../../versed/charterlock.go)). Three things the building
+**Built** (`versed/charterlock.go`). Three things the building
 found:
 
 - The ordering rule needed no enforcing anywhere: `restorePackages` already released `scopeMu`
@@ -287,7 +287,7 @@ it is.
 Tests: a path to a node, to `rules`, to one rule, to `writes`; the greedy split against a
 package named `rules` and the `--` escape; the not-found message naming the other charter.
 
-**Built** ([versed/charterpath.go](../../versed/charterpath.go)). Three things worth recording:
+**Built** (`versed/charterpath.go`). Three things worth recording:
 
 - The reach did not stop at a rule. `rules.watcher.action` walks INTO the rule for free, because
   once a list is indexed by its elements' `name` the rest is ordinary object indexing — the same
