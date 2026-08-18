@@ -59,6 +59,10 @@ spec:
         ports:
         - name: source
           containerPort: 9801
+        # pprof and goroutine stacks, one port up from -addr (adminface). A source that has
+        # stopped answering logs nothing, and this is what says where it is blocked.
+        - name: admin
+          containerPort: 9802
         env:
         - name: VERSE_HINT_URL
           value: http://verse:9797/sources/github/repos/hint

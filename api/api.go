@@ -473,4 +473,7 @@ type LLM struct {
 type Listen struct {
 	API    string `tony:"field=api,omitzero"`
 	Broker string `tony:"field=broker,omitzero"`
+	// Admin is the pprof/stacks face. It is reported because its address is DERIVED from
+	// the api one rather than fixed, and an operator reaching for it is mid-incident.
+	Admin string `tony:"field=admin,omitzero"`
 }

@@ -41,6 +41,14 @@ spec:
           containerPort: 9797
         - name: broker
           containerPort: 9090
+        # The admin/pprof face, DERIVED from --addr (adminface): whatever versed serves on,
+        # this is one port up. Declared rather than passed as a flag because the deployment
+        # patches args as a list (deploy/build.tony) and a knob that a profile silently drops
+        # is worse than none. `kubectl port-forward deploy/versed 9798` then
+        # /debug/pprof/goroutine?debug=2 is what to reach for when versed stops answering —
+        # it holds no lock a request handler wants, so it answers when /status cannot.
+        - name: admin
+          containerPort: 9798
         # LLM creds, if you run agents on the `llm` driver. Optional: verse runs on the
         # credential-free `scripted` driver without it.
         envFrom:

@@ -286,6 +286,9 @@ spec:
         - bwrap
         ports:
         - {name: control, containerPort: 9802}
+        # pprof and stacks, one port up from -addr (adminface) — the only way to see what a
+        # task's goroutines are doing on a box `kubectl exec` is not going to reach into.
+        - {name: admin, containerPort: 9803}
         # The model credentials the llm driver uses. The config above names the ENV VARS it
         # reads and never values, so the ConfigMap carries no secret and stays readable by
         # anyone who can read the deployment.

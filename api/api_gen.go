@@ -2456,6 +2456,11 @@ func (s *Listen) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["broker"] = ir.FromString(string(s.Broker))
 	}
 
+	// Field: Admin
+	if s.Admin != "" {
+		irMap["admin"] = ir.FromString(string(s.Admin))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2501,6 +2506,12 @@ func (s *Listen) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "broker", fieldNodeUnwrapped.Type)
 			}
 			s.Broker = string(fieldNodeUnwrapped.String)
+		case "admin":
+			// Field: Admin
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "admin", fieldNodeUnwrapped.Type)
+			}
+			s.Admin = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Listen", fieldName.String)

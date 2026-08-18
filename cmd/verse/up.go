@@ -15,6 +15,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
@@ -47,6 +48,9 @@ type upConfig struct {
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
 	Broker     bool   `cli:"name=broker desc='run tasks on an in-process dial-in broker (requires --broker-addr; publishes each task dialURL from it)'"`
+	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
+	// Empty derives it from --addr (see adminface); `off` disables it.
+	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
 }
 
 // validate rejects contradictory flag combinations BEFORE anything is started.
@@ -125,6 +129,22 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		slog.SetLogLoggerLevel(l)
 	}
+
+	// THE ADMIN FACE COMES UP FIRST — before docd is resolved, which on a cold laptop is a
+	// `go install` of o, and before a store is opened, which is a three-minute wait by
+	// design. Everything below this line can wedge, and this is the channel that has to
+	// answer when it does. It reports the addresses and this process's own health once
+	// there is a server to ask; until then it still has the stacks, which is the point.
+	adm, err := adminface.Start(adminface.Spec{
+		Name:  "verse up",
+		Addr:  cfg.AdminAddr,
+		Serve: g.Addr,
+		Log:   func(f string, a ...any) { fmt.Fprintf(cc.Err, "verse up: "+f+"\n", a...) },
+	})
+	if err != nil {
+		return fmt.Errorf("verse up: %w", err)
+	}
+	defer adm.Close()
 
 	// The SERVER's default response format, from config/env (VERSE_WIRE_FORMAT, then
 	// VERSE_FORMAT). Set once here, which is the only place it is safe to: a request
@@ -226,6 +246,18 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	srv.DocdMount = advertised(d.mountAddr, cfg.DocdMountAdvertiseAddr)
 	storeKind := fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
 
+	// What the admin face now knows: this process's own health (answered without touching
+	// the store, so it holds when the store is what is wrong) and every address verse
+	// listens on or dials — which is the thing gops cannot do and the reason the face is
+	// worth a port. The broker's is added below, where it is decided.
+	adm.SetReport(srv.Health)
+	adm.SetAddrs( // its own goes without saying: the index prepends it
+		adminface.Addr{Name: "api", Addr: g.Addr},
+		adminface.Addr{Name: "docd-client", Addr: d.clientAddr},
+		adminface.Addr{Name: "docd-mount", Addr: d.mountAddr},
+	)
+
+	srv.AdminAddr = adm.Addr()    // published on /status: a derived port is knowable, not guessed
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
@@ -276,6 +308,12 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// `--runner http://<host>:<broker-addr>/broker/local`.
 	if cfg.BrokerAddr != "" {
 		srv.BrokerAddr = cfg.BrokerAddr // publish the broker face address on /status
+		adm.SetAddrs(
+			adminface.Addr{Name: "api", Addr: g.Addr},
+			adminface.Addr{Name: "broker", Addr: cfg.BrokerAddr},
+			adminface.Addr{Name: "docd-client", Addr: d.clientAddr},
+			adminface.Addr{Name: "docd-mount", Addr: d.mountAddr},
+		)
 		brokerSrv := &http.Server{Addr: cfg.BrokerAddr, Handler: srv.BrokerHandler()}
 		go func() {
 			<-ctx.Done()

@@ -55,6 +55,10 @@ spec:
         ports:
         - name: source
           containerPort: 9801
+        # pprof and goroutine stacks, one port up from -addr (adminface). A source that has
+        # stopped answering logs nothing, and this is what says where it is blocked.
+        - name: admin
+          containerPort: 9802
         env:
         # Where a verified delivery becomes a hint. The registration name in this path is what
         # ties the two together: verse 404s a hint for a name it has no registration under.

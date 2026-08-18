@@ -63,6 +63,10 @@ spec:
         ports:
         - name: source
           containerPort: 9801
+        # pprof and goroutine stacks, one port up from -addr (adminface). A source that has
+        # stopped answering logs nothing, and this is what says where it is blocked.
+        - name: admin
+          containerPort: 9802
         # The same read-only credential helper the git source carries, and for the same reasons
         # — the Secret is optional, so a public mirror needs nothing and a private one needs no
         # change here. See deploy/git-source/git-source.yaml, which explains why this is a

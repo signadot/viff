@@ -597,6 +597,25 @@ reject both `Unconfined` and `Unmasked`; the `verse` namespace carries no PSA la
 delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`
 for the runner to retry, and on an `emptyDir` that work dies with the pod.
 
+## When something stops answering (the admin face)
+
+Every daemon here — versed, each `sourced`, the coderunner — serves `net/http/pprof`, full
+goroutine stacks, and a short index of what it is and where it listens, on a port **one up from
+the one it serves on**: versed's API is 9797, its admin face 9798; a source's 9801/9802; the
+coderunner's 9802/9803.
+
+```
+kubectl -n verse port-forward deploy/versed 9798 &
+curl localhost:9798/                                   # what this process is, and its addresses
+curl localhost:9798/debug/pprof/goroutine?debug=2      # where every goroutine is blocked
+```
+
+It is worth a port because it holds **nothing a request handler holds** — its own accept loop,
+its own mux, no store call — so it answers exactly when the API face cannot. The half hour
+versed spent at 0/1 with every read timing out was a question about goroutines that nothing in
+the pod could be asked; this is that answer. `--admin-addr`/`-admin-addr` moves it, `off`
+disables it, and the address is on `verse status` under `listen.admin`.
+
 ## Not here yet
 
 RBAC (a ServiceAccount + Role) lands when the k8s Jobs policy and k8s Source do — they're

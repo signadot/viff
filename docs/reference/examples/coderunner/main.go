@@ -55,6 +55,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/codec"
 )
 
@@ -78,7 +79,25 @@ func main() {
 			"destination that names no credential of its own")
 	confine := flag.String("confine", "host",
 		"how to build a containment point: host (claims almost nothing) | bwrap")
+	adminAddr := flag.String("admin-addr", os.Getenv("CODERUNNER_ADMIN_ADDR"),
+		"admin/pprof listen address, or off to disable (default: the -addr port + 1)")
 	flag.Parse()
+
+	// THE ADMIN FACE BEFORE THE WORK, and before the contract is served: what this runner does
+	// between here and ListenAndServe is clone mirrors and build a containment, either of
+	// which can hang on something outside the process — a remote that will not answer, a
+	// bwrap that will not unshare — and a runner that hangs there never logs another line. It
+	// is also the only way to see what a task's goroutines are doing on a box `kubectl exec`
+	// cannot reach into. The `-task` half above takes no flags and gets none of this: it is
+	// one task, in the containment, and the parent is what an operator asks.
+	adm, err := adminface.Start(adminface.Spec{
+		Name: "coderunner", Addr: *adminAddr, Serve: *addr, Log: log.Printf,
+	})
+	if err != nil {
+		log.Fatalf("coderunner: %v", err)
+	}
+	defer adm.Close()
+	adm.SetAddrs(adminface.Addr{Name: "control", Addr: *addr})
 
 	cfg, err := LoadConfig(*cfgPath)
 	if err != nil {

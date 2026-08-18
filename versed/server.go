@@ -57,6 +57,10 @@ type Server struct {
 	// task that binds them (cmd/verse up); empty until then.
 	Addr       string
 	BrokerAddr string
+	// AdminAddr is the out-of-band pprof/stacks face (adminface), published on /status
+	// because its default is DERIVED from the API address rather than fixed — knowable,
+	// but not something an operator should have to re-derive during an incident.
+	AdminAddr string
 
 	// LLM is a secrets-safe summary of the task runtime's LLM config, published on
 	// /status so you can see whether agent creds are configured on THIS server (the one
@@ -2526,9 +2530,17 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	if !s.restored.Load() {
 		code = http.StatusServiceUnavailable
 	}
-	writeOut(w, r, code, map[string]any{
-		"ok": true, "started": s.restored.Load(), "head": s.Store.Head(),
-	})
+	writeOut(w, r, code, s.Health())
+}
+
+// Health is this process's own facts, read WITHOUT TOUCHING THE STORE: /healthz answers with
+// it, and so does the admin face's index (adminface).
+//
+// Both callers need the same property for the same reason — the load that makes you ask is the
+// load that would make a store-reading answer never arrive — so they share the one function
+// rather than each promising it. TestHealthzReadsNothing pins the promise.
+func (s *Server) Health() map[string]any {
+	return map[string]any{"ok": true, "started": s.restored.Load(), "head": s.Store.Head()}
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
@@ -2564,8 +2576,8 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		out.Docd = &api.Docd{Client: s.DocdClient, Mount: s.DocdMount}
 	}
 	// This verse's own listen addresses (operator API, and the broker face when served).
-	if s.Addr != "" || s.BrokerAddr != "" {
-		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr}
+	if s.Addr != "" || s.BrokerAddr != "" || s.AdminAddr != "" {
+		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr, Admin: s.AdminAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }

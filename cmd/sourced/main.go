@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/source/sourced"
@@ -89,6 +90,7 @@ func usage() {
 // and where its own deliveries turn into hints.
 type common struct {
 	addr        string
+	adminAddr   string
 	minInterval time.Duration
 	hintURL     string
 	system      string
@@ -107,6 +109,8 @@ func (c *common) bind(fs *flag.FlagSet) {
 			"coordination at all takes a system of its own — two systems are disjoint on the "+
 			"first segment. It is also how a second instance of the same product gets a slice "+
 			"that is not confused with the first")
+	fs.StringVar(&c.adminAddr, "admin-addr", envOr("SOURCED_ADMIN_ADDR", ""),
+		"admin/pprof listen address, or off to disable (default: the -addr port + 1)")
 	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
 		"verse's hint route for THIS registration (http://verse:9797/sources/<system>/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
@@ -119,6 +123,18 @@ func (c *common) bind(fs *flag.FlagSet) {
 // does not serve this contract" — so mounting it as the fallback keeps that true for
 // everything except the routes named here.
 func (c *common) serve(system string, src source.Source, routes map[string]http.Handler) error {
+	// The admin face, for the same reason versed has one: a source that has stopped
+	// answering is a source whose goroutines are the whole question, and `kubectl logs` on a
+	// wedged reflection says nothing at all. Started before the contract is mounted.
+	adm, err := adminface.Start(adminface.Spec{
+		Name: "sourced " + system, Addr: c.adminAddr, Serve: c.addr, Log: log.Printf,
+	})
+	if err != nil {
+		return err
+	}
+	defer adm.Close()
+	adm.SetAddrs(adminface.Addr{Name: "source", Addr: c.addr})
+
 	src = source.Throttle(src, c.minInterval)
 	mux := http.NewServeMux()
 	mux.Handle("/", sourced.New(src).Handler())
