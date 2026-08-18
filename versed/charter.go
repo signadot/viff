@@ -573,8 +573,30 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	at := r.URL.Query().Get("at")
+	// ONE PATH FOR REMOVING TOO, resolved the way a read resolves it (charterpath.go): the
+	// address, then what to take out of what stands there. A path that ends at an address takes
+	// the PACKAGE down; one that goes on to name a rule or a level takes that out. Both were
+	// verbs of their own — `uninstall <address>` and `remove <name>` — which is two commands
+	// differing in what they remove rather than in the word, over two coordinate systems.
+	if p := r.URL.Query().Get("path"); p != "" {
+		segs, err := entity.PathSegs(p)
+		if err != nil {
+			http.Error(w, "path: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		var rest []string
+		if at != "" {
+			rest = segs
+		} else {
+			at, rest = s.splitCharterPath(segs)
+		}
+		if len(rest) > 0 {
+			s.deleteCharterAt(w, r, at, rest)
+			return
+		}
+	}
 	if at == "" {
-		http.Error(w, "uninstall: `?at=` is required — it names the charter to remove",
+		http.Error(w, "uninstall: a path is required — it names the charter to remove",
 			http.StatusBadRequest)
 		return
 	}
@@ -591,6 +613,64 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteCharterAt takes one rule or one level out of the charter at an address.
+//
+// The path has to END at a name: `rules watcher` and `strata base` are the two shapes, and
+// anything else is a reach INTO something — `rules watcher action` reads fine and removing it
+// would mean editing a rule through a URL, which is what re-installing the file is for.
+func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at string, rest []string) {
+	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata") {
+		http.Error(w, "a removal names one rule or one level — `<address> rules <name>` or "+
+			"`<address> strata <name>` — and a path to an address alone takes the whole "+
+			"package down. "+strings.Join(rest, ".")+" is neither", http.StatusBadRequest)
+		return
+	}
+	kind, name := rest[0], rest[1]
+	eng, err := s.engineAt(r, at)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if eng == nil {
+		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		return
+	}
+	if kind == "rules" {
+		if eng.RemoveTrigger(name) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		return
+	}
+	switch err := eng.RemoveStratum(name); {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, trigger.ErrNoStratum):
+		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+	default:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// engineAt is the engine holding the charter at an address — a scope's when one is asked for,
+// since a scope's charter is its own copy of the verse rather than a place in this one.
+func (s *Server) engineAt(r *http.Request, at string) (*trigger.Engine, error) {
+	if at == "" {
+		return s.engFor(r.URL.Query().Get("scope")), nil
+	}
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil, err
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if pe, ok := s.scopeEngs["at:"+confine.Stamp()]; ok {
+		return pe.eng, nil
+	}
+	return nil, nil
 }
 
 // charterEngine is the engine an install writes into: a scope's, a package's, or baseline's.

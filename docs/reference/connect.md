@@ -109,7 +109,7 @@ installed, without baseline's underneath them.
 To run a baseline rule's behaviour in your scope, install it there. To **replace** one, install
 yours under baseline's name: a scoped install lands in your layer, where it is the only rule of
 that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first —
-`verse charter remove <a baseline rule> --scope me` answers "no such trigger", correctly, since
+`verse c rm rules <a baseline rule> --scope me` answers "no such rule", correctly, since
 the scope holds none of them, and a rule that never ran here needs no hiding.
 
 A scope's charter comes back after a verse restart when the scope's engine is next built —

@@ -404,7 +404,7 @@ unstratified, having been told they were ordered. Remove the rules first, or mov
 ```
 $ verse charter             # the ordering, by level
 $ verse c rules sdlc
-$ verse charter remove sdlc # refused while rules live there
+$ verse c rm strata sdlc # refused while rules live there
 ```
 
 ## Corners

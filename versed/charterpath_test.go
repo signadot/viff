@@ -184,3 +184,85 @@ func TestAPathIsSplitByTheGrammar(t *testing.T) {
 		t.Errorf("a wildcard path answered %d, want a refusal about the path: %s", code, body)
 	}
 }
+
+// A REMOVAL TAKES THE SAME PATH A READ TAKES, and what goes is said by the path rather than by
+// the verb: an address takes the package down, an address plus `rules <name>` takes one rule out.
+// They were `uninstall <address>` and `remove <name>` — two verbs differing in what they remove
+// rather than in the word, over two coordinate systems.
+func TestRemovingTakesTheSamePath(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	install := func(at, def string) {
+		t.Helper()
+		if code, msg := installAt(t, ts.URL, at, def); code != 201 {
+			t.Fatalf("installing at %q = %d: %s", at, code, msg)
+		}
+	}
+	install("notes", `{name: lvl, level: 0, match: {system: notes}}`)
+	install("notes", `{name: watcher, stratum: lvl, condition: {subject: {system: notes, kind: seen}}, action: {patch: {seen: true}}}`)
+
+	// One rule out of a package, by path.
+	if code, body := deletePath(t, ts.URL, "notes.rules.watcher", false); code != http.StatusNoContent {
+		t.Fatalf("removing a rule answered %d: %s", code, body)
+	}
+	if code, _ := charterPath(t, ts.URL, "notes.rules.watcher"); code != http.StatusNotFound {
+		t.Errorf("the rule is still there: %d", code)
+	}
+	// The level it lived in, which is reachable only now that nothing holds it.
+	if code, body := deletePath(t, ts.URL, "notes.strata.lvl", false); code != http.StatusNoContent {
+		t.Fatalf("removing a level answered %d: %s", code, body)
+	}
+	// And the package itself, by a path that ends at the address.
+	install("notes", `{name: again, condition: {subject: {system: notes, kind: seen}}, action: {patch: {seen: true}}}`)
+	if code, body := deletePath(t, ts.URL, "notes", false); code != http.StatusNoContent {
+		t.Fatalf("uninstalling answered %d: %s", code, body)
+	}
+	if got := srv.packagesSeen(); len(got) != 0 {
+		t.Errorf("the package is still listed: %v", got)
+	}
+}
+
+// A PATH THAT REACHES INTO SOMETHING IS NOT A REMOVAL. `rules watcher action` reads fine, and
+// removing it would mean editing a rule through a URL — which is what re-installing the file is
+// for. The refusal says what a removal may name rather than 404ing about the reach.
+func TestRemovingRefusesAReachIntoARule(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {system: notes}}, action: {patch: {seen: true}}}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+	code, body := deletePath(t, ts.URL, "notes.rules.watcher.action", false)
+	if code != http.StatusBadRequest {
+		t.Fatalf("a reach into a rule answered %d, want a refusal: %s", code, body)
+	}
+	if !strings.Contains(body, "one rule or one level") {
+		t.Errorf("the refusal does not say what a removal may name: %s", body)
+	}
+	if code, _ := charterPath(t, ts.URL, "notes.rules.watcher"); code != http.StatusOK {
+		t.Error("the refused removal took something anyway")
+	}
+}
+
+// deletePath sends DELETE /charter with a path.
+func deletePath(t *testing.T, url, path string, recurse bool) (int, string) {
+	t.Helper()
+	q := url + "/charter?path=" + path
+	if recurse {
+		q += "&recurse=true"
+	}
+	req, err := http.NewRequest(http.MethodDelete, q, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(body))
+}

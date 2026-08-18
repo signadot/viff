@@ -11,7 +11,7 @@ import (
 //
 // It used to POST each document of the file on its own, so a file whose levels installed and whose
 // rule was refused left the levels standing — and told the operator the command failed. That is a
-// package nobody wrote down, and the one state `charter uninstall` was needed to get out of.
+// package nobody wrote down, and the one state `charter rm` was needed to get out of.
 //
 // The file below is the shape the defect was found in: a declaration, a level, and a rule that
 // writes outside the address they are all installed at.

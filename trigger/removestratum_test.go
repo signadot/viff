@@ -18,7 +18,7 @@ import (
 //
 // That is exactly the state install refuses ("derive into X matches no stratum: every derived
 // entity has to belong to a level"), reached through the back door. Driven by hand on a local
-// verse: `verse charter remove ledger` answered "removed ledger".
+// verse: `verse c rm strata ledger` answered "removed ledger".
 func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	eng.Confine(SubtreeAt("verse-dev", "drift"))

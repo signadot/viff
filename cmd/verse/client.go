@@ -183,7 +183,7 @@ func setFormatHeaders(req *http.Request, in codec.Format) {
 // installed and unchecked" — written into the response body on purpose, and reporting only
 // `400 Bad Request` throws away the whole of what the server said. It was thrown away wherever
 // a command handled its own status code instead of going through printBody, which is every
-// command that has a 404 of its own to name: `verse charter remove <stratum>` answered a bare
+// command that has a 404 of its own to name: `verse c rm strata <name>` answered a bare
 // 400 and left the operator with nothing to act on.
 //
 // The status is the FALLBACK, for a server that refused without saying anything.

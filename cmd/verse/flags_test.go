@@ -490,33 +490,35 @@ func TestARuleInAPackageIsReachableByItsPath(t *testing.T) {
 		t.Errorf("the refusal does not name the charters that hold it: %v", err)
 	}
 
-	// And removing reaches it too, which it could not before.
-	if _, err := runCLI(t, "charter", "remove", "note", "--at", "notes"); err != nil {
-		t.Errorf("charter remove --at: %v", err)
+	// And removing reaches it by the same path, which is the whole of `rm`'s argument.
+	if _, err := runCLI(t, "charter", "rm", "notes", "rules", "note"); err != nil {
+		t.Errorf("charter rm: %v", err)
 	}
 	if out, err := runCLI(t, "charter", "notes"); err == nil && strings.Contains(out, "name: note") {
 		t.Errorf("the rule is still installed: %s", out)
 	}
 }
 
-// `verse charter` takes an ADDRESS, and its verbs are ordinary words — so a package at `remove`
-// is shadowed by `trigger remove`. `--` ends the verbs, which is the shell's own convention for
-// exactly this, and every command that takes an address accepts it.
+// `verse c` takes a PATH, and its verbs are ordinary words — so a package at `rm` is shadowed by
+// `verse c rm`. `--` ends the verbs, which is the shell's own convention for exactly this.
+//
+// The collision moves with the verbs: this used to be about a package at `remove`, which is not
+// a verb any more, so the test follows the words that are.
 func TestADashDashReachesAnAddressThatLooksLikeAVerb(t *testing.T) {
 	serve(t)
-	if err := installPackageRuleAt(t, "remove"); err != nil {
-		t.Fatalf("installing at `remove`: %v", err)
+	if err := installPackageRuleAt(t, "rm"); err != nil {
+		t.Fatalf("installing at `rm`: %v", err)
 	}
 
 	// Without it, the verb wins — which is what makes the escape necessary rather than tidy.
-	if _, err := runCLI(t, "charter", "remove"); err == nil {
-		t.Error("`charter remove` with no name was read as an address")
+	if _, err := runCLI(t, "charter", "rm"); err == nil {
+		t.Error("`charter rm` with no path was read as an address")
 	}
-	out, err := runCLI(t, "charter", "--", "remove")
+	out, err := runCLI(t, "charter", "--", "rm")
 	if err != nil {
-		t.Fatalf("charter -- remove: %v", err)
+		t.Fatalf("charter -- rm: %v", err)
 	}
-	if !strings.Contains(out, "writes: remove.") {
+	if !strings.Contains(out, "writes: rm.") {
 		t.Errorf("`--` did not reach the package: %s", out)
 	}
 }

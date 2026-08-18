@@ -24,8 +24,9 @@ import (
 //	verse c rules watcher                   baseline's, which has no address
 //	verse c --depth 0                       this address alone
 //	verse c add -f <file>                   install one (rules, levels and reads, in order)
-//	verse c uninstall <address>             take a package down whole
-//	verse c remove <name>                   take one rule out
+//	verse c rm verse-dev.drift              take that package down whole
+//	verse c rm verse-dev.drift rules watcher   …or one rule out of it
+//	verse c rm verse-dev -r                 …or a place and everything under it
 //
 // ONE PATH, and `show` is gone because of it: a path that reaches a rule is the same path that
 // reaches the charter holding it, one step longer. What `show` had that a path does not is the
@@ -53,9 +54,9 @@ func charterCmd() *cli.Command {
 	trig = &charterFlags{Depth: -1} // per-invocation, like the filter flags
 	return cli.NewCommandAt(&cfg.Command, "charter").
 		WithAliases("charters", "c").
-		WithSynopsis("charter — the charter at a path (<address> [rules|strata [<name>]]); add|remove|uninstall").
+		WithSynopsis("charter — the charter at a path (<address> [rules|strata [<name>]]); add|rm").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
-		WithSubs(charterAddCmd(), charterRemoveCmd(), charterUninstallCmd()).
+		WithSubs(charterAddCmd(), charterRmCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
@@ -148,224 +149,6 @@ func cutAt(steps []string, sep string) (before, after []string, found bool) {
 		}
 	}
 	return steps, nil, false
-}
-
-type charterUninstallConfig struct {
-	*cli.Command
-	Recurse bool `cli:"name=recurse desc='and every charter installed under this address'"`
-}
-
-// uninstall takes a whole charter package down — its rules, its levels, the declaration of what
-// it declares it reads, and the engine running them.
-//
-// A VERB OF ITS OWN rather than `remove` with an address, because the two arguments are
-// different KINDS of thing: `remove` takes a rule's name, this takes an address, and one
-// command reading its positional as either would guess wrong the first time somebody names a
-// rule after the system it acts on. It pairs with `add --at`, which is what installed it.
-//
-// What it leaves standing is what the package WROTE — a charter's writes are the world's. The
-// server's removePackage says why at length.
-func charterUninstallCmd() *cli.Command {
-	cfg := &charterUninstallConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "uninstall").
-		WithSynopsis("uninstall a charter package: uninstall <address> [--recurse]").
-		WithOpts(opts...).
-		WithRun(cfg.run)
-}
-
-func (cfg *charterUninstallConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	at, err := address(args)
-	if err != nil {
-		return err
-	}
-	if at == "" {
-		return fmt.Errorf("%w: charter uninstall wants the address of a charter package "+
-			"(`drift`, `demo pr`)", cli.ErrUsage)
-	}
-	q := url.Values{"at": []string{at}}
-	if cfg.Recurse {
-		q.Set("recurse", "true")
-	}
-	resp, err := httpDelete("/charter", q)
-	if err != nil {
-		return fmt.Errorf("charter uninstall: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("charter uninstall: no charter is installed at %s", at)
-	}
-	if resp.StatusCode != http.StatusNoContent {
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter uninstall: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
-	}
-	fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n", at)
-	return nil
-}
-
-// whichCharter finds the charter holding a rule by name, since a name is unique WITHIN a charter
-// and not across them: two packages may each have a `review`, which is most of what packages are
-// for. It answers the address to ask at.
-//
-// `--at` settles it when the operator knows. Otherwise the tree is read and the name looked for:
-// exactly one charter holding it is no ambiguity at all and is answered without ceremony, and
-// several is a question only the operator can settle — so it is asked, naming them.
-//
-// Baseline first, because a charter with no address is where a rule is until somebody packages
-// it, and because `verse charter show <name>` meant baseline before packages existed.
-func whichCharter(cc *cli.Context, what, name string) (string, error) {
-	if trig.At != "" {
-		return trig.At, nil
-	}
-	resp, err := httpGet("/charter", nil)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", what, err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil || resp.StatusCode >= http.StatusBadRequest {
-		return "", nil // no tree to search: let the request itself answer
-	}
-	tree, err := codec.ParseNode(body, respFmt(resp))
-	if err != nil {
-		return "", nil
-	}
-	holds := charterHolding(tree, name, nil)
-	switch len(holds) {
-	case 0:
-		return "", nil // let the request 404 and say so in the caller's words
-	case 1:
-		return holds[0], nil
-	}
-	// Baseline first, because a charter with no address is where a rule is until somebody
-	// packages it, and because `verse charter show <name>` meant baseline before packages.
-	for _, at := range holds {
-		if at == "" {
-			return "", nil
-		}
-	}
-	return "", fmt.Errorf("%w: %s %s: %d charters hold a rule or level called %q (%s) — say which with `--at <address>`",
-		cli.ErrUsage, what, name, len(holds), name, strings.Join(holds, ", "))
-}
-
-// charterHolding walks the tree for the addresses whose charter holds a rule or a level of this
-// name, which is the question `show` and `remove` have to answer before they can ask anything:
-// the name is theirs, and the address is what says whose.
-func charterHolding(node *ir.Node, name string, at []string) []string {
-	node = codec.Unwrap(node)
-	if node == nil || node.Type != ir.ObjectType {
-		return nil
-	}
-	var out []string
-	for i, key := range node.Fields {
-		if key == nil || key.Type != ir.StringType {
-			continue
-		}
-		v := codec.Unwrap(node.Values[i])
-		switch key.String {
-		case "rules", "strata":
-			if v != nil && v.Type == ir.ArrayType && namedIn(v, name) {
-				out = append(out, strings.Join(at, "."))
-			}
-		case "children":
-			if v == nil || v.Type != ir.ObjectType {
-				continue
-			}
-			for j, seg := range v.Fields {
-				if seg == nil || seg.Type != ir.StringType {
-					continue
-				}
-				out = append(out, charterHolding(v.Values[j], name, append(append([]string{}, at...), seg.String))...)
-			}
-		}
-	}
-	return dedupeStrings(out)
-}
-
-// namedIn reports whether a list of rules or levels holds one with this name.
-func namedIn(list *ir.Node, name string) bool {
-	for _, el := range list.Values {
-		el = codec.Unwrap(el)
-		if el == nil || el.Type != ir.ObjectType {
-			continue
-		}
-		for i, key := range el.Fields {
-			if key != nil && key.Type == ir.StringType && key.String == "name" {
-				if v := codec.Unwrap(el.Values[i]); v != nil && v.String == name {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-func dedupeStrings(in []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range in {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// atQuery is `?at=` when there is an address, and nothing when the charter is baseline's.
-func atQuery(at string) url.Values {
-	if at == "" {
-		return nil
-	}
-	return url.Values{"at": []string{at}}
-}
-
-type charterRemoveConfig struct{ *cli.Command }
-
-func charterRemoveCmd() *cli.Command {
-	cfg := &charterRemoveConfig{}
-	return cli.NewCommandAt(&cfg.Command, "remove").
-		WithSynopsis("remove a trigger: remove <name> [--at <address>]").
-		WithOpts(mustOpts(trig)...).
-		WithRun(cfg.run)
-}
-
-func (cfg *charterRemoveConfig) run(cc *cli.Context, args []string) error {
-	name, err := oneArg(cfg.Command, cc, args, "charter remove wants a name")
-	if err != nil {
-		return err
-	}
-	at, err := whichCharter(cc, "charter remove", name)
-	if err != nil {
-		return err
-	}
-	resp, err := httpDelete("/charter/"+name, atQuery(at))
-	if err != nil {
-		return fmt.Errorf("charter remove: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("charter remove: no such trigger %q", name)
-	}
-	if resp.StatusCode != http.StatusNoContent {
-		return statusError(resp, "charter remove")
-	}
-	// In a scope this is a TOMBSTONE hiding an inherited rule from this scope alone, and in
-	// baseline it is the rule going away — the same word for two different facts, told apart
-	// only by a flag the operator typed a while ago. So say which one happened.
-	if g.Scope != "" {
-		fmt.Fprintf(cc.Out, "removed %s in scope %s; baseline is untouched\n", name, g.Scope)
-		return nil
-	}
-	fmt.Fprintln(cc.Out, "removed", name)
-	return nil
 }
 
 type charterAddConfig struct {
@@ -689,4 +472,115 @@ func declaredAt(def *ir.Node) (string, error) {
 		return v.String, nil
 	}
 	return "", nil
+}
+
+type charterRmConfig struct {
+	*cli.Command
+	Recurse bool `cli:"name=recurse aliases=r desc='and every charter installed under this address'"`
+}
+
+// rm takes something out of the charter, and WHAT is said by the path rather than by the verb.
+//
+//	verse c rm verse-dev.drift                take the package down whole
+//	verse c rm verse-dev.drift rules watcher  take one rule out of it
+//	verse c rm verse-dev.drift strata base    …or one level
+//	verse c rm rules watcher                  baseline's, which has no address
+//	verse c rm verse-dev -r                   a place, and every charter under it
+//
+// IT WAS TWO VERBS: `uninstall <address>` and `remove <name>`, which differ in what they remove
+// rather than in the word, and whose arguments were different KINDS of thing — so knowing one
+// told you nothing about the other, and the pair had to be documented against each other. A
+// path says which without being asked: it ends at an address or it goes on to name something in
+// the charter there.
+//
+// `rm` rather than `remove`, and the old word is not kept as an alias. `remove <name>` meant a
+// RULE, and under this grammar a bare name is an ADDRESS — so an old habit would have found a
+// package where it meant a rule. A command that no longer exists says so; one that quietly means
+// something else does not.
+//
+// What a removal leaves standing is what the charter WROTE — a charter's writes are the world's.
+// The server's removePackage says why at length.
+func charterRmCmd() *cli.Command {
+	cfg := &charterRmConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "rm").
+		WithSynopsis("rm <path> [-r] — a package (<address>), or one rule|level in it (<address> rules <name>)").
+		WithOpts(opts...).
+		WithRun(cfg.run)
+}
+
+func (cfg *charterRmConfig) run(cc *cli.Context, args []string) error {
+	steps, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	if len(steps) == 0 {
+		return fmt.Errorf("%w: charter rm wants a path — an address (`drift`, `demo pr`), or "+
+			"one with `rules <name>` or `strata <name>` after it", cli.ErrUsage)
+	}
+	q := url.Values{}
+	at, reach, split := cutAt(steps, "--")
+	if split {
+		q.Set("at", joinSteps(at))
+		steps = reach
+	}
+	q.Set("path", joinSteps(steps))
+	if cfg.Recurse {
+		q.Set("recurse", "true")
+	}
+	resp, err := httpDelete("/charter", q)
+	if err != nil {
+		return fmt.Errorf("charter rm: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("charter rm: %s", strings.TrimSpace(string(msg)))
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("charter rm: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	// WHAT WENT is said back, because the path said it and a path is easy to mistype. The two
+	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
+	// in a SCOPE is a tombstone over an inherited one rather than the rule going away.
+	name, kind, item := lastItem(steps)
+	switch {
+	case item && g.Scope != "":
+		fmt.Fprintf(cc.Out, "removed the %s %s in scope %s; baseline is untouched\n",
+			oneOfKind(kind), name, g.Scope)
+	case item:
+		fmt.Fprintf(cc.Out, "removed the %s %s\n", oneOfKind(kind), name)
+	case cfg.Recurse:
+		// `-r` reaches a PLACE as well as a charter, and often that is all it reaches — the
+		// address itself holding nothing and the charters being under it. Saying "the charter
+		// at demo" about a demo that never had one is a sentence somebody will re-check.
+		fmt.Fprintf(cc.Out, "uninstalled the charters at and under %s; what they wrote is still there\n",
+			joinSteps(steps))
+	default:
+		fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n",
+			joinSteps(steps))
+	}
+	return nil
+}
+
+// lastItem reports whether a path ends at a named rule or level, and which.
+func lastItem(steps []string) (name, kind string, ok bool) {
+	if len(steps) >= 2 {
+		if k := steps[len(steps)-2]; k == "rules" || k == "strata" {
+			return steps[len(steps)-1], k, true
+		}
+	}
+	return "", "", false
+}
+
+// oneOfKind is the key said about a single thing: a charter holds rules and LEVELS.
+func oneOfKind(kind string) string {
+	if kind == "strata" {
+		return "level"
+	}
+	return "rule"
 }

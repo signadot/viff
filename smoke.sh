@@ -586,7 +586,7 @@ v charter add -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb
           a: 1
 TONY
 ok "a derive landing at or below its own level is refused at install"
-v charter remove smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
+v charter rm strata smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
 ok "removing a stratum with rules in it is refused"
 
 # ── restart: the charter is durable ──────────────────────────────────────────

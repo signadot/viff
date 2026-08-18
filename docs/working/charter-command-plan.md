@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **steps 0-3 are built** (branch `charter-path`); steps 4 and 5 are proposal. The charter command as it stands is
+Status: **steps 0-4 are built** (branch `charter-path`); step 5 is proposal. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -314,6 +314,15 @@ WROTE, as it does now, and keeps saying so.
 
 Tests: each shape; the refusal when children exist and no `-r`; a scope's tombstone wording;
 and the case the last defect turned up — a record the engine never installed still goes.
+
+**Built.** Two things:
+
+- A path that reaches INTO a rule (`rules watcher action`) is refused rather than removing the
+  rule it is inside. Editing a rule through a URL is what re-installing the file is for, and the
+  refusal says what a removal may name.
+- `-r` reaches a PLACE, and usually that is all it reaches: nothing is installed at `demo` while
+  `demo.pr` and `demo.build` are under it. "uninstalled the charter at demo" is a sentence
+  somebody re-checks, so the recursive case says "at and under".
 
 ### 5. `add -f <dir>`, applied as one step
 

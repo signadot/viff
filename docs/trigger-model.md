@@ -245,8 +245,8 @@ them. What it WROTE stays: a charter's writes are the world's, and `verse state 
 go.
 
 ```sh
-verse charter uninstall merge
-verse charter uninstall demo --recurse   # …and every charter under that address
+verse c rm merge
+verse c rm demo -r                       # …and every charter under that address
 ```
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:

@@ -95,7 +95,7 @@ ENTITIES=(
 
 if $clean; then
 	step "clean"
-	for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
+	for t in "${TRIGGERS[@]}"; do v charter rm rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
 	for e in "${ENTITIES[@]}"; do v state rm "$e" >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
@@ -109,7 +109,7 @@ fi
 # and is still waiting for you. Removing first makes a re-run idempotent — `charter add`
 # refuses a duplicate name, which is right, and is not what a seed script should trip over.
 step "charter"
-for t in "${TRIGGERS[@]}"; do v charter remove "$t" >/dev/null 2>&1 || true; done
+for t in "${TRIGGERS[@]}"; do v charter rm rules "$t" >/dev/null 2>&1 || true; done
 v charter add -f - >/dev/null <<'TONY' || die "charter add failed"
 - name: demo-review
   condition:

@@ -590,7 +590,7 @@ format:
 verse charter add -f charter.tony # or: cat charter.tony | verse charter add -f -
 verse charter
 verse c rules shape-latch
-verse charter remove shape-latch
+verse c rm rules shape-latch
 verse charter                     # and `verse c rules <name>` for one of them
 ```
 
