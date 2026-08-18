@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/scott-cotton/cli"
@@ -221,56 +222,74 @@ func charterAdd(cc *cli.Context, at, file string) error {
 	// Everything after a declaration belongs to it, until the next one. A file with no
 	// declaration is one charter, installed where `--at` says (or baseline, which is most of
 	// them), and that is the case this started as.
-	groups, err := charterGroups(defs, at)
+	// ONE REQUEST FOR THE WHOLE FILE. It used to be one per package — the CLI split the file
+	// on its `at:` declarations and POSTed each group — so a file whose third package was
+	// refused left the first two installed while printing "nothing was installed", which is
+	// the promise the per-package guarantee makes and the file's own line claimed.
+	//
+	// The split is the server's now, and so is the report: two graders of one question is what
+	// this end was, and the one that printed was not the one that installed.
+	q := url.Values{}
+	if at != "" {
+		q.Set("at", at)
+	}
+	resp, err := httpPostNodesTo("/charter", q, defs)
 	if err != nil {
 		return fmt.Errorf("charter -a: %w", err)
 	}
-	packaged := false
-	// Read before the loop, whose `g` is a group and shadows the globals this lives on.
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("charter -a: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return reportInstalled(cc, body, respFmt(resp))
+}
+
+// reportInstalled says what went where, in both coordinates.
+//
+// "baseline" is the unpackaged charter — the one that may write anywhere — and it is also the
+// word for the default SCOPE, so a scoped install that says only "baseline" reads as the one
+// place it did not go. A scope is the coordinate somebody carries in a flag and forgets, which
+// is exactly the one a report owes them back.
+func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
+	node, err := codec.ParseNode(body, format)
+	if err != nil {
+		// Installed, and the report is unreadable: say the first and do not pretend the second.
+		fmt.Fprintln(cc.Out, "installed")
+		return nil
+	}
 	inScope := ""
 	if g.Scope != "" {
 		inScope = " in scope " + g.Scope
 	}
-	for _, g := range groups {
-		q := url.Values{}
-		if g.at != "" {
-			q.Set("at", g.at)
-		}
-		if g.reads != nil && g.at == "" {
-			return fmt.Errorf("charter -a: `reads:` belongs to a charter package — give " +
-				"it an address (`at:` in the declaration, or the path this installs at), " +
-				"or drop it: the " +
-				"baseline charter may write anywhere, so there is no graph an import would " +
-				"be an edge in")
-		}
-		if err := postGroup("/charter", q, g.defs()); err != nil {
-			return fmt.Errorf("charter -a: %w", err)
-		}
-		// WHERE, in both coordinates. "baseline" is the unpackaged charter — the one that may
-		// write anywhere — and it is also the word for the default SCOPE, so a scoped install
-		// that says only "baseline" reads as the one place it did not go. A scope is the
-		// coordinate somebody carries in a flag and forgets, which is exactly the one a report
-		// owes them back.
+	packaged := false
+	list := codec.Unwrap(nodeField(node, "installed"))
+	if list == nil || list.Type != ir.ArrayType {
+		fmt.Fprintln(cc.Out, "installed")
+		return nil
+	}
+	for _, el := range list.Values {
+		e := codec.Unwrap(el)
+		at := nodeStr(e, "at")
+		rules := nodeInt(e, "rules")
+		strata := nodeInt(e, "strata")
 		where := "baseline"
-		if g.at != "" {
-			where = "package " + g.at
+		if at != "" {
+			where, packaged = "package "+at, true
 		}
 		where += inScope
-		switch {
-		case len(g.strata) == 0:
-			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, len(g.rules))
-		default:
-			fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n",
-				where, len(g.strata), len(g.rules))
+		if strata == 0 {
+			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, rules)
+			continue
 		}
-		packaged = packaged || g.at != ""
+		fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
 	}
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
-	// leaves `verse charter` — the next thing anybody types — answering baseline's rules, which
-	// is an empty list. The listing says so too (elsewhereInPackages); saying it here as well is
-	// what keeps somebody from having to be surprised first.
+	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
+	// empty list. The listing says so too (elsewhereInPackages); saying it here as well is what
+	// keeps somebody from having to be surprised first.
 	if packaged {
-		fmt.Fprintln(cc.Out, "`verse charter` shows every charter and where each may write")
+		fmt.Fprintln(cc.Out, "`verse c` shows every charter and where each may write")
 	}
 	return nil
 }
@@ -374,109 +393,6 @@ func postGroup(route string, q url.Values, defs []*ir.Node) error {
 	return nil
 }
 
-// charterGroup is one package's worth of a charter file: where it goes, what it declares it
-// reads, and the definitions that belong to it.
-type charterGroup struct {
-	at     string
-	reads  *ir.Node // the declaration document, nil when there is none
-	strata []*ir.Node
-	rules  []*ir.Node
-}
-
-// defs is the group as one list, in the order the three kinds install: the declaration, because a
-// rule is checked against what its package declares it reads as it installs; then the levels, because a rule
-// naming a stratum that is not here yet is HELD rather than refused; then the rules.
-//
-// The server sorts them again and does not depend on this order — a client posting a charter says
-// what it has by writing it, not by choosing an order — but sending them the right way round is
-// what keeps the two ends agreeing about what a charter file is.
-func (g charterGroup) defs() []*ir.Node {
-	out := make([]*ir.Node, 0, len(g.strata)+len(g.rules)+1)
-	if g.reads != nil {
-		out = append(out, g.reads)
-	}
-	out = append(out, g.strata...)
-	return append(out, g.rules...)
-}
-
-// charterGroups splits a charter file into the packages it installs.
-//
-// A declaration document (`reads:`, optionally with `at:`) OPENS a group, and everything after
-// it belongs to that group until the next one. Definitions before any declaration are the file's
-// own charter, installed at `--at` — which is the shape every charter had before packages, and
-// the shape most still have.
-//
-// STRATA AND RULES ARE SEPARATED WITHIN A GROUP, whatever order the file put them in: a rule
-// naming a stratum that is not installed yet is HELD rather than refused — right for two
-// independent installs, and wrong for one document whose author wrote both, where it would leave
-// half the charter dormant because of how it was laid out.
-func charterGroups(defs []*ir.Node, flagAt string) ([]charterGroup, error) {
-	cur := charterGroup{at: flagAt}
-	var out []charterGroup
-	seen := map[string]bool{}
-	for _, def := range defs {
-		switch defKind(def) {
-		case defStratum:
-			cur.strata = append(cur.strata, def)
-		case defTrigger:
-			cur.rules = append(cur.rules, def)
-		case defReads:
-			at, err := declaredAt(def)
-			if err != nil {
-				return nil, err
-			}
-			switch {
-			case at == "" && flagAt == "":
-				return nil, fmt.Errorf("a package declaration says what a package READS, so it " +
-					"needs to say which one: give it `at: <address>`, or install the file with " +
-					"`--at <address>`")
-			case at == "":
-				at = flagAt
-			case flagAt != "" && at != flagAt:
-				return nil, fmt.Errorf("the file installs a package at %q and --at says %q: the "+
-					"declaration is the one that travels with the charter, so drop the flag", at, flagAt)
-			}
-			if seen[at] {
-				return nil, fmt.Errorf("the file declares %q twice: `reads:` is what the PACKAGE "+
-					"reads, and two declarations have no order that would settle which wins", at)
-			}
-			seen[at] = true
-			// A group opened before any definitions is the FIRST group rather than a second
-			// one, so a file that starts with its declaration does not install an empty charter.
-			if cur.reads != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
-				out = append(out, cur)
-			}
-			cur = charterGroup{at: at, reads: def}
-		default:
-			return nil, fmt.Errorf("a definition is %s: a trigger has a `condition`, a stratum "+
-				"has a `level` and a `match`, a package declaration has `reads`", defUnknown)
-		}
-	}
-	if cur.reads != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
-		out = append(out, cur)
-	}
-	return out, nil
-}
-
-// declaredAt reads the `at:` a package declaration carries, empty when it names none.
-func declaredAt(def *ir.Node) (string, error) {
-	n := codec.Unwrap(def)
-	if n == nil || n.Type != ir.ObjectType {
-		return "", nil
-	}
-	for i, key := range n.Fields {
-		if key == nil || key.Type != ir.StringType || key.String != "at" {
-			continue
-		}
-		v := codec.Unwrap(n.Values[i])
-		if v == nil || v.Type != ir.StringType || v.String == "" {
-			return "", fmt.Errorf("a package declaration's `at:` is an address (`drift`, `demo.pr`)")
-		}
-		return v.String, nil
-	}
-	return "", nil
-}
-
 // charterRm takes something out of the charter, and WHAT is said by the path rather than by a
 // verb.
 //
@@ -560,4 +476,42 @@ func oneOfKind(kind string) string {
 		return "level"
 	}
 	return "rule"
+}
+
+// nodeField is one field of an object node, or nil.
+func nodeField(n *ir.Node, name string) *ir.Node {
+	n = codec.Unwrap(n)
+	if n == nil || n.Type != ir.ObjectType {
+		return nil
+	}
+	for i, key := range n.Fields {
+		if key != nil && key.Type == ir.StringType && key.String == name {
+			return n.Values[i]
+		}
+	}
+	return nil
+}
+
+func nodeStr(n *ir.Node, name string) string {
+	if v := codec.Unwrap(nodeField(n, name)); v != nil && v.Type == ir.StringType {
+		return v.String
+	}
+	return ""
+}
+
+// nodeInt reads a number off the NODE, which is not what codec.AsInt64 does: that takes a Go
+// value, and handing it an *ir.Node answers 0 for every number there is.
+func nodeInt(n *ir.Node, name string) int64 {
+	v := codec.Unwrap(nodeField(n, name))
+	if v == nil || v.Type != ir.NumberType {
+		return 0
+	}
+	if v.Int64 != nil {
+		return *v.Int64
+	}
+	i, err := strconv.ParseInt(v.Number, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return i
 }

@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **steps 0-4 are built** (branch `charter-path`); step 5 is proposal. The charter command as it stands is
+Status: **all of it is built** (branch `charter-path`). What is written under each step is the reasoning it was built from, with what the building found noted under it. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -368,6 +368,17 @@ at either address; the same file whole → both installed and both engines runni
 reading another in the same file installs regardless of order; a rule that fired in the window
 is not undone, which is the limit stated rather than a bug; and the whole install holds the lock
 from step 0 for its duration, so a second operator's install waits or is told to come back.
+
+**Built.** Three things:
+
+- The undo closures had to CAPTURE their `at`/`eng`. They read `tx.at` and `tx.eng` at unwind
+  time, which was right for a transaction that never moved and would have put a later package's
+  declaration back over an earlier package's the first time one spanned two.
+- The REPORT moved with the grouping. The CLI split the file to know what to print, so the
+  grader that printed was not the grader that installed; the install answers with what it did,
+  per address, and the CLI renders that.
+- `codec.AsInt64` takes a Go value, not an `*ir.Node` — so reading the counts off the answer
+  silently printed `installed 0 trigger(s)` for every package. Caught by driving it.
 
 ## What this does not do
 

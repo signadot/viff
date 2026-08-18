@@ -370,11 +370,12 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 			"declaration, or a `---` separated file of them", http.StatusBadRequest)
 		return
 	}
-	if code, err := s.installCharter(r, defs); err != nil {
+	groups, code, err := s.installCharter(r, defs)
+	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
+	writeOut(w, r, http.StatusCreated, map[string]any{"installed": installedReport(groups)})
 }
 
 // charterDocs flattens a request's documents into the definitions they hold: one apiece, or a LIST
@@ -413,52 +414,186 @@ func charterDocs(docs []*ir.Node) []*ir.Node {
 // rule naming a stratum that is not installed yet is HELD rather than refused, and a file whose
 // author wrote both should not leave half its rules dormant because of how it was laid out; then
 // the rules.
-func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
-	var imports, strata, rules []*ir.Node
+// installCharter applies a whole charter FILE: every package in it, or none of them.
+//
+// ONE FILE MAY HOLD SEVERAL PACKAGES — a `---` document carrying `at:` opens each, and
+// everything after it belongs to that package until the next one — and the file was applied one
+// package per REQUEST, which made the promise it printed false:
+//
+//	package one: installed 1 trigger(s)
+//	charter -a: 400 … subject elsewhere:y is outside two:*
+//	nothing was installed: a charter file is applied as one step …
+//
+// …with `one` installed. The guarantee was real per package and the sentence claimed it for the
+// file. So the grouping is HERE now, where the rest of the classification already lives — a
+// client posting a charter does not have to know which of three things each document is — and
+// one charterTx spans the request.
+//
+// FILE ORDER, for installing as well as for reporting. A rule's reads are checked against its
+// own package's declaration, and a declared read of an address no package is installed at adds
+// no edge, so a package that reads another installs whichever comes first.
+func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGroup, int, error) {
+	groups, err := charterGroups(defs, r.URL.Query().Get("at"))
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	tx := &charterTx{s: s}
+	for _, g := range groups {
+		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
+		// refused must leave the address as it found it, and a package engine standing where
+		// nothing is installed is a charter that lists as nothing and runs as nothing.
+		if g.at != "" && !s.packagesSeenAt(g.at) {
+			tx.fresh = append(tx.fresh, g.at)
+		}
+		eng, err := s.charterEngineAt(r, g.at)
+		if err != nil {
+			code, err := tx.refuse(http.StatusBadRequest, err)
+			return nil, code, err
+		}
+		tx.at, tx.eng = g.at, eng
+		for _, def := range g.reads {
+			if code, err := tx.imports(def); err != nil {
+				code, err := tx.refuse(code, err)
+				return nil, code, err
+			}
+		}
+		for _, def := range g.strata {
+			if code, err := tx.stratum(def); err != nil {
+				code, err := tx.refuse(code, err)
+				return nil, code, err
+			}
+		}
+		for _, def := range g.rules {
+			if code, err := tx.rule(def); err != nil {
+				code, err := tx.refuse(code, err)
+				return nil, code, err
+			}
+		}
+	}
+	return groups, http.StatusCreated, nil
+}
+
+// installedReport is what a successful install answers with: one entry per package the file
+// held, in file order.
+//
+// IT IS THE SERVER'S TO SAY, because the grouping is. The CLI used to split the file itself to
+// know what to print, which meant two graders of one question — and the one that printed was
+// not the one that installed.
+func installedReport(groups []charterGroup) []any {
+	out := make([]any, 0, len(groups))
+	for _, g := range groups {
+		e := map[string]any{"rules": len(g.rules), "strata": len(g.strata)}
+		if g.at != "" {
+			e["at"] = g.at
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// charterGroup is one package's worth of a file: where it goes, and what it installs there.
+type charterGroup struct {
+	at     string
+	reads  []*ir.Node
+	strata []*ir.Node
+	rules  []*ir.Node
+}
+
+func (g charterGroup) empty() bool {
+	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.rules) == 0
+}
+
+// charterGroups splits a file into its packages. `at` is the query's, which is where a file
+// that declares no address of its own goes.
+func charterGroups(defs []*ir.Node, at string) ([]charterGroup, error) {
+	cur := charterGroup{at: at}
+	var out []charterGroup
+	seen := map[string]bool{}
 	for _, def := range defs {
 		switch charterKind(def) {
-		case "reads":
-			imports = append(imports, def)
 		case "stratum":
-			strata = append(strata, def)
+			cur.strata = append(cur.strata, def)
+		case "reads":
+			declared, err := declaredAt(def)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case declared == "" && at == "":
+				return nil, errors.New("a package declaration says what a package READS, so it " +
+					"needs to say which one: give it `at: <address>`, or install the file at a " +
+					"path (`verse c -a <address> -f …`)")
+			case declared == "":
+				declared = at
+			case at != "" && declared != at:
+				return nil, fmt.Errorf("the file installs a package at %q and the path says %q: "+
+					"the declaration is the one that travels with the charter, so drop the path",
+					declared, at)
+			}
+			if seen[declared] {
+				return nil, fmt.Errorf("the file declares %q twice: `reads:` is what the PACKAGE "+
+					"reads, and two declarations have no order that would settle which wins", declared)
+			}
+			seen[declared] = true
+			// A declaration before any definitions opens the FIRST group rather than a second
+			// one, so a file that starts with its declaration does not install an empty charter.
+			if !cur.empty() {
+				out = append(out, cur)
+			}
+			cur = charterGroup{at: declared, reads: []*ir.Node{def}}
 		default:
-			rules = append(rules, def)
+			cur.rules = append(cur.rules, def)
 		}
 	}
-	at := r.URL.Query().Get("at")
-	// THE DECLARATION'S ADDRESS FIRST, before any engine is asked for, because asking creates one:
-	// `reads:` belongs to a package, and a refusal reached on the way there would leave an engine
-	// running for a charter that was never installed.
-	if len(imports) > 0 && at == "" {
-		return http.StatusBadRequest, errors.New("reads: a charter with no address has nothing " +
-			"to import into — `reads:` belongs to a package, installed with " +
-			"`verse c -a --at <address>`")
+	if !cur.empty() {
+		out = append(out, cur)
 	}
-	// FRESH BEFORE THE ENGINE, for the same reason: an install that is wholly refused must leave
-	// the address as it found it, and a package engine standing at an address nothing is installed
-	// at is a charter that lists as nothing and runs as nothing.
-	tx := &charterTx{s: s, at: at, fresh: at != "" && !s.packagesSeenAt(at)}
-	eng, err := s.charterEngine(r)
-	if err != nil {
-		return http.StatusBadRequest, err
-	}
-	tx.eng = eng
-	for _, def := range imports {
-		if code, err := tx.imports(def); err != nil {
-			return tx.refuse(code, err)
+	// A `reads:` with no address to belong to is caught above; one with no PACKAGE is caught
+	// here, since baseline may write anywhere and has no graph to be an edge in.
+	for _, g := range out {
+		if len(g.reads) > 0 && g.at == "" {
+			return nil, errors.New("reads: a charter with no address has nothing to read INTO " +
+				"— `reads:` belongs to a package, installed at a path")
 		}
 	}
-	for _, def := range strata {
-		if code, err := tx.stratum(def); err != nil {
-			return tx.refuse(code, err)
-		}
+	return out, nil
+}
+
+// declaredAt reads a package declaration's `at:` — the address the file says this package goes.
+func declaredAt(def *ir.Node) (string, error) {
+	n := codec.Unwrap(def)
+	if n == nil || n.Type != ir.ObjectType {
+		return "", nil
 	}
-	for _, def := range rules {
-		if code, err := tx.rule(def); err != nil {
-			return tx.refuse(code, err)
+	for i, key := range n.Fields {
+		if key == nil || key.Type != ir.StringType || key.String != "at" {
+			continue
 		}
+		v := codec.Unwrap(n.Values[i])
+		if v == nil || v.Type != ir.StringType || v.String == "" {
+			return "", errors.New("a package declaration's `at:` is an address (`drift`, `demo.pr`)")
+		}
+		return v.String, nil
 	}
-	return http.StatusCreated, nil
+	return "", nil
+}
+
+// charterEngineAt is the engine a group installs into: a scope's when one is asked for, else
+// the package's at this address, else baseline's.
+func (s *Server) charterEngineAt(r *http.Request, at string) (*trigger.Engine, error) {
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		if s.ctx == nil {
+			return nil, errors.New("engine not started")
+		}
+		return s.scopeEngine(scope), nil
+	}
+	if at == "" {
+		return s.Eng, nil
+	}
+	if s.ctx == nil {
+		return nil, errors.New("engine not started")
+	}
+	return s.packageEngine(at)
 }
 
 // charterTx is one request's worth of installs and how to put back what each replaced. It is not
@@ -466,10 +601,13 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
 // is as much as an engine holding live watches can offer and is what "the file is either the
 // charter or it is not" needs.
 type charterTx struct {
-	s     *Server
-	at    string
-	eng   *trigger.Engine
-	fresh bool // no charter stood at this address before this request
+	s   *Server
+	at  string
+	eng *trigger.Engine
+	// fresh is every address this REQUEST brought into being. A refusal drops each one's
+	// engine: an engine left running at an address with nothing installed observes on behalf
+	// of no charter, and a later install there would find it rather than make one.
+	fresh []string
 	undo  []func() error
 }
 
@@ -481,17 +619,21 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
-	before := tx.eng.Reads()
-	prev, had, err := tx.s.packageDecl(tx.at)
+	// CAPTURED, not read at undo time: one transaction now spans several packages, so `tx.at`
+	// and `tx.eng` have moved on by the time an unwind runs. An undo that read them would put
+	// a later package's declaration back over an earlier package's.
+	at, eng := tx.at, tx.eng
+	before := eng.Reads()
+	prev, had, err := tx.s.packageDecl(at)
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := tx.s.setPackageImports(tx.at, subs); err != nil {
+	if err := tx.s.setPackageImports(at, subs); err != nil {
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
-		tx.eng.SetReads(before)
-		return tx.s.putPackageDecl(tx.at, prev, had)
+		eng.SetReads(before)
+		return tx.s.putPackageDecl(at, prev, had)
 	})
 	return http.StatusCreated, nil
 }
@@ -502,15 +644,16 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	if err := codec.FromNode(def, &st); err != nil {
 		return http.StatusBadRequest, err
 	}
-	old, had := tx.eng.Stratum(st.Name)
-	if err := tx.eng.InstallStratum(st); err != nil {
+	eng := tx.eng // captured: the transaction spans packages (see imports)
+	old, had := eng.Stratum(st.Name)
+	if err := eng.InstallStratum(st); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
 		if had {
-			return tx.eng.InstallStratum(old)
+			return eng.InstallStratum(old)
 		}
-		return tx.eng.RemoveStratum(st.Name)
+		return eng.RemoveStratum(st.Name)
 	})
 	return http.StatusCreated, nil
 }
@@ -528,14 +671,15 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if t.Name == "" {
 		return http.StatusBadRequest, errors.New("a rule needs a name")
 	}
-	old, had := tx.eng.Rule(t.Name)
-	if err := tx.eng.InstallTrigger(t); err != nil {
+	eng := tx.eng // captured: the transaction spans packages (see imports)
+	old, had := eng.Rule(t.Name)
+	if err := eng.InstallTrigger(t); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
-		tx.eng.RemoveTrigger(t.Name)
+		eng.RemoveTrigger(t.Name)
 		if had {
-			return tx.eng.AddTrigger(old)
+			return eng.AddTrigger(old)
 		}
 		return nil
 	})
@@ -559,8 +703,8 @@ func (tx *charterTx) refuse(code int, err error) (int, error) {
 	// The ENGINE last, and only when this request is what brought the address into being: an
 	// engine left running at an address with nothing installed observes on behalf of no charter,
 	// and a later install at the same address would find it rather than make one.
-	if tx.fresh {
-		tx.s.dropPackageEngine(tx.at)
+	for _, at := range tx.fresh {
+		tx.s.dropPackageEngine(at)
 	}
 	return code, err
 }

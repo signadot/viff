@@ -1,7 +1,10 @@
 package versed
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -180,4 +183,63 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	if len(eng.Reads()) != 1 {
 		t.Errorf("a refused install dropped what the package reads: %v", eng.Reads())
 	}
+}
+
+// A FILE IS ONE STEP, not one step per package.
+//
+// A charter file may hold several packages — `---` separates documents and an `at:` declaration
+// opens each — and the CLI used to split the file and POST each group, so a file whose second
+// package was refused left the first installed while printing "nothing was installed, a charter
+// file is applied as one step". The guarantee was real per PACKAGE and the sentence claimed it
+// for the file.
+func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// The second package's rule writes outside its own address, so it is refused.
+	file := `{at: one}
+---
+{name: ok-rule, condition: {subject: {system: one, kind: x}}, action: {patch: {seen: true}}}
+---
+{at: two}
+---
+{name: bad-rule, condition: {subject: {system: elsewhere, kind: y}}, action: {patch: {seen: true}}}`
+	code, msg := postCharterFile(t, ts.URL, file)
+	if code == 201 {
+		t.Fatal("a file with a refused package installed")
+	}
+	if got := srv.packagesSeen(); len(got) != 0 {
+		t.Fatalf("the first package survived the refusal: %v — `nothing was installed` is false", got)
+	}
+	// …and no engine is left standing at either address, since neither charter exists.
+	for _, at := range []string{"one", "two"} {
+		if eng, _ := srv.engineAt(&http.Request{URL: &url.URL{}}, at); eng != nil {
+			t.Errorf("an engine is still running at %s with nothing installed", at)
+		}
+	}
+	_ = msg
+
+	// The same file with the second package corrected installs BOTH.
+	ok := strings.Replace(file, "system: elsewhere", "system: two", 1)
+	if code, msg := postCharterFile(t, ts.URL, ok); code != 201 {
+		t.Fatalf("the corrected file = %d: %s", code, msg)
+	}
+	if got := srv.packagesSeen(); len(got) != 2 {
+		t.Errorf("packagesSeen = %v, want both packages", got)
+	}
+}
+
+// postCharterFile posts a whole charter FILE — several `---` documents — as one request, which
+// is what a client does and what installAt's single-document helper cannot express.
+func postCharterFile(t *testing.T, base, file string) (int, string) {
+	t.Helper()
+	resp, err := http.Post(base+"/charter", "application/tony", strings.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(body))
 }
