@@ -167,7 +167,16 @@ func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
 // its subject and never see that edge again. So a motion this keeps is not a promise that the
 // rule will re-fire — only that nothing about the subject says it cannot.
 func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
-	now, err := e.store.AsOf(e.store.Rev(), paths(t.reads())...)
+	// HEAD, not Rev, and this is the one call that made a resume expensive. Rev SYNCS — it
+	// opens a watch on the root and is seeded with a read — and this runs once per motion, so
+	// a verse coming back with a docket paid that per question: staging spent 9.954s here,
+	// which is the session budget, so a timeout rather than work.
+	//
+	// Head is the session's known commit (libctl's mark, raised by every answer that carries
+	// one), so it costs nothing and is the store's head rather than the last CHANGED commit —
+	// which is what "as of now" means here. It can lag an idle store by a heartbeat; a resume
+	// is not that, and this function already errs toward keeping a motion when it cannot tell.
+	now, err := e.store.AsOf(e.store.Head(), paths(t.reads())...)
 	if err != nil {
 		return true
 	}
