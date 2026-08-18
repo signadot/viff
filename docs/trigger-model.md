@@ -109,12 +109,13 @@ reflected as an entity, and the engine interprets it directly — there is no co
 
 ### A charter can be installed AT an address
 
-A charter installed with `--at` is a **package**: it runs in an engine of its own, and it may
-write only inside the address it was installed at.
+A charter installed AT AN ADDRESS is a **package**: it runs in an engine of its own, and it may
+write only inside that address. The address is where the install points — the positional path —
+or the file's own `at:` declaration.
 
 ```sh
-verse c -a --at notes notes-charter.tony    # its rules write under notes:*
-verse c -a charter.tony                     # baseline: may write anywhere
+verse c -a notes -f notes-charter.tony    # its rules write under notes:*
+verse c -a -f charter.tony                # baseline: may write anywhere
 ```
 
 That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
@@ -164,7 +165,7 @@ down.
 One file may hold SEVERAL packages: a `---` document carrying `at:` opens one, and everything
 after it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is
 two — a `drift` package that reviews and a `merge` package that gates what the review delivers —
-installed by one `verse c -a --file`. Each package goes in **as one step**: its declaration,
+installed by one `verse c -a --file`, all of them or none. Each package goes in **as one step**: its declaration,
 its levels and its rules install together or not at all, so a refusal anywhere puts back what stood
 before it (see [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
@@ -241,12 +242,12 @@ verse c drift rules merge-proposal
 ```
 
 A package comes off whole, too — its rules, its levels, what it reads, and the engine running
-them. What it WROTE stays: a charter's writes are the world's, and `verse data rm` is how those
+them. What it WROTE stays: a charter's writes are the world's, and `verse data --rm` is how those
 go.
 
 ```sh
 verse c -r merge
-verse c -r demo -r                       # …and every charter under that address
+verse c -R demo                          # …and every charter under that address
 ```
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:

@@ -318,7 +318,7 @@ func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 // comments are independent choices, and while they were made in separate functions the
 // coloured ones quietly rendered without comments. That is the only path a terminal ever
 // takes, so every comment in a charter was invisible to the operator who wrote it while
-// `verse charter show | cat` printed them all.
+// `verse c rules <name> | cat` printed them all.
 func encodeNodeOpts(w io.Writer, n *ir.Node, f Format, wire, color bool) error {
 	if n == nil {
 		n = ir.Null()

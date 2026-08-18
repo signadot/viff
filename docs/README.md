@@ -48,7 +48,7 @@ core of the model, and almost everything else is something a rule can reach.
 | | [The cycle throttle](cycle-throttle.md) — how a runaway across rules is caught at runtime, and why a paced cycle is not one |
 | | [Strata](strata.md) — a declared level ordering, `derive`, the write that is not the subject, and where a path read inside one may reach |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
-| ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse data rm` should mean |
+| ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse data --rm` should mean |
 | | [Goals: what is left](working/goals-residual.md) — why goals were removed, and three shapes a better definition might take |
 | | [Dynamic charter](roadmap/dynamic-charter.md) — a charter authored per change, where the goal idea is headed |
 

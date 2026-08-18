@@ -76,7 +76,7 @@ verse data demo:pr:1                           # …the same address written as 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
-for. A ref is that path with `:` for a delimiter, which is why `get`, `put` and `rm` still take
+for. A ref is that path with `:` for a delimiter, which is why a read, a `--put` and a `--rm` all take
 one — three spellings of one grammar, laid out in
 [reference/entities §Addressing](reference/entities.md#addressing).
 
@@ -84,7 +84,7 @@ AN ADDRESS MAY BE TYPED AS STEPS, which is what `--paths` answers with — so a 
 back into a read, and nothing needs escaping on the way:
 
 ```sh
-verse data --paths demo.pr | xargs -L1 verse data get
+verse data --paths demo.pr | xargs -L1 verse data
 verse data demo pr a.b labels urgent           # an id with a dot in it, unquoted
 ```
 
@@ -107,10 +107,10 @@ A put **merges**. Fields you do not name are left alone, which is why the answer
 entity as it now stands rather than an echo of what you sent:
 
 ```sh
-verse data demo pr 1 --put '{owner: dee}' # changes the owner, keeps the stage
-verse data demo.pr.1.labels.urgent --put true # one field, deep
-verse data rm  demo.pr.1.labels.urgent              # and gone again
-verse data demo --rm scratch 1                        # the whole entity
+verse data demo pr 1 --put '{owner: dee}'        # changes the owner, keeps the stage
+verse data demo.pr.1.labels.urgent --put true   # one field, deep
+verse data demo.pr.1.labels.urgent --rm         # and gone again
+verse data demo scratch 1 --rm                  # the whole entity
 ```
 
 A payload typed on the command line is read as tony, which is why `{stage: open}` needs no
@@ -122,17 +122,18 @@ A write can also refuse to happen. Each condition is checked *with* the write, i
 the store, so nothing can change in between:
 
 ```sh
-verse data --create demo pr 1 --put '{stage: open}' # only if nothing is there yet → refused
-verse data --update demo pr 99 --put '{stage: open}' # only if something is → refused
+verse data demo pr 1  --put '{stage: open}' --create   # only if nothing is there yet → refused
+verse data demo pr 99 --put '{stage: open}' --update   # only if something is        → refused
 # write refused: a condition did not hold
 
-verse data --expect '{stage: merged}' demo pr 4 --put '{owner: dee}' # only if it still looks like this
+verse data demo pr 4 --put '{owner: dee}' --expect '{stage: merged}'   # only if it still looks like this
 ```
 
 That is how two writers advance one entity without losing each other's fields — CAS spelled
 as a predicate, so you say what you believe about the entity rather than which revision you
-read it at. It is the same predicate language `--if` reads with, and a refused write leaves
-the entity alone and exits non-zero.
+read it at. `--expect` is the same predicate language `--if` reads with — a different flag
+because `--if` on this command is the READ's filter — and a refused write leaves the entity
+alone and exits non-zero.
 
 ### Watch
 
@@ -634,7 +635,7 @@ verse docket
   subject: demo:vote:1
 ```
 
-The listing is a document like every other, so `verse docket -o yaml`, a `get` into one entry
+The listing is a document like every other, so `verse docket -o yaml`, a read into one entry
 and a diff against the docket a minute ago all work. `choice` is the word a ballot must carry
 — `approve` here, not the option's own name — which is what `verse vote` checks before it
 writes one.

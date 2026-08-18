@@ -347,12 +347,14 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 // posting a charter file does not have to know which of three things each document is, nor which
 // order the three have to be installed in.
 //
-// A REQUEST IS ONE STEP. Either every definition in it installs or none does, which is what makes
-// `charter add` atomic per package: the CLI posts a file's worth of one address in one request
-// (cmd/verse/charter.go), and a refusal anywhere puts back what stood before it. Applied one
-// document at a time, a file whose first document installed and whose second was refused left the
-// first standing — a charter nobody wrote down, and (once the levels were in and the rules were
-// not) a package an operator could not remove by correcting the file.
+// A REQUEST IS ONE STEP, and a request is a FILE — every package in it, or none. The client
+// posts the whole thing (cmd/verse/charter.go) and the grouping happens here, so a refusal
+// anywhere puts back what stood before it wherever it stood. Applied one document at a time, a
+// file whose first document installed and whose second was refused left the first standing — a
+// charter nobody wrote down, and (once the levels were in and the rules were not) a package an
+// operator could not remove by correcting the file. Applied one PACKAGE at a time, which is
+// what it did next, the same was true of a file that spans two addresses — while the refusal
+// printed "nothing was installed".
 func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	release, ok := s.lockCharterHTTP(w, r)
 	if !ok {

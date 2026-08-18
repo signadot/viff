@@ -246,7 +246,7 @@ cannot do — it holds whatever the newest run has written and nothing of the on
 
 Run records are written twice, at the run's start and at its end, so a run that never finishes
 still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by
-events, and removing them is `verse data rm`, or a charter that marks the old ones
+events, and removing them is `verse data --rm`, or a charter that marks the old ones
 [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record

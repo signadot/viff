@@ -153,7 +153,7 @@ not a record verse keeps, which is why casting one is an ordinary write. And `pr
 registry of doers is written by whoever runs the verse.
 
 **The reserved half is read like anything else and written only through the verbs that own
-it.** `verse data verse:trigger:rule:review` reads a rule; `verse data put` at any
+it.** `verse data verse:trigger:rule:review` reads a rule; `verse data --put` at any
 `verse:` address is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
 boundary had a name, anyone who could reach the store could install a rule, stamp a task record
@@ -201,7 +201,7 @@ it. The cut is where a path stops describing a slice and starts naming a thing: 
 a system that is not there have" has `none` as a true answer; `demo.pr.nosuch` names one
 entity, and `{}` would say it is there and empty.
 
-A ref is that same path with `:` for a delimiter, which is why `get`/`put`/`rm` still take one
+A ref is that same path with `:` for a delimiter, which is why a read, a `--put` and a `--rm` all take one
 and why nothing about identity changed: `demo:pr:1` and `demo.pr.1` are one grammar spelled two
 ways.
 
@@ -233,7 +233,7 @@ verse data 'merge.proposal.X.votes[0].choice'
 `(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been STORED.
 That is not automatic: `!key` is a tony merge operator, so an ordinary write EXECUTES it — the
 array is merged by key and kept without the tag — which means an array put through
-`verse data put` is not keyed afterwards. A payload meant to stay addressable this way is
+`verse data --put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
 Writing into an array is a different matter, and `data --put` refuses `[0]` and `(scott)` —
@@ -260,7 +260,7 @@ answers so the reasoning is checked at each go-tony bump rather than inherited.
 
 Mount-owned slices are not in it. `verse connect`'s content slice (`local:dir-content-*`) is
 served by a controller under a separate root with no history, and the read walks the entity
-root only — so a mounted entity is addressable by `verse data get` and absent from
+root only — so a mounted entity is addressable by `verse data <path>` and absent from
 `verse data`. Saying "the document, whole" would make that pre-existing gap into a claim that
 is not quite true. Unioning the second read is a real decision, not a detail.
 
@@ -276,11 +276,11 @@ writes there, and the answer is that place. A write is a value at a path, so whe
 [working/entity-tree.md](../working/entity-tree.md).
 
 ```sh
-verse data demo pr 1 --put '{stage: open}' # as steps: nothing needs quoting
-verse data demo:pr:1 --put '{owner: ana}' # …or by ref: adds an owner, keeps the stage
-verse data demo.pr.1.labels.urgent --put true # write INSIDE the payload
-verse data rm  demo.pr.1.labels.urgent              # remove one field
-verse data demo --rm pr 1                             # the whole entity
+verse data demo pr 1 --put '{stage: open}'       # as steps: nothing needs quoting
+verse data demo:pr:1 --put '{owner: ana}'       # …or by ref: adds an owner, keeps the stage
+verse data demo.pr.1.labels.urgent --put true   # write INSIDE the payload
+verse data demo.pr.1.labels.urgent --rm         # remove one field
+verse data demo pr 1 --rm                       # the whole entity
 ```
 
 A payload typed on the command line names no file, so it is read in the default input format

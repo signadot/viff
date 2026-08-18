@@ -73,11 +73,20 @@ converges on the resync.
 
 | entity | payload |
 |---|---|
-| `git:ref:<repo>/<name>` | `repo, name, sha, type` |
+| `git:ref:<repo>/<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
 | `git:head:<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any — covered by nothing, so history stays |
 
 Owns `git:*:<id>/*` and `git:head:<id>` per repo.
+
+**Three ref spaces, named rather than assumed.** `for-each-ref` with no pattern is EVERY ref, and
+a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs/tags` and
+`refs/remotes` explicitly. On GitHub the rest is `refs/pull/<n>/head` and `refs/pull/<n>/merge`
+(4739 of them on one repo we mirror) plus `refs/issues/*`, which is git-issue's namespace. The
+merge refs are the reason it matters rather than a size complaint: GitHub RECREATES them
+whenever the base branch moves, so every fetch after any push to main changed a batch of shas
+and the store took writes on every pass with nothing having happened. A pull request's tip is
+`github:pr:<repo>#<n>.headSha`, from the source that owns the concept.
 
 `msg` is the **subject** — the first line — and the body is not reflected. `trailers` is the
 exception: the `Key: value` block at the end of a message, as an object, so a charter can

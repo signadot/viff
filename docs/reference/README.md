@@ -63,32 +63,37 @@ verse
     verse data demo.pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
     verse watch demo --trim '{ref: null, to: null}'
 
-  On `state` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
-  about, before any of them cross the wire — so those two take `--trim` alone. On `data --put`,
-  `--if` is a write precondition, which is its own thing again.
+  On `data` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
+  about, before any of them cross the wire — so those two take `--trim` alone. A WRITE's
+  precondition is `--expect`, a different flag for a different question: the two were `--if`
+  apiece until the verbs became flags and there was no subcommand left to tell them apart.
 
   Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
 
-  `state` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
-  so there is no plural to alias and its positional is an address rather than a verb.
+  `data` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
+  so there is no plural to alias — and WHAT TO DO IS A FLAG, so its positional is a path in
+  every case. `get`, `put` and `rm` were verbs, and a path's first segment is a system name.
 
-  state   [<path>]                           the verse at a path: the subtree standing there
+  data (d) [<path>]                          the verse at a path: the subtree standing there
                                              demo · demo.pr · demo.pr.1 · demo.pr.1.labels.urgent
                                              'demo.pr.*.stage' · (none) = the whole verse
+                                             a ref names the same place: demo:pr:1
+                                             and a read may reach into an array:
+                                             merge.proposal.X.votes(scott)
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths] [--depth <n>]            … one address per line instead of the document;
                                              --depth says how many segments an address has
                                              (default: 3, or 4 under verse), since a document
                                              cannot say where its entities are
                                              flags go on either side of the path
-          get <path>                         one place, at any depth — and a read may reach into
-                                             an array: merge.proposal.X.votes(scott)
-          put <path> <payload>               a write reaches object fields, not array elements
-          rm  <path>                         an entity, or one field of one
-          put [--create|--update]            only if nothing is there yet · only if something is
-          put [--if <pattern>]               only if what is there matches
-                                             (a put MERGES: fields it does not name are left alone,
-                                              and `rm <path>` is how one goes away)
+          --put <payload>                    write it there: a write reaches object fields, not
+                                             array elements. A put MERGES — fields it does not
+                                             name are left alone, and --rm is how one goes away
+          --rm                               remove what stands there: an entity, or one field
+          --put [--create|--update]          only if nothing is there yet · only if something is
+          --put [--expect <pattern>]         only if what is there matches. `--expect` rather
+                                             than `--if`, which is the READ's filter: they were
+                                             told apart by the `put` subcommand that is gone
           An address is one grammar in three delimiters — `demo:pr:1` names the entity
           whole, `demo.pr.1.labels` continues into the payload, `demo pr 1 labels` is the
           same as separate words — and whichever comes FIRST is the one in use, so an id may
@@ -97,38 +102,43 @@ verse
   gate (gates)                               pending decisions across the fleet
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
-  charter (charters) [<address>]             THE INSTALLED CHARTER, at an address: what may
-                                             be written there, what it reads, its triggers
+  charter (charters, c) [<path>]             THE INSTALLED CHARTER, at a path: what may
+                                             be written there, what it reads, its rules
                                              and strata in full, and the same at every
                                              address under it. Bare, that is all of it —
                                              baseline at the root, each package under the
-                                             address it writes in (`charter drift`,
-                                             `charter verse-dev drift`). Every node answers
+                                             address it writes in (`c drift`,
+                                             `c verse-dev drift`). Every node answers
                                              the same shape, `children:` and all
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
-          add [--file <f>|-] [file]          install one: triggers, strata and `reads:`
-                                             from one file, in the order that works, and as
-                                             ONE STEP per package — a refusal anywhere puts
-                                             back what stood before it. Re-applying an edited
-                                             file is how a charter changes: a rule is
-                                             replaced, and so is a level (every rule faces the
-                                             ordering again, and one that no longer fits
-                                             refuses the change)
-          add --at <address>                 install as a PACKAGE: its own engine, and its
-                                             rules may write only inside <address>
-                                             (`notes`, `demo.pr`) — see ../trigger-model.md
-          add --scope <name>                 …into a federation's own charter instead
-          show <name> · remove <name>        one trigger or one stratum, by name
-          show|remove [--at <address>]       …of that charter; needed only when more than one
-                                             holds the name
-          uninstall <address> [--recurse]    a charter package, whole: its rules, its levels,
-                                             what it declares it reads, and the engine running them.
-                                             What it WROTE stays — a charter's writes are the
-                                             world's. --recurse takes what is under it too
-          -- <address>                       an address that collides with a verb: a package
-                                             at `remove` is `verse charter -- remove`
+          <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
+                                             levels, one of them by name, and on into that one
+                                             (`c verse-dev.drift rules watcher action`).
+                                             `c rules watcher` is baseline's, which has no
+                                             address. A name that is elsewhere is named in
+                                             the refusal, with the path that reaches it
+          -a [<address>] -f <f>|-            INSTALL: rules, strata and `reads:` from one file,
+                                             in the order that works, and as ONE STEP — a
+                                             refusal anywhere puts back what stood before it,
+                                             across every package the file holds. The address
+                                             is the positional, and a file may name its own
+                                             (`at:` below). Re-applying an edited file is how a
+                                             charter changes: a rule is replaced, and so is a
+                                             level (every rule faces the ordering again, and one
+                                             that no longer fits refuses the change)
+          -a --scope <name>                  …into a federation's own charter instead
+          -r <path>                          REMOVE what the path names: a package at an
+                                             address, or one rule or level in it
+                                             (`c -r verse-dev.drift rules watcher`)
+          -R <address>                       …the charter there AND every charter under it.
+                                             What a removal leaves is what the charter WROTE —
+                                             a charter's writes are the world's
+                                             (-R is not `rm -r`'s recursion: -r is the removal)
+          <address> -- rules|strata          where the address ENDS, for a package whose own
+                                             address ends in `rules` or `strata` and would
+                                             otherwise shadow that key
           A charter file may open a package with a `---` document of its own — `at: drift`
           is where its rules write, `reads: [git, other]` what they may read besides, in
           either address spelling (`!verse-path [demo pr]` too). A package reads inside its

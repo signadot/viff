@@ -7,11 +7,13 @@ import (
 	"testing"
 )
 
-// `charter add` IS ATOMIC PER PACKAGE, end to end.
+// `verse c -a` IS ATOMIC ACROSS THE WHOLE FILE, end to end.
 //
 // It used to POST each document of the file on its own, so a file whose levels installed and whose
 // rule was refused left the levels standing — and told the operator the command failed. That is a
-// package nobody wrote down, and the one state `charter rm` was needed to get out of.
+// package nobody wrote down, and the one state `verse c -r` was needed to get out of. Then it
+// posted one PACKAGE per request, which left the same hole for a file spanning two addresses
+// (versed's TestAMultiPackageFileIsAppliedAsOneStep is that half).
 //
 // The file below is the shape the defect was found in: a declaration, a level, and a rule that
 // writes outside the address they are all installed at.
