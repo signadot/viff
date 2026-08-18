@@ -55,12 +55,30 @@ var (
 	subtreeHealMax   = 5 * time.Minute
 )
 
-// sessionBudget is how long ONE call on the session may take: a read, a write, or an
-// attempt to establish a watch. There is a single number because there is a single reason —
-// the session serializes, so any call's patience is charged to every other caller — and
-// because the one call that had no budget at all is what made a store outage permanent (see
-// establish).
+// sessionBudget is how long ONE call on the session may take: a read, or an attempt to
+// establish a watch. The one call that had no budget at all is what made a store outage
+// permanent (see establish).
+//
+// It was one number for every call, on the reasoning that the session serializes so any
+// call's patience is charged to every other caller. That reasoning ended with go-tony
+// v0.0.166: reads run beside logd's request loop, bounded per session, and only writes stay
+// on it. So a read's patience is now its own, and a write's is spent in a queue with every
+// other write on the session — which is why they no longer want the same number.
 const sessionBudget = 10 * time.Second
+
+// writeBudget is that number for a WRITE, which waits differently: writes are dispatched on
+// logd's request loop and each one holds it until its commit lands, so a write's wait is the
+// sum of the writes in front of it rather than its own cost.
+//
+// Ten seconds was sized when a store held seed data. It is not what a verse reflecting several
+// repositories spends: staging's three sources each failed at exactly 10s — `write
+// git:ref:signadot/pull/1320/head: context deadline exceeded` — and none of them had reflected
+// in over half an hour, because every pass re-queued behind the same wall.
+//
+// Thirty is a working number and not a principled one: it buys a queue three times as deep
+// before a source gives up, and it covers for the queue rather than removing it. What removes
+// it is fewer, larger commits, or writes leaving that loop the way reads did.
+const writeBudget = 30 * time.Second
 
 // MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
 // disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
@@ -585,7 +603,7 @@ func isNotFound(err error) bool {
 // the number; it has not since go-tony v0.0.85-ish, and a caller reading the old comment would
 // conclude the correlation was impossible.)
 func (s *LogdStore) Write(w Write) (bool, int64, error) {
-	ctx, cancel := s.reqCtx()
+	ctx, cancel := s.writeCtx()
 	defer cancel()
 	path := s.writePath(w.At)
 	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
@@ -1705,6 +1723,11 @@ func (s *LogdStore) Close() error {
 
 func (s *LogdStore) reqCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(s.ctx, sessionBudget)
+}
+
+// writeCtx is reqCtx for a write — see writeBudget for why the two differ.
+func (s *LogdStore) writeCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(s.ctx, writeBudget)
 }
 
 // establish opens a watch, bounding the ATTEMPT without bounding the watch.
