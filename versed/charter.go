@@ -28,10 +28,8 @@ import (
 //	rules: [ … ]
 //	strata: [ … ]
 //	children:
-//	  verse-dev:                   # nothing is installed HERE, so no `writes`
-//	    rules: []
-//	    strata: []
-//	    children:
+//	  verse-dev:                   # a PLACE: nothing is installed here, so it carries
+//	    children:                  # nothing a charter would — only what is under it
 //	      drift:
 //	        writes: verse-dev.drift.*
 //	        reads: [git]
@@ -39,8 +37,9 @@ import (
 //	        strata: [ … ]
 //
 // A NODE IS A PLACE, not a package: `verse-dev` above holds no charter of its own and is there
-// because two charters live under it. That is what makes the tree navigable — `verse charter
-// verse-dev` is a real question with a real answer, and so is every prefix of an address.
+// because two charters live under it. That is what makes the tree navigable — `verse c
+// verse-dev` is a real question with a real answer, and so is every prefix of an address. What
+// it answers WITH is its children alone, since every other key here is a fact about a charter.
 
 // charterTree builds the charter at an address: what stands there, and what stands under it.
 //
@@ -159,15 +158,32 @@ func (n *charterNode) node() *ir.Node {
 		fields = append(fields, ir.FromString(key))
 		values = append(values, v)
 	}
-	// `writes` and `reads` say what a charter INSTALLED here may do, so they appear only where
-	// one is. `rules` and `strata` appear at every node, empty included: a reader who learns
-	// the shape at one level has learned it at all of them, and an address that holds nothing of
-	// its own says so rather than leaving the reader to infer it from two absent keys.
-	if n.here {
-		add("writes", ir.FromString(n.writes))
-		if n.reads != nil {
-			add("reads", strNodes(n.reads))
+	// EVERY KEY HERE IS A FACT ABOUT A CHARTER, so a node with no charter carries none of them.
+	// A place — `verse-dev`, which exists because `verse-dev.drift` is under it — answers with
+	// its `children` and nothing else.
+	//
+	// This used to add `rules: []` and `strata: []` at every node, empty included, on the
+	// argument that a reader who learns the shape at one level has learned it at all of them.
+	// What that reader learned was false: `rules: []` at a place reads as a charter with no
+	// rules, which is a state a package really can be in (its levels installed and its rules
+	// refused), and the only thing telling the two apart was the ABSENCE of `writes`. A fact
+	// distinguished from its opposite by a missing key is not a shape worth being uniform
+	// about.
+	if !n.here {
+		if len(n.kidOrder) > 0 {
+			sort.Strings(n.kidOrder)
+			var kf, kv []*ir.Node
+			for _, seg := range n.kidOrder {
+				kf = append(kf, ir.FromString(seg))
+				kv = append(kv, n.kids[seg].node())
+			}
+			add("children", &ir.Node{Type: ir.ObjectType, Fields: kf, Values: kv})
 		}
+		return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
+	}
+	add("writes", ir.FromString(n.writes))
+	if n.reads != nil {
+		add("reads", strNodes(n.reads))
 	}
 	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))

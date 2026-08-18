@@ -524,8 +524,26 @@ func TestAPackageAtAVerbLikeAddressNeedsNoEscape(t *testing.T) {
 // key of the address above it.
 func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	serve(t)
-	// A rule whose subject is inside the two-segment address, since a package writes only there.
+	// A charter AT `shadow` too: a place holds no keys of its own, so `shadow -- rules` has
+	// something to reach only when a charter is installed there.
 	g.Addr = testAddr
+	above, err := codec.ParseNode([]byte(`{
+		name: above,
+		condition: {subject: {system: shadow, kind: x, id: head}},
+		action: {patch: {saw: "yes"}},
+	}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, err := httpPostNodeTo("/charter", url.Values{"at": []string{"shadow"}}, above); err != nil {
+		t.Fatal(err)
+	} else {
+		resp.Body.Close()
+		if resp.StatusCode != 201 {
+			t.Fatalf("installing at `shadow`: %s", resp.Status)
+		}
+	}
+	// A rule whose subject is inside the two-segment address, since a package writes only there.
 	node, err := codec.ParseNode([]byte(`{
 		name: note,
 		condition: {subject: {system: shadow, kind: rules, id: head}},
@@ -555,8 +573,11 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("charter shadow -- rules: %v", err)
 	}
-	if strings.Contains(out, "writes:") {
-		t.Errorf("`--` answered the package rather than the key: %s", out)
+	if strings.Contains(out, "shadowed") {
+		t.Errorf("`--` answered the package at shadow.rules rather than shadow's own key: %s", out)
+	}
+	if !strings.Contains(out, "above") {
+		t.Errorf("`--` did not answer shadow's rules: %s", out)
 	}
 }
 

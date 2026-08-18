@@ -111,8 +111,11 @@ verse
                                              address under it. Bare, that is all of it —
                                              baseline at the root, each package under the
                                              address it writes in (`c drift`,
-                                             `c verse-dev drift`). Every node answers
-                                             the same shape, `children:` and all
+                                             `c verse-dev drift`). A PLACE — an address that
+                                             exists because charters are under it — answers
+                                             with `children:` alone: every other key is a
+                                             fact about a charter, and `rules: []` where
+                                             there is none reads as one with no rules
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead

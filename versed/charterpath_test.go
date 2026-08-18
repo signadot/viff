@@ -80,6 +80,16 @@ func TestAnAddressEndingInAKeyIsSettledByAt(t *testing.T) {
 	}`); code != 201 {
 		t.Fatalf("installing verse-dev.rules = %d: %s", code, msg)
 	}
+	// A charter AT `verse-dev` as well, because that is what gives the address above a `rules`
+	// KEY to be shadowed: a place holds no keys of its own, so there would be nothing for `--`
+	// to reach and nothing to disambiguate.
+	if code, msg := installAt(t, url, "verse-dev", `{
+		name: above,
+		condition: {subject: {system: verse-dev, kind: x}},
+		action: {patch: {seen: true}},
+	}`); code != 201 {
+		t.Fatalf("installing verse-dev = %d: %s", code, msg)
+	}
 	// Greedy: the package wins, because it is a longer place than `verse-dev`.
 	if at, rest := srv.splitCharterPath([]string{"verse-dev", "rules"}); at != "verse-dev.rules" || len(rest) != 0 {
 		t.Errorf("split = (%q, %v), want the package that is installed there", at, rest)
@@ -100,6 +110,9 @@ func TestAnAddressEndingInAKeyIsSettledByAt(t *testing.T) {
 	}
 	if strings.Contains(string(got), "shadowed") {
 		t.Errorf("at=verse-dev&path=rules answered the PACKAGE at verse-dev.rules:\n%s", got)
+	}
+	if !strings.Contains(string(got), "above") {
+		t.Errorf("at=verse-dev&path=rules did not answer verse-dev's own rules:\n%s", got)
 	}
 }
 
@@ -281,5 +294,40 @@ func TestRemovingAtAnAbsentAddressSaysSo(t *testing.T) {
 	}
 	if !strings.Contains(body, "no charter is installed at nosuchpkg") {
 		t.Errorf("the refusal is about the wrong thing: %s", body)
+	}
+}
+
+// A PLACE ANSWERS WITH ITS CHILDREN AND NOTHING ELSE. `verse-dev` exists because
+// `verse-dev.drift` is under it, and every other key in the tree is a fact about a CHARTER —
+// so a node with no charter carries none of them.
+//
+// It used to add `rules: []` and `strata: []` at every node, on the argument that one shape
+// everywhere is easier to read. What a reader learned there was false: `rules: []` at a place
+// reads as a charter with no rules, which is a state a package really can be in — its levels
+// installed and its rules refused — and the only thing telling the two apart was the ABSENCE
+// of `writes`.
+func TestAPlaceAnswersWithItsChildrenAlone(t *testing.T) {
+	_, url := pathFixture(t)
+	code, body := charterPath(t, url, "verse-dev")
+	if code != http.StatusOK {
+		t.Fatalf("verse-dev answered %d: %s", code, body)
+	}
+	if !strings.Contains(body, "children:") || !strings.Contains(body, "drift") {
+		t.Fatalf("a place did not answer with what is under it:\n%s", body)
+	}
+	for _, k := range []string{"rules:", "strata:", "writes:"} {
+		if strings.HasPrefix(strings.TrimSpace(body), k) {
+			t.Errorf("a place claims %s, which is a fact about a charter:\n%s", k, body)
+		}
+	}
+	// …while the charter under it carries all of them.
+	code, body = charterPath(t, url, "verse-dev.drift")
+	if code != http.StatusOK {
+		t.Fatalf("verse-dev.drift answered %d: %s", code, body)
+	}
+	for _, k := range []string{"writes:", "rules:", "strata:"} {
+		if !strings.Contains(body, k) {
+			t.Errorf("a charter does not carry %s:\n%s", k, body)
+		}
 	}
 }
