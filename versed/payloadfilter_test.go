@@ -303,12 +303,17 @@ func sameRefs(got []string, want ...string) bool {
 // The refusal has to name what to ask for instead, because the caller wanted history and now has
 // to choose: take what is retained, or stream from now.
 func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
-	ts := httptest.NewServer(testServer(t).Handler())
+	srv := testServer(t)
+	// A STORE THAT CANNOT REPLAY, said outright. This used to be reached by asking for
+	// `since=-1` — which logd refused as a cursor — and that stopped being a way to ask the
+	// question when a negative became a RELATIVE one (`-1` is the last commit now). The
+	// premise was never the number: it is a store whose retained window no longer covers the
+	// cursor, which is what compaction leaves behind and what no test store can be made to do.
+	srv.Store = cannotReplay{srv.Store}
+	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// Far beyond anything this store has retained — the same shape as a cursor left behind by
-	// compaction, which is how it is reached in the world.
-	resp, err := http.Get(ts.URL + "/watch?" + url.Values{"since": {"-1"}}.Encode())
+	resp, err := http.Get(ts.URL + "/watch?" + url.Values{"since": {"1"}}.Encode())
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -424,3 +429,8 @@ func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
 		// Quiet, which is the answer.
 	}
 }
+
+// cannotReplay is a store whose history is gone: every other question it answers as itself.
+type cannotReplay struct{ entity.Store }
+
+func (cannotReplay) Since(int64) ([]entity.Commit, bool) { return nil, false }

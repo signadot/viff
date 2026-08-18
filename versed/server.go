@@ -1254,16 +1254,10 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to
 	// "drop --since" they never passed — is answering a question nobody asked. `since=0` still
 	// means from the beginning, for a caller that means it.
-	since, catchUp := int64(-1), false
-	if raw := q.Get("since"); raw != "" {
-		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			codec.HTTPError(w, r, http.StatusBadRequest, fmt.Sprintf(
-				"since=%q is not a revision: a cursor is a number, and an absent one streams "+
-					"from now", raw))
-			return
-		}
-		since, catchUp = n, true
+	since, catchUp, err := watchCursor(q.Get("since"), store.Head)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
+		return
 	}
 	match := sel.matchEvent
 
@@ -2504,6 +2498,48 @@ func (s *Server) engForRequest(r *http.Request) (*trigger.Engine, error) {
 		return pe.eng, nil
 	}
 	return nil, nil
+}
+
+// watchCursor reads the `since` parameter: the revision to replay from, whether to replay at
+// all, and why not if it cannot be read.
+//
+// A NEGATIVE CURSOR COUNTS BACK FROM NOW: `since=-20` is the last twenty commits, whatever the
+// store's head happens to be. A revision number is the only cursor that can be exact, and it is
+// also the one nobody has to hand — "what has been happening" is the question people arrive
+// with, and answering it meant reading `storeRev` off /status and subtracting, which is a round
+// trip and a race.
+//
+// Resolved HERE rather than by the caller for that second reason: the head it subtracts from is
+// the one the watch is about to start at, so nothing slips into the gap between asking and
+// asking again. `head` is a func for the same reason — it is read at the moment the cursor is
+// needed rather than earlier.
+//
+// N REVISIONS BACK, NOT N EVENTS. Revisions are monotonic but SPARSE — one commit can carry
+// many entity changes, and a watch narrowed to a path sees only the changes under it — so
+// `-20` starts twenty revisions back and delivers however many events live in that span,
+// which is usually fewer and never more. A cursor is a bookmark, not a count, and this does
+// not make it one; it makes the bookmark relative. Below the beginning is the beginning,
+// which is what `since=0` already means.
+//
+// ABSENT MEANS FROM NOW, and it is not the same as `since=0`. A watch with no cursor is
+// somebody saying "show me what happens", and answering that with a replay of the whole
+// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to "drop
+// --since" they never passed — is answering a question nobody asked.
+func watchCursor(raw string, head func() int64) (since int64, catchUp bool, err error) {
+	if raw == "" {
+		return -1, false, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("since=%q is not a revision: a cursor is a number, and an "+
+			"absent one streams from now", raw)
+	}
+	if n < 0 {
+		if n = head() + n; n < 0 {
+			n = 0
+		}
+	}
+	return n, true, nil
 }
 
 // status is a one-shot summary of the running verse: the store's revision and the

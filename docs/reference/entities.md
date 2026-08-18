@@ -317,6 +317,7 @@ write, the other what you read.
 verse watch                                        # from now on
 verse watch --if '{stage: open}' demo              # the same selectors as a read
 verse watch --since 42                             # replay from a revision you already have
+verse watch --since -50                            # …or from 50 revisions back, whatever the head is
 verse watch --since 0                              # replay everything the store still holds
 ```
 
@@ -339,7 +340,9 @@ the next.
 - `to` is the entity's whole state as of that commit, not the delta that was written — so a
   reader matching on two fields still matches when only one of them was written.
 - `rev` is an opaque cursor. Revisions are monotonic but **sparse**, so treat one as a
-  bookmark to hand back to `--since`, never as a count.
+  bookmark to hand back to `--since`, never as a count. `--since -50` is relative to the head
+  rather than an exception to that: it names a revision fifty back, and how many events live in
+  that span is a property of the store, not of the number.
 
 **A watch with a cursor replays**: `--since <rev>` delivers what the store still holds from
 that revision before it streams anything new, so a reader that was away can catch up rather

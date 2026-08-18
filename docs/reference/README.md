@@ -47,6 +47,11 @@ verse
 
   watch  [--since <rev>] [<path>]            stream store changes (cursored) — the same path
                                              a read takes, naming the same entities
+         --since -<n>                        …from <n> REVISIONS back, counted against the head
+                                             the watch starts at. Revisions are sparse, so the
+                                             span holds however many events it holds — a cursor
+                                             stays a bookmark, not a count. Absent streams from
+                                             now; `--since 0` is the whole retained log
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
