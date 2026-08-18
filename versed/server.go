@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -913,7 +914,7 @@ func (s *Server) Start(ctx context.Context) {
 	// AFTER the charter, which is what it navigates back into to find what a ballot is
 	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
 	// rather than starting a second run beside work that outlived us.
-	phase("resumed motions", func() { s.Eng.ResumeMotions() })
+	phase("resumed motions", s.resumeMotions) // baseline AND every package's own engine
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
@@ -2566,7 +2567,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Strata:   strataNames(s.Eng.Strata()),
 		Runners:  runnerRefs(s.scopedStore(r)),
 		Sources:  sourceRefs(s.scopedStore(r)),
-		Charter:  s.charterAddrs(),
+		Charter:  s.charterTop(),
 		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
 	}
@@ -2582,19 +2583,96 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// charterAddrs is the top level of the charter tree: `baseline` when the unpackaged charter
-// holds anything, then one entry per package address.
+// statusCharterDepth is how far into the charter tree /status goes. Two is the whole of what
+// this tree can be today — ParseAt refuses an address deeper than the dimensions a Match has
+// (trigger/confine.go) — so the cut is a promise about the shape of the LINE rather than a
+// restriction anybody meets: a status stays a status when somebody installs charters somewhere
+// deeper than it was written for.
+const statusCharterDepth = 2
+
+// charterTop is the charter tree cut at statusCharterDepth: where charters are installed,
+// nested as their addresses nest.
 //
-// Names rather than counts, for the reason the other three installed-lines give: status is an
-// orientation and `verse charter` is what answers what a charter IS. What it adds over
-// `triggers` is the packaged half, which that count cannot see — a package runs in an engine
-// of its own, so a verse running ten packaged rules reported none.
-func (s *Server) charterAddrs() []string {
-	var out []string
+//	baseline: {}          # the unpackaged charter holds something
+//	verse-dev:            # a PLACE — two charters live under it
+//	  drift: {}
+//	  merge: {}
+//
+// Places rather than the flat addresses this first answered with, because addresses share
+// prefixes: `verse-dev.drift` and `verse-dev.merge` are two charters in one place, and a flat
+// list said `verse-dev` twice and the shape not at all.
+//
+// A node below the cut answers with the number of charters under it rather than with them.
+// What this deliberately does NOT say is whether a place is also a charter in its own right —
+// `verse charter <address> --depth 0` is that question, and answering it here would cost a
+// second shape on a line that exists to be glanced at.
+func (s *Server) charterTop() *ir.Node {
+	root := &addrTrie{}
 	if len(s.Eng.Triggers()) > 0 || len(s.Eng.Strata()) > 0 {
-		out = append(out, "baseline")
+		// baseline is a place like the others: it is the charter with no address, and the
+		// word is what the CLI and the tree already call it.
+		root.add([]string{"baseline"})
 	}
-	return append(out, s.packagesSeen()...)
+	for _, at := range s.packagesSeen() {
+		root.add(strings.Split(at, "."))
+	}
+	if len(root.order) == 0 {
+		return nil
+	}
+	return root.node(statusCharterDepth)
+}
+
+// addrTrie is the places a set of addresses names, in the order they were added.
+type addrTrie struct {
+	kids  map[string]*addrTrie
+	order []string
+}
+
+func (t *addrTrie) add(segs []string) {
+	if len(segs) == 0 {
+		return
+	}
+	if t.kids == nil {
+		t.kids = map[string]*addrTrie{}
+	}
+	c, ok := t.kids[segs[0]]
+	if !ok {
+		c = &addrTrie{}
+		t.kids[segs[0]] = c
+		t.order = append(t.order, segs[0])
+	}
+	c.add(segs[1:])
+}
+
+// leaves is how many charters stand at or under this node — what a node below the cut says
+// instead of its children.
+func (t *addrTrie) leaves() int {
+	if len(t.order) == 0 {
+		return 1
+	}
+	n := 0
+	for _, k := range t.order {
+		n += t.kids[k].leaves()
+	}
+	return n
+}
+
+func (t *addrTrie) node(depth int) *ir.Node {
+	var fields, values []*ir.Node
+	sort.Strings(t.order) // as the charter tree sorts its children: one order, whoever asks
+	for _, k := range t.order {
+		c := t.kids[k]
+		fields = append(fields, ir.FromString(k))
+		switch {
+		case len(c.order) == 0:
+			values = append(values, &ir.Node{Type: ir.ObjectType})
+		case depth <= 1:
+			values = append(values, ir.FromInt(int64(c.leaves())))
+		default:
+			values = append(values, c.node(depth-1))
+		}
+	}
+	return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
 }
 
 // strataNames is the installed levels, low to high — Strata() already sorts, and the order is

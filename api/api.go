@@ -418,15 +418,27 @@ type Status struct {
 	Strata  []string `tony:"field=strata,omitzero"`
 	Runners []string `tony:"field=runners,omitzero"`
 	Sources []string `tony:"field=sources,omitzero"`
-	// Charter is the top level of the charter tree: the addresses something is installed at,
-	// `baseline` first when the unpackaged charter has anything, then a package per address.
+	// Charter is the charter TREE, cut at a depth: the places something is installed, nested
+	// the way their addresses nest, with `baseline` alongside them for the unpackaged one.
+	//
+	//	charter:
+	//	  baseline: {}
+	//	  verse-dev:
+	//	    drift: {}
+	//	    merge: {}
 	//
 	// It is here because `triggers` above counts BASELINE's rules and nothing else — a package
 	// runs in an engine of its own — so a verse whose whole program is packaged reported
 	// `triggers: 0` and looked like a verse with no charter at all. That is the same shape the
 	// three lines above exist for: what somebody installed, on the reading where its absence is
 	// invisible.
-	Charter []string `tony:"field=charter,omitzero"`
+	//
+	// A tree rather than the flat addresses this first printed, because addresses SHARE
+	// PREFIXES and a status line is read at a glance: `verse-dev.drift` and `verse-dev.merge`
+	// are two charters in one place, and a list said `verse-dev` twice and the shape not at
+	// all. Below the cut a place answers with the NUMBER of charters under it, since a status
+	// is an orientation — `verse charter <address>` is the question about one.
+	Charter *ir.Node `tony:"field=charter,omitzero"`
 
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`
 	Docd   *Docd         `tony:"field=docd,omitzero"`

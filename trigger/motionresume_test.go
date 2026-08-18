@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -279,5 +280,136 @@ func TestResumeLeavesACommittedMotionAlone(t *testing.T) {
 	got := statusOf(t, store, ref)
 	if got["status"] != "closed" || got["outcome"] != "claude" {
 		t.Fatalf("a committed motion was disturbed: %+v", got)
+	}
+}
+
+// A PACKAGE'S MOTION IS NOT BASELINE'S TO SETTLE, and this is the test that was missing.
+//
+// Every resume test above runs one engine holding its own rule, which is the case that always
+// worked. A verse runs several — baseline, and one per installed package — and all of them
+// read the same motion slice out of the same store. Baseline swept a package's motions, looked
+// up the rule in its own charter, did not find it, and settled a live gate as `the rule that
+// opened it is no longer in the charter`. On staging that took a merge gate off the docket
+// while `train-run` was installed in verse-dev.merge and running.
+func TestBaselineDoesNotSettleAPackagesMotion(t *testing.T) {
+	store := entitytest.Store(t)
+	pkg := New(store, denyResolver{})
+	pkg.Confine(SubtreeAt("verse-dev", "merge"))
+	if err := pkg.AddTrigger(Trigger{
+		Name:      "train-run",
+		Condition: Condition{Subject: Match{"system": "verse-dev", "kind": "merge"}},
+		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	base := New(store, denyResolver{})
+
+	// Stamped, as a motion opened by that engine now is.
+	mine := channel(t, store, "p1", entity.Obj{
+		"axis": "whether", "status": "open", "subject": "verse-dev:merge:1",
+		"trigger": "train-run", "at": "verse-dev.merge",
+	})
+	// And unstamped, as every motion written before the charter was recorded is — the
+	// staging one. Baseline can only tell by asking the engines it runs.
+	older := channel(t, store, "p2", entity.Obj{
+		"axis": "whether", "status": "open", "subject": "verse-dev:merge:2",
+		"trigger": "train-run",
+	})
+	base.KnowsElsewhere(pkg.Knows)
+
+	base.ResumeMotions()
+	for _, ref := range []entity.Ref{mine, older} {
+		if got := statusOf(t, store, ref); got["status"] != "open" {
+			t.Fatalf("baseline settled %s, a rule it does not hold: %+v", ref, got)
+		}
+	}
+}
+
+// …and with nobody else running, the old reading stands: a rule that is gone is gone, and the
+// motion is settled rather than left in front of a room that cannot act on it.
+func TestBaselineAloneStillSettlesAGoneRule(t *testing.T) {
+	store := entitytest.Store(t)
+	base := New(store, denyResolver{})
+	ref := channel(t, store, "g1", entity.Obj{
+		"axis": "whether", "status": "open", "subject": "demo:pr:1", "trigger": "removed",
+	})
+	base.ResumeMotions()
+	if got := statusOf(t, store, ref); got["status"] != motionOrphaned {
+		t.Fatalf("status = %v, want orphaned: %+v", got["status"], got)
+	}
+}
+
+// A motion says which charter opened it, so a docket entry names a rule rather than half of
+// one: `trigger` is unique inside a charter and not across them.
+func TestAMotionRecordsItsCharter(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, denyResolver{})
+	eng.Confine(SubtreeAt("verse-dev", "merge"))
+	m := &motion{
+		channel: entity.VerseRef(motionSystem, motionChannelKind, "c1"),
+		axis:    "whether", subject: "verse-dev:merge:1", trigger: "train-run",
+		options: []motionOption{{id: "proceed", choice: "approve", need: 1}, {id: "deny"}},
+	}
+	eng.openChannel(m)
+	if got := statusOf(t, store, m.channel); got["at"] != "verse-dev.merge" {
+		t.Fatalf("at = %v, want the charter that opened it: %+v", got["at"], got)
+	}
+}
+
+// captureResolver records the questions a firing asks, so a test can read what was published
+// about them rather than only whether they were answered.
+type captureResolver struct {
+	mu   sync.Mutex
+	seen []task.GateQuestion
+}
+
+func (c *captureResolver) Resolve(_ context.Context, q task.GateQuestion, _ task.ToolUse) (task.Resolution, error) {
+	c.mu.Lock()
+	c.seen = append(c.seen, q)
+	c.mu.Unlock()
+	return task.Resolution{Proceed: false, By: "deny"}, nil
+}
+
+// A FIRING'S GATE NAMES ITS CHARTER, for the reason a motion does: `gate` and `origin` are
+// names, and a name is unique inside a charter rather than across them, so a docket entry
+// saying `merge-to-main` on `train-run` left a reader to work out which package that was.
+func TestAFiringGateNamesItsCharter(t *testing.T) {
+	store := entitytest.Store(t)
+	res := &captureResolver{}
+	eng := New(store, res)
+	eng.Confine(SubtreeAt("verse-dev", "merge"))
+	if err := eng.AddTrigger(Trigger{
+		Name:      "train-run",
+		Condition: Condition{Subject: Match{"system": "verse-dev", "kind": "merge"}},
+		Gates:     []Gate{{Name: "merge-to-main", Mode: "ask"}},
+		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, entity.RefAt("verse-dev", "merge", "1"), entity.Obj{"stage": "cut"}.Payload())
+
+	deadline := time.After(3 * time.Second)
+	for {
+		res.mu.Lock()
+		n := len(res.seen)
+		var q task.GateQuestion
+		if n > 0 {
+			q = res.seen[0]
+		}
+		res.mu.Unlock()
+		if n > 0 {
+			if q.At != "verse-dev.merge" {
+				t.Fatalf("gate question At = %q, want the charter that asked: %+v", q.At, q)
+			}
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the gate never asked")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }

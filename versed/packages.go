@@ -65,6 +65,52 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	return eng, nil
 }
 
+// packageEngines is every engine running a package's charter — not a scope's.
+//
+// The distinction is the key prefix: a package engine is keyed by its ADDRESS (`at:<stamp>`),
+// a federation scope by its scope name. They are different planes and only one of them is
+// visible from baseline, which is what restorePackages exists for.
+func (s *Server) packageEngines() []*trigger.Engine {
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	out := make([]*trigger.Engine, 0, len(s.scopeEngs))
+	for key, pe := range s.scopeEngs {
+		if strings.HasPrefix(key, "at:") {
+			out = append(out, pe.eng)
+		}
+	}
+	return out
+}
+
+// resumeMotions gives every open motion its awaiter back — across ALL the engines this verse
+// runs, which is the part that was missing.
+//
+// A motion is opened by a rule, a rule lives in a charter, and a charter runs in an engine of
+// its own. Only baseline's engine was asked to resume, so a package's motions were swept by an
+// engine that could not see the rule that opened them and settled as `the rule that opened it
+// is no longer in the charter`. On staging that took a live merge gate off the docket while
+// its rule was installed and running (`train-run`, in verse-dev.merge).
+//
+// Two halves, and both are needed. Each package engine resumes what its own charter opened,
+// which is what makes the answer right for motions written from here on (they carry `at`). And
+// baseline — which sweeps everything older than that field — is told how to ask the others
+// before it settles anything, because "not in my charter" was never the question.
+func (s *Server) resumeMotions() {
+	pkgs := s.packageEngines()
+	s.Eng.KnowsElsewhere(func(name string) bool {
+		for _, e := range pkgs {
+			if e.Knows(name) {
+				return true
+			}
+		}
+		return false
+	})
+	s.Eng.ResumeMotions()
+	for _, e := range pkgs {
+		e.ResumeMotions()
+	}
+}
+
 // restorePackages installs each package's durable charter back into an engine of its own.
 //
 // A package is VISIBLE where a scope is not, and that is the whole difference in lifecycle: a

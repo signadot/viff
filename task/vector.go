@@ -58,6 +58,12 @@ type GateQuestion struct {
 	// declared and answered by whatever is currently watching. The instance is derivable from
 	// the two (binding, origin) and would be a second spelling of a pair already here.
 	BoundTo string
+	// At is the ADDRESS of the charter whose rule is asking — `verse-dev.merge` — empty for
+	// baseline and for a question a task raised (a task knows what it is doing, not which
+	// charter spawned it). Gate above names the rule, and a rule's name is unique within a
+	// charter rather than across them, so without this a docket entry names a `review` and
+	// leaves the reader to work out which package's.
+	At string
 	// Scope is the federation the asker acts in — "" for baseline. A question is published as
 	// a record, and a record goes in a store; without this, one registry serving baseline and
 	// every scoped engine has nothing to route by and publishes them all to baseline. The

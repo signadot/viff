@@ -59,6 +59,32 @@ func (e *Engine) Confine(at Subtree) { e.confine = at }
 // Confinement is the subtree this engine may write in, zero when it may write anywhere.
 func (e *Engine) Confinement() Subtree { return e.confine }
 
+// At is the ADDRESS of the charter this engine runs — `verse-dev.merge` — and empty for
+// baseline. It is the confinement said as a place rather than as a permission, and it is what
+// a record has to carry for anything to know afterwards WHOSE rule wrote it.
+//
+// A rule's name is unique within a charter and not across them: two packages may each hold a
+// `review`, which is most of what packages are for. So a name alone does not identify a rule,
+// and everything that stored one — a motion's `trigger`, a gate's `origin` — stored half an
+// identity. What that cost is in ResumeMotions.
+func (e *Engine) At() string { return e.confine.KPath() }
+
+// KnowsElsewhere tells this engine how to ask whether a rule by some name is installed in
+// ANOTHER engine of the same verse — a package's charter, in practice.
+//
+// It exists for one question, asked once at startup: a motion left open by a previous verse
+// that does not say which charter opened it (`at` postdates it, and baseline never writes one).
+// Baseline is the engine that sweeps those, and "this rule is not in my charter" is the wrong
+// test — a package's rule is in nobody's charter as far as baseline can see, so baseline
+// settled live package gates as though their rules had been deleted. The rule was there; the
+// engine holding it was not this one.
+//
+// nil is "there is no other engine", which is what a lone baseline has and what most tests
+// have, and it restores exactly the old reading.
+func (e *Engine) KnowsElsewhere(fn func(name string) bool) { e.elsewhere = fn }
+
+func (e *Engine) knownElsewhere(name string) bool { return e.elsewhere != nil && e.elsewhere(name) }
+
 // confined reports whether a subtree is set at all.
 func (s Subtree) confined() bool { return s != Subtree{} }
 

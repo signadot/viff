@@ -168,8 +168,9 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  charter: .[array(string)]
+  charter: .[tony-base:ir]
   docd: .[nullable(verse-docd)]
   fired: .[int]
   flows: .[int]

@@ -48,6 +48,30 @@ const motionOrphaned = "orphaned"
 //     firing uses. Both paths are idempotent by construction: the channel id is derived from
 //     (subject, spec), the commit is terminal-once, and the spawn id is deterministic — so a
 //     rule that DOES re-fire alongside this resolves one motion and starts one task.
+//
+// ownsMotion reports whether this engine is the one to settle this motion, and whether the
+// motion SAYS SO — which are two different facts and both are needed.
+//
+// A motion records the charter its rule was in (`at`, written by openChannel). One verse runs
+// several engines — baseline, and one per package — and every one of them reads the same
+// motion slice out of the same store, so without this each would look up every motion's rule
+// in its own charter and find most of them missing. Baseline did exactly that: it swept a
+// package's motions, could not find `train-run` among its own rules, and settled a live gate
+// as `the rule that opened it is no longer in the charter`. The rule was there; baseline was
+// not the engine holding it.
+//
+// `said` is false for a motion written before motions carried `at`, and for baseline's own —
+// baseline's address is the empty one, so there is nothing to write. Either way it is
+// baseline's to look at, being the engine that always exists. What it may not do is settle one
+// on its own reading: "not in MY charter" is not "not in ANY charter", and for an unstamped
+// motion there is no way left to tell which it was. That is what knownElsewhere answers.
+func (e *Engine) ownsMotion(p entity.Payload) (mine, said bool) {
+	if entity.Get(p, "at") == nil {
+		return e.At() == "", false
+	}
+	return entity.Str(p, "at") == e.At(), true
+}
+
 func (e *Engine) ResumeMotions() int {
 	resumed := 0
 	// The motions slice. At the root this was a flat 10.001s on staging — the session budget,
@@ -59,8 +83,12 @@ func (e *Engine) ResumeMotions() int {
 		if entity.Str(p, "outcome") != "" {
 			continue // closed: terminal-once, and nothing is waiting on a decided motion
 		}
+		mine, said := e.ownsMotion(p)
+		if !mine {
+			continue // another engine's charter opened it, and that engine resumes it
+		}
 		if entity.Str(p, "axis") != "select" {
-			e.reviewWhether(ent.Ref, p)
+			e.reviewWhether(ent.Ref, p, said)
 			continue
 		}
 		chain := entity.Str(p, "chain")
@@ -76,6 +104,13 @@ func (e *Engine) ResumeMotions() int {
 			// installs the moment the stratum does. Nothing can be navigated through it in the
 			// meantime, so the motion is left standing rather than resumed or settled.
 			if e.knowsTrigger(mirror.TriggerOf(chain)) {
+				continue
+			}
+			if !said && e.knownElsewhere(mirror.TriggerOf(chain)) {
+				// It does not say which charter it came from and the rule is in one of the
+				// others, so it is not gone — it was never ours to settle (ownsMotion).
+				e.tracef("motion %s is another charter's rule %q: left standing",
+					ent.Ref.ID(), mirror.TriggerOf(chain))
 				continue
 			}
 			e.orphanMotion(ent.Ref, "the rule that opened it is no longer in the charter")
@@ -130,7 +165,7 @@ func (e *Engine) ResumeMotions() int {
 // Only the whether axis is asked this. A who-motion's subject is EXPECTED to have moved on —
 // the action wrote its latch before opening the selection — so the same question there would
 // orphan every one of them.
-func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
+func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload, said bool) {
 	name := entity.Str(p, "trigger")
 	if name == "" {
 		return // it does not say whose it is; leave it standing rather than guess
@@ -140,6 +175,10 @@ func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload) {
 		// A rule HELD for a stratum that has not arrived installs the moment the stratum does,
 		// so it is not a rule that is gone.
 		if !e.knowsTrigger(name) {
+			if !said && e.knownElsewhere(name) { // another charter's — see ownsMotion
+				e.tracef("motion %s is another charter's rule %q: left standing", ref.ID(), name)
+				return
+			}
 			e.orphanMotion(ref, "the rule that opened it is no longer in the charter")
 		}
 		return
@@ -229,6 +268,11 @@ func (e *Engine) orphanMotion(ref entity.Ref, why string) {
 		return p.Payload()
 	})
 }
+
+// Knows reports whether this engine's charter carries a rule by this name. It is knowsTrigger
+// under a name another package can say, for the one caller that has to ask an engine about a
+// rule it does not hold: versed, wiring KnowsElsewhere across the engines it runs.
+func (e *Engine) Knows(name string) bool { return e.knowsTrigger(name) }
 
 // knowsTrigger reports whether the charter still carries a rule by this name — installed, or
 // HELD for a stratum that has not arrived. A held rule installs the moment its stratum does,

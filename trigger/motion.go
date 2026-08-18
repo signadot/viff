@@ -265,6 +265,13 @@ func (e *Engine) openChannel(m *motion) {
 		if m.trigger != "" {
 			p["trigger"] = m.trigger
 		}
+		// WHICH CHARTER's rule that is. `trigger` is a name, and a name is unique inside a
+		// charter rather than across them, so a docket entry saying `train-run` names a rule
+		// only if you already know where to look. It is also what tells one engine's motions
+		// from another's when a restart comes to settle them (ResumeMotions).
+		if at := e.At(); at != "" {
+			p["at"] = at
+		}
 		if m.gate != "" {
 			p["gate"] = m.gate
 		}

@@ -71,8 +71,11 @@ type flowTask struct {
 type Engine struct {
 	store    entity.Store
 	resolver task.Resolver // answers trigger ASK/PARK gates
-	spawn    Spawner       // optional: how actions spawn tasks
-	triggers []Trigger
+	// elsewhere answers whether a rule name is installed in another engine of this verse.
+	// Set by whoever runs more than one (versed); see KnowsElsewhere.
+	elsewhere func(name string) bool
+	spawn     Spawner // optional: how actions spawn tasks
+	triggers  []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
 	// io.Writer that defaulted to io.Discard and that nothing ever wired up — which meant
@@ -700,6 +703,10 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// question is about this engine's subject, which outside this scope is an entity
 			// that does not exist.
 			Scope: e.scope,
+			// And which CHARTER's rule is asking. Origin above is the rule's NAME, which is
+			// unique in a charter and not across them, so a docket that printed it alone
+			// left the reader to guess which `review` this was.
+			At: e.At(),
 		}
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {

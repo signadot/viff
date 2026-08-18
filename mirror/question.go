@@ -76,6 +76,9 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 		"subject": q.Subject,
 		"spawns":  q.Spawns,
 		"reason":  q.Reason,
+		// The charter the asking rule is in. Absent for baseline and for a task's own gate,
+		// where there is no charter to name rather than an unknown one.
+		"at": q.At,
 		"tool":    p.Tool,
 		"task":    taskID,
 		// resolver is the BINDING that owns this question. Absent means UNBOUND — nobody was

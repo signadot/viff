@@ -1877,13 +1877,9 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["sources"] = ir.FromSlice(slice)
 	}
 
-	// Field: Charter
-	if len(s.Charter) > 0 {
-		slice := make([]*ir.Node, len(s.Charter))
-		for i, v := range s.Charter {
-			slice[i] = ir.FromString(string(v))
-		}
-		irMap["charter"] = ir.FromSlice(slice)
+	// Field: Charter (optional)
+	if s.Charter != nil {
+		irMap["charter"] = s.Charter
 	}
 
 	// Field: Runner (optional)
@@ -2043,21 +2039,10 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("%s: expected array, got %v", "field \"sources\"", fieldNodeUnwrapped.Type)
 			}
 		case "charter":
-			// Field: Charter
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					elem = v.String
-					slice[i] = string(elem)
-				}
-				s.Charter = slice
+			if gomap.GetUnmapComments(opts...) {
+				s.Charter = fieldNode
 			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"charter\"", fieldNodeUnwrapped.Type)
+				s.Charter = fieldNodeUnwrapped
 			}
 		case "runner":
 			// Field: Runner
