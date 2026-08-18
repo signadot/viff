@@ -104,17 +104,28 @@ change to `/charter`, in the same family as `imports:` → `reads:` and for the 
 charters under it needs it; removing one package does not. Unchanged in meaning, and the
 refusal it prints already names what is under the address.
 
-**`add -f <dir>`** walks a directory for charter files and installs what it finds. Each file
-says its own `at:` (or takes `--at`), so a tree of files is a tree of packages, and a program
-that spans four addresses is four files in a directory rather than one file with four `---`
-declarations — which is what a charter of any size wants to be.
+~~**`add -f <dir>`** walks a directory for charter files~~ — **dropped.** A charter FILE is
+already multi-package: `---` separates documents and an `at:` declaration opens each package, so
+a file encodes its own tree of addresses. A directory would add organisation and nothing else,
+and `for f in *.tony; do echo ---; cat $f; done | verse c -a -f -` is that organisation without
+a walk, a suffix filter, an ordering rule and a subdirectory question.
 
-**And it must be one step.** Today a multi-package FILE is already several requests: the CLI
-walks the groups and POSTs each. A refusal in the third leaves the first two installed, which is
-exactly the half-applied state the per-package guarantee was written to prevent ("a charter file
-is applied as one step, so a refusal anywhere puts back what stood before it"). A directory
-makes that failure ordinary rather than rare, so recursion is the change that has to fix it:
-**`POST /charter` accepts several packages and applies them all or none.**
+What is left when the directory goes is the part that was always the point, and it is a defect
+rather than a feature: **a multi-package file is not applied as one step today.**
+
+**And the message says otherwise, which is the sharp end.** The CLI walks the groups and POSTs
+each, so a two-package file whose second package is refused prints:
+
+    package one: installed 1 trigger(s)
+    charter -a: 400 … trigger "bad-rule": subject elsewhere:y is outside two:*
+    nothing was installed: a charter file is applied as one step, so a refusal anywhere puts
+    back what stood before it
+
+…with `one` installed. The guarantee is real per PACKAGE and the sentence claims it for the
+FILE. So: **`POST /charter` accepts a whole file — several packages — and applies them all or
+none**, and the grouping moves to the server with it, which is where the rest of the
+classification already lives ("a client posting a charter file does not have to know which of
+three things each document is").
 
 ### It is not a new mechanism, and the fallback is dropped
 
@@ -343,17 +354,20 @@ to remove, and a flag has nothing to collide with. Three things:
   path everywhere now, so the file is `-f` or stdin. A command whose argument changes meaning
   with a flag is what this grammar exists to remove.
 
-### 5. `-a -f <dir>`, applied as one step
+### 5. A file is one request, applied as one step
 
-The walk, then the atomic apply: one `charterTx` for the request, `at`/`eng` per step, `fresh`
-as a set. File order throughout — for installing as well as for reporting, since no edge exists
-to sort by (above).
+The grouping moves to the server, and one `charterTx` spans the request: `at`/`eng` per step,
+`fresh` as a set. File order throughout — for installing as well as for reporting, since no edge
+exists to sort by (above).
 
-Tests: a directory of two packages, one of which is refused → nothing installed, and no engine
-left standing at either address; a package reading another in the same directory installs
-regardless of file order; a rule that fired in the window is not undone, which is the limit
-stated rather than a bug; and the whole walk holds the lock from step 0 for its duration, so a
-second operator's install waits or is told to come back.
+No directory walk. A file already carries its packages, and the shell composes files better than
+a flag would.
+
+Tests: a two-package file, the second refused → nothing installed, and no engine left standing
+at either address; the same file whole → both installed and both engines running; a package
+reading another in the same file installs regardless of order; a rule that fired in the window
+is not undone, which is the limit stated rather than a bug; and the whole install holds the lock
+from step 0 for its duration, so a second operator's install waits or is told to come back.
 
 ## What this does not do
 
