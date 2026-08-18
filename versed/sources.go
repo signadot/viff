@@ -300,6 +300,13 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, rec)
 	}
+	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
+	// without this a store that could not be read renders as "nothing is installed" — and
+	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// operator acts on. Same guard /state has carried all along, for the same reason.
+	if unreadable(w, r, store) {
+		return
+	}
 	writeOut(w, r, http.StatusOK, out)
 }
 

@@ -1640,6 +1640,13 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, rec)
 	}
+	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
+	// without this a store that could not be read renders as "nothing is installed" — and
+	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// operator acts on. Same guard /state has carried all along, for the same reason.
+	if unreadable(w, r, s.scopedStore(r)) {
+		return
+	}
 	writeOut(w, r, http.StatusOK, out)
 }
 
@@ -2311,6 +2318,13 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 		}
 		rec["ref"] = ent.Ref.String()
 		out = append(out, rec)
+	}
+	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
+	// without this a store that could not be read renders as "nothing is installed" — and
+	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// operator acts on. Same guard /state has carried all along, for the same reason.
+	if unreadable(w, r, s.scopedStore(r)) {
+		return
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
