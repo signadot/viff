@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -82,6 +83,10 @@ type Server struct {
 	// (verse connect) lives in its own copy-on-write scope, isolated from baseline and
 	// from other scopes. Created lazily on the first scoped trigger, stopped when the
 	// scope is dropped (disconnect).
+	// restored reports that Start's phases have finished. /healthz answers with it, so a
+	// probe can tell STARTING from wedged — the two looked identical while nothing listened
+	// until Start returned.
+	restored  atomic.Bool
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
 	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
@@ -818,9 +823,32 @@ func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
 // immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
 // task:instance entities a previous run left running — since this is the monolith
 // (the task runtime restarts with the engine, so those tasks are gone).
+// StartServing is Start for a server that is about to serve: it takes the lifetime context
+// synchronously — scoped engines need it, and a request may arrive immediately — and runs the
+// restore behind it.
+//
+// It exists because `verse up` served nothing until Start returned. The restore is several
+// store-shaped phases and there is no reason the API should be absent for them: /healthz
+// answers `started: false` with a 503 until they finish, so readiness gates exactly as it did
+// while an operator (and the probe) gets an answer instead of a refused connection.
+func (s *Server) StartServing(ctx context.Context) {
+	s.ctx = ctx
+	go s.Start(ctx)
+}
+
 func (s *Server) Start(ctx context.Context) {
-	s.ctx = ctx        // scoped engines (created later, per federation) start under this
-	s.reconcileTasks() // resume remote-hosted tasks; orphan local-dead ones
+	s.ctx = ctx // scoped engines (created later, per federation) start under this
+	// WHERE THE TIME GOES, said out loud. Startup is several store-shaped phases in a row and
+	// nothing between them said which was slow: staging spent 93 seconds here with the store
+	// answering fine, and the only way to attribute it was to guess. A line per phase costs
+	// one log write each and answers it.
+	phase := func(name string, fn func()) {
+		t0 := time.Now()
+		fn()
+		fmt.Fprintf(os.Stderr, "verse up: %s in %s\n", name, time.Since(t0).Round(time.Millisecond))
+	}
+	defer func() { s.restored.Store(true) }()
+	phase("reconciled tasks", s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and
@@ -852,17 +880,19 @@ func (s *Server) Start(ctx context.Context) {
 	// stratum is held rather than installed — correct, and it would then only start firing when
 	// something happened to touch the stratum again. Loading strata first makes the restart what
 	// it should be, an install over a verse that has moved on.
-	if err := s.Eng.LoadStrata(); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: strata: %v\n", err)
-	}
-	if err := s.Eng.LoadCharter(); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
-	}
+	phase("restored the charter", func() {
+		if err := s.Eng.LoadStrata(); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: strata: %v\n", err)
+		}
+		if err := s.Eng.LoadCharter(); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
+		}
+	})
 	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
 	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
 	// waiting for somebody to reconnect. It follows the baseline load because the two split the
 	// same listing between them — baseline takes the unstamped records, a package its own.
-	s.restorePackages()
+	phase("restored packages", s.restorePackages)
 
 	// And the docket. A motion is durable and the goroutine awaiting it is not, so an open
 	// motion left by the previous verse has nobody reading its ballots: this gives each one
@@ -871,11 +901,11 @@ func (s *Server) Start(ctx context.Context) {
 	// AFTER the charter, which is what it navigates back into to find what a ballot is
 	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
 	// rather than starting a second run beside work that outlived us.
-	s.Eng.ResumeMotions()
+	phase("resumed motions", func() { s.Eng.ResumeMotions() })
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
-	s.restoreSources()
+	phase("restored sources", s.restoreSources)
 }
 
 // Handler returns the HTTP surface. Observation (read plane) and control are
@@ -2462,7 +2492,21 @@ func (s *Server) engForRequest(r *http.Request) (*trigger.Engine, error) {
 // commit a live watch delivered — read out of memory. It does not move while nothing is
 // happening, which is correct: quiet is not unready.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
-	writeOut(w, r, http.StatusOK, map[string]any{"ok": true, "head": s.Store.Head()})
+	// STARTING IS NOT READY, and it is not wedged either. versed serves before its engine is
+	// restored — the charter, the packages, the motions and the sources are several
+	// store-shaped phases, and staging spent 93 seconds in them — so a probe that waited for
+	// them was hitting a closed socket the whole time and could not tell which it was.
+	//
+	// 503 keeps readiness meaning exactly what it meant: no traffic until the engine is up.
+	// What changes is that the answer exists, so `curl /healthz` says starting, and the
+	// kubelet's failures count against a reply rather than a refused connection.
+	code := http.StatusOK
+	if !s.restored.Load() {
+		code = http.StatusServiceUnavailable
+	}
+	writeOut(w, r, code, map[string]any{
+		"ok": true, "started": s.restored.Load(), "head": s.Store.Head(),
+	})
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {

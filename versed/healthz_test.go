@@ -43,20 +43,40 @@ func TestHealthzReadsNothing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
+	// BEFORE the restore: an answer, and a 503. Readiness still gates — nothing is routed to
+	// an engine that is not up — but starting is now distinguishable from wedged, which it was
+	// not while versed served nothing until Start returned.
 	resp, err := http.Get(ts.URL + "/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
 	}
-	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("/healthz before the restore = %s; want 503 so readiness holds", resp.Status)
+	}
+	if !strings.Contains(string(body), "started") {
+		t.Errorf("/healthz body = %q; want it to say whether it has started", body)
+	}
+
+	// AFTER it: 200, and still not a single store read, which is the whole point of the
+	// endpoint — its latency is this process's, never the store's.
+	srv.Start(t.Context())
+	// The delta around the CALL, not the total: the restore above reads plenty, and what is
+	// being pinned is that this handler adds none of its own.
+	before := cs.reads
+	resp, err = http.Get(ts.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("/healthz = %s: %s", resp.Status, body)
+		t.Fatalf("/healthz after the restore = %s: %s", resp.Status, body)
 	}
-	if !strings.Contains(string(body), "ok") {
-		t.Errorf("/healthz body = %q; want it to say ok", body)
-	}
-	if cs.reads != 0 {
-		t.Errorf("/healthz made %d store read(s); it must answer from this process alone", cs.reads)
+	if cs.reads != before {
+		t.Errorf("/healthz made %d store read(s); it must answer from this process alone",
+			cs.reads-before)
 	}
 }
 

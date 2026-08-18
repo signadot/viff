@@ -249,7 +249,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	ctx, stop := signal.NotifyContext(cc.Go, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv.Start(ctx) // engine begins observing the store
+	srv.StartServing(ctx) // engine restores behind the listener; /healthz says which
 
 	// Bind the address BEFORE recording our pid. The pidfile is NOT a lock and does not
 	// prevent multiple ups: each `verse up` binds its own --addr and gets its own
