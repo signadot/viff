@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **steps 0 and 2 are built** (branch `charter-path`); the rest is proposal. The charter command as it stands is
+Status: **steps 0, 1 and 2 are built** (branch `charter-path`); the CLI steps (3-5) are proposal. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -260,6 +260,20 @@ it is.
 
 Tests: a path to a node, to `rules`, to one rule, to `writes`; the greedy split against a
 package named `rules` and the `--` escape; the not-found message naming the other charter.
+
+**Built** ([versed/charterpath.go](../../versed/charterpath.go)). Three things worth recording:
+
+- The reach did not stop at a rule. `rules.watcher.action` walks INTO the rule for free, because
+  once a list is indexed by its elements' `name` the rest is ordinary object indexing — the same
+  reason `verse state demo.pr.1.stage` never needed a rule for `.stage`.
+- `--` is `?at=` on the wire. The client sends the address it means and the reach separately,
+  which is the only thing the greedy split cannot express, rather than a second grammar.
+- The 404 does two different things and had to be told apart: a first segment that is not a
+  document key means no address resolved, and answering "baseline holds no nowhere.at.all"
+  describes a failure nobody asked about.
+
+Not built here: a reach into a SCOPE's charter (`?scope=`), which answers whole and has no tree
+to walk. It falls out of step 3 if the CLI wants it.
 
 ### 2. `triggers:` → `rules:` in the tree
 

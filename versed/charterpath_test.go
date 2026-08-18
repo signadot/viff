@@ -1,0 +1,155 @@
+package versed
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// charterPath asks GET /charter with a path and answers the body and the status.
+func charterPath(t *testing.T, url, path string) (int, string) {
+	t.Helper()
+	resp, err := http.Get(url + "/charter?path=" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(body))
+}
+
+// two charters, one nested, for the paths below to reach into.
+func pathFixture(t *testing.T) (*Server, string) {
+	t.Helper()
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	if code, msg := installAt(t, ts.URL, "verse-dev.drift", `{
+		name: watcher,
+		condition: {subject: {system: verse-dev, kind: drift}},
+		action: {patch: {seen: true}},
+	}`); code != 201 {
+		t.Fatalf("installing verse-dev.drift = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "", `{
+		name: base-rule,
+		condition: {subject: {system: demo, kind: pr}},
+		action: {patch: {seen: true}},
+	}`); code != 201 {
+		t.Fatalf("installing baseline = %d: %s", code, msg)
+	}
+	return srv, ts.URL
+}
+
+// A PATH IS AN ADDRESS AND THEN A REACH INTO WHAT STANDS THERE, in one list of segments, which
+// is the grammar `verse state demo.pr.1.stage` already has. The split is the server's: it is the
+// end that knows the tree.
+func TestACharterPathReachesIntoTheNodeAtIt(t *testing.T) {
+	_, url := pathFixture(t)
+	for _, c := range []struct{ path, want string }{
+		{"verse-dev.drift.rules.watcher", "name: watcher"}, // one rule
+		{"verse-dev.drift.rules.watcher.action", "seen"},   // …and into it
+		{"verse-dev.drift.writes", "verse-dev.drift"},      // a scalar
+		{"verse-dev.drift.rules", "watcher"},               // the list
+		{"verse-dev", "drift"},                             // a place: the tree under it
+		{"rules.base-rule", "name: base-rule"},             // baseline, no address at all
+	} {
+		code, body := charterPath(t, url, c.path)
+		if code != http.StatusOK {
+			t.Errorf("path=%s answered %d: %s", c.path, code, body)
+			continue
+		}
+		if !strings.Contains(body, c.want) {
+			t.Errorf("path=%s does not mention %q:\n%s", c.path, c.want, body)
+		}
+	}
+}
+
+// THE ADDRESS IS THE LONGEST PREFIX THAT NAMES A PLACE, so a package whose address ends in a
+// document key shadows that key — and `?at=` is what settles it, which is what the CLI's `--`
+// will send. Two spellings for one question, the second for what the first cannot express.
+func TestAnAddressEndingInAKeyIsSettledByAt(t *testing.T) {
+	srv, url := pathFixture(t)
+	if code, msg := installAt(t, url, "verse-dev.rules", `{
+		name: shadowed,
+		condition: {subject: {system: verse-dev, kind: rules}},
+		action: {patch: {seen: true}},
+	}`); code != 201 {
+		t.Fatalf("installing verse-dev.rules = %d: %s", code, msg)
+	}
+	// Greedy: the package wins, because it is a longer place than `verse-dev`.
+	if at, rest := srv.splitCharterPath([]string{"verse-dev", "rules"}); at != "verse-dev.rules" || len(rest) != 0 {
+		t.Errorf("split = (%q, %v), want the package that is installed there", at, rest)
+	}
+	code, body := charterPath(t, url, "verse-dev.rules")
+	if code != http.StatusOK || !strings.Contains(body, "shadowed") {
+		t.Errorf("the package at verse-dev.rules did not answer: %d %s", code, body)
+	}
+	// …and `at=` says where the address ends, so the KEY is reachable.
+	resp, err := http.Get(url + "/charter?at=verse-dev&path=rules")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("at= + path= answered %d: %s", resp.StatusCode, got)
+	}
+	if strings.Contains(string(got), "shadowed") {
+		t.Errorf("at=verse-dev&path=rules answered the PACKAGE at verse-dev.rules:\n%s", got)
+	}
+}
+
+// WHAT THE OLD `show` SEARCH WAS FOR, said in the refusal. `verse charter show <name>` read the
+// whole tree and looked a name up in every charter — a second way to address things, which goes.
+// Being told where the thing you named actually is was the useful half, and it costs a sentence.
+func TestAMissingPathSaysWhereTheNameIs(t *testing.T) {
+	_, url := pathFixture(t)
+	code, body := charterPath(t, url, "rules.watcher")
+	if code != http.StatusNotFound {
+		t.Fatalf("baseline answered %d for a rule it does not hold: %s", code, body)
+	}
+	for _, want := range []string{"verse-dev.drift", "rule", "watcher"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the refusal does not mention %q: %s", want, body)
+		}
+	}
+}
+
+// A path whose first step is not a key of a node is a question about a PLACE, and answering
+// "baseline holds no nowhere.at.all" describes the wrong failure: nobody asked baseline.
+func TestAPathToNoAddressSaysSo(t *testing.T) {
+	_, url := pathFixture(t)
+	code, body := charterPath(t, url, "nowhere.at.all")
+	if code != http.StatusNotFound {
+		t.Fatalf("answered %d: %s", code, body)
+	}
+	if !strings.Contains(body, "no charter is installed at nowhere.at.all") {
+		t.Errorf("the refusal is about the wrong thing: %s", body)
+	}
+}
+
+// A name that is a LEVEL rather than a rule is reached the same way and named correctly when
+// it is missing — "a rules called base" is the kind of sentence that reads as a bug.
+func TestStrataReachTheSameWay(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {system: notes}}`); code != 201 {
+		t.Fatalf("installing a level = %d: %s", code, msg)
+	}
+	code, body := charterPath(t, ts.URL, "notes.strata.lvl")
+	if code != http.StatusOK || !strings.Contains(body, "name: lvl") {
+		t.Fatalf("notes.strata.lvl answered %d: %s", code, body)
+	}
+	if code, body := charterPath(t, ts.URL, "strata.lvl"); code != http.StatusNotFound {
+		t.Fatalf("baseline answered %d for a level it does not hold: %s", code, body)
+	} else if !strings.Contains(body, `level called "lvl"`) {
+		t.Errorf("the refusal does not call a level a level: %s", body)
+	}
+	_ = srv
+}

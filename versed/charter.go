@@ -230,6 +230,24 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		writeNode(w, r, node.node())
 		return
 	}
+	// `?path=` is the address AND the reach into the node at it, split here (charterpath.go).
+	// An explicit `?at=` keeps its meaning and settles the split, which is what a package whose
+	// address ends in a document key needs.
+	rest := []string{}
+	if p := r.URL.Query().Get("path"); p != "" {
+		segs := strings.Split(p, ".")
+		if at != "" {
+			rest = segs
+		} else {
+			at, rest = s.splitCharterPath(segs)
+		}
+		// A reach INTO one node does not need the tree under it built — and building it is a
+		// read per package. `children` is the exception, being the tree under it.
+		if len(rest) > 0 && rest[0] != "children" && r.URL.Query().Get("depth") == "" {
+			depth = 0
+		}
+	}
+
 	tree, err := s.charterTree(at, depth)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -239,7 +257,16 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if tree == nil {
-		http.NotFound(w, r)
+		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		return
+	}
+	if len(rest) > 0 {
+		node := charterReach(tree, rest)
+		if node == nil {
+			http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+			return
+		}
+		writeNode(w, r, node)
 		return
 	}
 	writeNode(w, r, tree)
