@@ -749,7 +749,16 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // created on demand by whatever owns it — `verse connect` for a session, a sandbox for its own
 // lifetime — so the thing that made the scope is the thing that can install into it again.
 func (s *Server) restoreSources() {
-	for _, e := range source.List(s.Store) {
+	installed := source.List(s.Store)
+	// A failed read is not "no sources installed", and taking it as one brings a verse back
+	// reflecting NOTHING with no sign of it. Said out loud rather than returned, because this
+	// is startup and the answer is to look at the store, not to abandon the boot.
+	if err := entity.ReadFailed(s.Store); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: sources could not be read, so none were restored "+
+			"— the registrations are still there: %v\n", err)
+		return
+	}
+	for _, e := range installed {
 		if e.Scope != "" {
 			continue
 		}

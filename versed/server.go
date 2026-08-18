@@ -559,7 +559,14 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 func (s *Server) reconcileTasks() {
 	var resumed []resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
-	for _, ent := range entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System) {
+	tasks := entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System)
+	if err := entity.ReadFailed(s.Store); err != nil {
+		// Not "no tasks outlived us": orphaning nothing is right, and resuming nothing is not.
+		fmt.Fprintf(os.Stderr, "verse: tasks could not be read, so none were resumed or "+
+			"orphaned: %v\n", err)
+		return
+	}
+	for _, ent := range tasks {
 		if ent.Ref.Kind() == mirror.RunKind {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,

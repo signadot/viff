@@ -225,6 +225,14 @@ func (e *Engine) LoadCharter() error {
 			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
 		}
 	}
+	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
+	// second reading brings a verse back running NO RULES and saying nothing about it — which
+	// under load is exactly when it happens. Reported as the error it is, so Start prints it
+	// and an operator sees a verse that did not restore rather than one with nothing to run.
+	if err := entity.ReadFailed(e.store); err != nil {
+		errs = append(errs, fmt.Errorf("the charter could not be read, so nothing was "+
+			"restored from it: %w", err))
+	}
 	return errors.Join(errs...)
 }
 

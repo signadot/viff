@@ -737,6 +737,10 @@ func (e *Engine) LoadStrata() error {
 			errs = append(errs, fmt.Errorf("stratum %s: %w", ent.Ref, err))
 		}
 	}
+	if err := entity.ReadFailed(e.store); err != nil {
+		errs = append(errs, fmt.Errorf("the strata could not be read, so nothing was "+
+			"restored from them: %w", err))
+	}
 	return errors.Join(errs...)
 }
 

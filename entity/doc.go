@@ -495,3 +495,17 @@ func ListUnder(r Reader, pred func(Ref) bool, at ...string) []Entity {
 	}
 	return r.ListAt(at, depth, pred)
 }
+
+// ReadFailed answers the error a store's last read failed with, or nil.
+//
+// It exists for the callers that must not read an empty answer as an empty verse. List returns
+// nil BOTH when a slice holds nothing and when the read did not happen, and the difference is
+// the whole question at startup: a charter that restored nothing because there is nothing, and
+// one that restored nothing because the store was busy, are the same value and opposite facts.
+// The second silently brings a verse back running no rules.
+func ReadFailed(r Reader) error {
+	if h, ok := r.(interface{ ReadError() error }); ok {
+		return h.ReadError()
+	}
+	return nil
+}
