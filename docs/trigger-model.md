@@ -129,7 +129,7 @@ most of them do:
 
 ```tony
 at: drift                        # where this package writes — its engine is confined to it
-imports: [ !verse-path [git] ]   # …and what it may read besides
+reads: [ !verse-path [git] ]   # …and what it may read besides
 ---
 - name: reflected           # the level the source sits at
   level: 0
@@ -146,17 +146,17 @@ imports: [ !verse-path [git] ]   # …and what it may read besides
 Two packages both reacting to `git:*` is the ordinary arrangement, not an exotic one. What each
 may do about it is write in its own address.
 
-**Reads are DECLARED**, which is the `imports:` line above. A package reads inside its own
+**Reads are DECLARED**, which is the `reads:` line above. A package reads inside its own
 address and whatever it names, and nothing else — an undeclared read does not install, and the
 refusal says which line to add:
 
 ```
-rule "note-the-head" reads git:head:*, which notes:* does not import: a charter installed
+rule "note-the-head" reads git:head:*, which notes:* does not declare: a charter installed
 at an address reads inside it and what it declares, so that the graph over packages can be
-checked for a cycle. Add it: `imports: [git.head]` (this package imports nothing)
+checked for a cycle. Add it: `reads: [git.head]` (this package reads nothing)
 ```
 
-An absent `imports:` is not "everything", it is nothing: a package with no declaration reads only
+An absent `reads:` is not "everything", it is nothing: a package with no declaration reads only
 inside itself. That is the safe default and the strict one — a package that reads nothing outside
 cannot interfere with anybody — and it is what makes the graph total, since every edge is written
 down.
@@ -178,7 +178,7 @@ second check on the strata — with no cross-package write there is no cross-pac
 there is no cross-package ordering to define, and two packages may both declare a level 10 and
 mean nothing to each other.
 
-**The import graph is acyclic.** `a` reading what `b` writes while `b` reads what `a` writes is a
+**The reads graph is acyclic.** `a` reading what `b` writes while `b` reads what `a` writes is a
 feedback loop neither charter's author can see in their own file, and nothing else catches it:
 the level discipline is per package, so a cross-package derive has no ordering to violate, and
 the cycle throttle bounds a chain within one engine. So the declaration is also a graph — P → Q
@@ -186,12 +186,12 @@ when what P reads meets what Q may write, which is Q's address — and a cycle i
 install, showing the loop:
 
 ```
-imports: this would close a cycle between packages: drift → merge → drift — one reads what
+reads: this would close a cycle between packages: drift → merge → drift — one reads what
 the next writes, all the way round, so a write on any of them can wake the others and come
 back. A package graph is acyclic: break the loop, or fold the two halves into one package
 ```
 
-Importing an address no package is installed at adds no edge: `git` is a source's slice, and
+Declaring a read of an address no package is installed at adds no edge: `git` is a source's slice, and
 reading a source is not depending on a package — which is why two packages both reading it,
 the arrangement above, is not a loop.
 
@@ -217,16 +217,16 @@ verse charter --depth 1
 # children:
 #   drift:
 #     writes: drift.*
-#     imports: [git]
+#     reads: [git]
 #     rules: [ … the three rules, in full … ]
 #     strata: [ … ]
 #   merge:
 #     writes: merge.*
-#     imports: [git, drift]
+#     reads: [git, drift]
 #     rules: [ … ]
 ```
 
-That is comment-drift installed: the review at `drift`, the gate at `merge` importing it, and a
+That is comment-drift installed: the review at `drift`, the gate at `merge` reading it, and a
 baseline nobody has put anything in. A package at `demo.pr` nests under a `demo` that holds only
 `children:`, since nothing is installed at `demo` itself.
 
@@ -240,7 +240,7 @@ verse charter merge --depth 0   # …without whatever is installed under it
 verse charter show merge-proposal
 ```
 
-A package comes off whole, too — its rules, its levels, what it imports, and the engine running
+A package comes off whole, too — its rules, its levels, what it reads, and the engine running
 them. What it WROTE stays: a charter's writes are the world's, and `verse state rm` is how those
 go.
 

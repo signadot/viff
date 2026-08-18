@@ -76,9 +76,9 @@ func TestDocCharartersInstall(t *testing.T) {
 			total++
 			eng := New(store, task.AutoResolver{})
 			// A BLOCK THAT DECLARES A PACKAGE IS CHECKED AS ONE: confined to the address it
-			// names and reading only what it imports, so a doc example claiming isolation is
+			// names and reading only what it declares it reads, so a doc example claiming isolation is
 			// held to it rather than passing on an engine that has neither.
-			if pkg.at != "" || len(pkg.imports) > 0 {
+			if pkg.at != "" || len(pkg.reads) > 0 {
 				packaged++
 				at, err := ParseAt(pkg.at)
 				if err != nil {
@@ -87,7 +87,7 @@ func TestDocCharartersInstall(t *testing.T) {
 					continue
 				}
 				eng.Confine(at)
-				eng.SetImports(pkg.imports)
+				eng.SetReads(pkg.reads)
 			}
 			// The ORDERING first, as an install does — a rule naming a stratum that is not
 			// there is held rather than refused, which would make a stratified example pass
@@ -222,7 +222,7 @@ func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Nod
 	}
 }
 
-// pkgDecl is the `at:`/`imports:` document a doc block may open with — what makes the block a
+// pkgDecl is the `at:`/`reads:` document a doc block may open with — what makes the block a
 // PACKAGE rather than a charter, and what the engine below is confined and declared from.
 //
 // Without this a doc example that says it installs at an address was checked as if it did not:
@@ -230,8 +230,8 @@ func parseWithin(text string, d time.Duration) (trigs []Trigger, nodes []*ir.Nod
 // the one example whose point is the confinement was the one nothing ran. (Found that way: the
 // example in trigger-model.md derived with no stratum and did not install.)
 type pkgDecl struct {
-	at      string
-	imports []Subtree
+	at    string
+	reads []Subtree
 }
 
 // parseBlock reads a block as a charter, in either dialect: one definition, a list of them, or
@@ -281,11 +281,11 @@ func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool)
 	var pkg pkgDecl
 	for _, def := range defs {
 		if at, ok := declaredAt(def); ok {
-			ims, err := ImportsFromNode(def)
+			ims, err := ReadsFromNode(def)
 			if err != nil {
 				return nil, nil, nil, pkgDecl{}, false
 			}
-			pkg = pkgDecl{at: at, imports: ims}
+			pkg = pkgDecl{at: at, reads: ims}
 			continue
 		}
 		var s Stratum
@@ -305,7 +305,7 @@ func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool)
 }
 
 // declaredAt reads a package declaration's address, and reports whether the document is one at
-// all: `at:` alone is a package that imports nothing, and `imports:` alone is one whose address
+// all: `at:` alone is a package that imports nothing, and `reads:` alone is one whose address
 // comes from `--at` on the command line.
 func declaredAt(def *ir.Node) (string, bool) {
 	n := codec.Unwrap(def)
@@ -324,7 +324,7 @@ func declaredAt(def *ir.Node) (string, bool) {
 			if v := codec.Unwrap(n.Values[i]); v != nil && v.Type == ir.StringType {
 				at = v.String
 			}
-		case "imports":
+		case "reads":
 			isDecl = true
 		case "condition", "action", "level", "match", "name":
 			return "", false // a rule or a stratum, whatever else it carries

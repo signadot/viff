@@ -407,7 +407,7 @@ func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true) }
 // the level discipline again against the new ordering, and one that no longer fits refuses the
 // CHANGE, naming itself. Nothing is left standing unchecked — the property the refusal bought —
 // and nothing has to be taken down to get it. It is RecheckReads one axis over, which is what an
-// operator NARROWING an `imports:` declaration already gets.
+// operator NARROWING an `reads:` declaration already gets.
 func (e *Engine) InstallStratum(s Stratum) error {
 	old, ok := e.stratum(s.Name)
 	if !ok {
@@ -465,7 +465,7 @@ func (e *Engine) replaceStratum(old, s Stratum) error {
 }
 
 // recheckLevels asks the level discipline of every rule already installed, which is what an
-// operator EDITING a level needs — exactly as RecheckReads is what one narrowing an `imports:`
+// operator EDITING a level needs — exactly as RecheckReads is what one narrowing an `reads:`
 // needs. A rule that fitted the ordering that stands and does not fit the edited one must refuse
 // the CHANGE rather than be quietly left at a level nothing checked it against.
 //

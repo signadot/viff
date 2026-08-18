@@ -51,13 +51,13 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 
 // What it may write, it writes. The guard is not a general refusal of anything that mentions
 // another address: "react to what happened over there, record what it means over here" is the
-// shape most real rules have — so a package reads what it DECLARES (imports.go), and the
+// shape most real rules have — so a package reads what it DECLARES (reads.go), and the
 // declaration is what makes the dependency visible rather than what makes it possible.
-func TestAConfinedCharterReadsWhatItImports(t *testing.T) {
+func TestAConfinedCharterReadsWhatItDeclares(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.Confine(SubtreeAt("drift"))
-	eng.SetImports([]Subtree{SubtreeAt("git")}) // …declared, which is the half imports.go adds
+	eng.SetReads([]Subtree{SubtreeAt("git")}) // …declared, which is the half reads.go adds
 
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: note-the-head
@@ -115,10 +115,10 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	store := entitytest.Store(t)
 	mine := New(store, task.AutoResolver{})
 	mine.Confine(SubtreeAt("mine"))
-	mine.SetImports([]Subtree{SubtreeAt("git")})
+	mine.SetReads([]Subtree{SubtreeAt("git")})
 	theirs := New(store, task.AutoResolver{})
 	theirs.Confine(SubtreeAt("theirs"))
-	theirs.SetImports([]Subtree{SubtreeAt("git")}) // both read the source; neither imports the other
+	theirs.SetReads([]Subtree{SubtreeAt("git")}) // both read the source; neither declares a read of the other
 
 	// Both rules say the same thing about the same cause, and each writes in its own half.
 	for _, c := range []struct {
@@ -175,7 +175,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.Confine(SubtreeAt("drift"))
-	eng.SetImports([]Subtree{SubtreeAt("git")})
+	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	// The levels as the real charter writes them: the SOURCE slice at the bottom — which is
 	// what a package's lowest level owns, since its rules select from what they read — and the

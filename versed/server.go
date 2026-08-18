@@ -2590,13 +2590,16 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 // deeper than it was written for.
 const statusCharterDepth = 2
 
+// charterMore is what a place answers with when this line is not the one that expands it.
+const charterMore = ".."
+
 // charterTop is the charter tree cut at statusCharterDepth: where charters are installed,
 // nested as their addresses nest.
 //
-//	baseline: {}          # the unpackaged charter holds something
+//	baseline: ..          # the unpackaged charter holds something
 //	verse-dev:            # a PLACE — two charters live under it
-//	  drift: {}
-//	  merge: {}
+//	  drift: ..
+//	  merge: ..
 //
 // Places rather than the flat addresses this first answered with, because addresses share
 // prefixes: `verse-dev.drift` and `verse-dev.merge` are two charters in one place, and a flat
@@ -2665,7 +2668,11 @@ func (t *addrTrie) node(depth int) *ir.Node {
 		fields = append(fields, ir.FromString(k))
 		switch {
 		case len(c.order) == 0:
-			values = append(values, &ir.Node{Type: ir.ObjectType})
+			// `..` rather than an empty object: a leaf here is not a charter with nothing in
+			// it, it is a charter this line is not printing — and `..` says "there is more
+			// down here" in the one notation everybody already reads that way. An empty
+			// object said the opposite of what is true.
+			values = append(values, ir.FromString(charterMore))
 		case depth <= 1:
 			values = append(values, ir.FromInt(int64(c.leaves())))
 		default:

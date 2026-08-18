@@ -101,10 +101,10 @@ type Engine struct {
 	// confine is the subtree this engine's charter may write in — zero for a baseline engine,
 	// which may write anywhere. See confine.go.
 	confine Subtree
-	// imports is what this engine's charter declares it READS outside its confinement. Empty on
+	// reads is what this engine's charter declares it READS outside its confinement. Empty on
 	// a package means it reads only inside its own address; meaningless on baseline, which is
-	// unconfined. See imports.go.
-	imports []Subtree
+	// unconfined. See reads.go.
+	reads   []Subtree
 	chainMu sync.Mutex
 	causes  map[int64]link
 	trips   int // firings refused for running past the depth bound (see throttled)

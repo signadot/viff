@@ -20,7 +20,7 @@ func TestCharterAddInstallsAFileOrNoneOfIt(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "charter.tony")
 	if err := os.WriteFile(f, []byte(`
 at: probe
-imports: [git]
+reads: [git]
 ---
 - name: lvl
   level: 0
@@ -53,7 +53,7 @@ imports: [git]
 	// they met the levels their own failed attempt had left behind.
 	if err := os.WriteFile(f, []byte(`
 at: probe
-imports: [git]
+reads: [git]
 ---
 - name: lvl
   level: 0

@@ -146,7 +146,7 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring imports = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -177,7 +177,7 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	if _, ok := eng.Rule("note-the-head"); !ok {
 		t.Error("a refused install took the package's rule down with it")
 	}
-	if len(eng.Imports()) != 1 {
-		t.Errorf("a refused install dropped what the package imports: %v", eng.Imports())
+	if len(eng.Reads()) != 1 {
+		t.Errorf("a refused install dropped what the package reads: %v", eng.Reads())
 	}
 }

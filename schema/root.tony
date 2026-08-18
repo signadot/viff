@@ -23,7 +23,7 @@
 #             is where it goes when it is.
 #   schema  — this document's own shape, which is likewise not a named type.
 #   charter — the installed charter, addressed like the verse itself and answering the same
-#             shape at every node (writes/imports/triggers/strata/children). It is a document
+#             shape at every node (writes/reads/triggers/strata/children). It is a document
 #             this server BUILDS rather than a struct's wire form, so there is no generated
 #             type to point at; it belongs here the day one exists. `verse-trigger` and
 #             `verse-stratum` still describe what is INSIDE it, and GET /charter/{name}

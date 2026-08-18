@@ -144,7 +144,7 @@ record of a run that happened) and `task:claim:*` (a sequence's run claim); `gat
 (every gate awaiting an answer); `resolvers:*` (who answers them, and `resolvers:instance:*`
 for who is watching one run — see [resolvers.md](resolvers.md)); `trigger:rule:*` (the
 installed charter — `trigger:rule:<package>:<name>` for a rule installed at an address),
-`trigger:strata:*` (its declared levels) and `trigger:package:*` (what each package imports);
+`trigger:strata:*` (its declared levels) and `trigger:package:*` (what each package declares it reads);
 `motion:channel:*` (the docket); `runners:*` (where work can run) and `sources:*` (what
 reflects an external system in).
 

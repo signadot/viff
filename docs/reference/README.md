@@ -98,7 +98,7 @@ verse
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s
   charter (charters) [<address>]             THE INSTALLED CHARTER, at an address: what may
-                                             be written there, what it imports, its triggers
+                                             be written there, what it reads, its triggers
                                              and strata in full, and the same at every
                                              address under it. Bare, that is all of it —
                                              baseline at the root, each package under the
@@ -108,7 +108,7 @@ verse
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
-          add [--file <f>|-] [file]          install one: triggers, strata and `imports:`
+          add [--file <f>|-] [file]          install one: triggers, strata and `reads:`
                                              from one file, in the order that works, and as
                                              ONE STEP per package — a refusal anywhere puts
                                              back what stood before it. Re-applying an edited
@@ -124,15 +124,15 @@ verse
           show|remove [--at <address>]       …of that charter; needed only when more than one
                                              holds the name
           uninstall <address> [--recurse]    a charter package, whole: its rules, its levels,
-                                             what it imports, and the engine running them.
+                                             what it declares it reads, and the engine running them.
                                              What it WROTE stays — a charter's writes are the
                                              world's. --recurse takes what is under it too
           -- <address>                       an address that collides with a verb: a package
                                              at `remove` is `verse charter -- remove`
           A charter file may open a package with a `---` document of its own — `at: drift`
-          is where its rules write, `imports: [git, other]` what they may read besides, in
+          is where its rules write, `reads: [git, other]` what they may read besides, in
           either address spelling (`!verse-path [demo pr]` too). A package reads inside its
-          own address and its imports and NOWHERE else; an undeclared read does not install,
+          own address and what it declares it reads and NOWHERE else; an undeclared read does not install,
           and the graph over packages must be acyclic (a cycle is refused, showing the loop).
           Several `at:` documents in one file install several packages.
   task (tasks, ps) [--runner <ref>]          every task, whatever runs it

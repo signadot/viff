@@ -15,17 +15,17 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// declareImports posts a package's `imports:` declaration, which a rule reading outside its own
+// declareReads posts a package's `reads:` declaration, which a rule reading outside its own
 // address needs installed first.
-func declareImports(t *testing.T, url, at string, imports ...string) (int, string) {
+func declareReads(t *testing.T, url, at string, imports ...string) (int, string) {
 	t.Helper()
 	var q []string
 	for _, im := range imports {
 		q = append(q, im)
 	}
-	node, err := codec.ParseNode([]byte("{imports: ["+strings.Join(q, ", ")+"]}"), codec.Tony)
+	node, err := codec.ParseNode([]byte("{reads: ["+strings.Join(q, ", ")+"]}"), codec.Tony)
 	if err != nil {
-		t.Fatalf("parse imports: %v", err)
+		t.Fatalf("parse reads: %v", err)
 	}
 	resp := postTony(t, url+"/charter?at="+at, node)
 	defer resp.Body.Close()
@@ -55,7 +55,7 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring imports = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -136,7 +136,7 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring imports = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -172,7 +172,7 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 // A package reads its own address and what it DECLARES, and nothing else. The refusal names the
 // line to add, because a rule reaching past its imports is a dependency somebody has not written
 // down rather than a mistake in the rule.
-func TestAPackageReadsOnlyWhatItImports(t *testing.T) {
+func TestAPackageReadsOnlyWhatItDeclares(t *testing.T) {
 	srv := testServer(t)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -187,12 +187,12 @@ func TestAPackageReadsOnlyWhatItImports(t *testing.T) {
 	if code == 201 {
 		t.Fatal("a package read a system it never declared")
 	}
-	if !strings.Contains(msg, "does not import") || !strings.Contains(msg, "imports: [git.head]") {
+	if !strings.Contains(msg, "does not declare") || !strings.Contains(msg, "reads: [git.head]") {
 		t.Errorf("the refusal does not say what to add: %s", msg)
 	}
 
 	// Declared, it installs — the same rule, one line of declaration apart.
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring imports = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", rule); code != 201 {
@@ -209,10 +209,10 @@ func TestAnImportCycleBetweenPackagesIsRefused(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "a", "b"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "a", "b"); code != 201 {
 		t.Fatalf("a importing b = %d: %s", code, msg)
 	}
-	code, msg := declareImports(t, ts.URL, "b", "a")
+	code, msg := declareReads(t, ts.URL, "b", "a")
 	if code == 201 {
 		t.Fatal("two packages reading each other installed")
 	}
@@ -222,7 +222,7 @@ func TestAnImportCycleBetweenPackagesIsRefused(t *testing.T) {
 
 	// And the shape that is NOT a loop still installs: both reading one source is the ordinary
 	// case, and a chain a → b → c is a dependency order rather than a cycle.
-	if code, msg := declareImports(t, ts.URL, "b", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "b", "git"); code != 201 {
 		t.Fatalf("b importing a source = %d: %s", code, msg)
 	}
 }
@@ -235,7 +235,7 @@ func TestAPackagesImportsAreRestored(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -269,7 +269,7 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -279,7 +279,7 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 	}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
 	}
-	code, msg := declareImports(t, ts.URL, "notes")
+	code, msg := declareReads(t, ts.URL, "notes")
 	if code == 201 {
 		t.Fatal("the declaration narrowed out from under an installed rule")
 	}
@@ -321,7 +321,7 @@ type unreadableStore struct{ entity.Reader }
 
 func (unreadableStore) ReadError() error { return errors.New("replay failed at commit 2277") }
 
-// A package comes off whole: its rules, its levels, the declaration of what it imports, and the
+// A package comes off whole: its rules, its levels, the declaration of what it declares it reads, and the
 // engine running them. Before this there was no way to remove one at all — rules went one at a
 // time, and the levels, the declaration and the engine stayed behind whatever you did.
 func TestAPackageCanBeUninstalled(t *testing.T) {
@@ -330,7 +330,7 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "notes", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
 		t.Fatalf("declaring = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
@@ -348,7 +348,7 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 		t.Error("the rule outlived the package")
 	}
 	if _, ok, _ := srv.Store.Get(trigger.PackageRef("notes")); ok {
-		t.Error("the declaration of what it imports outlived the package")
+		t.Error("the declaration of what it declares it reads outlived the package")
 	}
 	if len(srv.packagesSeen()) != 0 {
 		t.Errorf("the package is still listed: %v", srv.packagesSeen())
@@ -409,7 +409,7 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := declareImports(t, ts.URL, "verse-dev.drift", "git"); code != 201 {
+	if code, msg := declareReads(t, ts.URL, "verse-dev.drift", "git"); code != 201 {
 		t.Fatalf("declaring = %d: %s", code, msg)
 	}
 	for _, def := range []string{

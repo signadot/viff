@@ -22,7 +22,7 @@ import (
 func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	eng.Confine(SubtreeAt("verse-dev", "drift"))
-	eng.SetImports([]Subtree{SubtreeAt("git")})
+	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},

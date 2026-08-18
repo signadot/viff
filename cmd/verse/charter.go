@@ -20,7 +20,7 @@ import (
 //	verse charter                       the whole charter, at every address
 //	verse charter verse-dev drift       …the one installed there, and anything under it
 //	verse charter --depth 0             …this address alone
-//	verse charter add -f <file>         install one (rules, levels and imports, in order)
+//	verse charter add -f <file>         install one (rules, levels and reads, in order)
 //	verse charter uninstall <address>   take a package down whole
 //	verse charter show <name>           one rule or one level
 //	verse charter remove <name>         …and how it goes
@@ -118,7 +118,7 @@ type charterUninstallConfig struct {
 }
 
 // uninstall takes a whole charter package down — its rules, its levels, the declaration of what
-// it imports, and the engine running them.
+// it declares it reads, and the engine running them.
 //
 // A VERB OF ITS OWN rather than `remove` with an address, because the two arguments are
 // different KINDS of thing: `remove` takes a rule's name, this takes an address, and one
@@ -416,12 +416,12 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 	// begins. That is what keeps a charter that spans two addresses ONE program in one file:
 	//
 	//	at: drift
-	//	imports: [git]
+	//	reads: [git]
 	//	---
 	//	- name: head-moved …
 	//	---
 	//	at: merge
-	//	imports: [git, drift]
+	//	reads: [git, drift]
 	//	---
 	//	- name: proposal-appeared …
 	//
@@ -443,8 +443,8 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 		if g.at != "" {
 			q.Set("at", g.at)
 		}
-		if g.imports != nil && g.at == "" {
-			return fmt.Errorf("charter add: `imports:` belongs to a charter package — give " +
+		if g.reads != nil && g.at == "" {
+			return fmt.Errorf("charter add: `reads:` belongs to a charter package — give " +
 				"it an address (`at:` in the declaration, or `--at`), or drop it: the " +
 				"baseline charter may write anywhere, so there is no graph an import would " +
 				"be an edge in")
@@ -484,7 +484,7 @@ func (cfg *charterAddConfig) run(cc *cli.Context, args []string) error {
 const (
 	defTrigger = "a trigger"
 	defStratum = "a stratum"
-	defImports = "a package declaration"
+	defReads   = "a package declaration"
 	defUnknown = "none of a trigger, a stratum and a package declaration"
 )
 
@@ -510,11 +510,11 @@ func defKind(n *ir.Node) string {
 		return defTrigger
 	case has("level") && has("match"):
 		return defStratum
-	// `at:` alone is a declaration too — a package that imports nothing still says where it is,
+	// `at:` alone is a declaration too — a package that reads nothing outside itself still says where it is,
 	// which is what lets one file open several packages and what makes "reads nothing outside
 	// itself" a thing somebody can write down rather than only a default.
-	case has("imports"), has("at"):
-		return defImports
+	case has("reads"), has("at"):
+		return defReads
 	}
 	return defUnknown
 }
@@ -583,14 +583,14 @@ func postGroup(route string, q url.Values, defs []*ir.Node) error {
 // charterGroup is one package's worth of a charter file: where it goes, what it declares it
 // reads, and the definitions that belong to it.
 type charterGroup struct {
-	at      string
-	imports *ir.Node // the declaration document, nil when there is none
-	strata  []*ir.Node
-	rules   []*ir.Node
+	at     string
+	reads  *ir.Node // the declaration document, nil when there is none
+	strata []*ir.Node
+	rules  []*ir.Node
 }
 
 // defs is the group as one list, in the order the three kinds install: the declaration, because a
-// rule is checked against what its package imports as it installs; then the levels, because a rule
+// rule is checked against what its package declares it reads as it installs; then the levels, because a rule
 // naming a stratum that is not here yet is HELD rather than refused; then the rules.
 //
 // The server sorts them again and does not depend on this order — a client posting a charter says
@@ -598,8 +598,8 @@ type charterGroup struct {
 // what keeps the two ends agreeing about what a charter file is.
 func (g charterGroup) defs() []*ir.Node {
 	out := make([]*ir.Node, 0, len(g.strata)+len(g.rules)+1)
-	if g.imports != nil {
-		out = append(out, g.imports)
+	if g.reads != nil {
+		out = append(out, g.reads)
 	}
 	out = append(out, g.strata...)
 	return append(out, g.rules...)
@@ -607,7 +607,7 @@ func (g charterGroup) defs() []*ir.Node {
 
 // charterGroups splits a charter file into the packages it installs.
 //
-// A declaration document (`imports:`, optionally with `at:`) OPENS a group, and everything after
+// A declaration document (`reads:`, optionally with `at:`) OPENS a group, and everything after
 // it belongs to that group until the next one. Definitions before any declaration are the file's
 // own charter, installed at `--at` — which is the shape every charter had before packages, and
 // the shape most still have.
@@ -626,7 +626,7 @@ func charterGroups(defs []*ir.Node, flagAt string) ([]charterGroup, error) {
 			cur.strata = append(cur.strata, def)
 		case defTrigger:
 			cur.rules = append(cur.rules, def)
-		case defImports:
+		case defReads:
 			at, err := declaredAt(def)
 			if err != nil {
 				return nil, err
@@ -643,22 +643,22 @@ func charterGroups(defs []*ir.Node, flagAt string) ([]charterGroup, error) {
 					"declaration is the one that travels with the charter, so drop the flag", at, flagAt)
 			}
 			if seen[at] {
-				return nil, fmt.Errorf("the file declares %q twice: `imports:` is what the PACKAGE "+
+				return nil, fmt.Errorf("the file declares %q twice: `reads:` is what the PACKAGE "+
 					"reads, and two declarations have no order that would settle which wins", at)
 			}
 			seen[at] = true
 			// A group opened before any definitions is the FIRST group rather than a second
 			// one, so a file that starts with its declaration does not install an empty charter.
-			if cur.imports != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
+			if cur.reads != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
 				out = append(out, cur)
 			}
-			cur = charterGroup{at: at, imports: def}
+			cur = charterGroup{at: at, reads: def}
 		default:
 			return nil, fmt.Errorf("a definition is %s: a trigger has a `condition`, a stratum "+
-				"has a `level` and a `match`, a package declaration has `imports`", defUnknown)
+				"has a `level` and a `match`, a package declaration has `reads`", defUnknown)
 		}
 	}
-	if cur.imports != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
+	if cur.reads != nil || len(cur.strata) > 0 || len(cur.rules) > 0 {
 		out = append(out, cur)
 	}
 	return out, nil

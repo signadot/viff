@@ -37,7 +37,7 @@ import (
 // can still feed each other through the store — A reads what B writes while B reads what A
 // writes — and neither charter's author can see the loop in their own charter. Nothing catches
 // it today, because the level discipline is per package and the cycle throttle bounds a chain
-// within one engine. The shape of an answer is an acyclic import graph between packages, where
+// within one engine. The shape of an answer is an acyclic reads graph between packages, where
 // a package declares what it reads and the graph is checked at install. See git-issue
 // dpz3jxzdh12ksb6mg5n0; it needs two packages deliberately arranged to feed each other, which is
 // not what anybody hits on the way in.

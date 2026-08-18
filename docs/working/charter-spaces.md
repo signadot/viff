@@ -38,7 +38,7 @@ name: acme/payments/billing
 owns:
 - { system: payments, kind: invoice }
 - { system: payments, kind: ledger }
-imports:
+reads:
 - acme/platform/sdlc
 ```
 
@@ -97,7 +97,7 @@ Two coherent resolutions:
   keeps imports purely about definitions.
 - **Let the import DAG order the spaces**, making the effective level `(space rank, local
   level)`. Then import acyclicity stops being hygiene and becomes the effect guarantee: a derive
-  strictly climbs the import graph. It is the more powerful version, and the cost is that one
+  strictly climbs the reads graph. It is the more powerful version, and the cost is that one
   graph then does two jobs — you can no longer import a task func from a sibling utility space
   without that meaning something about levels.
 

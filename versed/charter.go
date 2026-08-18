@@ -33,7 +33,7 @@ import (
 //	    children:
 //	      drift:
 //	        writes: verse-dev.drift.*
-//	        imports: [git]
+//	        reads: [git]
 //	        triggers: [ … ]
 //	        strata: [ … ]
 //
@@ -77,7 +77,7 @@ func (s *Server) charterTree(at string, depth int) (*ir.Node, error) {
 	return root.node(), nil
 }
 
-// fillCharter reads one charter — its confinement, what it imports, its rules and its levels —
+// fillCharter reads one charter — its confinement, what it declares it reads, its rules and its levels —
 // off the engine running it.
 func (s *Server) fillCharter(node *charterNode, at string) error {
 	// BASELINE IS s.Eng, not a package engine at the empty address: packageEngine would create
@@ -95,7 +95,7 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 	node.writes = "anywhere"
 	if at != "" {
 		node.writes = at + ".*"
-		node.imports = trigger.StampImports(eng.Imports())
+		node.reads = trigger.StampReads(eng.Reads())
 	}
 	node.triggers, err = codec.ToNode(eng.Triggers())
 	if err != nil {
@@ -128,7 +128,7 @@ func belowAddr(at string, want []string) ([]string, bool) {
 type charterNode struct {
 	here     bool // a charter is installed AT this address, rather than only under it
 	writes   string
-	imports  []string
+	reads    []string
 	triggers *ir.Node
 	strata   *ir.Node
 	kids     map[string]*charterNode
@@ -158,14 +158,14 @@ func (n *charterNode) node() *ir.Node {
 		fields = append(fields, ir.FromString(key))
 		values = append(values, v)
 	}
-	// `writes` and `imports` say what a charter INSTALLED here may do, so they appear only where
+	// `writes` and `reads` say what a charter INSTALLED here may do, so they appear only where
 	// one is. `triggers` and `strata` appear at every node, empty included: a reader who learns
 	// the shape at one level has learned it at all of them, and an address that holds nothing of
 	// its own says so rather than leaving the reader to infer it from two absent keys.
 	if n.here {
 		add("writes", ir.FromString(n.writes))
-		if n.imports != nil {
-			add("imports", strNodes(n.imports))
+		if n.reads != nil {
+			add("reads", strNodes(n.reads))
 		}
 	}
 	add("triggers", orEmptyList(n.triggers))
@@ -301,7 +301,7 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addCharter installs a charter — a rule, a level, a package's `imports:` declaration, or a whole
+// addCharter installs a charter — a rule, a level, a package's `reads:` declaration, or a whole
 // file of them — into the charter at an address. The classification is the SERVER's, so a client
 // posting a charter file does not have to know which of three things each document is, nor which
 // order the three have to be installed in.
@@ -320,7 +320,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	}
 	defs := charterDocs(docs)
 	if len(defs) == 0 {
-		http.Error(w, "there is no charter in the request: a rule, a level, an `imports:` "+
+		http.Error(w, "there is no charter in the request: a rule, a level, an `reads:` "+
 			"declaration, or a `---` separated file of them", http.StatusBadRequest)
 		return
 	}
@@ -371,7 +371,7 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
 	var imports, strata, rules []*ir.Node
 	for _, def := range defs {
 		switch charterKind(def) {
-		case "imports":
+		case "reads":
 			imports = append(imports, def)
 		case "stratum":
 			strata = append(strata, def)
@@ -381,11 +381,11 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) (int, error) {
 	}
 	at := r.URL.Query().Get("at")
 	// THE DECLARATION'S ADDRESS FIRST, before any engine is asked for, because asking creates one:
-	// `imports:` belongs to a package, and a refusal reached on the way there would leave an engine
+	// `reads:` belongs to a package, and a refusal reached on the way there would leave an engine
 	// running for a charter that was never installed.
 	if len(imports) > 0 && at == "" {
-		return http.StatusBadRequest, errors.New("imports: a charter with no address has nothing " +
-			"to import into — `imports:` belongs to a package, installed with " +
+		return http.StatusBadRequest, errors.New("reads: a charter with no address has nothing " +
+			"to import into — `reads:` belongs to a package, installed with " +
 			"`verse charter add --at <address>`")
 	}
 	// FRESH BEFORE THE ENGINE, for the same reason: an install that is wholly refused must leave
@@ -431,11 +431,11 @@ func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
 
 // imports installs a package's declaration of what it reads, remembering the one it replaced.
 func (tx *charterTx) imports(def *ir.Node) (int, error) {
-	subs, err := trigger.ImportsFromNode(def)
+	subs, err := trigger.ReadsFromNode(def)
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
-	before := tx.eng.Imports()
+	before := tx.eng.Reads()
 	prev, had, err := tx.s.packageDecl(tx.at)
 	if err != nil {
 		return http.StatusServiceUnavailable, err
@@ -444,7 +444,7 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
-		tx.eng.SetImports(before)
+		tx.eng.SetReads(before)
 		return tx.s.putPackageDecl(tx.at, prev, had)
 	})
 	return http.StatusCreated, nil
@@ -579,8 +579,8 @@ func charterKind(node *ir.Node) string {
 		return "trigger"
 	case has["level"] && has["match"]:
 		return "stratum"
-	case has["imports"] || has["at"]:
-		return "imports"
+	case has["reads"] || has["at"]:
+		return "reads"
 	}
 	return "trigger"
 }

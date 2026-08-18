@@ -145,7 +145,7 @@ func (s *Server) restorePackages() {
 		engs = append(engs, eng)
 	}
 	s.scopeMu.Unlock()
-	// The declarations before the rules: a rule is checked against its package's imports as it
+	// The declarations before the rules: a rule is checked against its package's reads as it
 	// installs, so a restore that loaded the charter first would refuse what it is restoring.
 	s.restorePackageImports()
 	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
@@ -164,7 +164,7 @@ func (s *Server) restorePackages() {
 func (s *Server) packagesSeen() []string {
 	var out []string
 	// ALL THREE KINDS OF RECORD, because any one of them makes a package exist: its rules, its
-	// levels, and the declaration of what it imports. Reading only the rules made a package
+	// levels, and the declaration of what it declares it reads. Reading only the rules made a package
 	// with levels and no rules INVISIBLE — which is not an exotic state, it is what a
 	// half-applied file leaves behind (the levels install, a rule is refused) and exactly when
 	// somebody needs to list it and take it down. `verse charter uninstall` answered "no
@@ -207,8 +207,8 @@ func logPackage(format string, a ...any) {
 
 // ── what a package IMPORTS ───────────────────────────────────────────────────
 
-// setPackageImports installs a package's `imports:` declaration: what its rules may read
-// outside their own address (trigger/imports.go).
+// setPackageImports installs a package's `reads:` declaration: what its rules may read
+// outside their own address (trigger/reads.go).
 //
 // THREE CHECKS, in the order that gives the most specific answer first:
 //
@@ -216,7 +216,7 @@ func logPackage(format string, a ...any) {
 //  2. the graph over packages stays ACYCLIC with this declaration in it — the check the whole
 //     feature exists for, and the one no single charter's author could make;
 //  3. every rule ALREADY installed in this package is still within the declaration, because
-//     narrowing must not leave a rule standing that the imports no longer allow. Re-installing
+//     narrowing must not leave a rule standing that the reads declaration no longer allow. Re-installing
 //     a charter with a line deleted is exactly how that would happen.
 //
 // Then the engine is told, and the record is written — in that order, so a declaration the
@@ -227,13 +227,13 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 		return err
 	}
 	if confine.Stamp() == "" {
-		return fmt.Errorf("imports: a charter with no address has nothing to import into — " +
-			"`imports:` belongs to a package, installed with `verse charter add --at <address>`")
+		return fmt.Errorf("reads: a charter with no address has nothing to import into — " +
+			"`reads:` belongs to a package, installed with `verse charter add --at <address>`")
 	}
 	graph := s.packageImports()
 	graph[confine.Stamp()] = subs
 	if c := trigger.Cycle(graph); c != "" {
-		return fmt.Errorf("imports: this would close a cycle between packages: %s — one reads "+
+		return fmt.Errorf("reads: this would close a cycle between packages: %s — one reads "+
 			"what the next writes, all the way round, so a write on any of them can wake the "+
 			"others and come back. A package graph is acyclic: break the loop, or fold the two "+
 			"halves into one package", c)
@@ -242,29 +242,29 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 	if err != nil {
 		return err
 	}
-	before := eng.Imports()
-	eng.SetImports(subs)
+	before := eng.Reads()
+	eng.SetReads(subs)
 	if err := eng.RecheckReads(); err != nil {
-		eng.SetImports(before) // narrowing refused: the engine is left as it was
-		return fmt.Errorf("imports: %w", err)
+		eng.SetReads(before) // narrowing refused: the engine is left as it was
+		return fmt.Errorf("reads: %w", err)
 	}
 	p := entity.Obj{trigger.AtField: confine.Stamp()}
 	if len(subs) > 0 {
-		p[trigger.ImportsField] = trigger.StampImports(subs)
+		p[trigger.ReadsField] = trigger.StampReads(subs)
 	}
 	if _, _, err := s.Store.Write(entity.Write{
 		At:    entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
 		Value: p.Payload(),
 	}); err != nil {
-		eng.SetImports(before)
-		return fmt.Errorf("imports: recording the declaration: %w", err)
+		eng.SetReads(before)
+		return fmt.Errorf("reads: recording the declaration: %w", err)
 	}
 	return nil
 }
 
 // packageDecl reads the record standing for a package's declaration, so an install that has to be
 // undone can put back exactly what was there — including nothing, which is what a package that
-// never declared anything has and is a different state from one that declared it imports nothing.
+// never declared anything has and is a different state from one that declared it reads nothing.
 func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
@@ -283,7 +283,7 @@ func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
 // putPackageDecl writes a declaration back as it was — or removes it, when there was none.
 //
 // REMOVED AND WRITTEN rather than written over, because a store write MERGES at its path: putting
-// back a declaration that had fewer imports than the one it replaces would leave the wider list
+// back a declaration that had fewer reads than the one it replaces would leave the wider list
 // standing, and the next restart would restore a package reading where its charter says it does
 // not (restorePackageImports).
 func (s *Server) putPackageDecl(at string, was entity.Payload, had bool) error {
@@ -323,7 +323,7 @@ func (s *Server) dropPackageEngine(at string) {
 }
 
 // packageImports reads the declared graph out of the store: every package that has a record,
-// and what it imports. A package with rules and no record imports nothing, which is the default
+// and what it declares it reads. A package with rules and no record reads nothing, which is the default
 // the declaration replaces.
 func (s *Server) packageImports() map[string][]trigger.Subtree {
 	out := map[string][]trigger.Subtree{}
@@ -338,7 +338,7 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 		if at == "" {
 			at = ent.Ref.ID()
 		}
-		subs, err := trigger.ParseImports(entity.Strs(ent.Payload, trigger.ImportsField))
+		subs, err := trigger.ParseReads(entity.Strs(ent.Payload, trigger.ReadsField))
 		if err != nil {
 			logPackage("charter package %q: %v", at, err)
 			continue
@@ -349,7 +349,7 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 }
 
 // restorePackageImports gives each package engine its declaration back, BEFORE the rules are
-// loaded — a rule is checked against the imports as it installs, so a restore that loaded the
+// loaded — a rule is checked against the reads declaration as it installs, so a restore that loaded the
 // charter first would refuse the very rules it is bringing back.
 func (s *Server) restorePackageImports() {
 	for at, subs := range s.packageImports() {
@@ -361,15 +361,15 @@ func (s *Server) restorePackageImports() {
 			logPackage("charter package %q: %v", at, err)
 			continue
 		}
-		eng.SetImports(subs)
+		eng.SetReads(subs)
 	}
 }
 
 // removePackage uninstalls the charter at an address: its rules, its levels, the declaration of
-// what it imports, and the engine running them.
+// what it declares it reads, and the engine running them.
 //
 // ALL FOUR, because a package is all four and taking any three leaves something that outlives
-// what it belonged to — a rule with no engine, an engine with no rules, or an `imports:` record
+// what it belonged to — a rule with no engine, an engine with no rules, or an `reads:` record
 // naming a package nobody can list. Rules first, because a stratum still named by a rule refuses
 // to go (which is right, and is why the order is not free).
 //

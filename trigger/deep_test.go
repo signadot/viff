@@ -356,7 +356,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.Confine(SubtreeAt("verse-dev", "drift"))
-	eng.SetImports([]Subtree{SubtreeAt("git")})
+	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},

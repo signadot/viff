@@ -27,7 +27,7 @@ import (
 // that issue names: a package DECLARES what it reads, and the graph over packages is required to
 // be acyclic at install.
 //
-//	imports: [ !verse-path [git], drift ]
+//	reads: [ !verse-path [git], drift ]
 //	---
 //	- name: proposal-says
 //	  condition: {subject: {system: merge, kind: proposal}}
@@ -37,7 +37,7 @@ import (
 // refused rather than throttled; a reader sees a package's dependencies without reading its
 // rules; and "what does changing this affect" becomes a question about the graph.
 //
-// AN ABSENT `imports:` IS NOT "EVERYTHING", it is nothing: a package with no declaration reads
+// AN ABSENT `reads:` IS NOT "EVERYTHING", it is nothing: a package with no declaration reads
 // only inside its own address. The other default would leave every package's edges undeclared,
 // which is the state this replaces — and a package that reads nothing outside itself is exactly
 // the one that cannot interfere, so the safe default is also the strict one. The refusal names
@@ -59,64 +59,64 @@ import (
 // at install even when which entity it lands on is not. That is what lets this be an install-time
 // refusal with no run-time half, unlike the write confinement, whose derive targets are templated.
 
-// SetImports declares the subtrees this engine's charter may read outside its own confinement.
+// SetReads declares the subtrees this engine's charter may read outside its own confinement.
 //
 // Set before the rules are installed, like the confinement itself. Re-setting REPLACES the
 // declared set rather than accumulating into it, so an operator narrows a package by setting a
 // smaller list; it does not itself check what is already installed against the new set —
-// checkImports does that, at install.
-func (e *Engine) SetImports(in []Subtree) {
-	e.imports = append([]Subtree(nil), in...)
+// checkReads does that, at install.
+func (e *Engine) SetReads(in []Subtree) {
+	e.reads = append([]Subtree(nil), in...)
 }
 
 // Imports is what this engine declares it reads beyond its own address.
-func (e *Engine) Imports() []Subtree { return append([]Subtree(nil), e.imports...) }
+func (e *Engine) Reads() []Subtree { return append([]Subtree(nil), e.reads...) }
 
-// readable is everything this engine may read: its own address, and what it imports.
+// readable is everything this engine may read: its own address, and what it declares it reads.
 //
 // Its own address is always readable and is never written down — a package reading what it
 // wrote is not a dependency on anybody, and requiring it to be declared would make every
 // charter carry a line that says nothing.
 func (e *Engine) readable() Matches {
 	out := Matches{e.confine.match()}
-	for _, im := range e.imports {
+	for _, im := range e.reads {
 		out = append(out, im.match())
 	}
 	return out
 }
 
-// checkImports refuses a rule that reads outside what its package declares.
+// checkReads refuses a rule that reads outside what its package declares.
 //
 // Unconfined engines are unchecked: baseline has no address to be outside of, and a charter that
-// may write anywhere has nothing an import graph would tell anybody.
-func (e *Engine) checkImports(t Trigger) error {
+// may write anywhere has nothing a reads graph would tell anybody.
+func (e *Engine) checkReads(t Trigger) error {
 	if !e.confine.confined() {
 		return nil
 	}
 	allowed := e.readable()
-	for _, st := range t.importReads() {
+	for _, st := range t.outsideReads() {
 		if allowed.contains(st.match()) {
 			continue
 		}
-		return fmt.Errorf("rule %q reads %s, which %s does not import: a charter installed at an "+
+		return fmt.Errorf("rule %q reads %s, which %s does not declare: a charter installed at an "+
 			"address reads inside it and what it declares, so that the graph over packages can be "+
-			"checked for a cycle. Add it: `imports: [%s]`%s",
-			t.Name, st.readText(), e.confine, st.stamp(), importsHint(e.imports))
+			"checked for a cycle. Add it: `reads: [%s]`%s",
+			t.Name, st.readText(), e.confine, st.stamp(), readsHint(e.reads))
 	}
 	return nil
 }
 
-// importsHint says what is imported already, so a refusal does not send somebody to look it up.
-func importsHint(in []Subtree) string {
+// readsHint says what is declared already, so a refusal does not send somebody to look it up.
+func readsHint(in []Subtree) string {
 	if len(in) == 0 {
-		return " (this package imports nothing)"
+		return " (this package reads nothing)"
 	}
 	var names []string
 	for _, im := range in {
 		names = append(names, im.stamp())
 	}
 	sort.Strings(names)
-	return " (it imports " + strings.Join(names, ", ") + ")"
+	return " (it reads " + strings.Join(names, ", ") + ")"
 }
 
 // readText is a subtree as a refusal names it — the address prefix a read landed in.
@@ -134,7 +134,7 @@ func (s Subtree) readText() string {
 // watched (a read inside an action is answered when the action fires, not before) and is a
 // dependency all the same. So this walks the rule's own document for path reads rather than
 // enumerating the places an action can hold one — a walk cannot fall behind a new field.
-func (t Trigger) importReads() []Subtree {
+func (t Trigger) outsideReads() []Subtree {
 	seen := map[Subtree]bool{}
 	var out []Subtree
 	add := func(st Subtree) {
@@ -161,18 +161,18 @@ func (t Trigger) importReads() []Subtree {
 	return out
 }
 
-// ParseImports reads the `imports:` declaration — a list of addresses in either spelling, the
+// ParseReads reads the `reads:` declaration — a list of addresses in either spelling, the
 // dotted one an operator types (`drift`, `demo.pr`) or the steps one a path prints
 // (`!verse-path [demo pr]`), which trigger.Match already takes for the same reason.
-func ParseImports(in []string) ([]Subtree, error) {
+func ParseReads(in []string) ([]Subtree, error) {
 	out := make([]Subtree, 0, len(in))
 	for _, s := range in {
 		st, err := ParseAt(s)
 		if err != nil {
-			return nil, fmt.Errorf("imports: %w", err)
+			return nil, fmt.Errorf("reads: %w", err)
 		}
 		if !st.confined() {
-			return nil, fmt.Errorf("imports: an empty address imports the whole verse, which is "+
+			return nil, fmt.Errorf("reads: an empty address reads the whole verse, which is "+
 				"what having a declaration is for; name a system (`git`) or a system and a kind "+
 				"(`demo.pr`) — got %q", s)
 		}
@@ -181,9 +181,9 @@ func ParseImports(in []string) ([]Subtree, error) {
 	return out, nil
 }
 
-// StampImports renders imports the way a record stores them: the dotted address each, in the
+// StampReads renders the declaration the way a record stores them: the dotted address each, in the
 // order they were declared.
-func StampImports(in []Subtree) []string {
+func StampReads(in []Subtree) []string {
 	out := make([]string, 0, len(in))
 	for _, st := range in {
 		out = append(out, st.stamp())
@@ -191,7 +191,7 @@ func StampImports(in []Subtree) []string {
 	return out
 }
 
-// Overlaps reports whether two subtrees can name one address — which is the question an import
+// Overlaps reports whether two subtrees can name one address — which is the question a read
 // graph asks: package P depends on package Q exactly when what P reads meets what Q may write.
 //
 // Level by level, where an empty level is a wildcard: `demo` overlaps `demo.pr` because one
@@ -215,7 +215,7 @@ func (s Subtree) Overlaps(o Subtree) bool {
 // PackageKind is where a package's own declaration lives: `verse:trigger:package:<address>`,
 // beside the rules and the strata that carry the same `at`.
 //
-// A RECORD OF ITS OWN, rather than a field stamped on each rule, because the imports are a
+// A RECORD OF ITS OWN, rather than a field stamped on each rule, because the reads declaration are a
 // property of the PACKAGE and not of any rule in it: two installs into one address would
 // otherwise each carry their own answer, and the graph would depend on which rule you read. The
 // id is the address, so a package has exactly one.
@@ -229,15 +229,15 @@ func IsCharterPackage(r entity.Ref) bool {
 	return r.Reserved() && r.System() == CharterSystem && r.Kind() == PackageKind
 }
 
-// ImportsField is where the declaration keeps them, as the dotted addresses StampImports writes.
-const ImportsField = "imports"
+// ReadsField is where the declaration keeps them, as the dotted addresses StampReads writes.
+const ReadsField = "reads"
 
-// ── the import graph ─────────────────────────────────────────────────────────
+// ── the reads graph ─────────────────────────────────────────────────────────
 
-// Cycle reports the cycle a package's imports would close, or "" for none.
+// Cycle reports the cycle a package's reads would close, or "" for none.
 //
 // THE GRAPH IS OVER PACKAGES and its edges are dependencies: P → Q when what P READS meets what
-// Q may WRITE, which is Q's address, because a package writes nowhere else. So an import of an
+// Q may WRITE, which is Q's address, because a package writes nowhere else. So a read of an
 // address no package is installed at adds no edge at all — `git` is a source's slice, and
 // reading a source is not depending on a package.
 //
@@ -248,7 +248,7 @@ const ImportsField = "imports"
 //
 // It is asked of the WHOLE graph rather than of the new package's neighbours, because an install
 // changes one node's edges and a cycle is a property of the graph — and it is asked on every
-// install, including a re-install that narrows imports, since the graph moves either way.
+// install, including a re-install that narrows what it reads, since the graph moves either way.
 func Cycle(pkgs map[string][]Subtree) string {
 	// The nodes, in one order, so two runs report the same cycle out of several.
 	names := make([]string, 0, len(pkgs))
@@ -319,12 +319,12 @@ func Cycle(pkgs map[string][]Subtree) string {
 	return ""
 }
 
-// RecheckReads asks the import check of every rule already installed, which is what an operator
-// narrowing a declaration needs: a rule that was allowed under the old imports and is not under
+// RecheckReads asks the reads check of every rule already installed, which is what an operator
+// narrowing a declaration needs: a rule that was allowed under the old declaration and is not under
 // the new one must refuse the CHANGE rather than be quietly left standing outside it.
 func (e *Engine) RecheckReads() error {
 	for _, t := range e.Triggers() {
-		if err := e.checkImports(t); err != nil {
+		if err := e.checkReads(t); err != nil {
 			return fmt.Errorf("%w — it is installed, so widen the declaration or remove the rule "+
 				"first", err)
 		}
@@ -332,17 +332,17 @@ func (e *Engine) RecheckReads() error {
 	return nil
 }
 
-// ImportsFromNode reads the `imports:` declaration out of the document it was written in,
+// ReadsFromNode reads the `reads:` declaration out of the document it was written in,
 // taking either spelling of an address per element:
 //
-//	imports: [drift, "demo.pr"]              the dotted path an operator types
-//	imports: [!verse-path [demo pr], drift]  the steps a `--paths` listing prints
+//	reads: [drift, "demo.pr"]              the dotted path an operator types
+//	reads: [!verse-path [demo pr], drift]  the steps a `--paths` listing prints
 //
 // The second is why this exists rather than a `[]string` decode: `!verse-path` is how an
 // address is written as steps everywhere else in a charter (tonycodec.go), and a declaration
 // that took only the dotted form would be the one place in the grammar where the printed form
 // of an address cannot be pasted back.
-func ImportsFromNode(node *ir.Node) ([]Subtree, error) {
+func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
 	node = unwrap(node)
 	if node == nil {
 		return nil, nil
@@ -350,7 +350,7 @@ func ImportsFromNode(node *ir.Node) ([]Subtree, error) {
 	var field *ir.Node
 	if node.Type == ir.ObjectType {
 		for i, key := range node.Fields {
-			if key != nil && key.Type == ir.StringType && key.String == ImportsField {
+			if key != nil && key.Type == ir.StringType && key.String == ReadsField {
 				field = node.Values[i]
 			}
 		}
@@ -360,7 +360,7 @@ func ImportsFromNode(node *ir.Node) ([]Subtree, error) {
 		return nil, nil
 	}
 	if field.Type != ir.ArrayType {
-		return nil, fmt.Errorf("imports: a list of addresses (`imports: [git, drift]`), not %v",
+		return nil, fmt.Errorf("reads: a list of addresses (`reads: [git, drift]`), not %v",
 			field.Type)
 	}
 	out := make([]Subtree, 0, len(field.Values))
@@ -379,25 +379,25 @@ func importSubtree(v *ir.Node) (Subtree, error) {
 	if tagName(v) == VersePathTag {
 		m, err := stepsMatch(v)
 		if err != nil {
-			return Subtree{}, fmt.Errorf("imports: %w", err)
+			return Subtree{}, fmt.Errorf("reads: %w", err)
 		}
 		if m.ID() != "" {
-			return Subtree{}, fmt.Errorf("imports: %s names an ENTITY; an import is a place — a "+
+			return Subtree{}, fmt.Errorf("reads: %s names an ENTITY; a read is a place — a "+
 				"system (`git`), or a system and a kind (`demo.pr`)", subtreeOf(m).String())
 		}
 		st := subtreeOf(m)
 		if !st.confined() {
-			return Subtree{}, fmt.Errorf("imports: an empty address imports the whole verse, " +
+			return Subtree{}, fmt.Errorf("reads: an empty address reads the whole verse, " +
 				"which is what having a declaration is for")
 		}
 		return st, nil
 	}
 	text, ok := stepText(unwrap(v))
 	if !ok {
-		return Subtree{}, fmt.Errorf("imports: an address is a name or a !%s vector; got %v",
+		return Subtree{}, fmt.Errorf("reads: an address is a name or a !%s vector; got %v",
 			VersePathTag, v.Type)
 	}
-	sts, err := ParseImports([]string{text})
+	sts, err := ParseReads([]string{text})
 	if err != nil {
 		return Subtree{}, err
 	}

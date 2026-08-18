@@ -52,13 +52,13 @@
 
 # ── THE REVIEW IS A PACKAGE ──────────────────────────────────────────────────────
 #
-# `at:` is the address this half may write in, and `imports:` is what it may read outside it —
+# `at:` is the address this half may write in, and `reads:` is what it may read outside it —
 # so the review is confined to `drift:*` by the ENGINE rather than by its rules being careful,
 # and the one thing it reads from anybody else is declared. The gate half below declares its own
 # and imports this one, which makes the two a graph verse checks for a cycle at install
 # (trigger/imports.go). One file, two packages, installed by the one command at the top.
 at: verse-dev.drift
-imports: [ !verse-path [git] ]
+reads: [ !verse-path [git] ]
 ---
 # The reflected slice: the git source's, and nobody else writes it.
 - name: reflected
@@ -432,7 +432,7 @@ imports: [ !verse-path [git] ]
 # graph is a chain rather than a loop — which is what verse checks, and what would refuse this
 # file if the review ever came to read `merge:*` back.
 at: verse-dev.merge
-imports: [git, verse-dev.drift]
+reads: [git, verse-dev.drift]
 ---
 # The same reflected slice, declared again because STRATA ARE PER PACKAGE: two packages each
 # name their own levels, and the records are addressed by package so the two `reflected`s are
