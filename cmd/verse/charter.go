@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 )
 
 // THE CHARTER IS ONE COMMAND, because it is one thing: rules and levels are installed from one
@@ -65,6 +66,9 @@ type charterFlags struct {
 	// File is what an install reads. `-f -` is stdin, which is also the default when nothing
 	// says otherwise.
 	File string `cli:"name=file aliases=f desc='install from FILE (- = stdin); with --add'"`
+	// Paths prints one path per line instead of the document, as `verse data --paths` does and
+	// for the same reason: a document cannot be piped back into the command that answered it.
+	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document'"`
 }
 
 var trig = &charterFlags{Depth: -1}
@@ -132,9 +136,11 @@ func charterCmd() *cli.Command {
 func printCharter(cc *cli.Context, steps []string) error {
 	q := url.Values{}
 	at, reach, split := cutAt(steps, "--")
+	full := joinSteps(steps) // everything typed, which is what --paths prefixes its lines with
 	if split {
 		q.Set("at", joinSteps(at))
 		steps = reach
+		full = joinSteps(append(append([]string{}, at...), reach...))
 	}
 	if len(steps) > 0 {
 		q.Set("path", joinSteps(steps))
@@ -145,6 +151,9 @@ func printCharter(cc *cli.Context, steps []string) error {
 	resp, err := httpGet("/charter", q)
 	if err != nil {
 		return fmt.Errorf("charter: %w", err)
+	}
+	if trig.Paths && resp.StatusCode < http.StatusBadRequest {
+		return printCharterPaths(cc, resp, full)
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		// The SERVER's words: it knows which half of the path failed and where else a name it
@@ -167,6 +176,102 @@ func printCharter(cc *cli.Context, steps []string) error {
 // two spellings compose freely. Which is what somebody types: the address they know as one
 // word, then the steps into it.
 func joinSteps(steps []string) string { return strings.Join(steps, ".") }
+
+// printCharterPaths prints what is installed, ONE PATH PER LINE, each of them a path this same
+// command takes back:
+//
+//	rules base-rule                       baseline's, which has no address
+//	verse-dev drift rules watcher
+//	verse-dev drift strata base
+//	notes                                 a package with a declaration and nothing in it yet
+//
+// AS STEPS, for the reason `verse data --paths` answers that way: a step is a whole word
+// whatever is inside it, so `verse c --paths | xargs -L1 verse c` round-trips and nothing in
+// the listing needs quoting to be usable.
+//
+// A NODE THAT HOLDS NOTHING PRINTS ITSELF, which is the case a listing of rules alone would
+// hide: a package whose levels installed and whose rules were refused is still a package, and
+// one that lists as nothing is one nobody can see to take down. That is the same reason
+// packagesSeen reads all three kinds of record.
+func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("charter --paths: %w", err)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return fmt.Errorf("charter --paths: decoding the response: %w", err)
+	}
+	// The path asked at is the prefix of everything printed: the answer's keys are relative to
+	// the node it answered, and a path that does not say where it starts pipes back to the
+	// wrong charter (or to none).
+	var prefix []string
+	if at != "" {
+		var err error
+		if prefix, err = entity.PathSegs(at); err != nil {
+			return fmt.Errorf("charter --paths: %w", err)
+		}
+	}
+	// A LIST is what a path into `rules` or `strata` answers, and its elements are named rather
+	// than nested — so the prefix already says which kind they are, and each line is one name
+	// away from being the path that reaches it.
+	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
+		for _, el := range n.Values {
+			if name := nodeStr(el, "name"); name != "" {
+				fmt.Fprintln(cc.Out, strings.Join(append(append([]string{}, prefix...), name), " "))
+			}
+		}
+		return nil
+	}
+	walkCharterPaths(cc, node, prefix)
+	return nil
+}
+
+// walkCharterPaths prints one line per rule and level under a node, and the node's own address
+// when it holds neither.
+func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
+	n := codec.Unwrap(node)
+	if n == nil || n.Type != ir.ObjectType {
+		return
+	}
+	here, printed := false, false
+	var children *ir.Node
+	for i, key := range n.Fields {
+		if key == nil || key.Type != ir.StringType {
+			continue
+		}
+		v := codec.Unwrap(n.Values[i])
+		switch key.String {
+		case "writes":
+			here = true
+		case "rules", "strata":
+			if v == nil || v.Type != ir.ArrayType {
+				continue
+			}
+			for _, el := range v.Values {
+				if name := nodeStr(el, "name"); name != "" {
+					fmt.Fprintln(cc.Out, strings.Join(append(append([]string{}, at...), key.String, name), " "))
+					printed = true
+				}
+			}
+		case "children":
+			children = v
+		}
+	}
+	if here && !printed && len(at) > 0 {
+		fmt.Fprintln(cc.Out, strings.Join(at, " "))
+	}
+	if children == nil || children.Type != ir.ObjectType {
+		return
+	}
+	for i, seg := range children.Fields {
+		if seg == nil || seg.Type != ir.StringType {
+			continue
+		}
+		walkCharterPaths(cc, children.Values[i], append(append([]string{}, at...), seg.String))
+	}
+}
 
 // cutAt splits a list of steps at the first sep, reporting whether there was one.
 func cutAt(steps []string, sep string) (before, after []string, found bool) {

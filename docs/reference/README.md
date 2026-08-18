@@ -116,6 +116,11 @@ verse
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
+          [--paths]                          one line per rule and level instead of the document,
+                                             as steps — `c --paths | xargs -L1 verse c` shows
+                                             each, and `… | xargs -L1 verse c -r` takes them
+                                             out. A package that holds nothing yet prints
+                                             itself, since that is the state worth seeing
           <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
                                              levels, one of them by name, and on into that one
                                              (`c verse-dev.drift rules watcher action`).

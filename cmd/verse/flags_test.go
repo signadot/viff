@@ -559,3 +559,67 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 		t.Errorf("`--` answered the package rather than the key: %s", out)
 	}
 }
+
+// `--paths` PRINTS WHAT PIPES BACK, one line per rule and level, as `verse data --paths` does
+// and for the same reason: a document cannot be fed to the command that answered it.
+//
+// AS STEPS, so nothing in the listing needs quoting to be usable, and each line is a path this
+// same command takes — to show one, or to remove it.
+func TestCharterPathsPrintsWhatPipesBack(t *testing.T) {
+	serve(t)
+	if err := installPackageRuleAt(t, "notes"); err != nil {
+		t.Fatalf("installing a package: %v", err)
+	}
+	out, err := runCLI(t, "charter", "--paths")
+	if err != nil {
+		t.Fatalf("charter --paths: %v", err)
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		t.Fatal("--paths printed nothing for an installed package")
+	}
+	want := "notes rules note"
+	if lines[0] != want {
+		t.Fatalf("--paths printed %q, want %q", lines[0], want)
+	}
+	// The line IS a path: fed back as arguments, it answers the rule it names.
+	back, err := runCLI(t, append([]string{"charter"}, strings.Fields(lines[0])...)...)
+	if err != nil {
+		t.Fatalf("the printed path did not pipe back: %v", err)
+	}
+	if !strings.Contains(back, "name: note") {
+		t.Errorf("the path answered something else:\n%s", back)
+	}
+}
+
+// A PACKAGE THAT HOLDS NOTHING YET PRINTS ITSELF. A listing of rules alone would hide the one
+// state somebody most needs to see: a package whose declaration installed and whose rules were
+// refused is still a package, and one that lists as nothing is one nobody can see to take down.
+func TestCharterPathsShowsAPackageWithNothingInIt(t *testing.T) {
+	serve(t)
+	g.Addr = testAddr
+	node, err := codec.ParseNode([]byte(`{at: notes, reads: [demo.pr]}`), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := httpPostNodeTo("/charter", url.Values{"at": []string{"notes"}}, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 201 {
+		t.Fatalf("installing a declaration: %s", resp.Status)
+	}
+	out, err := runCLI(t, "charter", "--paths")
+	if err != nil {
+		t.Fatalf("charter --paths: %v", err)
+	}
+	if strings.TrimSpace(out) != "notes" {
+		t.Errorf("--paths = %q, want the package that holds nothing yet", strings.TrimSpace(out))
+	}
+}

@@ -391,7 +391,9 @@ from step 0 for its duration, so a second operator's install waits or is told to
 
 ## Open
 
-- Does `verse c <path>` want `--paths` (one address per line, as `verse data` has) for
-  scripting? Probably, and it is cheap; left out above to keep the first cut small.
+- ~~Does `verse c <path>` want `--paths`~~ — **built.** One line per rule and level, as steps,
+  each of them a path this command takes back. A node that holds neither prints ITSELF, which
+  is the case a listing of rules alone would hide: a package whose declaration installed and
+  whose rules were refused is still a package.
 - `rm` of a rule that a stratum still holds is refused today by the engine. The message should
   name the path to the stratum now that there is one.
