@@ -175,6 +175,51 @@ Two rules that come with it, both worth stating because getting either wrong is 
   Putting reads behind the mutation lock is how a listing wedges behind an install, which is the
   same shape as the readiness probe that read `/status` and made health a function of load.
 
+The restore path takes it too. `restorePackages` runs after the listener is up (versed serves
+while it restores, deliberately — that is what `/healthz` distinguishes), so an operator's
+install can land mid-restore today. It already releases `scopeMu` before loading charters, for
+the reason above; taking the charter lock around the load makes an install during a restore wait
+or be told to come back, rather than race the charter it is being installed alongside.
+
+### Is that a contradiction? No, but the guarantee is narrower than "one step" sounds
+
+"Applies as one step" and "a reader can see it half-applied" only look contradictory if the
+promise is isolation. It is not, and it cannot be here, for a reason that has nothing to do with
+readers: **a rule begins observing when it installs.** By the time a later definition in the
+same request is refused, the earlier ones have been live for milliseconds — matching, firing,
+writing. That is already true of one file today, and it is why the undo compensates rather than
+isolates.
+
+Which settles what locking reads would buy: almost nothing. A reader held behind the lock would
+get a tidy before-and-after view of a verse that had *already run* half a program. The exposure
+is not on the read path; it is in the engine, which is inside the mutation rather than outside
+it. So locking reads buys a neater display and costs a listing that wedges behind an install —
+the worse half of both.
+
+The only thing that would buy real isolation is **build-then-swap**: install into an engine that
+is not observing, validate the whole request, then swap it in. Rejected, and worth saying why so
+nobody re-derives it as an obvious improvement. An engine's identity is its watches and its
+running state — the per-rule watches whose establishment is what made package restore take
+seconds, plus the seen watermarks, the in-flight hooks and the motions being awaited. A swap
+would pay that cost on every install and drop that state, to close a window measured in
+milliseconds, on an operator action. The trade is not close.
+
+So the honest statement, and the one the tests should pin: **all-or-none is a promise about what
+is INSTALLED when the request answers.** Not about what was visible while it ran, and not about
+what the rules did while they stood — which is the same sentence `uninstall` already prints
+about what a package wrote.
+
+What the plan does close, and it is the part that matters:
+
+- **Two mutations can no longer interleave.** That is the corruption risk: undo lists crossing,
+  and a refusal putting back state another request installed while both claim nothing happened.
+- **The read-then-act gap goes away.** `whichCharter` GETs the whole tree to resolve a name, then
+  sends a DELETE for it — two requests, with the charter free to move between them. Resolving
+  the path server-side inside the mutating request (step 1, used by step 4) makes resolution and
+  removal see one charter. That is a gain in precision rather than a corruption fix, but it is
+  the last read-then-write chain outside the lock: after this, every read that feeds a write
+  happens inside it.
+
 ## Order of work
 
 Each step leaves a working tree, a runnable verse and a green smoke.
@@ -186,8 +231,9 @@ context-bounded, 503 on the timeout. It lands on its own — it fixes a hole tha
 every step below inherits it rather than needing it.
 
 Tests: two concurrent installs at one address, both of which must report truthfully; a held lock
-answering 503 rather than hanging; and a canary that the charter lock is never taken while
-`scopeMu` is held.
+answering 503 rather than hanging; an install arriving during a restore; and a canary that the
+charter lock is never taken while `scopeMu` is held. Plus the limit, pinned rather than assumed:
+a rule that fired between installing and a later refusal keeps what it wrote.
 
 ### 1. The server resolves a path (no CLI change)
 
