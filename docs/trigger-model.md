@@ -237,7 +237,7 @@ short. One rule by name is still one command:
 ```sh
 verse charter merge             # that package alone, rules and all
 verse charter merge --depth 0   # …without whatever is installed under it
-verse charter show merge-proposal
+verse c drift rules merge-proposal
 ```
 
 A package comes off whole, too — its rules, its levels, what it reads, and the engine running
@@ -527,7 +527,7 @@ carry, and "unknown key" would not say so.
 
 The address string is sugar for the identity dimensions, so `demo:pr:*` means
 `{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
-what reads back when you `verse charter show` it: `demo:pr`. Same match, shorter spelling.
+what reads back when you read it out of `verse c`: `demo:pr`. Same match, shorter spelling.
 
 Keep it small. This is where complexity hides. To act "only the first time", match a state
 field your action then advances — a LATCH. That is not a nicety: a rule with no latch is

@@ -74,7 +74,7 @@ spawn:
     input: {destination: main}
 ```
 
-The list is a FIELD, so the engine checks it when the trigger fires, `verse charter show` prints it,
+The list is a FIELD, so the engine checks it when the trigger fires, `verse c rules <name>` prints it,
 and each argument is expanded on its own — a `$branch` with a quote in it is an argument rather
 than text spliced into a document. Its presence selects the driver; `driver: calls` may be
 written and must not contradict it.

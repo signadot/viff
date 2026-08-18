@@ -125,7 +125,7 @@ below it", where `[demo, "*", 1]` means "any one segment, then this".
 | `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>:<name>`, or the address as stored |
 | `verse charter [<address>]` | an address in the CHARTER tree, any depth: `verse charter verse-dev drift` |
-| `verse charter show/remove <name>` | a name, not an address |
+| `verse c <address> rules <name>` | a path: the address, then into it |
 
 ## Two halves, one tree
 

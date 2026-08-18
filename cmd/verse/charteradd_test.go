@@ -109,9 +109,9 @@ action:
 	if out, err := runCLI(t, "charter", "add", f); err != nil {
 		t.Fatalf("install: %v (%s)", err, out)
 	}
-	out, err := runCLI(t, "charter", "show", "noted")
+	out, err := runCLI(t, "charter", "rules", "noted")
 	if err != nil {
-		t.Fatalf("charter show: %v", err)
+		t.Fatalf("charter path: %v", err)
 	}
 	for _, want := range []string{"# why this rule is here", "# the flag it sets"} {
 		if !strings.Contains(out, want) {

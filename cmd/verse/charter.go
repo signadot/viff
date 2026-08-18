@@ -17,13 +17,20 @@ import (
 // file, confined by one address, and they come and go together. `verse charter` and `verse
 // stratum` were two commands each answering a slice of it, and neither could show a charter.
 //
-//	verse charter                       the whole charter, at every address
-//	verse charter verse-dev drift       …the one installed there, and anything under it
-//	verse charter --depth 0             …this address alone
-//	verse charter add -f <file>         install one (rules, levels and reads, in order)
-//	verse charter uninstall <address>   take a package down whole
-//	verse charter show <name>           one rule or one level
-//	verse charter remove <name>         …and how it goes
+//	verse c                                 the whole charter, at every address
+//	verse c verse-dev drift                 …the one installed there, and anything under it
+//	verse c verse-dev.drift rules           …its rules
+//	verse c verse-dev.drift rules watcher   …one of them, and `… watcher action` reaches in
+//	verse c rules watcher                   baseline's, which has no address
+//	verse c --depth 0                       this address alone
+//	verse c add -f <file>                   install one (rules, levels and reads, in order)
+//	verse c uninstall <address>             take a package down whole
+//	verse c remove <name>                   take one rule out
+//
+// ONE PATH, and `show` is gone because of it: a path that reaches a rule is the same path that
+// reaches the charter holding it, one step longer. What `show` had that a path does not is the
+// SEARCH — it looked a name up in every charter — and that survives where it was useful, in the
+// refusal: the server names the charter that holds it and gives the path that reaches it.
 //
 // The tree it prints is the SERVER's (versed/charter.go); this end asks for an address and a
 // depth and renders what comes back, which is what keeps the two from disagreeing about shape.
@@ -36,7 +43,7 @@ type charterFlags struct {
 	// At names a charter for `show` and `remove`, where a NAME is the argument and a name is
 	// unique within a charter rather than across them. The listing needs no such flag: its
 	// address is the positional.
-	At string `cli:"name=at desc='the charter holding this rule or level, when more than one has the name'"`
+	At string `cli:"name=at desc='where the address ends, for a package whose own address ends in rules|strata (same as a bare -- among the steps)'"`
 }
 
 var trig = &charterFlags{Depth: -1}
@@ -46,53 +53,63 @@ func charterCmd() *cli.Command {
 	trig = &charterFlags{Depth: -1} // per-invocation, like the filter flags
 	return cli.NewCommandAt(&cfg.Command, "charter").
 		WithAliases("charters", "c").
-		WithSynopsis("charter — the installed charter at an address; add|show|remove|uninstall").
+		WithSynopsis("charter — the charter at a path (<address> [rules|strata [<name>]]); add|remove|uninstall").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
-		WithSubs(charterAddCmd(), charterShowCmd(), charterRemoveCmd(), charterUninstallCmd()).
+		WithSubs(charterAddCmd(), charterRemoveCmd(), charterUninstallCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
 				return err
 			}
-			// `--` ENDS THE VERBS, so an address that collides with one is still reachable: a
-			// package at `remove` is `verse charter -- remove`, and without it the verb wins
-			// every time. The collision is real rather than theoretical — a package's address
-			// is a system name, and `add`, `show` and `remove` are ordinary words.
+			// `--` IN FRONT ENDS THE VERBS, so an address that collides with one is still
+			// reachable: a package at `remove` is `verse c -- remove`, and without it the verb
+			// wins every time. The collision is real rather than theoretical — a package's
+			// address is a system name, and `add` and `remove` are ordinary words.
 			if len(args) > 0 && args[0] == "--" {
 				args = args[1:]
 			} else if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
-			// THE POSITIONAL IS AN ADDRESS, as it is for `verse state`, and a flag among the
-			// positionals ends it — which is what lets `--depth`/`--trim` sit on either side.
-			var addr []string
-			addr, args = args, nil
-			for i, a := range addr {
-				if strings.HasPrefix(a, "-") {
-					addr, args = addr[:i], addr[i:]
+			// THE POSITIONALS ARE A PATH: the address, then a reach into what stands there
+			// (`verse-dev.drift rules watcher`), which is the grammar `verse state` has. A flag
+			// among them ends it, which is what lets `--depth`/`--trim` sit on either side.
+			var steps []string
+			steps, args = args, nil
+			for i, a := range steps {
+				if strings.HasPrefix(a, "-") && a != "--" {
+					steps, args = steps[:i], steps[i:]
 					break
 				}
-			}
-			at, err := address(addr)
-			if err != nil {
-				return err
 			}
 			if args, err = cfg.Parse(cc, args); err != nil {
 				return err
 			}
 			if len(args) > 0 {
-				return fmt.Errorf("%w: charter takes one address (as one token or as steps), "+
-					"and %q is after it", cli.ErrUsage, args[0])
+				return fmt.Errorf("%w: charter takes one path (an address, then rules|strata "+
+					"and a name), and %q is after it", cli.ErrUsage, args[0])
 			}
-			return printCharter(cc, at)
+			return printCharter(cc, steps)
 		})
 }
 
-// printCharter asks for the charter at an address and prints what comes back.
-func printCharter(cc *cli.Context, at string) error {
+// printCharter asks for the charter at a path and prints what comes back.
+//
+// THE SPLIT IS THE SERVER'S — which of these steps are the address and which reach into the node
+// standing there — because that is the end that knows the tree. This one sends what was typed.
+//
+// A `--` AMONG THE STEPS says where the address ends, for the one case the server's greedy split
+// cannot get right on its own: a package whose address ends in `rules` or `strata` shadows that
+// key of the address above it. `verse c verse-dev -- rules` is the key; `verse c verse-dev.rules`
+// is the package. It rides as `?at=`, which is what that query has always meant.
+func printCharter(cc *cli.Context, steps []string) error {
 	q := url.Values{}
-	if at != "" {
-		q.Set("at", at)
+	at, reach, split := cutAt(steps, "--")
+	if split {
+		q.Set("at", joinSteps(at))
+		steps = reach
+	}
+	if len(steps) > 0 {
+		q.Set("path", joinSteps(steps))
 	}
 	if trig.Depth >= 0 {
 		q.Set("depth", fmt.Sprint(trig.Depth))
@@ -102,14 +119,35 @@ func printCharter(cc *cli.Context, at string) error {
 		return fmt.Errorf("charter: %w", err)
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		where := "at " + at
-		if at == "" {
-			where = "anywhere"
-		}
-		return fmt.Errorf("charter: no charter is installed %s, and none under it", where)
+		// The SERVER's words: it knows which half of the path failed and where else a name it
+		// was given actually lives, and repeating a guess over the top of that would be this
+		// end pretending to know the tree.
+		defer resp.Body.Close()
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("charter: %s", strings.TrimSpace(string(msg)))
 	}
 	return printBody(cc, resp)
+}
+
+// joinSteps is the path as one token: the steps, dot-joined.
+//
+// PLAIN JOINING, where `verse state`'s address() refuses to MIX the two spellings — `demo.pr a.b`
+// is an error there, because an entity id may contain a dot and `a.b` could be one step or two.
+// No charter name may hold a delimiter (a rule or a level called `v1.2` is refused at install:
+// a name is a bare kpath field, since a chain addresses the action inside a rule as
+// `review.onDone`), so `verse c verse-dev.drift rules watcher` has exactly one reading and the
+// two spellings compose freely. Which is what somebody types: the address they know as one
+// word, then the steps into it.
+func joinSteps(steps []string) string { return strings.Join(steps, ".") }
+
+// cutAt splits a list of steps at the first sep, reporting whether there was one.
+func cutAt(steps []string, sep string) (before, after []string, found bool) {
+	for i, s := range steps {
+		if s == sep {
+			return steps[:i], steps[i+1:], true
+		}
+	}
+	return steps, nil, false
 }
 
 type charterUninstallConfig struct {
@@ -170,36 +208,6 @@ func (cfg *charterUninstallConfig) run(cc *cli.Context, args []string) error {
 	}
 	fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n", at)
 	return nil
-}
-
-type charterShowConfig struct{ *cli.Command }
-
-func charterShowCmd() *cli.Command {
-	cfg := &charterShowConfig{}
-	return cli.NewCommandAt(&cfg.Command, "show").
-		WithSynopsis("show a trigger: show <name> [--at <address>]").
-		WithOpts(mustOpts(trig)...).
-		WithRun(cfg.run)
-}
-
-func (cfg *charterShowConfig) run(cc *cli.Context, args []string) error {
-	name, err := oneArg(cfg.Command, cc, args, "charter show wants a name")
-	if err != nil {
-		return err
-	}
-	at, err := whichCharter(cc, "charter show", name)
-	if err != nil {
-		return err
-	}
-	resp, err := httpGet("/charter/"+name, atQuery(at))
-	if err != nil {
-		return fmt.Errorf("charter show: %w", err)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("charter show: no such trigger %q", name)
-	}
-	return printBody(cc, resp)
 }
 
 // whichCharter finds the charter holding a rule by name, since a name is unique WITHIN a charter

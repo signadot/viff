@@ -370,7 +370,7 @@ first, so a self-contained charter never holds; one whose rules name a neighbour
 exactly those rules until the neighbour is installed.
 
 That is the intended behaviour and it is **invisible**, which is the corner worth knowing before
-it costs you an afternoon. A held rule is not in `verse charter`, `verse charter show <name>`
+it costs you an afternoon. A held rule is not in `verse charter`, `verse c <address> rules <name>`
 answers *no such trigger*, and `verse status` counts what fires — so a four-rule charter installs
 into a verse that reports two rules and explains nothing. The held ones are there:
 
@@ -403,7 +403,7 @@ unstratified, having been told they were ordered. Remove the rules first, or mov
 
 ```
 $ verse charter             # the ordering, by level
-$ verse charter show sdlc
+$ verse c rules sdlc
 $ verse charter remove sdlc # refused while rules live there
 ```
 

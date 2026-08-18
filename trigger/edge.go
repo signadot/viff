@@ -35,7 +35,7 @@ import (
 // evaluation. Latch, or run at every commit — see the install-time lint in AddTrigger.
 // subjectAddr is a subject's ADDRESS for a trace line — without the predicate, which
 // subjectText appends and which is a whole charter paragraph once a rule has comments in it.
-// A trace says which rule and where; the predicate is in `verse charter show`.
+// A trace says which rule and where; the predicate is in `verse c rules <name>`.
 func subjectAddr(m Match) string {
 	if s, ok := m.address(); ok {
 		return s

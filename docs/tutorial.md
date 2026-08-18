@@ -589,9 +589,9 @@ format:
 ```sh
 verse charter add -f charter.tony # or: cat charter.tony | verse charter add -f -
 verse charter
-verse charter show shape-latch
+verse c rules shape-latch
 verse charter remove shape-latch
-verse charter                     # and `verse charter show|remove` for one of them
+verse charter                     # and `verse c rules <name>` for one of them
 ```
 
 A charter is durable — each rule is an entity (`verse:trigger:rule:<name>`), and each stratum

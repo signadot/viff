@@ -153,3 +153,34 @@ func TestStrataReachTheSameWay(t *testing.T) {
 	}
 	_ = srv
 }
+
+// THE PATH IS SPLIT BY THE KPATH PARSER, not by `strings.Split`, and this is what that buys —
+// because it is NOT the case it looks like. No charter name may hold a delimiter: a rule or a
+// level called `v1.2` is refused at install, since a name is a bare kpath field and a chain
+// addresses the action inside a rule (`review.onDone`). So a dot in a path is always a step.
+//
+// What the parser is for is the other end: somebody who does not know that types the quoting
+// anyway, and a wildcard is a thing a person tries once. Both get an answer about the PATH
+// rather than a 404 about a rule that was never going to be found under that spelling.
+func TestAPathIsSplitByTheGrammar(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {system: notes}}, action: {patch: {seen: true}}}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+	// The premise: a name cannot hold a delimiter, so a dot in a path is unambiguously a step.
+	if code, msg := installAt(t, ts.URL, "notes", `{name: "v1.2", level: 0, match: {system: notes}}`); code == 201 {
+		t.Fatalf("a level named `v1.2` installed — a path segment is ambiguous now: %s", msg)
+	}
+	// Quoted, by somebody who does not know that: unquoted by the parser, and it resolves.
+	if code, body := charterPath(t, ts.URL, `notes.rules."watcher"`); code != http.StatusOK {
+		t.Errorf("a quoted segment answered %d: %s", code, body)
+	}
+	// A wildcard is not a name, and the refusal says so rather than 404ing about a rule.
+	code, body := charterPath(t, ts.URL, "notes.rules.*")
+	if code != http.StatusBadRequest {
+		t.Errorf("a wildcard path answered %d, want a refusal about the path: %s", code, body)
+	}
+}

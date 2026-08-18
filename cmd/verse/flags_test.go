@@ -448,36 +448,46 @@ func installPackageRuleAt(t *testing.T, at string) error {
 	return nil
 }
 
-// A rule in a PACKAGE is reachable by name. `show` and `remove` asked baseline's engine and
-// nothing else, so every rule in every package was un-showable and un-removable — installed,
-// listed in the tree, and addressable by no command.
+// A rule in a PACKAGE is reachable by its PATH, and two charters holding one name is no longer
+// a question anybody has to settle — which is the point of the path.
 //
-// A name is unique WITHIN a charter and not across them, which is most of what packages are
-// for, so the name is looked for: one charter holding it is answered, several is a question.
-func TestARuleInAPackageIsReachableByName(t *testing.T) {
+// A name is unique WITHIN a charter and not across them, which is most of what packages are for.
+// `show` answered that by SEARCHING: one charter holding the name was answered, several was a
+// question it asked back with `--at`. A path says which charter in the same breath as the name,
+// so there is nothing to ask — and when somebody reaches into the wrong one, the search survives
+// as the refusal, naming where the name actually is.
+func TestARuleInAPackageIsReachableByItsPath(t *testing.T) {
 	serve(t)
 	if err := installPackageRule(t); err != nil {
 		t.Fatalf("installing a package: %v", err)
 	}
 
-	out, err := runCLI(t, "charter", "show", "note")
+	out, err := runCLI(t, "charter", "notes", "rules", "note")
 	if err != nil {
-		t.Fatalf("charter show: %v", err)
+		t.Fatalf("charter path: %v", err)
 	}
 	if !strings.Contains(out, "name: note") {
-		t.Errorf("show did not find the package's rule: %s", out)
+		t.Errorf("the path did not reach the package's rule: %s", out)
 	}
 
-	// Two charters holding one name is a question only the operator can settle.
+	// A second charter with a rule of the same name settles nothing and asks nothing: each
+	// path names its own.
 	if err := installPackageRuleAt(t, "other"); err != nil {
 		t.Fatalf("installing a second package: %v", err)
 	}
-	_, err = runCLI(t, "charter", "show", "note")
-	if err == nil || !strings.Contains(err.Error(), "--at") {
-		t.Errorf("an ambiguous name did not ask which charter: %v", err)
+	for _, at := range []string{"notes", "other"} {
+		if out, err := runCLI(t, "charter", at, "rules", "note"); err != nil {
+			t.Errorf("%s rules note: %v (%s)", at, err, out)
+		} else if !strings.Contains(out, "name: note") {
+			t.Errorf("%s rules note did not answer with the rule: %s", at, out)
+		}
 	}
-	if out, err := runCLI(t, "charter", "show", "note", "--at", "other"); err != nil {
-		t.Errorf("--at did not settle it: %v (%s)", err, out)
+	// …and the path that reaches for it where it is not says where it is.
+	_, err = runCLI(t, "charter", "rules", "note")
+	if err == nil {
+		t.Error("baseline answered for a rule only the packages hold")
+	} else if !strings.Contains(err.Error(), "notes") || !strings.Contains(err.Error(), "other") {
+		t.Errorf("the refusal does not name the charters that hold it: %v", err)
 	}
 
 	// And removing reaches it too, which it could not before.

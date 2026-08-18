@@ -419,7 +419,7 @@ func TestAPayloadKeepsItsComments(t *testing.T) {
 // a comment above it IS a wrapper holding the value, so the escape landed on the comment: the
 // write still succeeded and still replaced, and every LINE comment inside it was dropped while
 // the head comments came back. That is the arbitrary half again, and it is what the charter
-// reads out of — `verse charter show` had lost `name: r # the short name` before anything got
+// reads out of — reading a rule back had lost `name: r # the short name` before anything got
 // as far as rendering it.
 //
 // The document deliberately puts a line comment on an OBJECT (`labels:`), because that is the

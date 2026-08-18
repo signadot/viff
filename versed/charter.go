@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -235,7 +236,15 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 	// address ends in a document key needs.
 	rest := []string{}
 	if p := r.URL.Query().Get("path"); p != "" {
-		segs := strings.Split(p, ".")
+		// THROUGH THE KPATH PARSER, not strings.Split: a segment may contain a dot
+		// (`verse-dev.drift.rules."v1.2-check"`), so the only correct split is the one that
+		// knows the quoting — which is the same reason entity.PathSegs exists and the same
+		// reason `verse state` writes an address as steps when an id holds a delimiter.
+		segs, err := entity.PathSegs(p)
+		if err != nil {
+			http.Error(w, "path: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 		if at != "" {
 			rest = segs
 		} else {

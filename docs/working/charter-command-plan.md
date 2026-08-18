@@ -1,6 +1,6 @@
 # One path into the charter: a plan for `verse c`
 
-Status: **steps 0, 1 and 2 are built** (branch `charter-path`); the CLI steps (3-5) are proposal. The charter command as it stands is
+Status: **steps 0-3 are built** (branch `charter-path`); steps 4 and 5 are proposal. The charter command as it stands is
 [cmd/verse/charter.go](../../cmd/verse/charter.go); the tree it prints is the server's
 ([versed/charter.go](../../versed/charter.go)).
 
@@ -293,6 +293,18 @@ path, per [contributing.md](contributing.md)'s standing rule while the users are
 writing it. `--at` survives on `add` alone.
 
 Tests: the CLI end of each path above; `--depth` still composes; a scope still answers.
+
+**Built.** Two things it found:
+
+- `address()` is the wrong joiner. It refuses to MIX the two spellings — `demo.pr a.b` is an
+  error there, because an entity id may hold a dot and `a.b` could be one step or two. A charter
+  path has no such ambiguity (no name may hold a delimiter, verified at install), so the steps
+  are dot-joined plainly and `verse c verse-dev.drift rules watcher` — the address as one word,
+  then the steps — is what somebody actually types.
+- The ambiguity `show` had to ask about is GONE rather than moved. `TestARuleInAPackageIsReachable`
+  asserted that two charters holding one name is a question settled with `--at`; under a path the
+  name arrives with its charter, so the test now asserts each path answers its own and the
+  refusal names both.
 
 ### 4. `verse c rm <path>` subsumes `remove` and `uninstall`
 

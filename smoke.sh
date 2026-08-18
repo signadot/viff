@@ -267,7 +267,7 @@ v charter add -f - >/dev/null <<'JSON' || die "operator charter add failed"
     "gates":     [],
     "action":    { "patch": { "stage": "escalated" } } } ]
 JSON
-has "$(v charter show smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
+has "$(v charter rules smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
 ok "installed; the sugar renders back as a tag"
 # two candidates, one matching the glob and one not — the fan-out must pick exactly one.
 v state put demo:task:hotfix-9 '{"stage":"open"}' >/dev/null || die "state put failed"
@@ -300,7 +300,7 @@ v charter add -f - >/dev/null <<'JSON' || die "on-charter add failed"
     "gates":     [],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
-has "$(v charter show smoke-on-green)" 'on' || die "the \`on\` did not survive install"
+has "$(v charter rules smoke-on-green)" 'on' || die "the \`on\` did not survive install"
 ok "installed a charter with an \`on\`"
 v state put demo:build:1 '{"stage":"reviewed"}' >/dev/null || die "state put failed"
 # The cause does not hold: no edge, no firing.
