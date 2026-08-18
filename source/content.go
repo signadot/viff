@@ -39,6 +39,20 @@ func NewContent(root, mount string) *Content {
 // Match returns {path, size, content} for the regular file at the requested content
 // path, or {path, size, truncated} when the file is over the cap, or null for the
 // subtree root, a missing/non-regular file, or a path that escapes the tree.
+//
+// THE PARAMS ARE DISCARDED, INCLUDING THE SCOPE, and that is safe HERE for a reason the
+// next controller in this tree will not inherit. docd multiplexes many client sessions
+// onto one controller connection, so a client's COW scope cannot ride the connection the
+// way it rides a client's `hello`: docd sets `scope` on each ROUTED REQUEST instead, and a
+// scope-aware controller is expected to honour that field. This one has no scope-dependent
+// state to honour it with — connect mounts one Content per scope, at
+// local:dir-content-<scope>, so the scope is already in the mount path and two scopes are
+// two controllers over two trees. A controller serving one mount for several scopes would
+// have to read MatchParams.Scope, and reading nothing would quietly serve the wrong tenant.
+//
+// (docd also rewrites the request id to its own on the way out, for the same multiplexing
+// reason; libctl's runtime answers with the id it was given, so nothing here sees it.
+// Both are documented at tony-format docs/logd/session.md#the-mount-protocol.)
 func (c *Content) Match(_ context.Context, path string, _ *ir.Node, _ libctl.MatchParams) (*ir.Node, error) {
 	rest, ok := strings.CutPrefix(path, c.mount+".")
 	if !ok {
