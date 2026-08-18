@@ -110,6 +110,62 @@ ship: ## build+push both images at the current commit and deploy staging at that
 	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
 	  E="-e coderunnerImage=$(REGISTRY)/verse-coderunner:$(STAGING_SHA)"
 
+# ONE TIER AT A TIME, because `ship` above applies all of them in a single kubectl apply and
+# the tiers do not always tolerate rolling together. versed and docd speak logd's session
+# protocol over the wire, so a protocol change (v0.0.173's match shape, say) means the two
+# vintages must not meet: a client of one against a server of the other has its path read as
+# "", which is the ROOT — an answer, with a commit, not an error. One apply starts both rolling
+# and there is no point in it where you can say which is up.
+#
+# So each of these pushes the image its tier runs, applies ONLY that tier's objects, and does
+# not return until they are rolled out. A protocol-changing ship is then a sequence somebody
+# can read:
+#
+#   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
+#   make ship-docd && make ship-versed && make ship-sources && make ship-coderunner
+#
+# The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
+# docd (the store), versed (the engine and its two Services), source (the connectors), runner
+# (the coderunner, its own image). An object with no `tier` — the Namespace, the ServiceAccount,
+# the ExternalSecrets — belongs to none of them and is shipped by a full `make deploy`; these
+# targets update a deployment that already exists rather than standing one up.
+SHIP_IMAGE      = $(REGISTRY)/verse-staging:$(STAGING_SHA)
+SHIP_CODERUNNER = $(REGISTRY)/verse-coderunner:$(STAGING_SHA)
+
+# ship-clean is `ship`'s dirty-tree refusal, factored out so each tier inherits it: the tag
+# names a commit somebody can check out, and that is no less true when shipping one tier.
+.PHONY: ship-clean
+ship-clean:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+	  echo "ship: the tree is dirty — the image tag would name a commit that is not what is built"; \
+	  git status --short; exit 1; \
+	fi
+
+# Both images are pushed by tag, and pushing one that is already there is cheap — the layers
+# exist, so it is a manifest check. That is why every tier target pushes rather than trusting
+# a previous one to have: `make ship-versed` alone must be a whole ship.
+.PHONY: ship-push ship-push-coderunner
+ship-push: ship-clean
+	@echo "ship: staging → $(STAGING_SHA)"
+	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
+ship-push-coderunner: ship-clean
+	@echo "ship: staging coderunner → $(STAGING_SHA)"
+	$(MAKE) coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=$(SHIP_CODERUNNER)
+
+# The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
+SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
+	  E="-e coderunnerImage=$(SHIP_CODERUNNER)"
+
+.PHONY: ship-docd ship-versed ship-sources ship-coderunner
+ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
+	$(SHIP_DEPLOY) SELECT=tier=docd
+ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
+	$(SHIP_DEPLOY) SELECT=tier=versed
+ship-sources: ship-push ## ship the source connectors alone, and wait for them
+	$(SHIP_DEPLOY) SELECT=tier=source
+ship-coderunner: ship-push-coderunner ## ship the coderunner alone (its own image), and wait for it
+	$(SHIP_DEPLOY) SELECT=tier=runner
+
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
 # make deploy PROFILE=staging                      # the profile's own registry ref
@@ -156,15 +212,29 @@ DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
 # stop believing in. CONTEXT= overrides, for a cluster that is the same shape under a different
 # name (a second staging, a colleague's kubeconfig entry).
 CONTEXT ?=
+# SELECT applies ONE TIER out of the render — `SELECT=tier=docd` — and WAIT= makes the target
+# block until what it applied is rolled out. Both are here rather than in a target of their own
+# because the alternative is a second copy of the context resolution above, and two ways to
+# say where a deploy goes is exactly the ambient-state problem that comment is about. The
+# ship-<tier> targets below are what use them; see there for why a tier ships alone.
+SELECT ?=
+WAIT   ?=
+WAIT_TIMEOUT ?= 5m
 .PHONY: deploy
-deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; E='-e k=v …')
+deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; SELECT=tier=x for one tier; WAIT=1 to block on the rollout; E='-e k=v …')
 	@ctx='$(CONTEXT)'; \
 	if [ -z "$$ctx" ]; then \
 	  ctx=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -s | sed -n 's/^kubeContext: *//p' | tr -d '"'); \
 	fi; \
-	echo "deploy: $(if $(PROFILE),profile '$(PROFILE)',defaults) → context '$${ctx:-$$(kubectl config current-context)}'"; \
+	echo "deploy: $(if $(PROFILE),profile '$(PROFILE)',defaults)$(if $(SELECT), [$(SELECT)],) → context '$${ctx:-$$(kubectl config current-context)}'"; \
 	$(O) build deploy -O yaml $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) \
-	  | kubectl $${ctx:+--context "$$ctx"} apply -f -
+	  | kubectl $${ctx:+--context "$$ctx"} apply $(if $(SELECT),-l $(SELECT),) -f - || exit 1; \
+	if [ -n "$(WAIT)" ]; then \
+	  ns=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -s | sed -n 's/^namespace: *//p' | tr -d '"'); \
+	  for obj in $$(kubectl $${ctx:+--context "$$ctx"} -n "$$ns" get deploy,statefulset $(if $(SELECT),-l $(SELECT),) -o name); do \
+	    kubectl $${ctx:+--context "$$ctx"} -n "$$ns" rollout status "$$obj" --timeout=$(WAIT_TIMEOUT) || exit 1; \
+	  done; \
+	fi
 
 # config, launch and task carry //go:generate tony-codegen directives; their <pkg>_gen.go
 # and schema_gen.tony are COMMITTED, and check-generate is the guard that they are current.

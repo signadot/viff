@@ -597,6 +597,44 @@ reject both `Unconfined` and `Unmasked`; the `verse` namespace carries no PSA la
 delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`
 for the runner to retry, and on an `emptyDir` that work dies with the pod.
 
+## Shipping one tier at a time
+
+`make ship` builds both images at the current commit and applies **everything** in one
+`kubectl apply`. That is the right thing when nothing about the wire between the tiers has
+changed, and the wrong thing when it has: versed and docd speak logd's session protocol, so a
+protocol change (v0.0.173's match shape, say) means the two vintages must not meet — a client
+of one against a server of the other has its path read as `""`, which is the **root**: an
+answer, with a commit, not an error. One apply starts both rolling and there is no point in it
+where you can say which is up.
+
+Four targets ship one tier each, and none of them returns before its rollout is done:
+
+```bash
+CTX=my-cluster.example.ts.net
+
+kubectl --context $CTX -n verse scale deploy/versed --replicas=0
+kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed --timeout=2m
+
+make ship-docd          # the store; versed is down, so nothing is talking to it
+make ship-versed        # the engine, against a docd that is already up and new
+make ship-sources       # the connectors
+make ship-coderunner    # its own image
+```
+
+`ship-versed` restores `replicas: 1` from the manifest, so the scale to 0 costs no
+availability that a deploy was not already spending — versed is `replicas: 1` with
+`strategy: Recreate` and goes fully down on any apply. Each target pushes the image its tier
+runs before applying, so any one of them alone is a whole ship; pushing a tag that is already
+there is a manifest check, not an upload.
+
+The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `source`,
+`runner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
+the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
+deploy`: these targets update a deployment that exists rather than standing one up.
+
+`make deploy SELECT=tier=docd WAIT=1` is the same machinery without the image push, for a
+profile that is not staging.
+
 ## When something stops answering (the admin face)
 
 Every daemon here — versed, each `sourced`, the coderunner — serves `net/http/pprof`, full

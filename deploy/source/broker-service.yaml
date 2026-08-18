@@ -4,6 +4,8 @@ metadata:
   name: verse-broker
   labels:
     app: verse
+    # `tier`, so this face ships with the versed that serves it (see `make ship-versed`).
+    tier: versed
 spec:
   selector:
     app: verse
