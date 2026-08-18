@@ -123,13 +123,19 @@ func (s *Server) packagesSeen() []string {
 	// half-applied file leaves behind (the levels install, a rule is refused) and exactly when
 	// somebody needs to list it and take it down. `verse charter uninstall` answered "no
 	// charter is installed" about a charter whose records were sitting in the store.
-	for _, pred := range []func(entity.Ref) bool{
-		trigger.IsCharterRule, trigger.IsStratum, trigger.IsCharterPackage,
-	} {
-		for _, ent := range s.Store.List(pred) {
-			if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
-				out = append(out, at)
-			}
+	//
+	// ONE READ AT THE SUBTREE, not three at the root. All three kinds live under
+	// `verse.trigger.*`, and List(pred) is a Match on the ROOT — the whole verse across the
+	// wire, filtered here — so this cost three full reads, on a function `verse charter` calls
+	// on every request and installs call again. On staging that was the difference between an
+	// answer and a timeout.
+	isCharter := func(r entity.Ref) bool {
+		return trigger.IsCharterRule(r) || trigger.IsStratum(r) || trigger.IsCharterPackage(r)
+	}
+	for _, ent := range s.Store.ListAt(
+		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharter) {
+		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
+			out = append(out, at)
 		}
 	}
 	sort.Strings(out)
@@ -278,7 +284,10 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 	for _, at := range s.packagesSeen() {
 		out[at] = nil
 	}
-	for _, ent := range s.Store.List(trigger.IsCharterPackage) {
+	// At the subtree, for the reason packagesSeen gives: a package declaration lives under
+	// `verse.trigger.package`, and List reads the root.
+	for _, ent := range s.Store.ListAt(
+		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, trigger.IsCharterPackage) {
 		at := entity.Str(ent.Payload, trigger.AtField)
 		if at == "" {
 			at = ent.Ref.ID()
