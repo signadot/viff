@@ -89,7 +89,10 @@ verse
           --put <payload>                    write it there: a write reaches object fields, not
                                              array elements. A put MERGES — fields it does not
                                              name are left alone, and --rm is how one goes away
-          --rm                               remove what stands there: an entity, or one field
+          --rm (-r)                          remove what stands there: an entity, or one field.
+                                             `-r` is `verse c -r`'s letter: removal is the same
+                                             act. `--put` has none — `-p` beside `--paths` is a
+                                             slip that writes
           --put [--create|--update]          only if nothing is there yet · only if something is
           --put [--expect <pattern>]         only if what is there matches. `--expect` rather
                                              than `--if`, which is the READ's filter: they were

@@ -266,3 +266,20 @@ func deletePath(t *testing.T, url, path string, recurse bool) (int, string) {
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, strings.TrimSpace(string(body))
 }
+
+// A REMOVAL AT AN ADDRESS THAT HOLDS NOTHING is a question about a PLACE, and answering
+// "nosuchpkg is neither a rule nor a level" describes something nobody asked. It is the split
+// the read already makes, and the removal did not.
+func TestRemovingAtAnAbsentAddressSaysSo(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	code, body := deletePath(t, ts.URL, "nosuchpkg", false)
+	if code != http.StatusNotFound {
+		t.Fatalf("answered %d, want a 404 about the address: %s", code, body)
+	}
+	if !strings.Contains(body, "no charter is installed at nosuchpkg") {
+		t.Errorf("the refusal is about the wrong thing: %s", body)
+	}
+}

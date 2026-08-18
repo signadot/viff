@@ -804,7 +804,10 @@ type stateConfig struct {
 	// the LAST positional, so "everything up to the final argument is the address" was a rule
 	// this one command had. The payload is `--put`, and every positional is the address again.
 	Put string `cli:"name=put desc='write this payload at the path (a tony/json value)'"`
-	Rm  bool   `cli:"name=rm desc='remove what stands at the path (an entity, or one field of one)'"`
+	// `-r` as well, because removal is the SAME ACT as `verse c -r` and a reader who learns one
+	// should not find the other missing. `--put` gets no letter on purpose: `-p` on a command
+	// that also has `--paths` is a slip that WRITES, and the two are one keystroke apart.
+	Rm bool `cli:"name=rm aliases=r desc='remove what stands at the path (an entity, or one field of one)'"`
 	// The preconditions, which only a write reads. A family: --create expects nothing to be
 	// there, --update expects something, --expect names what.
 	Create bool   `cli:"name=create desc='with --put: only if nothing is there yet — the write loses a race rather than clobbering'"`

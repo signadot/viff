@@ -767,6 +767,13 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 // anything else is a reach INTO something — `rules watcher action` reads fine and removing it
 // would mean editing a rule through a URL, which is what re-installing the file is for.
 func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at string, rest []string) {
+	// A FIRST SEGMENT THAT IS NOT A KEY means no address resolved, so this is a question about
+	// a PLACE — `verse c -r nosuchpkg` — and answering "nosuchpkg is neither a rule nor a
+	// level" describes something nobody asked. Same split the read makes (charterPathNotFound).
+	if !charterKeys[rest[0]] {
+		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		return
+	}
 	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata") {
 		http.Error(w, "a removal names one rule or one level — `<address> rules <name>` or "+
 			"`<address> strata <name>` — and a path to an address alone takes the whole "+
