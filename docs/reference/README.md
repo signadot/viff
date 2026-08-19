@@ -47,10 +47,12 @@ verse
 
   watch  [--since <rev>] [<path>]            stream store changes (cursored) — the same path
                                              a read takes, naming the same entities
-         --since -<n>                        …from <n> REVISIONS back, counted against the head
-                                             the watch starts at. Revisions are sparse, so the
-                                             span holds however many events it holds — a cursor
-                                             stays a bookmark, not a count. Absent streams from
+         --since -<n>                        …the last <n> COMMITS, resolved by the store
+                                             against its watermark and clamped to the history
+                                             it retains — so a deep one answers with what is
+                                             left rather than refusing. A narrowed watch sees
+                                             only the changes under its path, so the span holds
+                                             however many events it holds. Absent streams from
                                              now; `--since 0` is the whole retained log
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 

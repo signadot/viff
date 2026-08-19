@@ -523,12 +523,12 @@ type watchConfig struct {
 	// that cannot replay from 0 was refused, and the refusal advised dropping a flag the
 	// caller had never passed. An absent cursor streams from now; `--since N` is how somebody
 	// asks for history, and `--since 0` is still from the beginning.
-	// A NEGATIVE cursor is relative: `--since -20` starts twenty revisions back, resolved
-	// against the head the watch starts at (versed's watchCursor). It is the cursor somebody
-	// actually has — a revision number means reading `storeRev` off status first. Twenty
-	// REVISIONS rather than twenty events: revisions are sparse, so the span usually holds
-	// fewer, and a cursor stays a bookmark rather than becoming a count.
-	Since string `cli:"name=since desc='replay from this store revision first (cursor); -N = start N revisions back from the head; 0 = from the beginning. absent = stream from now'"`
+	// A NEGATIVE cursor is relative: `--since -20` is the last twenty commits. It is the cursor
+	// somebody actually has — an absolute one means reading `storeRev` off status first — and
+	// the STORE resolves it, against its watermark at the moment the watch is established and
+	// clamped to the history it still retains. Twenty COMMITS rather than twenty events: a
+	// watch narrowed to a path sees only the changes under it, so the span usually holds fewer.
+	Since string `cli:"name=since desc='replay from this cursor first; -N = the last N commits (clamped to what the store retains); 0 = from the beginning. absent = stream from now'"`
 	// --if is the same predicate a charter's `when` carries in `value`, and means the same
 	// thing: a tony match over the payload, so it takes operators (`{stage: !or [open, merged]}`)
 	// and matches a payload that is not an object at all. A DELETE never matches one — there is

@@ -1388,11 +1388,20 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	defer w.Close()
 
 	// A replay carries deltas, and an event owes its consumer the whole entity as of its
-	// commit — so replay it the way the live watch does: read the document as it stood AT
-	// `from`, then advance it one commit at a time. That is one read for the whole catch-up
-	// rather than one per event, and it makes a replayed event indistinguishable from the
-	// live one it may be recovering.
-	doc := s.docAt(ctx, from)
+	// commit — so replay it the way the live watch does: read the document as it stood AT the
+	// commit the replay starts from, then advance it one commit at a time. That is one read
+	// for the whole catch-up rather than one per event, and it makes a replayed event
+	// indistinguishable from the live one it may be recovering.
+	//
+	// THE SERVER'S ANSWER, not the cursor we asked with. A relative cursor (`-N`, the last N
+	// commits) is resolved by the store — against its watermark, clamped to its retained floor
+	// — and neither of those is knowable here. `docAt(-2)` is not a revision; reading the
+	// document at the resolved commit is the whole point of the server reporting it.
+	start := from
+	if rf := w.ReplayingFrom(); rf != nil {
+		start = *rf
+	}
+	doc := s.docAt(ctx, start)
 
 	var out []Commit
 	for {

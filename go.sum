@@ -76,8 +76,8 @@ github.com/scott-cotton/cli v0.3.0 h1:RwzjjiunEJBfXdnJoNwGW1IxZSlG6uXwyxoRy7+fbl
 github.com/scott-cotton/cli v0.3.0/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/signadot/tony-format/go-tony v0.0.175 h1:PtJiG1DLt0bwqxXsfmG7twPPHFybi3ndsc87IIp9Dho=
-github.com/signadot/tony-format/go-tony v0.0.175/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
+github.com/signadot/tony-format/go-tony v0.0.177 h1:iz0BQP82UZRWBG6YdiAXGkBGFFeJIdptMlsNQrdmju0=
+github.com/signadot/tony-format/go-tony v0.0.177/go.mod h1:e5euej3pJ4t2jISXcIA+PJ+Tsjzu9CUkh/V44XsWh+0=
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/skeema/knownhosts v1.3.1 h1:X2osQ+RAjK76shCbvhHHHVl3ZlgDm8apHEHFqRjnBY8=
 github.com/skeema/knownhosts v1.3.1/go.mod h1:r7KTdC8l4uxWRyK2TpQZ/1o5HaSzh06ePQNxPwTcfiY=

@@ -5,30 +5,25 @@ import (
 	"testing"
 )
 
-// A NEGATIVE CURSOR COUNTS BACK FROM NOW. `--since -20` is the last twenty commits, which is
-// the cursor somebody actually has — a revision number means reading `storeRev` off status and
-// subtracting, which is a round trip and a race against the head moving.
-//
-// It is N REVISIONS back, not N events: revisions are sparse (one commit can carry many entity
-// changes, and a narrowed watch sees only some of them), so the span usually holds fewer. What
-// the arithmetic promises is only that `-3` at head 6 is the same cursor as `3`.
-func TestWatchCursorCountsBackFromTheHead(t *testing.T) {
-	head := func() int64 { return 6 }
+// A CURSOR IS PASSED THROUGH, negative included. `--since -20` is the last twenty commits, and
+// the STORE resolves it — against its watermark at the moment the watch is established, clamped
+// to its retained floor. Verse could subtract from a head it had just read, but it could not
+// clamp to a floor it cannot see, so a deep `-N` on a compacted store would come back refused
+// where the store would have answered from what it kept.
+func TestWatchCursorPassesTheCursorThrough(t *testing.T) {
 	for _, c := range []struct {
 		raw     string
 		since   int64
 		catchUp bool
 	}{
-		{"", -1, false},  // absent: stream from now, which is not `since=0`
-		{"0", 0, true},   // from the beginning, for a caller that means it
-		{"3", 3, true},   // an absolute revision is untouched
-		{"-3", 3, true},  // …and the last three is the same replay at head 6
-		{"-1", 5, true},  // the last one
-		{"-6", 0, true},  // the whole of it, exactly
-		{"-99", 0, true}, // below the beginning IS the beginning
-		{"9", 9, true},   // ahead of the head is the store's problem, not the cursor's
+		{"", 0, false},   // absent: stream from now, and `catchUp` is what says so
+		{"0", 0, true},   // …which is NOT `since=0`, the whole retained log
+		{"3", 3, true},   // an absolute revision, untouched
+		{"-3", -3, true}, // …and a relative one, equally untouched
+		{"-999", -999, true},
+		{"9", 9, true}, // ahead of the head is the store's problem, not the cursor's
 	} {
-		since, catchUp, err := watchCursor(c.raw, head)
+		since, catchUp, err := watchCursor(c.raw)
 		if err != nil {
 			t.Errorf("since=%q: %v", c.raw, err)
 			continue
@@ -39,31 +34,25 @@ func TestWatchCursorCountsBackFromTheHead(t *testing.T) {
 	}
 }
 
-// THE HEAD IS READ WHEN THE CURSOR IS NEEDED, not before: it is a func so the revision this
-// subtracts from is the one the watch is about to start at.
-func TestWatchCursorReadsTheHeadOnlyWhenItIsRelative(t *testing.T) {
-	asked := 0
-	head := func() int64 { asked++; return 10 }
-	for _, raw := range []string{"", "0", "4"} {
-		if _, _, err := watchCursor(raw, head); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if asked != 0 {
-		t.Errorf("an absolute cursor asked the store for its head %d time(s)", asked)
-	}
-	if _, _, err := watchCursor("-4", head); err != nil {
+// ABSENT IS SAID BY catchUp, and it has to be: the sentinel for "no cursor" used to be
+// `since = -1`, which is a real cursor now — the last commit.
+func TestAbsentIsNotACursor(t *testing.T) {
+	_, catchUp, err := watchCursor("")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if asked != 1 {
-		t.Errorf("a relative cursor asked for the head %d times, want once", asked)
+	if catchUp {
+		t.Error("an absent cursor asked for a replay")
+	}
+	if _, relative, _ := watchCursor("-1"); !relative {
+		t.Error("`-1` was read as absence rather than as the cursor it now is")
 	}
 }
 
 // A cursor that is not a number is a refusal that says what an absent one does, since that is
 // the thing the caller probably wanted.
 func TestWatchCursorRefusesWhatIsNotARevision(t *testing.T) {
-	_, _, err := watchCursor("yesterday", func() int64 { return 1 })
+	_, _, err := watchCursor("yesterday")
 	if err == nil {
 		t.Fatal("`yesterday` was accepted as a cursor")
 	}
