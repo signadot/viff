@@ -129,3 +129,81 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 		})
 	}
 }
+
+// AND `id:` IS THE SAME KEY WITHOUT THE COMPOSITION, which is the reader's half of it.
+//
+// A keyed id is `cut@git:head:verse@aaa111` — a function of (rule, subject, key), and nothing
+// in the charter grammar composes one, so every rule that wants that entity has to DESCRIBE it
+// (a `"*"` and a predicate on some field it happens to know) rather than name it. `id:` says
+// the value alone identifies the record, so the address is `demo.batch.aaa111` and a reader
+// spells it. What the author takes on is the uniqueness the prefix used to guarantee.
+func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	for _, st := range []Stratum{
+		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
+	} {
+		if err := eng.AddStratum(st); err != nil {
+			t.Fatalf("stratum %q: %v", st.Name, err)
+		}
+	}
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: cut
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [demo, batch]
+      id: $subject.value.sha
+      value: {sha: $subject.value.sha}
+`)); err != nil {
+		t.Fatalf("the named rule did not install: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "aaa111"}.Payload())
+	want := entity.RefAt("demo", "batch", "aaa111")
+	for i := 0; i < 100; i++ {
+		if _, ok, _ := store.Get(want); ok {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var have []string
+	for _, e := range store.ListAt([]string{"demo", "batch"}, 3, nil) {
+		have = append(have, e.Ref.String())
+	}
+	t.Fatalf("nothing stands at %s, which is the address the charter can spell; have %v", want, have)
+}
+
+// The two together are one question answered twice, and which answer stands would decide
+// whether two subjects sharing a value are one record or two. Refused rather than picked.
+func TestADeriveRefusesBothKeyAndID(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}}); err != nil {
+		t.Fatal(err)
+	}
+	err := eng.AddTrigger(mustParseCharter(t, `
+- name: cut
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [git, batch]
+      key: $subject.value.sha
+      id: $subject.value.sha
+      value: {sha: $subject.value.sha}
+`))
+	if err == nil {
+		t.Fatal("a derive with both `key` and `id` installed")
+	}
+	if !strings.Contains(err.Error(), "key") || !strings.Contains(err.Error(), "id") {
+		t.Fatalf("the refusal does not name both: %v", err)
+	}
+}

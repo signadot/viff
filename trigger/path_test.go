@@ -24,10 +24,9 @@ func readAction(addr any) Action {
 	return Action{Patch: entity.Obj{"why": get(addr)}.Payload()}
 }
 
-// `!get-path` names ONE node: all three segments, literal system and kind, and nothing OPEN
-// that could name several — a globbing id with nothing to narrow it, or a wildcard path, is the
-// LIST form's business, and saying so points at the tag that answers it. An id a predicate
-// narrows is not open; that is the case below it.
+// `!get-path` names ONE node: all three segments, literal system and kind, no predicate, and
+// nothing that could name several — a globbing id or a wildcard path is the LIST form's
+// business, and saying so points at the tag that answers it.
 func TestGetPathMustNameOneNode(t *testing.T) {
 	eng, _ := newEng(t)
 	bad := map[string]any{
@@ -35,6 +34,7 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		"a globbing id":    entity.Obj{"system": "git", "kind": "repo", "id": "*"},
 		"a wildcard path":  entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "labels.*"},
 		"no kind":          entity.Obj{"system": "git", "id": "abc"},
+		"a predicate":      entity.Obj{"system": "git", "kind": "repo", "id": "abc", "value": entity.Obj{"x": 1}},
 		"an unknown key":   entity.Obj{"system": "git", "kind": "repo", "id": "abc", "branch": "main"},
 		"a globbing kind":  entity.Obj{"system": "git", "kind": "*", "id": "abc"},
 		"a glob on kind":   entity.Obj{"system": "git", "kind": "re*", "id": "abc"},
@@ -58,8 +58,6 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		"a reference id":        entity.Obj{"system": "git", "kind": "repo", "id": "$subject.value.head"},
 		"a payload path":        entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "branch"},
 		"a reference in a addr": "git:repo:$subject.value.head",
-		"a predicate":           entity.Obj{"system": "git", "kind": "repo", "id": "abc", "value": entity.Obj{"x": 1}},
-		"a narrowed glob":       entity.Obj{"system": "git", "kind": "repo", "id": "*", "value": entity.Obj{"x": 1}},
 	}
 	for why, addr := range ok {
 		if err := eng.AddTrigger(Trigger{
@@ -495,83 +493,23 @@ func TestListPathsNarrowsByPredicate(t *testing.T) {
 	}
 }
 
-// …and `!get-path` takes one too, as a SELECTOR rather than a filter: the id is left open and
-// the predicate is what names the entity. This is the only way to reach a keyed derive, whose
-// id the engine composes from (rule, subject, key) and no charter can spell.
-func TestGetPathSelectsWithAPredicate(t *testing.T) {
-	eng, store := newEng(t)
-	for _, r := range []struct{ id, sha, report string }{
-		{"one", "aaaa", "old news"}, {"two", "bbbb", "the lie is on line 4"},
-	} {
-		entitytest.Set(t, store, entity.RefAt("drift", "head", r.id),
-			entity.Obj{"sha": r.sha, "report": r.report}.Payload())
+// …and `!get-path` still refuses one, on the argument that always applied to it: a value slot
+// takes one thing, and a predicate can name several. The asymmetry is the cardinality split
+// doing its job, not a leftover.
+func TestGetPathStillRefusesAPredicate(t *testing.T) {
+	eng, _ := newEng(t)
+	err := eng.AddTrigger(Trigger{
+		Name:      "refused",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Action: readAction(entity.Obj{
+			"system": "git", "kind": "repo", "id": "abc", "value": entity.Obj{"state": "green"},
+		}),
+	})
+	if err == nil {
+		t.Fatal("!get-path accepted a payload predicate, which can name several entities")
 	}
-	if err := eng.AddTrigger(Trigger{
-		Name:      "carries",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "train", "value": map[string]any{"stage": "cut"}}},
-		Action: Action{Patch: entity.Obj{
-			"stage": "loaded",
-			"says": get(entity.Obj{
-				"system": "drift", "kind": "head", "id": "*",
-				"value": entity.Obj{"sha": "$subject.value.sha"}, "path": "report",
-			}),
-		}.Payload()},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	eng.Start(ctx)
-	ref := entity.RefAt("demo", "train", "t1")
-	entitytest.Set(t, store, ref, entity.Obj{"stage": "cut", "sha": "bbbb"}.Payload())
-	waitStage(t, store, ref, "loaded")
-	got, _, _ := store.Get(ref)
-
-	says := entity.Get(got.Payload, "says")
-	// A NODE, not a list of one: that is the whole difference from !list-paths, and the reason
-	// anything downstream — a docket rendering `says`, a match asking about it — can treat the
-	// field as what it looks like.
-	if says == nil || says.Type != ir.StringType || says.String != "the lie is on line 4" {
-		t.Fatalf("says = %v, want the report of the ONE head whose sha is bbbb", says)
-	}
-}
-
-// And it holds itself to the one. Two entities satisfying the predicate is not a truncation, a
-// first-wins, or a silent list — the firing fails, which is the same answer a get already gives
-// for the absence nobody can check at install either.
-func TestGetPathRefusesSeveralAtFireTime(t *testing.T) {
-	eng, store := newEng(t)
-	for _, id := range []string{"one", "two"} {
-		entitytest.Set(t, store, entity.RefAt("drift", "head", id),
-			entity.Obj{"sha": "bbbb", "report": id}.Payload())
-	}
-	if err := eng.AddTrigger(Trigger{
-		Name:      "carries",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "train", "value": map[string]any{"stage": "cut"}}},
-		Action: Action{Patch: entity.Obj{
-			"stage": "loaded",
-			"says": get(entity.Obj{
-				"system": "drift", "kind": "head", "id": "*",
-				"value": entity.Obj{"sha": "$subject.value.sha"}, "path": "report",
-			}),
-		}.Payload()},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	eng.Start(ctx)
-	ref := entity.RefAt("demo", "train", "t1")
-	entitytest.Set(t, store, ref, entity.Obj{"stage": "cut", "sha": "bbbb"}.Payload())
-	// The refusal is the absence of a write: give the firing room to happen and then check
-	// that the subject never advanced.
-	time.Sleep(200 * time.Millisecond)
-	got, _, _ := store.Get(ref)
-	if stage := entity.ToObj(got.Payload)["stage"]; stage != "cut" {
-		t.Fatalf("stage = %v, want cut — a get that matched two should write nothing", stage)
-	}
-	if says := entity.Get(got.Payload, "says"); says != nil {
-		t.Fatalf("says = %v, want nothing written at all", says)
+	if !strings.Contains(err.Error(), ListPathsTag) {
+		t.Fatalf("the refusal does not name the tag that answers instead: %v", err)
 	}
 }
 

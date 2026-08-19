@@ -829,6 +829,20 @@ $subject.value.sha, value: …}` — which makes its address a function of (rule
 instead of (rule, subject). One entity per value of something, where the same subject keeps
 moving: see [strata](strata.md#a-key-on-a-single-derive).
 
+**`id:` is that key with the composition dropped**, and the difference is the reader's. A keyed
+entity's id is `head-moved@git:head:verse@aaaa1111` — nothing in the grammar composes one, so
+anything that wants that record has to *describe* it (a `"*"` and a predicate on a field it
+happens to know) instead of naming it. With `id: $subject.value.sha` the record is
+`verse-dev.drift.head.aaaa1111`, and a reader spells it: `!get-path {at: [verse-dev, drift,
+head, $subject.value.sha], path: result.report}`.
+
+What the composition bought was uniqueness, and `id:` hands that to the author: two subjects of
+one rule that compute the same value share one entity, where `key:` gives them one each. So
+`id:` claims the value identifies the record **across subjects** — true when the subject is a
+singleton, as `git:head:verse` is — and `key:` claims it only within one. The *place* stays the
+engine's either way: a derive may only write inside its own stratum, checked at install. A
+derive carrying both is refused, since which one stands would decide that question silently.
+
 `spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
 `provider` selection of the doer. The spawned task is tagged with the subject, which is
 what makes it part of that subject's flow.
@@ -1023,33 +1037,25 @@ where the globs live. They mirror go-tony's own split, where `GetKPath` returns 
 rejects a wildcard outright while `ListKPath` collects.
 
 Which one you get is legible in the charter rather than inferred from whether some id happened to
-contain a `*`: `!get-path` **refuses** an id left open with nothing to narrow it, or a wildcard
-path, and names the tag that answers that question instead.
+contain a `*`: `!get-path` **refuses** a globbing id or a wildcard path, and names the tag that
+answers that question instead.
 
 | | |
 |---|---|
 | `system`, `kind` | always literal — no reference, no glob |
-| `id` | literal, a `$reference`, or a glob — in a get, only with a `value` to narrow it |
+| `id` | literal, a `$reference`, or (list only) a glob |
 | `at` | the address as a path, any depth; everything above the entity is literal, and the last segment is what `id` would be |
 | `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
-| `value` | a payload predicate — of the ids the address selects, the ones that look like this. In a list it picks a subset; in a get it is a selector that must come back with exactly one |
+| `value` | a payload predicate, **list only** — of the ids the address selects, the ones that look like this |
 
 Everything above the entity must be literal in either spelling, and for the same reason: the
 level check asks whether a read lands at or below the rule's own stratum, and it can only ask
 that of the segments known at install.
 
-**A predicate narrows either form, and in a get it is a selector.** It used to be the list
-form's alone, refused on the get side because a predicate can name several. What answers that is
-that some entities cannot be addressed any other way: a keyed derive's id is `(rule, subject,
-key)`, composed by the engine so the derive stays inert and its address stays checkable at
-install, so no charter can spell one. The engine made the id unnameable; the read has to be by
-content, in whichever cardinality the reader needs.
-
-The contract is unchanged and now enforced rather than approximated. `!get-path` still means
-one: with a predicate it selects, and the firing **fails** unless exactly one entity satisfies
-it — not a truncation, not a first-wins, not a list nobody asked for. That count is knowable
-only at fire time, and so is the absence a get already refuses. On the list form a predicate is
-the *cheaper* read, because `id: "*"` already walks the whole kind and this is what narrows it. Neither form is a query that slides: both are answered
+`!get-path` refuses a `value` for the reason it refuses a globbing id: a predicate can name
+several, and an entity that is not there does not satisfy one — while one that is there might not
+either. On the list form a predicate is the *cheaper* read, because `id: "*"` already walks the
+whole kind and this is what narrows it. Neither form is a query that slides: both are answered
 from one snapshot at the causing commit, so a predicate is evaluated against the same world the
 rule was.
 

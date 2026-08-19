@@ -64,13 +64,13 @@ ok "up, with a dial-in broker"
 v c -a -f "$HERE/drift-local.tony" >/dev/null || { echo "charter did not install"; exit 1; }
 ok "the drift charter is installed"
 
-# ONE RECORD AND ONE TASK PER COMMIT, which is what `key: $subject.value.sha` buys: the
-# derive's address is (rule, subject, key), so every sha keeps its own state and its own task
-# id instead of sharing one slot with every other commit.
-KEY='head-moved@git:head:verse'
-record()  { v data "verse-dev.drift.head.\"$KEY@$1\"" 2>/dev/null; }
+# ONE RECORD AND ONE TASK PER COMMIT, which is what `id: $subject.value.sha` buys: the record
+# is addressed by the sha alone, so every commit keeps its own state and its own task id instead
+# of sharing one slot with every other commit — and the address is one anything can spell, which
+# `key:` would not have been (it composes rule and subject in front of the sha).
+record()  { v data "verse-dev.drift.head.$1" 2>/dev/null; }
 field()   { record "$1" | grep -E "^$2:" | awk '{print $2}'; }
-task_for(){ echo "comment-drift@verse-dev.drift.head.$KEY@$1"; }
+task_for(){ echo "comment-drift@verse-dev.drift.head.$1"; }
 move_head(){ v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
 
 # wait_field <sha> <field> <value> <seconds>
@@ -112,9 +112,8 @@ review aaaa1111 || bad "could not complete aaaa1111's review"
 wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
 	|| bad "aaaa1111 reviewedSha=$(field aaaa1111 reviewedSha)"
 wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no finding was derived"
-# The read the real charter needs: the report, selected out of the per-sha records by a
-# predicate on a sha the reader already has — and arriving as a NODE, which is what a get
-# answers and what every reader of `says` downstream assumes.
+# The read the real charter needs: the report of ONE commit, at an address the reader spells
+# out of a sha it already has. `id:` on rule 1 is what makes that address exist.
 v data verse-dev.drift.train.t-aaaa1111 --put "{sha: aaaa1111}" >/dev/null
 t0=$SECONDS; got=
 for _ in $(seq 1 40); do
@@ -122,11 +121,11 @@ for _ in $(seq 1 40); do
 	sleep 0.5
 done
 [ -n "$got" ] \
-	&& ok "the train carries aaaa1111's own report, selected by predicate and answered as a node, after $((SECONDS-t0))s" \
+	&& ok "the train carries aaaa1111's own report, read at an address it spelled, after $((SECONDS-t0))s" \
 	|| bad "the train has no report after $((SECONDS-t0))s:\n$(v data verse-dev.drift.train 2>/dev/null)"
-# …and a train cut before the review lands loads NOTHING, rather than a plausible empty. The
-# predicate names `reviewed: done`, so "not yet" and "no such commit" are the same refusal, and
-# a refused firing writes nothing at all.
+# …and a train cut before the review lands loads NOTHING, rather than a plausible empty: the
+# record has no `result.report` yet, a get of a field that is not there is a failure, and a
+# refused firing writes nothing at all.
 v data verse-dev.drift.train.t-early --put "{sha: 9999early}" >/dev/null
 sleep 2
 v data verse-dev.drift.train.t-early 2>/dev/null | grep -q 'says' \

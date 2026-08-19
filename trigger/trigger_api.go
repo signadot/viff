@@ -309,6 +309,20 @@ func spawnID(chain string, ref entity.Ref) string {
 	return fmt.Sprintf("%s%s%s%s%08x", chain, ChainSep, safe, hashSep, h.Sum32())
 }
 
+// namedID is the id an author-NAMED derive writes at: the key alone, with none of the
+// (rule, subject) composition eachID puts in front of it, so the address is one a charter can
+// spell. The rewrite and its hash are eachID's, for eachID's reason — two distinct keys that
+// flatten alike would otherwise share an entity, and a fan-out that reads short is invisible.
+func namedID(key string) string {
+	safe := safeSeg(key)
+	if safe == key {
+		return safe
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(key))
+	return fmt.Sprintf("%s%s%08x", safe, hashSep, h.Sum32())
+}
+
 // CheckFields reports a field name a rule does not have, before the rule is decoded.
 //
 // It exists because an unknown field DECODES SILENTLY: gomap ignores what it does not

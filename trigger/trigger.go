@@ -769,6 +769,21 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			}
 			id = eachID(chainID(chain), subj, key)
 		}
+		if d.ID != nil {
+			// AN AUTHOR-NAMED derive: the same key, addressed by itself. See deriveTarget.ID
+			// for what the composition bought and who pays for it now.
+			sn, err := e.subjectFor(oc, subj, wantsOf(d.ID))
+			if err != nil {
+				e.tracef("trigger %s: %v; not spawning", chain, err)
+				return nil, err
+			}
+			key, err := keyText(d.ID, refRoot(root, sn))
+			if err != nil {
+				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
+				return nil, err
+			}
+			id = namedID(key)
+		}
 		ref := d.refFor(id)
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {

@@ -20,42 +20,27 @@ package trigger
 // a `$reference` id that reads better as its own key.
 //
 // THE PAIR IS ONE GRAMMAR SPLIT BY CARDINALITY, and the names say which. `!get-path` answers with ONE
-// node and refuses whatever it cannot hold to one; `!list-paths` answers with a list and is
-// where the open globs live. They mirror go-tony's own split: GetKPath returns one node and rejects a
+// node and refuses anything that could name several; `!list-paths` answers with a list and is
+// where the globs live. They mirror go-tony's own split: GetKPath returns one node and rejects a
 // wildcard outright ("any field .* in get"), ListKPath collects.
 //
 // Telling them apart by NAME rather than by what the address happens to contain is the point. A
 // value slot takes one thing, and "this is a list" should be legible in the charter rather than
 // depending on whether some id turned out to hold a `*`.
 //
-// A PAYLOAD PREDICATE NARROWS EITHER OF THEM:
+// A PAYLOAD PREDICATE IS THE LIST FORM'S, and only the list form's:
 //
 //	green: !list-paths { system: ci, kind: status, id: "*", value: {state: green}, path: sha }
-//	said:  !get-path { at: [verse, drift, head, "*"], value: {sha: $subject.value.sha}, path: report }
 //
-// It was the list form's alone, refused on the get side for the reason a globbed id is refused
-// there: it CAN name several, and a value slot takes one. What answers that argument is that
-// some entities cannot be addressed any other way. A keyed derive's id is (rule, subject, key)
-// composed by the engine (eachID), and it is composed rather than written precisely so that a
-// derive stays inert and its address stays checkable at install — so no charter can spell one,
-// and "the head record for THIS sha" is reachable only by content. The engine made the id
-// unnameable; the read then has to be by predicate, in whichever cardinality the reader needs.
-//
-// The cardinality contract stands, and is now ENFORCED rather than approximated. `!get-path`
-// still means one: with a predicate it selects, and the firing fails unless exactly one entity
-// satisfies it. "It matched three" — which the list form answers by being a list — is answered
-// here by refusing, the same shape as the absence a get already refuses. What the NAME says is
-// unchanged, and that was the point of the split: a reader of the charter sees which slot takes
-// a list without evaluating anything. What the name never said is whether a get will find its
-// one; `nothing stands there` has always been a fire-time answer.
-//
-// The refusal was inherited from `!read`, which named exactly one entity and bought four things
-// by doing so: no ordering to define, no "it matched three", no truncation, and no cost that
-// grows with the verse. The list side paid three of them — the order is Match.Select's, "it
-// matched three" is what a list IS, and `id: "*"` already walks a whole kind — and the get side
-// now pays "it matched three" by failing. Narrowing a walk of the kind is the CHEAPER read, not
-// the more expensive one. (Truncation is the fourth and is still unpaid, for globs and
-// predicates alike; see docs/working/path-read-predicates.md.)
+// `!get-path` refuses one for the reason it refuses a globbed id — it can name several, and a
+// value slot takes one. `!list-paths` takes one because it has already paid for it. The refusal
+// used to cover both, inherited from `!read`, which named exactly one entity and bought four
+// things by doing so: no ordering to define, no "it matched three", no truncation, and no cost
+// that grows with the verse. The cardinality split paid three of them on the list side — the
+// order is Match.Select's, "it matched three" is what a list IS, and `id: "*"` already walks a
+// whole kind — so what was left was the refusal without its argument. Narrowing a walk of the
+// kind is the CHEAPER read, not the more expensive one. (Truncation is the fourth and is still
+// unpaid, for globs and predicates alike; see docs/working/path-read-predicates.md.)
 //
 // It does not reintroduce a read that slides, because a firing's reads do not slide: every path
 // read is answered from ONE snapshot taken at the causing commit (occasion.snapshot), so a
@@ -146,14 +131,10 @@ func (p pathSpec) validateAt() error {
 	if p.kind != GetPathTag {
 		return nil
 	}
-	// What makes it a GET: neither the entity nor the field may name several things. The
-	// entity may be left open when a `value:` narrows it — that is a selection of one, checked
-	// where the answer is (get) — but a wildcard INSIDE the payload is several values of the
-	// one entity, which no predicate narrows.
-	if lit, ok := entity.PathLiteral(p.At[len(p.At)-1]); (!ok || strings.ContainsAny(lit, "*?[")) && p.Value == nil {
-		return fmt.Errorf("!%s %s: the last segment can name several entities and there is no "+
-			"%s to narrow it. Add one, or use !%s, which answers with a list",
-			p.kind, p.target(), mKeyValue, ListPathsTag)
+	// What makes it a GET: neither the entity nor the field may name several things.
+	if lit, ok := entity.PathLiteral(p.At[len(p.At)-1]); !ok || strings.ContainsAny(lit, "*?[") {
+		return fmt.Errorf("!%s %s: the last segment can name several entities. Use !%s, which "+
+			"answers with a list", p.kind, p.target(), ListPathsTag)
 	}
 	if strings.Contains(p.Path, "*") {
 		return fmt.Errorf("!%s %s: the path %q has a wildcard, which can name several values. "+
@@ -180,16 +161,15 @@ func pathKind(n *ir.Node) string {
 type pathSpec struct {
 	kind         string // GetPathTag or ListPathsTag
 	System, Kind string // always literal
-	ID           string // literal, a $reference, or a glob — the last narrowed by a predicate in a get
+	ID           string // literal, a $reference, or (list only) a glob
 	// At is the address as a PATH when the read was written with one — `at: [verse-dev, drift,
 	// finding, "*"]` — and is what the three above are a reading of. `path` below is the FIELD
 	// path inside the payload and keeps that name, which is why the address is `at:` here and
 	// `path:` in a match: in a read the two would collide, and only one of them can be `path`.
 	At   []*ir.Node
 	Path string // a kpath into the payload; "" is the whole payload
-	// Value is the payload predicate — "of the ones that are there, the ones that look like
-	// this". nil is no predicate, which is every id the address selects. In a list it picks a
-	// subset; in a get it is a selector that has to come back with exactly one.
+	// Value is the payload predicate, list only — "of the ones that are there, the ones
+	// that look like this". nil is no predicate, which is every id the address selects.
 	Value *ir.Node
 }
 
@@ -284,6 +264,12 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 			// `value` is the one key whose content is a tony match rather than a string, so
 			// it is taken before the string check the address segments answer to.
 			if f.String == mKeyValue {
+				if kind == GetPathTag {
+					return spec, fmt.Errorf("!%s carries a payload predicate, which can name "+
+						"several entities — an entity that is not there does not satisfy it, and "+
+						"one that is there might not either. A value slot takes one thing. Use "+
+						"!%s, which answers with a list", kind, ListPathsTag)
+				}
 				spec.Value = body.Values[i]
 				continue
 			}
@@ -312,8 +298,9 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 			case pathKey:
 				spec.Path = v.String
 			default:
-				return spec, fmt.Errorf("!%s: unknown key %q (want %s, or %s/%s/%s, and %s, %s)",
-					kind, f.String, mKeyAt, mKeySystem, mKeyKind, mKeyID, pathKey, mKeyValue)
+				return spec, fmt.Errorf("!%s: unknown key %q (want %s, or %s/%s/%s, and %s%s)",
+					kind, f.String, mKeyAt, mKeySystem, mKeyKind, mKeyID, pathKey,
+					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}
 	default:
@@ -376,14 +363,11 @@ func (p pathSpec) validate() error {
 	}
 	if p.kind == GetPathTag {
 		// What makes it a GET. Either of these could name several things, and a value slot
-		// takes one — so an open glob is the list form's business, named as such in the charter
-		// rather than inferred from whether an id happened to hold a '*'. An id left open for a
-		// `value:` to narrow is not open: it is a selection of one, refused at fire time if it
-		// turns out not to be.
-		if strings.ContainsAny(p.ID, "*?[") && p.Value == nil {
-			return fmt.Errorf("!%s %s:%s: the id globs, which can name several entities and "+
-				"there is no %s to narrow it. Add one, or use !%s, which answers with a list",
-				p.kind, p.target(), p.ID, mKeyValue, ListPathsTag)
+		// takes one — so they are the list form's business, named as such in the charter rather
+		// than inferred from whether an id happened to hold a '*'.
+		if strings.ContainsAny(p.ID, "*?[") {
+			return fmt.Errorf("!%s %s:%s: the id globs, which can name several entities. Use "+
+				"!%s, which answers with a list", p.kind, p.target(), p.ID, ListPathsTag)
 		}
 		if strings.Contains(p.Path, "*") {
 			return fmt.Errorf("!%s %s: the path %q has a wildcard, which can name several values. "+
@@ -479,48 +463,19 @@ func (p pathSpec) answer(snap entity.Snapshot) (entity.Payload, error) {
 	return p.list(snap)
 }
 
-// one names the entity a get reads.
-//
-// Without a predicate that is the address, whether or not anything stands there. With one it is
-// a SELECTION, and the get's whole promise rests on it coming back with exactly one member —
-// so more than one is an error here rather than a truncation, a first-wins, or a list nobody
-// asked for. The count is knowable only at fire time; so is the absence a get already refuses.
-func (p pathSpec) one(snap entity.Snapshot) (entity.Ref, bool, error) {
-	if p.Value == nil {
-		return p.ref(), true, nil
-	}
-	refs := p.match().Select(snap)
-	if len(refs) > 1 {
-		return entity.Ref{}, false, fmt.Errorf("!%s %s: %d entities satisfy the predicate (%s, %s"+
-			"…) and a value slot takes one. Narrow it, or use !%s, which answers with a list",
-			p.kind, p.target(), len(refs), refs[0], refs[1], ListPathsTag)
-	}
-	if len(refs) == 0 {
-		return entity.Ref{}, false, nil
-	}
-	return refs[0], true, nil
-}
-
 // get answers the one-node form.
 func (p pathSpec) get(snap entity.Snapshot) (entity.Payload, error) {
-	ref, ok, err := p.one(snap)
+	ref := p.ref()
+	ent, ok, err := snap.Get(ref)
 	if err != nil {
-		return nil, err
-	}
-	var ent entity.Entity
-	if ok {
-		ent, ok, err = snap.Get(ref)
-		if err != nil {
-			return nil, fmt.Errorf("!%s %s: %w", p.kind, ref, err)
-		}
+		return nil, fmt.Errorf("!%s %s: %w", p.kind, ref, err)
 	}
 	if !ok {
 		// Absence is a FAILURE, like any unresolved reference: the firing asked for that
 		// entity and there is none, and writing null instead would launder "nothing is there"
 		// into "something is there, and it is nothing" — a difference the store records and a
 		// match can ask about.
-		return nil, fmt.Errorf("!%s %s: nothing stands there%s", p.kind, p.target(),
-			map[bool]string{true: " that satisfies the predicate"}[p.Value != nil])
+		return nil, fmt.Errorf("!%s %s: nothing stands there", p.kind, ref)
 	}
 	payload := payloadOrNull(ent.Payload)
 	if p.Path == "" {

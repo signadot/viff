@@ -912,7 +912,24 @@ type deriveTarget struct {
 	// state exactly when its address is a function of that same state. A re-fire reading the
 	// same subject computes the same key, writes the same bytes to the same address, and dies as
 	// the no-op that lets a rule read a higher level safely.
-	Key     entity.Payload
+	Key entity.Payload
+	// ID is `key` with the composition dropped: the derived entity is the place plus this
+	// value, verbatim, so `verse-dev.drift.head.aaaa1111` is an address a charter can SPELL.
+	//
+	// That is the whole difference, and it is the reader's. A keyed id is
+	// `head-moved@git:head:verse@aaaa1111` — a function of (rule, subject, key), which no
+	// charter can compose, so anything wanting that record has to describe it instead of naming
+	// it. Describing it costs a glob and a predicate at every reader; naming it costs nothing.
+	//
+	// WHAT THE PREFIX BOUGHT, and who pays for it now: two subjects of one rule that compute the
+	// same key share one entity here, where `key` gives them one each. So `id` says the key
+	// identifies the record ACROSS subjects — `head-moved`'s does, its subject being the single
+	// entity `git:head:verse` — and `key` says it identifies it only within one. Getting that
+	// backwards is the clobber this charter already paid for once, one plane over.
+	//
+	// The PLACE is still the engine's: a derive may only write inside its own stratum, checked
+	// at install, and `id` does not touch that. What the author takes on is the id within it.
+	ID      entity.Payload
 	Payload entity.Payload
 	// Each is set when this target fans out: one derived entity per element of `over`,
 	// addressed by `key`. Payload is nil then, and vice versa.
@@ -1110,6 +1127,8 @@ func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
 			content = val
 		case "key":
 			t.Key = val
+		case "id":
+			t.ID = val
 		}
 	}
 	if len(t.Path) == 0 {
@@ -1211,7 +1230,16 @@ func (a Action) validateDerive() error {
 			if err := checkLiteralDerive(t.Payload, where); err != nil {
 				return err
 			}
+			if t.Key != nil && t.ID != nil {
+				return fmt.Errorf("action.derive.%s has both `key` and `id`, which are the same "+
+					"question answered twice: `key` addresses one entity per value BENEATH this "+
+					"rule and subject, `id` addresses it by the value alone. Pick the one that "+
+					"says whether two subjects with the same value are one record or two", where)
+			}
 			if err := checkDeriveKey(t.Key, where); err != nil {
+				return err
+			}
+			if err := checkDeriveKey(t.ID, where); err != nil {
 				return err
 			}
 		}
@@ -1571,6 +1599,8 @@ func strataText(all []Stratum) string {
 // or find. And it may read only what the CONTENT may — the subject, including its state — since
 // the two are the same claim: the address is a function of the state, which is exactly what
 // makes carrying that state in the payload sound.
+// It is `id`'s check too: the two differ in what the engine puts in front of the value, not in
+// what the value may be read from.
 func checkDeriveKey(key entity.Payload, where string) error {
 	if key == nil {
 		return nil

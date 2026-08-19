@@ -62,7 +62,7 @@ reads: [ !verse-path [git] ]
   action:
     derive:
     - path: [verse-dev, drift, head]
-      key: $subject.value.sha
+      id: $subject.value.sha
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
@@ -162,9 +162,13 @@ reads: [ !verse-path [git] ]
       value: !not.has-path says
   action:
     patch:
+      # ONE ENTITY, NAMED. `id: $subject.value.sha` on rule 1 (rather than `key:`) makes the
+      # record's address the place plus the sha — `verse-dev.drift.head.aaaa1111` — so a reader
+      # SPELLS it. With `key:` the engine composes (rule, subject, key) into
+      # `head-moved@git:head:verse@aaaa1111`, which no charter can write down, and every reader
+      # then has to describe the record instead: a `"*"` and a predicate on a field it happens
+      # to know, with the cardinality checked at fire time. That read worked and it read badly,
+      # and the badness was the address, not the operator.
       says: !get-path
-        at: [verse-dev, drift, head, "*"]
-        value:
-          sha: $subject.value.sha
-          reviewed: done
+        at: [verse-dev, drift, head, $subject.value.sha]
         path: result.report

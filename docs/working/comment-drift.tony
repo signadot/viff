@@ -121,9 +121,16 @@ reads: [ !verse-path [git] ]
       # `comment-drift@…@head-moved@git:head:verse`, and a second commit arriving mid-review had
       # no task to be given and a terminal one to inherit.
       #
+      # `id:` rather than `key:`, which is the same one-per-sha with the engine's composition
+      # dropped: the record IS `verse-dev.drift.head.<sha>`, an address anything downstream can
+      # spell, where a keyed one is head-moved@git:head:verse@<sha> and cannot be. The reader is
+      # why — see `says` in 2b. It is sound here because the subject is the single entity
+      # `git:head:verse`: the sha identifies the record across every subject there is, which is
+      # exactly the claim `id:` makes and `key:` declines to.
+      #
       # Proved in docs/working/verse-dev, which drives this state machine locally in ~15s: the
       # same charter with the review brokered, and both races asserted away.
-      key: $subject.value.sha
+      id: $subject.value.sha
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
@@ -570,7 +577,10 @@ reads: [git, verse-dev.drift]
       # gate, subject), so the second batch would have found the first batch's motion already
       # settled and inherited its answer without asking anybody. Keying the address on the sha
       # makes each main its own question.
-      key: $subject.value.sha
+      #
+      # `id:` for the reason rule 1 gives: one subject, so the sha names the train outright, and
+      # `verse-dev.merge.train.<sha>` is an address a person can paste into `verse data`.
+      id: $subject.value.sha
       value:
         sha: $subject.value.sha
 ---
@@ -628,21 +638,17 @@ reads: [git, verse-dev.drift]
         path: branch
       # AND WHAT THE REVIEW SAID about the commit this train was cut at.
       #
-      # The head records are keyed per sha now (rule 1), so "the report" has no fixed address —
-      # a key is (rule, subject, sha), composed by the engine so a derive stays inert, and no
-      # charter can spell one. It does not need to: the train knows the sha outright, so the
-      # record is named by CONTENT.
+      # A head record per sha (rule 1), addressed BY the sha — which is what `id:` there is for,
+      # and the whole reason this is an address rather than a description. Keyed, the id is
+      # head-moved@git:head:verse@<sha>, which no charter can spell, and a reader has to reach
+      # for a `"*"` and a predicate on some field it happens to know. The train knows the sha
+      # outright, so it names the record.
       #
-      # `!get-path` with a predicate, which answers a NODE — the shape every reader of `says`
-      # assumes, from the docket down. A predicate used to be the list form's alone, and this
-      # read is why that changed: the only way to select a keyed derive is by content, so the
-      # operator that answers one had to take one. It holds itself to the one, refusing the
-      # firing if two records ever satisfy it.
-      #
-      # `reviewed: done` is in the predicate with the sha, so "the report has not landed yet"
-      # and "there is no such commit" are the same refusal — and a refused firing writes
-      # NOTHING, which means a train cut before its review lands carries no branches either,
-      # and waits for the re-fire a proposal brings. Silence over a plausible empty.
+      # A REFUSED READ WRITES NOTHING, and here that is wanted rather than a hazard: the record
+      # exists from the moment its commit lands but carries `result.report` only once the review
+      # answers, so a train cut before that loads no branches either and waits for the re-fire a
+      # proposal brings. Silence, rather than going in front of a decider with an empty where
+      # the drift report should be.
       #
       # ON THE TRAIN rather than on the proposal, which is where the same read used to live
       # (`proposal-says`, below). The train is what a decider reads — an open motion's subject
@@ -650,10 +656,7 @@ reads: [git, verse-dev.drift]
       # the reviewed commit only as `base`: main's tip when its BRANCH appeared, which is the
       # reviewed commit only if main did not move in between.
       says: !get-path
-        at: [verse-dev, drift, head, "*"]
-        value:
-          sha: $subject.value.sha
-          reviewed: done
+        at: [verse-dev, drift, head, $subject.value.sha]
         path: result.report
 ---
 # 2c. …and somebody decides the batch, once per tip.
@@ -809,10 +812,7 @@ reads: [git, verse-dev.drift]
       # between the review and the push. The train carries the exact one (train-load, above),
       # and that is the copy a decider sees.
       says: !get-path
-        at: [verse-dev, drift, head, "*"]
-        value:
-          sha: $subject.value.base
-          reviewed: done
+        at: [verse-dev, drift, head, $subject.value.base]
         path: result.report
 ---
 # 2b, 2c ARE GONE, and their absence is the point.
