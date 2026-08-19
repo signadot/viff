@@ -13,6 +13,10 @@
 # The two halves keep their own numbering — the review's rules are 1..5, the gate's are 1..3
 # with a 1b and 1c — because the prose in each refers to its own by number.
 #
+# comment-drift-states.md beside this reads the whole thing as state machines — which field each
+# rule writes, and which arrows nothing draws — for a reader who wants the shape before the
+# reasons.
+#
 # ── THE UNIT OF REVIEW IS A RANGE, and that is what changed ──────────────────────
 #
 # It reviewed main's TIP: one commit per push, whatever else the push carried. A push of three
