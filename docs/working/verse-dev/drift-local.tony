@@ -1,18 +1,21 @@
 # The comment-drift state machine, locally and without a model.
 #
-# It is docs/working/comment-drift.tony's first half — head-moved, gather, review — with one
+# It is docs/working/comment-drift.tony's first half — commit-landed, gather, review — with one
 # thing replaced: the review spawns a BROKERED task instead of an llm one, so the drive script
 # is the worker. `verse task do complete <id> '<answer>'` supplies the findings, which means the
 # answer is a fixture and the TIMING is the script's: a review lands exactly when the test says
 # it does.
 #
-# That is the whole point. The two defects this exists to reproduce are about ORDER, not about
+# That is the whole point. The defects this exists to reproduce are about ORDER, not about
 # review quality:
 #
-#   - a review that finishes AFTER the head moved writes `reviewed: done` over the pending state
-#     the new head left, and that commit is never reviewed;
-#   - a push of several commits only ever reviews the tip, so a fix in any other commit of it is
-#     never seen and its finding stays open forever.
+#   - a review that finishes AFTER another commit landed wrote `reviewed: done` over the pending
+#     state the newer one had just left, and that commit was never reviewed;
+#   - a push of several commits only ever reviewed the tip, so a fix in any other commit of it
+#     was never seen and its finding stayed open forever.
+#
+# Both are fixed here and both are still asserted: a record per commit addressed by its sha, and
+# a chain that starts at the COMMIT rather than at the tip.
 #
 # Neither is reachable in under ten minutes against staging, and both are reachable in seconds
 # here. The rules below are otherwise VERBATIM from the real charter, so a fix proved here is a
@@ -28,7 +31,7 @@ reads: [ !verse-path [git] ]
 - name: drift
   level: 10
   match:
-    path: [verse-dev, drift, head]
+    path: [verse-dev, drift, commit]
 
 - name: ledger
   level: 20
@@ -42,40 +45,55 @@ reads: [ !verse-path [git] ]
   match:
     path: [verse-dev, drift, train]
 ---
-# 1. Each tip main has had, as a fact this charter owns.
+# 1. Each commit that has landed on main, as a fact this charter owns.
 #
-# A RECORD PER COMMIT, which is the change under test. `key: $subject.value.sha` makes the
-# derive's address a function of (rule, subject, KEY) rather than (rule, subject), so every sha
-# gets its own record — and with it its own `reviewed` state, its own subject for rule 3 to
-# match, and therefore its own task id.
+# THE SUBJECT IS THE COMMIT, not the tip, and that is the whole of the skipping fix. The tip
+# names ONE commit per push, so a push of three reviewed one of them and the other two never
+# became subjects of anything. The git source already reflects main's last N commits as
+# `git:commit:<repo>/<sha>` — `git log -n <depth>` on the mirror — so the material was there
+# and nothing read it.
 #
-# One slot was the cause of both defects the harness holds still. A late `onDone` wrote
-# `reviewed: done` over the state a newer commit had just left, and a push of two overwrote the
-# first commit's record before anything could review it: neither has anywhere to land now,
-# because neither commit's record is the other's.
+# A RECORD PER COMMIT, addressed by the sha alone (`id:`, not `key:`), so every commit keeps its
+# own `reviewed` state, its own subject for rule 3, its own task id — and an address anything
+# downstream can spell. One slot was the cause of both defects this harness holds still: a late
+# review wrote `done` over the state a newer commit had just left, and a push overwrote the
+# previous commit's record before anything could review it. Neither has anywhere to land now.
 #
-# The deletes go with it: a fresh record starts empty, so there is no previous review to clear.
-- name: head-moved
+# `git:head:verse` keeps only the job it is actually about: cutting the train (rule 4 in the
+# real charter). It is out of the review half entirely.
+- name: commit-landed
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject:
+      path: [git, commit, "*"]
+      value:
+        repo: verse
   action:
     derive:
-    - path: [verse-dev, drift, head]
+    - path: [verse-dev, drift, commit]
       id: $subject.value.sha
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
-        reviewed: pending
 ---
 # 2. Before the review, the ledger is read onto the subject.
+#
+# THE ABSENCE OF `reviewed` IS THE START STATE, rather than a `pending` rule 1 writes, and that
+# is what makes a re-install inert. A derive is a tony PATCH merged at depth, not a replace — so
+# it overwrites exactly the fields it NAMES. Rule 1 naming `reviewed: pending` meant every
+# install of this charter reset every record's flow state and re-armed every review that had
+# already run: 131 llm tasks for a one-word charter edit, and invisible before the record was
+# per commit because at width one it was a single extra review.
+#
+# So the derive names only what it owns — the facts about the commit — and `reviewed` belongs to
+# the rules that move it. Nothing writes the start state; the start state is that nobody has
+# written one.
 - name: gather
   stratum: drift
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
-      value:
-        reviewed: pending
+      path: [verse-dev, drift, commit, "*"]
+      value: !not.has-path reviewed
   action:
     patch:
       reviewed: gathered
@@ -84,7 +102,7 @@ reads: [ !verse-path [git] ]
         value:
           status: open
 ---
-# 3. …and the tip is reviewed, once, against what is already known.
+# 3. …and the commit is reviewed, once, against what is already known.
 #
 # The spawn is brokered rather than llm: no runner, no environment, no prompt worth reading —
 # the drive script claims the task and completes it with the findings the test wants. Everything
@@ -93,7 +111,7 @@ reads: [ !verse-path [git] ]
   stratum: drift
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
+      path: [verse-dev, drift, commit, "*"]
       value:
         reviewed: gathered
   action:
@@ -130,24 +148,9 @@ reads: [ !verse-path [git] ]
 ---
 # 4. A train, carrying the report of the commit it is about.
 #
-# THE READ THE REAL CHARTER NEEDS, proved here. With a head record per sha there is no fixed
-# address for "the report" any more — the id is (rule, subject, sha), composed by the engine so
-# that a derive stays inert, and no charter can spell one. So the record is named by CONTENT: a
-# predicate on the field the reader already has.
-#
-#     !get-path {at: [verse-dev, drift, head, "*"], value: {sha: …}, path: result.report}
-#
-# `!get-path` and not `!list-paths`, and that is the point of the wrinkle this rule worked out.
-# The pair is split by cardinality, and a predicate USED to be the list form's alone — so the
-# only way to select by content answered with a list, of one, which every reader downstream then
-# had to unwrap: `subjectSays` decodes `says` as a string and renders a list of one as nothing.
-# A get takes the predicate now and holds itself to the one, refusing at fire time if two match.
-# What arrives here is a node.
-#
-# The predicate carries `reviewed: done` as well as the sha, and that is not decoration: a
-# record exists from the moment its commit lands, and the report appears only when the review
-# does. Naming the state in the predicate is the difference between "the report is not there
-# yet" and "there is no such commit", and it is what makes the wait legible in the charter.
+# THE READ THE REAL CHARTER NEEDS, proved here: the report of ONE commit, at an address the
+# reader spells out of a sha it already has. `id:` on rule 1 is what makes that address exist —
+# see the note on the patch below.
 #
 # The train is cut by the DRIVE SCRIPT rather than by a rule, which is the one place this file
 # models the real charter loosely and does it deliberately. There, a train is cut on the tip and
@@ -163,12 +166,12 @@ reads: [ !verse-path [git] ]
   action:
     patch:
       # ONE ENTITY, NAMED. `id: $subject.value.sha` on rule 1 (rather than `key:`) makes the
-      # record's address the place plus the sha — `verse-dev.drift.head.aaaa1111` — so a reader
+      # record's address the place plus the sha — `verse-dev.drift.commit.aaaa1111` — so a reader
       # SPELLS it. With `key:` the engine composes (rule, subject, key) into
       # `head-moved@git:head:verse@aaaa1111`, which no charter can write down, and every reader
       # then has to describe the record instead: a `"*"` and a predicate on a field it happens
       # to know, with the cardinality checked at fire time. That read worked and it read badly,
       # and the badness was the address, not the operator.
       says: !get-path
-        at: [verse-dev, drift, head, $subject.value.sha]
+        at: [verse-dev, drift, commit, $subject.value.sha]
         path: result.report

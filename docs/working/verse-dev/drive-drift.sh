@@ -29,7 +29,8 @@ fails=0
 step() { printf '\n%s# %s%s\n' "$bold" "$1" "$rst"; }
 ok()   { printf '  %s✓%s %s\n' "$grn" "$rst" "$1"; }
 bad()  { printf '  %s✗ %s%s\n' "$red" "$1" "$rst"; fails=$((fails+1)); }
-known(){ printf '  %s~ KNOWN DEFECT: %s%s\n' "$ylw" "$1" "$rst"; }
+knowns=0
+known(){ knowns=$((knowns+1)); printf '  %s~ KNOWN DEFECT: %s%s\n' "$ylw" "$1" "$rst"; }
 
 free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()'; }
 
@@ -68,10 +69,16 @@ ok "the drift charter is installed"
 # is addressed by the sha alone, so every commit keeps its own state and its own task id instead
 # of sharing one slot with every other commit — and the address is one anything can spell, which
 # `key:` would not have been (it composes rule and subject in front of the sha).
-record()  { v data "verse-dev.drift.head.$1" 2>/dev/null; }
+record()  { v data "verse-dev.drift.commit.$1" 2>/dev/null; }
 field()   { record "$1" | grep -E "^$2:" | awk '{print $2}'; }
-task_for(){ echo "comment-drift@verse-dev.drift.head.$1"; }
-move_head(){ v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+task_for(){ echo "comment-drift@verse-dev.drift.commit.$1"; }
+# A COMMIT LANDS, and the tip moves onto it — two writes, because they are two facts and the
+# flow now starts at the first one. `git:commit:<repo>/<sha>` is what the git source reflects
+# for main's last N commits; the tip is `git:head:verse`. A push of several commits writes
+# several of the former and moves the latter ONCE, which is scenario 3.
+land()      { v data "git:commit:verse/$1" --put "{repo: verse, sha: $1, msg: \"commit $1\"}" >/dev/null; }
+move_head() { v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+push()      { land "$1"; move_head "$1"; }
 
 # wait_field <sha> <field> <value> <seconds>
 wait_field() {
@@ -106,7 +113,7 @@ wait_finding() {
 }
 
 step "1. one commit, reviewed once"
-move_head aaaa1111
+push aaaa1111
 wait_task aaaa1111 20 && ok "a task of aaaa1111's own, in $SECONDS s" || bad "no task for aaaa1111"
 review aaaa1111 || bad "could not complete aaaa1111's review"
 wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
@@ -133,9 +140,9 @@ v data verse-dev.drift.train.t-early 2>/dev/null | grep -q 'says' \
 	|| ok "a train cut before the review holds no report, and no empty one either"
 
 step "2. a commit that lands WHILE a review is running"
-move_head bbbb2222
+push bbbb2222
 wait_task bbbb2222 20 || bad "no task for bbbb2222"
-move_head cccc3333                       # arrives before bbbb2222's review answers
+push cccc3333                            # arrives before bbbb2222's review answers
 wait_task cccc3333 20 && ok "cccc3333 got a task of its own while bbbb2222 was still open" \
 	|| bad "cccc3333 never got a task"
 review bbbb2222 || bad "could not complete bbbb2222's review"
@@ -152,27 +159,34 @@ wait_field cccc3333 reviewedSha cccc3333 20 && ok "cccc3333 is reviewed too" \
 
 step "3. two commits landing in ONE push"
 # NOT two head moves — that is two pushes, which scenario 2 already covers. A push of two
-# commits moves the tip ONCE: verse sees eeee5555 and never sees dddd4444 as a tip at all.
+# commits moves the tip ONCE: verse never sees dddd4444 as a tip at all.
 #
-# The git source does reflect both, as `git:commit:<repo>/<sha>` — main's last N commits, from
-# `git log -n <depth>` on the mirror — so the commit exists as a fact even though the tip never
-# named it. Whether the flow reviews it is the open question this scenario holds.
-v data git:commit:verse/dddd4444 --put '{repo: verse, sha: dddd4444, msg: "the middle commit"}' >/dev/null
-v data git:commit:verse/eeee5555 --put '{repo: verse, sha: eeee5555, msg: "the tip"}' >/dev/null
+# It does not need to. The chain starts at the COMMIT — `git:commit:<repo>/<sha>`, what the git
+# source reflects for main's last N — so a commit below the tip is a subject like any other and
+# the tip has no special role in the review half at all. This is the assertion the whole harness
+# was built to turn green.
+land dddd4444
+land eeee5555
 move_head eeee5555
 both=1
 for sha in eeee5555 dddd4444; do
-	if wait_task "$sha" 15 && review "$sha" && wait_field "$sha" reviewedSha "$sha" 15; then
+	# 25s, not 15: a push spawns its commits' reviews CONCURRENTLY and a spawn costs about a
+	# second (issue bteb1a97h12kr7nagnn0), so the window has to hold two of them plus whatever
+	# the earlier scenarios left running. At 15 this failed about one run in three.
+	if wait_task "$sha" 25 && review "$sha" && wait_field "$sha" reviewedSha "$sha" 25; then
 		continue
 	fi
 	both=
-	[ "$sha" = eeee5555 ] && bad "the tip of the push was not reviewed"
+	bad "$sha of the push was not reviewed"
 done
-[ -n "$both" ] && ok "both commits of the push were reviewed" \
-	|| known "only the tip was reviewed: the chain fires on git:head:verse, which names one commit per push, so dddd4444 never becomes a subject — the source reflects it as git:commit:verse/dddd4444 and nothing reads that"
+[ -n "$both" ] && ok "both commits of the push were reviewed, the tip having no special role"
 
 step "result"
 if [ "$fails" -gt 0 ]; then
 	printf '%s%s ASSERTION(S) FAILED%s\n' "$red" "$fails" "$rst"; exit 1
 fi
-printf '%sthe harness works%s — the ~ lines above are the defects it exists to hold still\n' "$grn" "$rst"
+if [ "$knowns" -gt 0 ]; then
+	printf '%severy assertion holds%s — the %s ~ line(s) above are defects it holds still\n' "$grn" "$rst" "$knowns"
+else
+	printf '%severy assertion holds, and nothing is held still%s — both defects this was built for are fixed\n' "$grn" "$rst"
+fi

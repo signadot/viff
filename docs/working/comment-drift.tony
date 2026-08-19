@@ -36,7 +36,7 @@
 # ONE — a spawning action must take its subject out of its own selection, and a subject in a
 # REFLECTED slice cannot hold the marker that would do it: a source is the single writer of what
 # it reflects, so a latch written onto `git:*` is gone on the next pass that mentions the entity.
-# Hence `head-moved`: the fact is copied into a slice this charter owns, and the spawn latches
+# Hence `commit-landed`: the fact is copied into a slice this charter owns, and the spawn latches
 # there — which is what buys the derive, and so the strata.
 #
 # TWO — a subject is a SELECTION, so a rule over `git:commit` is as wide as the reflected
@@ -66,11 +66,11 @@ reads: [ !verse-path [git] ]
   match:
     system: git
 
-# Ours: the tip, as a fact this charter owns and latches on.
+# Ours: each commit, as a fact this charter owns and latches on.
 - name: drift
   level: 10
   match:
-    path: [verse-dev, drift, head]
+    path: [verse-dev, drift, commit]
 
 # The ledger. Strictly above `drift`, because that is the only direction a derive may go — and
 # split by KIND rather than into another system, so the whole drive stays one slice a person can
@@ -85,56 +85,81 @@ reads: [ !verse-path [git] ]
 # It spawns nothing, so it needs no latch: a derive's address is a function of (rule, subject),
 # so a re-fire writes the same bytes to the same address and the store ends it as a no-op.
 #
-# `reviewed: pending` is the latch's other half, and it is a STATE rather than an absence for a
-# reason that cost this drive an evening. The documented spelling of "not yet reviewed" is
-# absence — `!not {reviewed: null}` — and verse cannot store one: `entity/logdstore.go` spells
-# absence by WRITING a bare null and hiding every bare null it reads, at any depth, so the
-# durable rule comes back as `!not {}` and selects nothing. The charter works until the first
-# restart and then silently stops. (Not the substrate's doing: logd holds `b: null` across
-# restart and compaction, and tony's patch sets null rather than deleting.) A state needs no
-# null, and this one re-arms itself: a derive MERGES, so writing `pending` puts the fact back in
-# rule 2's selection whenever the sha moves.
+# THE ABSENCE OF `reviewed` is the latch's other half, and WHICH SPELLING OF ABSENCE matters —
+# one of them cost this drive an evening. `!not {reviewed: null}` cannot be stored:
+# `entity/logdstore.go` spells absence by WRITING a bare null and hiding every bare null it
+# reads, at any depth, so the durable rule comes back as `!not {}` and selects nothing. The
+# charter works until the first restart and then silently stops. (Not the substrate's doing:
+# logd holds `b: null` across restart and compaction, and tony's patch sets null rather than
+# deleting.)
+#
+# `!not.has-path reviewed` is the spelling that survives, which is the one the rest of this
+# charter already leans on for `decided`, `state` and `says`. Driven rather than assumed
+# (scratchpad/restart-latch.sh): a commit is picked up, verse goes down and comes back, the
+# stored rule still reads `!not.has-path reviewed`, and the next commit is picked up too.
+#
+# The escape from `reviewed: pending` was worth taking. A derive MERGES, so a written start
+# state is a field the derive NAMES — and naming it meant every install of this charter reset
+# every record and re-armed every review that had already run. An absence is nobody's to
+# overwrite.
 #
 # The deletes are tagged operators rather than bare nulls, which is why THEY survive the same
 # round trip: they clear the last review so a new one cannot merge with the one before it.
-- name: head-moved
+- name: commit-landed
   stratum: reflected
+  # THE SUBJECT IS THE COMMIT, not the tip, and that is the whole of the skipping fix. A push
+  # moves the tip ONCE however many commits it carries, so a chain starting at `git:head:verse`
+  # reviewed one commit per push and the rest never became subjects of anything — a comment that
+  # started lying in the middle was never looked at, and a finding that a middle commit FIXED
+  # stayed open forever because nothing re-read it.
+  #
+  # The material was already reflected and nothing read it: the git source carries main's last N
+  # commits as `git:commit:<repo>/<sha>` (`git log -n <depth>` on the mirror, tip first), payload
+  # {repo, sha, msg, author, parents}. `git:head:verse` keeps only the job it is about — cutting
+  # the train, 2a — and is out of the review half entirely.
+  #
+  # Proved in docs/working/verse-dev, which drives this state machine locally in ~15s: the same
+  # rules with the review brokered, a push of two commits, and both of them reviewed.
   condition:
-    subject: git:head:verse
+    subject:
+      path: [git, commit, "*"]
+      value:
+        repo: verse
   action:
     derive:
-    - path: [verse-dev, drift, head]
+    - path: [verse-dev, drift, commit]
       # A RECORD PER COMMIT, for the reason train-cut below gives about gates — the same class
-      # of bug, one plane over. A plain derive writes one entity per (rule, subject): every tip
-      # main ever has shares ONE record, so its `reviewed` state is one slot that the last write
-      # wins. Two ways that lost commits, both seen:
+      # of bug, one plane over. A plain derive writes one entity per (rule, subject), so every
+      # commit would share ONE record and its `reviewed` state would be one slot the last write
+      # wins. That is how the flow lost commits even before the subject was wrong:
       #
-      #   - a review that finishes AFTER the head moved patches `reviewed: done` over the
-      #     `pending` the new tip just wrote, and nothing fires again — `gather` wants pending,
-      #     the review wants gathered — so that commit is never reviewed and the flow is parked
-      #     until the head moves again (staging: sha 7004e3ff, reviewedSha c4ac8fd1);
-      #   - a push of two commits overwrites the first tip before anything reviewed it, so a fix
-      #     landing in any commit but the last is never seen and its finding stays open.
+      #   - a review finishing AFTER another commit landed patched `reviewed: done` over the
+      #     `pending` the newer one just wrote, and nothing fired again — `gather` wants pending,
+      #     the review wants gathered — so that commit was never reviewed and the flow parked
+      #     until the head moved again (staging: sha 7004e3ff, reviewedSha c4ac8fd1);
+      #   - a second commit arriving mid-review had no task to be given and a terminal one to
+      #     inherit, every record having shared one task id.
       #
-      # Keying on the sha gives each commit its own record, and with it its own `reviewed`, its
-      # own subject for rule 3, and therefore its own TASK ID — where before every head shared
-      # `comment-drift@…@head-moved@git:head:verse`, and a second commit arriving mid-review had
-      # no task to be given and a terminal one to inherit.
+      # The sha gives each commit its own record, its own `reviewed`, its own subject for rule 3
+      # and therefore its own TASK ID.
       #
       # `id:` rather than `key:`, which is the same one-per-sha with the engine's composition
-      # dropped: the record IS `verse-dev.drift.head.<sha>`, an address anything downstream can
-      # spell, where a keyed one is head-moved@git:head:verse@<sha> and cannot be. The reader is
-      # why — see `says` in 2b. It is sound here because the subject is the single entity
-      # `git:head:verse`: the sha identifies the record across every subject there is, which is
-      # exactly the claim `id:` makes and `key:` declines to.
-      #
-      # Proved in docs/working/verse-dev, which drives this state machine locally in ~15s: the
-      # same charter with the review brokered, and both races asserted away.
+      # dropped: the record IS `verse-dev.drift.commit.<sha>`, an address anything downstream
+      # can spell, where a keyed one is commit-landed@git:commit:verse/<sha>@<sha> and cannot
+      # be. The reader is why — see `says` in 2b. It is sound because the sha identifies the
+      # record across every subject there is, which is exactly the claim `id:` makes and `key:`
+      # declines to.
       id: $subject.value.sha
+      # AND IT DOES NOT NAME `reviewed`. A derive is a tony PATCH merged at depth, not a
+      # replace, so it overwrites exactly the fields it names — and naming the start state here
+      # meant every install of this charter wrote `reviewed: pending` over every record and
+      # re-armed every review that had already run. One extra review per charter edit while the
+      # record was per TIP, and one per commit in the window now. So the derive states the facts
+      # it owns, `reviewed` belongs to the rules that move it, and the start state is that
+      # nobody has written one (rule 2 starts on its absence).
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
-        reviewed: pending
 ---
 # 2. Before the review, the ledger is read onto the subject.
 #
@@ -155,9 +180,10 @@ reads: [ !verse-path [git] ]
   stratum: drift
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
-      value:
-        reviewed: pending
+      path: [verse-dev, drift, commit, "*"]
+      # The ABSENCE of `reviewed`, which is the start state precisely so that rule 1's derive
+      # need not write one — see there for what naming it cost.
+      value: !not.has-path reviewed
   action:
     patch:
       reviewed: gathered
@@ -175,7 +201,7 @@ reads: [ !verse-path [git] ]
   stratum: drift
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
+      path: [verse-dev, drift, commit, "*"]
       value:
         reviewed: gathered
   action:
@@ -342,9 +368,11 @@ reads: [ !verse-path [git] ]
           proposedAt: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
         report: !irtype "one paragraph on what changed and why"
         # WHICH COMMIT this answer is about, and it is not redundant with the subject's `sha`.
-        # The tip moves while a review runs: `head-moved` re-derives, the subject's sha becomes
-        # the newer one, and a result landing afterwards sits on a fact naming a commit the task
-        # never read. Observed on the first run of this shape — a report about 068cc5bb on an
+        # It predates the record per commit and it still earns its place: a result carrying its
+        # own sha is a fact that describes itself, where one that relies on the entity it lands
+        # on describes wherever it landed. The failure it was written for — the tip moving mid
+        # review, the subject's sha becoming the newer one, and a result sitting on a fact naming
+        # a commit the task never read — is gone with the shared slot. Observed on the first run of this shape — a report about 068cc5bb on an
         # entity saying feedeef6. The answer carrying its own sha is what makes the fact
         # self-describing rather than merely recent.
         at: !irtype "9d007068dc826d6bd2df9e01f70bd601a2d33f7d"
@@ -640,7 +668,7 @@ reads: [git, verse-dev.drift]
       #
       # A head record per sha (rule 1), addressed BY the sha — which is what `id:` there is for,
       # and the whole reason this is an address rather than a description. Keyed, the id is
-      # head-moved@git:head:verse@<sha>, which no charter can spell, and a reader has to reach
+      # commit-landed@git:commit:verse/<sha>@<sha>, which no charter can spell, and a reader has to reach
       # for a `"*"` and a predicate on some field it happens to know. The train knows the sha
       # outright, so it names the record.
       #
@@ -656,7 +684,7 @@ reads: [git, verse-dev.drift]
       # the reviewed commit only as `base`: main's tip when its BRANCH appeared, which is the
       # reviewed commit only if main did not move in between.
       says: !get-path
-        at: [verse-dev, drift, head, $subject.value.sha]
+        at: [verse-dev, drift, commit, $subject.value.sha]
         path: result.report
 ---
 # 2c. …and somebody decides the batch, once per tip.
@@ -812,7 +840,7 @@ reads: [git, verse-dev.drift]
       # between the review and the push. The train carries the exact one (train-load, above),
       # and that is the copy a decider sees.
       says: !get-path
-        at: [verse-dev, drift, head, $subject.value.base]
+        at: [verse-dev, drift, commit, $subject.value.base]
         path: result.report
 ---
 # 2b, 2c ARE GONE, and their absence is the point.
