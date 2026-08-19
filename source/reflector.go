@@ -398,8 +398,8 @@ func valueAt(p entity.Payload, path []string) entity.Payload {
 	return p
 }
 
-// current reads what stands in the store for the systems the reflection touches — one List,
-// prefiltered by system, which is what a store's List takes.
+// current reads what stands in the store for the systems the reflection touches — one
+// ListUnder per system, at the prefix that system implies, rather than one List at the root.
 //
 // It reads the whole system slice rather than only what the covers select, because the
 // unchanged-comparison has to see entities that no cover claims: a git commit is written once
