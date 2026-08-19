@@ -92,6 +92,10 @@ land_commit() {
 }
 LAST=
 
+# THE WAITERS READ A HERE-STRING, not a pipe. `cmd | grep -q X` under `set -o pipefail` reports
+# 141 on a MATCH — grep -q exits at the first hit, the writer dies on the closed pipe, and
+# pipefail hands that up as the pipeline's status — so a hit read as a miss, which a retry loop
+# hides by looping and a single check does not hide at all.
 # wait_field <sha> <field> <value> <seconds>
 wait_field() {
 	local end=$((SECONDS+$4))
@@ -102,7 +106,7 @@ wait_field() {
 wait_task() {
 	local end=$((SECONDS+$2))
 	while [ $SECONDS -lt $end ]; do
-		v task 2>/dev/null | grep -q "id: $(task_for "$1")$" && return 0
+		grep -q "id: $(task_for "$1")$" <<<"$(v task 2>/dev/null)" && return 0
 		sleep 0.3
 	done
 	return 1
@@ -118,7 +122,7 @@ review() {
 wait_finding() {
 	local end=$((SECONDS+$2))
 	while [ $SECONDS -lt $end ]; do
-		v data verse-dev.drift.finding 2>/dev/null | grep -q "symbol: $1" && return 0
+		grep -q "symbol: $1" <<<"$(v data verse-dev.drift.finding 2>/dev/null)" && return 0
 		sleep 0.3
 	done
 	return 1
@@ -136,7 +140,7 @@ wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no findin
 v data verse-dev.drift.train.t-aaaa1111 --put "{sha: aaaa1111}" >/dev/null
 t0=$SECONDS; got=
 for _ in $(seq 1 40); do
-	if v data verse-dev.drift.train.t-aaaa1111 2>/dev/null | grep -q 'says: "reviewed aaaa1111'; then got=1; break; fi
+	if grep -q 'says: "reviewed aaaa1111' <<<"$(v data verse-dev.drift.train.t-aaaa1111 2>/dev/null)"; then got=1; break; fi
 	sleep 0.5
 done
 [ -n "$got" ] \
@@ -147,7 +151,7 @@ done
 # refused firing writes nothing at all.
 v data verse-dev.drift.train.t-early --put "{sha: 9999early}" >/dev/null
 sleep 2
-v data verse-dev.drift.train.t-early 2>/dev/null | grep -q 'says' \
+grep -q 'says' <<<"$(v data verse-dev.drift.train.t-early 2>/dev/null)" \
 	&& bad "a train for an unreviewed sha loaded something:\n$(v data verse-dev.drift.train.t-early)" \
 	|| ok "a train cut before the review holds no report, and no empty one either"
 
@@ -198,9 +202,9 @@ step "4. a commit chosen by its PARENTS rather than by being the tip"
 # now, in a chain, and exactly one of them landed on aaaa1111.
 #
 # Asserted over the WHOLE listing rather than one record at a time: "these and no others" is the
-# claim, and a per-record read that fails transiently would report a commit as unselected — the
-# same shape as reading an unreadable store as an empty one (tyr7f6dhh). `--depth 4` because
-# these records are addressed at the place plus a sha.
+# claim, and one record at a time cannot make it — a per-record check says nothing about the
+# records it did not name. `--depth 4` because these records are addressed at the place plus a
+# sha.
 kids() { v data verse-dev.drift.child --paths --depth 4 2>/dev/null; }
 t0=$SECONDS
 for _ in $(seq 1 30); do [ -n "$(kids)" ] && break; sleep 0.5; done

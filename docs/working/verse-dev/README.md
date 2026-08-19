@@ -58,9 +58,8 @@ run, which is itself the point.
 Scenario 4 is not a defect being held still — it is a shape being exercised. `parents` is a list
 of shas, and `!key()` is how a match names an element of a list, so `child-of-a` selects the
 commit that landed on `aaaa1111` and no other. It asserts over the whole listing rather than one
-record at a time: "these and no others" is the claim, and a per-record read that fails
-transiently would report a commit as unselected — the same shape as reading an unreadable store
-as an empty one.
+record at a time, because "these and no others" is the claim and a per-record check says nothing
+about the records it did not name.
 
 Both defects have the same shape: the head fact is keyed by the SUBJECT rather than by the commit. A
 head record per sha would give each commit its own state, its own task id and its own hook, and
