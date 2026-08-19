@@ -53,3 +53,9 @@ while IFS= read -r f; do files+=("$f"); done < <(git ls-files '*.md' '*.mdx')
 [ ${#files[@]} -gt 0 ] || { echo "mermaid: no markdown tracked"; exit 0; }
 
 node "$here/check.mjs" "${files[@]}"
+
+# …and then what the parse cannot see. A `;` in a label TERMINATES the statement, so the words
+# after it become states of their own: the diagram is valid, renders, and renders loose boxes
+# reading "the", "branch", "is", "deleted". check.mjs has nothing to complain about, so this
+# reader looks at the state table mermaid built rather than at the syntax it was built from.
+node "$here/nodes.mjs" "${files[@]}"
