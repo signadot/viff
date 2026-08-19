@@ -376,3 +376,47 @@ func requireLong(t *testing.T) {
 		t.Skip("long: set GOTEST_LONG=1 to run (skipped by default; see the test's comment)")
 	}
 }
+
+// A MOUNTED SLICE IS READ BY PATH AS WELL AS BY REF, and it was not.
+//
+// The two ways of naming one entity have to reach the same place. A REF goes through rootFor
+// and finds the mount; a PATH was rooted at this store's root and found nothing — so
+// `verse data local:dir-content-<scope>:a.txt` answered "nothing stands there" about a file
+// that /entity?ref= served in full. The CLI sends a path, which made `verse connect`'s content
+// unreadable through the command that federated it, and smoke recorded that as "mount timing"
+// — a diagnosis nobody checked. It never resolved, because it could not.
+func TestLogdStore_ListAtReachesAMountedSlice(t *testing.T) {
+	s, docd := storeOverDocd(t)
+	mount := MountKPath("local", contentMountKind)
+	mountController(t, docd, mount)
+
+	ref := RefAt("local", contentMountKind, "a.txt")
+	// The ref route: what worked all along, and the answer the path read owes.
+	got, ok, err := s.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("Get(%s) through the mount: ok=%v err=%v", ref, ok, err)
+	}
+	if Str(got.Payload, "content") != "hi" {
+		t.Fatalf("the mount answered %v", got.Payload)
+	}
+
+	// …and the same slice, asked for as a PATH.
+	ents := s.ListAt([]string{"local", contentMountKind, "a.txt"}, Depth, nil)
+	if len(ents) != 1 {
+		t.Fatalf("ListAt at the mounted slice found %d entities, want the one the ref answers with", len(ents))
+	}
+	if Str(ents[0].Payload, "content") != "hi" {
+		t.Errorf("the path read answered %v", ents[0].Payload)
+	}
+	if ents[0].Ref != ref {
+		t.Errorf("the path read named %s, want %s", ents[0].Ref, ref)
+	}
+
+	// A path that is NOT mount-owned still reads under the entity root, which is the half
+	// this must not have moved: the two roots are disjoint and a wrong choice is silent.
+	logged := RefAt("local", "dir-status-a1b2c3", "a.txt")
+	set(t, s, logged, Obj{"stage": "seen"}.Payload())
+	if ents := s.ListAt([]string{"local", "dir-status-a1b2c3"}, Depth, nil); len(ents) != 1 {
+		t.Fatalf("the log-backed sibling read %d entities, want 1 — the root choice moved", len(ents))
+	}
+}

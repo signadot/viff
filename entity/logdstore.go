@@ -313,6 +313,26 @@ func (s *LogdStore) rootFor(ref Ref) string {
 	return seg(s.root)
 }
 
+// rootForAt is rootFor for a PATH rather than a ref — the same choice, made from the
+// segments a read was asked at.
+//
+// It exists because the two ways of naming one entity have to reach the same place. A ref
+// went through rootFor and found the mount; a path was rooted at this store's root and found
+// nothing, so `verse data local:dir-content-x:a.txt` answered "nothing stands there" about a
+// file the ref route served in full. The CLI sends a path, so `verse connect`'s content was
+// unreadable through the command that federated it.
+//
+// A path of ONE segment cannot decide: `local` spans both the mounted content slice and the
+// log-backed status one, and they live under different roots. It stays under this store's
+// root, which loses nothing today — a controller answers null at its own mount root (see
+// source.Content.Match), so there is nothing there to merge in.
+func (s *LogdStore) rootForAt(at []string) string {
+	if len(at) >= 2 && IsMountOwned(at[0], at[1]) {
+		return seg(MountRoot)
+	}
+	return seg(s.root)
+}
+
 // MountKPath renders the kinded-path <MountRoot>.<system>.<kind> at which a controller
 // mounts to own that (system,kind) slice — e.g. verse connect's content controller
 // mounts the local:dir-content-<scope> slice. A controller task holds no store, so
@@ -887,7 +907,7 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	path := seg(s.root)
+	path := s.rootForAt(at)
 	for _, sg := range at {
 		path += "." + seg(sg)
 	}

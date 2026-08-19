@@ -453,12 +453,14 @@ for _ in $(seq 1 150); do
 done
 [ -n "$fed" ] || { tail -20 "$tmp/connect.log" >&2; die "connect did not federate the tree"; }
 ok "federated a.txt + b.txt into scope $SCOPE"
-# content is served on demand off a baseline mount (no --scope) — the subtree-watch path.
-if has "$(v data "local:dir-content-$SCOPE:a.txt" 2>/dev/null || true)" 'hello from a'; then
-	ok "file content served through the verse (content mount)"
-else
-	note "content read did not match (mount timing) — federation verified above"
-fi
+# Content is served on demand off a baseline mount (no --scope). ASSERTED, not noted: this
+# used to be a soft `note` blaming "mount timing", and the read never resolved at all — a
+# path naming a mount-owned slice was rooted at the entity root while the controller sits
+# under MountRoot, so `verse data` could not read what `verse connect` had just federated.
+# A tolerated check is how that survived every run (entity.rootForAt).
+has "$(v data "local:dir-content-$SCOPE:a.txt")" 'hello from a' ||
+	die "file content did not come back through the content mount"
+ok "file content served through the verse (content mount)"
 # THE VALIDATOR RAN. Federation is only half of what connect promises — its startup line says
 # "validator per file" — and this half was dead for as long as it existed while every check
 # above passed: the rule's subject predicate selected nothing, and the completion hook under it
