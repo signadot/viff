@@ -131,37 +131,40 @@ reads: [ !verse-path [git] ]
 # 4. A train, carrying the report of the commit it is about.
 #
 # THE READ THE REAL CHARTER NEEDS, proved here. With a head record per sha there is no fixed
-# address for "the report" any more — the key is (rule, subject, sha) and a charter cannot
-# compose one — so the record is selected by a PREDICATE on a field the reader already has:
+# address for "the report" any more — the id is (rule, subject, sha), composed by the engine so
+# that a derive stays inert, and no charter can spell one. So the record is named by CONTENT: a
+# predicate on the field the reader already has.
 #
-#     !list-paths {at: [verse-dev, drift, head, "*"], value: {sha: …}, path: result.report}
+#     !get-path {at: [verse-dev, drift, head, "*"], value: {sha: …}, path: result.report}
 #
-# `!list-paths` rather than `!get-path` because the pair is split by CARDINALITY: a predicate
-# could name several, so the operator that answers one refuses it outright. What comes back is
-# therefore a LIST — of one, here, since a sha names one record — and that is the wrinkle a
-# reader of `says` inherits.
+# `!get-path` and not `!list-paths`, and that is the point of the wrinkle this rule worked out.
+# The pair is split by cardinality, and a predicate USED to be the list form's alone — so the
+# only way to select by content answered with a list, of one, which every reader downstream then
+# had to unwrap: `subjectSays` decodes `says` as a string and renders a list of one as nothing.
+# A get takes the predicate now and holds itself to the one, refusing at fire time if two match.
+# What arrives here is a node.
 #
-# The subject is a head record that is DONE, so the report exists by the time this fires. The
-# real train cuts on the tip instead and carries `sha` itself, which is the same read with
-# `$subject.value.sha` on the other side.
-# The stratum is the SUBJECT's, not the target's: a rule acts at the level of what it selects,
-# and a derive is how it writes upward. Declaring `train` here is refused, in the same words the
-# charter grammar uses for a rule reaching past its own level.
+# The predicate carries `reviewed: done` as well as the sha, and that is not decoration: a
+# record exists from the moment its commit lands, and the report appears only when the review
+# does. Naming the state in the predicate is the difference between "the report is not there
+# yet" and "there is no such commit", and it is what makes the wait legible in the charter.
+#
+# The train is cut by the DRIVE SCRIPT rather than by a rule, which is the one place this file
+# models the real charter loosely and does it deliberately. There, a train is cut on the tip and
+# loaded later, when a proposal appears; the gap between the two is where the report lands. Here
+# the script cuts it, so the harness says exactly when — including, in one case, before the
+# review has landed at all.
 - name: train-says
-  stratum: drift
+  stratum: train
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
-      value:
-        reviewed: done
+      path: [verse-dev, drift, train, "*"]
+      value: !not.has-path says
   action:
-    derive:
-    - path: [verse-dev, drift, train]
-      key: $subject.value.sha
-      value:
-        sha: $subject.value.sha
-        says: !list-paths
-          at: [verse-dev, drift, head, "*"]
-          value:
-            sha: $subject.value.sha
-          path: result.report
+    patch:
+      says: !get-path
+        at: [verse-dev, drift, head, "*"]
+        value:
+          sha: $subject.value.sha
+          reviewed: done
+        path: result.report

@@ -113,15 +113,25 @@ wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and say
 	|| bad "aaaa1111 reviewedSha=$(field aaaa1111 reviewedSha)"
 wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no finding was derived"
 # The read the real charter needs: the report, selected out of the per-sha records by a
-# predicate on a sha the reader already has.
+# predicate on a sha the reader already has — and arriving as a NODE, which is what a get
+# answers and what every reader of `says` downstream assumes.
+v data verse-dev.drift.train.t-aaaa1111 --put "{sha: aaaa1111}" >/dev/null
 t0=$SECONDS; got=
-for _ in $(seq 1 60); do
-	if v data verse-dev.drift.train 2>/dev/null | grep -q 'reviewed aaaa1111'; then got=1; break; fi
+for _ in $(seq 1 40); do
+	if v data verse-dev.drift.train.t-aaaa1111 2>/dev/null | grep -q 'says: "reviewed aaaa1111'; then got=1; break; fi
 	sleep 0.5
 done
 [ -n "$got" ] \
-	&& ok "the train carries aaaa1111's own report, read by predicate (a list of one), after $((SECONDS-t0))s" \
+	&& ok "the train carries aaaa1111's own report, selected by predicate and answered as a node, after $((SECONDS-t0))s" \
 	|| bad "the train has no report after $((SECONDS-t0))s:\n$(v data verse-dev.drift.train 2>/dev/null)"
+# …and a train cut before the review lands loads NOTHING, rather than a plausible empty. The
+# predicate names `reviewed: done`, so "not yet" and "no such commit" are the same refusal, and
+# a refused firing writes nothing at all.
+v data verse-dev.drift.train.t-early --put "{sha: 9999early}" >/dev/null
+sleep 2
+v data verse-dev.drift.train.t-early 2>/dev/null | grep -q 'says' \
+	&& bad "a train for an unreviewed sha loaded something:\n$(v data verse-dev.drift.train.t-early)" \
+	|| ok "a train cut before the review holds no report, and no empty one either"
 
 step "2. a commit that lands WHILE a review is running"
 move_head bbbb2222

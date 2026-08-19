@@ -629,22 +629,31 @@ reads: [git, verse-dev.drift]
       # AND WHAT THE REVIEW SAID about the commit this train was cut at.
       #
       # The head records are keyed per sha now (rule 1), so "the report" has no fixed address —
-      # a key is (rule, subject, sha) and a charter cannot compose one. It does not need to: the
-      # train knows the sha outright, so the record is selected by a PREDICATE on it.
+      # a key is (rule, subject, sha), composed by the engine so a derive stays inert, and no
+      # charter can spell one. It does not need to: the train knows the sha outright, so the
+      # record is named by CONTENT.
       #
-      # `!list-paths` rather than `!get-path` because the pair is split by cardinality and a
-      # predicate could name several — so this arrives as a LIST of one. It reads oddly and it
-      # is honest: the operator that answers exactly one refuses a predicate outright.
+      # `!get-path` with a predicate, which answers a NODE — the shape every reader of `says`
+      # assumes, from the docket down. A predicate used to be the list form's alone, and this
+      # read is why that changed: the only way to select a keyed derive is by content, so the
+      # operator that answers one had to take one. It holds itself to the one, refusing the
+      # firing if two records ever satisfy it.
+      #
+      # `reviewed: done` is in the predicate with the sha, so "the report has not landed yet"
+      # and "there is no such commit" are the same refusal — and a refused firing writes
+      # NOTHING, which means a train cut before its review lands carries no branches either,
+      # and waits for the re-fire a proposal brings. Silence over a plausible empty.
       #
       # ON THE TRAIN rather than on the proposal, which is where the same read used to live
       # (`proposal-says`, below). The train is what a decider reads — an open motion's subject
       # is a train cut, never a proposal — and the train's sha is exact, where a proposal knows
       # the reviewed commit only as `base`: main's tip when its BRANCH appeared, which is the
       # reviewed commit only if main did not move in between.
-      says: !list-paths
+      says: !get-path
         at: [verse-dev, drift, head, "*"]
         value:
           sha: $subject.value.sha
+          reviewed: done
         path: result.report
 ---
 # 2c. …and somebody decides the batch, once per tip.
@@ -799,10 +808,11 @@ reads: [git, verse-dev.drift]
       # proposal's branch appeared, so it names the reviewed commit only if main did not move
       # between the review and the push. The train carries the exact one (train-load, above),
       # and that is the copy a decider sees.
-      says: !list-paths
+      says: !get-path
         at: [verse-dev, drift, head, "*"]
         value:
           sha: $subject.value.base
+          reviewed: done
         path: result.report
 ---
 # 2b, 2c ARE GONE, and their absence is the point.
