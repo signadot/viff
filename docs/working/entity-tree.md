@@ -88,7 +88,8 @@ Each lands with the suite green.
    than splitting it at three. The answer is what stands at the address written, which keeps a
    merge visible wherever the address IS an entity.
 
-   `verse data --paths --depth N` lists at a depth, through `Doc.EntitiesAt`; unset answers at
+   `verse data --paths` WALKS, through `Doc.Paths`, and `--depth N` bounds it; the depth-picking
+   form was `Doc.EntitiesAt`, which unset answered at
    the depth an address has always had, which is what every listing written before this wants.
 
    **Watches** report at the fixed depth, so a live change four segments down arrives as a

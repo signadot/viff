@@ -41,8 +41,10 @@ verse:task:instance:run-a1b2   a leading `verse` is the reserved root, and the t
 holding `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c` — or one at `a.b` whose payload
 happens to be nested — and nothing in it says which. So a rule's pattern says how deep its
 subjects are (`{path: [verse-dev, drift, head, "*"]}` selects four-segment entities), a write
-names the place it writes, and a listing is asked (`verse data --paths --depth 4`). Where
-nothing says, the answer is the three an address has always had. See
+names the place it writes, and a listing WALKS (`verse data --paths` lists every address under
+the one it was given, and `--depth` bounds how far it goes). A walk is what a listing can do
+without being told: asking it for one level answered with whatever happened to live there and
+lost anything deeper. See
 [working/entity-tree.md](../working/entity-tree.md) for why it is this way round rather than a
 marker in the store.
 

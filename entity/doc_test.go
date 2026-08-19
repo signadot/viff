@@ -158,7 +158,7 @@ func TestEntitiesRecoversTheAddresses(t *testing.T) {
 		{"*.pr", []string{"demo:pr:1", "demo:pr:2", "demo:pr:a.b"}},
 		{"demo.pr.1.stage", []string{}}, // inside a payload: no entities down here
 	} {
-		got := nest(t, fixture(), tc.path).Paths(at(t, tc.path))
+		got := nest(t, fixture(), tc.path).EntityPaths(at(t, tc.path))
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%q paths = %v, want %v", tc.path, got, tc.want)

@@ -841,11 +841,13 @@ type stateConfig struct {
 	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
 	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
-	// Depth says how deep an address is, for a listing of them. It exists because nothing else
-	// knows: `{a: {b: {c: {stage: open}}}}` holds an entity at `a.b.c` or at `a.b`, and which
-	// one is a property of the question (docs/working/entity-tree.md). Unset answers at the
-	// depth an address has always had, which is what every listing written before this wants.
-	Depth int `cli:"name=depth desc='with --paths: how many segments an address has (default: 3, or 4 under verse)'"`
+	// Depth BOUNDS the walk rather than picking a level out of it, and the difference is
+	// whether a listing can be silently wrong. Entity-hood is a lens rather than a stored fact
+	// (docs/working/entity-tree.md), so nothing in an answer says where an entity ends — and
+	// `--paths` asking for one depth answered with whatever happened to live there and omitted
+	// everything deeper, which is how a place holding four-segment records listed as the place
+	// itself and nothing else. The walk omits nothing; this says how far it goes.
+	Depth int `cli:"name=depth desc='with --paths: bound the walk to addresses of at most N segments (default: no bound)'"`
 
 	// WHAT TO DO IS A FLAG, and the positional is a path in every case — the same reason
 	// `verse c` says it that way. `get`, `put` and `rm` were verbs, and a path's first segment
@@ -1090,11 +1092,19 @@ func stateAt(at string) ([]entity.Entity, error) {
 	return (entity.Doc{Node: node}).Entities(kp), nil
 }
 
-// printPaths prints one address per line, derived from the document the read answered with.
+// printPaths prints one address per line — EVERY address under what was asked for, deepest last
+// within each branch, bounded by --depth when the reader wants less.
+//
+// It listed one level and took a `--depth` to say which, and that could not be got right: an
+// address may be three segments or deeper (a write names a place at whatever depth), and nothing
+// in the answer says where an entity ends, so the level was a guess the reader had to make on
+// the store's behalf. Guessing low printed the place and nothing in it — `verse data
+// verse-dev.drift.range --paths` answering `verse-dev.drift.range`, which is true and useless.
+// A walk cannot be wrong that way: what is there is listed, and `--depth` trims it.
 //
 // Client-side, because the addresses are already IN the answer: an id is a key now rather than a
 // token inside a rendered ref, so the server would only be sending back what the document
-// already says. It is the `ls -1` of a read — what a script uses instead of grepping `ref:` out
+// already says. It is the `ls -R` of a read — what a script uses instead of grepping `ref:` out
 // of a listing, which is what scripts had to do while the answer was a table.
 func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int) error {
 	defer resp.Body.Close()
@@ -1139,13 +1149,8 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	//	verse data --paths demo.pr | while read -r p; do verse data "$p"; done
 	//
 	// where the line is passed whole, as one argument, which is what the quoting is for.
-	doc := entity.Doc{Node: node}
-	ents := doc.Entities(at)
-	if depth > 0 {
-		ents = doc.EntitiesAt(at, depth)
-	}
-	for _, e := range ents {
-		fmt.Fprintln(cc.Out, entity.JoinSegs(e.Ref.Segs()))
+	for _, p := range (entity.Doc{Node: node}).Paths(at, depth) {
+		fmt.Fprintln(cc.Out, p)
 	}
 	return nil
 }

@@ -304,6 +304,48 @@ func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
 	return out
 }
 
+// Paths is every address in a document, in order, deepest last within each branch — the walk
+// `verse data --paths` prints.
+//
+// EVERY node, not the ones at some depth, and that is the difference between a listing that can
+// be wrong and one that cannot. Entity-hood is a LENS rather than a stored fact
+// (docs/working/entity-tree.md), so nothing in a document says where an entity ends: asking for
+// one depth answers with the addresses that happen to live there and silently omits everything
+// deeper, which is how `--paths` came to print the place it was asked about and nothing else. A
+// walk omits nothing; `max` bounds how far it goes when the reader knows what they want, and
+// bounding a walk is a convenience where picking a level was a requirement.
+//
+// max is the total number of segments an address may have, so it is comparable with the depths
+// the rest of the model counts in (`entity.Depth`); 0 means no bound. The prefix the read fixed
+// is part of every address, so a max below it yields nothing rather than truncating into a lie.
+func (d Doc) Paths(at *kpath.KPath, max int) []string {
+	prefix, err := pathPrefix(at)
+	if err != nil {
+		return nil
+	}
+	if max > 0 && max < len(prefix) {
+		return nil
+	}
+	var out []string
+	var rec func(n *ir.Node, segs []string)
+	rec = func(n *ir.Node, segs []string) {
+		if len(segs) > len(prefix) {
+			out = append(out, JoinSegs(segs))
+		}
+		if max > 0 && len(segs) >= max {
+			return
+		}
+		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+			return
+		}
+		for i, f := range n.Fields {
+			rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
+		}
+	}
+	rec(d.Node, prefix)
+	return out
+}
+
 // pathPrefix is the literal segments a read path fixes — what the document below it hangs from.
 // A wildcard has no literal, so a path carrying one fixes nothing past it.
 func pathPrefix(at *kpath.KPath) ([]string, error) {
@@ -376,13 +418,12 @@ func MatchesAt(ref Ref, at *kpath.KPath) bool {
 	return true
 }
 
-// Paths spells one address per entity in the answer — the `ls -1` of a read.
+// EntityPaths spells one address per ENTITY in the answer, at the depth the read asked at — the
+// lens, where Paths above is the whole document.
 //
 // A ref IS a kinded path, spelled with `:` (see the package comment), so these go straight back
-// into the commands that take one. How a COMMAND LINE spells them is the CLI's own decision and
-// is made there (cmd/verse: printPaths renders them as steps, which is what a shell can pass
-// back without quoting).
-func (d Doc) Paths(at *kpath.KPath) []string {
+// into the commands that take one.
+func (d Doc) EntityPaths(at *kpath.KPath) []string {
 	ents := d.Entities(at)
 	out := make([]string, 0, len(ents))
 	for _, e := range ents {

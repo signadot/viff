@@ -90,10 +90,11 @@ verse
                                              and a read may reach into an array:
                                              merge.proposal.X.votes(scott)
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
-          [--paths] [--depth <n>]            … one kinded path per line instead of the document;
-                                             --depth says how many segments an address has
-                                             (default: 3, or 4 under verse), since a document
-                                             cannot say where its entities are
+          [--paths] [--depth <n>]            … one kinded path per line instead of the document:
+                                             EVERY address under the one asked for, since a
+                                             document cannot say where its entities end.
+                                             --depth bounds the walk to addresses of at most
+                                             <n> segments (default: no bound)
                                              flags go on either side of the path
           --put <payload>                    write it there: a write reaches object fields, not
                                              array elements. A put MERGES — fields it does not

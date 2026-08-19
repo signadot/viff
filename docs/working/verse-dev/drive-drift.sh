@@ -80,7 +80,7 @@ stage()   { sed -n 's/^stage: //p' <<<"$(cursor)"; }
 covering(){ sed -n 's/^covering: //p' <<<"$(cursor)"; }
 range()   { v data "verse-dev.drift.range.$1" 2>/dev/null; }
 task_for(){ echo "review-range@verse-dev.drift.range.$1"; }
-ranges()  { v data verse-dev.drift.range --paths --depth 4 2>/dev/null | sed 's/.*\.//' | sort | tr '\n' ' '; }
+ranges()  { v data verse-dev.drift.range --paths --depth 4 2>/dev/null | sed 's/.*\.//' | sort | tr '\n' ' '; }  # --depth bounds the walk to the records themselves
 
 # review <to> [symbol] — answer THAT range's task, carrying one finding
 review() {
