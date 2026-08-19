@@ -843,6 +843,12 @@ singleton, as `git:head:verse` is — and `key:` claims it only within one. The 
 engine's either way: a derive may only write inside its own stratum, checked at install. A
 derive carrying both is refused, since which one stands would decide that question silently.
 
+`!each` takes both too, and there the difference has teeth: keyed, every element lands under
+(rule, subject, key), so a fan-out can only ever create its **own** copies. Named, it lands at
+the place plus the value — which is how one rule's fan-out reaches entities another rule names,
+and the only way to say "mark every one of those that is already there". A derive merges at
+depth, so the mark lands beside the facts rather than over them.
+
 `spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
 `provider` selection of the doer. The spawned task is tagged with the subject, which is
 what makes it part of that subject's flow.
