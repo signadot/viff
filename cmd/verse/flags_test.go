@@ -12,6 +12,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 
+	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/codec"
 )
 
@@ -643,5 +644,26 @@ func TestCharterPathsShowsAPackageWithNothingInIt(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != "notes" {
 		t.Errorf("--paths = %q, want the package that holds nothing yet", strings.TrimSpace(out))
+	}
+}
+
+// A DERIVED ADMIN ADDRESS YIELDS TO A PORT SOMEBODY ASKED FOR BY NAME.
+//
+// The admin face derives to the API port plus one and starts before anything that can wedge —
+// which means before the broker face. `--broker-addr` is very often that same next port, so the
+// derived face won the bind and the named one lost it, silently: the log said "address already
+// in use" and every spawn got a dialURL that answered 404. Found by a harness that asked the
+// kernel for two ports and got consecutive ones.
+func TestADerivedAdminAddressYieldsToTheBroker(t *testing.T) {
+	for _, c := range []struct{ explicit, api, broker, want string }{
+		{"", "localhost:9797", "", ""},                                           // nothing asked for: derive
+		{"", "localhost:9797", "localhost:9090", ""},                             // a broker elsewhere: derive
+		{"", "localhost:9797", "localhost:9798", adminface.Off},                  // …the derived port itself: yield
+		{"localhost:9999", "localhost:9797", "localhost:9798", "localhost:9999"}, // explicit wins over both
+		{"", "127.0.0.1:55727", "127.0.0.1:55728", adminface.Off},                // the consecutive-port case
+	} {
+		if got := adminAddrFor(c.explicit, c.api, c.broker); got != c.want {
+			t.Errorf("adminAddrFor(%q, %q, %q) = %q, want %q", c.explicit, c.api, c.broker, got, c.want)
+		}
 	}
 }

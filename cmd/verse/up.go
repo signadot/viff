@@ -135,9 +135,14 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// design. Everything below this line can wedge, and this is the channel that has to
 	// answer when it does. It reports the addresses and this process's own health once
 	// there is a server to ask; until then it still has the stacks, which is the point.
+	adminAddr := adminAddrFor(cfg.AdminAddr, g.Addr, cfg.BrokerAddr)
+	if adminAddr == adminface.Off && cfg.AdminAddr == "" {
+		fmt.Fprintf(cc.Err, "verse up: no admin face: it derives to %s, which --broker-addr "+
+			"asked for; pass --admin-addr <addr> to put it somewhere else\n", cfg.BrokerAddr)
+	}
 	adm, err := adminface.Start(adminface.Spec{
 		Name:  "verse up",
-		Addr:  cfg.AdminAddr,
+		Addr:  adminAddr,
 		Serve: g.Addr,
 		Log:   func(f string, a ...any) { fmt.Fprintf(cc.Err, "verse up: "+f+"\n", a...) },
 	})
@@ -332,6 +337,27 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	return nil
+}
+
+// adminAddrFor is the admin face's address: what was asked for, else the derived default —
+// unless that default is a port somebody asked for BY NAME.
+//
+// A DERIVED ADDRESS YIELDS TO AN EXPLICIT ONE. The default is the API port plus one, and
+// `--broker-addr` is often exactly the next port along: the admin face starts first (before
+// docd, deliberately) so it won the bind, and the broker face — which was named outright — lost
+// it and was silently not served, leaving every spawn with a dialURL nothing answered.
+//
+// It is the same rule adminface already states from the other side, where a derived address
+// that will not bind is a warning and an explicit one is fatal. Applied here, before the race,
+// rather than discovered afterwards in a log line nobody reads.
+func adminAddrFor(explicit, api, broker string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if broker != "" && adminface.Default(api) == broker {
+		return adminface.Off
+	}
+	return ""
 }
 
 func openDocdStore(cfg entity.LogdConfig, wait time.Duration, cc *cli.Context) (*entity.LogdStore, error) {
