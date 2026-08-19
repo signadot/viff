@@ -1023,25 +1023,33 @@ where the globs live. They mirror go-tony's own split, where `GetKPath` returns 
 rejects a wildcard outright while `ListKPath` collects.
 
 Which one you get is legible in the charter rather than inferred from whether some id happened to
-contain a `*`: `!get-path` **refuses** a globbing id or a wildcard path, and names the tag that
-answers that question instead.
+contain a `*`: `!get-path` **refuses** an id left open with nothing to narrow it, or a wildcard
+path, and names the tag that answers that question instead.
 
 | | |
 |---|---|
 | `system`, `kind` | always literal — no reference, no glob |
-| `id` | literal, a `$reference`, or (list only) a glob |
+| `id` | literal, a `$reference`, or a glob — in a get, only with a `value` to narrow it |
 | `at` | the address as a path, any depth; everything above the entity is literal, and the last segment is what `id` would be |
 | `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
-| `value` | a payload predicate, **list only** — of the ids the address selects, the ones that look like this |
+| `value` | a payload predicate — of the ids the address selects, the ones that look like this. In a list it picks a subset; in a get it is a selector that must come back with exactly one |
 
 Everything above the entity must be literal in either spelling, and for the same reason: the
 level check asks whether a read lands at or below the rule's own stratum, and it can only ask
 that of the segments known at install.
 
-`!get-path` refuses a `value` for the reason it refuses a globbing id: a predicate can name
-several, and an entity that is not there does not satisfy one — while one that is there might not
-either. On the list form a predicate is the *cheaper* read, because `id: "*"` already walks the
-whole kind and this is what narrows it. Neither form is a query that slides: both are answered
+**A predicate narrows either form, and in a get it is a selector.** It used to be the list
+form's alone, refused on the get side because a predicate can name several. What answers that is
+that some entities cannot be addressed any other way: a keyed derive's id is `(rule, subject,
+key)`, composed by the engine so the derive stays inert and its address stays checkable at
+install, so no charter can spell one. The engine made the id unnameable; the read has to be by
+content, in whichever cardinality the reader needs.
+
+The contract is unchanged and now enforced rather than approximated. `!get-path` still means
+one: with a predicate it selects, and the firing **fails** unless exactly one entity satisfies
+it — not a truncation, not a first-wins, not a list nobody asked for. That count is knowable
+only at fire time, and so is the absence a get already refuses. On the list form a predicate is
+the *cheaper* read, because `id: "*"` already walks the whole kind and this is what narrows it. Neither form is a query that slides: both are answered
 from one snapshot at the causing commit, so a predicate is evaluated against the same world the
 rule was.
 
