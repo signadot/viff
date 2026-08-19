@@ -41,16 +41,20 @@
 #
 # ── SEEDING, which is two writes and not one ─────────────────────────────────────
 #
-# The cursor needs somewhere to stand, and rule 3 reads the PREVIOUS range's report — a get of an
-# entity that is not there refuses the firing, so the first range needs a predecessor that
-# exists. On a verse that has been running the older per-commit charter, seed the predecessor
-# with the standing set so nothing is forgotten in the swap:
+# The cursor needs somewhere to stand, and where it stands is what the first range starts from:
 #
-#     verse data verse-dev.drift.range.<tip> --put '{to: <tip>, stage: reviewed, status: done,
-#                                                    report: {findings: [<the open ones>]}}'
-#     verse data verse-dev.drift.at --put '{sha: <tip>, stage: idle}'
+#     verse data verse-dev.drift.at --put '{sha: <main's tip>, stage: idle}'
 #
-# Both shas are main's tip at the moment of the swap. Nothing fires until main moves.
+# Nothing fires until main moves, so a first install has no backlog whatever the source's window
+# holds — which is the storm answered by construction rather than by a knob.
+#
+# ON A VERSE THAT RAN THE OLDER CHARTER there is one more step, and skipping it loses the ledger:
+# findings written before this were addressed under (rule, subject, key) and the ones written
+# after are addressed by symbol, so the old rows can never be closed by a verdict and would be
+# gathered forever. Copy each open one to its symbol and remove the original:
+#
+#     verse data verse-dev.drift.finding.<symbol> --put '<its payload>'
+#     verse data verse-dev.drift.finding.<old composed id> --rm
 
 # ── THE REVIEW ──────────────────────────────────────────────────────────────────
 
@@ -142,15 +146,20 @@ reads: [ !verse-path [git] ]
 # and then spawned would hand the task the payload from before its own write. Two firings, two
 # commits, and the second sees the first. `stage` is the latch that sequences them.
 #
-# IT READS THE PREVIOUS RANGE, not the ledger, and that is the fix to a defect the ledger cannot
-# express. A finding's address is (rule, subject, key) and the subject is the review, so a later
-# review's `resolved` lands BESIDE the open row rather than on it: gathering `status: open` out
-# of the ledger hands every stale claim back forever and nothing a review says can ever close
-# one. `from` names the previous range exactly, so the standing set travels the chain — a
-# definite address, no search and no ordering.
+# IT READS THE LEDGER, and that only works because rule 4 addresses a finding by its SYMBOL. A
+# keyed fan-out lands under (rule, subject, key), and the subject is the review — so a later
+# review's `resolved` used to land BESIDE the open row rather than on it, gathering `status:
+# open` handed every stale claim back forever, and nothing a review said could ever close one.
+# `id:` inside `!each` (c1231f7d) is what makes the address the place plus the symbol, so a
+# verdict OVERWRITES the claim it is about.
 #
-# The ledger derive in rule 4 stays as it is: every answer's findings become entities, which is
-# the audit trail. What changed is which of them the next reviewer is shown.
+# That is worth more than carrying the standing set from review to review, which was the other
+# way to make closure work: carried forward, an answer REPLACES the set, so a reviewer going
+# quiet about a finding deletes it. Here silence leaves it open — resolution stays a fact
+# somebody wrote rather than an absence inferred from a model saying nothing.
+#
+# `status: open` is also the human override: set a finding's status to anything else and it stops
+# being handed to the reviewer, with no charter change and nothing to argue with.
 - name: gather
   stratum: range
   condition:
@@ -160,9 +169,10 @@ reads: [ !verse-path [git] ]
   action:
     patch:
       stage: gathered
-      outstanding: !get-path
-        at: [verse-dev, drift, range, $subject.value.from]
-        path: report.findings
+      outstanding: !list-paths
+        at: [verse-dev, drift, finding, "*"]
+        value:
+          status: open
 ---
 # 4. …and the range is reviewed, once, against what is already known.
 #
@@ -207,11 +217,10 @@ reads: [ !verse-path [git] ]
 
         $outstanding
 
-        YOUR ANSWER REPLACES THIS LIST, so every one of them needs a verdict from you and
-        omitting one is not shorthand for "unchanged" — it DELETES the claim, and the next
-        reviewer is never shown it again. Say `status: open` for one that is still wrong (repeat
-        it verbatim; it costs a line and it is what keeps it alive) and `status: resolved` for
-        one that is right in the tree you are reading. Then add whatever this range broke.
+        A finding you do not mention stays open on its own and will be handed to you again, so
+        leaving it out is correct and re-listing it unchanged costs tokens for no fact. What you
+        answer with is what CHANGED: `status: resolved` for one that is right in the tree you are
+        reading, and whatever this range broke.
 
         Check each carried finding against the TREE, not against your memory of the diff: a
         comment can be fixed by a commit that never touched the file it names, and the range is
@@ -293,7 +302,7 @@ reads: [ !verse-path [git] ]
       - path: [verse-dev, drift, finding]
         value: !each
           over: $data.findings
-          key: $item.symbol
+          id: $item.symbol
           value:
             symbol: $item.symbol
             status: $item.status

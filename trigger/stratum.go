@@ -973,8 +973,14 @@ func (d deriveTarget) addr() string { return strings.Join(d.segs(), ":") }
 // **content may carry state exactly when the address is a function of that same state** — which
 // is what `key` declares and why it is not optional.
 type eachSpec struct {
-	Over  entity.Payload // a single $reference to the collection to walk
-	Key   entity.Payload // a single $reference, rooted at $item — the address suffix
+	Over entity.Payload // a single $reference to the collection to walk
+	Key  entity.Payload // a single $reference, rooted at $item — the address suffix
+	// ID is Key with the composition dropped, exactly as a single derive's is: the element
+	// lands at the place plus this value, so a fan-out can write onto entities a DIFFERENT
+	// rule owns the naming of. That is the whole use — a fan-out addressed by `key` can only
+	// ever create its own copies, and "mark every commit that is already reflected" needs to
+	// land on the record the commit's own rule derives. See deriveTarget.ID.
+	ID    entity.Payload
 	Value entity.Payload // the payload template, per element
 }
 
@@ -988,7 +994,7 @@ const eachTag = "!each"
 // eachFields is the closed keyspace under the tag. Closed on purpose: the residual worried
 // that reserved keys make a payload with a field called `over` unspellable, and a TAG answers
 // that — under it, the keys are the construct's and an unknown one is a typo rather than data.
-var eachFields = map[string]bool{"over": true, "key": true, "value": true}
+var eachFields = map[string]bool{"over": true, "key": true, "id": true, "value": true}
 
 // isEach reports whether this derive target's value carries the fan-out tag.
 func isEach(n entity.Payload) bool {
@@ -1023,15 +1029,28 @@ func readEach(n entity.Payload) (*eachSpec, error) {
 			spec.Over = n.Values[i]
 		case "key":
 			spec.Key = n.Values[i]
+		case "id":
+			spec.ID = n.Values[i]
 		case "value":
 			spec.Value = n.Values[i]
 		}
 	}
-	for _, want := range []string{"over", "key", "value"} {
+	if seen["key"] && seen["id"] {
+		return nil, fmt.Errorf("!each has both `key` and `id`, which are the same question " +
+			"answered twice: `key` addresses each element beneath this rule and subject, `id` " +
+			"addresses it by the value alone. Pick the one that says whether two subjects " +
+			"fanning out over the same value write one entity or two")
+	}
+	for _, want := range []string{"over", "value"} {
 		if !seen[want] {
 			return nil, fmt.Errorf("!each is missing %q: it walks `over`, addresses each element "+
-				"by `key`, and writes `value`", want)
+				"by `key` or `id`, and writes `value`", want)
 		}
+	}
+	if !seen["key"] && !seen["id"] {
+		return nil, fmt.Errorf("!each is missing an address: it walks `over` and writes `value`, " +
+			"and each element needs a `key` (composed under this rule and subject) or an `id` " +
+			"(the value alone)")
 	}
 	return spec, nil
 }
@@ -1295,15 +1314,21 @@ func validateEach(n entity.Payload) error {
 			"(`over: $data.findings`), not text with one in it: a reference embedded in a string " +
 			"interpolates to text, and there is nothing to walk in that")
 	}
-	key, ok := soleRef(spec.Key)
+	// `key` or `id` — the same check, since they differ in what the engine puts in FRONT of
+	// the value, not in what the value may be read from.
+	which, spelling := spec.Key, "key"
+	if spec.ID != nil {
+		which, spelling = spec.ID, "id"
+	}
+	key, ok := soleRef(which)
 	if !ok {
-		return fmt.Errorf("!each `key` must be a single reference (`key: $item.symbol`)")
+		return fmt.Errorf("!each `%s` must be a single reference (`%s: $item.symbol`)", spelling, spelling)
 	}
 	if key != refItem && !strings.HasPrefix(key, refItem+".") {
-		return fmt.Errorf("!each `key` is %q: an element's address must be read out of THE "+
+		return fmt.Errorf("!each `%s` is %q: an element's address must be read out of THE "+
 			"ELEMENT, so it is rooted at $%s. That is the whole of what makes a fan-out safe — "+
-			"the same answer yields the same addresses — and a key read from anywhere else would "+
-			"give every element the same one", "$"+key, refItem)
+			"the same answer yields the same addresses — and one read from anywhere else would "+
+			"give every element the same address", spelling, "$"+key, refItem)
 	}
 	if spec.Value == nil || spec.Value.Type != ir.ObjectType {
 		// Same reason a plain derive's payload must be an object: the engine writes the subject
@@ -1506,9 +1531,13 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 // where a refused firing is loud, is about the whole answer, and leaves the previous state
 // standing to be re-derived when the answer is fixed.
 func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
-	s, err := keyText(spec.Key, root)
+	which, spelling := spec.Key, "key"
+	if spec.ID != nil {
+		which, spelling = spec.ID, "id"
+	}
+	s, err := keyText(which, root)
 	if err != nil {
-		return "", fmt.Errorf("!each key on element %d: %w", at, err)
+		return "", fmt.Errorf("!each %s on element %d: %w", spelling, at, err)
 	}
 	return s, nil
 }

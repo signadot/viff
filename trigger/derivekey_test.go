@@ -207,3 +207,80 @@ func TestADeriveRefusesBothKeyAndID(t *testing.T) {
 		t.Fatalf("the refusal does not name both: %v", err)
 	}
 }
+
+// A FAN-OUT TAKES `id:` TOO, and the asymmetry it removes is the point: keyed, every element
+// lands under (rule, subject, key), so a fan-out can only ever create its OWN copies. Named, it
+// lands at the place plus the value — which is how one rule's fan-out reaches the entities
+// another rule names, and the only way to say "mark every one of those that is already there".
+func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	for _, st := range []Stratum{
+		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
+	} {
+		if err := eng.AddStratum(st); err != nil {
+			t.Fatalf("stratum %q: %v", st.Name, err)
+		}
+	}
+	// One rule names its record by the sha; another fans out over a list and marks the same
+	// addresses. A derive MERGES, so the mark lands beside the facts rather than over them.
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: cut
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [demo, batch]
+      id: $subject.value.sha
+      value: {sha: $subject.value.sha}
+`)); err != nil {
+		t.Fatalf("the naming rule did not install: %v", err)
+	}
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: mark
+  stratum: reflected
+  condition:
+    subject: git:mark:verse
+  action:
+    derive:
+    - path: [demo, batch]
+      value: !each
+        over: $subject.value.shas
+        id: $item
+        value: {marked: true}
+`)); err != nil {
+		t.Fatalf("the marking rule did not install: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "aaa111"}.Payload())
+	want := entity.RefAt("demo", "batch", "aaa111")
+	for i := 0; i < 100; i++ {
+		if _, ok, _ := store.Get(want); ok {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	entitytest.Set(t, store, entity.RefAt("git", "mark", "verse"),
+		entity.Obj{"shas": []any{"aaa111", "bbb222"}}.Payload())
+	for i := 0; i < 100; i++ {
+		if e, ok, _ := store.Get(want); ok && entity.ToObj(e.Payload)["marked"] == true {
+			// …and the fan-out did not overwrite what the other rule put there.
+			if sha := entity.ToObj(e.Payload)["sha"]; sha != "aaa111" {
+				t.Fatalf("the mark replaced the record instead of merging into it: %+v", e.Payload)
+			}
+			// …and an element naming an address nobody had made one anyway.
+			if _, ok, _ := store.Get(entity.RefAt("demo", "batch", "bbb222")); !ok {
+				t.Error("the element for bbb222 landed nowhere")
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	e, _, _ := store.Get(want)
+	t.Fatalf("%s was never marked: %+v", want, e.Payload)
+}

@@ -72,8 +72,9 @@ reads: [ !verse-path [git] ]
         from: $subject.value.sha
         to: $subject.value.covering
 ---
-# 3. The standing set is read onto the range from the PREVIOUS range, so a finding travels the
-# chain rather than being re-derived from a ledger that cannot close one.
+# 3. The standing set is read onto the range from the LEDGER, which works because rule 4
+# addresses a finding by its symbol (`id:` inside `!each`): a verdict overwrites the claim it is
+# about, so `status: open` is what is still standing rather than everything ever filed.
 - name: gather
   stratum: range
   condition:
@@ -83,9 +84,10 @@ reads: [ !verse-path [git] ]
   action:
     patch:
       stage: gathered
-      outstanding: !get-path
-        at: [verse-dev, drift, range, $subject.value.from]
-        path: report.findings
+      outstanding: !list-paths
+        at: [verse-dev, drift, finding, "*"]
+        value:
+          status: open
 ---
 # 4. …and the range is reviewed, once. Brokered: the drive script claims the task and completes
 # it with the findings the test wants. Everything after the spawn is the real charter's.
@@ -106,7 +108,7 @@ reads: [ !verse-path [git] ]
       - path: [verse-dev, drift, finding]
         value: !each
           over: $data.findings
-          key: $item.symbol
+          id: $item.symbol
           value:
             symbol: $item.symbol
             status: $item.status

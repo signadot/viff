@@ -106,10 +106,9 @@ resolve() {
 waitfor() { local end=$((SECONDS+$2)); while [ $SECONDS -lt $end ]; do eval "$1" && return 0; sleep 0.3; done; return 1; }
 has()     { case "$1" in *"$2"*) return 0;; esac; return 1; }
 
-# ── the seed: two writes, which is what the real one takes too ───────────────
-step "seeding: a predecessor range and a cursor standing on it"
+# ── the seed: ONE write, which is what the real one takes too ────────────────
+step "seeding: a cursor standing on the tip"
 push aaaa1111
-v data verse-dev.drift.range.aaaa1111 --put '{to: aaaa1111, stage: reviewed, status: done, report: {findings: []}}' >/dev/null
 v data verse-dev.drift.at --put '{sha: aaaa1111, stage: idle}' >/dev/null
 sleep 2
 [ "$(stage)" = idle ] && [ -z "$(covering)" ] \
@@ -158,20 +157,29 @@ waitfor 'has "$(range ffff6666)" "from: eeee5555"' 20 \
 	&& ok "…and the next range picks up exactly there: eeee5555..ffff6666, nothing skipped" \
 	|| bad "the next range is $(tr '\n' ' ' <<<"$(range ffff6666)")"
 
-step "4. the standing set travels the chain, and every carried finding needs a verdict"
+step "4. a finding is handed on until somebody says it is fixed — and then it closes"
+# THE LEDGER IS ADDRESSED BY SYMBOL (`id:` inside `!each`), so a verdict OVERWRITES the claim it
+# is about. That is what lets `gather` read `status: open` and get what is still standing rather
+# than everything ever filed — and it is why a reviewer going quiet leaves a finding alone
+# instead of deleting it.
 waitfor 'has "$(range ffff6666)" "symbol: pkg.Thing"' 20 \
 	&& ok "ffff6666 was handed the finding the last review left open" \
 	|| bad "outstanding on ffff6666: $(tr '\n' ' ' <<<"$(range ffff6666)")"
+led=$(v data verse-dev.drift.finding --paths --depth 4 2>/dev/null | sed 's/.*finding\.//' | tr -d '"' | sort | tr '\n' ' ')
+[ "$led" = "pkg.Thing " ] && ok "one entity per symbol in the ledger, not one per review: $led" \
+	|| bad "the ledger holds: $led"
 resolve ffff6666 pkg.Thing
-waitfor 'has "$(range ffff6666)" "status: resolved"' 20 \
-	&& ok "…and answering it resolved closes it: the next range carries nothing" \
-	|| bad "the report on ffff6666 did not resolve it"
+# THE ADDRESS IS QUOTED because the id is: a symbol carries dots (`entity.(*LogdStore).Get`),
+# and a kinded path quotes a segment whose content would otherwise split it.
+row(){ v data 'verse-dev.drift.finding."pkg.Thing"' 2>/dev/null; }
+waitfor 'has "$(row)" "status: resolved"' 20 \
+	&& ok "…and a verdict OVERWROTE the open row rather than landing beside it" \
+	|| bad "the ledger row is $(tr '\n' ' ' <<<"$(row)")"
 push 7777aaaa
 waitfor 'has "$(v task 2>/dev/null)" "id: $(task_for 7777aaaa)"' 20 || bad "no task for 7777aaaa"
-o=$(sed -n '/^outstanding:/,/^[a-z]/p' <<<"$(range 7777aaaa)")
-has "$o" "pkg.Thing" && has "$o" "status: resolved" \
-	&& ok "the resolved verdict is what travels, so it drops out after one more review" \
-	|| ok "nothing outstanding travels once it is resolved"
+has "$(range 7777aaaa)" "outstanding: []" \
+	&& ok "the next review is handed nothing: closed means closed" \
+	|| bad "outstanding on 7777aaaa: $(sed -n '/^outstanding:/,/^[a-z]/p' <<<"$(range 7777aaaa)" | tr '\n' ' ')"
 
 step "5. a review that FAILS stops the chain where it broke"
 v task do fail "$(task_for 7777aaaa)" "the runner had nowhere to put it" --as human:drive >/dev/null 2>&1

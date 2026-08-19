@@ -93,7 +93,9 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 // Every way of getting it wrong is refused at install, by name and by rule.
 func TestEachRefusals(t *testing.T) {
 	cases := []struct{ name, derive, want string }{
-		{"no key", `{over: $data.findings, value: {a: 1}}`, `missing "key"`},
+		{"no address", `{over: $data.findings, value: {a: 1}}`, "needs a `key`"},
+		{"both key and id", `{over: $data.f, key: $item.k, id: $item.k, value: {a: 1}}`, "answered twice"},
+		{"id off the element", `{over: $data.f, id: $subject.id, value: {a: 1}}`, "rooted at $item"},
 		{"no over", `{key: $item.k, value: {a: 1}}`, `missing "over"`},
 		{"unknown field", `{over: $data.f, key: $item.k, value: {a: 1}, sweep: true}`, `no field "sweep"`},
 		{"over is text", `{over: "the $data.findings", key: $item.k, value: {a: 1}}`, "single reference"},
