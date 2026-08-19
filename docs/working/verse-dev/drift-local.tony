@@ -1,0 +1,112 @@
+# The comment-drift state machine, locally and without a model.
+#
+# It is docs/working/comment-drift.tony's first half — head-moved, gather, review — with one
+# thing replaced: the review spawns a BROKERED task instead of an llm one, so the drive script
+# is the worker. `verse task do complete <id> '<answer>'` supplies the findings, which means the
+# answer is a fixture and the TIMING is the script's: a review lands exactly when the test says
+# it does.
+#
+# That is the whole point. The two defects this exists to reproduce are about ORDER, not about
+# review quality:
+#
+#   - a review that finishes AFTER the head moved writes `reviewed: done` over the pending state
+#     the new head left, and that commit is never reviewed;
+#   - a push of several commits only ever reviews the tip, so a fix in any other commit of it is
+#     never seen and its finding stays open forever.
+#
+# Neither is reachable in under ten minutes against staging, and both are reachable in seconds
+# here. The rules below are otherwise VERBATIM from the real charter, so a fix proved here is a
+# fix that transfers — when they diverge, this file is the one that is wrong.
+at: verse-dev.drift
+reads: [ !verse-path [git] ]
+---
+- name: reflected
+  level: 0
+  match:
+    system: git
+
+- name: drift
+  level: 10
+  match:
+    path: [verse-dev, drift, head]
+
+- name: ledger
+  level: 20
+  match:
+    path: [verse-dev, drift, finding]
+---
+# 1. Main's tip, as a fact this charter owns — outstanding again the moment it moves.
+- name: head-moved
+  stratum: reflected
+  condition:
+    subject: git:head:verse
+  action:
+    derive:
+    - path: [verse-dev, drift, head]
+      value:
+        repo: $subject.value.repo
+        sha: $subject.value.sha
+        reviewed: pending
+        result: !delete null
+        err: !delete null
+        outstanding: !delete null
+---
+# 2. Before the review, the ledger is read onto the subject.
+- name: gather
+  stratum: drift
+  condition:
+    subject:
+      path: [verse-dev, drift, head, "*"]
+      value:
+        reviewed: pending
+  action:
+    patch:
+      reviewed: gathered
+      outstanding: !list-paths
+        at: [verse-dev, drift, finding, "*"]
+        value:
+          status: open
+---
+# 3. …and the tip is reviewed, once, against what is already known.
+#
+# The spawn is brokered rather than llm: no runner, no environment, no prompt worth reading —
+# the drive script claims the task and completes it with the findings the test wants. Everything
+# after the spawn (the hooks, the derive, the latch) is the real charter's.
+- name: comment-drift
+  stratum: drift
+  condition:
+    subject:
+      path: [verse-dev, drift, head, "*"]
+      value:
+        reviewed: gathered
+  action:
+    spawn:
+      vector: auto
+      prompt: |
+        Review $sha. The drive script answers this task; nothing here reads the prompt.
+    onDone:
+      derive:
+      - path: [verse-dev, drift, finding]
+        value: !each
+          over: $data.findings
+          key: $item.symbol
+          value:
+            symbol: $item.symbol
+            status: $item.status
+            says: $item.says
+            at: $item.at
+      patch:
+        err: !delete null
+        result: $data
+        reviewed: done
+        reviewedSha: $data.at
+    onFailed:
+      patch:
+        err: $err
+        result: !delete null
+        reviewed: failed
+    onCancelled:
+      patch:
+        err: !delete null
+        result: !delete null
+        reviewed: cancelled
