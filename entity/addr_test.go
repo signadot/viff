@@ -81,3 +81,54 @@ func TestParseRefStillReadsThreeSegments(t *testing.T) {
 		t.Errorf("ParseRef(%q) = %v, %v", "demo:pr:a.b.c.d", ref.Segs(), err)
 	}
 }
+
+// A DELIMITER INSIDE QUOTES IS PART OF A NAME, wherever the segment sits.
+//
+// Which spelling an address is written in is decided by whichever delimiter comes first — a
+// space means steps, a `:` means a ref, a `.` means a kinded path — and that test has to skip
+// what is quoted. It did not, so `"a b".pr.1` (a system holding a space) was split at the space
+// into `"a` and `b".pr.1`, and refused as naming two segments of the three. Only the FIRST
+// segment could reach it: anywhere later there is a `.` before the space, which is the
+// comparison that happened to be right.
+//
+// kpath.Parse and entity.PathSegs both handled it, which is what made it drift rather than a
+// decision — the same address parsed one way through the charter's reader and another through
+// this one.
+func TestParsePathQuotedDelimiters(t *testing.T) {
+	for _, c := range []struct{ in, ref string }{
+		{`"a b".pr.1`, "a b:pr:1"},     // a space in the system — the case that was broken
+		{`demo."p r".1`, "demo:p r:1"}, // …and in the kind, which always worked
+		{`demo.pr."x y"`, "demo:pr:x y"},
+		{`"a.b".pr.1`, "a.b:pr:1"}, // a dot in the system, quoted
+		{`"a:b".pr.1`, "a:b:pr:1"}, // a COLON in the system: still a kinded path, not a ref
+		{`demo.pr."a.b"`, "demo:pr:a.b"},
+		{`demo:pr:a.b`, "demo:pr:a.b"}, // the ref spelling, where dots belong to the id
+		{`demo pr a.b`, "demo:pr:a.b"}, // and steps, where they do too
+	} {
+		p, err := ParsePath(c.in)
+		if err != nil {
+			t.Errorf("ParsePath(%s): %v", c.in, err)
+			continue
+		}
+		if got := p.Ref.String(); got != c.ref {
+			t.Errorf("ParsePath(%s) → %q, want %q", c.in, got, c.ref)
+		}
+		if len(p.Field) != 0 {
+			t.Errorf("ParsePath(%s) named a field path %v", c.in, p.Field)
+		}
+	}
+}
+
+// …and a field path still follows a quoted segment, which is the whole reason quoting exists.
+func TestParsePathQuotedSegmentThenField(t *testing.T) {
+	p, err := ParsePath(`demo.pr."a.b".labels.urgent`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Ref.String() != "demo:pr:a.b" {
+		t.Errorf("ref = %q", p.Ref.String())
+	}
+	if len(p.Field) != 2 || p.Field[0] != "labels" || p.Field[1] != "urgent" {
+		t.Errorf("field = %v, want [labels urgent]", p.Field)
+	}
+}

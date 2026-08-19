@@ -152,9 +152,17 @@ func ParsePath(s string) (Path, error) {
 // script then writes — the quoted form, which is the correct shell idiom and used to arrive
 // here as one token holding spaces. One rule, so the two forms are the same address.
 //
-// A step holding a space is not addressable this way, which is the same trade the printed form
-// already makes: `--paths` writes them space-separated, so a space inside one could not be read
-// back either. The ref spelling still names it.
+// A step holding a space is not addressable THIS WAY — steps are space-separated, so the space
+// is the delimiter — which is the same trade the printed form makes: `--paths` writes them
+// space-separated, so a space inside one does not read back. The ref spelling still names it,
+// and so does the quoted kinded path.
+//
+// That last clause is what this used to get wrong. `"a b".pr.1` is a kinded path whose SYSTEM
+// holds a space, and the steps test found that space before the first `.` and split the address
+// through the middle of a quoted segment. Only the first segment could reach it — anywhere later
+// there is a `.` in front of the space — so `demo."p r".1` parsed and `"a b".pr.1` did not, which
+// is drift rather than a trade. The delimiters belong to the kpath grammar, and so does the
+// quoting: see firstDelim.
 func fromSteps(s string) string {
 	if !spaceFirst(s) {
 		return s
@@ -162,26 +170,53 @@ func fromSteps(s string) string {
 	return JoinSegs(strings.Fields(s))
 }
 
-// spaceFirst reports whether an address is written as steps: a space before any `:` or `.`.
+// spaceFirst reports whether an address is written as steps: an UNQUOTED space before any
+// unquoted `:` or `.`.
+//
+// QUOTED, because a segment may CONTAIN any of the three. `"a b".pr.1` is one kinded path whose
+// system holds a space, and reading that space as the steps delimiter split it into `"a` and
+// `b".pr.1` — an address that names two segments where three were written, refused with a
+// message quoting the wreckage back. Only the FIRST segment could reach it: a space later in
+// the path always has a `.` before it, which is what the old comparison happened to test.
+//
+// The delimiters and the quoting are the kpath grammar's, so the scan is the one the grammar
+// implies rather than three IndexByte calls that agree with it most of the time.
 func spaceFirst(s string) bool {
-	i := strings.IndexByte(s, ' ')
-	if i < 0 {
-		return false
-	}
-	for _, d := range []byte{':', '.'} {
-		if j := strings.IndexByte(s, d); j >= 0 && j < i {
-			return false
+	kind, _ := firstDelim(s)
+	return kind == ' '
+}
+
+// firstDelim answers the first delimiter that is not inside a quoted segment, and where it is.
+// A kpath quotes a field that needs it (token.Quote), so a `.`, `:` or space between quotes is
+// part of a name rather than a break between two.
+func firstDelim(s string) (delim byte, at int) {
+	var q byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case q != 0:
+			if c == '\\' {
+				i++ // an escaped character cannot close the quote
+				continue
+			}
+			if c == q {
+				q = 0
+			}
+		case c == '"' || c == '\'':
+			q = c
+		case c == ' ' || c == ':' || c == '.':
+			return c, i
 		}
 	}
-	return true
+	return 0, -1
 }
 
 // colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.
 // An address with neither is neither, and reads as a kinded path so that the message about it
 // names the three segments it is missing.
 func colonFirst(s string) bool {
-	c, d := strings.IndexByte(s, ':'), strings.IndexByte(s, '.')
-	return c >= 0 && (d < 0 || c < d)
+	kind, _ := firstDelim(s)
+	return kind == ':'
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.
