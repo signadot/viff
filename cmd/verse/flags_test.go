@@ -604,12 +604,13 @@ func TestCharterPathsPrintsWhatPipesBack(t *testing.T) {
 	if len(lines) == 0 {
 		t.Fatal("--paths printed nothing for an installed package")
 	}
-	want := "notes rules note"
+	want := "notes.rules.note"
 	if lines[0] != want {
 		t.Fatalf("--paths printed %q, want %q", lines[0], want)
 	}
-	// The line IS a path: fed back as arguments, it answers the rule it names.
-	back, err := runCLI(t, append([]string{"charter"}, strings.Fields(lines[0])...)...)
+	// The line IS a path, handed back WHOLE — one token, quoted where the grammar needs it, so
+	// the shell passes it as one argument rather than splitting it into steps.
+	back, err := runCLI(t, "charter", lines[0])
 	if err != nil {
 		t.Fatalf("the printed path did not pipe back: %v", err)
 	}

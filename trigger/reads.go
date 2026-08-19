@@ -336,7 +336,7 @@ func (e *Engine) RecheckReads() error {
 // taking either spelling of an address per element:
 //
 //	reads: [drift, "demo.pr"]              the dotted path an operator types
-//	reads: [!verse-path [demo pr], drift]  the steps a `--paths` listing prints
+//	reads: [!verse-path [demo pr], drift]  an address as a list of segments
 //
 // The second is why this exists rather than a `[]string` decode: `!verse-path` is how an
 // address is written as steps everywhere else in a charter (tonycodec.go), and a declaration

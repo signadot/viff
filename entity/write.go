@@ -147,10 +147,13 @@ func ParsePath(s string) (Path, error) {
 // JoinSegs whole, so its own dots and colons are quoted rather than read as delimiters.
 //
 // It is here rather than only in the CLI's argv walk because that walk sees steps only when
-// the shell split them, and the shell does that only when nobody quoted the address. `verse
-// state --paths` answers in steps, and `ref=$(… | head -1); verse data "$ref"` is what a
-// script then writes — the quoted form, which is the correct shell idiom and used to arrive
-// here as one token holding spaces. One rule, so the two forms are the same address.
+// the shell split them, and the shell does that only when nobody quoted the address. A script
+// that writes `verse data "$ref"` hands the whole address over as one token — the correct shell
+// idiom — so the same string has to read the same way whether the shell split it or not. One
+// rule, so the two forms are the same address.
+//
+// (`--paths` answers in kinded paths rather than steps, so what a listing hands back arrives
+// here as a kpath. Steps remain what a command line makes easy on the way IN.)
 //
 // A step holding a space is not addressable THIS WAY — steps are space-separated, so the space
 // is the delimiter — which is the same trade the printed form makes: `--paths` writes them

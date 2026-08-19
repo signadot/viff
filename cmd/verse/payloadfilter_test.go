@@ -159,10 +159,10 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if: %v", err)
 	}
-	if !strings.Contains(out, "demo pr 1") || !strings.Contains(out, "demo pr 3") {
+	if !strings.Contains(out, `demo.pr."1"`) || !strings.Contains(out, `demo.pr."3"`) {
 		t.Errorf("--if {stage: open} did not name the open PRs:\n%s", out)
 	}
-	if strings.Contains(out, "demo pr 2") {
+	if strings.Contains(out, `demo.pr."2"`) {
 		t.Errorf("--if {stage: open} named the merged PR:\n%s", out)
 	}
 
@@ -171,10 +171,10 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if-at: %v", err)
 	}
-	if !strings.Contains(out, "demo pr 1") {
+	if !strings.Contains(out, `demo.pr."1"`) {
 		t.Errorf("--if-at labels did not name the urgent PR:\n%s", out)
 	}
-	if strings.Contains(out, "demo pr 2") || strings.Contains(out, "demo pr 3") {
+	if strings.Contains(out, `demo.pr."2"`) || strings.Contains(out, `demo.pr."3"`) {
 		t.Errorf("--if-at labels named an entity that does not satisfy it:\n%s", out)
 	}
 }

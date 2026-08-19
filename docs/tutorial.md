@@ -80,13 +80,18 @@ for. A ref is that path with `:` for a delimiter, which is why a read, a `--put`
 one — three spellings of one grammar, laid out in
 [reference/entities §Addressing](reference/entities.md#addressing).
 
-AN ADDRESS MAY BE TYPED AS STEPS, which is what `--paths` answers with — so a listing pipes
-back into a read, and nothing needs escaping on the way:
+AN ADDRESS MAY BE TYPED AS STEPS, which is what a shell makes easy — each step arrives as its
+own word, so nothing needs escaping on the way in. `--paths` answers with the other spelling: a
+kinded path, one token per line, quoted only where the grammar needs it, which is the one form
+that is unambiguous for every address a store can hold.
 
 ```sh
-verse data --paths demo.pr | xargs -L1 verse data
-verse data demo pr a.b labels urgent           # an id with a dot in it, unquoted
+verse data demo pr a.b labels urgent           # steps: an id with a dot in it, unquoted
+verse data --paths demo.pr                     # demo.pr."a.b"
+verse data --paths demo.pr | while read -r p; do verse data "$p"; done
 ```
+
+The line is handed over WHOLE, as one argument — `xargs` strips the quoting the line needs.
 
 Flags go on either side of the path — `verse data --paths demo.pr` and
 `verse data demo.pr --paths` are the same command.

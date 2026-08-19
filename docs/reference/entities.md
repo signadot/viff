@@ -52,18 +52,29 @@ marker in the store.
 |---|---|
 | a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
 | a path | any depth, and anywhere the address may continue into the payload: `verse data demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
-| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc` |
+| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN; `--paths` answers with a kinded path |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
-Steps are what `verse data --paths` prints, so a listing pipes back into a read. A whole line
-handed back as ONE quoted token is read as steps too, which is what makes the shell idiom work
-either way:
+A KINDED PATH is what `verse data --paths` prints — one token per line, each segment quoted
+only where the grammar needs it — so a listing pipes back into a read by handing the line over
+whole:
 
 ```sh
-ref=$(verse data --paths demo.pr | head -1)
-verse data "$ref"      # one token holding spaces
-verse data $ref        # or split by the shell — the same entity
+ref=$(verse data --paths demo.pr | head -1)   # demo.pr."1"
+verse data "$ref"                             # the line, as one argument
+
+verse data --paths demo.pr | while read -r p; do verse data "$p"; done
 ```
+
+It printed STEPS until it met a segment with a space in it. The argument for steps was that a
+step is a whole word whatever is inside it, so nothing in the listing needs quoting — which
+holds right up until the separator IS the thing inside: `demo pr a b.txt` is four words for a
+three-segment address, and reads back as a different one. A kinded path is ambiguous for none
+of them, and that is worth more than fitting through `xargs` — which strips the quoting anyway,
+so the line has to be passed whole either way.
+
+Note `"1"`: a bare number in a kpath is an INDEX, so an id that looks like one is quoted. That
+is the "only where needed" rule doing its job rather than being noisy.
 
 `*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
 and a charter's `subject: demo:pr:*` mean the same set. **A selector is the one place the ref

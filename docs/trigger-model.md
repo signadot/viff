@@ -583,9 +583,12 @@ subject: { at: verse.gate.question }                   # …and in verse's own h
 subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 ```
 
-`!verse-path [demo pr 1]` is an address written as STEPS — the spelling `verse data --paths`
-answers with and `verse data` takes, so an address read off a listing pastes into a charter
-without being re-punctuated. It goes wherever the string form goes:
+`!verse-path [demo pr 1]` is an address written as STEPS — a list of segments, which is what a
+charter reads and what `verse data` takes on a command line, so no segment needs punctuating
+around a dot or a colon it happens to contain. (`verse data --paths` answers with the other
+spelling, a kinded path: `demo.pr."1"`. A listing is read by a shell, where one token per line
+is the unambiguous form; a charter is read by a parser, where a list already is.) It goes
+wherever the string form goes:
 
 ```tony
 subject: !verse-path [demo pr 1]      # the same as "demo:pr:1"

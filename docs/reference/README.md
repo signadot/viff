@@ -88,7 +88,7 @@ verse
                                              and a read may reach into an array:
                                              merge.proposal.X.votes(scott)
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
-          [--paths] [--depth <n>]            … one address per line instead of the document;
+          [--paths] [--depth <n>]            … one kinded path per line instead of the document;
                                              --depth says how many segments an address has
                                              (default: 3, or 4 under verse), since a document
                                              cannot say where its entities are
@@ -127,10 +127,12 @@ verse
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
           [--paths]                          one line per rule and level instead of the document,
-                                             as steps — `c --paths | xargs -L1 verse c` shows
-                                             each, and `… | xargs -L1 verse c -r` takes them
-                                             out. A package that holds nothing yet prints
-                                             itself, since that is the state worth seeing
+                                             each a kinded path quoted only where the grammar
+                                             needs it. The line is handed back WHOLE:
+                                             `c --paths | while read -r p; do verse c "$p"; done`
+                                             (xargs strips the quoting the line needs). A
+                                             package that holds nothing yet prints itself,
+                                             since that is the state worth seeing
           <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
                                              levels, one of them by name, and on into that one
                                              (`c verse-dev.drift rules watcher action`).

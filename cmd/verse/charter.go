@@ -185,9 +185,12 @@ func joinSteps(steps []string) string { return strings.Join(steps, ".") }
 //	verse-dev drift strata base
 //	notes                                 a package with a declaration and nothing in it yet
 //
-// AS STEPS, for the reason `verse data --paths` answers that way: a step is a whole word
-// whatever is inside it, so `verse c --paths | xargs -L1 verse c` round-trips and nothing in
-// the listing needs quoting to be usable.
+// AS A KINDED PATH, one token per line, quoted only where the grammar needs it — the same
+// spelling `verse data --paths` answers with, and for the same reason: it is the one form that
+// is unambiguous for every address, including a segment holding a space or a dot. The round
+// trip is the shell's ordinary one, the line passed whole:
+//
+//	verse c --paths | while read -r p; do verse c "$p"; done
 //
 // A NODE THAT HOLDS NOTHING PRINTS ITSELF, which is the case a listing of rules alone would
 // hide: a package whose levels installed and whose rules were refused is still a package, and
@@ -219,7 +222,7 @@ func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
 		for _, el := range n.Values {
 			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(cc.Out, strings.Join(append(append([]string{}, prefix...), name), " "))
+				fmt.Fprintln(cc.Out, entity.JoinSegs(append(append([]string{}, prefix...), name)))
 			}
 		}
 		return nil
@@ -251,7 +254,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 			}
 			for _, el := range v.Values {
 				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(cc.Out, strings.Join(append(append([]string{}, at...), key.String, name), " "))
+					fmt.Fprintln(cc.Out, entity.JoinSegs(append(append([]string{}, at...), key.String, name)))
 					printed = true
 				}
 			}
@@ -260,7 +263,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		}
 	}
 	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(cc.Out, strings.Join(at, " "))
+		fmt.Fprintln(cc.Out, entity.JoinSegs(at))
 	}
 	if children == nil || children.Type != ir.ObjectType {
 		return

@@ -118,11 +118,15 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 	return Doc{Node: n}
 }
 
-// The steps a `--paths` listing prints come back as ONE TOKEN when a script quotes them, which
-// is the correct shell idiom — `ref=$(verse data --paths demo.pr | head -1)` and then `verse
-// data "$ref"`. So the address grammar takes a space as a delimiter by the same
-// whichever-comes-first rule as `:` and `.`, and the two ways a shell can hand over the same
-// address name the same entity.
+// STEPS ARRIVE AS ONE TOKEN when a script quotes them, which is the correct shell idiom —
+// `verse data "$ref"` hands the whole address over as one argument, and a person typing the
+// same thing lets the shell split it. So the address grammar takes an unquoted space as a
+// delimiter by the same whichever-comes-first rule as `:` and `.`, and the two ways a shell can
+// hand over one address name one entity.
+//
+// (A `--paths` listing answers in kinded paths now — `demo.pr."1"` — which is the same rule
+// seen from the other side: one token per line, quoted where the grammar needs it, so the line
+// is unambiguous however it is handed back.)
 func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
 	for _, c := range []struct {
 		steps string

@@ -113,15 +113,24 @@ ok "demo:pr:1 = {stage:open}"
 # token inside a rendered ref, and `stage` is what stands under it.
 haskv "$(v data demo.pr.1)" stage open || die "data demo.pr.1 did not answer the payload"
 has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
-# AS STEPS, which is what this CLI takes on the way in — so the listing pipes back into a read.
-[ "$(v data --paths demo.pr)" = "demo pr 1" ] || die "--paths did not name the entity"
-haskv "$(v data --paths demo.pr | xargs -L1 "$BIN" --addr "$ADDR" data)" stage open ||
-	die "--paths did not round-trip back into a read"
-# And an address may be typed as steps, which is the point: no quoting for an id with a dot.
+# ONE TOKEN PER LINE, a kinded path with each segment quoted only where the grammar needs it —
+# `1` is quoted because a bare number in a kpath is an INDEX. It is the one spelling that is
+# unambiguous for every address, which steps were not: their separator is a space, so an id
+# holding one printed as two words and read back as a different address.
+[ "$(v data --paths demo.pr)" = 'demo.pr."1"' ] || die "--paths did not name the entity"
+# The round trip is the shell's ordinary one — the LINE passed whole, as one argument. xargs is
+# not it: it strips the quoting, which is the thing the line needs.
+v data --paths demo.pr | while read -r p; do
+	haskv "$(v data "$p")" stage open || die "--paths did not round-trip back into a read"
+done
+# An address may still be typed as steps, which is what a shell makes easy: no quoting for an
+# id with a dot, since each step arrives as its own word.
 v data demo pr a.b --put '{stage: open}' >/dev/null || die "data as steps --put failed"
 haskv "$(v data demo pr a.b)" stage open || die "data as steps did not roundtrip"
+# …and the printed form names the same entity, quoted where a dot would otherwise delimit.
+[ "$(v data --paths demo.pr | grep 'a.b')" = 'demo.pr."a.b"' ] || die "--paths did not quote the dotted id"
 v data demo.pr."a.b" --rm >/dev/null || die "data --rm of the dotted id failed"
-ok "an address may be written as steps (demo pr a.b), and --paths answers that way"
+ok "steps on the way in, one quoted kinded path on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
 # renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
 # (`|` then the line). The value is verse's answer; the framing is the encoder's.
@@ -543,7 +552,7 @@ v data smokegh:issue:1 --put '{"label":"urgent"}' >/dev/null || die "data --put 
 derived=
 for _ in $(seq 1 100); do
 	out=$(v data --paths 2>/dev/null || true)
-	if has "$out" 'smokesd feature '; then
+	if has "$out" 'smokesd.feature.'; then
 		derived=1
 		break
 	fi

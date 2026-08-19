@@ -1063,19 +1063,30 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	// AS STEPS, which is the spelling this command line takes on the way in: `verse data
-	// --paths | xargs -L1 verse data get` round-trips, and no address in the listing needs
-	// quoting to be usable — a step is a whole word whatever is inside it, where the colon form
-	// needs quoting the moment an id holds a dot and the dotted form the moment it holds one
-	// too. The colon form stays what a ref renders as inside a DOCUMENT, which is read by a
-	// parser rather than by a shell.
+	// AS A KINDED PATH, one token per line, each segment quoted only where the grammar needs
+	// it — `demo.pr.1`, `demo.pr."a b.txt"`, `"a b".pr.1`.
+	//
+	// IT USED TO PRINT STEPS, on the argument that a step is a whole word whatever is inside it
+	// so nothing in the listing needs quoting to be usable. That holds until a segment contains
+	// a SPACE, and then it does not: the separator is the space, so `demo pr a b.txt` is four
+	// words for a three-segment address and reads back as a different one. The form was
+	// unambiguous only for the addresses that happened not to need quoting, which is the same
+	// shape of "right most of the time" that the delimiter scan had (entity.firstDelim).
+	//
+	// A kpath is ambiguous for none of them, and that is worth more than being convenient in a
+	// pipe: `xargs` strips the quoting anyway (it concatenates `demo.pr."a b.txt"` back into one
+	// unquoted word), so the round trip is the shell's ordinary one —
+	//
+	//	verse data --paths demo.pr | while read -r p; do verse data "$p"; done
+	//
+	// where the line is passed whole, as one argument, which is what the quoting is for.
 	doc := entity.Doc{Node: node}
 	ents := doc.Entities(at)
 	if depth > 0 {
 		ents = doc.EntitiesAt(at, depth)
 	}
 	for _, e := range ents {
-		fmt.Fprintln(cc.Out, strings.Join(e.Ref.Segs(), " "))
+		fmt.Fprintln(cc.Out, entity.JoinSegs(e.Ref.Segs()))
 	}
 	return nil
 }
