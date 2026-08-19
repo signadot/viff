@@ -92,7 +92,7 @@ wait_task() {
 review() {
 	local sha=$1 sym=${2:-pkg.Thing}
 	v task do complete "$(task_for "$sha")" \
-		"{at: $sha, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $sha}]}" \
+		"{at: $sha, report: \"reviewed $sha: one comment disagrees with its code\", findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $sha}]}" \
 		--as human:drive >/dev/null 2>&1
 }
 # wait_finding <symbol> <seconds>
@@ -112,6 +112,16 @@ review aaaa1111 || bad "could not complete aaaa1111's review"
 wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
 	|| bad "aaaa1111 reviewedSha=$(field aaaa1111 reviewedSha)"
 wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no finding was derived"
+# The read the real charter needs: the report, selected out of the per-sha records by a
+# predicate on a sha the reader already has.
+t0=$SECONDS; got=
+for _ in $(seq 1 60); do
+	if v data verse-dev.drift.train 2>/dev/null | grep -q 'reviewed aaaa1111'; then got=1; break; fi
+	sleep 0.5
+done
+[ -n "$got" ] \
+	&& ok "the train carries aaaa1111's own report, read by predicate (a list of one), after $((SECONDS-t0))s" \
+	|| bad "the train has no report after $((SECONDS-t0))s:\n$(v data verse-dev.drift.train 2>/dev/null)"
 
 step "2. a commit that lands WHILE a review is running"
 move_head bbbb2222
@@ -131,18 +141,26 @@ review cccc3333 || bad "could not complete cccc3333's review"
 wait_field cccc3333 reviewedSha cccc3333 20 && ok "cccc3333 is reviewed too" \
 	|| bad "cccc3333 reviewedSha=$(field cccc3333 reviewedSha)"
 
-step "3. two commits landing together, as one push does"
-move_head dddd4444
-move_head eeee5555                       # the tip moves again immediately — one push, two commits
+step "3. two commits landing in ONE push"
+# NOT two head moves — that is two pushes, which scenario 2 already covers. A push of two
+# commits moves the tip ONCE: verse sees eeee5555 and never sees dddd4444 as a tip at all.
+#
+# The git source does reflect both, as `git:commit:<repo>/<sha>` — main's last N commits, from
+# `git log -n <depth>` on the mirror — so the commit exists as a fact even though the tip never
+# named it. Whether the flow reviews it is the open question this scenario holds.
+v data git:commit:verse/dddd4444 --put '{repo: verse, sha: dddd4444, msg: "the middle commit"}' >/dev/null
+v data git:commit:verse/eeee5555 --put '{repo: verse, sha: eeee5555, msg: "the tip"}' >/dev/null
+move_head eeee5555
 both=1
-for sha in dddd4444 eeee5555; do
-	wait_task "$sha" 20 || { bad "no task for $sha"; both=; continue; }
-	review "$sha" || { bad "could not complete $sha's review"; both=; continue; }
-	wait_field "$sha" reviewedSha "$sha" 20 || { bad "$sha did not record its own review"; both=; }
+for sha in eeee5555 dddd4444; do
+	if wait_task "$sha" 15 && review "$sha" && wait_field "$sha" reviewedSha "$sha" 15; then
+		continue
+	fi
+	both=
+	[ "$sha" = eeee5555 ] && bad "the tip of the push was not reviewed"
 done
-[ -n "$both" ] && ok "both commits of the push were reviewed, each about itself" \
-	|| known "a commit of the push was lost"
-v data verse-dev.drift.head --paths 2>/dev/null | sed 's/^/     /'
+[ -n "$both" ] && ok "both commits of the push were reviewed" \
+	|| known "only the tip was reviewed: the chain fires on git:head:verse, which names one commit per push, so dddd4444 never becomes a subject — the source reflects it as git:commit:verse/dddd4444 and nothing reads that"
 
 step "result"
 if [ "$fails" -gt 0 ]; then

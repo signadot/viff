@@ -34,6 +34,13 @@ reads: [ !verse-path [git] ]
   level: 20
   match:
     path: [verse-dev, drift, finding]
+
+# A stand-in for the merge half's `train`, so the READ the real charter needs can be proved
+# here: a train is above the head it describes, which makes reading the report a read DOWNWARD.
+- name: train
+  level: 30
+  match:
+    path: [verse-dev, drift, train]
 ---
 # 1. Each tip main has had, as a fact this charter owns.
 #
@@ -120,3 +127,41 @@ reads: [ !verse-path [git] ]
         err: !delete null
         result: !delete null
         reviewed: cancelled
+---
+# 4. A train, carrying the report of the commit it is about.
+#
+# THE READ THE REAL CHARTER NEEDS, proved here. With a head record per sha there is no fixed
+# address for "the report" any more — the key is (rule, subject, sha) and a charter cannot
+# compose one — so the record is selected by a PREDICATE on a field the reader already has:
+#
+#     !list-paths {at: [verse-dev, drift, head, "*"], value: {sha: …}, path: result.report}
+#
+# `!list-paths` rather than `!get-path` because the pair is split by CARDINALITY: a predicate
+# could name several, so the operator that answers one refuses it outright. What comes back is
+# therefore a LIST — of one, here, since a sha names one record — and that is the wrinkle a
+# reader of `says` inherits.
+#
+# The subject is a head record that is DONE, so the report exists by the time this fires. The
+# real train cuts on the tip instead and carries `sha` itself, which is the same read with
+# `$subject.value.sha` on the other side.
+# The stratum is the SUBJECT's, not the target's: a rule acts at the level of what it selects,
+# and a derive is how it writes upward. Declaring `train` here is refused, in the same words the
+# charter grammar uses for a rule reaching past its own level.
+- name: train-says
+  stratum: drift
+  condition:
+    subject:
+      path: [verse-dev, drift, head, "*"]
+      value:
+        reviewed: done
+  action:
+    derive:
+    - path: [verse-dev, drift, train]
+      key: $subject.value.sha
+      value:
+        sha: $subject.value.sha
+        says: !list-paths
+          at: [verse-dev, drift, head, "*"]
+          value:
+            sha: $subject.value.sha
+          path: result.report

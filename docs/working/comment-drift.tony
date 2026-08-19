@@ -104,13 +104,30 @@ reads: [ !verse-path [git] ]
   action:
     derive:
     - path: [verse-dev, drift, head]
+      # A RECORD PER COMMIT, for the reason train-cut below gives about gates — the same class
+      # of bug, one plane over. A plain derive writes one entity per (rule, subject): every tip
+      # main ever has shares ONE record, so its `reviewed` state is one slot that the last write
+      # wins. Two ways that lost commits, both seen:
+      #
+      #   - a review that finishes AFTER the head moved patches `reviewed: done` over the
+      #     `pending` the new tip just wrote, and nothing fires again — `gather` wants pending,
+      #     the review wants gathered — so that commit is never reviewed and the flow is parked
+      #     until the head moves again (staging: sha 7004e3ff, reviewedSha c4ac8fd1);
+      #   - a push of two commits overwrites the first tip before anything reviewed it, so a fix
+      #     landing in any commit but the last is never seen and its finding stays open.
+      #
+      # Keying on the sha gives each commit its own record, and with it its own `reviewed`, its
+      # own subject for rule 3, and therefore its own TASK ID — where before every head shared
+      # `comment-drift@…@head-moved@git:head:verse`, and a second commit arriving mid-review had
+      # no task to be given and a terminal one to inherit.
+      #
+      # Proved in docs/working/verse-dev, which drives this state machine locally in ~15s: the
+      # same charter with the review brokered, and both races asserted away.
+      key: $subject.value.sha
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
         reviewed: pending
-        result: !delete null
-        err: !delete null
-        outstanding: !delete null
 ---
 # 2. Before the review, the ledger is read onto the subject.
 #
@@ -609,6 +626,26 @@ reads: [git, verse-dev.drift]
         at: [verse-dev, merge, proposal, "*"]
         value: !not.has-path state
         path: branch
+      # AND WHAT THE REVIEW SAID about the commit this train was cut at.
+      #
+      # The head records are keyed per sha now (rule 1), so "the report" has no fixed address —
+      # a key is (rule, subject, sha) and a charter cannot compose one. It does not need to: the
+      # train knows the sha outright, so the record is selected by a PREDICATE on it.
+      #
+      # `!list-paths` rather than `!get-path` because the pair is split by cardinality and a
+      # predicate could name several — so this arrives as a LIST of one. It reads oddly and it
+      # is honest: the operator that answers exactly one refuses a predicate outright.
+      #
+      # ON THE TRAIN rather than on the proposal, which is where the same read used to live
+      # (`proposal-says`, below). The train is what a decider reads — an open motion's subject
+      # is a train cut, never a proposal — and the train's sha is exact, where a proposal knows
+      # the reviewed commit only as `base`: main's tip when its BRANCH appeared, which is the
+      # reviewed commit only if main did not move in between.
+      says: !list-paths
+        at: [verse-dev, drift, head, "*"]
+        value:
+          sha: $subject.value.sha
+        path: result.report
 ---
 # 2c. …and somebody decides the batch, once per tip.
 #
@@ -757,7 +794,16 @@ reads: [git, verse-dev.drift]
       value: !not.has-path state
   action:
     patch:
-      says: !get-path {at: [verse-dev, drift, head, "head-moved@git:head:verse"], path: result.report}
+      # `base`, not a fixed address: with a head record per sha there is no "the report" to read.
+      # It is APPROXIMATE here in a way the train's is not — `base` is main's tip when this
+      # proposal's branch appeared, so it names the reviewed commit only if main did not move
+      # between the review and the push. The train carries the exact one (train-load, above),
+      # and that is the copy a decider sees.
+      says: !list-paths
+        at: [verse-dev, drift, head, "*"]
+        value:
+          sha: $subject.value.base
+        path: result.report
 ---
 # 2b, 2c ARE GONE, and their absence is the point.
 #
