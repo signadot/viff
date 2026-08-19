@@ -306,6 +306,10 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// commit belongs to its repo; two repos never share one entity.
 	for _, c := range gitRecentCommits(ctx, dir, g.commitDepth) {
 		p := entity.Obj{"repo": id, "sha": c.sha, "msg": c.msg, "author": c.author, "parents": c.parents}
+		// `parents` is written even when it is empty, unlike the trailers below: a root commit
+		// HAS no parents, and that is a fact about it rather than a field nobody filled in. It
+		// also keeps the field one shape, so a predicate over it never has to ask which.
+		//
 		// Trailers are the one part of a commit BODY that reaches the verse, and only when
 		// there are any — an empty map on every commit is noise in every payload.
 		if len(c.trailers) > 0 {
@@ -373,8 +377,15 @@ func gitHead(ctx context.Context, dir string) entity.Obj {
 }
 
 type commitInfo struct {
-	sha, msg, author, parents string
-	trailers                  map[string]string
+	sha, msg, author string
+	// A LIST, exploded from git's own space-separated `%P`. A merge commit has two of them and
+	// a root commit none, so the joined string was a set written as text: `!key()` — the
+	// operator that says "this element is in this list", in a match and in a patch alike —
+	// cannot read it, and the workarounds are worse than the shape. `!glob "*<sha>*"` is a
+	// substring test that would match a sha it was never given, and comparing the whole field
+	// works only while there is exactly one parent, which is to say until the first merge.
+	parents  []string
+	trailers map[string]string
 }
 
 func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
@@ -402,8 +413,10 @@ func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
 		if len(f) != 5 {
 			continue
 		}
+		// Fields rather than Split, so a root commit's empty `%P` is an empty list rather
+		// than a list holding one empty string.
 		cs = append(cs, commitInfo{sha: f[0], msg: f[1], author: f[2],
-			parents: f[3], trailers: parseTrailers(f[4])})
+			parents: strings.Fields(f[3]), trailers: parseTrailers(f[4])})
 	}
 	return cs
 }

@@ -75,7 +75,7 @@ converges on the resync.
 |---|---|
 | `git:ref:<repo>/<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
 | `git:head:<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
-| `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any — covered by nothing, so history stays |
+| `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents` (a LIST of shas: empty for a root commit, two for a merge, first parent first), and `trailers` when the commit has any — covered by nothing, so history stays |
 
 Owns `git:*:<id>/*` and `git:head:<id>` per repo.
 
