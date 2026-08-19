@@ -2596,12 +2596,10 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
 		StoreRev: s.Store.Head(),
-		Rules:    len(s.Eng.Triggers()),
 		Flows:    len(s.Eng.Flows()),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		Tasks:    s.Taskd.Count(),
 		Fired:    s.Eng.Fired(),
-		Strata:   strataNames(s.Eng.Strata()),
 		Runners:  runnerRefs(s.scopedStore(r)),
 		Sources:  sourceRefs(s.scopedStore(r)),
 		Charter:  s.charterTop(),
@@ -2620,101 +2618,100 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// statusCharterDepth is how far into the charter tree /status goes. Two is the whole of what
-// this tree can be today — ParseAt refuses an address deeper than the dimensions a Match has
-// (trigger/confine.go) — so the cut is a promise about the shape of the LINE rather than a
-// restriction anybody meets: a status stays a status when somebody installs charters somewhere
-// deeper than it was written for.
-const statusCharterDepth = 2
-
-// charterMore is what a place answers with when this line is not the one that expands it.
-const charterMore = ".."
-
-// charterTop is the charter tree cut at statusCharterDepth: where charters are installed,
-// nested as their addresses nest.
+// charterTop is the charter as a CENSUS: how much is installed, and where.
 //
-//	baseline: ..          # the unpackaged charter holds something
-//	verse-dev:            # a PLACE — two charters live under it
-//	  drift: ..
-//	  merge: ..
+//	rules: 2          # baseline's own, at the root
+//	strata: 1
+//	children:
+//	  verse-dev:      # a PLACE: nothing installed here, so no counts
+//	    children:
+//	      drift: {rules: 4, strata: 2}
 //
-// Places rather than the flat addresses this first answered with, because addresses share
-// prefixes: `verse-dev.drift` and `verse-dev.merge` are two charters in one place, and a flat
-// list said `verse-dev` twice and the shape not at all.
+// COUNTED PER NODE, because the count this replaces was BASELINE's alone while every number
+// beside it in status is the whole verse's. A verse whose program is packaged reported
+// `rules: 0` next to a charter tree listing the packages holding them — the scoping was the
+// bug rather than the zero, and a shape that says whose is the fix for it.
 //
-// A node below the cut answers with the number of charters under it rather than with them.
-// What this deliberately does NOT say is whether a place is also a charter in its own right —
-// `verse charter <address> --depth 0` is that question, and answering it here would cost a
-// second shape on a line that exists to be glanced at.
+// It is `verse charter`'s shape with the lists counted: `rules`, `strata` and `children` mean
+// what they mean there, and a node with no charter carries only `children` — so `rules: 0`
+// appears exactly where a charter holds none, which is a state worth seeing (a package whose
+// levels installed and whose rules were refused).
+//
+// The counts come from the ENGINES, which hold the installed charter in memory, so this costs
+// no read beyond the one packagesSeen already makes. An address with records but no engine
+// counts zero rather than creating one: a status must not install anything to describe it.
 func (s *Server) charterTop() *ir.Node {
-	root := &addrTrie{}
-	if len(s.Eng.Triggers()) > 0 || len(s.Eng.Strata()) > 0 {
-		// baseline is a place like the others: it is the charter with no address, and the
-		// word is what the CLI and the tree already call it.
-		root.add([]string{"baseline"})
-	}
+	root := &charterCensus{}
+	root.count(s.Eng)
 	for _, at := range s.packagesSeen() {
-		root.add(strings.Split(at, "."))
+		node := root
+		for _, sg := range strings.Split(at, ".") {
+			node = node.child(sg)
+		}
+		node.count(s.packageEngineIfRunning(at))
 	}
-	if len(root.order) == 0 {
+	if root.empty() {
 		return nil
 	}
-	return root.node(statusCharterDepth)
+	return root.node()
 }
 
-// addrTrie is the places a set of addresses names, in the order they were added.
-type addrTrie struct {
-	kids  map[string]*addrTrie
-	order []string
+// charterCensus is one node of the tree: what is installed here, and what is under it.
+type charterCensus struct {
+	here          bool // a charter is installed AT this address
+	rules, strata int
+	kids          map[string]*charterCensus
+	order         []string
 }
 
-func (t *addrTrie) add(segs []string) {
-	if len(segs) == 0 {
+func (c *charterCensus) child(seg string) *charterCensus {
+	if c.kids == nil {
+		c.kids = map[string]*charterCensus{}
+	}
+	if k, ok := c.kids[seg]; ok {
+		return k
+	}
+	k := &charterCensus{}
+	c.kids[seg] = k
+	c.order = append(c.order, seg)
+	return k
+}
+
+// count records what an engine holds. A nil engine is a charter whose records are in the store
+// and whose engine is not — it is installed, and it holds nothing this verse is running.
+func (c *charterCensus) count(eng *trigger.Engine) {
+	c.here = true
+	if eng == nil {
 		return
 	}
-	if t.kids == nil {
-		t.kids = map[string]*addrTrie{}
-	}
-	c, ok := t.kids[segs[0]]
-	if !ok {
-		c = &addrTrie{}
-		t.kids[segs[0]] = c
-		t.order = append(t.order, segs[0])
-	}
-	c.add(segs[1:])
+	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
 }
 
-// leaves is how many charters stand at or under this node — what a node below the cut says
-// instead of its children.
-func (t *addrTrie) leaves() int {
-	if len(t.order) == 0 {
-		return 1
-	}
-	n := 0
-	for _, k := range t.order {
-		n += t.kids[k].leaves()
-	}
-	return n
+func (c *charterCensus) empty() bool {
+	return !c.here && len(c.order) == 0
 }
 
-func (t *addrTrie) node(depth int) *ir.Node {
+func (c *charterCensus) node() *ir.Node {
 	var fields, values []*ir.Node
-	sort.Strings(t.order) // as the charter tree sorts its children: one order, whoever asks
-	for _, k := range t.order {
-		c := t.kids[k]
-		fields = append(fields, ir.FromString(k))
-		switch {
-		case len(c.order) == 0:
-			// `..` rather than an empty object: a leaf here is not a charter with nothing in
-			// it, it is a charter this line is not printing — and `..` says "there is more
-			// down here" in the one notation everybody already reads that way. An empty
-			// object said the opposite of what is true.
-			values = append(values, ir.FromString(charterMore))
-		case depth <= 1:
-			values = append(values, ir.FromInt(int64(c.leaves())))
-		default:
-			values = append(values, c.node(depth-1))
+	add := func(key string, v *ir.Node) {
+		fields = append(fields, ir.FromString(key))
+		values = append(values, v)
+	}
+	// A PLACE CARRIES ONLY ITS CHILDREN, as it does in `verse charter`: `rules: 0` where no
+	// charter is installed reads as a charter holding none, which is a different fact and one
+	// somebody goes looking for.
+	if c.here {
+		add("rules", ir.FromInt(int64(c.rules)))
+		add("strata", ir.FromInt(int64(c.strata)))
+	}
+	if len(c.order) > 0 {
+		sort.Strings(c.order)
+		var kf, kv []*ir.Node
+		for _, seg := range c.order {
+			kf = append(kf, ir.FromString(seg))
+			kv = append(kv, c.kids[seg].node())
 		}
+		add("children", &ir.Node{Type: ir.ObjectType, Fields: kf, Values: kv})
 	}
 	return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
 }

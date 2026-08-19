@@ -395,11 +395,6 @@ type InboxItem struct {
 //tony:schemagen=verse-status,notag
 type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`
-	// Rules is how many rules BASELINE's charter holds — `triggers` until the charter tree
-	// took the word the prose has always used, and one word for one thing across both.
-	// A package's rules are not in it: a package runs in an engine of its own, which is what
-	// `charter` below exists to say.
-	Rules int `tony:"field=rules"`
 	Flows int `tony:"field=flows"`
 	Gates int `tony:"field=gates"`
 	Tasks int `tony:"field=tasks"`
@@ -409,39 +404,41 @@ type Status struct {
 	// these three are things somebody put here, and a verse that has lost them looks healthy by
 	// every other line — which is exactly the state a wiped store comes back in.
 	//
-	// Strata are NAMES IN LEVEL ORDER, low to high: the order is the fact, and `verse charter`
-	// carries the numbers. Runners are the refs a spawn may name (`runners:pool:code`), which is
-	// a different question from `runner` below — that one is how THIS verse runs a task when a
-	// spawn names nobody. Sources are the refs of what WRITES into this verse
-	// (`sources:git:main`) — the one line here that says anything is arriving at all, since a
-	// verse whose sources are gone goes on reporting a fine store rev and an idle charter.
+	// Runners are the refs a spawn may name (`runners:pool:code`), which is a different question
+	// from `runner` below — that one is how THIS verse runs a task when a spawn names nobody.
+	// Sources are the refs of what WRITES into this verse (`sources:git:main`) — the one line
+	// here that says anything is arriving at all, since a verse whose sources are gone goes on
+	// reporting a fine store rev and an idle charter.
+	//
+	// The charter used to be here too, as `rules` (a count) and `strata` (names in level
+	// order). Both were BASELINE's alone while every count beside them is the whole verse's, so
+	// a verse whose program is packaged reported `rules: 0` and no levels — the scoping was the
+	// bug, not the zero. `charter` below carries both, per node, where the shape says whose.
 	//
 	// All three are refs rather than records: status is an orientation, and `verse charter`,
 	// `verse runners` and `verse sources` are the surfaces that answer what one IS. A source's
 	// health — when its last pass completed, whether it is failing — is on `verse sources`.
-	Strata  []string `tony:"field=strata,omitzero"`
 	Runners []string `tony:"field=runners,omitzero"`
 	Sources []string `tony:"field=sources,omitzero"`
-	// Charter is the charter TREE, cut at a depth: the places something is installed, nested
-	// the way their addresses nest, with `baseline` alongside them for the unpackaged one.
+	// Charter is the charter as a CENSUS: how much is installed, and where.
 	//
 	//	charter:
-	//	  baseline: {}
-	//	  verse-dev:
-	//	    drift: {}
-	//	    merge: {}
+	//	  rules: 2          # baseline's own, at the root — the charter with no address
+	//	  strata: 1
+	//	  children:
+	//	    verse-dev:      # a PLACE: nothing installed here, so no counts
+	//	      children:
+	//	        drift: {rules: 4, strata: 2}
+	//	        merge: {rules: 1}
 	//
-	// It is here because `triggers` above counts BASELINE's rules and nothing else — a package
-	// runs in an engine of its own — so a verse whose whole program is packaged reported
-	// `triggers: 0` and looked like a verse with no charter at all. That is the same shape the
-	// three lines above exist for: what somebody installed, on the reading where its absence is
-	// invisible.
+	// SAME SHAPE AS `verse charter`, counted instead of enumerated: `rules`, `strata` and
+	// `children` mean what they mean there, and a node with no charter carries only `children`
+	// — so `rules: 0` appears where a charter really holds none, and nowhere else. Status is a
+	// census of numbers and the charter surface is what answers what a rule IS.
 	//
-	// A tree rather than the flat addresses this first printed, because addresses SHARE
-	// PREFIXES and a status line is read at a glance: `verse-dev.drift` and `verse-dev.merge`
-	// are two charters in one place, and a list said `verse-dev` twice and the shape not at
-	// all. Below the cut a place answers with the NUMBER of charters under it, since a status
-	// is an orientation — `verse charter <address>` is the question about one.
+	// A TREE rather than a flat list of addresses, because addresses SHARE PREFIXES and a
+	// status line is read at a glance: `verse-dev.drift` and `verse-dev.merge` are two charters
+	// in one place, and a list said `verse-dev` twice and the shape not at all.
 	Charter *ir.Node `tony:"field=charter,omitzero"`
 
 	Runner *RunnerStatus `tony:"field=runner,omitzero"`

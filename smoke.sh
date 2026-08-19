@@ -505,7 +505,10 @@ ok "connect disconnected"
 
 # ── status ───────────────────────────────────────────────────────────────────
 step "status"
-has "$(v status)" 'rules' || die "status missing engine counts"
+# `rules` is inside the charter census now — counted where each charter is, since the top-level
+# count was baseline's alone and read 0 on a verse whose program is packaged.
+has "$(v status)" 'rules' || die "status missing the charter census"
+has "$(v status)" 'storeRev' || die "status missing engine counts"
 ok "status reports engine counts"
 
 # ── strata: a declared level ordering, and a derive that crosses it ──────────

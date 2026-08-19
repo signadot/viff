@@ -65,6 +65,25 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	return eng, nil
 }
 
+// packageEngineIfRunning is the engine at an address, or nil when none is running there.
+//
+// LOOKUP RATHER THAN packageEngine, which CREATES one: a read that describes the verse must not
+// change it. An address with records and no engine is a real state — a package whose install
+// was refused, or one seen before its restore — and the honest answer about it is that nothing
+// is running, not a fresh engine holding nothing.
+func (s *Server) packageEngineIfRunning(at string) *trigger.Engine {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if pe, ok := s.scopeEngs["at:"+confine.Stamp()]; ok {
+		return pe.eng
+	}
+	return nil
+}
+
 // packageEngines is every engine running a package's charter — not a scope's.
 //
 // The distinction is the key prefix: a package engine is keyed by its ADDRESS (`at:<stamp>`),
