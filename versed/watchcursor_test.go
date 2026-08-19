@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// A CURSOR IS PASSED THROUGH, negative included. `--since -20` is the last twenty commits, and
-// the STORE resolves it — against its watermark at the moment the watch is established, clamped
+// A CURSOR IS PASSED THROUGH, negative included. `since=-20` — `--ago 20` at the CLI, which is
+// where a leading dash is ambiguous — is the last twenty commits, and the STORE resolves it — against its watermark at the moment the watch is established, clamped
 // to its retained floor. Verse could subtract from a head it had just read, but it could not
 // clamp to a floor it cannot see, so a deep `-N` on a compacted store would come back refused
 // where the store would have answered from what it kept.
