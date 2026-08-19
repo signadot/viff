@@ -395,10 +395,10 @@ type InboxItem struct {
 //tony:schemagen=verse-status,notag
 type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`
-	Flows int `tony:"field=flows"`
-	Gates int `tony:"field=gates"`
-	Tasks int `tony:"field=tasks"`
-	Fired int `tony:"field=fired"`
+	Flows    int   `tony:"field=flows"`
+	Gates    int   `tony:"field=gates"`
+	Tasks    int   `tony:"field=tasks"`
+	Fired    int   `tony:"field=fired"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
 	// these three are things somebody put here, and a verse that has lost them looks healthy by

@@ -523,12 +523,23 @@ type watchConfig struct {
 	// that cannot replay from 0 was refused, and the refusal advised dropping a flag the
 	// caller had never passed. An absent cursor streams from now; `--since N` is how somebody
 	// asks for history, and `--since 0` is still from the beginning.
-	// A NEGATIVE cursor is relative: `--since -20` is the last twenty commits. It is the cursor
+	//
+	// ABSOLUTE ONLY: the relative cursor is `--ago N`. `--since -20` is not spellable at a
+	// command line, where a leading dash is what an OPTION looks like — `verse watch -since -20`
+	// reads as `-since` handed no value and then a flag named `-20`, and only this parser's rule
+	// that an option's value is taken verbatim makes it mean twenty commits back. A spelling
+	// that depends on knowing the parser is not a spelling, so a negative `--since` is refused
+	// here, naming the flag that means it.
+	Since string `cli:"name=since desc='replay from this REVISION first; 0 = from the beginning. absent = stream from now. for the last N commits, --ago'"`
+	// --ago N IS THE RELATIVE CURSOR: the last N commits, whatever the head is. It is the cursor
 	// somebody actually has — an absolute one means reading `storeRev` off status first — and
 	// the STORE resolves it, against its watermark at the moment the watch is established and
 	// clamped to the history it still retains. Twenty COMMITS rather than twenty events: a
 	// watch narrowed to a path sees only the changes under it, so the span usually holds fewer.
-	Since string `cli:"name=since desc='replay from this cursor first; -N = the last N commits (clamped to what the store retains); 0 = from the beginning. absent = stream from now'"`
+	//
+	// On the wire it is still `since=-N`, where a query parameter has no dash to be read as a
+	// flag: the ambiguity this flag exists to answer is the command line's alone.
+	Ago string `cli:"name=ago desc='replay the last N COMMITS first — the relative cursor, resolved by the store against its head and clamped to what it retains'"`
 	// --if is the same predicate a charter's `when` carries in `value`, and means the same
 	// thing: a tony match over the payload, so it takes operators (`{stage: !or [open, merged]}`)
 	// and matches a payload that is not an object at all. A DELETE never matches one — there is
@@ -556,8 +567,12 @@ func watchCmd() *cli.Command {
 // `verse data demo.pr` name the same entities and differ only in when they answer.
 func (cfg *watchConfig) query(at string) (url.Values, error) {
 	q := url.Values{}
-	if cfg.Since != "" {
-		q.Set("since", cfg.Since)
+	since, err := cfg.cursor()
+	if err != nil {
+		return nil, err
+	}
+	if since != "" {
+		q.Set("since", since)
 	}
 	if at != "" {
 		q.Set("at", at)
@@ -566,6 +581,38 @@ func (cfg *watchConfig) query(at string) (url.Values, error) {
 		return nil, err
 	}
 	return q, nil
+}
+
+// cursor renders --since/--ago as the one parameter the wire takes, or "" for a watch that
+// starts from now. The two flags are the same cursor written two ways — a revision, or a count
+// of commits back from the head — so passing both is a question with two answers.
+//
+// Only the SIGN of --since is read here. A cursor that is not a number at all stays the
+// server's refusal to make: it is the end that knows what the store will take, and its message
+// already says what an absent cursor does.
+func (cfg *watchConfig) cursor() (string, error) {
+	if cfg.Since != "" && cfg.Ago != "" {
+		return "", fmt.Errorf("%w: --since and --ago are the same cursor, absolute and "+
+			"relative; pass one", cli.ErrUsage)
+	}
+	if cfg.Ago != "" {
+		n, err := strconv.ParseInt(cfg.Ago, 10, 64)
+		if err != nil || n < 0 {
+			return "", fmt.Errorf("%w: --ago %s: a count of commits back from the head, so a "+
+				"whole number — the minus sign is what --ago spells for you", cli.ErrUsage, cfg.Ago)
+		}
+		// The last ZERO commits is from now, and it cannot be sent as `since=-0`: that reaches
+		// the wire as `0`, the whole retained log, which is the opposite of no history at all.
+		if n == 0 {
+			return "", nil
+		}
+		return strconv.FormatInt(-n, 10), nil
+	}
+	if n, err := strconv.ParseInt(cfg.Since, 10, 64); err == nil && n < 0 {
+		return "", fmt.Errorf("%w: --since %s names a revision, and revisions are not negative; "+
+			"the last %d commits is `--ago %d`", cli.ErrUsage, cfg.Since, -n, -n)
+	}
+	return cfg.Since, nil
 }
 
 func (cfg *watchConfig) run(cc *cli.Context, args []string) error {

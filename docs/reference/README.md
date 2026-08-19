@@ -47,13 +47,15 @@ verse
 
   watch  [--since <rev>] [<path>]            stream store changes (cursored) — the same path
                                              a read takes, naming the same entities
-         --since -<n>                        …the last <n> COMMITS, resolved by the store
+         --ago <n>                           …the last <n> COMMITS, resolved by the store
                                              against its watermark and clamped to the history
                                              it retains — so a deep one answers with what is
                                              left rather than refusing. A narrowed watch sees
                                              only the changes under its path, so the span holds
                                              however many events it holds. Absent streams from
-                                             now; `--since 0` is the whole retained log
+                                             now; `--since 0` is the whole retained log.
+                                             The relative cursor is its own flag because
+                                             `--since -<n>` reads as a flag named `-<n>`
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it

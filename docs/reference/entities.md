@@ -332,11 +332,11 @@ write, the other what you read.
 verse watch                                        # from now on
 verse watch --if '{stage: open}' demo              # the same selectors as a read
 verse watch --since 42                             # replay from a revision you already have
-verse watch --since -50                            # …or the last 50 commits, whatever the head is
+verse watch --ago 50                               # …or the last 50 commits, whatever the head is
 verse watch --since 0                              # replay everything the store still holds
 ```
 
-**With no `--since` a watch starts from now.** A cursor is how you ask for history, and asking
+**With no cursor a watch starts from now.** A cursor is how you ask for history, and asking
 for it is a different act from watching: a replay of a long-lived store is a lot of lines
 nobody typed a flag for, and on a store that cannot replay from the beginning it is a refusal
 rather than a stream.
@@ -355,14 +355,16 @@ the next.
 - `to` is the entity's whole state as of that commit, not the delta that was written — so a
   reader matching on two fields still matches when only one of them was written.
 - `rev` is an opaque cursor. Revisions are monotonic but **sparse**, so treat one as a
-  bookmark to hand back to `--since`, never as a count. `--since -50` is the exception that
+  bookmark to hand back to `--since`, never as a count. `--ago 50` is the exception that
   proves it: it asks the STORE for the last fifty commits — resolved against its watermark and
   clamped to what it retains — rather than doing arithmetic on a revision, and how many events
-  live in that span is still the store's business rather than the number's.
+  live in that span is still the store's business rather than the number's. It is its own flag
+  because `--since -50` is not spellable: at a command line a leading dash is what an option
+  looks like, so the relative cursor says so in its name.
 
-**A watch with a cursor replays**: `--since <rev>` delivers what the store still holds from
-that revision before it streams anything new, so a reader that was away can catch up rather
-than guess. With no cursor there is nothing to catch up from and the stream starts at the
+**A watch with a cursor replays**: `--since <rev>` (or `--ago <n>`) delivers what the store
+still holds from that revision before it streams anything new, so a reader that was away can
+catch up rather than guess. With no cursor there is nothing to catch up from and the stream starts at the
 moment it opens. The same level-triggered property is what makes an INSTALLED TRIGGER act on
 the backlog — a rule is a statement about the world, not about what happens next — and it is
 why a long hold costs a cursor rather than a buffer. See
