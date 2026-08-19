@@ -72,6 +72,25 @@ record()  { v data "verse-dev.drift.head.$1" 2>/dev/null; }
 field()   { record "$1" | grep -E "^$2:" | awk '{print $2}'; }
 task_for(){ echo "comment-drift@verse-dev.drift.head.$1"; }
 move_head(){ v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+# reflect_commit <sha> [<parent>…] — the record the git source writes for a commit, `parents`
+# included: a LIST of shas, empty for a root commit (source/git.go). The harness names its own
+# chain, so it is the one that knows what landed on what.
+reflect_commit() {
+	local sha=$1; shift
+	local parents="[]"
+	[ $# -gt 0 ] && parents="[$(printf '%s, ' "$@" | sed 's/, $//')]"
+	v data "git:commit:verse/$sha" --put \
+		"{repo: verse, sha: $sha, msg: \"commit $sha\", parents: $parents}" >/dev/null
+}
+# land_commit <sha> — a push of one, in the order the source reflects it: the commit record
+# first, then the tip onto it. $LAST is the chain, so a landing names its own parent and the
+# first one lands as a root.
+land_commit() {
+	reflect_commit "$1" ${LAST:+"$LAST"}
+	move_head "$1"
+	LAST=$1
+}
+LAST=
 
 # wait_field <sha> <field> <value> <seconds>
 wait_field() {
@@ -106,7 +125,7 @@ wait_finding() {
 }
 
 step "1. one commit, reviewed once"
-move_head aaaa1111
+land_commit aaaa1111
 wait_task aaaa1111 20 && ok "a task of aaaa1111's own, in $SECONDS s" || bad "no task for aaaa1111"
 review aaaa1111 || bad "could not complete aaaa1111's review"
 wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
@@ -133,9 +152,9 @@ v data verse-dev.drift.train.t-early 2>/dev/null | grep -q 'says' \
 	|| ok "a train cut before the review holds no report, and no empty one either"
 
 step "2. a commit that lands WHILE a review is running"
-move_head bbbb2222
+land_commit bbbb2222
 wait_task bbbb2222 20 || bad "no task for bbbb2222"
-move_head cccc3333                       # arrives before bbbb2222's review answers
+land_commit cccc3333                     # arrives before bbbb2222's review answers
 wait_task cccc3333 20 && ok "cccc3333 got a task of its own while bbbb2222 was still open" \
 	|| bad "cccc3333 never got a task"
 review bbbb2222 || bad "could not complete bbbb2222's review"
@@ -157,9 +176,10 @@ step "3. two commits landing in ONE push"
 # The git source does reflect both, as `git:commit:<repo>/<sha>` — main's last N commits, from
 # `git log -n <depth>` on the mirror — so the commit exists as a fact even though the tip never
 # named it. Whether the flow reviews it is the open question this scenario holds.
-v data git:commit:verse/dddd4444 --put '{repo: verse, sha: dddd4444, msg: "the middle commit"}' >/dev/null
-v data git:commit:verse/eeee5555 --put '{repo: verse, sha: eeee5555, msg: "the tip"}' >/dev/null
+reflect_commit dddd4444 cccc3333       # the middle commit: reflected, and never a tip
+reflect_commit eeee5555 dddd4444       # …and the tip, the only one the head ever names
 move_head eeee5555
+LAST=eeee5555
 both=1
 for sha in eeee5555 dddd4444; do
 	if wait_task "$sha" 15 && review "$sha" && wait_field "$sha" reviewedSha "$sha" 15; then
@@ -170,6 +190,27 @@ for sha in eeee5555 dddd4444; do
 done
 [ -n "$both" ] && ok "both commits of the push were reviewed" \
 	|| known "only the tip was reviewed: the chain fires on git:head:verse, which names one commit per push, so dddd4444 never becomes a subject — the source reflects it as git:commit:verse/dddd4444 and nothing reads that"
+
+step "4. a commit chosen by its PARENTS rather than by being the tip"
+# The shape the git source writes: `parents` is a LIST of shas, so rule 5 can ask `!key()
+# [aaaa1111]` — "is aaaa1111 one of this commit's parents" — which is a question no predicate
+# could put to the space-joined string the field used to be. Five commits are in the verse by
+# now, in a chain, and exactly one of them landed on aaaa1111.
+#
+# Asserted over the WHOLE listing rather than one record at a time: "these and no others" is the
+# claim, and a per-record read that fails transiently would report a commit as unselected — the
+# same shape as reading an unreadable store as an empty one (tyr7f6dhh). `--depth 4` because
+# these records are addressed at the place plus a sha.
+kids() { v data verse-dev.drift.child --paths --depth 4 2>/dev/null; }
+t0=$SECONDS
+for _ in $(seq 1 30); do [ -n "$(kids)" ] && break; sleep 0.5; done
+sleep 2   # …and settle, so a WRONG extra selection has the same window to show up
+got=$(kids)
+if [ "$got" = "verse-dev.drift.child.bbbb2222" ]; then
+	ok "exactly one of the five was selected by !key() over its parents, and it is bbbb2222, after $((SECONDS-t0))s"
+else
+	bad "the commits selected as children of aaaa1111 are:\n$got\nwant exactly verse-dev.drift.child.bbbb2222 — the one that landed on it"
+fi
 
 step "result"
 if [ "$fails" -gt 0 ]; then

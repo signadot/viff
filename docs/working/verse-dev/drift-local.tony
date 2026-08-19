@@ -35,6 +35,14 @@ reads: [ !verse-path [git] ]
   match:
     path: [verse-dev, drift, finding]
 
+# The commits selected by their PARENTS rather than by the tip — see rule 5. Above `reflected`
+# for the reason `drift` is — a derive must land above the stratum it fires in — and in the gap
+# rather than beside it, because the level IS the ordering and two strata cannot share one.
+- name: children
+  level: 15
+  match:
+    path: [verse-dev, drift, child]
+
 # A stand-in for the merge half's `train`, so the READ the real charter needs can be proved
 # here: a train is above the head it describes, which makes reading the report a read DOWNWARD.
 - name: train
@@ -172,3 +180,35 @@ reads: [ !verse-path [git] ]
       says: !get-path
         at: [verse-dev, drift, head, $subject.value.sha]
         path: result.report
+---
+# 5. A commit chosen by WHAT IT LANDED ON, not by being the tip.
+#
+# `parents` is a list of shas (`git:commit`, source/git.go), and `!key()` is how a match names an
+# element of a list: it keys the list by the element itself, so this reads as "aaaa1111 is one of
+# this commit's parents". The shape is what makes the question askable at all — while `parents`
+# was git's `%P` verbatim, one space-joined string, the only spellings available were a substring
+# glob that can match a sha nobody gave it and a whole-field compare that stops working at the
+# first merge commit.
+#
+# The sha is a LITERAL here because this charter is the harness's own and the harness lands a
+# chain it names. In a real one it is a read — `!let` binding `!get-path` over another entity —
+# which is the shape the merge train wants: which commits landed on top of the car we cut.
+#
+# Nothing downstream consumes the record. It exists so the selection is observable: exactly one
+# of the five commits the harness lands is a child of aaaa1111, and a rule that fires on any
+# other one is not selecting by parentage at all.
+- name: child-of-a
+  stratum: reflected
+  condition:
+    subject:
+      path: [git, commit, "*"]
+      value:
+        repo: verse
+        parents: !key() [aaaa1111]
+  action:
+    derive:
+    - path: [verse-dev, drift, child]
+      id: $subject.value.sha
+      value:
+        sha: $subject.value.sha
+        parent: aaaa1111

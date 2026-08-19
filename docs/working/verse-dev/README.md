@@ -20,9 +20,11 @@ and neither could have been *studied* there.
 
 Here the two slow parts are replaced and nothing else is:
 
-- **The head is a write.** `verse data git:head:verse --put '{repo: verse, sha: …}'` is what a
-  git source's reflection amounts to, so a "commit" costs a millisecond and a "push of two" is
-  two writes with no sleep between them.
+- **A commit landing is two writes.** `land_commit` reflects the record — `git:commit:verse/<sha>`
+  with its `parents`, a list of shas as the source writes it — and then moves
+  `git:head:verse` onto it, which is what a git source's reflection amounts to. A "commit" costs
+  a millisecond, a "push of two" moves the tip once, and the commits form a CHAIN, so a rule that
+  selects by what a commit landed on has something to select over.
 - **The review is a brokered task the script answers.** `verse task do complete <id> '<answer>'`
   supplies the findings, so the answer is a fixture and — the part that matters — the TIMING is
   the test's. A review lands exactly when a scenario says it does, which is the only way to hold
@@ -51,7 +53,16 @@ single task id — `(rule, subject)`, and the subject is one entity — so the s
 all. A finding fixed in the commit that loses stays open forever. Which one loses varies run to
 run, which is itself the point.
 
-Both have the same shape: the head fact is keyed by the SUBJECT rather than by the commit. A
+## What it drives on purpose
+
+Scenario 4 is not a defect being held still — it is a shape being exercised. `parents` is a list
+of shas, and `!key()` is how a match names an element of a list, so `child-of-a` selects the
+commit that landed on `aaaa1111` and no other. It asserts over the whole listing rather than one
+record at a time: "these and no others" is the claim, and a per-record read that fails
+transiently would report a commit as unselected — the same shape as reading an unreadable store
+as an empty one.
+
+Both defects have the same shape: the head fact is keyed by the SUBJECT rather than by the commit. A
 head record per sha would give each commit its own state, its own task id and its own hook, and
 neither race would have anywhere to land. That is a change to the real charter, and this is the
 place to try it in seconds rather than in an afternoon.
