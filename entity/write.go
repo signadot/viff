@@ -509,8 +509,8 @@ func withRemovals(next, old Payload) Payload {
 	return out
 }
 
-// JoinSegs renders a VECTOR OF STEPS as the kinded path they name, joining the segments with a
-// `/` and dropping any that are empty, quoting the rest as kpath needs it.
+// JoinSegs renders a VECTOR OF STEPS as the kinded path they name, quoting each segment as
+// kpath needs it.
 //
 // It is what lets an address be typed as separate words — `verse data demo pr 1` — and it is
 // more than a convenience: a segment handed over whole never has to be escaped by the person
