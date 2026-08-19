@@ -55,8 +55,8 @@ everybody overwrites is precisely what that rule forbids.
 ```mermaid
 stateDiagram-v2
     [*] --> idle: seeded by hand at main's tip
-    idle --> claimed: claim — sha ≠ tip;<br/>covering = the tip, read now
-    claimed --> idle: advance — covering is in the done set;<br/>sha = covering
+    idle --> claimed: claim — sha ≠ tip,<br/>covering = the tip, read now
+    claimed --> idle: advance — covering is in the done set,<br/>sha = covering
     note right of claimed
       A commit landing here is neither
       covered nor skipped: the cursor
@@ -91,7 +91,7 @@ stateDiagram-v2
     failed --> [*]
     note right of failed
       No arrow re-arms this. Nothing
-      retries a failed review; the
+      retries a failed review. The
       operator writes the cursor back
       to idle, and the range that
       follows covers everything since.
@@ -136,7 +136,7 @@ stateDiagram-v2
     state "proposal" as P {
         [*] --> unpinned: proposal-appeared — {repo, branch, sha}
         unpinned --> undecided: proposal-based — base = main's tip, once
-        undecided --> stale: proposal-outrun — base ≠ tip;<br/>the branch is deleted
+        undecided --> stale: proposal-outrun — base ≠ tip,<br/>and the branch is deleted
     }
     state "train" as T {
         [*] --> cut: train-cut — one per tip, keyed by sha
