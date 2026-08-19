@@ -424,14 +424,6 @@ func charterDocs(docs []*ir.Node) []*ir.Node {
 	return out
 }
 
-// installCharter applies a charter file's worth of one address as ONE STEP, answering the status
-// code a refusal should carry.
-//
-// THE ORDER IS THE SERVER'S, whatever order the file wrote them in: the declaration first, because
-// a rule is checked against what its package imports as it installs; then the levels, because a
-// rule naming a stratum that is not installed yet is HELD rather than refused, and a file whose
-// author wrote both should not leave half its rules dormant because of how it was laid out; then
-// the rules.
 // installCharter applies a whole charter FILE: every package in it, or none of them.
 //
 // ONE FILE MAY HOLD SEVERAL PACKAGES — a `---` document carrying `at:` opens each, and
@@ -450,6 +442,12 @@ func charterDocs(docs []*ir.Node) []*ir.Node {
 // FILE ORDER, for installing as well as for reporting. A rule's reads are checked against its
 // own package's declaration, and a declared read of an address no package is installed at adds
 // no edge, so a package that reads another installs whichever comes first.
+//
+// WITHIN a package the order is the SERVER's, whatever order the file wrote them in: the
+// declaration first, because a rule is checked against what its package declares it reads as it
+// installs; then the levels, because a rule naming a stratum that is not installed yet is HELD
+// rather than refused, and a file whose author wrote both should not leave half its rules
+// dormant because of how it was laid out; then the rules.
 func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGroup, int, error) {
 	groups, err := charterGroups(defs, r.URL.Query().Get("at"))
 	if err != nil {
