@@ -18,10 +18,10 @@ sequenceDiagram
     autonumber
     participant git as git source
     participant cur as drift.at (cursor)
-    participant rng as drift.range.&lt;to&gt;
+    participant rng as drift.range.{to}
     participant run as coderunner
-    participant led as drift.finding.&lt;symbol&gt;
-    participant tr as merge.train.&lt;tip&gt;
+    participant led as drift.finding.{symbol}
+    participant tr as merge.train.{tip}
     participant who as a person
 
     git->>cur: tip moves — the read wakes `claim`
@@ -30,7 +30,7 @@ sequenceDiagram
     led->>rng: gather: outstanding = the open findings
     rng->>run: review-range: spawn over from..to
     run-->>rng: {"files": n, "findings": [...]}
-    run-->>git: delivers verse/auto/&lt;sha&gt;/&lt;task&gt; (only if it changed something)
+    run-->>git: delivers verse/auto/{sha}/{task} (only if it changed something)
     rng->>led: onDone: one row per symbol, by id
     rng->>cur: advance: cursor steps to what it CLAIMED
     git->>tr: proposal-appeared + train-load: the branch boards
@@ -88,7 +88,14 @@ stateDiagram-v2
     gathered --> failed: onFailed — status failed
     gathered --> derived: onCancelled — stage cleared, so it gathers again
     reviewed --> [*]
-    failed --> [*]: needs a hand: reset the cursor to idle
+    failed --> [*]
+    note right of failed
+      No arrow re-arms this. Nothing
+      retries a failed review; the
+      operator writes the cursor back
+      to idle, and the range that
+      follows covers everything since.
+    end note
 ```
 
 `stage` is the latch and it sequences the two rules: a spawn's strings bind against the payload
