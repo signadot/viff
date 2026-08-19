@@ -2687,6 +2687,7 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
 }
 
+// empty reports whether this node has children.
 func (c *charterCensus) empty() bool {
 	return !c.here && len(c.order) == 0
 }
