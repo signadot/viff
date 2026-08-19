@@ -1072,6 +1072,12 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	// a number and the id is not. That makes this the conservative rendering — correct wherever
 	// a line is read, at the cost of quotes the path alone would not need.
 	//
+	// AND IT STAYS THAT WAY, deliberately. The minimal rendering — quote only what would break
+	// the PATH — reads better for the listing's own job and was rejected: it means a second
+	// quoting predicate, verse's, sitting beside tony's and having to get `*` (a wildcard,
+	// versus an id that is one), brackets and an empty segment right. One rule, owned where the
+	// grammar is, wrong in no context, is worth more than the quotes it costs.
+	//
 	// IT USED TO PRINT STEPS, on the argument that a step is a whole word whatever is inside it
 	// so nothing in the listing needs quoting to be usable. That holds until a segment contains
 	// a SPACE, and then it does not: the separator is the space, so `demo pr a b.txt` is four
