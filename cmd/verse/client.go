@@ -1063,8 +1063,14 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	// AS A KINDED PATH, one token per line, each segment quoted only where the grammar needs
-	// it — `demo.pr.1`, `demo.pr."a b.txt"`, `"a b".pr.1`.
+	// AS A KINDED PATH, one token per line, rendered the way kpath renders one:
+	// `demo.pr."1"`, `demo.pr."a b.txt"`, `"a b".pr.1`.
+	//
+	// THE QUOTING IS ABOUT TONY TYPES, not about the path. `a.1.b` is three string fields and
+	// an index is the bracket form (`a[1].b`), so a path is unambiguous with or without the
+	// quotes; what they buy is the segment's TYPE, since a bare `1` written into a document is
+	// a number and the id is not. That makes this the conservative rendering — correct wherever
+	// a line is read, at the cost of quotes the path alone would not need.
 	//
 	// IT USED TO PRINT STEPS, on the argument that a step is a whole word whatever is inside it
 	// so nothing in the listing needs quoting to be usable. That holds until a segment contains

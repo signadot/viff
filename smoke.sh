@@ -113,8 +113,11 @@ ok "demo:pr:1 = {stage:open}"
 # token inside a rendered ref, and `stage` is what stands under it.
 haskv "$(v data demo.pr.1)" stage open || die "data demo.pr.1 did not answer the payload"
 has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
-# ONE TOKEN PER LINE, a kinded path with each segment quoted only where the grammar needs it —
-# `1` is quoted because a bare number in a kpath is an INDEX. It is the one spelling that is
+# ONE TOKEN PER LINE, a kinded path rendered the way kpath renders one: a segment is quoted
+# when writing it bare would give it a non-string TONY TYPE, so the id `1` prints as `"1"`.
+# (In the PATH it needs no quoting — `a.1.b` is three string fields, and an index is the
+# bracket form `a[1]` — the quoting is what keeps the segment a string wherever the line is
+# read as tony.) It is the one spelling that is
 # unambiguous for every address, which steps were not: their separator is a space, so an id
 # holding one printed as two words and read back as a different address.
 [ "$(v data --paths demo.pr)" = 'demo.pr."1"' ] || die "--paths did not name the entity"

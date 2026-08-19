@@ -73,8 +73,12 @@ three-segment address, and reads back as a different one. A kinded path is ambig
 of them, and that is worth more than fitting through `xargs` — which strips the quoting anyway,
 so the line has to be passed whole either way.
 
-Note `"1"`: a bare number in a kpath is an INDEX, so an id that looks like one is quoted. That
-is the "only where needed" rule doing its job rather than being noisy.
+Note `"1"`. That quoting is about TONY TYPES rather than about the path: `a.1.b` is three
+string fields and an index is the bracket form (`a[1].b`), so the path itself is unambiguous
+either way. What the quotes buy is the segment's TYPE — written bare into a tony document, `1`
+is a number and `true` is a boolean, and the id is neither. It is kpath's own rendering, which
+is the conservative one: correct wherever the line is read, at the cost of quotes the path
+alone would not need.
 
 `*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
 and a charter's `subject: demo:pr:*` mean the same set. **A selector is the one place the ref
