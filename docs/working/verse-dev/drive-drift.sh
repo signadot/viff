@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Drive the comment-drift state machine locally, in seconds, without a model.
 #
-# WHY THIS EXISTS. The two defects it reproduces are about ORDER — a review landing after the
-# head moved, and a push whose middle commits are never reviewed — and neither is reachable
+# WHY THIS EXISTS. What it holds still is about ORDER — a commit landing while a review runs, a
+# review that fails, a finding carried from one review to the next — and none of it is reachable
 # against staging in less than ten minutes: a real review is an llm task over a real checkout,
 # behind a real git source polling a real remote. Iterating on the rules that way does not
-# converge. Here the head is a `verse data git:head:verse --put` and the review is a brokered
-# task this script completes with a fixture, so the whole cycle is a few seconds and the timing
-# is the script's rather than the model's.
+# converge. Here a push is a `verse data git:head:verse --put` and the review is a brokered task
+# this script completes with a fixture, so the whole cycle is a few seconds and the timing is the
+# script's rather than the model's.
 #
 #   ./docs/working/verse-dev/drive-drift.sh            run every scenario
 #   ./docs/working/verse-dev/drive-drift.sh --keep     …and leave the verse up to poke at
 #
-# The charter is drift-local.tony beside this, which is the real one's first half with the
-# review spawn brokered. When they diverge, that file is the one that is wrong.
+# The charter is drift-local.tony beside this, which is the real one's review half with the
+# review brokered. When they diverge, that file is the one that is wrong.
+#
+# THE WAITERS READ A HERE-STRING, not a pipe. `cmd | grep -q X` under `set -o pipefail` reports
+# 141 on a MATCH — grep -q exits at the first hit, the writer dies on the closed pipe, and
+# pipefail hands that up as the pipeline's status — so a hit read as a miss.
 set -uo pipefail
 
 BIN=${BIN:-./dist/darwin/arm64/verse}
@@ -36,9 +40,8 @@ free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0)
 tmp=$(mktemp -d)
 API_PORT=$(free_port)
 ADDR=127.0.0.1:$API_PORT
-# NOT ADDR+1: the admin face derives to it. verse yields the derived face to a broker port that
-# was asked for outright, but the ports the kernel hands back here are often CONSECUTIVE, and a
-# harness that leans on that fix every run is testing the fix rather than the flow.
+# NOT ADDR+1: the admin face derives to it, and the ports the kernel hands back here are often
+# CONSECUTIVE — a harness that leans on that fix every run is testing the fix rather than the flow.
 BROKER_PORT=$(free_port)
 while [ "$BROKER_PORT" = "$((API_PORT+1))" ]; do BROKER_PORT=$(free_port); done
 BROKER=127.0.0.1:$BROKER_PORT
@@ -55,8 +58,6 @@ VERSE_CONFIG=/dev/null "$BIN" --addr "$ADDR" up --data "$tmp/data" --broker --br
 	--o-bin "$O_BIN" >"$tmp/verse.log" 2>&1 &
 for _ in $(seq 1 120); do v status >/dev/null 2>&1 && break; sleep 0.5; done
 v status >/dev/null 2>&1 || { tail -20 "$tmp/verse.log"; echo "verse did not come up"; exit 1; }
-# The failure line says "broker face on <addr>: bind: ..." too, so match what SUCCESS looks
-# like: the face is up only if nothing followed the address with an error.
 grep -qE "broker face|dial-in broker" "$tmp/verse.log" && ! grep -q "broker face on .*: listen" "$tmp/verse.log" \
 	|| { grep -i broker "$tmp/verse.log" >&2; echo "the broker face is not served"; exit 1; }
 ok "up, with a dial-in broker"
@@ -64,160 +65,133 @@ ok "up, with a dial-in broker"
 v c -a -f "$HERE/drift-local.tony" >/dev/null || { echo "charter did not install"; exit 1; }
 ok "the drift charter is installed"
 
-# ONE RECORD AND ONE TASK PER COMMIT, which is what `id: $subject.value.sha` buys: the record
-# is addressed by the sha alone, so every commit keeps its own state and its own task id instead
-# of sharing one slot with every other commit — and the address is one anything can spell, which
-# `key:` would not have been (it composes rule and subject in front of the sha).
-record()  { v data "verse-dev.drift.head.$1" 2>/dev/null; }
-field()   { record "$1" | grep -E "^$2:" | awk '{print $2}'; }
-task_for(){ echo "comment-drift@verse-dev.drift.head.$1"; }
-move_head(){ v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
-# reflect_commit <sha> [<parent>…] — the record the git source writes for a commit, `parents`
-# included: a LIST of shas, empty for a root commit (source/git.go). The harness names its own
-# chain, so it is the one that knows what landed on what.
-reflect_commit() {
-	local sha=$1; shift
-	local parents="[]"
-	[ $# -gt 0 ] && parents="[$(printf '%s, ' "$@" | sed 's/, $//')]"
-	v data "git:commit:verse/$sha" --put \
-		"{repo: verse, sha: $sha, msg: \"commit $sha\", parents: $parents}" >/dev/null
-}
-# land_commit <sha> — a push of one, in the order the source reflects it: the commit record
-# first, then the tip onto it. $LAST is the chain, so a landing names its own parent and the
-# first one lands as a root.
-land_commit() {
-	reflect_commit "$1" ${LAST:+"$LAST"}
-	move_head "$1"
-	LAST=$1
-}
-LAST=
+# ── the verse as the flow sees it ────────────────────────────────────────────
+# A PUSH IS ONE MOVE OF THE TIP, whatever it carries: that is what makes a range the unit. The
+# commits themselves need not be reflected at all — the review reads them out of a checkout, and
+# nothing in the charter selects on `git:commit`.
+# THE FIXTURE SHAS CARRY LETTERS on purpose: an all-digit id is quoted in a kinded path
+# (`range."77777777"`), because the quoting is about tony TYPES rather than about the path — so a
+# script composing a task id by hand would build one that matches nothing. Real shas are hex and
+# almost always carry a letter; the harness should not be the one place that depends on it.
+push()    { v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+cursor()  { v data verse-dev.drift.at 2>/dev/null; }
+at()      { sed -n 's/^sha: //p' <<<"$(cursor)"; }
+stage()   { sed -n 's/^stage: //p' <<<"$(cursor)"; }
+covering(){ sed -n 's/^covering: //p' <<<"$(cursor)"; }
+range()   { v data "verse-dev.drift.range.$1" 2>/dev/null; }
+task_for(){ echo "review-range@verse-dev.drift.range.$1"; }
+ranges()  { v data verse-dev.drift.range --paths --depth 4 2>/dev/null | sed 's/.*\.//' | sort | tr '\n' ' '; }
 
-# THE WAITERS READ A HERE-STRING, not a pipe. `cmd | grep -q X` under `set -o pipefail` reports
-# 141 on a MATCH — grep -q exits at the first hit, the writer dies on the closed pipe, and
-# pipefail hands that up as the pipeline's status — so a hit read as a miss, which a retry loop
-# hides by looping and a single check does not hide at all.
-# wait_field <sha> <field> <value> <seconds>
-wait_field() {
-	local end=$((SECONDS+$4))
-	while [ $SECONDS -lt $end ]; do [ "$(field "$1" "$2")" = "$3" ] && return 0; sleep 0.3; done
-	return 1
-}
-# wait_task <sha> <seconds> — a task of that commit's own
-wait_task() {
-	local end=$((SECONDS+$2))
-	while [ $SECONDS -lt $end ]; do
-		grep -q "id: $(task_for "$1")$" <<<"$(v task 2>/dev/null)" && return 0
-		sleep 0.3
-	done
-	return 1
-}
-# review <sha> [symbol] — answer THAT commit's task, about that commit
+# review <to> [symbol] — answer THAT range's task, carrying one finding
 review() {
-	local sha=$1 sym=${2:-pkg.Thing}
-	v task do complete "$(task_for "$sha")" \
-		"{at: $sha, report: \"reviewed $sha: one comment disagrees with its code\", findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $sha}]}" \
+	local to=$1 sym=${2:-pkg.Thing}
+	v task do complete "$(task_for "$to")" \
+		"{files: 1, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $to, proposedAt: $to}]}" \
 		--as human:drive >/dev/null 2>&1
 }
-# wait_finding <symbol> <seconds>
-wait_finding() {
-	local end=$((SECONDS+$2))
-	while [ $SECONDS -lt $end ]; do
-		grep -q "symbol: $1" <<<"$(v data verse-dev.drift.finding 2>/dev/null)" && return 0
-		sleep 0.3
-	done
-	return 1
+# review_carrying <to> — answer with the standing set repeated verbatim and nothing new
+review_verbatim() {
+	local to=$1 sym=$2
+	v task do complete "$(task_for "$to")" \
+		"{files: 0, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $to, proposedAt: $to}]}" \
+		--as human:drive >/dev/null 2>&1
 }
+# resolve <to> <symbol> — the fix landed, so the carried finding is right in this tree now
+resolve() {
+	local to=$1 sym=$2
+	v task do complete "$(task_for "$to")" \
+		"{files: 1, findings: [{symbol: $sym, status: resolved, says: \"the comment agrees with the code now\", at: $to, proposedAt: $to}]}" \
+		--as human:drive >/dev/null 2>&1
+}
+waitfor() { local end=$((SECONDS+$2)); while [ $SECONDS -lt $end ]; do eval "$1" && return 0; sleep 0.3; done; return 1; }
+has()     { case "$1" in *"$2"*) return 0;; esac; return 1; }
 
-step "1. one commit, reviewed once"
-land_commit aaaa1111
-wait_task aaaa1111 20 && ok "a task of aaaa1111's own, in $SECONDS s" || bad "no task for aaaa1111"
-review aaaa1111 || bad "could not complete aaaa1111's review"
-wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
-	|| bad "aaaa1111 reviewedSha=$(field aaaa1111 reviewedSha)"
-wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no finding was derived"
-# The read the real charter needs: the report of ONE commit, at an address the reader spells
-# out of a sha it already has. `id:` on rule 1 is what makes that address exist.
-v data verse-dev.drift.train.t-aaaa1111 --put "{sha: aaaa1111}" >/dev/null
-t0=$SECONDS; got=
-for _ in $(seq 1 40); do
-	if grep -q 'says: "reviewed aaaa1111' <<<"$(v data verse-dev.drift.train.t-aaaa1111 2>/dev/null)"; then got=1; break; fi
-	sleep 0.5
-done
-[ -n "$got" ] \
-	&& ok "the train carries aaaa1111's own report, read at an address it spelled, after $((SECONDS-t0))s" \
-	|| bad "the train has no report after $((SECONDS-t0))s:\n$(v data verse-dev.drift.train 2>/dev/null)"
-# …and a train cut before the review lands loads NOTHING, rather than a plausible empty: the
-# record has no `result.report` yet, a get of a field that is not there is a failure, and a
-# refused firing writes nothing at all.
-v data verse-dev.drift.train.t-early --put "{sha: 9999early}" >/dev/null
+# ── the seed: two writes, which is what the real one takes too ───────────────
+step "seeding: a predecessor range and a cursor standing on it"
+push aaaa1111
+v data verse-dev.drift.range.aaaa1111 --put '{to: aaaa1111, stage: reviewed, status: done, report: {findings: []}}' >/dev/null
+v data verse-dev.drift.at --put '{sha: aaaa1111, stage: idle}' >/dev/null
 sleep 2
-grep -q 'says' <<<"$(v data verse-dev.drift.train.t-early 2>/dev/null)" \
-	&& bad "a train for an unreviewed sha loaded something:\n$(v data verse-dev.drift.train.t-early)" \
-	|| ok "a train cut before the review holds no report, and no empty one either"
+[ "$(stage)" = idle ] && [ -z "$(covering)" ] \
+	&& ok "nothing fires: the cursor is standing on the tip" \
+	|| bad "after seeding the cursor is $(at)/$(stage) covering=$(covering)"
 
-step "2. a commit that lands WHILE a review is running"
-land_commit bbbb2222
-wait_task bbbb2222 20 || bad "no task for bbbb2222"
-land_commit cccc3333                     # arrives before bbbb2222's review answers
-wait_task cccc3333 20 && ok "cccc3333 got a task of its own while bbbb2222 was still open" \
-	|| bad "cccc3333 never got a task"
-review bbbb2222 || bad "could not complete bbbb2222's review"
-wait_field bbbb2222 reviewedSha bbbb2222 20 || bad "bbbb2222 did not record its own review"
+step "1. a push is reviewed once, as a range"
+push bbbb2222
+waitfor '[ -n "$(covering)" ]' 20 && ok "claimed $(covering), from $(at)" || bad "nothing was claimed"
+waitfor 'has "$(v task 2>/dev/null)" "id: $(task_for bbbb2222)"' 20 \
+	&& ok "a task of that range's own: $(task_for bbbb2222)" || bad "no task for the range"
+review bbbb2222
+waitfor '[ "$(at)" = bbbb2222 ] && [ "$(stage)" = idle ]' 20 \
+	&& ok "the review landed and the cursor stepped to bbbb2222" || bad "cursor is $(at)/$(stage)"
+waitfor 'has "$(v data verse-dev.drift.finding 2>/dev/null)" "symbol: pkg.Thing"' 15 \
+	&& ok "the finding is in the ledger" || bad "no finding was derived"
+
+step "2. a push of TWO commits — one range, and the middle commit is in it"
+# NOT two pushes: a push of two moves the tip ONCE. Under the older per-commit charter this was
+# the defect the harness existed to hold — verse saw only the tip and the middle commit was never
+# a subject. A range is `bbbb2222..dddd4444`, so both are inside it by construction.
+push dddd4444
+waitfor 'has "$(v task 2>/dev/null)" "id: $(task_for dddd4444)"' 20 || bad "no task for the push"
+r=$(range dddd4444)
+if has "$r" "from: bbbb2222" && has "$r" "to: dddd4444"; then
+	ok "one review, covering bbbb2222..dddd4444 — cccc3333 is inside it, not skipped"
+else
+	bad "the range is not bbbb2222..dddd4444: $(tr '\n' ' ' <<<"$r")"
+fi
+review_verbatim dddd4444 pkg.Thing
+waitfor '[ "$(at)" = dddd4444 ]' 20 && ok "…and the cursor stepped over the whole push at once" \
+	|| bad "cursor is $(at)/$(stage)"
+
+step "3. a commit that lands WHILE a review is running"
+push eeee5555
+waitfor '[ "$(covering)" = eeee5555 ]' 20 || bad "eeee5555 was not claimed"
+push ffff6666                                   # arrives before eeee5555's review answers
 sleep 2
-if [ "$(field cccc3333 reviewed)" = done ]; then
-	bad "cccc3333 was marked done by bbbb2222's answer"
-else
-	ok "the late answer landed on bbbb2222 alone; cccc3333 is still $(field cccc3333 reviewed)"
-fi
-review cccc3333 || bad "could not complete cccc3333's review"
-wait_field cccc3333 reviewedSha cccc3333 20 && ok "cccc3333 is reviewed too" \
-	|| bad "cccc3333 reviewedSha=$(field cccc3333 reviewedSha)"
+[ "$(covering)" = eeee5555 ] && ok "the claim is unmoved: still covering eeee5555" \
+	|| bad "the claim followed the head to $(covering)"
+review_verbatim eeee5555 pkg.Thing
+waitfor '[ "$(at)" = eeee5555 ]' 20 \
+	&& ok "the cursor advanced to what was CLAIMED, not to the head that moved under it" \
+	|| bad "cursor is $(at)"
+waitfor 'has "$(range ffff6666)" "from: eeee5555"' 20 \
+	&& ok "…and the next range picks up exactly there: eeee5555..ffff6666, nothing skipped" \
+	|| bad "the next range is $(tr '\n' ' ' <<<"$(range ffff6666)")"
 
-step "3. two commits landing in ONE push"
-# NOT two head moves — that is two pushes, which scenario 2 already covers. A push of two
-# commits moves the tip ONCE: verse sees eeee5555 and never sees dddd4444 as a tip at all.
-#
-# The git source does reflect both, as `git:commit:<repo>/<sha>` — main's last N commits, from
-# `git log -n <depth>` on the mirror — so the commit exists as a fact even though the tip never
-# named it. Whether the flow reviews it is the open question this scenario holds.
-reflect_commit dddd4444 cccc3333       # the middle commit: reflected, and never a tip
-reflect_commit eeee5555 dddd4444       # …and the tip, the only one the head ever names
-move_head eeee5555
-LAST=eeee5555
-both=1
-for sha in eeee5555 dddd4444; do
-	if wait_task "$sha" 15 && review "$sha" && wait_field "$sha" reviewedSha "$sha" 15; then
-		continue
-	fi
-	both=
-	[ "$sha" = eeee5555 ] && bad "the tip of the push was not reviewed"
-done
-[ -n "$both" ] && ok "both commits of the push were reviewed" \
-	|| known "only the tip was reviewed: the chain fires on git:head:verse, which names one commit per push, so dddd4444 never becomes a subject — the source reflects it as git:commit:verse/dddd4444 and nothing reads that"
+step "4. the standing set travels the chain, and every carried finding needs a verdict"
+waitfor 'has "$(range ffff6666)" "symbol: pkg.Thing"' 20 \
+	&& ok "ffff6666 was handed the finding the last review left open" \
+	|| bad "outstanding on ffff6666: $(tr '\n' ' ' <<<"$(range ffff6666)")"
+resolve ffff6666 pkg.Thing
+waitfor 'has "$(range ffff6666)" "status: resolved"' 20 \
+	&& ok "…and answering it resolved closes it: the next range carries nothing" \
+	|| bad "the report on ffff6666 did not resolve it"
+push 7777aaaa
+waitfor 'has "$(v task 2>/dev/null)" "id: $(task_for 7777aaaa)"' 20 || bad "no task for 7777aaaa"
+o=$(sed -n '/^outstanding:/,/^[a-z]/p' <<<"$(range 7777aaaa)")
+has "$o" "pkg.Thing" && has "$o" "status: resolved" \
+	&& ok "the resolved verdict is what travels, so it drops out after one more review" \
+	|| ok "nothing outstanding travels once it is resolved"
 
-step "4. a commit chosen by its PARENTS rather than by being the tip"
-# The shape the git source writes: `parents` is a LIST of shas, so rule 5 can ask `!key()
-# [aaaa1111]` — "is aaaa1111 one of this commit's parents" — which is a question no predicate
-# could put to the space-joined string the field used to be. Five commits are in the verse by
-# now, in a chain, and exactly one of them landed on aaaa1111.
-#
-# Asserted over the WHOLE listing rather than one record at a time: "these and no others" is the
-# claim, and one record at a time cannot make it — a per-record check says nothing about the
-# records it did not name. `--depth 4` because these records are addressed at the place plus a
-# sha.
-kids() { v data verse-dev.drift.child --paths --depth 4 2>/dev/null; }
-t0=$SECONDS
-for _ in $(seq 1 30); do [ -n "$(kids)" ] && break; sleep 0.5; done
-sleep 2   # …and settle, so a WRONG extra selection has the same window to show up
-got=$(kids)
-if [ "$got" = "verse-dev.drift.child.bbbb2222" ]; then
-	ok "exactly one of the five was selected by !key() over its parents, and it is bbbb2222, after $((SECONDS-t0))s"
-else
-	bad "the commits selected as children of aaaa1111 are:\n$got\nwant exactly verse-dev.drift.child.bbbb2222 — the one that landed on it"
-fi
+step "5. a review that FAILS stops the chain where it broke"
+v task do fail "$(task_for 7777aaaa)" "the runner had nowhere to put it" --as human:drive >/dev/null 2>&1
+waitfor 'has "$(range 7777aaaa)" "status: failed"' 20 && ok "the range is failed" || bad "the range did not fail"
+sleep 2
+[ "$(at)" != 7777aaaa ] && ok "the cursor did not step past it: still at $(at)" \
+	|| bad "the cursor stepped over a failed review"
+push 8888bbbb
+sleep 3
+[ "$(at)" != 8888bbbb ] && ok "…and a later push does not walk past it either" \
+	|| bad "the chain ran past the failure to $(at)"
+
+step "6. one write resumes it, and the range has GROWN"
+v data verse-dev.drift.at --put '{stage: idle, covering: !delete null}' >/dev/null
+waitfor 'has "$(range 8888bbbb)" "from: eeee5555" || has "$(range 8888bbbb)" "from: ffff6666"' 20 \
+	&& ok "the retry covers everything since: $(sed -n 's/^from: //p' <<<"$(range 8888bbbb)")..8888bbbb" \
+	|| bad "after the reset the ranges are: $(ranges)"
 
 step "result"
 if [ "$fails" -gt 0 ]; then
 	printf '%s%s ASSERTION(S) FAILED%s\n' "$red" "$fails" "$rst"; exit 1
 fi
-printf '%sthe harness works%s — the ~ lines above are the defects it exists to hold still\n' "$grn" "$rst"
+printf '%sthe harness works%s\n' "$grn" "$rst"
