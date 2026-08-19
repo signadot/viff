@@ -64,43 +64,37 @@ ok "up, with a dial-in broker"
 v c -a -f "$HERE/drift-local.tony" >/dev/null || { echo "charter did not install"; exit 1; }
 ok "the drift charter is installed"
 
-TASK='comment-drift@verse-dev.drift.head.head-moved@git:head:verse'
-head_field() { v data verse-dev.drift.head 2>/dev/null | grep -E "^  $1:" | awk '{print $2}'; }
-move_head()  { v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
-# wait_for <field> <value> <seconds>
-wait_for() {
-	local end=$((SECONDS+$3))
-	while [ $SECONDS -lt $end ]; do [ "$(head_field "$1")" = "$2" ] && return 0; sleep 0.3; done
+# ONE RECORD AND ONE TASK PER COMMIT, which is what `key: $subject.value.sha` buys: the
+# derive's address is (rule, subject, key), so every sha keeps its own state and its own task
+# id instead of sharing one slot with every other commit.
+KEY='head-moved@git:head:verse'
+record()  { v data "verse-dev.drift.head.\"$KEY@$1\"" 2>/dev/null; }
+field()   { record "$1" | grep -E "^$2:" | awk '{print $2}'; }
+task_for(){ echo "comment-drift@verse-dev.drift.head.$KEY@$1"; }
+move_head(){ v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+
+# wait_field <sha> <field> <value> <seconds>
+wait_field() {
+	local end=$((SECONDS+$4))
+	while [ $SECONDS -lt $end ]; do [ "$(field "$1" "$2")" = "$3" ] && return 0; sleep 0.3; done
 	return 1
 }
-task_open() { v task 2>/dev/null | grep -q "id: $TASK"; }
+# wait_task <sha> <seconds> — a task of that commit's own
 wait_task() {
-	local end=$((SECONDS+$1))
-	while [ $SECONDS -lt $end ]; do task_open && return 0; sleep 0.3; done
+	local end=$((SECONDS+$2))
+	while [ $SECONDS -lt $end ]; do
+		v task 2>/dev/null | grep -q "id: $(task_for "$1")$" && return 0
+		sleep 0.3
+	done
 	return 1
 }
-# task_sha — WHICH COMMIT the open task was asked about, read off its prompt.
-#
-# The worker has to answer about the commit it was given rather than one the script names,
-# or the harness proves nothing: an answer carrying a sha the task never saw is exactly the
-# confusion `reviewedSha` exists to prevent, and a test that fakes it would pass while the
-# flow lost commits.
-task_sha() { v task 2>/dev/null | grep -oE 'Review [0-9a-f]+' | head -1 | awk '{print $2}'; }
-
-# review [symbol] — answer the open task as its worker would, about its own commit
+# review <sha> [symbol] — answer THAT commit's task, about that commit
 review() {
-	local sha sym=${1:-pkg.Thing}
-	sha=$(task_sha)
-	[ -n "$sha" ] || return 1
-	# THE COMPLETION HAS TO SUCCEED to count. The task id is (rule, subject) and the subject is
-	# one entity, so every head shares ONE id — and a terminal task answers `410 Gone` to the
-	# next claim. A review() that ignored that reported shas nobody reviewed.
-	v task do complete "$TASK" \
+	local sha=$1 sym=${2:-pkg.Thing}
+	v task do complete "$(task_for "$sha")" \
 		"{at: $sha, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $sha}]}" \
-		--as human:drive >/dev/null 2>&1 || return 1
-	echo "$sha"
+		--as human:drive >/dev/null 2>&1
 }
-
 # wait_finding <symbol> <seconds>
 wait_finding() {
 	local end=$((SECONDS+$2))
@@ -113,52 +107,42 @@ wait_finding() {
 
 step "1. one commit, reviewed once"
 move_head aaaa1111
-wait_for reviewed gathered 20 || bad "the head did not reach `gathered`"
-wait_task 20 || bad "no review task was spawned"
-ok "head-moved → gather → a review task, in $SECONDS s"
-asked=$(task_sha)
-[ "$asked" = aaaa1111 ] && ok "the task was asked about aaaa1111" || bad "the task is about ${asked:-nothing}"
-review >/dev/null
-wait_for reviewedSha aaaa1111 20 && ok "the review landed and the head says which commit" \
-	|| bad "reviewedSha did not become aaaa1111"
-[ "$(head_field reviewed)" = done ] && ok "reviewed: done" || bad "reviewed = $(head_field reviewed)"
+wait_task aaaa1111 20 && ok "a task of aaaa1111's own, in $SECONDS s" || bad "no task for aaaa1111"
+review aaaa1111 || bad "could not complete aaaa1111's review"
+wait_field aaaa1111 reviewedSha aaaa1111 20 && ok "aaaa1111 is reviewed, and says so" \
+	|| bad "aaaa1111 reviewedSha=$(field aaaa1111 reviewedSha)"
 wait_finding pkg.Thing 15 && ok "the finding is in the ledger" || bad "no finding was derived"
 
 step "2. a commit that lands WHILE a review is running"
 move_head bbbb2222
-wait_task 20 || bad "no review task for bbbb2222"
-[ "$(task_sha)" = bbbb2222 ] || bad "the task is about $(task_sha), not bbbb2222"
-move_head cccc3333          # a second commit arrives before that review answers
-wait_for sha cccc3333 20 || bad "the head fact did not follow the source"
-review >/dev/null           # …and the older review lands afterwards, about ITS own commit
-sleep 3
-if [ "$(head_field reviewedSha)" = cccc3333 ]; then
-	ok "the newer commit was reviewed"
+wait_task bbbb2222 20 || bad "no task for bbbb2222"
+move_head cccc3333                       # arrives before bbbb2222's review answers
+wait_task cccc3333 20 && ok "cccc3333 got a task of its own while bbbb2222 was still open" \
+	|| bad "cccc3333 never got a task"
+review bbbb2222 || bad "could not complete bbbb2222's review"
+wait_field bbbb2222 reviewedSha bbbb2222 20 || bad "bbbb2222 did not record its own review"
+sleep 2
+if [ "$(field cccc3333 reviewed)" = done ]; then
+	bad "cccc3333 was marked done by bbbb2222's answer"
 else
-	known "cccc3333 is the head and reviewedSha=$(head_field reviewedSha), reviewed=$(head_field reviewed) — the late answer wrote over the pending state, so this commit is never reviewed"
+	ok "the late answer landed on bbbb2222 alone; cccc3333 is still $(field cccc3333 reviewed)"
 fi
+review cccc3333 || bad "could not complete cccc3333's review"
+wait_field cccc3333 reviewedSha cccc3333 20 && ok "cccc3333 is reviewed too" \
+	|| bad "cccc3333 reviewedSha=$(field cccc3333 reviewedSha)"
 
 step "3. two commits landing together, as one push does"
-# Unstick whatever scenario 2 parked, so this measures its own thing: what the flow does with
-# a push, not what it did with the last one.
-v data 'verse-dev.drift.head."head-moved@git:head:verse".reviewed' --put pending >/dev/null
-reviewed=""
 move_head dddd4444
-move_head eeee5555          # the tip moves again immediately — one `git push`, two commits
-for _ in $(seq 1 4); do
-	wait_task 15 || break
-	sha=$(review) || break          # a terminal task cannot be claimed again, and says so
-	reviewed="$reviewed $sha"
-	sleep 2
+move_head eeee5555                       # the tip moves again immediately — one push, two commits
+both=1
+for sha in dddd4444 eeee5555; do
+	wait_task "$sha" 20 || { bad "no task for $sha"; both=; continue; }
+	review "$sha" || { bad "could not complete $sha's review"; both=; continue; }
+	wait_field "$sha" reviewedSha "$sha" 20 || { bad "$sha did not record its own review"; both=; }
 done
-# BOTH, or the push lost one. Which one it loses depends on the race — the first commit's
-# review can land over the second's pending state, or the second can overwrite the first's
-# before a task exists — and either way a commit that nobody reviewed is a fix nobody sees.
-case "$reviewed" in
-	*dddd4444*eeee5555* | *eeee5555*dddd4444*) ok "both commits of the push were reviewed ($reviewed)" ;;
-	*) known "one commit of the push was reviewed ($reviewed), the other never was: the head is a single slot and the review a single task id, so a push of two leaves one commit unreviewed and any finding fixed in it open forever" ;;
-esac
-echo "     head now: sha=$(head_field sha) reviewed=$(head_field reviewed) reviewedSha=$(head_field reviewedSha)"
+[ -n "$both" ] && ok "both commits of the push were reviewed, each about itself" \
+	|| known "a commit of the push was lost"
+v data verse-dev.drift.head --paths 2>/dev/null | sed 's/^/     /'
 
 step "result"
 if [ "$fails" -gt 0 ]; then

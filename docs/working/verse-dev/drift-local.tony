@@ -35,7 +35,19 @@ reads: [ !verse-path [git] ]
   match:
     path: [verse-dev, drift, finding]
 ---
-# 1. Main's tip, as a fact this charter owns — outstanding again the moment it moves.
+# 1. Each tip main has had, as a fact this charter owns.
+#
+# A RECORD PER COMMIT, which is the change under test. `key: $subject.value.sha` makes the
+# derive's address a function of (rule, subject, KEY) rather than (rule, subject), so every sha
+# gets its own record — and with it its own `reviewed` state, its own subject for rule 3 to
+# match, and therefore its own task id.
+#
+# One slot was the cause of both defects the harness holds still. A late `onDone` wrote
+# `reviewed: done` over the state a newer commit had just left, and a push of two overwrote the
+# first commit's record before anything could review it: neither has anywhere to land now,
+# because neither commit's record is the other's.
+#
+# The deletes go with it: a fresh record starts empty, so there is no previous review to clear.
 - name: head-moved
   stratum: reflected
   condition:
@@ -43,13 +55,11 @@ reads: [ !verse-path [git] ]
   action:
     derive:
     - path: [verse-dev, drift, head]
+      key: $subject.value.sha
       value:
         repo: $subject.value.repo
         sha: $subject.value.sha
         reviewed: pending
-        result: !delete null
-        err: !delete null
-        outstanding: !delete null
 ---
 # 2. Before the review, the ledger is read onto the subject.
 - name: gather
