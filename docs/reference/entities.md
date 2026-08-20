@@ -7,24 +7,23 @@ the corners that section leaves out.
 
 ## Addressing
 
-An address is **a path**: as many segments as the tree it names is deep. Three is the ordinary
-shape — system, kind, id — and it is what most of this repository is written in, but a charter
-installed at `verse-dev.drift` keeps its entities at `verse-dev.drift.head.<id>`, four segments
-down, and that is an address like any other.
+An address is a path in a tree.
 
-It has **two spellings**, which are one grammar written two ways:
+It has two spellings, which are one grammar written two ways:
 
 ```
-demo.pr."1"                a KINDED PATH — any depth, and it carries on into the payload
-demo pr 1                  STEPS — one shell word per segment, any depth
+demo.pr."1"                a kinded path — any depth, and it carries on into the payload
+demo pr 1                  steps — one shell word per segment, any depth
 ```
 
-**The path is the one a parser reads**, and a segment ends where the quoting says it does.
-Nothing scans for a delimiter to decide how many segments a word is; a segment that would
-otherwise read as something else is quoted, and reads back as itself:
+The kinded path is the one a parser reads. Its grammar is
+[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath), and a segment
+ends where the quoting says it does. Nothing scans for a delimiter to decide how many segments
+a word is; a segment that would otherwise read as something else is quoted, and reads back as
+itself:
 
 ```
-demo.pr."a.b"              the id `a.b` — quoted, so the dots are in the NAME
+demo.pr."a.b"              the id `a.b` — quoted, so the dots are in the name
 demo.pr.a.b                four segments, because these dots are not quoted
 demo.pr."1"                the id `1`, quoted so it is a name rather than a number
 git.ref.x@git:ref:y        `@` and `:` are ordinary characters in a name; nothing reads them
@@ -32,26 +31,7 @@ github.pr.org/repo#42      …and so are `/` and `#`
 verse.task.instance.run-a1b2   a leading `verse` is the reserved root, a level like any other
 ```
 
-**There used to be a third**, `demo:pr:1`, and it is gone. It could not carry an address deeper
-than three segments — `a:b:c:d` re-reads as three plus an id holding a colon — so every reader
-that recovered an address from text had to decide which of two grammars it was looking at, by
-asking where the colons were. One grammar has no such rule, and the quoting says everything the
-delimiter could not. A colon in a string is now a character in a name: `demo:pr:1` is a
-one-segment address named `demo:pr:1`, and a record written before this is re-seeded rather than
-translated.
-
-**How deep is an entity?** It is a property of the QUESTION, not of the store. A document
-holding `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c` — or one at `a.b` whose payload
-happens to be nested — and nothing in it says which. So a rule's pattern says how deep its
-subjects are (`{path: [verse-dev, drift, head, "*"]}` selects four-segment entities), a write
-names the place it writes, and a listing WALKS (`verse data --paths` lists every address under
-the one it was given, and `--depth` bounds how far it goes). A walk is what a listing can do
-without being told: asking it for one level answered with whatever happened to live there and
-lost anything deeper. See
-[working/entity-tree.md](../working/entity-tree.md) for why it is this way round rather than a
-marker in the store.
-
-**Which spelling goes where.**
+Which spelling goes where.
 
 | | |
 |---|---|

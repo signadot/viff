@@ -422,18 +422,49 @@ predicates over the single entity's payload, rather than composing over time. "a
 just `{path: [demo, pr, *], value: {stage: open}}`, and the same thing one level deeper is
 `{path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}`.
 
+### The pattern says how deep its subjects are
+
+How deep an entity is is a property of the question, not of the store. A document holding
+`{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c`, or one at `a.b` whose payload happens
+to be nested, and nothing in it says which.
+
+So the pattern carries the depth. A `path:` of N segments identifies entities at depth N,
+exactly: `{path: [demo, pr, "*"]}` selects three-segment entities and
+`{path: [verse-dev, drift, head, "*"]}` selects four-segment ones. Each element is a match in
+its own right and an operator acts within its segment, so a name, a `!glob` and a `*` all count
+the same: one segment. Nothing means "at or below".
+
+The `{system, kind, id}` shorthand is the exception, and it is fixed at three whatever it omits.
+`{system: demo, kind: pr}` selects the three-segment entities under `demo.pr`, where
+`{path: [demo, pr]}` selects the entity at `demo.pr` itself. A dimension left out is a prefix; a
+segment left out of a `path:` is a shorter address.
+
+A pattern that names the wrong depth does not fail. It selects the node at the depth it asked
+for — a node that exists, holding the subtree below it as its payload — reads the fields it
+wanted and does not find them, and writes its patches there. This is worth knowing wherever a
+rule reads what another rule derived, since a derive's own depth follows from the subjects the
+producing rule selects: see [`action`](#action--what-fires) below.
+
+A write names the place it writes, and a listing walks: `verse data --paths` lists every address
+under the one it was given, and `--depth` bounds how far it goes. Asking a listing for one level
+answers with whatever happens to live there and loses anything deeper, which is why it walks
+instead. [working/entity-tree.md](working/entity-tree.md) records why it is this way round
+rather than a marker in the store.
+
 ### The string form is an address, in one grammar
 
-There is one string grammar for addressing entities by identity, and both the charter
-wire and the CLI (`verse flow <addr>`) parse it with `ParseExpr`: three segments, `*` a
-wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a
-charter and `verse flow demo.pr.*` on the command line mean the same set, as they read like
-they should.
+There is one string grammar for addressing entities by identity, and both the charter wire and
+the CLI (`verse flow <addr>`) parse it with `ParseExpr`: a kinded path, `*` a wildcard per
+segment, and a segment that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a charter and
+`verse flow demo.pr.*` on the command line mean the same set, as they read like they should.
 
-The string form is the three-segment one, because that is what a colon spelling can carry. An
-address of any depth is a VECTOR — `!verse-path [verse-dev drift head "*"]`, or `path:
-[verse-dev, drift, head, "*"]` in the object form — where every element is a match in its own
-right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment.
+Fewer than three segments is the shorthand rather than a shallower address — `"demo.pr"` is
+`{system: demo, kind: pr}`, which selects at three. Deeper is itself:
+`"verse-dev.drift.head.*"` selects at four.
+
+An operator per segment needs the VECTOR form — `!verse-path [verse-dev drift head "*"]`, or
+`path: [verse-dev, drift, head, "*"]` in the object form — where every element is a match in its
+own right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment.
 Nothing here enumerates the operators; `tony.Match` owns them, so a segment is as expressive as
 a payload predicate.
 
