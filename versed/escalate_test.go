@@ -236,6 +236,16 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	resp := postTony(t, ts.URL+"/resolvers/instance/"+resolver.InstanceRef("payments-review", "run-1").ID()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		t.Fatalf("the verdict was refused: %s", resp.Status)
+	}
+	// ANSWERED BEFORE THE CLOCK, waited for rather than assumed. The record is written by more
+	// than one path and a read taken the instant this route returns can catch it mid-flight; a
+	// test that slept through that window was asserting about whichever version it happened to
+	// see (git-issue nkptp9b3h12ksx3kg9n0).
+	settledQuestion(t, srv, qid)
+	// Now let the deadline pass, and sweep. The property is that a question answered in time is
+	// not moved by its own clock.
 	time.Sleep(350 * time.Millisecond)
 	docket(t, srv)
 

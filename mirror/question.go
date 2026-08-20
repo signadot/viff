@@ -115,6 +115,40 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		"status":  QuestionPending,
 		"posedAt": time.Now().UTC().Format(time.RFC3339),
 	}
+	// A QUESTION THAT HAS ALREADY SETTLED IS NOT RE-POSED BY A LATE FRAME.
+	//
+	// A local run posts twice — once from the registry (PostQuestion above) and once from the
+	// frame — and the comment above says every field the two share they agree on. They do not
+	// agree on `status` once an ANSWER lands between them: this write merges `pending` over
+	// `answered` and leaves a record that says both, with a verdict, a `by` and an `answeredAt`
+	// sitting under `status: pending`. A person reading the docket then sees a question to
+	// decide, already stamped with who decided it.
+	//
+	// PostQuestion guards this with clearPriorAnswer, which is the RE-ASK case: a genuinely new
+	// asking clears the old answer and marks `askedAgain`. This is not that — it is the same
+	// asking, reported a second time — so the answer stands and only the fields that would
+	// contradict it are dropped.
+	//
+	// It surfaced as a flaky test (git-issue nkptp9b3h12ksx3kg9n0): under load the answer lands
+	// inside the window between the two posts, which on an unloaded machine it never does.
+	//
+	// SO THE TWO FIELDS THAT CAN CONTRADICT ARE WRITTEN CONDITIONALLY, and the rest is not.
+	// `status` and `posedAt` land only while the record does not already say it settled;
+	// everything else the frame carries is information no answer contradicts and is written
+	// either way. Reading the status here and branching on it is the same race with a smaller
+	// window — measured, and it narrowed the flake without closing it — so the store is asked
+	// instead.
+	//
+	// IT DOES NOT CLOSE IT EITHER, and that is worth saying rather than leaving to be
+	// rediscovered. The two writers are concurrent and the precondition is evaluated against a
+	// view that can lag the answer by a few milliseconds, so a frame post can still be admitted
+	// against a record that has just been answered. What is left needs the two paths ordered
+	// rather than each checking, which is a question about the runtime and not about this
+	// function; it stays on git-issue nkptp9b3h12ksx3kg9n0.
+	ref := QuestionRef(ev.ID)
+	posed := entity.Obj{"status": rec["status"], "posedAt": rec["posedAt"]}
+	delete(rec, "status")
+	delete(rec, "posedAt")
 	// The origin is READ OFF the id, and only when the id is one verse minted (`<origin>~d<n>`).
 	// A worker that raises a gate under an id of its own choosing has no origin — it decided
 	// nothing about who answers — and inventing one by taking the id whole would put a name
@@ -136,7 +170,26 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 			rec[k] = v
 		}
 	}
-	writeAt(store, QuestionRef(ev.ID), rec)
+	writeAt(store, ref, rec)
+	// Still pending, or not there at all — a brokered question whose only writer is this frame.
+	// `!not` over the two settled values rather than an equality on `pending`, so a status this
+	// does not know about is not silently treated as re-posable.
+	_, _, _ = store.Write(entity.Write{
+		At:    ref.At(),
+		Value: posed.Payload(),
+		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
+	})
+
+}
+
+// notStatus is the precondition "this record does not say status: s".
+//
+// Asked of the WHOLE payload rather than of the `status` field, which is what makes it true for
+// a record that has no status yet — the brokered case, where this frame is the first writer.
+// A field-level `!not` would be a non-match against an absent field and would refuse the very
+// write that creates it.
+func notStatus(s string) entity.Require {
+	return entity.Require{Pattern: entity.Obj{"status": s}.Payload().WithTag("!not")}
 }
 
 // AnswerQuestion settles a question. It records rather than deletes: an answered question is

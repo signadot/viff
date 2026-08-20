@@ -31,6 +31,34 @@ func answerable(t *testing.T, srv *Server, id string) chan task.Resolution {
 	return answered
 }
 
+// settledQuestion waits for a question's record to SETTLE, and answers it.
+//
+// The record is written by more than one path — a local run posts it from the registry and again
+// from its frame, and the answer is a third writer — so a read taken the instant an answer's
+// route returns 204 can catch the record between them, saying `status: pending` with a verdict
+// and a `by` already on it. Waiting for the condition is the boundary; a fixed sleep is a margin
+// sized for an unloaded machine, and that is what made two tests here flaky under the full suite
+// (git-issue nkptp9b3h12ksx3kg9n0).
+//
+// It waits for a SETTLED status rather than for a particular one, so a test asserting the wrong
+// outcome still fails on its own assertion rather than timing out here.
+func settledQuestion(t *testing.T, srv *Server, id string) map[string]any {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		q := question(t, srv, id)
+		switch q["status"] {
+		case mirror.QuestionAnswered, mirror.QuestionOrphaned:
+			return q
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("question %s never settled: %+v", id, q)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 func question(t *testing.T, srv *Server, id string) map[string]any {
 	t.Helper()
 	e, _, _ := srv.Store.Get(mirror.QuestionRef(id))

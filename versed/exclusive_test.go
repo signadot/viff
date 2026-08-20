@@ -99,7 +99,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the override was refused: %s", resp.Status)
 	}
-	q := question(t, srv, qid)
+	q := settledQuestion(t, srv, qid)
 	if q["by"] != "human:scott" || q["overrode"] != "verse:resolvers:security:payments-review" {
 		t.Fatalf("the record does not name both parties: %+v", q)
 	}
