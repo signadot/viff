@@ -274,10 +274,17 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 			if sha := entity.ToObj(e.Payload)["sha"]; sha != "aaa111" {
 				t.Fatalf("the mark replaced the record instead of merging into it: %+v", e.Payload)
 			}
-			// …and an element naming an address nobody had made one anyway.
-			if _, ok, _ := store.Get(entity.RefAt("demo", "batch", "bbb222")); !ok {
-				t.Error("the element for bbb222 landed nowhere")
+			// …and an element naming an address nobody had made one anyway. POLLED: the two
+			// elements are two writes, so the one already checked landing says nothing about
+			// when the other does — asserting straight off it is a race, not a check.
+			other := entity.RefAt("demo", "batch", "bbb222")
+			for j := 0; j < 100; j++ {
+				if _, ok, _ := store.Get(other); ok {
+					return
+				}
+				time.Sleep(20 * time.Millisecond)
 			}
+			t.Error("the element for bbb222 landed nowhere")
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
