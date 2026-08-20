@@ -27,9 +27,10 @@ reserved root like everything verse keeps about its own running) because it is a
 already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
 
-A source reflects the WORLD's half and only that: a reflection naming an address under `verse:`
-is refused, and no `owns` claim reaches there however wide it is written — `*:*:*` claims every
-entity the world is about and none of verse's own.
+A source reflects the WORLD's half and only that: a reflection naming an address under `verse.`
+is refused, a claim that names it is refused at install, and no claim reaches there however wide
+it is written — `*.*.*` claims every three-segment entity the world is about and none of verse's
+own.
 
 ## Ownership
 
@@ -38,10 +39,16 @@ entity the world is about and none of verse's own.
 because an install compares declarations with no entities in hand.
 
 ```tony
-{ref: "<system>:<kind>:<id>"}          any segment may be `*`
-{ref: "<system>:<kind>:<prefix>*"}     an id may end in one — a literal prefix, nothing richer
-{ref: "<system>:<kind>:<id>", at: [a, b]}   …at a place INSIDE the payload
+{ref: "git.ref.verse/main"}    one entity
+{ref: "git.*.verse/*"}         a level may be `*`, and may END in one — a literal prefix
+{ref: "git"}                   a whole subtree: everything under it, at every depth
+{ref: "verse-dev.drift"}       …which is how a source that keeps two levels of its own says so
+{ref: "linear.project.*", at: [owners, ENG]}   …at a place INSIDE the payload
 ```
+
+A claim is **one pattern per level, at whatever depth** — the same shape an address is. It is
+not three fixed dimensions: a claim shorter than an entity owns everything under it, and one
+longer than three owns a place a package keeps its own tree at.
 
 `at` is the path inside the payload the claim is about, the same address a write takes
 (`entity.Path`). It is what lets two sources share an entity without either being a second
@@ -50,13 +57,14 @@ Sharing is not an exception to single-writership; it is single-writership at a d
 Absent — which is every claim the connectors make but Linear's on a project — the claim is to
 the whole entity.
 
-Two claims are **disjoint** when any segment is: two literal systems that differ, two literal
-kinds that differ, two id prefixes neither of which prefixes the other, or two paths neither of
-which contains the other. A `*` segment is disjoint from nothing, so `git.*.*` claims its whole
-system and can be proved apart from nothing in it. A `*` anywhere but the end of an id is a
-parse error, not an approximation. Paths compare **segment-wise**, so `owners.ENG` and
-`owners.ENGINE` are disjoint, while `owners` contains `owners.ENG` and an absent path contains
-every path there is.
+Two claims are **disjoint** when any level is: two literal names that differ, or two prefixes
+neither of which prefixes the other. Where neither parts company first, the SHORTER claim
+contains the longer — `git` overlaps `git.ref.x` rather than being disjoint from it — which is
+the same rule the payload path already followed, asked once of the address and once inside the
+payload. A `*` level is disjoint from nothing, so `git.*.*` can be proved apart from nothing in
+its system. A `*` anywhere but the end of a level is a parse error, not an approximation.
+Levels and paths both compare **segment-wise**, so `owners.ENG` and `owners.ENGINE` are
+disjoint, while `owners` contains `owners.ENG` and an absent path contains every path there is.
 
 Git claims **two entries per repo**, because refs and commits are `<repo>/<name>` while a head
 is the bare `<repo>`:

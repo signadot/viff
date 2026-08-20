@@ -81,7 +81,7 @@ func TestClaimDisjoint(t *testing.T) {
 func TestASlotIsAClaimAtADeeperAddress(t *testing.T) {
 	// `linear.project.*` — every project — at the given path. Prefix with an empty ID is `*`.
 	project := func(field ...string) source.Claim {
-		return source.Claim{System: "linear", Kind: "project", Prefix: true, Field: field}
+		return mustClaim(t, "linear.project.*", field...)
 	}
 	for _, tc := range []struct {
 		name string
@@ -99,7 +99,7 @@ func TestASlotIsAClaimAtADeeperAddress(t *testing.T) {
 		// The path is the LAST thing asked, so a difference higher up still decides it: two
 		// kinds that differ are disjoint whatever their paths would have said.
 		{"a different kind, same path", project("owners", "ENG"),
-			source.Claim{System: "linear", Kind: "cycle", Prefix: true, Field: []string{"owners", "ENG"}}, true},
+			mustClaim(t, "linear.cycle.*", "owners", "ENG"), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.a.Disjoint(tc.b); got != tc.want {
@@ -140,7 +140,7 @@ func TestTheTerseSpellingIsPathLess(t *testing.T) {
 	}
 	// A claim WITH a path has no terse spelling and does not pretend to: it renders for a
 	// person reading a refusal, and nothing parses it back.
-	slot := source.Claim{System: "linear", Kind: "project", Prefix: true, Field: []string{"owners", "ENG"}}
+	slot := mustClaim(t, "linear.project.*", "owners", "ENG")
 	if got, want := slot.String(), "linear.project.* at owners.ENG"; got != want {
 		t.Fatalf("a slot claim renders as %q, want %q", got, want)
 	}
@@ -164,21 +164,25 @@ func TestDisjointIsEveryPair(t *testing.T) {
 // narrower than it looks is a single-writer guarantee resting on a typo.
 func TestParseClaimRefusals(t *testing.T) {
 	for _, s := range []string{
-		"git:ref",        // two segments
-		"git::x",         // empty kind
-		"git.ref.",       // empty id
-		"gi*t.ref.x",     // a glob in the system
-		"git.re*.x",      // a glob in the kind
-		"git.ref.a*b",    // a `*` that is not trailing
-		"git.ref.*/main", // ditto, at the front
-		"git.ref.a/*/b",  // ditto, in the middle
+		"",                   // no levels at all
+		"git.ref.",           // an empty level
+		"gi*t.ref.x",         // a `*` that is not trailing
+		"git.ref.a*b",        // ditto, in the middle of a name
+		"git.ref.*/main",     // ditto, at the front
+		"git.ref.a/*/b",      // ditto, inside an id
+		"verse.trigger.rule", // verse's own half is nobody's to claim
 	} {
 		if c, err := source.ParseClaim(s); err == nil {
 			t.Fatalf("%q should be refused, parsed as %s", s, c)
 		}
 	}
-	// And what a well-formed one round-trips to, since the refusal messages quote it back.
-	for _, s := range []string{"git.*.verse/*", "git.head.verse", "*.*.*"} {
+	// And what a well-formed one round-trips to, since the refusal messages quote it back. The
+	// last three are what the three fixed dimensions could not say at all: a claim shorter than
+	// an entity, one deeper, and a glob above the last level.
+	for _, s := range []string{
+		"git.*.verse/*", "git.head.verse", "*.*.*",
+		"git", "verse-dev.drift.head.abc", "git.re*.x",
+	} {
 		c, err := source.ParseClaim(s)
 		if err != nil {
 			t.Fatalf("parse %q: %v", s, err)
@@ -187,10 +191,80 @@ func TestParseClaimRefusals(t *testing.T) {
 			t.Fatalf("%q round-tripped to %q", s, c.String())
 		}
 	}
-	// An id may contain colons — the same three-way split entity.ParseRef makes.
+	// A colon is an ordinary character in a level, since nothing in the address grammar reads
+	// one — and the trailing `*` is the pattern's rather than the name's.
 	c, err := source.ParseClaim("git.ref.a:b/*")
-	if err != nil || c.ID != "a:b/" || !c.Prefix {
-		t.Fatalf("an id may contain colons: %+v %v", c, err)
+	if err != nil || len(c.Segs) != 3 || c.Segs[2] != (source.Seg{Name: "a:b/", Prefix: true}) {
+		t.Fatalf("a level may contain colons: %+v %v", c, err)
+	}
+}
+
+// A CLAIM IS OVER A TREE, which is what the three fixed dimensions could not be: a source that
+// keeps two levels of its own — the shape a package already has — says so by claiming the place
+// they live under, and is proved apart from its neighbours by the same walk as everything else.
+//
+// The pairs below are the ones the old shape got wrong or could not state. A SHORTER claim is
+// not a weaker one: it contains everything under it, so it OVERLAPS rather than being disjoint.
+func TestAClaimIsOverATree(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b string
+		want bool // disjoint?
+	}{
+		{"a subtree holds what is under it", "git", "git.ref.x", false},
+		{"…however deep", "verse-dev.drift", "verse-dev.drift.head.abc", false},
+		{"two subtrees that part at the first level", "git", "github", true},
+		{"…and at a later one", "verse-dev.drift", "verse-dev.merge", true},
+		{"a glob above the last level", "git.re*.x", "git.ref.x", false},
+		{"…that does not reach", "git.re*.x", "git.head.x", true},
+		{"a wildcard level reaches everything at it", "git.*.x", "git.anything.x", false},
+		{"two depths under one system, disjoint below", "verse-dev.drift.head", "verse-dev.drift.finding", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, err := source.ParseClaim(tc.a)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tc.a, err)
+			}
+			b, err := source.ParseClaim(tc.b)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tc.b, err)
+			}
+			if got := a.Disjoint(b); got != tc.want {
+				t.Errorf("%s disjoint %s = %v, want %v", a, b, got, tc.want)
+			}
+			// Symmetric: an install checks one way and means both, so an asymmetric answer
+			// would make a refusal depend on installation order.
+			if got := b.Disjoint(a); got != tc.want {
+				t.Errorf("%s disjoint %s = %v, want %v (asymmetric)", b, a, got, tc.want)
+			}
+		})
+	}
+}
+
+// A subtree claim covers the addresses under it, which is what a removal reads to decide what
+// it may tombstone. Claimed is the point-wise face of Disjoint, and this is the depth question
+// asked of it directly.
+func TestASubtreeClaimCoversWhatIsUnderIt(t *testing.T) {
+	claims, err := source.ParseOwns([]source.Own{{Ref: "verse-dev.drift"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []entity.Ref{
+		entity.RefAt("verse-dev", "drift", "head", "abc"),
+		entity.RefAt("verse-dev", "drift", "finding", "1"),
+		entity.RefAt("verse-dev", "drift"),
+	} {
+		if places := source.Claimed(claims, ref); len(places) != 1 {
+			t.Errorf("%s is under the claim; Claimed = %v", ref, places)
+		}
+	}
+	for _, ref := range []entity.Ref{
+		entity.RefAt("verse-dev", "merge", "train", "x"),
+		entity.RefAt("git", "ref", "main"),
+	} {
+		if places := source.Claimed(claims, ref); len(places) != 0 {
+			t.Errorf("%s is outside the claim; Claimed = %v", ref, places)
+		}
 	}
 }
 
@@ -305,4 +379,16 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 			}
 		}
 	}
+}
+
+// mustClaim parses a claim and attaches a payload path — the two halves of a Claim, since the
+// path has no terse spelling of its own (source/own.go).
+func mustClaim(t *testing.T, s string, field ...string) source.Claim {
+	t.Helper()
+	c, err := source.ParseClaim(s)
+	if err != nil {
+		t.Fatalf("ParseClaim(%q): %v", s, err)
+	}
+	c.Field = field
+	return c
 }

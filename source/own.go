@@ -8,7 +8,8 @@ import (
 )
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
-// address in verse is — `<system>.<kind>.<id>` — with `*` allowed: `git.*.verse/*`.
+// address in verse is — one pattern per level, at whatever depth — with `*` allowed at any of
+// them and a trailing one making a prefix: `git.*.verse/*`, or just `git` for the whole system.
 //
 // It is NOT an entity.Pattern, which is what a Reflection's Covers is and what a charter's
 // `when` becomes, and the difference is where the two questions are asked rather than a
@@ -58,8 +59,8 @@ import (
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
 // through this package on which an unparseable claim is silently skipped.
 type Own struct {
-	// Ref is the address, as a ref glob: `<system>.<kind>.<id>`, any segment `*`, an id
-	// ending in one. ParseClaim is what reads it.
+	// Ref is the address, as an address glob: a level may be `*`, and may end in one.
+	// ParseClaim is what reads it.
 	Ref string `tony:"field=ref"`
 	// At is the path inside the payload, empty for the whole entity.
 	At []string `tony:"field=at,omitzero"`
@@ -103,23 +104,68 @@ func ParseOwns(owns []Own) ([]Claim, error) {
 	return out, nil
 }
 
-// Claim is one parsed ownership claim.
+// Claim is one parsed ownership claim: a pattern per LEVEL of the address, at whatever depth,
+// and optionally a path inside the payload.
+//
+// IT IS A TREE, and it did not used to be. `{System, Kind string; ID string; Prefix bool}` was
+// three positions with three different rules — the first two a literal or `*`, the third also a
+// prefix glob — which is the arity written down three times and a grammar that could not say
+// what a source actually owns once entities stopped being three segments deep. One Seg per
+// level says it once, and a claim as short as `git` owns the whole subtree under it.
 type Claim struct {
-	// System and Kind are a literal or "" for `*` (which matches any).
-	System, Kind string
-	// ID is the literal id, or the literal PREFIX when Prefix is set. Empty with Prefix set is
-	// `*`: every id.
-	ID string
-	// Prefix reports that ID is a prefix rather than the whole thing — the trailing `*`.
-	Prefix bool
+	// Segs is the address pattern, one per level. A claim SHORTER than an address covers
+	// everything under it, which is what makes `git` a claim on the whole system.
+	Segs []Seg
 	// Field is the path inside the payload this claim is about — {"owners","ENG"} is the `ENG`
 	// key of the `owners` object, and it is the same address entity.Path.Field names for a
-	// write. Empty is the whole entity, which is every claim ParseClaim can produce.
+	// write. Empty is the whole entity.
 	//
 	// A claim with no path CONTAINS every claim under it, which is why an empty Field is a
 	// prefix of everything rather than a wildcard: a source claiming a whole entity and one
 	// claiming a slot inside it are two writers of that slot.
 	Field []string
+}
+
+// Seg is one level of a claim: a literal name, or a literal PREFIX when Prefix is set.
+//
+// `*` IS THE EMPTY PREFIX, not a case of its own — every name begins with "" — so the wildcard
+// and the glob are one comparison rather than two, and the three-way switch the id used to need
+// (both prefixes, one prefix, neither) is the whole of it at every level.
+type Seg struct {
+	Name   string
+	Prefix bool
+}
+
+// Disjoint reports whether no name satisfies both segments.
+func (s Seg) Disjoint(o Seg) bool {
+	switch {
+	case s.Prefix && o.Prefix:
+		// Two prefixes share a name iff one extends the other.
+		return !strings.HasPrefix(s.Name, o.Name) && !strings.HasPrefix(o.Name, s.Name)
+	case s.Prefix:
+		return !strings.HasPrefix(o.Name, s.Name)
+	case o.Prefix:
+		return !strings.HasPrefix(s.Name, o.Name)
+	default:
+		return s.Name != o.Name
+	}
+}
+
+func (s Seg) String() string {
+	if s.Prefix {
+		return s.Name + "*"
+	}
+	return s.Name
+}
+
+// Head is the claim's first level as an EXACT name, and whether it is one — what a caller
+// narrowing a store read may use as a prefix. A glob or a `*` there answers false, and the
+// caller must read wider: a claim that does not say which system it is in cannot narrow one.
+func (c Claim) Head() (string, bool) {
+	if len(c.Segs) == 0 || c.Segs[0].Prefix {
+		return "", false
+	}
+	return c.Segs[0].Name, true
 }
 
 // ParseClaim reads a claim from its address-glob spelling.
@@ -130,52 +176,62 @@ type Claim struct {
 // day those became kinded paths a source's `owns` was the one place still spelling them the old
 // way.
 //
-// An id glob is a literal prefix and an optional TRAILING `*`, and nothing richer. That is a
+// A GLOB IS A LITERAL PREFIX AND A TRAILING `*`, at every level, and nothing richer. That is a
 // deliberate floor rather than a first version: prefix-disjointness is a string comparison,
 // while disjointness of two general globs is an automata intersection — and the whole reason
 // ownership is an address is to stop proving things the hard way. A `*` anywhere else is
 // refused rather than approximated, because a claim that quietly meant something narrower than
 // it looked would be a single-writer guarantee resting on a typo.
 //
-// STILL THREE SEGMENTS. A claim over a tree — one segment pattern per level, at whatever depth
-// — is what the shape wants to be, and is a change to Claim and to Disjoint rather than to the
-// spelling this reads.
+// The rule used to be the id's alone, with the system and the kind allowed only a literal or a
+// bare `*`. That was an arity restriction wearing a safety argument: the comparison is a string
+// prefix at every level, so there was never a reason it could only be made at the third.
 func ParseClaim(s string) (Claim, error) {
+	// A `*` ENDS ITS LEVEL, checked on the string before anything reads it. The address grammar
+	// treats a `*` as self-delimiting, so `git.ref.*/main` parses happily as FOUR levels — `git`,
+	// `ref`, `*`, `/main` — which is a claim nobody wrote, and a wider one than the id glob that
+	// was meant. Refusing here keeps that from being a silent approximation.
+	for i := 0; i < len(s); i++ {
+		if s[i] == '*' && i+1 < len(s) && s[i+1] != '.' {
+			return Claim{}, fmt.Errorf("ownership claim %q: a glob is a prefix with a TRAILING "+
+				"`*` (verse/*, or `*` for a whole level) — a `*` anywhere else is refused rather "+
+				"than approximated, since a claim meaning something narrower (or wider) than it "+
+				"looks is a single-writer guarantee resting on a typo", s)
+		}
+	}
 	parts, err := entity.ExprSegs(s)
 	if err != nil {
 		return Claim{}, fmt.Errorf("ownership claim %q: %w", s, err)
 	}
-	if len(parts) != entity.Depth || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return Claim{}, fmt.Errorf("ownership claim %q: want <system>.<kind>.<id>, where any "+
-			"segment may be * and an id may end in one (git.*.verse/*)", s)
+	if len(parts) == 0 {
+		return Claim{}, fmt.Errorf("ownership claim %q: want an address, one pattern per level, "+
+			"where a level may be `*` and may end in one (git.*.verse/*)", s)
+	}
+	// NOTHING IN VERSE'S OWN HALF, said at the parse rather than only where a removal reads the
+	// claim: a source reflects the world, and the half verse keeps about its own running is not
+	// a slice anybody may register for. A claim whose first level is a `*` still reaches it, and
+	// Claimed refuses that at the point — this catches the one somebody wrote down.
+	if parts[0] == entity.VerseRoot {
+		return Claim{}, fmt.Errorf("ownership claim %q: %q is what verse writes about its own "+
+			"running, and no source may claim it — a source reflects the world", s, entity.VerseRoot)
 	}
 	var c Claim
-	for i, seg := range []string{parts[0], parts[1]} {
-		name := [2]string{"system", "kind"}[i]
-		if seg == "*" {
+	for _, p := range parts {
+		if p == "" {
+			return Claim{}, fmt.Errorf("ownership claim %q: a level is a name, and none of them "+
+				"may be empty", s)
+		}
+		if star := strings.Index(p, "*"); star >= 0 {
+			if star != len(p)-1 {
+				return Claim{}, fmt.Errorf("ownership claim %q: a glob is a prefix with a "+
+					"TRAILING `*` (verse/*) — a `*` anywhere else is refused rather than "+
+					"approximated, since a claim meaning something narrower than it looks is a "+
+					"single-writer guarantee resting on a typo", s)
+			}
+			c.Segs = append(c.Segs, Seg{Name: p[:star], Prefix: true})
 			continue
 		}
-		if strings.Contains(seg, "*") {
-			return Claim{}, fmt.Errorf("ownership claim %q: the %s may be a literal or `*`, "+
-				"not a glob — only an id may carry a prefix glob", s, name)
-		}
-		if i == 0 {
-			c.System = seg
-		} else {
-			c.Kind = seg
-		}
-	}
-	id := parts[2]
-	if star := strings.Index(id, "*"); star >= 0 {
-		if star != len(id)-1 {
-			return Claim{}, fmt.Errorf("ownership claim %q: an id glob is a prefix with a "+
-				"TRAILING `*` (verse/*) — a `*` anywhere else is refused rather than "+
-				"approximated, since a claim meaning something narrower than it looks is a "+
-				"single-writer guarantee resting on a typo", s)
-		}
-		c.ID, c.Prefix = id[:star], true
-	} else {
-		c.ID = id
+		c.Segs = append(c.Segs, Seg{Name: p})
 	}
 	return c, nil
 }
@@ -184,22 +240,25 @@ func ParseClaim(s string) (Claim, error) {
 //
 // A path-less claim round-trips through ParseClaim, which is what makes a refusal quote the
 // operator's own words. A claim WITH a path does not and cannot — there is no terse spelling of
-// one (see above) — so it renders for a person to read rather than for a parser: the ref, then
-// `at`, then the path. Nothing consumes this form.
+// one (see above) — so it renders for a person to read rather than for a parser: the address,
+// then `at`, then the path. Nothing consumes this form.
 func (c Claim) String() string {
-	seg := func(s string) string {
-		if s == "" {
-			return "*"
+	segs := make([]string, 0, len(c.Segs))
+	for _, s := range c.Segs {
+		// A bare `*` stays bare: a wildcard is a position rather than a name. Everything else is
+		// quoted where the address grammar needs it, with the trailing glob left OUTSIDE the
+		// quotes, since it belongs to the pattern rather than to the name.
+		if s.Prefix && s.Name == "" {
+			segs = append(segs, "*")
+			continue
 		}
-		return s
+		out := entity.JoinSegs([]string{s.Name})
+		if s.Prefix {
+			out += "*"
+		}
+		segs = append(segs, out)
 	}
-	id := c.ID
-	if c.Prefix {
-		id += "*"
-	}
-	// Rendered as the address it is — the `*`s bare, since a wildcard is a position rather than
-	// a name, and everything else quoted where the grammar needs it.
-	out := seg(c.System) + "." + seg(c.Kind) + "." + seg(id)
+	out := strings.Join(segs, ".")
 	if len(c.Field) > 0 {
 		out += " at " + strings.Join(c.Field, ".")
 	}
@@ -208,25 +267,26 @@ func (c Claim) String() string {
 
 // Disjoint reports whether no PLACE can satisfy both claims.
 //
-// It PROVES, and answers false whenever it cannot. Two claims are disjoint when ANY segment is,
-// since a place must satisfy all four: two literal systems that differ, two literal kinds that
-// differ, two ids that cannot be the same string, or two paths neither of which contains the
-// other. A `*` segment is disjoint from nothing, which is why a claim of `git:*:*` is disjoint
-// from nothing else in git — it claims the lot.
+// It PROVES, and answers false whenever it cannot. Two claims are disjoint when ANY level is,
+// since a place must satisfy every one of them — and when neither parts company first, the
+// SHORTER one contains the longer, exactly as a payload path does. That is the whole of it: one
+// walk, the same walk the field path already used, asked once of the address and once inside
+// the payload.
 //
-// The path is one more segment and not a new kind of reasoning, which is the whole reason it is
-// spelled as an address: adding a fourth string comparison to three is a change to this
-// function's length and not to what it is able to prove.
+// A shorter claim is not a weaker one: `git` owns everything under it, so it overlaps
+// `git.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
+// something, and it is the case the three fixed dimensions could not express at all.
 func (c Claim) Disjoint(o Claim) bool {
-	if c.System != "" && o.System != "" && c.System != o.System {
-		return true
+	n := len(c.Segs)
+	if len(o.Segs) < n {
+		n = len(o.Segs)
 	}
-	if c.Kind != "" && o.Kind != "" && c.Kind != o.Kind {
-		return true
+	for i := 0; i < n; i++ {
+		if c.Segs[i].Disjoint(o.Segs[i]) {
+			return true
+		}
 	}
-	if idsDisjoint(c, o) {
-		return true
-	}
+	// The addresses overlap; the payload paths decide.
 	return pathsDisjoint(c.Field, o.Field)
 }
 
@@ -252,21 +312,6 @@ func pathsDisjoint(a, b []string) bool {
 	// One is a prefix of the other — including the case where one is empty, which is the whole
 	// entity and so contains every path in it.
 	return false
-}
-
-// idsDisjoint is the whole of the id comparison, and it is three string cases.
-func idsDisjoint(a, b Claim) bool {
-	switch {
-	case a.Prefix && b.Prefix:
-		// Two prefixes share an id iff one extends the other.
-		return !strings.HasPrefix(a.ID, b.ID) && !strings.HasPrefix(b.ID, a.ID)
-	case a.Prefix:
-		return !strings.HasPrefix(b.ID, a.ID)
-	case b.Prefix:
-		return !strings.HasPrefix(a.ID, b.ID)
-	default:
-		return a.ID != b.ID
-	}
 }
 
 // Disjoint reports whether every claim of a is provably disjoint from every claim of b — the
@@ -319,17 +364,22 @@ func Disjoint(a, b []Own) (bool, error) {
 // inside it is asked to delete the entity once rather than twice. Deleting the deeper one after
 // the shallower would write into an entity that is already gone.
 func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
-	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. A claim is three segments and carries
-	// no root, so `task:*:*` — or the wildcard `*:*:*`, which a source with no other source
-	// installed may register — asks about `verse:task:instance:x` and `verse:trigger:rule:y` as
-	// readily as about the world's. The caller that deletes writes straight to the store, below
+	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. ParseClaim refuses one that NAMES it,
+	// but a wildcard first level — `*.*.*`, which a source with no neighbour may register —
+	// still reaches `verse.task.instance.x` and `verse.trigger.rule.y` as readily as the world's. The caller that deletes writes straight to the store, below
 	// the refusal that guards the HTTP face, so `verse source remove --forget` was the one
 	// client-reachable path that could tombstone the charter. A source reflects the world; the
 	// half verse keeps about itself is not a slice anybody may claim.
 	if ref.Reserved() {
 		return nil
 	}
-	point := Claim{System: ref.System(), Kind: ref.Kind(), ID: ref.ID()}
+	// The ref AS A CLAIM: one exact level per segment, at whatever depth it is. A claim covers
+	// it exactly when the two are not disjoint, which is how a short claim (`git`) is asked
+	// about a long address without either side knowing how deep the other goes.
+	point := Claim{Segs: make([]Seg, 0, ref.Len())}
+	for _, s := range ref.Segs() {
+		point.Segs = append(point.Segs, Seg{Name: s})
+	}
 	var out []entity.Path
 	for _, c := range claims {
 		if c.Disjoint(point) {

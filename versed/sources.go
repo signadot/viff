@@ -449,10 +449,14 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 	systems := map[string]bool{}
 	wildcard := false
 	for _, c := range claims {
-		if c.System == "" {
+		// The first LEVEL, when it is an exact name. A `*` or a glob there names no one system,
+		// so the read cannot be narrowed and every claim has to be asked about every entity.
+		head, exact := c.Head()
+		if !exact {
 			wildcard = true
+			continue
 		}
-		systems[c.System] = true
+		systems[head] = true
 	}
 	var out []entity.Path
 	// `!Reserved()` says at the enumeration what `source.Claimed` also refuses at the point:
