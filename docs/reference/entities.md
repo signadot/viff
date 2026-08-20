@@ -54,33 +54,36 @@ marker in the store.
 |---|---|
 | a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
 | a path | any depth, and anywhere the address may continue into the payload: `verse data demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
-| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN; `--paths` answers with a kinded path |
+| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN, and what every listing answers with |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
-A KINDED PATH is what `verse data --paths` prints — one token per line, each segment quoted
-only where the grammar needs it — so a listing pipes back into a read by handing the line over
-whole:
+STEPS ARE WHAT A LISTING ANSWERS WITH — the same spelling the command line takes, so a line
+hands straight back:
 
 ```sh
-ref=$(verse data --paths demo.pr | head -1)   # demo.pr."1"
-verse data "$ref"                             # the line, as one argument
+verse data --paths demo.pr          # demo pr 1
+                                    # demo pr a.b
+                                    # demo pr 'a b.txt'
 
-verse data --paths demo.pr | while read -r p; do verse data "$p"; done
+verse data --paths demo.pr | xargs -L1 verse data
 ```
 
-It printed STEPS until it met a segment with a space in it. The argument for steps was that a
-step is a whole word whatever is inside it, so nothing in the listing needs quoting — which
-holds right up until the separator IS the thing inside: `demo pr a b.txt` is four words for a
-three-segment address, and reads back as a different one. A kinded path is ambiguous for none
-of them, and that is worth more than fitting through `xargs` — which strips the quoting anyway,
-so the line has to be passed whole either way.
+**One spelling, in and out.** A step is a whole word, so a dot inside one is a character in a
+name and needs no quoting — which is the ergonomic win, and it holds at every position: `verse
+data dotted.sys pr 1` is three segments. The shell's own quoting is applied only where a
+segment would otherwise be split or expanded (a space, a `*`), and it is single quotes, which
+are literal — so nothing inside is globbed or substituted, and `xargs` understands them.
 
-Note `"1"`. That quoting is about TONY TYPES rather than about the path: `a.1.b` is three
-string fields and an index is the bracket form (`a[1].b`), so the path itself is unambiguous
-either way. What the quotes buy is the segment's TYPE — written bare into a tony document, `1`
-is a number and `true` is a boolean, and the id is neither. It is kpath's own rendering, which
-is the conservative one: correct wherever the line is read, at the cost of quotes the path
-alone would not need.
+**The one-token form is the ambiguous one**, and it is the reason the listing does not use it.
+A single token has to guess where the segments end, and two shapes defeat the guess: a segment
+holding a space (there is no spelling of it), and a delimiter above the id — `dotted.sys.pr.1`
+reads as four segments, not three. Steps have neither problem, because the shell has already
+said where each segment ends. A token is still accepted on the way in, for an address captured
+into a variable and for the `system:kind:id` refs a document holds.
+
+Mixing the two IS refused, and is told apart by arity: `verse data demo.pr 1` is two words for
+an address that needs three, with a delimiter in one of them. Given three words there is
+nothing to be ambiguous about.
 
 `*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
 and a charter's `subject: demo:pr:*` mean the same set. **A selector is the one place the ref
@@ -101,7 +104,7 @@ three:
 ```sh
 verse data verse task instance run-a1b2       # steps
 verse data verse:task:instance:run-a1b2       # …as a ref
-verse data verse.task.instance                    # …and as a path, at whatever depth
+verse data verse task instance                    # …and as steps, at whatever depth
 ```
 
 Two consequences worth knowing before they surprise you:
@@ -199,14 +202,18 @@ entity, a place inside a payload.
 ```sh
 verse data                                         # the whole document
 verse data demo                                    # {kind: {id: payload}}
-verse data demo.pr                                 # {id: payload}
-verse data demo.pr.1                               # one payload
-verse data demo.pr.1.labels.urgent                 # one place inside it
+verse data demo pr                                 # {id: payload}
+verse data demo pr 1                               # one payload
+verse data demo pr 1 labels urgent                 # one place inside it
 verse data 'demo.pr.*.stage'                       # one field of each, still keyed by id
-verse data --paths demo.pr                         # one address per line
+verse data --paths demo pr                         # one address per line
 verse data --if '{stage: open}'                    # by what it says
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
 ```
+
+Steps everywhere except the globbed line, and that exception is the point: a `*` typed as a
+step is a NAME — the shell would expand it bare, and quoting it makes it the literal id `*` —
+so a selector is written as one token. See the spelling table above.
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
 assembled for the wire. So an id is a KEY rather than a token inside a rendered `ref:`, which
@@ -295,8 +302,8 @@ writes there, and the answer is that place. A write is a value at a path, so whe
 ```sh
 verse data demo pr 1 --put '{stage: open}'       # as steps: nothing needs quoting
 verse data demo:pr:1 --put '{owner: ana}'       # …or by ref: adds an owner, keeps the stage
-verse data demo.pr.1.labels.urgent --put true   # write INSIDE the payload
-verse data demo.pr.1.labels.urgent --rm         # remove one field
+verse data demo pr 1 labels urgent --put true   # write INSIDE the payload
+verse data demo pr 1 labels urgent --rm         # remove one field
 verse data demo pr 1 --rm                       # the whole entity
 ```
 

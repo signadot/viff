@@ -334,16 +334,46 @@ func TestAnAddressMayBeWrittenAsSteps(t *testing.T) {
 // Mixing the spellings is refused rather than read as something else: `verse data demo.pr 1`
 // would otherwise address a system literally called `demo.pr`, which is not what anybody typed.
 // The refusal names the step and offers the one-token form.
+//
+// TOLD APART BY ARITY, not by looking for a delimiter. Half of one spelling and half of the
+// other is short a word — two given for an address that needs three — and that is what is
+// refused. Given enough words the steps speak for themselves: the shell has already said where
+// each segment ends, so a dot inside one is a character in a NAME. See TestAStepMayHoldADot.
 func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
 	for _, args := range [][]string{
 		{"demo.pr", "1"},
 		{"demo:pr", "1"},
-		{"demo", "pr.x", "1"},
-		{"verse", "task.instance", "run-1"},
+		{"verse", "task.instance"},
 	} {
 		got, err := address(args)
 		if !errors.Is(err, cli.ErrUsage) {
 			t.Errorf("address(%q) = (%q, %v), want a usage error", args, got, err)
+		}
+	}
+}
+
+// A STEP MAY HOLD A DOT — anywhere, the system included — and that is what makes the steps form
+// total rather than nearly total.
+//
+// A segment above the id used to be refused for holding one, so `dotted.sys pr 1` could not be
+// typed and `--paths` could not print an address it named. The delimiter is the SPACE here; a
+// dot inside a word the shell already separated is not one, and the arity check above is what
+// keeps the genuinely mixed spelling refused without costing this.
+func TestAStepMayHoldADot(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"dotted.sys", "pr", "1"}, `"dotted.sys".pr."1"`},
+		{[]string{"demo", "dot.kind", "1"}, `demo."dot.kind"."1"`},
+		{[]string{"demo", "pr", "a.b"}, `demo.pr."a.b"`},
+		{[]string{"verse", "task", "instance", "review@demo:pr:1"}, `verse.task.instance.review@demo:pr:1`},
+		// A two-segment prefix read has nothing above the id and never did.
+		{[]string{"demo", "pr"}, `demo.pr`},
+	} {
+		got, err := address(c.args)
+		if err != nil || got != c.want {
+			t.Errorf("address(%q) = (%q, %v), want %q", c.args, got, err, c.want)
 		}
 	}
 }
@@ -605,13 +635,13 @@ func TestCharterPathsPrintsWhatPipesBack(t *testing.T) {
 	if len(lines) == 0 {
 		t.Fatal("--paths printed nothing for an installed package")
 	}
-	want := "notes.rules.note"
+	want := "notes rules note"
 	if lines[0] != want {
 		t.Fatalf("--paths printed %q, want %q", lines[0], want)
 	}
-	// The line IS a path, handed back WHOLE — one token, quoted where the grammar needs it, so
-	// the shell passes it as one argument rather than splitting it into steps.
-	back, err := runCLI(t, "charter", lines[0])
+	// The line IS a path, in the STEPS this command takes: the shell splits it into arguments,
+	// which is what `xargs -L1 verse c` does with it.
+	back, err := runCLI(t, append([]string{"charter"}, strings.Fields(lines[0])...)...)
 	if err != nil {
 		t.Fatalf("the printed path did not pipe back: %v", err)
 	}

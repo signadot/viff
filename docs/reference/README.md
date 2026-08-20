@@ -69,7 +69,7 @@ verse
 
     verse ps --if '{status: running}' --trim '{id: null, status: null}'
     verse docket --if '{axis: whether}'
-    verse data demo.pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
+    verse data demo pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
     verse watch demo --trim '{ref: null, to: null}'
 
   On `data` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
@@ -90,9 +90,11 @@ verse
                                              and a read may reach into an array:
                                              merge.proposal.X.votes(scott)
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
-          [--paths] [--depth <n>]            … one kinded path per line instead of the document:
-                                             EVERY address under the one asked for, since a
-                                             document cannot say where its entities end.
+          [--paths] [--depth <n>]            … one address per line, as STEPS, instead of the
+                                             document: EVERY address under the one asked for,
+                                             since a document cannot say where its entities end.
+                                             The line hands straight back —
+                                             `data --paths demo pr | xargs -L1 verse data`.
                                              --depth bounds the walk to addresses of at most
                                              <n> segments (default: no bound)
                                              flags go on either side of the path
@@ -130,10 +132,8 @@ verse
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
           [--paths]                          one line per rule and level instead of the document,
-                                             each a kinded path quoted only where the grammar
-                                             needs it. The line is handed back WHOLE:
-                                             `c --paths | while read -r p; do verse c "$p"; done`
-                                             (xargs strips the quoting the line needs). A
+                                             as STEPS — the spelling this command takes, so
+                                             `c --paths | xargs -L1 verse c` round-trips. A
                                              package that holds nothing yet prints itself,
                                              since that is the state worth seeing
           <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its

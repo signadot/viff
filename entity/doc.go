@@ -305,7 +305,8 @@ func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
 }
 
 // Paths is every address in a document, in order, deepest last within each branch — the walk
-// `verse data --paths` prints.
+// `verse data --paths` prints, AS STEPS (see JoinSteps): the segments separated by spaces, each
+// quoted only where a shell would otherwise mis-split or expand it.
 //
 // EVERY node, not the ones at some depth, and that is the difference between a listing that can
 // be wrong and one that cannot. Entity-hood is a LENS rather than a stored fact
@@ -330,7 +331,7 @@ func (d Doc) Paths(at *kpath.KPath, max int) []string {
 	var rec func(n *ir.Node, segs []string)
 	rec = func(n *ir.Node, segs []string) {
 		if len(segs) > len(prefix) {
-			out = append(out, JoinSegs(segs))
+			out = append(out, JoinSteps(segs))
 		}
 		if max > 0 && len(segs) >= max {
 			return

@@ -185,17 +185,25 @@ func joinSteps(steps []string) string { return strings.Join(steps, ".") }
 //	verse-dev drift strata base
 //	notes                                 a package with a declaration and nothing in it yet
 //
-// AS A KINDED PATH, one token per line, quoted only where the grammar needs it — the same
-// spelling `verse data --paths` answers with, and for the same reason: it is the one form that
-// is unambiguous for every address, including a segment holding a space or a dot. The round
-// trip is the shell's ordinary one, the line passed whole:
+// AS STEPS, the same spelling `verse data --paths` answers with and the same one this command
+// takes on the way in — so a line hands straight back:
 //
-//	verse c --paths | while read -r p; do verse c "$p"; done
+//	verse c --paths | xargs -L1 verse c
 //
 // A NODE THAT HOLDS NOTHING PRINTS ITSELF, which is the case a listing of rules alone would
 // hide: a package whose levels installed and whose rules were refused is still a package, and
 // one that lists as nothing is one nobody can see to take down. That is the same reason
 // packagesSeen reads all three kinds of record.
+// stepsOf renders a charter address as the steps a command line takes, or as it stands when it
+// is not a plain path.
+func stepsOf(at string) string {
+	segs, err := entity.PathSegs(at)
+	if err != nil || len(segs) == 0 {
+		return at
+	}
+	return entity.JoinSteps(segs)
+}
+
 func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -222,7 +230,7 @@ func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
 		for _, el := range n.Values {
 			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(cc.Out, entity.JoinSegs(append(append([]string{}, prefix...), name)))
+				fmt.Fprintln(cc.Out, entity.JoinSteps(append(append([]string{}, prefix...), name)))
 			}
 		}
 		return nil
@@ -254,7 +262,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 			}
 			for _, el := range v.Values {
 				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(cc.Out, entity.JoinSegs(append(append([]string{}, at...), key.String, name)))
+					fmt.Fprintln(cc.Out, entity.JoinSteps(append(append([]string{}, at...), key.String, name)))
 					printed = true
 				}
 			}
@@ -263,7 +271,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		}
 	}
 	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(cc.Out, entity.JoinSegs(at))
+		fmt.Fprintln(cc.Out, entity.JoinSteps(at))
 	}
 	if children == nil || children.Type != ir.ObjectType {
 		return
@@ -383,7 +391,11 @@ func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
 		strata := nodeInt(e, "strata")
 		where := "baseline"
 		if at != "" {
-			where, packaged = "package "+at, true
+			// IN STEPS, like every other address a command prints, so the package this names is
+			// spelled the way `verse c <address>` takes it. The charter FILE declares it as a
+			// path, which is right there — a charter is read by a parser — and this is the line
+			// a person reads.
+			where, packaged = "package "+stepsOf(at), true
 		}
 		where += inScope
 		if strata == 0 {

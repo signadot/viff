@@ -61,16 +61,15 @@ as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 
 ```sh
 verse data                                         # the whole verse, one document
-verse data demo.pr                                 # by where it lives
-verse data demo pr 1                               # …or as steps, which need no quoting
+verse data demo pr                                 # by where it lives
+verse data demo pr 1                               # one entity, whole
 verse data 'demo.pr.*.stage'                       # one field of each, keyed by id
 verse data --if '{stage: open}'                    # by what it says
 verse data --if '{stage: !or [open, merged]}'      # …an operator, not just equality
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
-verse data demo.pr --trim '{stage: null}'          # …and how much of each entity to print
-verse data --paths demo.pr                         # just the addresses
-verse data demo pr 1                           # one entity, whole
-verse data demo:pr:1                           # …the same address written as a ref
+verse data demo pr --trim '{stage: null}'          # …and how much of each entity to print
+verse data --paths demo pr                         # just the addresses
+verse data demo:pr:1                               # …the same address written as a ref
 ```
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
@@ -80,21 +79,24 @@ for. A ref is that path with `:` for a delimiter, which is why a read, a `--put`
 one — three spellings of one grammar, laid out in
 [reference/entities §Addressing](reference/entities.md#addressing).
 
-AN ADDRESS MAY BE TYPED AS STEPS, which is what a shell makes easy — each step arrives as its
-own word, so nothing needs escaping on the way in. `--paths` answers with the other spelling: a
-kinded path, one token per line, quoted only where the grammar needs it, which is the one form
-that is unambiguous for every address a store can hold.
+AN ADDRESS IS TYPED AS STEPS, which is what a shell makes easy — each step arrives as its own
+word, so nothing needs escaping on the way in — and `--paths` answers the same way, so a listing
+hands straight back.
 
 ```sh
 verse data demo pr a.b labels urgent           # steps: an id with a dot in it, unquoted
-verse data --paths demo.pr                     # demo.pr."a.b"
-verse data --paths demo.pr | while read -r p; do verse data "$p"; done
+verse data --paths demo pr                     # demo pr a.b
+verse data --paths demo pr | xargs -L1 verse data
 ```
 
-The line is handed over WHOLE, as one argument — `xargs` strips the quoting the line needs.
+One spelling in and out. A step is a whole word, so a dot inside one is part of the NAME; the
+shell's own quoting appears only where a segment holds a space or a `*`, and it is single
+quotes, which `xargs` understands. The one-token forms (`demo.pr.1`, `demo:pr:1`) are still
+taken on the way in — for an address captured into a variable, and for the refs a document
+holds — and they are the ambiguous ones, which is why nothing prints them.
 
-Flags go on either side of the path — `verse data --paths demo.pr` and
-`verse data demo.pr --paths` are the same command.
+Flags go on either side of the path — `verse data --paths demo pr` and
+`verse data demo pr --paths` are the same command.
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
 subtree need not restate the shape above it: `--if-at labels --if '{urgent: true}'` is
@@ -113,8 +115,8 @@ entity as it now stands rather than an echo of what you sent:
 
 ```sh
 verse data demo pr 1 --put '{owner: dee}'        # changes the owner, keeps the stage
-verse data demo.pr.1.labels.urgent --put true   # one field, deep
-verse data demo.pr.1.labels.urgent --rm         # and gone again
+verse data demo pr 1 labels urgent --put true   # one field, deep
+verse data demo pr 1 labels urgent --rm         # and gone again
 verse data demo scratch 1 --rm                  # the whole entity
 ```
 
@@ -235,7 +237,7 @@ about its own running — so observing the fleet is observing entities:
 ```sh
 verse watch verse.task                        # the whole fleet's lifecycle
 verse data verse task instance <id>      # its result, still there after it finished
-verse data verse.task --trim '{status: null}'   # …or just where everything got to
+verse data verse task --trim '{status: null}'   # …or just where everything got to
 ```
 
 ```tony

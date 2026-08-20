@@ -113,33 +113,32 @@ ok "demo:pr:1 = {stage:open}"
 # token inside a rendered ref, and `stage` is what stands under it.
 haskv "$(v data demo.pr.1)" stage open || die "data demo.pr.1 did not answer the payload"
 has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
-# ONE TOKEN PER LINE, a kinded path rendered the way kpath renders one: a segment is quoted
-# when writing it bare would give it a non-string TONY TYPE, so the id `1` prints as `"1"`.
-# (In the PATH it needs no quoting — `a.1.b` is three string fields, and an index is the
-# bracket form `a[1]` — the quoting is what keeps the segment a string wherever the line is
-# read as tony.) It is the one spelling that is
-# unambiguous for every address, which steps were not: their separator is a space, so an id
-# holding one printed as two words and read back as a different address.
+# AS STEPS, which is the spelling this command line TAKES — so the listing hands straight back.
+# A step is a whole word, so a dot inside one needs no quoting at all; the shell's own quoting
+# is applied only where a segment would otherwise be split or expanded.
 #
-# `--paths` WALKS, so it names `demo.pr."1".stage` beside the entity — every address, which is
+# `--paths` WALKS, so it names `demo pr 1 stage` beside the entity — every address, which is
 # what makes the listing one that cannot be wrong about depth. `--depth 3` is what asks for the
 # records alone, and it is the bound this assertion needs rather than an assumption about where
 # the walk stops.
-[ "$(v data --paths --depth 3 demo.pr)" = 'demo.pr."1"' ] || die "--paths did not name the entity"
-has "$(v data --paths demo.pr)" 'demo.pr."1".stage' || die "--paths did not walk into the payload"
-# The round trip is the shell's ordinary one — the LINE passed whole, as one argument. xargs is
-# not it: it strips the quoting, which is the thing the line needs.
+[ "$(v data --paths --depth 3 demo.pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
+has "$(v data --paths demo.pr)" 'demo pr 1 stage' || die "--paths did not walk into the payload"
+# The round trip is the one steps are for: the shell splits the line into arguments, which is
+# what `xargs -L1` does with it.
 v data --paths --depth 3 demo.pr | while read -r p; do
-	haskv "$(v data "$p")" stage open || die "--paths did not round-trip back into a read"
+	# shellcheck disable=SC2086
+	haskv "$(v data $p)" stage open || die "--paths did not round-trip back into a read"
 done
-# An address may still be typed as steps, which is what a shell makes easy: no quoting for an
-# id with a dot, since each step arrives as its own word.
+v data --paths --depth 3 demo.pr | xargs -L1 "$BIN" --addr "$ADDR" data >/dev/null ||
+	die "--paths did not pipe through xargs"
+# An address may be typed as steps, which is what a shell makes easy: no quoting for an id with
+# a dot, since each step arrives as its own word.
 v data demo pr a.b --put '{stage: open}' >/dev/null || die "data as steps --put failed"
 haskv "$(v data demo pr a.b)" stage open || die "data as steps did not roundtrip"
-# …and the printed form names the same entity, quoted where a dot would otherwise delimit.
-[ "$(v data --paths --depth 3 demo.pr | grep 'a.b')" = 'demo.pr."a.b"' ] || die "--paths did not quote the dotted id"
-v data demo.pr."a.b" --rm >/dev/null || die "data --rm of the dotted id failed"
-ok "steps on the way in, one quoted kinded path on the way out"
+# …and the printed form is the same steps, with the dot still needing no quoting.
+[ "$(v data --paths --depth 3 demo.pr | grep 'a.b')" = 'demo pr a.b' ] || die "--paths did not name the dotted id as a step"
+v data demo pr a.b --rm >/dev/null || die "data --rm of the dotted id failed"
+ok "steps on the way in, the same steps on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
 # renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
 # (`|` then the line). The value is verse's answer; the framing is the encoder's.
@@ -578,7 +577,7 @@ v data smokegh:issue:1 --put '{"label":"urgent"}' >/dev/null || die "data --put 
 derived=
 for _ in $(seq 1 100); do
 	out=$(v data --paths 2>/dev/null || true)
-	if has "$out" 'smokesd.feature.'; then
+	if has "$out" 'smokesd feature '; then
 		derived=1
 		break
 	fi
@@ -588,11 +587,12 @@ done
 ok "a rule at level 0 wrote an entity at level 10"
 
 # The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
-# QUOTED, which is the idiom a script writes: `--paths` answers in steps, and a whole line
-# handed over as one token is the same address as the same line split by the shell. Both are
-# checked here, because a script that captured a path and quoted it used to read nothing.
-dref=$(v data --paths smokesd.feature | head -1)
-haskv "$(v data "$dref")" priority urgent || die "the derived entity lost its literal content"
+# BOTH WAYS, because `--paths` answers in steps and a script may hand the line over whole or let
+# the shell split it. A whole line quoted as one token is the same address as the same line split
+# into arguments, and a script that captured a path and quoted it used to read nothing.
+dref=$(v data --paths --depth 3 smokesd.feature | head -1)
+# shellcheck disable=SC2086
+haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
 has "$(v data $dref)" 'smokegh:issue:1' || die "unquoted steps did not reach the same entity"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"

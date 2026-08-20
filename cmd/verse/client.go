@@ -1051,8 +1051,24 @@ func (cfg *stateConfig) rm(cc *cli.Context, addr string) error {
 	}
 	// Nothing stands there now — which is all there is to say, and is equally true of a path
 	// that held nothing to begin with.
-	fmt.Fprintf(cc.Out, "removed %s\n", at)
+	//
+	// NAMED IN STEPS, like every other address this command prints, so the line reads as the
+	// one somebody typed rather than as the kpath it was sent as. A path that is not a plain
+	// address — a glob, a reach into an array — is echoed as it stands, since it has no steps.
+	fmt.Fprintf(cc.Out, "removed %s\n", inSteps(at))
 	return nil
+}
+
+// inSteps renders a kinded path as the steps a person types, or as it stands when it is not a
+// plain address. It is for the lines a command PRINTS at somebody, where one spelling
+// throughout is the point; a `ref:` inside a rendered document keeps the document's spelling,
+// which is read by a parser and not by a shell.
+func inSteps(at entity.Path) string {
+	segs := append(append([]string{}, at.Ref.Segs()...), at.Field...)
+	if len(segs) == 0 {
+		return at.String()
+	}
+	return entity.JoinSteps(segs)
 }
 
 // stateAt reads the verse at a path and hands back the entities standing there.
@@ -1129,26 +1145,27 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	// a number and the id is not. That makes this the conservative rendering — correct wherever
 	// a line is read, at the cost of quotes the path alone would not need.
 	//
-	// AND IT STAYS THAT WAY, deliberately. The minimal rendering — quote only what would break
-	// the PATH — reads better for the listing's own job and was rejected: it means a second
-	// quoting predicate, verse's, sitting beside tony's and having to get `*` (a wildcard,
-	// versus an id that is one), brackets and an empty segment right. One rule, owned where the
-	// grammar is, wrong in no context, is worth more than the quotes it costs.
+	// AS STEPS — the segments separated by spaces, each quoted only where a shell would
+	// otherwise mis-split or expand it (entity.JoinSteps):
 	//
-	// IT USED TO PRINT STEPS, on the argument that a step is a whole word whatever is inside it
-	// so nothing in the listing needs quoting to be usable. That holds until a segment contains
-	// a SPACE, and then it does not: the separator is the space, so `demo pr a b.txt` is four
-	// words for a three-segment address and reads back as a different one. The form was
-	// unambiguous only for the addresses that happened not to need quoting, which is the same
-	// shape of "right most of the time" that the delimiter scan had (entity.firstDelim).
+	//	demo pr 1
+	//	demo pr a.b                 a dot is ordinary in a step, which is the form's whole point
+	//	demo pr 'a b.txt'
+	//	git ref '*'
 	//
-	// A kpath is ambiguous for none of them, and that is worth more than being convenient in a
-	// pipe: `xargs` strips the quoting anyway (it concatenates `demo.pr."a b.txt"` back into one
-	// unquoted word), so the round trip is the shell's ordinary one —
+	// ONE SPELLING, IN AND OUT. Steps are what this command line takes — `verse data demo pr
+	// a.b`, no escaping by the person typing it, because the shell has already separated the
+	// words — and a listing that answers the same way hands straight back:
 	//
-	//	verse data --paths demo.pr | while read -r p; do verse data "$p"; done
+	//	verse data --paths demo.pr | xargs -L1 verse data
 	//
-	// where the line is passed whole, as one argument, which is what the quoting is for.
+	// IT WAS A KINDED PATH FOR A WHILE (`demo.pr."a b.txt"`), because the bare steps form was
+	// ambiguous for a segment holding a SPACE: it printed as two words for one segment and read
+	// back as a different address. Quoting the segment answers that in the grammar the line is
+	// actually read in, and single quotes are what makes it work where the kpath form did not —
+	// `xargs` understands them, and reads the kpath form's `\"` as an unterminated quote.
+	// Checked, both idioms, including a segment holding a space, a `*`, a double quote, and the
+	// empty one.
 	for _, p := range (entity.Doc{Node: node}).Paths(at, depth) {
 		fmt.Fprintln(cc.Out, p)
 	}
@@ -1167,10 +1184,15 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 // command that takes something after it (`data <addr…> <payload>`) takes the address --put as
 // everything before that.
 //
-// A STEP ABOVE THE ID MAY NOT HOLD A DELIMITER, and that is the ref grammar's own rule rather
-// than a new one: a system and a kind may not contain `:` while an id may. So a dot or a colon
-// in one of those steps means the two spellings have been mixed — `verse data demo.pr 1` — and
-// the address somebody typed is not the one that would be read.
+// A STEP IS A WHOLE SEGMENT, delimiters included, and that is the point of the form: the shell
+// has already said where each one ends, so a dot inside one is a character in a NAME and not a
+// separator. `verse data dotted.sys pr 1` is three segments, and no quoting is involved.
+//
+// WHAT IS STILL REFUSED is the MIXED spelling, and it is told apart by arity rather than by
+// looking for a delimiter. `verse data demo.pr 1` hands over two words for an address that needs
+// three, with a delimiter sitting in one of them — somebody has written half of one spelling and
+// half of the other, and the address they typed is not the address that would be read. Given
+// three words, there is nothing to be ambiguous about and nothing is refused.
 //
 // From the id down, anything goes: an id holds dots and colons (`x@git:ref:y`), and the field
 // path below it is a person's own key names. That is the whole ergonomic win — `demo pr a.b
@@ -1195,15 +1217,19 @@ func address(args []string) (string, error) {
 	if args[0] == entity.VerseRoot {
 		id++
 	}
-	for i, a := range args {
-		if i >= id {
-			break
-		}
-		if strings.ContainsAny(a, ".:") {
-			return "", fmt.Errorf("%w: %q names the %s of an address written as steps, and that "+
-				"holds no `.` or `:` — the two spellings have been mixed. Write it as one token "+
-				"(%s), or as steps with none above the id", cli.ErrUsage, a, stepName(i, id),
-				strings.Join(args, "."))
+	// Too few words for the address they name, and a delimiter in one of the steps above the
+	// id: the two spellings have been mixed. With enough words the steps speak for themselves.
+	if len(args) <= id {
+		for i, a := range args {
+			if i >= id {
+				break
+			}
+			if strings.ContainsAny(a, ".:") {
+				return "", fmt.Errorf("%w: %q names the %s of an address written as steps, and "+
+					"it holds a `.` or a `:` while only %d word(s) were given — the two spellings "+
+					"have been mixed. Write it as one token (%s), or as steps all the way down",
+					cli.ErrUsage, a, stepName(i, id), len(args), strings.Join(args, "."))
+			}
 		}
 	}
 	return entity.JoinSegs(args), nil

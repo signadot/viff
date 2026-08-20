@@ -32,22 +32,18 @@ func TestPathsWalksEverythingUnderTheAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("data --paths: %v", err)
 	}
-	got := strings.Fields(out)
-	for _, want := range []string{"demo.drift.range.abc", "demo.drift.range.def"} {
-		found := false
-		for _, g := range got {
-			if g == want {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("--paths did not list %s; it answered %v", want, got)
+	// ONE LINE PER ADDRESS, in steps — so the comparison is per LINE, not per whitespace-
+	// separated token: a step is a word, and an address is several of them.
+	got := lines(out)
+	for _, want := range []string{"demo drift range abc", "demo drift range def"} {
+		if !has(got, want) {
+			t.Errorf("--paths did not list %q; it answered %q", want, got)
 		}
 	}
 	// …and it goes on into the payload, because that is what "every address" means: the reader
 	// bounds it when they want less, rather than guessing a level and losing what is deeper.
-	if !strings.Contains(out, "demo.drift.range.abc.to") {
-		t.Errorf("the walk stopped at the record rather than walking into it: %v", got)
+	if !has(got, "demo drift range abc to") {
+		t.Errorf("the walk stopped at the record rather than walking into it: %q", got)
 	}
 }
 
@@ -65,10 +61,30 @@ func TestDepthBoundsTheWalk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("data --paths --depth 4: %v", err)
 	}
-	if !strings.Contains(out, "demo.drift.range.abc") {
+	if !has(lines(out), "demo drift range abc") {
 		t.Errorf("--depth 4 lost the record: %q", out)
 	}
-	if strings.Contains(out, "demo.drift.range.abc.to") {
+	if has(lines(out), "demo drift range abc to") {
 		t.Errorf("--depth 4 walked into the payload: %q", out)
 	}
+}
+
+// lines splits a listing into its lines, dropping blanks — one line is one address.
+func lines(out string) []string {
+	var got []string
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			got = append(got, l)
+		}
+	}
+	return got
+}
+
+func has(got []string, want string) bool {
+	for _, g := range got {
+		if g == want {
+			return true
+		}
+	}
+	return false
 }

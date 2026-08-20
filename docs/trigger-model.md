@@ -604,9 +604,9 @@ subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 
 `!verse-path [demo pr 1]` is an address written as STEPS — a list of segments, which is what a
 charter reads and what `verse data` takes on a command line, so no segment needs punctuating
-around a dot or a colon it happens to contain. (`verse data --paths` answers with the other
-spelling, a kinded path: `demo.pr."1"`. A listing is read by a shell, where one token per line
-is the unambiguous form; a charter is read by a parser, where a list already is.) It goes
+around a dot or a colon it happens to contain. (`verse data --paths` answers in the same steps,
+space-separated: `demo pr 1`. One spelling, wherever an address is written by hand or read back
+— a charter reads a list, a shell reads words, and neither has to punctuate a segment.) It goes
 wherever the string form goes:
 
 ```tony

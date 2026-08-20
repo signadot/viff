@@ -159,10 +159,13 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if: %v", err)
 	}
-	if !strings.Contains(out, `demo.pr."1"`) || !strings.Contains(out, `demo.pr."3"`) {
+	// Per LINE: `--paths` walks into the payload too, so a substring check would match
+	// `demo pr 1 stage` and assert nothing about the entity. In steps a numeric id needs no
+	// quoting at all — it is a name, where a bare number in a kpath is an index.
+	if !has(lines(out), "demo pr 1") || !has(lines(out), "demo pr 3") {
 		t.Errorf("--if {stage: open} did not name the open PRs:\n%s", out)
 	}
-	if strings.Contains(out, `demo.pr."2"`) {
+	if has(lines(out), "demo pr 2") {
 		t.Errorf("--if {stage: open} named the merged PR:\n%s", out)
 	}
 
@@ -171,10 +174,10 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("state --if-at: %v", err)
 	}
-	if !strings.Contains(out, `demo.pr."1"`) {
+	if !has(lines(out), "demo pr 1") {
 		t.Errorf("--if-at labels did not name the urgent PR:\n%s", out)
 	}
-	if strings.Contains(out, `demo.pr."2"`) || strings.Contains(out, `demo.pr."3"`) {
+	if has(lines(out), "demo pr 2") || has(lines(out), "demo pr 3") {
 		t.Errorf("--if-at labels named an entity that does not satisfy it:\n%s", out)
 	}
 }

@@ -124,9 +124,8 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 // delimiter by the same whichever-comes-first rule as `:` and `.`, and the two ways a shell can
 // hand over one address name one entity.
 //
-// (A `--paths` listing answers in kinded paths now — `demo.pr."1"` — which is the same rule
-// seen from the other side: one token per line, quoted where the grammar needs it, so the line
-// is unambiguous however it is handed back.)
+// (A `--paths` listing answers in the same steps — see JoinSteps — so the line comes back either
+// way: split by the shell into arguments, or captured and quoted as one token.)
 func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
 	for _, c := range []struct {
 		steps string
@@ -165,5 +164,60 @@ func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
 	// which is what keeps an id holding a space readable by ref.
 	if p, err := ParsePath("demo:pr:a b"); err != nil || p.Ref.ID() != "a b" {
 		t.Errorf(`ParsePath("demo:pr:a b") = (%v, %v), want the id "a b"`, p, err)
+	}
+}
+
+// A LISTING ANSWERS IN THE STEPS THE COMMAND LINE TAKES, so what it prints hands straight back.
+//
+// A step is a whole word, which is what makes a dot inside one need no quoting — the property
+// the steps form exists for. The shell's own quoting is applied only where a segment would
+// otherwise be split or expanded, and it is SINGLE quotes: literal, so nothing inside is
+// globbed or substituted, and `xargs` understands them where it reads the kinded path's `\"` as
+// an unterminated quote.
+func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
+	for _, c := range []struct {
+		segs []string
+		want string
+	}{
+		{[]string{"demo", "pr", "1"}, "demo pr 1"},
+		// The whole point: a dot is ordinary inside a step.
+		{[]string{"demo", "pr", "a.b"}, "demo pr a.b"},
+		{[]string{"verse", "task", "instance", "review@demo:pr:1"}, "verse task instance review@demo:pr:1"},
+		// The separator IS the space, so a segment holding one carries quotes — the case that
+		// made the bare steps form ambiguous and moved this listing to kinded paths for a while.
+		{[]string{"demo", "pr", "a b.txt"}, "demo pr 'a b.txt'"},
+		{[]string{"a b", "pr", "1"}, "'a b' pr 1"},
+		// An id that IS a wildcard, kept from globbing on the way back in.
+		{[]string{"git", "ref", "*"}, "git ref '*'"},
+		// An empty segment would otherwise vanish from the line entirely.
+		{[]string{"demo", "pr", ""}, "demo pr ''"},
+		// Double quotes are the fallback, for a segment holding a single one.
+		{[]string{"demo", "pr", "it's"}, `demo pr "it's"`},
+	} {
+		if got := JoinSteps(c.segs); got != c.want {
+			t.Errorf("JoinSteps(%q) = %q, want %q", c.segs, got, c.want)
+		}
+	}
+}
+
+// And what it prints is what a read takes, for every one of those — which is the property the
+// listing exists to have.
+//
+// THE SHELL STRIPS THE QUOTING before verse sees it, so what arrives is the SEGMENTS, as
+// separate arguments: `xargs -L1` and `set -- $line` both do that, which is why the quoting is
+// the shell's rather than kpath's. The CLI joins them with JoinSegs, so this is the round trip
+// end to end — print, split, rejoin, address.
+func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
+	for _, segs := range [][]string{
+		{"demo", "pr", "1"},
+		{"demo", "pr", "a.b"},
+		{"demo", "pr", "a b.txt"},
+		{"git", "ref", "*"},
+		{"dotted.sys", "pr", "1"},
+		{"verse", "task", "instance", "review@demo:pr:1"},
+	} {
+		if got, want := JoinSegs(segs), RefAt(segs...).At().KPath(); got != want {
+			t.Errorf("steps %q rejoined as %q, want %q", segs, got, want)
+		}
 	}
 }

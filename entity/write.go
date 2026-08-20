@@ -529,6 +529,72 @@ func JoinSegs(segs []string) string {
 	return out
 }
 
+// JoinSteps renders a vector of steps as the line a LISTING prints: the segments separated by
+// SPACES, each one quoted only if a shell would otherwise mis-split or expand it.
+//
+//	demo pr 1
+//	demo pr a.b                 a dot is ordinary in a step — this is the form's whole point
+//	demo pr "a b.txt"           a space is the delimiter, so the segment carries quotes
+//	git ref "*"                 an id that IS an asterisk, kept from globbing
+//
+// STEPS ARE THE ADDRESSING MODEL'S OWN SPELLING, on the way in and on the way out. `verse data
+// demo pr a.b` needs no escaping from the person typing it, because the shell has already
+// separated the words; a listing that answers the same way hands back exactly what it takes.
+//
+// THE QUOTING IS THE SHELL'S, not kpath's, and that is what makes this unambiguous where the
+// bare form was not. A segment holding a space used to print as two words for one segment and
+// read back as a different address — the objection that moved this listing to kinded paths
+// (`demo.pr."a b.txt"`) for a while. Quoting the segment answers it in the grammar the line is
+// actually read in: `xargs` and `read -r -a` both take `demo pr "a b.txt"` as three words, where
+// the kpath form defeats xargs precisely because xargs strips quoting it does not know about.
+//
+// WHAT IT CANNOT SURVIVE is a shell that expands inside double quotes anyway — `!` under
+// interactive history expansion is the one real case. A segment holding one is quoted here and
+// still needs the reader's care; nothing in this grammar can fix that from the writing end.
+func JoinSteps(segs []string) string {
+	out := make([]string, 0, len(segs))
+	for _, s := range segs {
+		out = append(out, quoteStep(s))
+	}
+	return strings.Join(out, " ")
+}
+
+// quoteStep is one step as a shell word: bare when it already is one, and quoted when it is not
+// — including when it is EMPTY, which would otherwise vanish from the line entirely.
+//
+// SINGLE QUOTES BY PREFERENCE, because they are literal: nothing inside one is expanded, globbed
+// or substituted, so the segment survives whatever the reader's shell would otherwise do to it.
+// Double quotes are the fallback for a segment that contains a single quote, and they are the
+// weaker form — `xargs` reads `\"` as an unterminated quote rather than an escape, which is
+// checked and is why they are not the default.
+//
+// A segment holding BOTH quote characters has no spelling here that xargs will take. It is
+// rendered double-quoted, which a shell reads correctly and xargs does not; nothing about the
+// listing can fix that, and an id containing both is not a shape any address in this system
+// produces.
+func quoteStep(s string) string {
+	if s != "" && !strings.ContainsFunc(s, shellSpecial) {
+		return s
+	}
+	if !strings.Contains(s, "'") {
+		return "'" + s + "'"
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
+// shellSpecial reports whether a rune stops a string from being a bare shell word. It is a
+// DENY list of what the shell acts on rather than an allow list of what is safe, so a character
+// nobody thought about prints as itself rather than being needlessly quoted — and the ones here
+// are the ones that split, glob, redirect, substitute or comment.
+func shellSpecial(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\r', '"', '\'', '\\', '*', '?', '[', ']', '{', '}',
+		'(', ')', '$', '`', '&', ';', '|', '<', '>', '#', '!', '~', '^':
+		return true
+	}
+	return false
+}
+
 // PathSegs is a kinded path as its raw segments — the names, unquoted, in order.
 //
 // It is the inverse of JoinSegs, and it goes through the kpath parser rather than splitting on
