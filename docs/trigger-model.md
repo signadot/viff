@@ -884,11 +884,31 @@ fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
 `derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It names a
 PLACE — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value:
-…}` for a place of any depth — its content may reference its own subject and, at or below its
-own level, other entities; and the derived entity's id is the engine's, a function of (rule,
-subject). It is only installable inside a declared
-level ordering, where it must land strictly above the rule that writes it: see
-[strata](strata.md).
+…}` for a place of any depth — and its content may reference its own subject and, at or below
+its own level, other entities. It is only installable inside a declared level ordering, where it
+must land strictly above the rule that writes it: see [strata](strata.md).
+
+**Unnamed, the ADDRESS is the engine's, and it is the provenance**: the place, then the rule,
+then the subject's own segments. A rule selecting `git.ref.*` and deriving into `[verse-dev,
+merge, proposal]` writes
+
+    verse-dev.merge.proposal.proposal-appeared.git.ref."verse/auto/…"
+
+which is **seven** segments — three for the place, one for the rule, three for the subject. No
+two rules can address the same entity, which is what the composition is for.
+
+**So a reader of a derivation says how deep one is**, and how deep follows from the depth of the
+subjects the PRODUCING rule selects (`[verse-dev, merge, proposal, "*"]` is four segments and
+selects the RULE level, whose payload is the whole subtree of that rule's derivations rather
+than any one of them). A selection of N segments identifies entities at depth N, exactly — see
+[working/entity-tree.md](working/entity-tree.md). A rule that selects the wrong depth here does
+not fail: it selects a node that exists, reads fields that are not there, and writes its patches
+onto it.
+
+**Naming one is how a derive stays shallow.** `id:` (below) puts the entity at the place plus
+that one segment — `verse-dev.merge.proposal."verse/auto/…"`, four — which is what a reader
+already spells. A derive whose subjects are a slice of one system, read by rules that name the
+place literally, generally wants one.
 
 One firing derives one entity — until it says `!each`, which fans out over a list and derives
 one per element, addressed by a key read out of the element. That is the same invariant with

@@ -428,7 +428,19 @@ reads: [git, verse-dev.drift]
         name: !glob "verse/auto/*/*"
   action:
     derive:
+    # THE BRANCH IS THE ID, said outright. A derive that does not name one is addressed by its
+    # PROVENANCE — `<target>.<rule>.<subject…>`, so this one would land seven segments down at
+    # `verse-dev.merge.proposal.proposal-appeared.git.ref."verse/auto/…"` — and every rule below
+    # that reads a proposal says `[verse-dev, merge, proposal, "*"]`, which is four. Those rules
+    # would go on selecting, on the RULE level, whose payload is the whole subtree rather than
+    # one proposal: `proposal-outrun` fired on it and asked the coderunner to retire a `$branch`
+    # that node does not have.
+    #
+    # A branch name is unique per proposal and is what every reader keys on, so naming it here
+    # says the identity the rest of the file already assumes. `train-cut` two rules down does
+    # the same with a sha.
     - path: [verse-dev, merge, proposal]
+      id: $subject.value.name
       value:
         repo: $subject.value.repo
         branch: $subject.value.name
