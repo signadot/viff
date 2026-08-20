@@ -460,16 +460,30 @@ SCOPE="smoke$$"
 	--prompt 'echo checked $path' >"$tmp/connect.log" 2>&1 &
 CONN=$!
 fed=
+why="it did not appear within 30s"
+last=
 for _ in $(seq 1 150); do
 	out=$(v --scope "$SCOPE" data local 2>/dev/null || true)
+	last=$out
 	if has "$out" 'a.txt' && has "$out" 'b.txt'; then
 		fed=1
 		break
 	fi
-	kill -0 "$CONN" 2>/dev/null || break
+	# WHICH FAILURE IT WAS. This loop has two exits and reported one message for both, so a
+	# `connect` that died on startup and a federation that was merely slow were the same line —
+	# and the check flakes about one run in fourteen (git-issue d3vpeqshh12ksq3hg9n0), which is
+	# exactly when the difference decides where to look next.
+	if ! kill -0 "$CONN" 2>/dev/null; then
+		why="the connect process exited before the tree appeared"
+		break
+	fi
 	sleep 0.2
 done
-[ -n "$fed" ] || { tail -20 "$tmp/connect.log" >&2; die "connect did not federate the tree"; }
+[ -n "$fed" ] || {
+	printf '  last `data local` answer in scope %s:\n%s\n' "$SCOPE" "${last:-<empty>}" >&2
+	tail -20 "$tmp/connect.log" >&2
+	die "connect did not federate the tree: $why"
+}
 ok "federated a.txt + b.txt into scope $SCOPE"
 # Content is served on demand off a baseline mount (no --scope). ASSERTED, not noted: this
 # used to be a soft `note` blaming "mount timing", and the read never resolved at all — a
