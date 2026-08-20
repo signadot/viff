@@ -100,6 +100,24 @@ func (p Path) KPath() string {
 //
 // Reading into an array is a different matter and is offered: it navigates a materialized
 // document here rather than at the substrate, and `verse data` takes both spellings.
+// subscriptShaped reports whether kpath would read this step as anything but a name — an index
+// `[0]`, a sparse index `{0}`, a keyed element `(scott)`, or their `*` forms.
+//
+// A step that does not parse as a kpath at all is NOT subscript-shaped: it is a name that needs
+// quoting, which is what seg() does to it.
+func subscriptShaped(step string) bool {
+	kp, err := kpath.Parse(step)
+	if err != nil {
+		return false
+	}
+	for p := kp; p != nil; p = p.Next {
+		if p.Field == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // PathOf is a write path from the SEGMENTS themselves — no delimiter, no parse, no quoting.
 //
 // It is what a command line produces: the shell has already said where each segment ends, so
@@ -126,22 +144,25 @@ func PathOf(segs []string) (Path, error) {
 			strings.Join(segs, " "), want)
 	}
 	field := segs[want:]
-	// A STEP SHAPED LIKE AN ARRAY SUBSCRIPT IS REFUSED, and this is a rule about what a WRITE
-	// may target rather than about the step grammar — a step is a name here as everywhere, and
-	// this is the read-side's business not at all.
+	// A STEP THAT KPATH WOULD READ AS A SUBSCRIPT IS REFUSED on the write side — `votes[0]`,
+	// `votes{0}` (the sparse form), `votes(scott)`, and `[*]`/`{*}` with them.
 	//
-	// It cannot be told apart from somebody meaning the element, and letting it through is
-	// worse than saying no: a put at `votes [0]` does not reach into the array, it REPLACES it
-	// with the object `{"[0]": …}`. Measured — `votes: [ana, bo]` came back `votes: {[0]: zed}`
-	// and both ballots were gone.
+	// ASKED OF KPATH'S OWN GRAMMAR rather than of a list of characters, and that is the whole
+	// point: a list is complete only until the grammar grows one. This was written as
+	// `[…]`-or-`(…)` first and missed `{…}` entirely, which let a put at `votes {0}` through to
+	// do exactly what the check exists to prevent.
 	//
-	// What is lost is naming a field literally called `[0]`, which no spelling could reach
-	// before either: the string form parsed it as an index and refused it there. What is kept
-	// is the reason that refusal existed — an index past the end is accepted by the substrate
-	// and takes the log with it, and nothing here can know which side of the end it will land
-	// on.
+	// A NAME THAT MERELY NEEDS QUOTING IS NOT A SUBSCRIPT: `a.b` parses as two FIELDS and is a
+	// legitimate field name, so it passes. What is refused is a step any of whose parsed
+	// segments is not a field — which is precisely what the string parser used to refuse, said
+	// once and without a table.
+	//
+	// WHY A WRITE CARES. It does not reach the element and does not fail either: a put at
+	// `votes [0]` REPLACES the array with the object `{"[0]": …}`. Measured — `votes: [ana, bo]`
+	// came back `votes: {[0]: zed}`, both ballots gone. (An ORDINARY name does the same, which
+	// this check does not and cannot address: see git-issue for where that guard belongs.)
 	for _, f := range field {
-		if len(f) > 1 && (f[0] == '[' && f[len(f)-1] == ']' || f[0] == '(' && f[len(f)-1] == ')') {
+		if subscriptShaped(f) {
 			return Path{}, fmt.Errorf("%q: a write does not address an array element, and %q is "+
 				"how one is spelled. Writing it as a field name would REPLACE the array with an "+
 				"object of that one key; address the field that holds the array instead",

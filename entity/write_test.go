@@ -515,7 +515,9 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 //
 // The string form parsed `votes[0]` into an index node and turned it away there. Steps have no
 // index to parse — a step is a name — so this is a rule about what a WRITE may target, checked
-// on the field path.
+// on the field path by asking KPATH'S OWN GRAMMAR whether the step reads as anything but a name.
+// Written as a list of characters first, it missed `{…}` — the sparse index — and let the write
+// through to do the very thing the check exists to prevent.
 //
 // IT IS NOT TIDINESS. Letting the step through does not reach the element and does not fail
 // either: a put at `votes [0]` REPLACES the array with the object `{"[0]": …}`. Measured, with
@@ -523,14 +525,22 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 // The original reason stands too: an index past the end is accepted by the substrate and takes
 // the log with it, and nothing here can know which side of the end it will land on.
 func TestAWriteStillCannotReachAnArrayElement(t *testing.T) {
-	for _, segs := range [][]string{
-		{"merge", "proposal", "X", "votes", "(scott)"},
-		{"merge", "proposal", "X", "votes", "[0]"},
-		{"merge", "proposal", "X", "votes", "[0]", "who"}, // …anywhere in the field path
+	for _, sub := range []string{
+		"(scott)", // keyed
+		"[0]",     // dense index
+		"{0}",     // SPARSE index — the form a character list missed
+		"[*]", "{*}",
+		"votes[0]", // …and a subscript after a name
 	} {
+		segs := []string{"merge", "proposal", "X", "votes", sub}
 		if got, err := PathOf(segs); err == nil {
 			t.Errorf("PathOf(%q) = %+v, want a refusal — a write would replace the array", segs, got)
 		}
+	}
+	// A NAME THAT MERELY NEEDS QUOTING IS NOT A SUBSCRIPT. `a.b` parses as two fields, so it is
+	// a legitimate field name and passes — which is what tells this check apart from "quote it".
+	if _, err := PathOf([]string{"demo", "pr", "1", "a.b"}); err != nil {
+		t.Errorf("a field name holding a dot was refused as a subscript: %v", err)
 	}
 	// The ENTITY segments are not field names and are not checked here: an id may be anything,
 	// and `RefOf` is what says whether it names an entity.
