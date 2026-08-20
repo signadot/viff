@@ -115,7 +115,13 @@ func checkConditionReads(m Match) error {
 		return err
 	}
 	for _, s := range specs {
-		for _, seg := range []string{s.System, s.Kind, s.ID, s.Path} {
+		// EVERY SEGMENT OF THE ADDRESS, in whichever spelling it was written: `s.match().Segs()`
+		// reads the `at:` vector and the three dimensions alike, so a read that named the
+		// subject in an `at:` is refused the same way one that named it in an `id:` is. Asking
+		// the three dimensions alone was the same question only while they were the only
+		// spelling — an `at:` walked straight past this and failed at fire time instead.
+		segs := append(s.match().Segs(), s.Path)
+		for _, seg := range segs {
 			if strings.Contains(seg, "$"+refSubject) {
 				return fmt.Errorf("a condition's read cannot name $%s (%s): the subject is what "+
 					"the condition selects, so the firing has none yet — address the entity "+

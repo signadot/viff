@@ -186,7 +186,7 @@ func TestResumeSettlesAMotionItsRuleNoLongerSelects(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: merge-proposal
   condition:
-    subject: {system: merge, kind: proposal, value: !not.has-path state}
+    subject: {path: [merge, proposal, *], value: !not.has-path state}
   gates:
   - {name: merge-to-main, mode: ask, formula: !quorum 1}
   action:

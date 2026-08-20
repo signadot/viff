@@ -383,7 +383,7 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 	src := "name: commented-derive\n" +
 		"stratum: observe\n" +
-		"condition:\n  subject: {system: gh, kind: issue}\n" +
+		"condition:\n  subject: {path: [gh, issue, *]}\n" +
 		// `patch:` first, deliberately: a comment before a container's FIRST entry heads the
 		// container, so above `derive:` here it would land on the action and never wrap the
 		// value. Second, it wraps — which is the shape a real charter has, and the one that

@@ -448,7 +448,7 @@ func installPackageRuleAt(t *testing.T, at string) error {
 	g.Addr = testAddr // runCLI does this on its way in; this posts before any command runs
 	node, err := codec.ParseNode([]byte(`{
 		name: note,
-		condition: {subject: {system: `+at+`, kind: seen, id: head}},
+		condition: {subject: {path: [`+at+`, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`), codec.Tony)
 	if err != nil {
@@ -547,7 +547,7 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	g.Addr = testAddr
 	above, err := codec.ParseNode([]byte(`{
 		name: above,
-		condition: {subject: {system: shadow, kind: x, id: head}},
+		condition: {subject: {path: [shadow, x, head]}},
 		action: {patch: {saw: "yes"}},
 	}`), codec.Tony)
 	if err != nil {
@@ -564,7 +564,7 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	// A rule whose subject is inside the two-segment address, since a package writes only there.
 	node, err := codec.ParseNode([]byte(`{
 		name: note,
-		condition: {subject: {system: shadow, kind: rules, id: head}},
+		condition: {subject: {path: [shadow, rules, head]}},
 		action: {patch: {saw: "yes"}},
 	}`), codec.Tony)
 	if err != nil {

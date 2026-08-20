@@ -142,8 +142,8 @@ Two routes, no state, no write face:
 
 ```tony
 covers:
-- {system: git, kind: ref, value: {repo: verse}}
-- {system: git, kind: head, value: {repo: verse}}
+- {path: [git, ref, *], value: {repo: verse}}
+- {path: [git, head, *], value: {repo: verse}}
 entities:
 - ref: git.ref.verse/main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}

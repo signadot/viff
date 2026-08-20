@@ -52,7 +52,7 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-patch
 			  condition:
-			    subject: { system: demo, kind: patch, value: { stage: open } }
+			    subject: {path: [demo, patch, *], value: { stage: open }}
 			  action:
 			    patch: { stage: triaged }
 		TONY
@@ -61,7 +61,7 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-latch
 			  condition:
-			    subject: { system: demo, kind: latch, value: { stage: open } }
+			    subject: {path: [demo, latch, *], value: { stage: open }}
 			  action:
 			    patch:  { stage: reviewing }
 			    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
@@ -72,7 +72,7 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-ask
 			  condition:
-			    subject: { system: demo, kind: ask, value: { stage: open } }
+			    subject: {path: [demo, ask, *], value: { stage: open }}
 			  gates:
 			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
@@ -85,7 +85,7 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-seq
 			  condition:
-			    subject: { system: demo, kind: seq, value: { stage: ready } }
+			    subject: {path: [demo, seq, *], value: { stage: ready }}
 			  action:
 			    seq:
 			    - spawn: { driver: scripted, vector: auto, prompt: "echo lint $subject" }
@@ -99,8 +99,8 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-when
 			  condition:
-			    subject: { system: demo, kind: when, value: { stage: ready } }
-			    when:    { system: ci, kind: status, id: shapes, value: { state: green } }
+			    subject: {path: [demo, when, *], value: { stage: ready }}
+			    when:    {path: [ci, status, shapes], value: { state: green }}
 			  action:
 			    patch: { stage: shipped }
 		TONY
@@ -109,8 +109,8 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-on
 			  condition:
-			    subject: { system: demo, kind: on, value: { stage: waiting } }
-			    on:      { system: ci, kind: status, id: release, value: { state: green } }
+			    subject: {path: [demo, on, *], value: { stage: waiting }}
+			    on:      {path: [ci, status, release], value: { state: green }}
 			  action:
 			    patch: { stage: released }
 		TONY
@@ -131,7 +131,7 @@ shape_tony() {
 			- name: shape-derive
 			  stratum: shapes-source
 			  condition:
-			    subject: { system: demo, kind: derive, value: { stage: open } }
+			    subject: {path: [demo, derive, *], value: { stage: open }}
 			  action:
 			    patch: { stage: raised }
 			    derive:
@@ -149,7 +149,7 @@ shape_tony() {
 		cat <<-'TONY'
 			- name: shape-vote
 			  condition:
-			    subject: { system: demo, kind: vote, value: { stage: shipped } }
+			    subject: {path: [demo, vote, *], value: { stage: shipped }}
 			  gates:
 			  - { name: approvals, formula: !quorum 2 }
 			  action:

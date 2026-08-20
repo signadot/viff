@@ -469,7 +469,7 @@ func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
 		`{at: demo.pr.1}`,
 		`{at: !verse-path [demo pr 1]}`,
 		`!verse-path [demo pr 1]`,
-		`{system: demo, kind: pr, id: "1"}`,
+		`{path: [demo, pr, "1"]}`,
 	} {
 		var m Match
 		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
@@ -502,7 +502,7 @@ func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
 // are two spellings of one thing, and a map holding both has said it twice.
 func TestAnAddressIsWrittenOneWayOrTheOther(t *testing.T) {
 	for _, src := range []string{
-		`{at: demo.pr, system: other}`,
+		`{system: other, at: demo.pr}`,
 		`{system: demo, at: demo.pr}`,
 	} {
 		var m Match

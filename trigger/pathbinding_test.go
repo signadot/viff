@@ -46,7 +46,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 			want: "its value names the binding .[tip]",
 		},
 		{
-			name: "in a read's id",
+			name: "in a read's address",
 			charter: `
 - name: probe
   condition:
@@ -56,12 +56,12 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
       value: !let
         let:
         - tip: !get-path {at: [git, head, verse], path: sha}
-        - one: !get-path {system: merge, kind: proposal, id: .[tip], path: branch}
+        - one: !get-path {at: [merge, proposal, .[tip]], path: branch}
         in: {branch: .[one]}
   action:
     patch: {saw: yes}
 `,
-			want: "its id names the binding .[tip]",
+			want: "its address names the binding .[tip]",
 		},
 		{
 			name: "in a read's path",

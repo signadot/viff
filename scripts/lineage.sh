@@ -239,7 +239,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
     # GitHub's own vocabulary: a pull request is `merged`, and the branch it proposed against
     # is its `base`. Matching a display string instead is what breaks when somebody renames a
     # column; there is nothing to rename here.
-    subject: { system: github, kind: pr, value: { merged: true } }
+    subject: {path: [github, pr, *], value: { merged: true }}
   action:
     derive:
       lineage:
@@ -257,8 +257,8 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
           # It answers a one-element list rather than a value, which is the shape of "find the
           # thing that says this about itself" and the price of two systems that never agreed
           # on an id — which is the whole point being demonstrated.
-          message: !list-paths { system: git, kind: commit, id: "*", value: {sha: $subject.value.headSha}, path: msg }
-          author:  !list-paths { system: git, kind: commit, id: "*", value: {sha: $subject.value.headSha}, path: author }
+          message: !list-paths {at: [git, commit, "*"], value: {sha: $subject.value.headSha}, path: msg}
+          author:  !list-paths {at: [git, commit, "*"], value: {sha: $subject.value.headSha}, path: author}
 
 # The release does not correlate anything; it READS THE SET. A derive is about exactly one
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
@@ -269,14 +269,14 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 # branch, so this is one rule rather than one rule per branch.
 - name: lin-release-manifest
   condition:
-    subject: { system: lintag, kind: release, value: { stage: cut } }
+    subject: {path: [lintag, release, *], value: { stage: cut }}
   action:
     patch:
       stage:   shipped
-      prs:     !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: pr }
-      commits: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: commit }
-      authors: !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: author }
-      titles:  !list-paths { system: lineage, kind: trace, id: "*", value: { target: $subject.value.target }, path: title }
+      prs:     !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: pr}
+      commits: !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: commit}
+      authors: !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: author}
+      titles:  !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: title}
     spawn: { driver: scripted, vector: auto, prompt: "echo shipping $subject; sleep 30" }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"

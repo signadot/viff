@@ -37,7 +37,7 @@ func TestADeriveOverAnotherRulesFieldIsAdvised(t *testing.T) {
 	installAll(t, eng, `
 - name: record
   stratum: low
-  condition: {subject: {system: git, kind: commit}}
+  condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
       notes:
@@ -45,14 +45,14 @@ func TestADeriveOverAnotherRulesFieldIsAdvised(t *testing.T) {
           reviewed: pending
 - name: gather
   stratum: high
-  condition: {subject: {system: notes, kind: row, value: {reviewed: pending}}}
+  condition: {subject: {path: [notes, row, *], value: {reviewed: pending}}}
   action:
     patch: {reviewed: gathered}
 `)
 	notes := eng.adviseDeriveClobber(mustParseCharter(t, `
 - name: record
   stratum: low
-  condition: {subject: {system: git, kind: commit}}
+  condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
       notes:
@@ -82,7 +82,7 @@ func TestADeriveThatOwnsItsFieldsIsNotAdvised(t *testing.T) {
 	installAll(t, eng, `
 - name: record
   stratum: low
-  condition: {subject: {system: git, kind: commit}}
+  condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
       notes:
@@ -90,7 +90,7 @@ func TestADeriveThatOwnsItsFieldsIsNotAdvised(t *testing.T) {
           sha: $subject.id
 - name: gather
   stratum: high
-  condition: {subject: {system: notes, kind: row, value: !not.has-path reviewed}}
+  condition: {subject: {path: [notes, row, *], value: !not.has-path reviewed}}
   action:
     patch: {reviewed: gathered}
 `)
@@ -107,14 +107,14 @@ func TestADeriveElsewhereIsNotAdvised(t *testing.T) {
 	installAll(t, eng, `
 - name: record
   stratum: low
-  condition: {subject: {system: git, kind: commit}}
+  condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
       notes:
         row:
           reviewed: pending
 - name: elsewhere
-  condition: {subject: {system: demo, kind: pr}}
+  condition: {subject: {path: [demo, pr, *]}}
   action:
     patch: {reviewed: gathered}
 `)

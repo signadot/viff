@@ -65,7 +65,7 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	addRule(t, ts, `{
 		name: guard,
-		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		condition: {subject: {path: [change, pr, *], value: {area: payments}}},
 		gates:  [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewed}},
 	}`)

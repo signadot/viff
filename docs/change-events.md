@@ -248,7 +248,7 @@ change" grain is imposed *here*, at the logd↔store seam, not assumed by the en
 This is what makes a trigger's subject well-defined: a firing is driven by one event,
 which carries one `Ref`, so `$subject` — and hence the flow keyed on it — is
 always exactly one entity. Not because a match *pattern* is constrained to one entity (it
-isn't; `{system:"demo"}` matches every demo entity), but because dispatch is
+isn't; `{path: ["demo", *, *]}` matches every demo entity), but because dispatch is
 per-entity-edge. A broad pattern simply fans out to one independent firing per matching
 change.
 

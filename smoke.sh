@@ -243,8 +243,7 @@ cat >"$tmp/charter.tony" <<'TONY'
 - name: smoke-advance-tony
   condition:
     subject:
-      system: demo
-      kind: pr
+      path: [demo, pr, *]
       value:
         stage: queued
   gates: []
@@ -388,7 +387,7 @@ step "docket: a quorum gate posts a motion, and a vote carries it"
 v charter -a --file - >/dev/null <<'TONY' || die "quorum charter -a failed"
 - name: smoke-quorum
   condition:
-    subject: {system: demo, kind: motion, value: {stage: open}}
+    subject: {path: [demo, motion, *], value: {stage: open}}
   gates:
   - {name: approvals, mode: ask, formula: !quorum 1}
   action:
@@ -546,8 +545,7 @@ cat >"$tmp/strata.tony" <<'TONY'
   stratum: smoke-observe
   condition:
     subject:
-      system: smokegh
-      kind: issue
+      path: [smokegh, issue, *]
       value:
         label: urgent
   action:
@@ -561,8 +559,7 @@ cat >"$tmp/strata.tony" <<'TONY'
   stratum: smoke-sdlc
   condition:
     subject:
-      system: smokesd
-      kind: feature
+      path: [smokesd, feature, *]
       value:
         priority: urgent
   action:
@@ -615,7 +612,7 @@ v charter -a -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb 
 - name: smoke-downward
   stratum: smoke-sdlc
   condition:
-    subject: { system: smokesd, kind: feature }
+    subject: {path: [smokesd, feature, *]}
   action:
     derive:
       smokegh:

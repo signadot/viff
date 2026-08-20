@@ -52,7 +52,7 @@ Omitted, it is unconstrained, which is what every rule here means.
 - name: review
   # what it is about
   condition:
-    subject: { system: demo, kind: pr, value: { stage: open } }
+    subject: {path: [demo, pr, *], value: { stage: open }}
   # the guard
   gates:
   - { name: approval, mode: ask }
@@ -134,10 +134,10 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
 ---
 - name: reflected           # the level the source sits at
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: ours
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 - name: head-moved          # in the `drift` package
   stratum: reflected
   condition: {subject: git.head.verse}    # a source: read, never written
@@ -369,7 +369,7 @@ What a restart still cannot do is bring back a scope nobody has reconnected to: 
 the scopes that have a charter needs a scope to be a listable thing, and it is not one yet.
 
 The charter is an observable slice like any other, so a trigger can watch the charter
-(`subject: {system: trigger, kind: rule}`). It has to *name* it: `trigger:*` joins `task:*`
+(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `trigger:*` joins `task:*`
 as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
 itself. Meta-observation stays possible, and stays deliberate.
 
@@ -380,8 +380,7 @@ once, from the store as it stood at the commit. There is no `until` or `deadline
 subject is *selected*, not *awaited*.
 
 It is the one field a condition cannot leave out, because nothing else in a trigger can answer
-for it. The action has no target of its own, and a `when` need not pin one kind: `{system:
-demo}` spans all of them, and a disjunction (`!or [a.b.c, {system: d, kind: e}]`) makes it
+for it. The action has no target of its own, and a `when` need not pin one kind: `{path: [demo, *, *]}` spans all of them, and a disjunction (`!or [a.b.c, {path: [d, e, *]}]`) makes it
 plain — "the entity the when matched" answers *which entity fired* when the question is *what
 is this rule about*. A rule that acts on whichever disjunct happened to fire is not a rule
 anyone wrote down. So the subject is always stated, and everything else in the trigger is read
@@ -420,7 +419,7 @@ human from asking again at every commit.
 
 This is why `subject` is bounded where a `when` formula ranges freely: it pins a PLACE and
 predicates over the single entity's payload, rather than composing over time. "all open PRs" is
-just `{system: demo, kind: pr, value: {stage: open}}`, and the same thing one level deeper is
+just `{path: [demo, pr, *], value: {stage: open}}`, and the same thing one level deeper is
 `{path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}`.
 
 ### The string form is an address, in one grammar
@@ -472,8 +471,8 @@ A selector subject advances a whole set:
 ```tony
 - name: ship-reviewed
   condition:
-    when:    { system: ci, kind: status, value: { state: green } }
-    subject: { system: demo, kind: pr,   value: { stage: reviewed } }
+    when:    {path: [ci, status, *], value: { state: green }}
+    subject: {path: [demo, pr, *], value: { stage: reviewed }}
   gates:
   - { name: ship, mode: ask }
   action:
@@ -508,7 +507,7 @@ shape: *while* this holds, act on what the subject selects.
 **`on` is the cause.** It narrows *when the rule is considered at all* to the instant its
 predicate becomes true, and two properties follow that an author has to know:
 
-- **An edge does not re-fire while it stays true.** `on: {system: demo, kind: pr, value:
+- **An edge does not re-fire while it stays true.** `on: {path: [demo, pr, *], value:
   {stage: reviewed}}` rises when the FIRST PR reaches `reviewed` and says nothing about the
   second — the predicate never fell. There is no way to say "on each PR reaching reviewed";
   that is what a subject plus a latch is for.
@@ -527,7 +526,7 @@ that precedes removal. A charter carrying `op` is refused with that explanation 
 carry, and "unknown key" would not say so.
 
 The address string is sugar for the identity dimensions, so `demo.pr.*` means
-`{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
+`{path: [demo, pr, *]}` — and since a trailing wildcard *is* an unset dimension, that is
 what reads back when you read it out of `verse c`: `demo:pr`. Same match, shorter spelling.
 
 Keep it small. This is where complexity hides. To act "only the first time", match a state
@@ -558,11 +557,11 @@ live on.
 
 ```tony
 # filepath globbing
-subject: { system: demo, kind: pr, id: !glob "hotfix-*" }
+subject: {path: [demo, pr, !glob "hotfix-*"]}
 # everything but one
-subject: { system: demo, kind: pr, id: !not "1" }
+subject: {path: [demo, pr, !not "1"]}
 # composed
-subject: { system: demo, kind: pr, id: !or ["1", !glob "hf-*"] }
+subject: {path: [demo, pr, !or ["1", !glob "hf-*"]]}
 ```
 
 In a JSON-shaped charter, write the operator as a single-key object — `{"id": {"glob":
@@ -597,7 +596,7 @@ predicate. Write the whole segment as `*` for "any", and put the operator on `id
 written once:
 
 ```tony
-subject: { at: demo.pr, value: {stage: open} }        # {system: demo, kind: pr}
+subject: { at: demo.pr, value: {stage: open} }        # {path: [demo, pr, *]}
 subject: { at: verse.gate.question }                   # …and in verse's own half
 subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 ```
@@ -615,21 +614,21 @@ when:    !verse-path [git head verse]
 ```
 
 The tag is required on a list, so a list of steps cannot be read as anything else — and an
-address is written one way or the other: `{at: demo.pr, system: other}` is refused rather than
+address is written one way or the other: `{path: [other, *, *], at: demo.pr}` is refused rather than
 merged.
 
 `root` names which half of the verse the match is about, and an unwritten one is the world's:
 
 ```tony
 # a rule about PRs — the ordinary case, and it cannot see verse's own records
-subject: { system: demo, kind: pr }
+subject: {path: [demo, pr, *]}
 # a rule about what verse writes: a posed question, a task's mirror, an installed rule
-subject: { root: verse, system: gate, kind: question, value: {status: pending} }
+subject: {path: [verse, gate, question, *], value: {status: pending}}
 ```
 
 The default is the point rather than a convenience. `verse:` holds what verse writes about its
 own running ([entities](reference/entities.md#two-halves-one-tree)), and a rule that
-did not ask for it must not select it by omission — otherwise `{system: task}` on a charter
+did not ask for it must not select it by omission — otherwise `{path: [task, *, *]}` on a charter
 about the world's tasks would quietly match the mirror of every run in the verse. Like `system`
 and `kind`, it takes no operator: it is the first segment of a watch path.
 
@@ -638,10 +637,10 @@ evaluated against the payload instead of the id.
 
 ```tony
 # a record's fields
-when: { system: demo, kind: pr,    value: { stage: !or [open, merged] } }
-on:   { system: demo, kind: pr,    value: { branch: !glob "hotfix-*" } }
+when: {path: [demo, pr, *], value: { stage: !or [open, merged] }}
+on:   {path: [demo, pr, *], value: { branch: !glob "hotfix-*" }}
 # the payload ROOT
-when: { system: demo, kind: count, value: !or [10, 100] }
+when: {path: [demo, count, *], value: !or [10, 100]}
 ```
 
 `value` is open in shape because a payload is: an entity's payload is any tony value — a
@@ -742,7 +741,7 @@ without changing the subject's own state, the vanishing-marker shape works:
 
 ```tony
   condition:
-    subject: { system: demo, kind: pr, value: !and [ { stage: open }, !not { blocked: true } ] }
+    subject: {path: [demo, pr, *], value: !and [ { stage: open }, !not { blocked: true } ]}
   gates:
   - { name: approval, mode: ask, onDenied: { patch: { blocked: true } } }
 ```
@@ -859,7 +858,7 @@ So a derive states the facts it owns, and the rule that follows it starts from a
 # the derive says what it knows, and nothing about the flow's state
 derive: { notes: { row: { sha: $subject.id } } }
 # …and the next rule latches on the absence, which is nobody's to overwrite
-condition: { subject: { system: notes, kind: row, value: !not.has-path reviewed } }
+condition: { subject: {path: [notes, row, *], value: !not.has-path reviewed} }
 ```
 
 A charter that does it the other way earns a note at install naming both rules and the field.
@@ -1093,11 +1092,11 @@ reach an entity neither of those is:
 ```tony
 action:
   patch:
-    repo:     !get-path { system: git, kind: repo, id: $subject.value.head }
-    branch:   !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
-    branches: !list-paths { system: git, kind: repo, id: "*", path: branch }
+    repo:     !get-path {at: [git, repo, $subject.value.head]}
+    branch:   !get-path {at: [git, repo, $subject.value.head], path: branch}
+    branches: !list-paths {at: [git, repo, "*"], path: branch}
     # …and a predicate narrows the walk to the ones that look like this (list only)
-    green:    !list-paths { system: git, kind: repo, id: "*", value: {state: green}, path: branch }
+    green:    !list-paths {at: [git, repo, "*"], value: {state: green}, path: branch}
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
     # and `at:` names the address as a PATH, at whatever depth the tree is
@@ -1110,7 +1109,7 @@ not: in a READ, `path:` is already the field path inside the payload, and the fi
 there first. Two things cannot both be `path`.
 
 **One grammar, split by cardinality, and the names say which.** A verse is one document —
-`{system: {kind: {id: payload}}}` — so an entity address is a path prefix, and `path:` continues
+`{path: [{kind: {id: payload}}, *, *]}` — so an entity address is a path prefix, and `path:` continues
 it into the payload. `!get-path` answers with one node; `!list-paths` answers with a list, and is
 where the globs live. They mirror go-tony's own split, where `GetKPath` returns one node and
 rejects a wildcard outright while `ListKPath` collects.
@@ -1159,10 +1158,9 @@ elsewhere. `!let` binds the read, and the body compares:
 - name: proposal-outrun
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [merge, proposal, *]
       value: !let
-        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
         in:  {state: open, base: !not .[tip]}
   action:
     patch: { state: stale }
@@ -1267,7 +1265,7 @@ patched onto the subject is an ordinary fact, and an ordinary condition matches 
 knowledge of tasks required:
 
 ```tony
-subject: { system: demo, kind: pr, value: { stage: reviewed, severity: high } }
+subject: {path: [demo, pr, *], value: { stage: reviewed, severity: high }}
 ```
 
 Four semantics are worth knowing.
@@ -1362,7 +1360,7 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
 ```tony
 - name: review
   condition:
-    subject: { system: demo, kind: pr, value: { stage: open } }
+    subject: {path: [demo, pr, *], value: { stage: open }}
   gates:
   - { name: review, mode: ask }
   action:
@@ -1452,7 +1450,7 @@ verse:
 A join reads it at whatever depth it cares about:
 
 ```tony
-subject: { system: demo, kind: pr, value: { verse: { charter: { review: { done: true } } } } }
+subject: {path: [demo, pr, *], value: { verse: { charter: { review: { done: true } } } }}
 ```
 
 One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
@@ -1563,7 +1561,7 @@ the negative into a positive, and a departure becomes an ordinary rising edge:
 ```tony
 - name: note-departures
   condition:
-    on:      { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
+    on:      {path: [demo, pr, *], value: { verse: { meta: { vanishing: null } } }}
     subject: audit.record.latest
   action:
     patch: { saw: "a departure" }
@@ -1578,7 +1576,7 @@ Three things follow, and the first is the one to know:
 
 **A vanishing entity is not a subject.** A rule acts on what it selects — patches it, spawns
 about it, raises a gate on it — and doing any of that to something on its way out is work about
-something that will not be there. So `subject: {system: demo, kind: pr}` skips it, and naming
+something that will not be there. So `subject: {path: [demo, pr, *]}` skips it, and naming
 the marker is the opt-in that sees it again — which is how the reaper works.
 
 A NAMED subject (`demo.pr.1`) is skipped too, and this is the one place naming does not beat
@@ -1602,7 +1600,7 @@ removes it. `!delete null` is the removal, at the root exactly as at a field:
 ```tony
 - name: reap
   condition:
-    subject: { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
+    subject: {path: [demo, pr, *], value: { verse: { meta: { vanishing: null } } }}
   action:
     patch: !delete null
 ```

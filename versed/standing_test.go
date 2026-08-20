@@ -122,7 +122,7 @@ func TestInstallingReportsWhatItOverlaps(t *testing.T) {
 
 	// A binding over a different kind shares nothing and is told so by silence.
 	third := installResolver(t, ts.URL,
-		`{name: charlie, kind: cost, condition: {subject: {system: demo, kind: release}}, `+
+		`{name: charlie, kind: cost, condition: {subject: {path: [demo, release, *]}}, `+
 			`method: {driver: url, url: "https://x"}}`)
 	decodeResp(t, third, &out)
 	third.Body.Close()

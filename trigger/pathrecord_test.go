@@ -71,7 +71,7 @@ func TestATaggedListIsOneMatchNotAUnion(t *testing.T) {
 			"name matches a whole system", len(ms))
 	}
 	// The union form still reads as a union.
-	node, err = codec.ParseNode([]byte(`[demo.pr.*, {system: gh, kind: issue}]`), codec.Tony)
+	node, err = codec.ParseNode([]byte(`[demo.pr.*, {path: [gh, issue, *]}]`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}

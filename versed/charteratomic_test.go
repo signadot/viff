@@ -35,10 +35,10 @@ func TestACharterFileIsAppliedAsOneStep(t *testing.T) {
 
 	// A level that is fine, and a rule that writes outside the address it is installed at.
 	code, msg := installAt(t, ts.URL, "probe.pkg", `[
-		{name: lvl, level: 0, match: {system: git}},
+		{name: lvl, level: 0, match: {path: [git]}},
 		{
 			name: good,
-			condition: {subject: {system: elsewhere, kind: thing, id: x}},
+			condition: {subject: {path: [elsewhere, thing, x]}},
 			action: {patch: {saw: "yes"}},
 		},
 	]`)
@@ -78,11 +78,11 @@ func TestARefusedFilePutsBackWhatItReplaced(t *testing.T) {
 	defer ts.Close()
 
 	if code, msg := installAt(t, ts.URL, "notes", `[
-		{name: lvl, level: 0, match: {system: notes}},
+		{name: lvl, level: 0, match: {path: [notes]}},
 		{
 			name: note,
 			stratum: lvl,
-			condition: {subject: {system: notes, kind: seen, id: head}},
+			condition: {subject: {path: [notes, seen, head]}},
 			action: {patch: {saw: "first"}},
 		},
 	]`); code != 201 {
@@ -91,16 +91,16 @@ func TestARefusedFilePutsBackWhatItReplaced(t *testing.T) {
 
 	// The same file, edited in both halves, with a third document that is refused.
 	code, msg := installAt(t, ts.URL, "notes", `[
-		{name: lvl, level: 50, match: {system: notes}},
+		{name: lvl, level: 50, match: {path: [notes]}},
 		{
 			name: note,
 			stratum: lvl,
-			condition: {subject: {system: notes, kind: seen, id: head}},
+			condition: {subject: {path: [notes, seen, head]}},
 			action: {patch: {saw: "second"}},
 		},
 		{
 			name: reaching,
-			condition: {subject: {system: elsewhere, kind: thing, id: x}},
+			condition: {subject: {path: [elsewhere, thing, x]}},
 			action: {patch: {saw: "yes"}},
 		},
 	]`)
@@ -154,7 +154,7 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing a package = %d: %s", code, msg)
@@ -163,7 +163,7 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	if code, _ := installAt(t, ts.URL, "notes", `[
 		{
 			name: reaching,
-			condition: {subject: {system: elsewhere, kind: thing, id: x}},
+			condition: {subject: {path: [elsewhere, thing, x]}},
 			action: {patch: {saw: "yes"}},
 		},
 	]`); code == 201 {
@@ -201,11 +201,11 @@ func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 	// The second package's rule writes outside its own address, so it is refused.
 	file := `{at: one}
 ---
-{name: ok-rule, condition: {subject: {system: one, kind: x}}, action: {patch: {seen: true}}}
+{name: ok-rule, condition: {subject: {path: [one, x, *]}}, action: {patch: {seen: true}}}
 ---
 {at: two}
 ---
-{name: bad-rule, condition: {subject: {system: elsewhere, kind: y}}, action: {patch: {seen: true}}}`
+{name: bad-rule, condition: {subject: {path: [elsewhere, y, *]}}, action: {patch: {seen: true}}}`
 	code, msg := postCharterFile(t, ts.URL, file)
 	if code == 201 {
 		t.Fatal("a file with a refused package installed")
@@ -222,7 +222,7 @@ func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 	_ = msg
 
 	// The same file with the second package corrected installs BOTH.
-	ok := strings.Replace(file, "system: elsewhere", "system: two", 1)
+	ok := strings.Replace(file, "path: [elsewhere,", "path: [two,", 1)
 	if code, msg := postCharterFile(t, ts.URL, ok); code != 201 {
 		t.Fatalf("the corrected file = %d: %s", code, msg)
 	}

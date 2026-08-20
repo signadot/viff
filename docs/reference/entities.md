@@ -181,8 +181,8 @@ Two consequences worth knowing before they surprise you:
   a well-formed address and a 403: what verse writes about itself is written by the verbs that
   own it (`trigger add`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
 
-In a charter, the same segment is a `root` dimension on a match — `{root: verse, system: task,
-kind: instance}` — and an unwritten `root` means the world's half, so a rule that means to watch
+In a charter it is the first segment of the path — `{path: [verse, task, instance, *]}` — and a
+path that does not start with it is about the world's half, so a rule that means to watch
 verse's own state says so.
 
 **In a charter**, an address is a `path:` — and every segment of it is a MATCH, in tony's own
@@ -191,7 +191,7 @@ grammar, asked of that one segment:
 ```tony
 subject: {path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}
 subject: !verse-path [verse-dev drift !glob "head-*" "*"]
-subject: {system: demo, kind: pr, id: 1}      # the three-segment shorthand, unchanged
+subject: {path: [demo, pr, 1]}
 ```
 
 So `!glob "hot-*"`, `!or [hot, cold]` and `!and [!glob "h*", !not hold]` all say at a position
@@ -199,8 +199,13 @@ what they already say about a payload. Nothing in verse enumerates the operators
 owns them. One convention sits above that: a bare `*` is any segment, and inside an operator a
 `*` is an ordinary character — which is how an id that IS an asterisk is named (`!glob "[*]"`).
 
-A `*` is a POSITION, which the dimensions could not say: an unset `kind` means "and nothing
-below it", where `[demo, "*", 1]` means "any one segment, then this".
+A `*` IS A POSITION, which is why the length of the path is the depth it selects at:
+`[demo, pr, "*"]` picks three-segment entities and `[demo, pr]` is the place above them.
+
+`{system, kind, id}` is still read as the first three positions of a path — a shorthand the
+grammar keeps for the charters written in it — and `System()`/`Kind()`/`ID()` answer from
+whichever spelling was used. It is not what to write: a path says the depth, and the shorthand
+can only ever mean three.
 
 **What takes what:**
 
@@ -248,7 +253,7 @@ A charter that wants to react to verse's own state says which half it means:
 
 ```tony
 condition:
-  subject: {root: verse, system: gate, kind: question, value: {status: pending}}
+  subject: {path: [verse, gate, question, *], value: {status: pending}}
 ```
 
 An unwritten `root:` is the world's half, so a rule about `demo.pr.*` cannot quietly select the
@@ -259,7 +264,7 @@ its own root with no history — see below.
 
 ## Reading
 
-A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
+A verse is ONE DOCUMENT — `{path: [{kind: {id: payload}}, *, *]}` — and `verse data` answers it at a
 path. The path is a [kinded path](https://signadot.github.io/tony-format/) in any of the three
 spellings [above](#addressing), and it is the same address at every depth: a system, a kind, an
 entity, a place inside a payload.

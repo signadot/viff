@@ -131,8 +131,8 @@ member arriving afterwards is not acted on until the cause falls and rises again
 ```tony
 - name: ship-at-green
   condition:
-    on:      { system: ci,   kind: status, value: { state: green } }
-    subject: { system: demo, kind: pr,     value: { stage: reviewed } }
+    on:      {path: [ci, status, *], value: { state: green }}
+    subject: {path: [demo, pr, *], value: { stage: reviewed }}
   action:
     patch: { stage: shipped }
 ```
@@ -156,12 +156,12 @@ which every protection described above misses:
 ```tony
 - name: fwd
   condition:
-    subject: { system: demo, kind: pr, value: { stage: a } }
+    subject: {path: [demo, pr, *], value: { stage: a }}
   action:
     patch: { stage: b }
 - name: back
   condition:
-    subject: { system: demo, kind: pr, value: { stage: b } }
+    subject: {path: [demo, pr, *], value: { stage: b }}
   action:
     patch: { stage: a }
 ```

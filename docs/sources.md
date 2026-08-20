@@ -356,8 +356,8 @@ knowable. So the same kind is covered **twice**:
 
 ```tony
 covers:
-- {system: github, kind: issue, value: {repo: signadot/verse, state: open}}
-- {system: github, kind: issue, value: {repo: signadot/verse, state: closed}}
+- {path: [github, issue, *], value: {repo: signadot/verse, state: open}}
+- {path: [github, issue, *], value: {repo: signadot/verse, state: closed}}
 ```
 
 The first says the answer holds *every* open issue, so one that has gone absent is gone. The

@@ -24,7 +24,7 @@ const proposalCharter = `
       system: merge
       kind: proposal
       value: !let
-        let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
         in:  {state: open, base: !not .[tip]}
   action:
     patch: {state: stale}
@@ -133,7 +133,7 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
       system: merge
       kind: proposal
       value: !let
-        let: [{tip: !get-path {system: git, kind: head, id: $subject.value.branch, path: sha}}]
+        let: [{tip: !get-path {at: [git, head, $subject.value.branch], path: sha}}]
         in:  {base: !not .[tip]}
   action:
     patch: {state: stale}

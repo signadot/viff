@@ -58,7 +58,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 	// invisible from baseline and nothing registers one. See docs/reference/connect.md.
 	addScopedRule(t, secondHTTP, "me", `{
 		name: connect-probe,
-		condition: {subject: {system: never, kind: never}},
+		condition: {subject: {path: [never, never, *]}},
 		action: {patch: {seen: true}},
 	}`)
 
@@ -182,7 +182,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	defer secondHTTP.Close()
 	addScopedRule(t, secondHTTP, "me", `{
 		name: connect-probe,
-		condition: {subject: {system: never, kind: never}},
+		condition: {subject: {path: [never, never, *]}},
 		action: {patch: {seen: true}},
 	}`)
 

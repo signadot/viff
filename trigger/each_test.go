@@ -22,15 +22,15 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 		`
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
@@ -48,15 +48,15 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 		`
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
@@ -109,15 +109,15 @@ func TestEachRefusals(t *testing.T) {
 			src := `
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "x"}
     onDone:
@@ -149,15 +149,15 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {system: gh}
+  match: {path: [gh]}
 - name: sdlc
   level: 10
-  match: {system: signadot}
+  match: {path: [signadot]}
 ---
 - name: urgent
   stratum: reflected
   condition:
-    subject: {system: gh, kind: issue, value: {label: urgent}}
+    subject: {path: [gh, issue, *], value: {label: urgent}}
   action:
     patch: {triaged: true}
     derive: {signadot: {feature: {priority: urgent, about: $subject.id}}}
@@ -191,12 +191,12 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 	src := `
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: findings
   condition:
-    subject: {system: drift, kind: head, value: {reviewed: pending}}
+    subject: {path: [drift, head, *], value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "x"}
     onDone:
@@ -228,15 +228,15 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
     derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}}
@@ -341,15 +341,15 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
     derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}}
@@ -426,15 +426,15 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {system: git}
+  match: {path: [git]}
 - name: findings
   level: 10
-  match: {system: drift}
+  match: {path: [drift]}
 ---
 - name: review
   stratum: reflected
   condition:
-    subject: {system: git, kind: commit, value: {reviewed: pending}}
+    subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
@@ -531,19 +531,19 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 	src := `
 - name: drift
   level: 10
-  match: {system: drift, kind: head}
+  match: {path: [drift, head]}
 - name: ledger
   level: 20
-  match: {system: drift, kind: finding}
+  match: {path: [drift, finding]}
 ---
 - name: gather
   stratum: drift
   condition:
-    subject: {system: drift, kind: head, value: {reviewed: pending}}
+    subject: {path: [drift, head, *], value: {reviewed: pending}}
   action:
     patch:
       reviewed: gathered
-      outstanding: !list-paths {system: drift, kind: finding, id: "*", value: {status: open}}
+      outstanding: !list-paths {at: [drift, finding, "*"], value: {status: open}}
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {

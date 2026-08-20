@@ -234,8 +234,8 @@ func TestStateRejectsAPathWithoutAPredicate(t *testing.T) {
 func TestAListingFiltersAndProjects(t *testing.T) {
 	serve(t)
 	for _, src := range []string{
-		`{name: alpha, condition: {subject: {system: demo, kind: pr}}, action: {patch: {seen: "yes"}}}`,
-		`{name: beta, condition: {subject: {system: other, kind: thing}}, action: {patch: {seen: "yes"}}}`,
+		`{name: alpha, condition: {subject: {path: [demo, pr, *]}}, action: {patch: {seen: "yes"}}}`,
+		`{name: beta, condition: {subject: {path: [other, thing, *]}}, action: {patch: {seen: "yes"}}}`,
 	} {
 		f := filepath.Join(t.TempDir(), "rule.tony")
 		if err := os.WriteFile(f, []byte(src), 0o600); err != nil {

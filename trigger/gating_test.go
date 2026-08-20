@@ -26,7 +26,7 @@ func rule(t *testing.T, doc string) Trigger {
 func TestARuleNamesWhoAnswersItsOwnGates(t *testing.T) {
 	trig := rule(t, `{
 		name: validate,
-		condition: {subject: {system: change, kind: pr, value: {stage: proposed}}},
+		condition: {subject: {path: [change, pr, *], value: {stage: proposed}}},
 		gating: {
 			resolver: "verse.resolvers.security.security-review",
 			gates:    [{name: ship, mode: ask}],
@@ -45,7 +45,7 @@ func TestARuleNamesWhoAnswersItsOwnGates(t *testing.T) {
 func TestTopLevelGatesStillMeanTheSame(t *testing.T) {
 	trig := rule(t, `{
 		name: validate,
-		condition: {subject: {system: change, kind: pr, value: {stage: proposed}}},
+		condition: {subject: {path: [change, pr, *], value: {stage: proposed}}},
 		gates:  [{name: ship, mode: ask}],
 		action: {patch: {stage: validated}},
 	}`)
@@ -63,7 +63,7 @@ func TestTopLevelGatesStillMeanTheSame(t *testing.T) {
 func TestGatesWrittenTwiceAreRefused(t *testing.T) {
 	trig := rule(t, `{
 		name: validate,
-		condition: {subject: {system: change, kind: pr, value: {stage: proposed}}},
+		condition: {subject: {path: [change, pr, *], value: {stage: proposed}}},
 		gates:  [{name: old, mode: ask}],
 		gating: {gates: [{name: new, mode: ask}]},
 		action: {patch: {stage: validated}},

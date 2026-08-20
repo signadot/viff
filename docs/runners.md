@@ -73,7 +73,7 @@ A charter names a runner the way it names a provider or a resolver:
 ```tony
 name: retrain-on-gpu
 condition:
-  subject: { system: demo, kind: model, value: { stage: ready } }
+  subject: {path: [demo, model, *], value: { stage: ready }}
 action:
   spawn:
     prompt:   "retrain the ranker on $subject"

@@ -25,7 +25,7 @@ func TestADeadlinesDefaultOptionIsMarkedOnTheBallot(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: ship
-  condition: {subject: {system: demo, kind: rel, value: {stage: open}}}
+  condition: {subject: {path: [demo, rel, *], value: {stage: open}}}
   gates: [{name: two-of-us, mode: ask, formula: !until [!quorum 2, !deadline "24h"]}]
   action: {patch: {stage: shipped}}
 `)); err != nil {
@@ -71,7 +71,7 @@ func TestAMotionWithoutADeadlineMarksNoOption(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: ship
-  condition: {subject: {system: demo, kind: rel, value: {stage: open}}}
+  condition: {subject: {path: [demo, rel, *], value: {stage: open}}}
   gates: [{name: two-of-us, mode: ask, formula: !quorum 1}]
   action: {patch: {stage: shipped}}
 `)); err != nil {

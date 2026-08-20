@@ -69,7 +69,7 @@ binding_standing() {
 		name: payments-review
 		kind: security
 		condition:
-		  subject: { system: change, kind: pr, value: { area: payments } }
+		  subject: {path: [change, pr, *], value: { area: payments }}
 		method: { driver: url, url: "https://payments.internal/verse" }
 	TONY
 }
@@ -91,7 +91,7 @@ binding_exclusive() {
 		exclusive: true
 		deadline:  { within: "1h" }
 		condition:
-		  subject: { system: change, kind: pr, value: { area: payments } }
+		  subject: {path: [change, pr, *], value: { area: payments }}
 		method: { driver: url, url: "https://payments.internal/verse" }
 	TONY
 }

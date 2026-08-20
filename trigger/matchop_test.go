@@ -236,7 +236,7 @@ func TestMatchValueAcceptsOperators(t *testing.T) {
 		miss  entity.Obj
 	}{
 		{
-			`{system: demo, value: {stage: !or [open, merged]}}`,
+			`{path: [demo, *, *], value: {stage: !or [open, merged]}}`,
 			entity.Obj{"stage": "merged"},
 			entity.Obj{"stage": "closed"},
 		},
@@ -269,7 +269,7 @@ func TestMatchValueAcceptsOperators(t *testing.T) {
 // A record predicate still works normally — the refusal above must not have made the ordinary
 // case harder to write.
 func TestMatchValueStillPlain(t *testing.T) {
-	m := mustMatch(t, `{system: demo, kind: pr, value: {stage: open, n: 2}}`, codec.Tony)
+	m := mustMatch(t, `{path: [demo, pr, *], value: {stage: open, n: 2}}`, codec.Tony)
 	ev := entity.Event{
 		Ref: entity.RefAt("demo", "pr", "1"),
 		Op:  entity.Set, To: entity.Obj{"stage": "open", "n": int64(2)}.Payload(),
@@ -294,7 +294,7 @@ func TestMatchValueRootPredicate(t *testing.T) {
 		match any
 		miss  any
 	}{
-		{`{system: demo, value: 42}`, 42, 43},
+		{`{path: [demo, *, *], value: 42}`, 42, 43},
 		{`{value: true}`, true, false},
 		{`{value: open}`, "open", "closed"},
 		{`{value: !or [1, 2]}`, 2, 3},
@@ -326,7 +326,7 @@ func TestMatchValueRootPredicate(t *testing.T) {
 // the wrong SHAPE and never `{stge: open}` — a misspelled key, the typo people actually make,
 // which matches nothing just as silently and which no shape check can catch.
 func TestMatchValueScalarIsTheWholePayload(t *testing.T) {
-	m := mustMatch(t, `{system: demo, value: "stage=open"}`, codec.Tony)
+	m := mustMatch(t, `{path: [demo, *, *], value: "stage=open"}`, codec.Tony)
 	ev := func(v entity.Payload) entity.Event {
 		return entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: v}
 	}
@@ -407,9 +407,9 @@ func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 		src                                 string
 		wantAbsent, wantPresent, wantIsNull bool
 	}{
-		{`{system: demo, value: {stage: null}}`, false, true, true},
-		{`{system: demo, value: !not {stage: null}}`, true, false, false},
-		{`{system: demo, value: {stage: !irtype null}}`, false, false, true},
+		{`{path: [demo, *, *], value: {stage: null}}`, false, true, true},
+		{`{path: [demo, *, *], value: !not {stage: null}}`, true, false, false},
+		{`{path: [demo, *, *], value: {stage: !irtype null}}`, false, false, true},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)

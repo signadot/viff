@@ -60,7 +60,7 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing a package = %d: %s", code, msg)
@@ -93,7 +93,7 @@ func TestACharterPackageCannotReachOutsideItsAddress(t *testing.T) {
 
 	code, msg := installAt(t, ts.URL, "notes", `{
 		name: reach,
-		condition: {subject: {system: demo, kind: pr}},
+		condition: {subject: {path: [demo, pr, *]}},
 		action: {patch: {tampered: true}},
 	}`)
 	if code == 201 {
@@ -114,7 +114,7 @@ func TestACharterPackageMayNotBeInstalledInVersesHalf(t *testing.T) {
 
 	code, msg := installAt(t, ts.URL, "verse.task", `{
 		name: sneaky,
-		condition: {subject: {root: verse, system: task, kind: instance}},
+		condition: {subject: {path: [verse, task, instance, *]}},
 		action: {patch: {status: done}},
 	}`)
 	if code == 201 {
@@ -141,7 +141,7 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
@@ -180,7 +180,7 @@ func TestAPackageReadsOnlyWhatItDeclares(t *testing.T) {
 
 	rule := `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`
 	code, msg := installAt(t, ts.URL, "notes", rule)
@@ -240,7 +240,7 @@ func TestAPackagesImportsAreRestored(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
@@ -274,7 +274,7 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
@@ -337,7 +337,7 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {system: git, kind: head}, subject: {system: notes, kind: seen, id: head}},
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
@@ -380,7 +380,7 @@ func TestUninstallingRefusesToSweepUpWhatIsUnderIt(t *testing.T) {
 	for _, at := range []string{"demo", "demo.pr"} {
 		if code, msg := installAt(t, ts.URL, at, `{
 			name: r-`+strings.ReplaceAll(at, ".", "-")+`,
-			condition: {subject: {system: demo, kind: pr}},
+			condition: {subject: {path: [demo, pr, *]}},
 			action: {patch: {seen: true}},
 		}`); code != 201 {
 			t.Fatalf("installing at %s = %d: %s", at, code, msg)
@@ -415,7 +415,7 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 		t.Fatalf("declaring = %d: %s", code, msg)
 	}
 	for _, def := range []string{
-		`{name: reflected, level: 0, match: {system: git}}`,
+		`{name: reflected, level: 0, match: {path: [git]}}`,
 		`{name: tip, level: 10, match: {path: [verse-dev, drift, head]}}`,
 		`{name: head-moved, stratum: reflected, condition: {subject: "git.head.verse"},
 		  action: {derive: [{path: [verse-dev, drift, head], value: {sha: $subject.value.sha}}]}}`,
@@ -457,7 +457,7 @@ func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {system: git}}`); code != 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {path: [git]}}`); code != 201 {
 		t.Fatalf("installing a level = %d: %s", code, msg)
 	}
 	if got := srv.packagesSeen(); len(got) != 1 || got[0] != "notes" {
@@ -489,7 +489,7 @@ func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {system: notes}}`); code != 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {path: [notes]}}`); code != 201 {
 		t.Fatalf("installing a level = %d: %s", code, msg)
 	}
 	// The record a refused rule leaves: written at the address, never in any engine. Written

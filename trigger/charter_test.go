@@ -116,8 +116,8 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: hotfix,
 		condition: {
-			when:    {system: demo, kind: pr, value: {stage: open}},
-			subject: {system: demo, kind: pr, id: !glob "hotfix-*", value: {stage: open}},
+			when:    {path: [demo, pr, *], value: {stage: open}},
+			subject: {path: [demo, pr, !glob "hotfix-*"], value: {stage: open}},
 		},
 		gates:  [{name: approval, mode: ask}],
 		action: {
@@ -146,8 +146,14 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if spec == nil || !entity.IsObj(spec) {
 		t.Fatalf("%s = %v; want the rule as an object", specField, spec)
 	}
-	if id := ir.Get(ir.Get(ir.Get(spec, "condition"), "subject"), "id"); id == nil || id.Tag != "!glob" {
-		t.Fatalf("condition.subject.id = %v; the operator did not survive as a tag", id)
+	// The LAST segment of the subject's path — the position `id` is a reading of — still
+	// carries its operator as a tag.
+	path := ir.Get(ir.Get(ir.Get(spec, "condition"), "subject"), "path")
+	if path == nil || len(path.Values) != 3 {
+		t.Fatalf("condition.subject.path = %v; want the three segments it was written with", path)
+	}
+	if id := path.Values[2]; id == nil || id.Tag != "!glob" {
+		t.Fatalf("the id segment = %v; the operator did not survive as a tag", id)
 	}
 	back, err := ruleOf(ent)
 	if err != nil {
@@ -356,7 +362,7 @@ func TestARuleKeepsItsComments(t *testing.T) {
 	eng, store := newEng(t)
 	src := []byte("# why this rule exists, in the author's words\n" +
 		"name: commented\n" +
-		"condition:\n  subject: { system: demo, kind: pr, value: { stage: open } }\n" +
+		"condition:\n  subject: {path: [demo, pr, *], value: { stage: open }}\n" +
 		"action:\n  patch: { stage: reviewing }\n")
 	node, err := codec.ParseNode(src, codec.Tony)
 	if err != nil {
@@ -488,10 +494,10 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 // pinning it would pin the author's field order.
 func TestAConditionKeepsItsFieldComments(t *testing.T) {
 	for _, order := range []string{
-		"  # about the subject\n  subject: { system: demo, kind: pr }\n" +
-			"  # about the when\n  when: { system: ci, kind: status }\n",
-		"  # about the when\n  when: { system: ci, kind: status }\n" +
-			"  # about the subject\n  subject: { system: demo, kind: pr }\n",
+		"  # about the subject\n  subject: {path: [demo, pr, *]}\n" +
+			"  # about the when\n  when: {path: [ci, status, *]}\n",
+		"  # about the when\n  when: {path: [ci, status, *]}\n" +
+			"  # about the subject\n  subject: {path: [demo, pr, *]}\n",
 	} {
 		src := "name: r\ncondition:\n" + order + "action:\n  patch: { stage: x }\n"
 		node, err := codec.ParseNode([]byte(src), codec.Tony)

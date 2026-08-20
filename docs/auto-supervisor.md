@@ -44,7 +44,7 @@ assessed — the supervisor's `review`. Install it:
 verse c -a -f - <<'TONY'
 - name: assess                 # the supervisor decides, and decides whether to promote
   condition:
-    subject: { system: change, kind: pr, value: { stage: proposed } }
+    subject: {path: [change, pr, *], value: { stage: proposed }}
   action:
     patch: { stage: assessing }
     spawn:
@@ -78,8 +78,7 @@ verse c -a -f - <<'TONY'
 - name: remit                  # the ceiling: an approval outside the remit becomes a promotion
   condition:
     subject:
-      system: change
-      kind:   pr
+      path: [change, pr, *]
       value: !and
       - { stage: assessed, review: { decision: approve } }
       - !not { tests: green, review: { risk: low } }
@@ -89,8 +88,7 @@ verse c -a -f - <<'TONY'
 - name: land-auto              # cleared, and within the remit: no gate, no question, no wait
   condition:
     subject:
-      system: change
-      kind:   pr
+      path: [change, pr, *]
       value: { stage: assessed, tests: green, review: { decision: approve, risk: low } }
   action:
     patch: { stage: landed }
@@ -98,8 +96,7 @@ verse c -a -f - <<'TONY'
 - name: land-ask               # promoted: one human decision, in `verse gate`
   condition:
     subject:
-      system: change
-      kind:   pr
+      path: [change, pr, *]
       value: { stage: assessed, review: { decision: escalate } }
   gates:
   - { name: sign-off, mode: ask }
@@ -109,8 +106,7 @@ verse c -a -f - <<'TONY'
 - name: close                  # rejected: closing is cheap and reversible, so it is auto
   condition:
     subject:
-      system: change
-      kind:   pr
+      path: [change, pr, *]
       value: { stage: assessed, review: { decision: reject } }
   action:
     patch: { stage: closed }

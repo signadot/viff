@@ -100,7 +100,17 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // otherwise be mis-read is quoted rather than refused. That is what retires the old caveat here
 // — a colon outside the id used to make the rendering ambiguous to ParseExpr, so a match
 // carrying one had no string form at all.
+//
+// A PATH IS NOT RENDERED AS ONE OF THESE, whatever its length. System/Kind/ID read a path's
+// segments now (Match.seg), so the two spellings answer alike — but they do not MEAN alike, and
+// the difference is what a stratum rests on: `{path: [verse-dev, drift, head]}` is a PLACE, and
+// the dimension spelling's third position is an ID, which a stratum may not constrain. A path
+// that came back as `{system, kind, id}` was refused on reinstall by the very check it passed
+// going in.
 func (m Match) address() (string, bool) {
+	if m.Deep() {
+		return "", false
+	}
 	if m.HasPredicate() {
 		return "", false // no address spelling carries a payload predicate
 	}

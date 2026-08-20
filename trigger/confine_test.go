@@ -38,7 +38,7 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 - name: derive-out
   stratum: low
   condition:
-    subject: {system: demo, kind: pr}
+    subject: {path: [demo, pr, *]}
   action:
     derive:
       other:
@@ -62,8 +62,8 @@ func TestAConfinedCharterReadsWhatItDeclares(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: note-the-head
   condition:
-    when: {system: git, kind: head, value: {sha: !glob "*"}}
-    subject: {system: drift, kind: finding, id: latest}
+    when: {path: [git, head, *], value: {sha: !glob "*"}}
+    subject: {path: [drift, finding, latest]}
   action:
     patch: {saw: "yes"}
 `)); err != nil {
@@ -127,11 +127,11 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	}{
 		{mine, `
 - name: mine
-  condition: {when: {system: git, kind: head}, subject: {system: mine, kind: note, id: n}}
+  condition: {when: {path: [git, head, *]}, subject: {path: [mine, note, n]}}
   action: {patch: {saw: "yes"}}`},
 		{theirs, `
 - name: theirs
-  condition: {when: {system: git, kind: head}, subject: {system: theirs, kind: note, id: n}}
+  condition: {when: {path: [git, head, *]}, subject: {path: [theirs, note, n]}}
   action: {patch: {saw: "yes"}}`},
 	} {
 		if err := c.eng.AddTrigger(mustParseCharter(t, c.src)); err != nil {
@@ -150,7 +150,7 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	// other half even by naming it, because the install would have refused it.
 	if err := mine.AddTrigger(mustParseCharter(t, `
 - name: reach
-  condition: {subject: {system: theirs, kind: note, id: n}}
+  condition: {subject: {path: [theirs, note, n]}}
   action: {patch: {tampered: true}}`)); err == nil {
 		t.Fatal("one charter installed a rule that writes into the other's subtree")
 	}

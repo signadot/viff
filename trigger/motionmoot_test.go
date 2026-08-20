@@ -12,7 +12,7 @@ import (
 
 const mootCharter = `
 - name: ship
-  condition: {subject: {system: demo, kind: rel, value: {stage: open}}}
+  condition: {subject: {path: [demo, rel, *], value: {stage: open}}}
   gates: [{name: two-of-us, mode: ask, formula: !until [!quorum 2, !deadline "24h"]}]
   action: {patch: {stage: shipped}}
 `

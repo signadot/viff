@@ -23,7 +23,7 @@ declared level, with rules living in one and derivations only ever climbing.
 - name: urgent-label
   stratum: observe
   condition:
-    subject: { system: gh, kind: issue, value: { label: urgent } }
+    subject: {path: [gh, issue, *], value: { label: urgent }}
   action:
     patch: { triaged: true }
     derive:
@@ -34,14 +34,13 @@ declared level, with rules living in one and derivations only ever climbing.
 - name: request-approval
   stratum: sdlc
   condition:
-    subject: { system: signadot, kind: feature, value: { priority: urgent } }
+    subject: {path: [signadot, feature, *], value: { priority: urgent }}
   action:
     patch: { stage: awaiting-approval }
     derive:
       do:
         approve:
-          system: gh
-          kind: pr
+          path: [gh, pr, *]
 ```
 
 `verse c -a -f charter.tony` installs both halves, strata first whatever order the file

@@ -38,7 +38,7 @@ func TestAGatedRuleWithNoActionIsRefused(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: gated
-  condition: {subject: {system: demo, kind: pr, value: {stage: open}}}
+  condition: {subject: {path: [demo, pr, *], value: {stage: open}}}
   gates:
   - name: ask-someone
     mode: ask
@@ -77,7 +77,7 @@ func TestAnyOneActionIsEnough(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
 			if err := eng.AddTrigger(mustParseCharter(t, `
 - name: r
-  condition: {subject: {system: demo, kind: pr, value: {stage: open}}}
+  condition: {subject: {path: [demo, pr, *], value: {stage: open}}}
   action:
     `+tc.action+`
 `)); err != nil {

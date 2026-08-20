@@ -179,7 +179,7 @@ func TestPatchOperatorWorksInBothDialects(t *testing.T) {
 		name, doc string
 		f         codec.Format
 	}{
-		{"tony", `{name: retract, condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		{"tony", `{name: retract, condition: {subject: {path: [demo, pr, *], value: {stage: open}}},
 			action: {patch: {tmp: !delete null}}}`, codec.Tony},
 		{"json", `{"name":"retract","condition":{"subject":{"system":"demo","kind":"pr","value":{"stage":"open"}}},
 			"action":{"patch":{"tmp":{"delete":null}}}}`, codec.JSON},

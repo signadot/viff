@@ -24,7 +24,7 @@ func TestAnOperatorShapedValueIsAdvised(t *testing.T) {
 			name: "the absence latch, JSON-spelled",
 			charter: `
 - name: r
-  condition: {subject: {system: demo, kind: pr, value: {not: {reviewed: null}}}}
+  condition: {subject: {path: [demo, pr, *], value: {not: {reviewed: null}}}}
   action: {patch: {stage: seen}}
 `,
 			want: "{not: …}",
@@ -33,7 +33,7 @@ func TestAnOperatorShapedValueIsAdvised(t *testing.T) {
 			name: "an operator nested under a field",
 			charter: `
 - name: r
-  condition: {subject: {system: demo, kind: pr, value: {stage: {glob: "a*"}}}}
+  condition: {subject: {path: [demo, pr, *], value: {stage: {glob: "a*"}}}}
   action: {patch: {stage: seen}}
 `,
 			want: "{glob: …}",
@@ -43,8 +43,8 @@ func TestAnOperatorShapedValueIsAdvised(t *testing.T) {
 			charter: `
 - name: r
   condition:
-    subject: {system: demo, kind: pr}
-    when: {system: demo, kind: ci, value: {not: {failed: null}}}
+    subject: {path: [demo, pr, *]}
+    when: {path: [demo, ci, *], value: {not: {failed: null}}}
   action: {patch: {stage: seen}}
 `,
 			want: "{not: …}",
@@ -74,12 +74,12 @@ func TestATaggedValueAndATagKeyedDimensionAreNotAdvised(t *testing.T) {
 	for _, src := range []string{
 		`
 - name: r
-  condition: {subject: {system: demo, kind: pr, value: !not {reviewed: null}}}
+  condition: {subject: {path: [demo, pr, *], value: !not {reviewed: null}}}
   action: {patch: {stage: seen}}
 `,
 		`
 - name: r
-  condition: {subject: {system: demo, kind: pr, id: {glob: "hot-*"}}}
+  condition: {subject: {path: [demo, pr, {glob: "hot-*"}]}}
   action: {patch: {stage: seen}}
 `,
 	} {

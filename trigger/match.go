@@ -221,10 +221,43 @@ func (m Match) Validate() error {
 // `verse` what verse writes about its own running (a task's mirror, a posed question, a rule).
 // A charter that wants to react to verse's own state says so, which is what keeps a rule about
 // PRs from quietly selecting the records of the tasks reviewing them.
-func (m Match) Root() string   { return m.str(mKeyRoot) }
-func (m Match) System() string { return m.str(mKeySystem) }
-func (m Match) Kind() string   { return m.str(mKeyKind) }
-func (m Match) ID() string     { return m.str(mKeyID) }
+// SYSTEM, KIND AND ID ARE A READING, and `path:` is the thing being read. They answer from
+// whichever spelling the charter used — the dimensions when it wrote those, and the path's own
+// segments when it wrote a path — which is what lets the shorthand stay a convention rather
+// than a second grammar every caller has to check for.
+//
+// A segment carrying an OPERATOR has no literal, so it answers "" here, exactly as an operator
+// in the dimension spelling does (see str's contract above): the readers report what can be
+// spelled, and matchDim is where a dimension is actually applied.
+func (m Match) Root() string   { return m.seg(mKeyRoot) }
+func (m Match) System() string { return m.seg(mKeySystem) }
+func (m Match) Kind() string   { return m.seg(mKeyKind) }
+func (m Match) ID() string     { return m.seg(mKeyID) }
+
+// seg answers one dimension, from the path when there is one and from the dimension otherwise.
+//
+// The path's positions are root?, system, kind, id — the same order Segs walks — and a leading
+// `verse` is the root, exactly as it is in an address. A `*` is an unconstrained position, and
+// reads as "" for the same reason an operator does: it names no literal.
+func (m Match) seg(key string) string {
+	if !m.Deep() {
+		return m.str(key)
+	}
+	segs := m.Segs()
+	if len(segs) > 0 && segs[0] == entity.VerseRoot {
+		if key == mKeyRoot {
+			return entity.VerseRoot
+		}
+		segs = segs[1:]
+	} else if key == mKeyRoot {
+		return ""
+	}
+	i := map[string]int{mKeySystem: 0, mKeyKind: 1, mKeyID: 2}[key]
+	if i >= len(segs) || segs[i] == "*" {
+		return ""
+	}
+	return segs[i]
+}
 
 // dim returns the tony match a dimension carries, or nil when it is a plain string or
 // absent. It is the ONE place the two spellings of a dimension are told apart.
@@ -266,16 +299,36 @@ func (m Match) FieldString(key string) string {
 	return v.String
 }
 
-// Names reports whether the match designates exactly ONE entity by identity: a definite
-// system, kind, and glob-free id. This is the case a Subject may *name* rather than select —
-// an action's `set` on it creates the entity if it does not exist yet, which is how a trigger
-// publishes a fact nothing has written before. A glob in any segment makes it a selection
-// over what exists instead, so it can only ever act on entities that are really there.
+// Names reports whether the match designates exactly ONE entity by identity: every segment a
+// definite, glob-free literal. This is the case a Subject may *name* rather than select — an
+// action's `set` on it creates the entity if it does not exist yet, which is how a trigger
+// publishes a fact nothing has written before. A wildcard or an operator in any segment makes
+// it a selection over what exists instead, so it can only ever act on entities that are there.
+//
+// IT ASKS THE SEGMENTS, at whatever depth, rather than the three dimensions. Asking the three
+// was the same question only while an address had exactly three: a path of four whose first
+// three are literal — `[verse-dev, drift, head, "*"]`, which is how a package selects its own
+// entities — answered "yes, this names verse-dev.drift.head", so the rule stopped selecting and
+// acted on one entity that does not exist. A `set` on a named subject CREATES, so the failure
+// is not a rule that does nothing.
 func (m Match) Names() (entity.Ref, bool) {
-	r := entity.RefAt(append(m.prefix(), m.ID())...)
-	if r.System() == "" || r.Kind() == "" || r.ID() == "" {
-		return entity.Ref{}, false
+	segs := m.SegNodes()
+	if len(segs) < entity.Depth {
+		return entity.Ref{}, false // shorter than an entity: a place, not a thing
 	}
+	lits := make([]string, 0, len(segs))
+	for _, n := range segs {
+		lit, ok := entity.PathLiteral(n)
+		// An operator, an empty position, or a `*` ANYWHERE in the segment: the last is the id
+		// glob (`hotfix-*`), which selects a family rather than naming one of them. The id that
+		// IS an asterisk is written with an operator and therefore selects too — which is the
+		// safe way round, since naming is what CREATES.
+		if !ok || lit == "" || strings.ContainsRune(lit, '*') {
+			return entity.Ref{}, false
+		}
+		lits = append(lits, lit)
+	}
+	r := entity.RefAt(lits...)
 	// A PAYLOAD PREDICATE makes it a selection, whatever the three segments say. Naming is by
 	// identity alone — that is what lets a named subject be a set of one whether or not the
 	// entity exists — and the moment a match says what the entity must LOOK like, that
@@ -289,18 +342,6 @@ func (m Match) Names() (entity.Ref, bool) {
 	// held from the moment the entity appeared, so the edge had already risen and the rule
 	// never fired at all.
 	if m.HasPredicate() {
-		return entity.Ref{}, false
-	}
-	// An operator on any segment is a selection, whatever the other two say. This cannot
-	// fire today (ID() is "" for an operator, so the check above already caught it) and is
-	// kept because the consequence of getting it wrong is not a failed match but a CREATED
-	// entity — an action's `set` on a named subject brings it into being.
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
-		if m.dim(k) != nil {
-			return entity.Ref{}, false
-		}
-	}
-	if strings.ContainsRune(r.System()+r.Kind()+r.ID(), '*') {
 		return entity.Ref{}, false
 	}
 	return r, true
