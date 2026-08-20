@@ -68,6 +68,7 @@ import (
 	"fmt"
 	"strings"
 
+	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
@@ -141,6 +142,80 @@ func (p pathSpec) validateAt() error {
 			"Use !%s, which answers with a list", p.kind, p.target(), p.Path, ListPathsTag)
 	}
 	return nil
+}
+
+// checkNoBinding refuses a `.[name]` let reference anywhere in a read — in its address, its
+// payload path, or its `value:` predicate.
+//
+// THE READ IS ANSWERED BEFORE THE LET IS EVALUATED, and that order is not incidental: a
+// condition's reads are resolved against the snapshot first (conditionMatch), and only then is
+// the resulting document handed to tony as a match. So when `!list-paths` runs, a sibling
+// binding beside it is still an unsubstituted `.[name]` string — a name tony would have bound,
+// asked for at a moment when nothing has bound anything.
+//
+//	value: !let                                     # what it reads as
+//	  let:
+//	  - tip:   !get-path {at: [git, head, verse], path: sha}
+//	  - fresh: !list-paths {at: [m, proposal, "*"], value: {base: .[tip]}, path: branch}
+//	  in: {branches: .[fresh]}
+//
+// Tony's own `let` DOES bind a sibling — `let: [{a: x}, {b: .[a]}]` resolves, checked — so this
+// reads as though it works, and every part of it is spelled correctly. What happens instead is
+// that `{base: .[tip]}` is matched against each candidate payload with `.[tip]` as a literal
+// string, nothing has that value, and `fresh` binds to the EMPTY LIST. The rule then goes on to
+// fire or not on an answer nobody computed. It was filed as a panic (git-issue
+// jwqdhfrxh12krpvbg9n0), which go-tony v0.0.179 fixed; what the panic was covering is this.
+//
+// Refusing is the whole fix available here. Resolving it would mean verse expanding let
+// bindings in order, ahead of tony, so a read could stand in a binding's scope — a real change
+// to when substitution happens, and the open half of that issue.
+func (p pathSpec) checkNoBinding() error {
+	for _, seg := range p.At {
+		if lit, ok := entity.PathLiteral(seg); ok {
+			if name := tonyeval.GetRaw(lit); name != "" {
+				return p.bindingRefusal(name, "its address")
+			}
+		}
+	}
+	if name := tonyeval.GetRaw(p.ID); name != "" {
+		return p.bindingRefusal(name, "its id")
+	}
+	if name := tonyeval.GetRaw(p.Path); name != "" {
+		return p.bindingRefusal(name, "its "+pathKey)
+	}
+	if name := firstLetRef(p.Value); name != "" {
+		return p.bindingRefusal(name, "its "+mKeyValue)
+	}
+	return nil
+}
+
+func (p pathSpec) bindingRefusal(name, where string) error {
+	return fmt.Errorf("!%s %s: %s names the binding .[%s], and a read is answered BEFORE the "+
+		"`!let` around it is evaluated — so the name is not bound yet and the read would "+
+		"quietly answer nothing. Read the entity directly here, or bind what this read answers "+
+		"and compare in `in:`", p.kind, p.target(), where, name)
+}
+
+// firstLetRef is the first `.[name]` reference in a document, or "" for none. Whole-node only,
+// which is what a binding reference is — tony reads `.[x]` as a reference when it is the entire
+// string, so `"a.[x]b"` is text and is left alone here too.
+func firstLetRef(n *ir.Node) string {
+	if n == nil {
+		return ""
+	}
+	u := ir.Uncomment(n)
+	if u == nil {
+		return ""
+	}
+	if u.Type == ir.StringType {
+		return tonyeval.GetRaw(u.String)
+	}
+	for _, v := range u.Values {
+		if name := firstLetRef(v); name != "" {
+			return name
+		}
+	}
+	return ""
 }
 
 // pathKind reports which of the two a node is, or "" for anything else.
@@ -347,6 +422,9 @@ func splitAddress(s string) (entity.Ref, string, error) {
 // validate enforces what the two segments the checks read must be, and what each cardinality
 // may say about the rest.
 func (p pathSpec) validate() error {
+	if err := p.checkNoBinding(); err != nil {
+		return err
+	}
 	if len(p.At) > 0 {
 		return p.validateAt()
 	}
