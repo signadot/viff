@@ -275,6 +275,19 @@ func (e *Engine) openChannel(m *motion) {
 			if len(o.tools) > 0 {
 				om["tools"] = o.tools
 			}
+			// A DEFAULT OPTION IS NOT A THRESHOLD, and the ballot has to say so. `!until
+			// [!quorum 2, !deadline "24h"]` decides on the quorum or on the clock, so no number
+			// of ballots for `deny` closes it: two people denied and the motion stayed open with
+			// the subject untouched (git-issue 88r53xm6h12ks6bng9n0). Rendered beside the
+			// others with no `need`, it read as the approve option's symmetric twin.
+			//
+			// It is MARKED rather than removed or given a threshold of its own, because a
+			// denial is worth recording even when it cannot close anything — dissent on the
+			// record is the point of a vote log — and inventing a deny-quorum is a change to
+			// what `!until` means, not to how it is displayed.
+			if m.deadline != nil && o.formula == nil && o.id == m.deadline.defaultOption {
+				om["reachedBy"] = "deadline"
+			}
 			opts = append(opts, om)
 		}
 		p["options"] = opts

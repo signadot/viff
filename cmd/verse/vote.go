@@ -86,7 +86,42 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	// the order you typed is one you can check. "me voted 7a11e2ef on motion approve" parses as
 	// a sentence whichever way round the values are, which is how a swap went unnoticed.
 	fmt.Fprintf(cc.Out, "motion %s: %s voted %q\n", motion, cfg.As, choice)
+	// AND WHETHER IT CAN DECIDE ANYTHING. An `!until [!quorum 2, !deadline "24h"]` closes on the
+	// quorum or on the clock, so no number of ballots for the deadline's default option settles
+	// it — two people denied, and the motion stayed open with the subject untouched
+	// (git-issue 88r53xm6h12ks6bng9n0). The ballot is still worth casting, and the voter is
+	// entitled to know it is dissent on the record rather than a decision.
+	if why := deadlineOnly(motion, choice); why != "" {
+		fmt.Fprintln(cc.Out, why)
+	}
 	return nil
+}
+
+// deadlineOnly reports the note owed to somebody who just voted for an option no tally can
+// reach, or "" when the ballot counts toward something. Read off the motion's own options, so
+// it says nothing when the motion cannot be read — the ballot is cast either way, and a
+// warning invented from a failed read would be worse than silence.
+func deadlineOnly(motion, choice string) string {
+	got, ok, err := readMotion(motion)
+	if err != nil || !ok {
+		return ""
+	}
+	opts, _ := got["options"].([]any)
+	for _, o := range opts {
+		om, _ := o.(map[string]any)
+		id, _ := om["id"].(string)
+		c, _ := om["choice"].(string)
+		if choice != id && choice != c {
+			continue
+		}
+		if by, _ := om["reachedBy"].(string); by == "deadline" {
+			return fmt.Sprintf("  recorded, and it decides nothing on its own: %q is reached "+
+				"only when this motion's deadline passes, so no number of these closes it. "+
+				"The other option carries the threshold.", choice)
+		}
+		return ""
+	}
+	return ""
 }
 
 // checkChoice refuses a ballot no tally could ever count. A quorum leaf matches

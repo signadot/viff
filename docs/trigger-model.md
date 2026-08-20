@@ -749,6 +749,26 @@ without changing the subject's own state, the vanishing-marker shape works:
 
 Removing the marker is then what re-opens the question.
 
+### A deadline's default option decides nothing on its own
+
+`!until [!quorum 2, !deadline "24h"]` closes on the quorum **or** on the clock. The `deny` side
+is the deadline's default: it has no threshold, so no number of ballots for it settles the
+motion. Two people can deny and the motion stays open, with the subject untouched, until the
+deadline passes.
+
+The ballot says so — that option renders `reachedBy: deadline`, and `verse vote` tells the voter
+their ballot is dissent on the record rather than a decision:
+
+```tony
+options:
+- {choice: approve, id: proceed, need: 2}
+- {id: deny, reachedBy: deadline}
+```
+
+It is marked rather than refused, because a denial is worth recording even when it cannot close
+anything — that is what a vote log is for. A gate that wants a *quorum to deny* wants a formula
+with a threshold on both sides, which `!until` has no place for today.
+
 ### A motion outlives the verse that opened it
 
 The channel, its options and every ballot cast into it are entities, so a restart finds the
