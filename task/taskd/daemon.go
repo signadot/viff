@@ -94,6 +94,15 @@ type hosted struct {
 	result string // the task's final output (driver's last message), once completed
 }
 
+// done reports whether this run has finished — the question the spawn dedupe is actually
+// asking. A live task of the same id is the SAME work and joins; a finished one is a previous
+// run, and the next spawn is a new one.
+func (h *hosted) done() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.status.Terminal()
+}
+
 func (h *hosted) snapshot() task.Instance {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -172,7 +181,7 @@ func (d *Daemon) Spawn(l task.Launch, content task.ContentReader) *task.Task {
 // abandon real work or to destroy it.
 func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted, bool) {
 	d.mu.Lock()
-	if h, ok := d.tasks[l.ID]; ok {
+	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
 		return h, false
 	}
@@ -220,8 +229,22 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 
 	// Re-checked under the lock: two concurrent spawns of one id race the check above, and
 	// the loser must not start a second loop. Whoever registered first is the task.
+	//
+	// A TERMINATED ONE IS NOT A WINNER OF THAT RACE. Nothing reaps this map, so a task that
+	// finished stayed in it forever and every later spawn of the same id was answered with it:
+	// the call returned instantly, carrying the FIRST run's answer, with the second run's
+	// prompt on the record beside it. The model was never called, and a completion hook then
+	// ran on the replayed answer and advanced the flow as though the work had been done
+	// (git-issue 6j911yhzh12kswgjgsn0).
+	//
+	// The id is stable by design — it is what makes a task addressable and what stops a re-fire
+	// spawning twice — so any rule whose subject OUTLIVES one task (a cursor, a queue head,
+	// anything that walks) got one real run and then unbounded silent no-ops that each looked
+	// like success. The dedupe is meant to be against a task that is still running, which is
+	// what "the engine dedups a spawn against a live task" says everywhere else; this is the
+	// one place that read it as "a task that ever existed".
 	d.mu.Lock()
-	if existing, ok := d.tasks[l.ID]; ok {
+	if existing, ok := d.tasks[l.ID]; ok && !existing.done() {
 		d.mu.Unlock()
 		return existing, false
 	}
