@@ -292,7 +292,7 @@ name it, and that work runs there while every spawn that names none goes to the 
 
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
-verse runner add pool:demo http://localhost:9800      # `reach: a runner` — the install probes it
+verse runner add pool.demo http://localhost:9800      # `reach: a runner` — the install probes it
 verse task run --runner verse.runners.pool.demo "fetch the data; retrain; report"
 verse ps --runner verse.runners.pool.demo
 ```
@@ -736,7 +736,7 @@ not share a filesystem with you. *Left to do: file reads are still truncated.*
 
 **Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
 slice of the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
-and install, the way a runner is: `verse source add git:laptop <url>`.
+and install, the way a runner is: `verse source add git.laptop <url>`.
 
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
 only climb, and the two install checks that follow — plus a plain statement of what it does not

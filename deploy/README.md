@@ -263,9 +263,9 @@ They run `sourced`, the connector binary in the same image
 standing, so it stays a verb somebody runs.
 
 ```sh
-verse source add git:cluster     http://git-source:9801
-verse source add slack:workspace http://slack-source:9801
-verse source add linear:teams    http://linear-source:9801
+verse source add git.cluster     http://git-source:9801
+verse source add slack.workspace http://slack-source:9801
+verse source add linear.teams    http://linear-source:9801
 verse source
 ```
 
@@ -288,8 +288,8 @@ outside what was proved. The symptom is a source that looks healthy and reflects
 Re-run the same `verse source add` afterwards; it updates the claim in place.
 
 ```sh
-verse source check git-issue:cluster   # `owns` is what verse holds, `says` is what it claims now
-verse source add git-issue:cluster http://git-issue-source:9801   # reconcile them
+verse source check git-issue.cluster   # `owns` is what verse holds, `says` is what it claims now
+verse source add git-issue.cluster http://git-issue-source:9801   # reconcile them
 ```
 
 Driven, on a source moved from one repository to two: only the first repository's entities were
@@ -367,7 +367,7 @@ slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like t
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
-verse source add git-issue:cluster http://git-issue-source:9801
+verse source add git-issue.cluster http://git-issue-source:9801
 ```
 
 It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say
@@ -382,7 +382,7 @@ cloning one it can reflect nothing from.
 | `gitIssueSource` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
 | `slackSource` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
-| `slackSourceName` | `workspace` | the registration name — must match `verse source add slack:<name>` |
+| `slackSourceName` | `workspace` | the registration name — must match `verse source add slack.<name>` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
 | `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
 | `linearSource` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
@@ -533,7 +533,7 @@ it by url, and deploying it does not install it.
 ```sh
 make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
 make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-verse runner add pool:code http://coderunner:9802
+verse runner add pool.code http://coderunner:9802
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own

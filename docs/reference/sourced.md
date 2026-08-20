@@ -21,7 +21,7 @@ that have one — the delivery endpoint it owns. Install one exactly like any ot
 
 ```sh
 sourced slack -addr :9801
-verse source add slack:workspace http://localhost:9801
+verse source add slack.workspace http://localhost:9801
 verse source
 ```
 

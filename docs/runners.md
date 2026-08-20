@@ -21,7 +21,7 @@ A runner lives at `verse.runners.<kind>:<name>` and carries a url — the verse-
 runner *is*, the way a resolver's kind is what it is *for*.
 
 ```sh
-verse runner add pool:gpu http://runner-gpu.verse.svc:9797
+verse runner add pool.gpu http://runner-gpu.verse.svc:9797
 verse runner
 verse runner check verse.runners.pool.gpu
 verse runner show verse.runners.pool.gpu

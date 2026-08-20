@@ -12,8 +12,8 @@ Linear, GitHub — see [reference/sourced.md](reference/sourced.md). To build on
 with the tree.
 
 ```sh
-verse source add git:laptop http://build-host:9801
-verse source add slack:workspace http://slack-source:9801
+verse source add git.laptop http://build-host:9801
+verse source add slack.workspace http://slack-source:9801
 verse source
 ```
 

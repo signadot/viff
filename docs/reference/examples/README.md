@@ -21,7 +21,7 @@ go run ./docs/reference/examples/runner -addr :9800
 Then, against a verse:
 
 ```sh
-verse runner add pool:gpu http://localhost:9800
+verse runner add pool.gpu http://localhost:9800
 verse task run --runner verse.runners.pool.gpu "fetch the data; retrain; report"
 verse ps --runner verse.runners.pool.gpu
 ```
@@ -43,7 +43,7 @@ somewhere its result goes, plus which driver runs the work, which tools exist, a
 may reach — and a spawn names one:
 
 ```sh
-verse runner add pool:code http://localhost:9802
+verse runner add pool.code http://localhost:9802
 verse task run --runner verse.runners.pool.code --environment local --as "$USER" "add a test for firstLine"
 ```
 
