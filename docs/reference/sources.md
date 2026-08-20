@@ -77,9 +77,9 @@ The single glob `verse*` would cover both and also claim `verse-extras/main` —
 overclaim, and one that would make two disjoint repos refuse to install alongside each other.
 
 **A claim is a document rather than a string**, and the ids are what forced it: `@` — the
-separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids
-(`lineage.trace.<rule>@<subject>`), so nothing could parse one back. A grammar with two forms
-would have to be read twice everywhere, so there is one.
+separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids (a task's
+is `<chain>@<subject>`), so nothing could parse one back. A grammar with two forms would have to
+be read twice everywhere, so there is one.
 
 An install with no `owns` takes what the probe reported. A registration carrying none can be
 proved apart from nothing, so it is refused beside anything else in its system.

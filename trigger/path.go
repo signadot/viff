@@ -46,9 +46,14 @@ package trigger
 // read is answered from ONE snapshot taken at the causing commit (occasion.snapshot), so a
 // predicate is evaluated against the same world the rule was evaluated against.
 //
-// SYSTEM AND KIND ARE ALWAYS LITERAL, in both. That is not style: the level check reads exactly
-// those two segments, so a reference or a glob there would make it undecidable at install — the
-// same reason a stratum's own pattern may not constrain an id.
+// EVERY SEGMENT ABOVE THE ENTITY IS A LITERAL OR A `*`, in both. That is not style: the level
+// check reads the leading segments, so a reference or a glob there would make it undecidable at
+// install — the same reason a stratum's own pattern may not constrain an id. A whole segment
+// left OPEN is fine, because a stratum's pattern has to prefix the read's place to place it at
+// all, and a `*` where the stratum has a literal does not — so such a read lands in no stratum
+// and is refused there. That is what lets a rule read the set another rule DERIVED, whose
+// addresses carry the deriving rule and its subject and are therefore not literal below the
+// target.
 //
 // THEY COPY, AND DO NOT TRACK. Whatever is read is read once, at the commit that caused the
 // firing. If it changes afterwards nothing re-runs: this rule fires again only when its own
@@ -82,6 +87,16 @@ const (
 	pathKey      = "path"
 )
 
+// isWildSeg reports whether a segment is a bare `*` — a whole position left open, as against a
+// name, an operator or a glob. PathLiteral answers "" and false for one, which is the same
+// answer it gives for an operator, so the two have to be told apart here.
+func isWildSeg(seg *ir.Node) bool {
+	if seg == nil || seg.Tag != "" {
+		return false
+	}
+	return seg.Type == ir.StringType && seg.String == "*"
+}
+
 // addressPattern reads an address written as a path — `[verse-dev, drift, finding, "*"]`, or
 // the same as a dotted string — into the per-segment matches a path is.
 func addressPattern(v *ir.Node) ([]*ir.Node, error) {
@@ -112,9 +127,9 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 // about segments rather than about three named dimensions.
 //
 // WHAT IS FIXED AT INSTALL is the point of both: the level check asks whether a read lands at or
-// below the rule's own stratum, and it can only ask that of the segments that are literal. So
-// every segment but the LAST must be one — the last is the entity being named, which may glob
-// in a list read and may be a `$reference` in either.
+// below the rule's own stratum, and it can only ask that of the segments it can read. So every
+// segment but the LAST is a literal or a `*` — the last is the entity being named, which may
+// glob in a list read and may be a `$reference` in either.
 func (p pathSpec) validateAt() error {
 	if len(p.At) < 2 {
 		return fmt.Errorf("!%s: an address names a place and something in it; %q names %d segment(s)",
@@ -122,10 +137,23 @@ func (p pathSpec) validateAt() error {
 	}
 	for i, seg := range p.At[:len(p.At)-1] {
 		lit, ok := entity.PathLiteral(seg)
+		if isWildSeg(seg) {
+			// A WHOLE SEGMENT LEFT OPEN IS ALLOWED, and the level check is what makes it safe
+			// rather than a hole. A stratum's pattern must PREFIX the read's place to place it
+			// (pathContains), and a `*` where the stratum has a literal does not — so a read
+			// whose wildcard sits above the level being decided lands in no stratum and is
+			// refused there, with the message that says so.
+			//
+			// It is allowed because a derived entity is as deep as what it is about: reading
+			// the set a rule derived means naming the target literally and leaving the rule and
+			// the subject open, which under the old rule was unspellable.
+			continue
+		}
 		if !ok || strings.ContainsAny(lit, "$*?[") {
-			return fmt.Errorf("!%s %s: segment %d is not literal — everything above the entity "+
-				"has to be, because it is what says whether the read is at or below the rule's "+
-				"own level, and a check that cannot be made at install is not a check",
+			return fmt.Errorf("!%s %s: segment %d is neither a literal nor `*` — a reference or a "+
+				"glob above the entity cannot be resolved at install, and it is what says whether "+
+				"the read is at or below the rule's own level. A check that cannot be made at "+
+				"install is not a check",
 				p.kind, p.target(), i+1)
 		}
 	}

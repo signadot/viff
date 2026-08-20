@@ -5,10 +5,11 @@
 # "how do all these IDs live in a flow?" — by running it rather than arguing it.
 #
 # The short answer verse gives: no fourth id is ever minted. A correlation is a DERIVED
-# entity whose address is `<system>:<kind>:<rule>@<subject>` — identity is (rule, subject),
-# so the link is named by what it is about. The engine writes the subject linkage itself at
-# `verse.meta.derivedFrom`. Reassembling the chain is then a read over the set, because a
-# derive is about exactly one subject and rollups are deliberately not available.
+# entity whose address is `<target>.<rule>.<subject…>` — identity is (rule, subject), so the
+# link is ADDRESSED by what it is about, and the subject's own segments are carried whole rather
+# than flattened into an id. The engine also writes the linkage at `verse.meta.derivedFrom`.
+# Reassembling the chain is then a read over the set, because a derive is about exactly one
+# subject and rollups are deliberately not available.
 #
 # THE SYSTEMS ARE SEEDED, AND THE VOCABULARY IS NOT. It writes its own `git:commit:*` and
 # `github:pr:*` fixtures, so it runs against a bare verse with nothing installed — but the ids
@@ -145,16 +146,18 @@ if $clean; then
 	step "clean"
 	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the rules"
-	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
-	# the address the engine chose, not by one this script invented.
+	# The derived entities are ADDRESSED by the engine — the target, the rule, then the subject's
+	# own segments — so they are removed by the address the engine chose, not by one this script
+	# invented.
 	# `--paths` answers in steps, one address per LINE — read a line at a time, and handed over
-	# UNQUOTED so the shell splits it into the steps it is. `--depth 3` because the walk goes
-	# INTO the payload: without it this would try to remove every field of every entity.
+	# UNQUOTED so the shell splits it into the steps it is. `--depth 6` because that is where a
+	# trace stands (two for the target, one for the rule, three for the pull request); without a
+	# bound the walk goes on into every field of every one.
 	for sys in lineage lintag; do
 		while IFS= read -r e; do
 			# shellcheck disable=SC2086
 			[ -n "$e" ] && v data $e --rm >/dev/null 2>&1 || true
-		done < <(v data --paths --depth 3 "$sys" 2>/dev/null)
+		done < <(v data --paths --depth 6 "$sys" 2>/dev/null)
 	done
 	# Unquoted: each entry IS the steps of one address, split back by the shell.
 	# shellcheck disable=SC2086
@@ -226,13 +229,17 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
   level: 20
   match: "lineage"
 ---
-# One correlation per merged PR. The derived id is NOT chosen here — the engine writes
-# `lineage:trace:lin-pr-lineage@github:pr:acme_widget_42+<hash>`, f(rule, subject) — so
-# re-firing about the same PR rewrites one address rather than accumulating duplicates.
-# The subject is CARRIED into that address, not concatenated into it: `#` and `/` may not
-# appear in an id and become `_`, and a short hash keeps the sanitising from collapsing two
-# subjects into one trace. Nothing can spell a trace's address from its subject, which is why
-# the engine writes the linkage at `verse.meta.derivedFrom` and this script reads it back.
+# One correlation per merged PR. The derived ADDRESS is not chosen here — the engine writes
+# `lineage.trace.lin-pr-lineage.github.pr."acme/widget#42"`: the target, the rule, then the
+# subject's own segments — so re-firing about the same PR rewrites one address rather than
+# accumulating duplicates.
+#
+# THE SUBJECT IS CARRIED WHOLE. It used to be flattened into a single id segment, where a `#`
+# and a `/` became `_` and a short hash kept the sanitising from collapsing two subjects into
+# one trace — so nothing could spell a trace's address from its subject, and the linkage at
+# `verse.meta.derivedFrom` was the only way back. The address IS the way back now; the linkage
+# is still written, and this script still reads it, because a payload field is what a charter
+# predicate can match on.
 - name: lin-pr-lineage
   stratum: lin-change
   condition:
@@ -267,16 +274,22 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 # The predicate is what keeps that read from being a walk of every trace in the verse, and it
 # is expanded like the rest of the address — `$subject.value.target` is the release's OWN
 # branch, so this is one rule rather than one rule per branch.
+#
+# SIX SEGMENTS, because a derived entity is as deep as what it is about: `lineage.trace`, the
+# rule that derived, and the three of the pull request it derived about. That is the cost of a
+# derivation being ADDRESSED by its provenance rather than carrying a flattened id — a reader of
+# the set says how deep the set is, and how deep follows from the depth of the subjects the
+# producing rule selects.
 - name: lin-release-manifest
   condition:
     subject: {path: [lintag, release, *], value: { stage: cut }}
   action:
     patch:
       stage:   shipped
-      prs:     !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: pr}
-      commits: !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: commit}
-      authors: !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: author}
-      titles:  !list-paths {at: [lineage, trace, "*"], value: { target: $subject.value.target }, path: title}
+      prs:     !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: pr}
+      commits: !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: commit}
+      authors: !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: author}
+      titles:  !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: title}
     spawn: { driver: scripted, vector: auto, prompt: "echo shipping $subject; sleep 30" }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
@@ -329,7 +342,7 @@ for _ in $(seq 1 100); do
 			tref=$t
 			break 2
 		fi
-	done < <(v data --paths --depth 3 lineage 2>/dev/null)
+	done < <(v data --paths --depth 6 lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||

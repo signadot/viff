@@ -943,9 +943,15 @@ func (d deriveTarget) segs() []string {
 	return []string{d.System, d.Kind}
 }
 
-// refFor is the entity this derive writes, given the id the engine derived for it.
-func (d deriveTarget) refFor(id string) entity.Ref {
-	return entity.RefAt(append(append([]string{}, d.segs()...), id)...)
+// refFor is the entity this derive writes: the target's own place, then the segments the engine
+// derived for it.
+//
+// SEGMENTS RATHER THAN AN ID, so a derived entity is as deep as what it is about — the target,
+// the rule, and the subject's own address. What that costs is stated where it is paid: a reader
+// of derived entities says how deep they are, and how deep they are follows from the depth of
+// the subjects the producing rule selects (docs/working/entity-tree.md).
+func (d deriveTarget) refFor(segs ...string) entity.Ref {
+	return entity.RefAt(append(append([]string{}, d.segs()...), segs...)...)
 }
 
 // match is the target as the pattern the level and confinement checks compare against.
@@ -1455,16 +1461,15 @@ func eachRootFor(subject *ir.Node, item entity.Payload) entity.Payload {
 	})
 }
 
-// eachID addresses one derived element: (rule, subject, key).
+// eachSegs addresses one derived element: (rule, subject, key), one segment per part.
 //
-// The hash is not decoration. The flattening drops the characters an id may not hold, and the
-// keys this construct invites are exactly the ones that need flattening — `source/github.Reflect`
-// carries a slash, and Go's own spelling of a method carries more. Two DISTINCT keys that
-// flatten alike would otherwise share one entity, which is the fan-out silently losing a member:
-// the failure that is invisible because the ledger simply reads short. So a rewritten key takes
-// the hash of what it was, which is segToken's rule asked of a one-segment vector.
-func eachID(chain string, ref entity.Ref, key string) string {
-	return spawnID(chain, ref) + ChainSep + entity.SegToken([]string{key})
+// THE KEY IS A SEGMENT, so it needs neither flattening nor a hash. Both were an ID's: the keys
+// this construct invites are exactly the ones a flattening would rewrite — `source/github.Reflect`
+// carries a slash, Go's own spelling of a method carries more — and two DISTINCT keys that
+// flattened alike shared one entity, which is a fan-out silently losing a member, invisible
+// because the ledger simply reads short. Nothing flattens now, so nothing can collide.
+func eachSegs(chain string, ref entity.Ref, key string) []string {
+	return append(deriveSegs(chain, ref), key)
 }
 
 // deriveFromField is where the engine records what a derived entity is about, under the reserved

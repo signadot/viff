@@ -177,10 +177,30 @@ func (e *Engine) causeFor(t Trigger, c entity.Commit, subj entity.Ref) int64 {
 	return c.Rev
 }
 
-// changedIn reports whether the commit changed this entity.
+// changedIn reports whether the commit changed this entity — at it, or at an ancestor of it.
+//
+// THE ANCESTOR CASE IS THE WATCH'S GRAIN, not a looseness. A change stream reports one event
+// per entity at the FIXED depth (entity.walkEntityLeaves: three segments, four under the
+// reserved root), so a write to something deeper — a derived entity, which stands at its
+// target, the rule that derived it, and the subject's own segments — arrives as a change to its
+// three-segment ancestor with the rest of the structure in the payload. Asked for an exact
+// match, this answered "no" for every such subject, so the firing began a FRESH chain: the
+// causal report named the level crossing as an origin, and the throttle that walks back parents
+// could not see a loop that ran through a derive.
+//
+// It over-links rather than under-links, and deliberately: two deep entities under one
+// three-segment ancestor report as the same event, so a firing about one is linked to a commit
+// that may have changed the other. That direction is the safe one — the chain is what the
+// throttle uses to STOP a runaway, so a spurious link makes it more eager and a missing one
+// makes it blind. Reporting at the entity's real depth is WatchSubtree's to fix
+// (docs/working/entity-tree.md §5), and this is the honest reading until it does.
 func changedIn(c entity.Commit, ref entity.Ref) bool {
+	segs := ref.Segs()
 	for _, ev := range c.Changes {
 		if ev.Ref == ref {
+			return true
+		}
+		if at := ev.Ref.Segs(); len(at) <= len(segs) && slices.Equal(at, segs[:len(at)]) {
 			return true
 		}
 	}

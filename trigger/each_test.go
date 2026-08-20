@@ -270,8 +270,11 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		_, err = trigs[0].Action.applyOne("fan", oc, subj, eng, fromSubject)
 		return err
 	}
+	// AT THE DEPTH A FAN-OUT LANDS: the target `drift.finding`, the rule that derived, the
+	// segments of the subject, and the element's key. A listing says how deep it reads now that
+	// a derived entity is as deep as what it is about.
 	drift := func() []entity.Entity {
-		return store.List(func(r entity.Ref) bool { return r.System() == "drift" })
+		return store.ListAt([]string{"drift", "finding"}, 2+1+subj.Len()+1, nil)
 	}
 
 	// Twelve findings, twelve entities.
@@ -292,8 +295,18 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		if obj["sym"] == nil || obj["was"] != "stale" {
 			t.Errorf("%s carries %v", e.Ref, obj)
 		}
-		if !strings.Contains(e.Ref.ID(), "fan@git.commit.verse_abc") {
-			t.Errorf("id %q does not carry (rule, subject)", e.Ref.ID())
+		// The ADDRESS carries (rule, subject) — a segment each, verbatim, rather than one id
+		// with them flattened into it. `verse_abc` is what the flattening used to make of
+		// `verse/abc`; nothing flattens now, so the subject reads back as itself.
+		want := append([]string{"drift", "finding"}, deriveSegs("fan", subj)...)
+		if got := e.Ref.Segs(); len(got) != len(want)+1 {
+			t.Errorf("%s is %d segments, want the target, the rule, the subject and a key", e.Ref, len(got))
+			continue
+		}
+		for i, w := range want {
+			if e.Ref.Segs()[i] != w {
+				t.Errorf("%s: segment %d = %q, want %q", e.Ref, i, e.Ref.Segs()[i], w)
+			}
 		}
 	}
 
@@ -386,33 +399,37 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	}
 }
 
-// Two keys that FLATTEN alike must not share an address. safeSeg rewrites what an id may not
-// hold, and the keys this construct invites — package-qualified Go symbols — are full of it.
-// Losing one member of a fan-out to a collision is the failure that reads as a shorter ledger
-// and nothing else.
-func TestEachIDSeparatesKeysThatFlattenAlike(t *testing.T) {
+// TWO KEYS THAT WOULD FLATTEN ALIKE ARE SIMPLY TWO SEGMENTS, and this is the test that used to
+// be about the hash keeping them apart. A key is a segment now — a slash, a space, a dot are
+// all ordinary characters in one — so there is nothing to flatten and nothing to disambiguate.
+//
+// The failure this guards against is unchanged and worth keeping named: losing one member of a
+// fan-out to a collision reads as a shorter ledger and nothing else.
+func TestEachSegsSeparatesKeysThatWouldFlattenAlike(t *testing.T) {
 	subj := entity.RefAt("drift", "head", "x")
 	seen := map[string]string{}
 	for _, key := range []string{
 		"entity.nodeToPayload",
 		"source/github.Reflect",
-		"source_github.Reflect", // flattens to the same segment as the line above
+		"source_github.Reflect", // the same segment as the line above, ONCE flattened
 		"entity.(*LogdStore).Get",
 		"a b",
 		"a_b",
 	} {
-		id := eachID("fan", subj, key)
-		if prev, dup := seen[id]; dup {
-			t.Errorf("keys %q and %q share the address %q", prev, key, id)
+		at := entity.RefAt(eachSegs("fan", subj, key)...).String()
+		if prev, dup := seen[at]; dup {
+			t.Errorf("keys %q and %q share the address %q", prev, key, at)
 		}
-		seen[id] = key
-		if strings.ContainsAny(id, "/ \t") {
-			t.Errorf("id %q holds a character an id may not", id)
-		}
+		seen[at] = key
 	}
-	// And the chain half is still exact, which is what reads a task's position in its trigger.
-	if chain, _, ok := chainOf(eachID("fan", subj, "entity.f")); !ok || chain != "fan" {
-		t.Errorf("chain = %q (ok=%v), want fan", chain, ok)
+	// And the key is carried WHOLE: the address of a derivation says what it is about, where a
+	// flattened id could only carry a lossy trace of it.
+	segs := eachSegs("fan", subj, "source/github.Reflect")
+	if got := segs[len(segs)-1]; got != "source/github.Reflect" {
+		t.Errorf("the key segment = %q, want it verbatim", got)
+	}
+	if got := segs[0]; got != "fan" {
+		t.Errorf("the chain segment = %q, want the rule", got)
 	}
 }
 
@@ -477,7 +494,8 @@ func TestEachOverATaskAnswer(t *testing.T) {
 		t.Fatalf("the hook failed: %v", err)
 	}
 
-	got := store.List(func(r entity.Ref) bool { return r.System() == "drift" })
+	// The target, the hook CHAIN as one segment, the subject, and the element's key.
+	got := store.ListAt([]string{"drift", "finding"}, 2+1+subj.Len()+1, nil)
 	if len(got) != 2 {
 		t.Fatalf("derived %d entities from a two-finding answer", len(got))
 	}
@@ -490,14 +508,16 @@ func TestEachOverATaskAnswer(t *testing.T) {
 			t.Errorf("%s lost what the element said: %v", e.Ref, obj)
 		}
 	}
-	// The key that needed flattening is still its own entity, and still legible.
-	var ids []string
+	// The key that used to need flattening is its own entity, and carries its symbol VERBATIM:
+	// it is the last segment, and a segment holds a `/` as readily as anything else.
+	var keys []string
 	for _, e := range got {
-		ids = append(ids, e.Ref.ID())
+		segs := e.Ref.Segs()
+		keys = append(keys, segs[len(segs)-1])
 	}
-	sort.Strings(ids)
-	if !strings.Contains(ids[1], "source_github.Reflect") {
-		t.Errorf("ids = %v, want the flattened symbol to survive in the address", ids)
+	sort.Strings(keys)
+	if keys[1] != "source/github.Reflect" {
+		t.Errorf("keys = %v, want the symbol whole in the address", keys)
 	}
 }
 

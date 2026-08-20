@@ -137,10 +137,10 @@ ok "demo-review (ask: a human approves) + demo-escalate (auto)"
 step "entities"
 v data demo pr 1 --put '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
 v data demo pr 2 --put '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
-ok "demo:pr:1 (open — demo-review fires on it), demo:pr:2 (draft — it does not)"
+ok "demo.pr.1 (open — demo-review fires on it), demo.pr.2 (draft — it does not)"
 v data demo task hotfix-1 --put '{priority: high, title: "expiring cert"}' >/dev/null
 v data demo task cleanup-1 --put '{priority: low, title: "tidy the fixtures"}' >/dev/null
-ok "demo:task:hotfix-1 (high — demo-escalate fires), demo:task:cleanup-1 (low — it does not)"
+ok "demo.task.hotfix-1 (high — demo-escalate fires), demo.task.cleanup-1 (low — it does not)"
 
 # Providers are ordinary entities, which is the point: `verse provider` is a view of the
 # store, and a spawn that SELECTS its doer picks from these by capability and attributes.
@@ -160,8 +160,8 @@ for _ in $(seq 1 50); do
 	fi
 	sleep 0.2
 done
-[ -n "$escalated" ] && ok "demo-escalate advanced demo:task:hotfix-1 → escalated (auto: nobody was asked)" ||
-	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse data demo task hotfix-1`\n'
+[ -n "$escalated" ] && ok "demo-escalate advanced demo.task.hotfix-1 → escalated (auto: nobody was asked)" ||
+	printf '  \033[33m~\033[0m demo.task.hotfix-1 has not advanced yet — `verse data demo task hotfix-1`\n'
 
 GID=
 for _ in $(seq 1 50); do
@@ -169,7 +169,7 @@ for _ in $(seq 1 50); do
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
-[ -n "$GID" ] && ok "demo-review is holding demo:pr:1 at a gate: $GID" ||
+[ -n "$GID" ] && ok "demo-review is holding demo.pr.1 at a gate: $GID" ||
 	printf '  \033[33m~\033[0m no gate yet — `verse gate` in a moment\n'
 
 scope_note=""

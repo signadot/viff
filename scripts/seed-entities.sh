@@ -125,10 +125,10 @@ for w in "${WORLD[@]}"; do
 	# shellcheck disable=SC2086
 	v data ${w%%|*} --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
 done
-ok "demo:pr:1–5        three open, one draft, one merged; nested labels"
-ok "demo:task:*        two high-priority, one low"
-ok "ci:status:*        build green, e2e red"
-ok "human:person:*     two reviewers"
+ok "demo.pr.1–5        three open, one draft, one merged; nested labels"
+ok "demo.task.*        two high-priority, one low"
+ok "ci.status.*        build green, e2e red"
+ok "human.person.*     two reviewers"
 
 scope_note=""
 [ ${#scope[@]} -gt 0 ] && scope_note=" ${scope[*]}"

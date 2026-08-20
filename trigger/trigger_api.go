@@ -310,11 +310,15 @@ func spawnID(chain string, ref entity.Ref) string {
 	return chain + ChainSep + entity.SegToken(ref.Segs())
 }
 
-// namedID is the id an author-NAMED derive writes at: the key alone, with none of the
-// (rule, subject) composition eachID puts in front of it, so the address is one a charter can
-// spell. The rewrite and its hash are eachID's, for eachID's reason — two distinct keys that
-// flatten alike would otherwise share an entity, and a fan-out that reads short is invisible.
-func namedID(key string) string { return entity.SegToken([]string{key}) }
+// namedSegs is where an author-NAMED derive writes: the key alone, with none of the
+// (rule, subject) composition eachSegs puts in front of it, so the address is one a charter can
+// spell.
+//
+// VERBATIM, with no sanitising and no hash. Those were an ID's, and this is a SEGMENT: a
+// segment holds whatever it holds — a slash, a `#`, a dot — because nothing splits it, and the
+// quoting is the rendering's problem rather than identity's. That is the whole of what a derived
+// address being a path buys, said once.
+func namedSegs(key string) []string { return []string{key} }
 
 // CheckFields reports a field name a rule does not have, before the rule is decoded.
 //
@@ -402,16 +406,27 @@ func checkFields(node *ir.Node, what string, known map[string]bool, descend func
 	return nil
 }
 
-// deriveID is the id of the entity a firing derives: a function of (rule, subject) and nothing
+// deriveSegs is where the entity a firing derives STANDS, under the target the rule names: the
+// chain as ONE segment, then the address it is about. A function of (rule, subject) and nothing
 // else, which is what makes a re-fire idempotent and what retires "two triggers, one field" for
-// everything derived — rule names are unique across the charter and the id is injective in the
-// subject, so no two rules and no two subjects can address the same derived entity.
+// everything derived — rule names are unique across the charter and the segments are injective
+// in the subject, so no two rules and no two subjects can address the same derived entity.
 //
-// It is spawnID's rule, deliberately: a derived entity and a spawned task are the same object
-// in different clothes — a thing brought into being by one firing, about exactly one subject —
-// and giving them two id schemes would be two answers to one question. They cannot collide: a
-// task id addresses a task, a derived id addresses an entity at <system>.<kind>.
-func deriveID(chain string, ref entity.Ref) string { return spawnID(chain, ref) }
+// AN ADDRESS RATHER THAN AN ID, which is the difference from spawnID beside it. A task id must
+// be one URL path segment, so it is the same vector FLATTENED — sanitised per segment, joined,
+// hashed where that is lossy. A derived entity is an ENTITY: it can simply be deeper. So it
+// keeps the subject's segments exactly as they are, which means the address of a derivation
+// carries what it is about faithfully, where the flattened id could only carry a lossy trace of
+// it (the reason the engine also writes `verse.meta.derivedFrom`).
+//
+// THE CHAIN IS EXACTLY ONE SEGMENT, and that is what keeps the composition injective: the
+// boundary between the rule and the subject is a POSITION rather than a character, so nothing
+// has to be spent as punctuation. validTriggerName already guarantees a name is a single bare
+// field; a hook chain (`review.onDone`) holds a dot and is one segment that gets quoted when it
+// is rendered, which is the ordinary treatment of a name holding a delimiter.
+func deriveSegs(chain string, ref entity.Ref) []string {
+	return append([]string{chain}, ref.Segs()...)
+}
 
 // chainOf splits a spawn id back into its chain and the (safeSeg'd) subject it is about.
 // Not the inverse of spawnID — safeSeg is lossy and the hash is not a ref — but the chain

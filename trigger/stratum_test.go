@@ -322,7 +322,7 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 
 	ref := entity.RefAt("gh", "issue", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
-	derived := waitDerived(t, store, "signadot", "feature")
+	derived := waitDerived(t, store, []string{"signadot", "feature"}, "raise", ref)
 	obj := entity.ToObj(derived.Payload)
 	if obj["what"] != `gh.issue."1"` {
 		t.Fatalf("$subject did not resolve to the ref: %+v", obj)
@@ -335,7 +335,7 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	// where the read side would stop being inert.
 	rev := store.Rev()
 	entitytest.Set(t, store, ref, entity.Obj{"n": 2}.Payload())
-	waitCount(t, store, "signadot", "feature", 1)
+	waitCount(t, store, []string{"signadot", "feature"}, ref, 1)
 	again, ok, _ := store.Get(derived.Ref)
 	if !ok {
 		t.Fatal("the derived entity went away on a re-fire")
@@ -414,9 +414,8 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 		entity.Obj{"state": "open"}.Payload())
 	deadline := time.After(3 * time.Second)
 	for {
-		for _, e := range store.List(func(r entity.Ref) bool {
-			return r.System() == "signadot" && r.Kind() == "feature"
-		}) {
+		// `signadot.feature`, the rule that derived, and the subject's own three segments.
+		for _, e := range store.ListAt([]string{"signadot", "feature"}, 2+1+3, nil) {
 			if entity.ToObj(e.Payload)["urgent"] == true {
 				return
 			}
@@ -448,9 +447,12 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := eng.AddTrigger(Trigger{
-		Name:      "request-approval",
-		Stratum:   "sdlc",
-		Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}},
+		Name:    "request-approval",
+		Stratum: "sdlc",
+		// SIX SEGMENTS: the target `signadot.feature`, the rule that derived, and the three
+		// of the subject it derived about. A derived entity is as deep as what it is about,
+		// so a rule reading one says so.
+		Condition: Condition{Subject: mustSteps(t, "signadot", "feature", "*", "*", "*", "*")},
 		Action:    Action{Patch: entity.Obj{"stage": "awaiting-approval"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -461,7 +463,8 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 	eng.Start(ctx)
 	entitytest.Set(t, store, entity.RefAt("gh", "issue", "1"), entity.Obj{"label": "urgent"}.Payload())
 
-	derived := waitDerived(t, store, "signadot", "feature")
+	derived := waitDerived(t, store, []string{"signadot", "feature"}, "urgent-label",
+		entity.RefAt("gh", "issue", "1"))
 	obj := entity.ToObj(derived.Payload)
 	if obj["priority"] != "urgent" {
 		t.Fatalf("the derived entity does not carry what the charter wrote: %+v", obj)
@@ -499,11 +502,11 @@ func TestDeriveIsIdempotentPerSubject(t *testing.T) {
 
 	ref := entity.RefAt("gh", "issue", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
-	waitDerived(t, store, "signadot", "feature")
+	waitDerived(t, store, []string{"signadot", "feature"}, "derive-one", ref)
 	// Change the subject again: the same rule about the same subject writes the same address.
 	entitytest.Set(t, store, ref, entity.Obj{"n": 2}.Payload())
 	entitytest.Set(t, store, entity.RefAt("gh", "issue", "2"), entity.Obj{"n": 1}.Payload())
-	waitCount(t, store, "signadot", "feature", 2)
+	waitCount(t, store, []string{"signadot", "feature"}, ref, 2)
 }
 
 // ── holding a rule whose stratum has not arrived ──────────────────────────────────
@@ -700,27 +703,37 @@ func TestStratumRefusesUnknownFields(t *testing.T) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────────
 
-func waitDerived(t *testing.T, s entity.Store, system, kind string) entity.Entity {
+// waitDerived waits for the entity a rule derived about a subject, and NAMES it rather than
+// searching for one: a derived entity stands at `<target>.<rule>.<subject…>`, so the address is
+// a function of what the test already knows. It used to scan a fixed-depth listing, because the
+// id was `f(rule, subject)` flattened and unspellable.
+//
+// Naming it is a stronger assertion as well as a simpler one — a scan passes on any derived
+// entity under the target, this passes only on the right one.
+func waitDerived(t *testing.T, s entity.Store, target []string, rule string, subj entity.Ref) entity.Entity {
 	t.Helper()
+	ref := entity.RefAt(append(append([]string{}, target...), deriveSegs(rule, subj)...)...)
 	deadline := time.After(3 * time.Second)
 	for {
-		ents := s.List(func(r entity.Ref) bool { return r.System() == system && r.Kind() == kind })
-		if len(ents) > 0 {
-			return ents[0]
+		if e, ok, _ := s.Get(ref); ok {
+			return e
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("timed out waiting for a derived %s:%s", system, kind)
+			t.Fatalf("timed out waiting for the entity %s derived at %s", rule, ref)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
 }
 
-func waitCount(t *testing.T, s entity.Store, system, kind string, want int) {
+// waitCount waits for a count of derived entities under a target, at the depth a derivation
+// about `subj` lands at — which is what a listing has to say now that entity-hood is a lens.
+func waitCount(t *testing.T, s entity.Store, target []string, subj entity.Ref, want int) {
 	t.Helper()
+	depth := len(target) + 1 + subj.Len() // the target, the rule segment, and the subject
 	deadline := time.After(3 * time.Second)
 	for {
-		ents := s.List(func(r entity.Ref) bool { return r.System() == system && r.Kind() == kind })
+		ents := s.ListAt(target, depth, nil)
 		if len(ents) == want {
 			return
 		}
@@ -733,7 +746,7 @@ func waitCount(t *testing.T, s entity.Store, system, kind string, want int) {
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("timed out waiting for %d derived %s:%s (have %d)", want, system, kind, len(ents))
+			t.Fatalf("timed out waiting for %d derived under %v (have %d)", want, target, len(ents))
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
@@ -803,10 +816,13 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "value": map[string]any{"stage": "b"}}},
 		Action:    deriveAction("signadot", "feature", entity.Obj{"priority": "urgent"}),
 	}, {
-		Name:      "consumes",
-		Stratum:   "high",
-		Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature", "value": map[string]any{"priority": "urgent"}}},
-		Action:    Action{Patch: entity.Obj{"stage": "awaiting-approval"}.Payload()},
+		Name:    "consumes",
+		Stratum: "high",
+		// The target, the rule that derived, and the subject it derived about: a rule reading
+		// a derivation says how deep one is.
+		Condition: Condition{Subject: withValue(mustSteps(t, "signadot", "feature", "*", "*", "*", "*"),
+			map[string]any{"priority": "urgent"})},
+		Action: Action{Patch: entity.Obj{"stage": "awaiting-approval"}.Payload()},
 	}} {
 		if err := eng.AddTrigger(tr); err != nil {
 			t.Fatalf("%s: %v", tr.Name, err)
@@ -816,7 +832,8 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 	entitytest.Set(t, store, entity.RefAt("gh", "issue", "1"), entity.Obj{"stage": "a"}.Payload())
-	derived := waitDerived(t, store, "signadot", "feature")
+	derived := waitDerived(t, store, []string{"signadot", "feature"}, "derives",
+		entity.RefAt("gh", "issue", "1"))
 	waitStage(t, store, derived.Ref, "awaiting-approval")
 
 	eng.chainMu.Lock()
@@ -938,4 +955,22 @@ func (r blockingResolver) Resolve(ctx context.Context, q task.GateQuestion, tu t
 		return task.Resolution{}, ctx.Err()
 	}
 	return task.Resolution{Proceed: true, By: "test"}, nil
+}
+
+// mustSteps builds a path match from steps — the spelling a charter writes as
+// `path: [a, b, "*"]`, for a test assembling a rule in Go.
+func mustSteps(t *testing.T, steps ...string) Match {
+	t.Helper()
+	m, err := ParseSteps(steps)
+	if err != nil {
+		t.Fatalf("ParseSteps(%v): %v", steps, err)
+	}
+	return m
+}
+
+// withValue puts a payload predicate on a match — the `value:` a charter writes beside its
+// `path:`.
+func withValue(m Match, pred map[string]any) Match {
+	m["value"] = pred
+	return m
 }

@@ -558,8 +558,11 @@ cat >"$tmp/strata.tony" <<'TONY'
 - name: smoke-consume
   stratum: smoke-sdlc
   condition:
+    # SIX SEGMENTS: the derive's target, the rule that derived, and the three of the issue it
+    # derived about. A derived entity is as deep as what it is about, so a rule that reads one
+    # says how deep it is.
     subject:
-      path: [smokesd, feature, *]
+      path: [smokesd, feature, *, *, *, *]
       value:
         priority: urgent
   action:
@@ -574,7 +577,7 @@ v data smokegh issue 1 --put '{"label":"urgent"}' >/dev/null || die "data --put 
 derived=
 for _ in $(seq 1 100); do
 	out=$(v data --paths 2>/dev/null || true)
-	if has "$out" 'smokesd feature '; then
+	if has "$out" 'smokesd feature smoke-derive smokegh issue 1'; then
 		derived=1
 		break
 	fi
@@ -583,16 +586,17 @@ done
 [ -n "$derived" ] || die "the derive never landed"
 ok "a rule at level 0 wrote an entity at level 10"
 
-# The derived id is the engine's — f(rule, subject) — and the subject linkage with it.
+# The derived ADDRESS is the engine's — the target, the rule, then the subject's own
+# segments — and the linkage record with it.
 # BOTH WAYS, because `--paths` answers in steps and a script may hand the line over whole or let
 # the shell split it. A whole line quoted as one token is the same address as the same line split
 # into arguments, and a script that captured a path and quoted it used to read nothing.
-dref=$(v data --paths --depth 3 smokesd feature | head -1)
+dref=$(v data --paths --depth 6 smokesd feature | tail -1)
 # shellcheck disable=SC2086
 haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
 has "$(v data $dref)" 'smokegh.issue."1"' || die "unquoted steps did not reach the same entity"
-ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
+ok "the address carries its provenance: $dref"
 
 # And the level above acted on it, which is the whole point of the ordering.
 crossed=

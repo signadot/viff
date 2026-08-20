@@ -178,9 +178,18 @@ verse:
       subject: gh.issue.1
 ```
 
-The id reads `<system>:<kind>:<rule>@<subject>`, and the rule is in there because identity is
-(rule, subject) rather than subject alone — without it, two rules deriving into one kind about one
+The ADDRESS reads `<target>.<rule>.<subject…>` — the place the rule derives into, the rule
+itself as one segment, then the subject's own segments. The rule is in there because identity is
+(rule, subject) rather than subject alone: without it, two rules deriving into one kind about one
 subject would write the same entity, which is the race single-writer exists to retire.
+
+It is an ADDRESS rather than an id, so it carries the subject faithfully — `derived.feature.raise.gh.issue.1`
+is the entity `raise` derived about `gh.issue.1`, and reads back as exactly those segments.
+Two things follow. `verse data derived feature raise --paths` is "everything this rule has
+derived", a question that needed grepping an id before. And **a derived entity is as deep as
+what it is about**: a rule reading one says how deep, and how deep follows from the depth of the
+subjects the producing rule selects — `{path: [derived, feature, "*", "*", "*", "*"]}` for a rule
+deriving about three-segment entities.
 
 The linkage is the spawn's rule, for the spawn's reason: a derivation is about exactly one
 subject, and which one is the condition's answer rather than something a charter should have to

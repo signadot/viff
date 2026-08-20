@@ -746,11 +746,11 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 					return nil, err
 				}
-				id := eachID(chainID(chain), subj, key)
+				segs := eachSegs(chainID(chain), subj, key)
 				if d.Each.ID != nil {
-					id = namedID(key) // author-named: the place plus the value, see deriveTarget.ID
+					segs = namedSegs(key) // author-named: the place plus the value, see deriveTarget.ID
 				}
-				ref := d.refFor(id)
+				ref := d.refFor(segs...)
 				payload, err := e.eachContent(d.Each, chain, oc, subj, item)
 				if err != nil {
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
@@ -763,7 +763,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			}
 			continue
 		}
-		id := deriveID(chainID(chain), subj)
+		segs := deriveSegs(chainID(chain), subj)
 		if d.Key != nil {
 			// A KEYED derive: one entity per value, addressed the way a fan-out's elements are.
 			// The key is read from the same root the content is, so `key: $subject.value.sha`
@@ -778,7 +778,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
 			}
-			id = eachID(chainID(chain), subj, key)
+			segs = eachSegs(chainID(chain), subj, key)
 		}
 		if d.ID != nil {
 			// AN AUTHOR-NAMED derive: the same key, addressed by itself. See deriveTarget.ID
@@ -793,9 +793,9 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
 			}
-			id = namedID(key)
+			segs = namedSegs(key)
 		}
-		ref := d.refFor(id)
+		ref := d.refFor(segs...)
 		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)

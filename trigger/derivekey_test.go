@@ -54,7 +54,8 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 
 	head := entity.RefAt("git", "head", "verse")
 	entitytest.Set(t, store, head, entity.Obj{"sha": "aaa111"}.Payload())
-	waitDeep(t, store, []string{"demo", "batch"}, 3)
+	// `demo.batch`, the rule, the three segments of `git.head.verse`, and the key.
+	waitDeep(t, store, []string{"demo", "batch"}, batchDepth)
 
 	// THE TIP MOVES, and the point is that this is a SECOND entity rather than a rewrite of the
 	// first. Unkeyed, the two batches are one address: whatever was decided about the first is
@@ -62,7 +63,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 	entitytest.Set(t, store, head, entity.Obj{"sha": "bbb222"}.Payload())
 	var got []entity.Entity
 	for i := 0; i < 100; i++ {
-		if got = store.ListAt([]string{"demo", "batch"}, 3, nil); len(got) == 2 {
+		if got = store.ListAt([]string{"demo", "batch"}, batchDepth, nil); len(got) == 2 {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -284,3 +285,8 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 	e, _, _ := store.Get(want)
 	t.Fatalf("%s was never marked: %+v", want, e.Payload)
 }
+
+// batchDepth is where a KEYED derive about `git.head.verse` lands under `demo.batch`: the
+// target, the rule that derived, the subject's own three segments, and the key. A derived
+// entity is as deep as what it is about, so a listing says so rather than assuming three.
+const batchDepth = 2 + 1 + 3 + 1

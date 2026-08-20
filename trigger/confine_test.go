@@ -211,9 +211,9 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	deadline := time.After(3 * time.Second)
 	for {
 		found := false
-		for _, e := range store.List(func(r entity.Ref) bool {
-			return r.System() == "drift" && r.Kind() == "head"
-		}) {
+		// AT THE DEPTH THE DERIVE LANDS: `drift.head`, the rule that derived, and the three
+		// segments of the source entity it derived about.
+		for _, e := range store.ListAt([]string{"drift", "head"}, 2+1+3, nil) {
 			if entity.Str(e.Payload, "repo") == "verse" {
 				found = true
 			}
