@@ -358,6 +358,11 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	waitQuestion(t, srv, "run-1")
 	ref := resolver.InstanceRef("payments-review", "run-1")
+	// Wait for the MINT, not just the question. The question is written first and the instance
+	// is minted right after it, so a position posted on the strength of the question alone
+	// races the mint that is meant to be tested against — and this test is about what a mint
+	// does to a position that is ALREADY there.
+	waitFor(t, srv, ref.ID())
 	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID()+"/position",
 		api.Position{Position: 9, Notes: "read this far"})
 	resp.Body.Close()

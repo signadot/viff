@@ -473,6 +473,21 @@ func BindResolver(store entity.Store, binding, name, taskID string) {
 	Watch(store, binding, name, Ref(taskID))
 }
 
+// OriginKey is the origin half of an instance's id — the one place that says how an instance is
+// addressed, so a reader building the address finds the record the writer put there.
+//
+// A TASK is named by its id alone, which is already unique across the runtime. Anything else is
+// a SUBJECT, whose last segment is not unique across systems, so it carries the whole address —
+// as a TOKEN, never as a rendering. An instance id crosses `/resolvers/instance/{id}`, and a
+// rendering quotes a segment that would otherwise read as something else (`change.pr."1"`),
+// which a URL path may not hold.
+func OriginKey(origin entity.Ref) string {
+	if origin.System() == System {
+		return origin.ID()
+	}
+	return origin.Token()
+}
+
 // Watch mints the record of one binding watching one origin, and does nothing if it already
 // exists.
 //
@@ -490,21 +505,6 @@ func BindResolver(store entity.Store, binding, name, taskID string) {
 // called every time a question is posed, so a plain write would reset the position of a
 // resolver that is already reading — retiring its progress on the arrival of the very question
 // it was reading towards.
-// OriginKey is the origin half of an instance's id — the one place that says how an instance is
-// addressed, so a reader building the address finds the record the writer put there.
-//
-// A TASK is named by its id alone, which is already unique across the runtime. Anything else is
-// a SUBJECT, whose last segment is not unique across systems, so it carries the whole address —
-// as a TOKEN, never as a rendering. An instance id crosses `/resolvers/instance/{id}`, and a
-// rendering quotes a segment that would otherwise read as something else (`change.pr."1"`),
-// which a URL path may not hold.
-func OriginKey(origin entity.Ref) string {
-	if origin.System() == System {
-		return origin.ID()
-	}
-	return origin.Token()
-}
-
 func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 	if binding == "" || name == "" {
 		return

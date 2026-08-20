@@ -130,8 +130,21 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 		t.Fatalf("members shared a spawn id (%v) — control would be cross-wired", ids)
 	}
 	// And each is its own flow, addressable as a set.
-	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 3 {
-		t.Fatalf("%d live tasks for 3 members", n)
+	//
+	// Polled, because the spawner runs BEFORE the flow is tracked (spawnHooked calls the
+	// spawner and only then track()s the handle) — so the third send arriving on `got` says a
+	// task started, not that the engine has finished registering it. Asserting straight off the
+	// last send is a race the test loses about one run in five.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n := len(eng.matchFlow(mustExpr(t, "demo.pr.*")))
+		if n == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d live tasks for 3 members", n)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
