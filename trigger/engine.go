@@ -797,6 +797,17 @@ func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname strin
 	for {
 		winner, witness, ok := e.awaitMotion(ctx, m)
 		if !ok {
+			// The monitor ended before anything was decided, for one of two reasons — the
+			// engine is going down, or the question stopped being about anything. The second
+			// is a withdrawal and is worth saying; asking here rather than inside the monitor
+			// keeps the reason in the rule's own terms, and `stillSelects` answers TRUE when it
+			// cannot tell, so a shutdown mid-read does not settle a live question on a guess.
+			if len(subjects) > 0 && !e.stillSelects(t, subject) {
+				e.orphanMotion(channelRef, fmt.Sprintf(
+					"%s no longer selects %s, so nothing will read the answer", t.Name, subject))
+				e.tracef("temporal gate %s/%s: %s left the selection → withdrawn", t.Name, gname, subject)
+				return false, false
+			}
 			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
 			return false, false
 		}

@@ -45,6 +45,16 @@ type motion struct {
 	// continuation a who-motion is blocking — see ResumeMotions. Empty on a whether-motion,
 	// whose continuation is the firing itself and comes back with the rule's own replay.
 	chain string
+	// moot answers whether the question this motion asks has stopped being about anything —
+	// the rule no longer selects the subject. It is a closure rather than a field of data
+	// because the answer is a read of the verse as it stands, and it is nil for a motion whose
+	// staleness nobody can decide (no subject, or no rule to ask).
+	//
+	// It is what makes the withdrawal PROMPT. The same question is asked at the commit and at a
+	// restart; without a wake on the subject's own subtree, a motion whose subject left the
+	// selection sat open offering a decision about work that will never be taken, until
+	// somebody voted or the verse came back (git-issue 1my63vm6h12ks6bng9n0).
+	moot func() bool
 }
 
 // motionOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
@@ -160,6 +170,12 @@ func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname
 	m := &motion{
 		channel: channel, subject: subject.String(), axis: "whether",
 		trigger: t.Name, gate: gname,
+	}
+	// Whether the question is still about anything. Only a whether-motion gets one: it is the
+	// rule's own selection that decides, and a who-motion is a question about a spawn that has
+	// already been decided to happen.
+	if subject != (entity.Ref{}) {
+		m.moot = func() bool { return !e.stillSelects(t, subject) }
 	}
 	if f != nil && f.Op == OpUntil && len(f.Args) == 2 {
 		m.options = append(m.options, optionFromFormula("proceed", f.Args[0]))
@@ -322,21 +338,33 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 	defer cancel()
 	events := make(chan entity.Commit, 64)
 	seen := map[Subtree]bool{} // one watch per distinct subtree (options often share the vote log)
+	watch := func(st Subtree) {
+		if seen[st] {
+			return
+		}
+		seen[st] = true
+		ch, unsub, err := e.store.WatchSubtree(st.Path()...)
+		if err != nil {
+			return
+		}
+		context.AfterFunc(sub, unsub)
+		go drain(sub, ch, events)
+	}
+	// THE SUBJECT'S OWN SUBTREE, beside the vote log. The options say when the question is
+	// ANSWERED; this says when it stops being a question — see motion.moot. Nothing here
+	// decides on it, which is deliberate: the moot check runs on the event, and the withdrawal
+	// itself is the caller's, where the reason can be written in the rule's own terms.
+	if m.moot != nil && m.subject != "" {
+		if ref, err := entity.ParseAddr(m.subject); err == nil {
+			watch(SubtreeAt(ref.Segs()...))
+		}
+	}
 	for _, o := range m.options {
 		if o.formula == nil {
 			continue
 		}
 		for _, st := range o.formula.Subtrees() {
-			if seen[st] {
-				continue
-			}
-			seen[st] = true
-			ch, unsub, err := e.store.WatchSubtree(st.Path()...)
-			if err != nil {
-				continue
-			}
-			defer unsub()
-			go drain(sub, ch, events)
+			watch(st)
 		}
 	}
 	for {
@@ -351,6 +379,11 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 		case <-events:
 			if id, w, decided := check(); decided {
 				return id, w, true
+			}
+			// Nothing is decided. Ask whether there is still anything to decide: a subject that
+			// left the rule's selection makes the question moot, and the caller withdraws it.
+			if m.moot != nil && m.moot() {
+				return "", nil, false
 			}
 		}
 	}

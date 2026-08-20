@@ -810,13 +810,17 @@ cast, committed `proceed`, and merged a branch the sweep had retired — losing 
 about a world that has moved on is a gate answered by reflex, which is the failure gates exist
 to prevent.
 
-Two limits worth knowing. The check runs **at the commit**, not continuously, so a motion whose
-subject has already left the selection stays listed until somebody votes or the verse restarts
-— it is honest about the answer, not yet prompt about the listing. And it asks only about the
-SUBJECT, not the cause: a rule fired by an `on` edge may still select its subject and never see
-that edge again. When it cannot tell — an unreadable store, a predicate whose read fails — it
-lets the motion stand, because a stale docket entry costs a reader a moment while a wrongly
-withdrawn one takes a live question away from the people it is in front of.
+**The withdrawal is prompt**: the monitor watches the subject's own subtree beside the vote log,
+so a motion goes moot at the change that made it moot, with nobody having to vote and nothing
+having to restart. (It was asked only when somebody voted, and again at startup, so a stale
+question was discovered by restarting the verse.)
+
+One limit worth knowing: it asks only about the SUBJECT, not the cause — a rule fired by an `on`
+edge may still select its subject and never see that edge again, so a motion that stands is not
+a promise the rule will re-fire. And when it cannot tell — an unreadable store, a predicate
+whose read fails — it lets the motion stand, because a stale docket entry costs a reader a
+moment while a wrongly withdrawn one takes a live question away from the people it is in front
+of.
 
 ## `action` — what fires
 
