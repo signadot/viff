@@ -144,6 +144,16 @@ stateDiagram-v2
     end note
 ```
 
+Standing still, it is two fields — and the absence of `covering` is what says nothing is in
+flight:
+
+```tony
+verse data verse-dev drift at
+
+sha: 07c4d164220836aec5c04afd0cb53a39067f90e4
+stage: idle
+```
+
 `advance` asks whether `covering` is among the shas of ranges that are `done`, so a failed review
 is not in that set and the cursor stops where it broke. `verse data verse-dev.drift.at --put
 '{stage: idle}'` is the retry, and by then the range covers everything since.
@@ -180,6 +190,31 @@ stateDiagram-v2
     end note
 ```
 
+A range that has been through, on a push carrying no Go at all — `files: 0` is a real answer:
+
+```tony
+verse data verse-dev drift range
+
+07c4d164220836aec5c04afd0cb53a39067f90e4:
+  from: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
+  outstanding: []
+  report:
+    files: 0
+    findings: []
+  stage: reviewed
+  status: done
+  to: 07c4d164220836aec5c04afd0cb53a39067f90e4
+  verse:
+    meta:
+      derivedFrom:
+        rule: open-range
+        subject: verse-dev:drift:at
+```
+
+`verse.meta.derivedFrom` is the engine's, on every derived entity: it names the rule that wrote
+the address and the subject it was about, which is how a reader gets from an entity back to the
+charter without guessing.
+
 `stage` is the latch and it sequences the two rules: a spawn's strings bind against the payload
 that FIRED the action, so gathering and spawning in one action would hand the task the payload
 from before its own write.
@@ -201,6 +236,27 @@ stateDiagram-v2
       inferred from a model going quiet.
     end note
 ```
+
+One row, after the fix landed and the review that followed confirmed it — `at` is where it was
+confirmed, `proposedAt` where the fix was proposed:
+
+```tony
+verse data 'verse-dev.drift.finding."entity.JoinSegs"'
+
+at: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
+proposedAt: fc3175a731930673cbc03065f2359e92614133a5
+says: "the comment claims JoinSegs joins segments with a `/` and drops any that are empty, but the code joins with `.` and does not skip empty segments"
+status: resolved
+symbol: entity.JoinSegs
+verse:
+  meta:
+    derivedFrom:
+      rule: review-range.onDone
+      subject: verse-dev.drift.range.643602e878685ad1fc4c2c2c799b2b13cd36dd8f
+```
+
+The address is quoted because the id is: `entity.JoinSegs` carries a dot, and a kinded path
+quotes a segment whose content would otherwise split it.
 
 A fix lives on a branch until somebody approves it, and branches are declined, superseded and
 retired — so `proposedAt` records where the attempt was made while `status` stays `open`. A
@@ -229,6 +285,31 @@ stateDiagram-v2
         loaded --> declined: onDenied, or the 24h deadline
     }
 ```
+
+The pair, from the batch that landed the plant's fix. The proposal carries the review's report
+as `says` so the docket can ask a real question, and is `stale` now because main moved past the
+base it was cut from:
+
+```tony
+proposal-appeared@git:ref:verse_verse_auto_fc3175a7_review-range_…-962ad9e6+8b0cc03e:
+  base: fc3175a731930673cbc03065f2359e92614133a5
+  branch: verse/auto/fc3175a7/review-range_…-962ad9e6
+  repo: verse
+  says: {files: 1, findings: [{symbol: entity.JoinSegs, status: open, …}]}
+  sha: 610e3325e67393617fdb9596664f773e317a9634
+  state: stale
+
+fc3175a731930673cbc03065f2359e92614133a5:            # the train for that tip
+  branches:
+  - verse/auto/fc3175a7/review-range_…-962ad9e6
+  decided: landed
+  says: {files: 1, findings: [{symbol: entity.JoinSegs, status: open, …}]}
+  sha: fc3175a731930673cbc03065f2359e92614133a5
+```
+
+`sha` means different things in the two: on a proposal it is the BRANCH's tip — the commit that
+would land — and on a train it is MAIN's tip, the commit the batch is cut against. `base` is the
+proposal's answer to "could this still fast-forward", pinned once and never tracked afterwards.
 
 Two edges are worth stating in words:
 
