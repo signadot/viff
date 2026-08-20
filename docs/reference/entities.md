@@ -61,11 +61,23 @@ STEPS ARE WHAT A LISTING ANSWERS WITH — the same spelling the command line tak
 hands straight back:
 
 ```sh
-verse data --paths demo.pr          # demo pr 1
+verse data --paths demo pr          # demo pr 1
                                     # demo pr a.b
                                     # demo pr 'a b.txt'
 
-verse data --paths demo.pr | xargs -L1 verse data
+verse data --paths demo pr | xargs -L1 verse data
+```
+
+**`--kpaths` is the same listing as one TOKEN per line**, which is the spelling that survives
+being captured into a shell variable — a line of steps only reaches a read if something splits
+it, and a variable passed as one argument does not:
+
+```sh
+verse data --kpaths demo pr         # demo.pr."1"
+                                    # demo.pr."a.b"
+
+ref=$(verse data --kpaths demo pr | head -1)
+verse data --at "$ref"              # …one argument, and it reads back
 ```
 
 **One spelling, in and out.** A step is a whole word, so a dot inside one is a character in a

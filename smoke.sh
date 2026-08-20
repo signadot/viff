@@ -123,6 +123,11 @@ has "$(v data demo pr)" '"1":' || die "data demo pr did not key by id"
 # the walk stops.
 [ "$(v data --paths --depth 3 demo pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
 has "$(v data --paths demo pr)" 'demo pr 1 stage' || die "--paths did not walk into the payload"
+# …and the same listing as ONE TOKEN per line, which is what survives a shell variable: a line
+# of steps only reaches a read if something splits it, and `"$ref"` does not.
+[ "$(v data --kpaths --depth 3 demo pr)" = 'demo.pr."1"' ] || die "--kpaths did not name the entity"
+kref=$(v data --kpaths --depth 3 demo pr | head -1)
+haskv "$(v data --at "$kref")" stage open || die "--kpaths did not round-trip through --at"
 # The round trip is the one steps are for: the shell splits the line into arguments, which is
 # what `xargs -L1` does with it.
 v data --paths --depth 3 demo pr | while read -r p; do

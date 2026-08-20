@@ -853,7 +853,12 @@ type stateConfig struct {
 	// --create expects nothing, --update expects something, --expect names what.
 	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
-	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
+	Paths bool   `cli:"name=paths desc='print one address per line instead of the document, as steps'"`
+	// KPaths is the same listing in the KINDED PATH spelling: one TOKEN per line, quoted where
+	// the grammar needs it. Steps are what a person types and what `xargs -L1` hands back; a
+	// kinded path is what survives being captured into a shell variable and passed as ONE
+	// argument, which steps cannot — `ref=$(… | head -1); verse data --at "$ref"`.
+	KPaths bool `cli:"name=kpaths desc='…the same listing as one kinded path per line (for --at)'"`
 	// Depth BOUNDS the walk rather than picking a level out of it, and the difference is
 	// whether a listing can be silently wrong. Entity-hood is a lens rather than a stored fact
 	// (docs/working/entity-tree.md), so nothing in an answer says where an entity ends — and
@@ -990,8 +995,10 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("data: %w", err)
 	}
-	if cfg.Paths {
-		return printPaths(cc, resp, kp, cfg.Depth)
+	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
+	// passed beside --paths.
+	if cfg.Paths || cfg.KPaths {
+		return printPaths(cc, resp, kp, cfg.Depth, cfg.KPaths)
 	}
 	return printDoc(cc, resp, kp)
 }
@@ -1148,7 +1155,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 // token inside a rendered ref, so the server would only be sending back what the document
 // already says. It is the `ls -R` of a read — what a script uses instead of grepping `ref:` out
 // of a listing, which is what scripts had to do while the answer was a table.
-func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int) error {
+func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int, kpaths bool) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -1192,10 +1199,20 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	// `xargs` understands them, and reads the kpath form's `\"` as an unterminated quote.
 	// Checked, both idioms, including a segment holding a space, a `*`, a double quote, and the
 	// empty one.
-	for _, p := range (entity.Doc{Node: node}).Paths(at, depth) {
-		fmt.Fprintln(cc.Out, p)
+	for _, segs := range (entity.Doc{Node: node}).Paths(at, depth) {
+		fmt.Fprintln(cc.Out, renderAddr(segs, kpaths))
 	}
 	return nil
+}
+
+// renderAddr is one address in the spelling a listing was asked for: STEPS by default — the
+// words this command line takes — or a KINDED PATH under `--kpaths`, which is the one token
+// `--at` reads back. The walk answers in segments so this is the only place either is chosen.
+func renderAddr(segs []string, kpaths bool) string {
+	if kpaths {
+		return entity.JoinSegs(segs)
+	}
+	return entity.JoinSteps(segs)
 }
 
 // address reads the address positionals a read command takes: a VECTOR OF STEPS, one segment

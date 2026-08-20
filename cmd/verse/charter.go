@@ -68,7 +68,11 @@ type charterFlags struct {
 	File string `cli:"name=file aliases=f desc='install from FILE (- = stdin); with --add'"`
 	// Paths prints one path per line instead of the document, as `verse data --paths` does and
 	// for the same reason: a document cannot be piped back into the command that answered it.
-	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document'"`
+	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document, as steps'"`
+	// KPaths is the same listing as one KINDED PATH per line — see the data command's flag of
+	// the same name: steps are what this command takes and what `xargs -L1` hands back, and a
+	// kinded path is what survives a shell variable as ONE argument.
+	KPaths bool `cli:"name=kpaths desc='…the same listing as one kinded path per line'"`
 }
 
 var trig = &charterFlags{Depth: -1}
@@ -152,7 +156,8 @@ func printCharter(cc *cli.Context, steps []string) error {
 	if err != nil {
 		return fmt.Errorf("charter: %w", err)
 	}
-	if trig.Paths && resp.StatusCode < http.StatusBadRequest {
+	// Either flag asks for the listing; --kpaths only says which spelling.
+	if (trig.Paths || trig.KPaths) && resp.StatusCode < http.StatusBadRequest {
 		return printCharterPaths(cc, resp, full)
 	}
 	if resp.StatusCode == http.StatusNotFound {
@@ -230,7 +235,7 @@ func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
 		for _, el := range n.Values {
 			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(cc.Out, entity.JoinSteps(append(append([]string{}, prefix...), name)))
+				fmt.Fprintln(cc.Out, renderAddr(append(append([]string{}, prefix...), name), trig.KPaths))
 			}
 		}
 		return nil
@@ -262,7 +267,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 			}
 			for _, el := range v.Values {
 				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(cc.Out, entity.JoinSteps(append(append([]string{}, at...), key.String, name)))
+					fmt.Fprintln(cc.Out, renderAddr(append(append([]string{}, at...), key.String, name), trig.KPaths))
 					printed = true
 				}
 			}
@@ -271,7 +276,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		}
 	}
 	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(cc.Out, entity.JoinSteps(at))
+		fmt.Fprintln(cc.Out, renderAddr(at, trig.KPaths))
 	}
 	if children == nil || children.Type != ir.ObjectType {
 		return
