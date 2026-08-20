@@ -70,7 +70,7 @@ verse
     verse ps --if '{status: running}' --trim '{id: null, status: null}'
     verse docket --if '{axis: whether}'
     verse data demo pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
-    verse watch demo --trim '{ref: null, to: null}'
+    verse watch demo --trim '{at: null, to: null}'
 
   On `data` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
   about, before any of them cross the wire — so those two take `--trim` alone. A WRITE's

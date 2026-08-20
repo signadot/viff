@@ -47,7 +47,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out := map[string]any{"ref": runner.Ref(e.Kind, e.Name).String()}
+	out := map[string]any{"at": runner.Ref(e.Kind, e.Name).String()}
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW — a broker's
 	// worker leg is the case worth catching — while a url nothing answers is the ordinary
@@ -89,7 +89,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	for _, e := range ents {
 		ref := runner.Ref(e.Kind, e.Name)
 		rec := map[string]any{
-			"ref": ref.String(), "name": e.Name, "kind": e.Kind, "url": e.URL,
+			"at": ref.String(), "name": e.Name, "kind": e.Kind, "url": e.URL,
 		}
 		for k, v := range runnerCounts(store, ref, e.URL) {
 			rec[k] = v
@@ -143,7 +143,7 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	reach, why := runner.Probe(e.URL)
 	out := map[string]any{
-		"ref": runner.Ref(kind, name).String(), "url": e.URL, "reach": reach.String(),
+		"at": runner.Ref(kind, name).String(), "url": e.URL, "reach": reach.String(),
 	}
 	if why != nil {
 		out["why"] = why.Error()

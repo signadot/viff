@@ -36,7 +36,7 @@ func TestSchemaPrintsOneDefinitionByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verse schema verse-entity: %v", err)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(out), "verse-entity:") || !strings.Contains(out, "ref: .[string]") {
+	if !strings.HasPrefix(strings.TrimSpace(out), "verse-entity:") || !strings.Contains(out, "at: .[string]") {
 		t.Errorf("verse schema verse-entity printed something else:\n%s", out)
 	}
 }

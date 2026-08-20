@@ -2355,7 +2355,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 	// What it may find itself ordered against, reported and not refused. Overlap is decided
 	// by name at the moment a question is posed; saying so at install is what keeps a
 	// shadowed binding from being a silence rather than a fact.
-	out := map[string]any{"ref": ref.String()}
+	out := map[string]any{"at": ref.String()}
 	if over := resolver.Overlaps(s.scopedStore(r), res); len(over) > 0 {
 		out["overlaps"] = over
 	}
@@ -2375,7 +2375,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 		if rec == nil {
 			continue
 		}
-		rec["ref"] = ent.Ref.String()
+		rec["at"] = ent.Ref.String()
 		out = append(out, rec)
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so

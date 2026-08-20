@@ -74,7 +74,7 @@ verse data --at demo.pr.1                          # …an address copied out of
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
-An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
+An id is a KEY in it rather than a token inside a rendered `at:`, which is what `--paths` is
 for. A read, a `--put` and a `--rm` all take the same address — two spellings of one grammar,
 steps and a kinded path, laid out in
 [reference/entities §Addressing](reference/entities.md#addressing).
@@ -156,8 +156,8 @@ verse watch --if '{stage: open}' demo
 ```
 
 ```tony
-{op: set ref: demo.pr.1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
-{op: set ref: demo.pr.3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
+{op: set at: demo.pr.1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
+{op: set at: demo.pr.3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
 {op: set ref: demo.pr.5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
 ```
 

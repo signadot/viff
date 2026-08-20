@@ -79,8 +79,8 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["ref"] != "verse.sources.git.laptop" {
-		t.Fatalf("ref = %v, want sources.git.laptop", got["ref"])
+	if got["at"] != "verse.sources.git.laptop" {
+		t.Fatalf("at = %v, want sources.git.laptop", got["at"])
 	}
 	if got["reach"] != "a source" {
 		t.Fatalf("reach = %v — a live source face read as something else", got["reach"])
@@ -107,7 +107,7 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["ref"] != "verse.sources.git.laptop" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["at"] != "verse.sources.git.laptop" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed source with its url", list)
 	}
 }

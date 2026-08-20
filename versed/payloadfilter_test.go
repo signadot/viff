@@ -101,7 +101,7 @@ func watchRefs(t *testing.T, q url.Values) []string {
 			continue
 		}
 		var frame struct {
-			Ref string `tony:"field=ref"`
+			Ref string `tony:"field=at"`
 		}
 		if err := codec.Unmarshal([]byte(data), &frame, f); err != nil {
 			t.Fatalf("decoding a frame: %v\n%s", err, data)

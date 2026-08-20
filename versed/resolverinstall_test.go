@@ -60,7 +60,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	defer list.Body.Close()
 	var out []map[string]any
 	decodeResp(t, list, &out)
-	if len(out) != 1 || out[0]["ref"] != "verse.resolvers.security.security-review" {
+	if len(out) != 1 || out[0]["at"] != "verse.resolvers.security.security-review" {
 		t.Fatalf("list = %v, want the one installed", out)
 	}
 

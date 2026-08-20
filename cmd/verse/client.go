@@ -1083,7 +1083,7 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 
 // inSteps renders a kinded path as the steps a person types, or as it stands when it is not a
 // plain address. It is for the lines a command PRINTS at somebody, where one spelling
-// throughout is the point; a `ref:` inside a rendered document keeps the document's spelling,
+// throughout is the point; an `at:` inside a rendered document keeps the document's spelling,
 // which is read by a parser and not by a shell.
 func inSteps(at entity.Path) string {
 	segs := append(append([]string{}, at.Ref.Segs()...), at.Field...)
@@ -1141,8 +1141,8 @@ func stateAt(at string) ([]entity.Entity, error) {
 // A walk cannot be wrong that way: what is there is listed, and `--depth` trims it.
 //
 // Client-side, because the addresses are already IN the answer: an id is a key now rather than a
-// token inside a rendered ref, so the server would only be sending back what the document
-// already says. It is the `ls -R` of a read — what a script uses instead of grepping `ref:` out
+// token inside a rendered address, so the server would only be sending back what the document
+// already says. It is the `ls -R` of a read — what a script uses instead of grepping `at:` out
 // of a listing, which is what scripts had to do while the answer was a table.
 func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int, kpaths bool) error {
 	defer resp.Body.Close()

@@ -182,11 +182,11 @@ haskv "$(v data demo pr 7)" stage open || die "the --ifmt json write did not lan
 ok "--ifmt json writes (the input dialect is not the wire rendering)"
 # curl straight at the API: no Accept header at all gets the configured default...
 haskv "$(curl -s "http://$ADDR/entity?at=demo.pr.1")" stage open || die "the wire did not answer"
-# And the document route, raw: the id is a KEY under the kind, not a `ref:` field beside it.
+# And the document route, raw: the id is a KEY under the kind, not an `at:` field beside it.
 raw=$(curl -s "http://$ADDR/state?at=demo.pr")
 has "$raw" '"1":' || die "GET /state?at=demo.pr did not key by id: $raw"
 has "$raw" 'stage' || die "GET /state?at=demo.pr did not carry the payload: $raw"
-case "$raw" in *ref:*) die "GET /state still renders a ref: $raw" ;; esac
+case "$raw" in *at:*) die "GET /state still renders an address beside the payload: $raw" ;; esac
 # ...demanding JSON is 406, not tony wearing a JSON label...
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
 	"http://$ADDR/entity?at=demo.pr.1")

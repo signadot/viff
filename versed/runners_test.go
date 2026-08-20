@@ -79,8 +79,8 @@ func TestRunnerAddListShow(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["ref"] != "verse.runners.pool.gpu" {
-		t.Fatalf("ref = %v, want runners.pool.gpu", got["ref"])
+	if got["at"] != "verse.runners.pool.gpu" {
+		t.Fatalf("at = %v, want runners.pool.gpu", got["at"])
 	}
 	// The probe ran and said what it found, rather than the install being a silent write.
 	if got["reach"] != "a runner" {
@@ -93,7 +93,7 @@ func TestRunnerAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["ref"] != "verse.runners.pool.gpu" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["at"] != "verse.runners.pool.gpu" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed runner with its url", list)
 	}
 

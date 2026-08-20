@@ -11,8 +11,8 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  at: .[string]
   payload: .[tony-base:ir]
-  ref: .[string]
 signature:
   name: verse-entity
 ---
@@ -20,9 +20,9 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  at: .[string]
   gap: .[int]
   op: .[string]
-  ref: .[string]
   rev: .[int]
   to: .[tony-base:ir]
 signature:

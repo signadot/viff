@@ -104,7 +104,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	}
 	e.Scope = scope
 	store := s.scopedStore(r)
-	out := map[string]any{"ref": source.Ref(e.System, e.Name).String()}
+	out := map[string]any{"at": source.Ref(e.System, e.Name).String()}
 
 	if r.URL.Query().Get("probe") != "false" {
 		reach, d, why := s.describe(r, e)
@@ -259,7 +259,7 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 	ents, readErr := source.ListErr(store)
 	for _, e := range ents {
 		rec := map[string]any{
-			"ref": source.Ref(e.System, e.Name).String(), "name": e.Name, "system": e.System,
+			"at": source.Ref(e.System, e.Name).String(), "name": e.Name, "system": e.System,
 		}
 		for k, v := range map[string]string{
 			"url": e.URL, "dir": e.Dir, "scope": e.Scope,
@@ -337,7 +337,7 @@ func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) {
 	}
 	reach, d, why := s.describe(r, e)
 	out := map[string]any{
-		"ref": source.Ref(system, name).String(), "reach": reach.String(),
+		"at": source.Ref(system, name).String(), "reach": reach.String(),
 	}
 	if e.URL != "" {
 		out["url"] = e.URL

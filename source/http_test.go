@@ -266,12 +266,12 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 		t.Fatalf("expected a cover and an entity to look at: %v", entity.ToObj(rn))
 	}
 	has("a cover", covers.Values[0], "system", "kind", "value")
-	has("an entity", entities.Values[0], "ref", "payload")
+	has("an entity", entities.Values[0], "at", "payload")
 
-	// A ref is one string, `system.kind.id`, everywhere it is written — a charter, a CLI
+	// An address is one string, a kinded path, everywhere it is written — a charter, a CLI
 	// argument, and here. Structurally spelled it would be the one identifier every surface
 	// shares having two spellings depending on who wrote it.
-	if r := entity.Get(entities.Values[0], "ref"); entity.Str(entities.Values[0], "ref") == "" {
-		t.Fatalf("a ref should be spelled as its address, got %v", entity.ToObj(r))
+	if r := entity.Get(entities.Values[0], "at"); entity.Str(entities.Values[0], "at") == "" {
+		t.Fatalf("an address should be spelled as one kinded path, got %v", entity.ToObj(r))
 	}
 }

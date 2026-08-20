@@ -28,7 +28,7 @@ func (s *Entity) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if txt, err := s.Ref.MarshalText(); err != nil {
 		return nil, fmt.Errorf("failed to marshal field %q: %w", "Ref", err)
 	} else {
-		irMap["ref"] = ir.FromString(string(txt))
+		irMap["at"] = ir.FromString(string(txt))
 	}
 
 	// Field: Payload (optional)
@@ -69,12 +69,12 @@ func (s *Entity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "ref":
+		case "at":
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "ref", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "at", fieldNodeUnwrapped.Type)
 			}
 			if err := s.Ref.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
-				return fmt.Errorf("field %q: failed to unmarshal text: %w", "ref", err)
+				return fmt.Errorf("field %q: failed to unmarshal text: %w", "at", err)
 			}
 		case "payload":
 			if gomap.GetUnmapComments(opts...) {
@@ -131,7 +131,7 @@ func (s *Event) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if txt, err := s.Ref.MarshalText(); err != nil {
 		return nil, fmt.Errorf("failed to marshal field %q: %w", "Ref", err)
 	} else {
-		irMap["ref"] = ir.FromString(string(txt))
+		irMap["at"] = ir.FromString(string(txt))
 	}
 
 	// Field: Op
@@ -187,12 +187,12 @@ func (s *Event) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "ref":
+		case "at":
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "ref", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "at", fieldNodeUnwrapped.Type)
 			}
 			if err := s.Ref.UnmarshalText([]byte(fieldNodeUnwrapped.String)); err != nil {
-				return fmt.Errorf("field %q: failed to unmarshal text: %w", "ref", err)
+				return fmt.Errorf("field %q: failed to unmarshal text: %w", "at", err)
 			}
 		case "op":
 			if fieldNodeUnwrapped.Type != ir.StringType {

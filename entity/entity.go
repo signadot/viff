@@ -271,8 +271,13 @@ const Depth = 3
 // advances — rather than separate primitives. See payload.go: it is any tony value, and an
 // object is merely the common case.
 //
+// THE ADDRESS IS SPELLED `at`, which is what the request side asks with — `POST /entity`
+// takes `at:` and `GET /state?at=` reads at one, so answering with `ref:` meant the wire asked
+// in one word and answered in another. It is the same word at both ends now, and the value was
+// already a kinded path at any depth.
+//
 // Describable as of go-tony v0.0.93, which taught the schema type mapper to consult
-// TextMarshaler: `ref` now generates as .[string], agreeing with the generated code that has
+// TextMarshaler: the address generates as .[string], agreeing with the generated code that has
 // always emitted one. Before that the signature said .[int] while the code emitted a string —
 // nothing failed to compile and nothing misbehaved, so the only casualty would have been a
 // published schema lying about the one identifier every surface shares. It was hand-written
@@ -280,7 +285,7 @@ const Depth = 3
 //
 //tony:schemagen=verse-entity,notag
 type Entity struct {
-	Ref     Ref     `tony:"field=ref"`
+	Ref     Ref     `tony:"field=at"`
 	Payload Payload `tony:"field=payload,omitzero"`
 }
 
@@ -326,7 +331,10 @@ func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 //
 //tony:schemagen=verse-event,notag
 type Event struct {
-	Ref Ref `tony:"field=ref"`
+	// The address the change is about, spelled the way every other surface spells one — see
+	// Entity, which this agrees with deliberately: a consumer reading a change and then reading
+	// the entity should not meet two words for the place.
+	Ref Ref `tony:"field=at"`
 	Op  Op  `tony:"field=op"`
 	// To is a payload, so it is an open value; it is null on a Delete.
 	To Payload `tony:"field=to,omitzero"`

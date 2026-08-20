@@ -175,7 +175,7 @@ func TestEntityPutPrintsTheEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	for _, want := range []string{`ref: 'demo.pr."1"'`, "owner: ana", "stage: open"} {
+	for _, want := range []string{`at: 'demo.pr."1"'`, "owner: ana", "stage: open"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("put printed:\n%s\nwant it to contain %q", out, want)
 		}

@@ -55,7 +55,7 @@ marker in the store.
 
 | | |
 |---|---|
-| a path | anywhere a parser reads one and no shell is involved: inside a document (`ref: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
+| a path | anywhere a parser reads one and no shell is involved: inside a document (`at: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
 | steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN, and what every listing answers with |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
@@ -298,7 +298,7 @@ step is a NAME — the shell would expand it bare, and quoting it makes it the l
 so a selector is written as one token. See the spelling table above.
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
-assembled for the wire. So an id is a KEY rather than a token inside a rendered `ref:`, which
+assembled for the wire. So an id is a KEY rather than a token inside a rendered `at:`, which
 is what `--paths` is for: a script that wants the addresses gets them one per line instead of
 grepping them back out of a rendering.
 
@@ -450,8 +450,8 @@ nobody typed a flag for, and on a store that cannot replay from the beginning it
 rather than a stream.
 
 ```tony
-{op: set ref: demo.pr.1 rev: 1 to: {stage: open owner: ana}}
-{op: delete ref: demo.pr.9 rev: 7}
+{op: set at: demo.pr.1 rev: 1 to: {stage: open owner: ana}}
+{op: delete at: demo.pr.9 rev: 7}
 ```
 
 One line per change — flow form, so a watch stays greppable and one event never wraps into
@@ -482,7 +482,7 @@ why a long hold costs a cursor rather than a buffer. See
 `verse-dev.drift` while something is written at `verse-dev.drift.head.abc` gives
 
 ```tony
-{op: set ref: verse-dev.drift.head rev: 152 to: {abc: {sha: aaa}}}
+{op: set at: verse-dev.drift.head rev: 152 to: {abc: {sha: aaa}}}
 ```
 
 — the entity that changed is `abc`, nested inside `to`. The stream reports at the depth an

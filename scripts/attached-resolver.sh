@@ -131,7 +131,10 @@ setup() {
 		;;
 	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
 	esac
-	ok "installed: $(v resolver -o tony | sed -n 's/^[[:space:]]*ref:[[:space:]]*//p' | tr '\n' ' ')"
+	# Anchored at column 0, where a top-level list item's first key sits — `at` sorts before
+	# every other key in a binding, so the address rides the `- ` line rather than an indented
+	# one, and an unanchored match would also take an `at:` nested inside a condition.
+	ok "installed: $(v resolver -o tony | sed -n 's/^- at:[[:space:]]*//p' | tr '\n' ' ')"
 
 	retire_previous
 
