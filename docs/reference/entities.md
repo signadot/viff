@@ -70,7 +70,7 @@ verse data --paths demo pr          # demo pr 1
 verse data --paths demo pr | xargs -L1 verse data
 ```
 
-**`--kpaths` is the same listing as one TOKEN per line**, which is the spelling that survives
+**`--kpaths` is the same listing as one KINDED PATH per line**, which is the spelling that survives
 being captured into a shell variable — a line of steps only reaches a read if something splits
 it, and a variable passed as one argument does not:
 
