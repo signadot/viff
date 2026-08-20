@@ -120,10 +120,16 @@ has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
 # read as tony.) It is the one spelling that is
 # unambiguous for every address, which steps were not: their separator is a space, so an id
 # holding one printed as two words and read back as a different address.
-[ "$(v data --paths demo.pr)" = 'demo.pr."1"' ] || die "--paths did not name the entity"
+#
+# `--paths` WALKS, so it names `demo.pr."1".stage` beside the entity — every address, which is
+# what makes the listing one that cannot be wrong about depth. `--depth 3` is what asks for the
+# records alone, and it is the bound this assertion needs rather than an assumption about where
+# the walk stops.
+[ "$(v data --paths --depth 3 demo.pr)" = 'demo.pr."1"' ] || die "--paths did not name the entity"
+has "$(v data --paths demo.pr)" 'demo.pr."1".stage' || die "--paths did not walk into the payload"
 # The round trip is the shell's ordinary one — the LINE passed whole, as one argument. xargs is
 # not it: it strips the quoting, which is the thing the line needs.
-v data --paths demo.pr | while read -r p; do
+v data --paths --depth 3 demo.pr | while read -r p; do
 	haskv "$(v data "$p")" stage open || die "--paths did not round-trip back into a read"
 done
 # An address may still be typed as steps, which is what a shell makes easy: no quoting for an
@@ -131,7 +137,7 @@ done
 v data demo pr a.b --put '{stage: open}' >/dev/null || die "data as steps --put failed"
 haskv "$(v data demo pr a.b)" stage open || die "data as steps did not roundtrip"
 # …and the printed form names the same entity, quoted where a dot would otherwise delimit.
-[ "$(v data --paths demo.pr | grep 'a.b')" = 'demo.pr."a.b"' ] || die "--paths did not quote the dotted id"
+[ "$(v data --paths --depth 3 demo.pr | grep 'a.b')" = 'demo.pr."a.b"' ] || die "--paths did not quote the dotted id"
 v data demo.pr."a.b" --rm >/dev/null || die "data --rm of the dotted id failed"
 ok "steps on the way in, one quoted kinded path on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
