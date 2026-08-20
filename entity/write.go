@@ -570,7 +570,7 @@ func shellSpecial(r rune) bool {
 // parses as the two fields `demo` and `1`, so a template that expanded to nothing would select
 // something narrower instead of being refused.
 func ExprSegs(s string) ([]string, error) {
-	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") || strings.Contains(s, "..") {
+	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
 		return nil, fmt.Errorf("address %q has an empty segment: a segment is a name, and `*` "+
 			"is how a position is left open", s)
 	}
@@ -581,9 +581,23 @@ func ExprSegs(s string) ([]string, error) {
 	var out []string
 	for p := kp; p != nil; p = p.Next {
 		switch {
+		case p.Descend:
+			// `..` IS RECURSIVE DESCENT, and it is refused here rather than approximated. kpath
+			// carries it as its own thing and says why: it "names a set rather than a step", so
+			// a path holding one is not a stored path. An address selects entities AT a depth
+			// (entity.Store.ListAt), and a set spanning depths is a different question — the one
+			// a reader of derived entities wants and cannot yet ask.
+			//
+			// Refused EXPLICITLY because the alternatives are both bad: flattened to a `*` it
+			// would silently select one level where the author asked for every level, and left
+			// to the lexical guard above it was reported as an empty segment, which sends
+			// somebody looking for a typo they did not make.
+			return nil, fmt.Errorf("address %q: `..` is recursive descent, which selects across "+
+				"DEPTHS — and an address selects at one. It is not supported here yet: name the "+
+				"levels, or leave one open with `*`", s)
 		case p.Field != nil:
 			out = append(out, *p.Field)
-		case p.Wild():
+		case p.FieldAll:
 			out = append(out, "*")
 		default:
 			return nil, fmt.Errorf("address %q: %q is not a segment — an address names entities, "+
@@ -609,6 +623,10 @@ func PathSegs(at string) ([]string, error) {
 	}
 	var out []string
 	for p := kp; p != nil; p = p.Next {
+		if p.Descend {
+			return nil, fmt.Errorf("path %q: `..` is recursive descent, which names a set of "+
+				"places rather than one; this asks which place", at)
+		}
 		if p.Field == nil {
 			return nil, fmt.Errorf("path %q: %q is not a name", at, p.String())
 		}
