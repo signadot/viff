@@ -583,17 +583,27 @@ func (s *LogdStore) keyStands(ctx context.Context, ref Ref) (bool, error) {
 // whole reason to ask it. TestAbsentReadsAreNotFailures is what made that bump say so out
 // loud, and is what will catch the next one.
 //
-// Note what is NOT absent: ErrCodeInvalidPath, which logd answers when a path addresses
-// something other than an object field. That path can never resolve, so it is the caller's
-// path being wrong rather than the store's contents missing, and reporting it as absent
-// would answer "nothing there yet" to something no write can ever fix. Asking the code
-// gets that distinction for free; the message match had to encode it by hand.
+// A CONFLICTING ANCESTOR IS ALSO NOTHING STANDING THERE. Since go-tony v0.0.187 logd
+// separates "nothing is there" (not_found) from "something is there of a shape that cannot
+// hold this" (path_conflict) — a read under an entity whose payload is a scalar used to
+// answer not_found and now answers the second. Both are answers about the store's CONTENTS,
+// and every caller here is asking one question: does anything stand at this path. A scalar
+// at demo:pr:1 means nothing stands at demo:pr:1:sub, the same as never having written it,
+// and a write can make it so — replace the scalar and the path resolves.
+//
+// Note what is NOT absent: ErrCodeInvalidPath, which logd answers when a path is not a
+// well-formed question — a wildcard names a set where a read answers one. That path can
+// never resolve WHATEVER the store holds, so it is the caller's path being wrong rather
+// than the store's contents missing, and reporting it as absent would answer "nothing there
+// yet" to something no write can ever fix. That is the line: contents a write could change,
+// against a question no state could answer. Asking the code gets it for free; the message
+// match had to encode it by hand.
 func isNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
 	if code := logdapi.ErrorCode(err); code != "" {
-		return code == logdapi.ErrCodeNotFound
+		return code == logdapi.ErrCodeNotFound || code == logdapi.ErrCodePathConflict
 	}
 	// No response error in the chain: either a transport failure, which is emphatically
 	// not "nothing stands there", or a pre-v0.0.122 `o` that flattened the response to its
