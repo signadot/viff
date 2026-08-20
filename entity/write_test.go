@@ -511,32 +511,33 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 	}
 }
 
-// A WRITE STILL CANNOT REACH AN ARRAY ELEMENT, and it is now structural rather than a refusal.
+// A WRITE STILL CANNOT REACH AN ARRAY ELEMENT, and the refusal is what keeps it that way.
 //
-// It used to be checked: `merge.proposal.X.votes[0]` was PARSED, so `[0]` became an index node
-// and had to be turned away — an index past the end is accepted by the substrate and takes the
-// log with it, and no parser can know which side of the end an index will be on when it lands.
+// The string form parsed `votes[0]` into an index node and turned it away there. Steps have no
+// index to parse — a step is a name — so this is a rule about what a WRITE may target, checked
+// on the field path.
 //
-// Nothing parses a string now. A step is a name, so `[0]` is the field named `[0]`, and KPath
-// quotes it as one — there is no spelling of an index for a write to be given. What is left to
-// refuse is an address too SHORT to name an entity, which PathOf still does.
+// IT IS NOT TIDINESS. Letting the step through does not reach the element and does not fail
+// either: a put at `votes [0]` REPLACES the array with the object `{"[0]": …}`. Measured, with
+// the CLI, on `votes: [ana, bo]` — it came back `votes: {[0]: zed}` and both ballots were gone.
+// The original reason stands too: an index past the end is accepted by the substrate and takes
+// the log with it, and nothing here can know which side of the end it will land on.
 func TestAWriteStillCannotReachAnArrayElement(t *testing.T) {
 	for _, segs := range [][]string{
 		{"merge", "proposal", "X", "votes", "(scott)"},
 		{"merge", "proposal", "X", "votes", "[0]"},
+		{"merge", "proposal", "X", "votes", "[0]", "who"}, // …anywhere in the field path
 	} {
-		got, err := PathOf(segs)
-		if err != nil {
-			t.Errorf("PathOf(%q): %v", segs, err)
-			continue
-		}
-		kp := got.KPath()
-		if !strings.Contains(kp, `"`+segs[len(segs)-1]+`"`) {
-			t.Errorf("PathOf(%q).KPath() = %q — the last step is not quoted as a NAME, so the "+
-				"substrate could read it as an array element", segs, kp)
+		if got, err := PathOf(segs); err == nil {
+			t.Errorf("PathOf(%q) = %+v, want a refusal — a write would replace the array", segs, got)
 		}
 	}
-	// Too short to name an entity is still refused, which is the check that survives.
+	// The ENTITY segments are not field names and are not checked here: an id may be anything,
+	// and `RefOf` is what says whether it names an entity.
+	if _, err := PathOf([]string{"merge", "proposal", "[0]"}); err != nil {
+		t.Errorf("an id shaped like a subscript is still an id: %v", err)
+	}
+	// Too short to name an entity is refused for its own reason.
 	for _, bad := range [][]string{{"demo", "pr"}, {"demo"}, {}} {
 		if got, err := PathOf(bad); err == nil {
 			t.Errorf("PathOf(%q) = %+v, want a refusal", bad, got)

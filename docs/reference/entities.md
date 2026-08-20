@@ -296,9 +296,13 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 `(key)` addresses an array element by identity, and `[0]` by position:
 
 ```sh
-verse data 'merge.proposal.X.votes(scott)'
-verse data 'merge.proposal.X.votes[0].choice'
+verse data --at 'merge.proposal.X.votes(scott)'
+verse data --at 'merge.proposal.X.votes[0].choice'
 ```
+
+A subscript is part of the PATH spelling, so a read into an array is written with `--at`. As a
+step it is a name — `verse data merge proposal X votes '[0]' choice` asks for the field `[0]`
+and is told `"[0]": a field of a Array`, which is a clear miss rather than a wrong answer.
 
 `(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been STORED.
 That is not automatic: `!key` is a tony merge operator, so an ordinary write EXECUTES it — the
@@ -306,8 +310,10 @@ array is merged by key and kept without the tag — which means an array put thr
 `verse data --put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
-Writing into an array is a different matter, and `data --put` refuses `[0]` and `(scott)` —
-though not for the reason it used to.
+Writing into an array is a different matter, and `data --put` refuses `[0]` and `(scott)` in
+either spelling — `--at` because a subscript is not a name, and as a step because a field named
+`[0]` would REPLACE the array with an object of that one key rather than reaching into it. The
+reason it refuses is not the one it used to have.
 
 | a write at | what logd does |
 |---|---|

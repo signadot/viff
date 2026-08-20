@@ -125,7 +125,30 @@ func PathOf(segs []string) (Path, error) {
 		return Path{}, fmt.Errorf("%q: its first %d segments do not name an entity",
 			strings.Join(segs, " "), want)
 	}
-	return Path{Ref: ref, Field: segs[want:]}, nil
+	field := segs[want:]
+	// A STEP SHAPED LIKE AN ARRAY SUBSCRIPT IS REFUSED, and this is a rule about what a WRITE
+	// may target rather than about the step grammar — a step is a name here as everywhere, and
+	// this is the read-side's business not at all.
+	//
+	// It cannot be told apart from somebody meaning the element, and letting it through is
+	// worse than saying no: a put at `votes [0]` does not reach into the array, it REPLACES it
+	// with the object `{"[0]": …}`. Measured — `votes: [ana, bo]` came back `votes: {[0]: zed}`
+	// and both ballots were gone.
+	//
+	// What is lost is naming a field literally called `[0]`, which no spelling could reach
+	// before either: the string form parsed it as an index and refused it there. What is kept
+	// is the reason that refusal existed — an index past the end is accepted by the substrate
+	// and takes the log with it, and nothing here can know which side of the end it will land
+	// on.
+	for _, f := range field {
+		if len(f) > 1 && (f[0] == '[' && f[len(f)-1] == ']' || f[0] == '(' && f[len(f)-1] == ')') {
+			return Path{}, fmt.Errorf("%q: a write does not address an array element, and %q is "+
+				"how one is spelled. Writing it as a field name would REPLACE the array with an "+
+				"object of that one key; address the field that holds the array instead",
+				strings.Join(segs, " "), f)
+		}
+	}
+	return Path{Ref: ref, Field: field}, nil
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.
