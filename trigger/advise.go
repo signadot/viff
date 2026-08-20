@@ -333,3 +333,93 @@ func subtreeList(sts []Subtree) string {
 	}
 	return out
 }
+
+// adviseDeriveClobber names the field one rule DERIVES and another rule PATCHES at the same
+// address — the shape that quietly resets a flow every time the charter is installed.
+//
+// AN INSTALL IS A RE-FIRE. Installing a charter evaluates its rules against what is already
+// there, which is what makes an install act on the world rather than only on what happens next,
+// and is correct. A derive is a tony patch merged at depth, so it overwrites exactly the fields
+// it names and leaves the rest — which means a derive naming a field ANOTHER rule owns rewrites
+// that field on every install, over whatever the flow had reached:
+//
+//	after installing the record rule and landing 131      131 records, reviewed: pending
+//	after setting every record to reviewed: baseline      131 baseline
+//	after installing the FULL charter (rule 1 unchanged)  1 baseline, 85 pending, 46 gathered
+//
+// Nothing failed there; the derive simply wrote `reviewed: pending` over `reviewed: baseline` at
+// every address, and `reviewed` was the flow's latch (git-issue 2c6z0ahwh12kraxbgnn0). Any
+// charter edit — adding a rule, fixing a prompt — goes through the same path.
+//
+// IT IS A STATIC QUESTION, which is that issue's own conclusion: the derive's address and the
+// other rule's subject are both known at install, and so are the field names on each side. What
+// it cannot know is which of the two the author meant, so it is a note.
+//
+// THE REMEDY THE NOTE POINTS AT is not "stop deriving": it is for the derive to state only the
+// facts it owns and for the flow to start on an ABSENCE — `!not.has-path reviewed` rather than a
+// written `pending`. An absence is nobody's to overwrite, and it survives a restart where
+// `!not {x: null}` would not.
+func (e *Engine) adviseDeriveClobber(t Trigger) []string {
+	var out []string
+	installed := e.Triggers()
+	// Both directions, because either rule may be the one arriving: this rule's derive over an
+	// installed rule's patch, and an installed rule's derive over this one's patch.
+	out = append(out, clobberNotes(t, installed)...)
+	for _, other := range installed {
+		if other.Name == t.Name {
+			continue
+		}
+		out = append(out, clobberNotes(other, []Trigger{t})...)
+	}
+	return out
+}
+
+// clobberNotes is one direction: the fields deriver's derives write that any of writers' patches
+// also write, at an address the derive covers.
+func clobberNotes(deriver Trigger, writers []Trigger) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, d := range deriver.Action.allDerives() {
+		derived := payloadPaths(derivePayload(d))
+		if len(derived) == 0 {
+			continue
+		}
+		cover := Matches{d.match()}
+		for _, w := range writers {
+			if w.Name == deriver.Name {
+				continue
+			}
+			if !cover.contains(w.Condition.Subject) {
+				continue
+			}
+			for path := range payloadPaths(w.Action.Patch) {
+				if _, both := derived[path]; !both {
+					continue
+				}
+				key := deriver.Name + "/" + w.Name + "/" + path
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				out = append(out, fmt.Sprintf(
+					"%q derives %s at %s, and %q patches the same field on the same address. An "+
+						"install RE-FIRES every rule over everything it selects, so re-applying "+
+						"this charter rewrites %s wherever %q had moved it — silently, and "+
+						"whatever the edit was. If %s is the flow's own state, derive the facts "+
+						"this rule owns and let %q start from its ABSENCE (`!not.has-path %s`) "+
+						"rather than from a value something else writes",
+					deriver.Name, path, d.addr(), w.Name, path, w.Name, path, w.Name, path))
+			}
+		}
+	}
+	return out
+}
+
+// derivePayload is a derive's content whichever form it was written in — a plain value, or a
+// fan-out's per-element one.
+func derivePayload(d deriveTarget) entity.Payload {
+	if d.Each != nil {
+		return d.Each.Value
+	}
+	return d.Payload
+}

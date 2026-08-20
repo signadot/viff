@@ -842,6 +842,28 @@ whose read fails — it lets the motion stand, because a stale docket entry cost
 moment while a wrongly withdrawn one takes a live question away from the people it is in front
 of.
 
+### An install re-fires, so a derive must own what it writes
+
+Installing a charter evaluates its rules against what is already there — that is what makes an
+install act on the world rather than only on what happens next. A `derive` is a patch merged at
+depth, so it overwrites exactly the fields it names.
+
+Put those together and a derive naming a field ANOTHER rule owns rewrites that field **every time
+the charter is installed**, over whatever the flow had reached. Measured on 131 records: a flow
+sitting at `reviewed: baseline` came back as 85 `pending` and 46 `gathered` after re-applying a
+rule that had not changed. Nothing fails; the derive simply wrote its own value again.
+
+So a derive states the facts it owns, and the rule that follows it starts from an **absence**:
+
+```tony
+# the derive says what it knows, and nothing about the flow's state
+derive: { notes: { row: { sha: $subject.id } } }
+# …and the next rule latches on the absence, which is nobody's to overwrite
+condition: { subject: { system: notes, kind: row, value: !not.has-path reviewed } }
+```
+
+A charter that does it the other way earns a note at install naming both rules and the field.
+
 ## `action` — what fires
 
 Data, not code. An action needs no target of its own: it acts on the condition's subject.

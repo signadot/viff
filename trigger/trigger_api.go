@@ -170,6 +170,11 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	for _, w := range advise(t) {
 		e.logger.Warn("charter", "trigger", t.Name, "note", w)
 	}
+	// And the ones that need the REST of the charter to see — a derive of one rule over a field
+	// another rule owns is not visible in either rule alone.
+	for _, w := range e.adviseDeriveClobber(t) {
+		e.logger.Warn("charter", "trigger", t.Name, "note", w)
+	}
 	e.trigMu.Lock()
 	if err := e.nameTaken(t.Name); err != nil {
 		e.trigMu.Unlock()
