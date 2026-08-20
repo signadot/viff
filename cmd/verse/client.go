@@ -502,7 +502,7 @@ func filterBy(q url.Values, pattern, at string) error {
 
 // fieldPath splits a dot-separated --if-at into the segments the wire takes.
 //
-// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.ParsePath), which quotes a
+// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.TargetOf), which quotes a
 // field name carrying a dot, while this stays the flat split because `--if-at` says where to
 // root a predicate inside one payload rather than naming a place in the verse. The wire takes
 // the segments as a list either way, so nothing but this spelling is in the way if a dotted
@@ -1254,10 +1254,11 @@ func address(args []string) ([]string, error) {
 // addressWire is the address as the WIRE takes it — a kinded path — from whichever of the three
 // spellings was used, and exactly one may be.
 //
-// Steps are joined here and never scanned back: JoinSegs quotes each segment as kpath needs, and
-// the server parses with ParseAt, so the round trip holds for every segment. `--at` is already
-// that spelling and goes through verbatim, which is what lets it carry a WILDCARD — the one
-// thing steps cannot say, since a `*` step is the id that is an asterisk.
+// Steps are joined here and never scanned back: KPathOf quotes each segment as kpath needs and
+// applies the three step clauses (a name, a quoted name, an array access), and the server parses
+// with ParseAt, so the round trip holds for every segment. `--at` is already that spelling and
+// goes through verbatim, which is what lets it carry a WILDCARD — the one thing steps cannot
+// say, since a `*` step is the id that is an asterisk.
 func addressWire(args []string, ref, at string) (string, error) {
 	if at != "" {
 		// Declared as a kinded path, so it goes through as one — WITHOUT the segment view

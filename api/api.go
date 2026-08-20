@@ -38,7 +38,7 @@ import (
 // ({"labels","urgent"}), so a write can be a whole entity or one field of one.
 //
 // THE WIRE STAYS SPLIT while the CLI takes one address. `verse data put
-// demo.pr.1.labels.urgent true` is one kinded path, and entity.ParsePath is the one parser
+// demo.pr.1.labels.urgent true` is one kinded path, and entity.TargetOf is the one parser
 // that reads it — the wire has no reason to re-parse what the CLI has already split, and the
 // structured form is what the store's writePath consumes. A list rather than a dotted string
 // for the reason the CLI needs quoting: an entity id may itself contain dots (a file path is a
