@@ -1503,14 +1503,14 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // The entity routes are the GENERIC write, and before the boundary had a name anyone who could
 // reach them could write a rule, stamp a task record, or answer a question on verse's behalf —
 // with no route saying no, because there was nothing in an address to say no about. Now there
-// is: `verse:*` is what verse writes about its own running, and it is written by the engine,
+// is: everything under `verse` is what it writes about its own running, and it is written by the engine,
 // not through here.
 //
 // It is not a lock on the DATA. A reader still reads it (that is the point of it being
 // entities), the engine still writes it, and a scope's own copy still layers over it. What is
 // refused is one path — the generic write — because every legitimate change to verse's own
 // state has a verb: `verse c -a`, `verse resolver add`, `verse gate approve`. A ballot
-// is not among them, deliberately: `vote:*` is the world's half, since casting one is an act
+// is not among them, deliberately: `vote.*` is the world's half, since casting one is an act
 // somebody takes rather than a record verse keeps.
 func reservedWrite(ref entity.Ref) error {
 	if !ref.Reserved() {
@@ -1518,7 +1518,7 @@ func reservedWrite(ref entity.Ref) error {
 	}
 	return fmt.Errorf("%s is verse's own: the entity write is for what the world is about, and "+
 		"what verse writes about its own running is written by the verbs that own it "+
-		"(trigger add, resolver add, runner add, source add, gate approve)", ref)
+		"(charter -a, resolver add, runner add, source add, gate approve)", ref)
 }
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
