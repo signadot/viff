@@ -54,7 +54,8 @@ sequenceDiagram
     git->>cur: a new tip is reflected
     cur->>cur: claim writes covering = the tip
     cur->>rng: open-range derives the range
-    led->>rng: gather copies the open findings on
+    rng->>led: gather asks for the rows still open
+    led-->>rng: they land as `outstanding`
     rng->>run: review-range spawns over from..to
     run->>git: the branch is pushed, if the tree changed
     run->>rng: the answer lands as the report
@@ -68,22 +69,27 @@ sequenceDiagram
    That single read is the race: everything downstream is about the commit named here.
 3. `open-range` derives `drift.range.<covering>` with `{from: the cursor's sha, to: covering}` —
    a subject of its own, and therefore a task id of its own.
-4. `gather` patches on the ledger rows whose `status` is `open`, and writes `stage: gathered`,
-   the latch that lets the next rule fire.
-5. `review-range` spawns the llm task on the coderunner, the range's two ends in its prompt.
-6. The runner delivers `verse/auto/<sha>/<task>` at the END of the task, and only if the working
+4. The range APPEARING is what fires `gather`, whose subject is the range and whose condition is
+   `!not.has-path stage`. Nothing prompts the ledger — it is read, not asked: the rule's own
+   action carries `!list-paths` over the rows whose `status` is `open`.
+5. Those rows land on the range as `outstanding`, beside `stage: gathered` — the latch that lets
+   the next rule fire, and the reason gathering and spawning are two rules rather than one: a
+   spawn's strings bind against the payload that FIRED it, so one action doing both would hand
+   the task the payload from before its own write.
+6. `review-range` spawns the llm task on the coderunner, the range's two ends in its prompt.
+7. The runner delivers `verse/auto/<sha>/<task>` at the END of the task, and only if the working
    tree changed. A review that found nothing leaves no branch.
-7. The answer comes back: `onDone` writes `report`, `status: done`, `stage: reviewed`.
-8. The same hook writes the ledger through `!each` with `id: $item.symbol`, so a verdict lands ON
-   the row it is about rather than beside it.
-9. `advance` steps the cursor onto `covering` and back to `idle` — but only once that range is in
-   the done set, so a failed review stops the line here.
+8. The answer comes back: `onDone` writes `report`, `status: done`, `stage: reviewed`.
+9. The same hook writes the ledger through `!each` with `id: $item.symbol`, so a verdict lands ON
+   the row it is about rather than beside it. This is the one arrow into the ledger.
+10. `advance` steps the cursor onto `covering` and back to `idle` — but only once that range is in
+    the done set, so a failed review stops the line here.
 
 ## The merge half: a branch becomes a question
 
 ```mermaid
 sequenceDiagram
-    autonumber 10
+    autonumber 11
     participant git as the repo
     participant pr as the proposal
     participant tr as the train
@@ -97,27 +103,27 @@ sequenceDiagram
     git->>git: main has moved: back to arrow 1
 ```
 
-10. On a later poll the source reflects the branch. `proposal-appeared` derives the proposal,
+11. On a later poll the source reflects the branch. `proposal-appeared` derives the proposal,
     `proposal-based` pins `base` to main's tip once, and `proposal-says` copies the review's
     report onto it so the docket can ask a real question.
-11. `train-load` boards the undecided branches onto the train for the current tip — the train
+12. `train-load` boards the undecided branches onto the train for the current tip — the train
     having been derived by `train-cut` back at arrow 1, when the tip moved.
-12. `train-run` opens the gate: one motion per tip, `!until [!quorum 1, !deadline "24h"]`.
-13. `verse vote <id> approve --as <who>` answers it. A deny, or the deadline, writes `decided`
+13. `train-run` opens the gate: one motion per tip, `!until [!quorum 1, !deadline "24h"]`.
+14. `verse vote <id> approve --as <who>` answers it. A deny, or the deadline, writes `decided`
     without landing anything.
-14. The landing task rebases each car onto the tip and fast-forwards it in, then pushes main. The
+15. The landing task rebases each car onto the tip and fast-forwards it in, then pushes main. The
     rebase is what makes a batch of siblings land as a batch rather than as its first car.
-15. Main moving is a new tip, which is arrow 1 again — and the review that follows reads main,
+16. Main moving is a new tip, which is arrow 1 again — and the review that follows reads main,
     finds the comment accurate, and reports the finding `resolved`, overwriting the row from
-    arrow 8.
+    arrow 9.
 
-**Arrows 6 and 10 are in that order for a reason, and it is the opposite of what it looks like.**
+**Arrows 7 and 11 are in that order for a reason, and it is the opposite of what it looks like.**
 The branch is pushed BEFORE the report is written, so the proposal can be derived before the
 range says `done` — and then `train-load`, whose `says` read is in the action where it opens no
 watch, would sit with nothing and nobody would be asked. What saves it is the binding in
 `train-load`'s condition: it asks whether this tip is among the shas that have been REVIEWED,
-which puts the report in its read set. The source's poll interval usually puts arrow 10 after
-arrow 7 anyway, which is exactly the kind of accident that hides a defect until the day it does
+which puts the report in its read set. The source's poll interval usually puts arrow 11 after
+arrow 8 anyway, which is exactly the kind of accident that hides a defect until the day it does
 not.
 
 ## The cursor: where the review has got to
