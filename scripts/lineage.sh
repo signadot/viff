@@ -190,8 +190,8 @@ step "checking nobody owns what this is about to write"
 # guard was written, and matching on the colon quietly stopped matching anything — the guard
 # passed by finding nothing rather than by there being nothing.
 owned=$(v sources -o tony 2>/dev/null |
-	grep -E '^[[:space:]]*- ref:[[:space:]]*"?(git|github)[.:]' |
-	sed -E 's|.*ref:[[:space:]]*"?([a-z]+)[.:].*|\1|' | sort -u | tr '\n' ' ' || true)
+	grep -E '^[[:space:]]*- at:[[:space:]]*"?(git|github)[.:]' |
+	sed -E 's|.*at:[[:space:]]*"?([a-z]+)[.:].*|\1|' | sort -u | tr '\n' ' ' || true)
 if [ -n "${owned// /}" ] && [ ${#scope[@]} -eq 0 ]; then
 	printf '\n'
 	note "a source already claims: $owned"

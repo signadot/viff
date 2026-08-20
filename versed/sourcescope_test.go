@@ -208,7 +208,7 @@ func TestTwoSlotSourcesInstallAlongsideEachOther(t *testing.T) {
 		return postTony(t, ts.URL+"/sources?probe=false", map[string]any{
 			"system": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{
-				"ref": "linear.project.*", "at": []any{"owners", team},
+				"at": "linear.project.*", "path": []any{"owners", team},
 			}},
 		})
 	}
@@ -249,7 +249,7 @@ func TestAScopedSourceMayShadowABaselineSlot(t *testing.T) {
 		return postTony(t, u, map[string]any{
 			"system": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{
-				"ref": "linear.project.*", "at": []any{"owners", "ENG"},
+				"at": "linear.project.*", "path": []any{"owners", "ENG"},
 			}},
 		})
 	}
@@ -276,7 +276,7 @@ func TestASourceThatClaimsNothingIsStillRefusedBesideASlotSource(t *testing.T) {
 
 	if resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
 		"system": "linear", "name": "eng", "url": "http://x:1",
-		"owns": []any{map[string]any{"ref": "linear.project.*", "at": []any{"owners", "ENG"}}},
+		"owns": []any{map[string]any{"at": "linear.project.*", "path": []any{"owners", "ENG"}}},
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("slot install = %s: %s", resp.Status, bodyOf(t, resp))
 	}

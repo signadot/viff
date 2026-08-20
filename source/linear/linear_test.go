@@ -220,8 +220,8 @@ func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
 
 	owns := source.Describe(src).Owns
 	want := []source.Own{
-		{Ref: "linear.team.ENG"}, {Ref: "linear.issue.ENG-*"}, {Ref: "linear.cycle.ENG/*"},
-		{Ref: "linear.project.*", At: []string{"owners", "ENG"}},
+		{At: "linear.team.ENG"}, {At: "linear.issue.ENG-*"}, {At: "linear.cycle.ENG/*"},
+		{At: "linear.project.*", Path: []string{"owners", "ENG"}},
 	}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)

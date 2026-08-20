@@ -50,7 +50,7 @@ type Entity struct {
 	Dir    string `tony:"field=dir,omitzero"`
 
 	// Owns is what this registration claims to be the single writer of — an address each, and
-	// optionally a path inside it (`{ref: "git.*.verse/*"}`; see own.go). It is what an install
+	// optionally a path inside it (`{at: "git.*.verse/*"}`; see own.go). It is what an install
 	// proves disjointness against, and what a `--forget` removal tombstones. Absent means the
 	// source declined to say, which is refused an install alongside anything it cannot be
 	// proved apart from.
@@ -206,8 +206,8 @@ func ownsAreDocuments(node *ir.Node) error {
 				continue
 			}
 			return fmt.Errorf("owns carries %q, and a claim is now a document: write "+
-				"{ref: %q} instead. A claim may name a path inside a payload — "+
-				"{ref: \"linear:project:*\", at: [owners, ENG]} — and there is no way to spell "+
+				"{at: %q} instead. A claim may name a path inside a payload — "+
+				"{at: \"linear.project.*\", path: [owners, ENG]} — and there is no way to spell "+
 				"that as one string, so there is one shape rather than two",
 				el.String, el.String)
 		}

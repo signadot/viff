@@ -153,7 +153,7 @@ func (s *Slack) System() string { return s.system }
 // bot token is issued for one workspace, so a source is one workspace's, and two sources are
 // two workspaces: provably disjoint as long as no two workspaces are given the same name.
 func (s *Slack) Owns() []source.Own {
-	return []source.Own{{Ref: s.system + ".*." + s.workspace + "/*"}}
+	return []source.Own{{At: s.system + ".*." + s.workspace + "/*"}}
 }
 
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted

@@ -368,8 +368,8 @@ func TestGitIssueOwns(t *testing.T) {
 		t.Fatalf("Owns() = %+v, want %v", got, want)
 	}
 	for _, o := range got {
-		if !want[o.Ref] {
-			t.Errorf("unexpected claim %q", o.Ref)
+		if !want[o.At] {
+			t.Errorf("unexpected claim %q", o.At)
 		}
 	}
 }
@@ -389,8 +389,8 @@ func TestGitIssueSystemMovesTheSlice(t *testing.T) {
 		t.Errorf("RepoRef = %q", got)
 	}
 	for _, o := range gi.Owns() {
-		if !hasPrefix(o.Ref, "tracker.") {
-			t.Errorf("claim %q is not in the moved slice", o.Ref)
+		if !hasPrefix(o.At, "tracker.") {
+			t.Errorf("claim %q is not in the moved slice", o.At)
 		}
 	}
 	if err := gi.SetSystem("a:b"); err == nil {

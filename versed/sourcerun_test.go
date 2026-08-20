@@ -480,7 +480,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	srv := testServer(t)
 	ref := source.Ref("git", "a")
 	e := source.Entity{Name: "a", System: "git", URL: "http://x:1",
-		Owns: []source.Own{{Ref: "git.*.A/*"}}}
+		Owns: []source.Own{{At: "git.*.A/*"}}}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -506,7 +506,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 	srv := testServer(t)
 	e := source.Entity{Name: "eng", System: "linear", URL: "http://x:1",
-		Owns: []source.Own{{Ref: "linear.project.*", At: []string{"owners", "ENG"}}}}
+		Owns: []source.Own{{At: "linear.project.*", Path: []string{"owners", "ENG"}}}}
 	entitytest.Set(t, srv.Store, source.Ref("linear", "eng"), entity.Obj{
 		"name": "eng", "system": "linear", "url": e.URL, "owns": e.Owns,
 	}.Payload())

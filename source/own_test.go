@@ -126,7 +126,7 @@ func TestTheTerseSpellingIsPathLess(t *testing.T) {
 		"linear.team.ENG", "linear.issue.ENG-*", "linear.cycle.ENG/*", // linear.Owns
 	)...)
 	for _, o := range declared {
-		s := o.Ref
+		s := o.At
 		c, err := o.Claim()
 		if err != nil {
 			t.Fatalf("parse %q: %v", s, err)
@@ -245,7 +245,7 @@ func TestAClaimIsOverATree(t *testing.T) {
 // it may tombstone. Claimed is the point-wise face of Disjoint, and this is the depth question
 // asked of it directly.
 func TestASubtreeClaimCoversWhatIsUnderIt(t *testing.T) {
-	claims, err := source.ParseOwns([]source.Own{{Ref: "verse-dev.drift"}})
+	claims, err := source.ParseOwns([]source.Own{{At: "verse-dev.drift"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 func owns(refs ...string) []source.Own {
 	out := make([]source.Own, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, source.Own{Ref: r})
+		out = append(out, source.Own{At: r})
 	}
 	return out
 }
@@ -329,8 +329,8 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 		t.Fatalf("git System() = %q", g.System())
 	}
 	for _, o := range g.Owns() {
-		if !strings.HasPrefix(o.Ref, "mirror.") {
-			t.Fatalf("a git claim outside the chosen system: %s", o.Ref)
+		if !strings.HasPrefix(o.At, "mirror.") {
+			t.Fatalf("a git claim outside the chosen system: %s", o.At)
 		}
 	}
 	// The hook a git source installs hints in its own system, or the hint reaches nothing.
@@ -359,7 +359,7 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 // the HTTP face, so this was the one client-reachable path to a tombstone over verse's charter.
 func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 	for _, spell := range []string{"*.*.*", "task.*.*", "trigger.rule.*", "sources.git.verse"} {
-		claims, err := source.ParseOwns([]source.Own{{Ref: spell}})
+		claims, err := source.ParseOwns([]source.Own{{At: spell}})
 		if err != nil {
 			t.Fatalf("%s: %v", spell, err)
 		}

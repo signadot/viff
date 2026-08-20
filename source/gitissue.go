@@ -106,7 +106,7 @@ func (g *GitIssue) Owns() []Own {
 	ids := g.repos.ids()
 	out := make([]Own, 0, 2*len(ids))
 	for _, id := range ids {
-		out = append(out, Own{Ref: g.system + ".*." + id + "/*"}, Own{Ref: g.system + ".repo." + id})
+		out = append(out, Own{At: g.system + ".*." + id + "/*"}, Own{At: g.system + ".repo." + id})
 	}
 	return out
 }

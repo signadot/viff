@@ -208,14 +208,14 @@ func (g *GitHub) Owns() []source.Own {
 	out := make([]source.Own, 0, 6*len(g.repos))
 	for _, r := range g.repos {
 		out = append(out,
-			source.Own{Ref: g.system + ".repo." + r},
-			source.Own{Ref: g.system + ".issue." + r + "#*"},
-			source.Own{Ref: g.system + ".pr." + r + "#*"},
+			source.Own{At: g.system + ".repo." + r},
+			source.Own{At: g.system + ".issue." + r + "#*"},
+			source.Own{At: g.system + ".pr." + r + "#*"},
 			// A run's id is GitHub's own number under the repository, so it is scoped the way
 			// git scopes a ref rather than with the `#` the numbered kinds share.
-			source.Own{Ref: g.system + ".run." + r + "/*"},
-			source.Own{Ref: g.system + ".discussion." + r + "#*"},
-			source.Own{Ref: g.system + ".comment." + r + "#*"})
+			source.Own{At: g.system + ".run." + r + "/*"},
+			source.Own{At: g.system + ".discussion." + r + "#*"},
+			source.Own{At: g.system + ".comment." + r + "#*"})
 	}
 	return out
 }

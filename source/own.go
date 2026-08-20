@@ -49,39 +49,45 @@ import (
 //
 // It is a document and not a string, which is a decision the ids forced (see above): there is
 // no terse spelling of a path-carrying claim, and a grammar with two forms would have to be
-// read twice everywhere. The terse spelling survives where it belongs, as the value of `ref` —
+// read twice everywhere. The terse spelling survives where it belongs, as the value of `at` —
 // an address has a spelling, and a path is a list.
 //
-//	{ref: "git.*.verse/*"}
-//	{ref: "linear.project.*", at: [owners, ENG]}
+//	{at: "git.*.verse/*"}
+//	{at: "linear.project.*", path: [owners, ENG]}
+//
+// `at` IS THE ADDRESS AND `path` IS THE PLACE INSIDE IT, which is what every other surface
+// already means by the two words: `!get-path {at: [...], path: sha}` reads a field of an
+// entity, and `POST /entity` takes an `at`. This said `ref` and `at` for the same two things
+// until the wire stopped saying `ref` anywhere else, at which point `at` would have meant an
+// address in one document and a payload path in the next.
 //
 // It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
 // through this package on which an unparseable claim is silently skipped.
 type Own struct {
-	// Ref is the address, as an address glob: a level may be `*`, and may end in one.
+	// At is the address, as an address glob: a level may be `*`, and may end in one.
 	// ParseClaim is what reads it.
-	Ref string `tony:"field=ref"`
-	// At is the path inside the payload, empty for the whole entity.
-	At []string `tony:"field=at,omitzero"`
+	At string `tony:"field=at"`
+	// Path is the path inside the payload, empty for the whole entity.
+	Path []string `tony:"field=path,omitzero"`
 }
 
 // String renders a declaration for a message, via the claim it means.
 func (o Own) String() string {
 	c, err := o.Claim()
 	if err != nil {
-		return o.Ref // unparseable: quote what was written, which is what the error is about
+		return o.At // unparseable: quote what was written, which is what the error is about
 	}
 	return c.String()
 }
 
 // Claim parses one declaration.
 func (o Own) Claim() (Claim, error) {
-	c, err := ParseClaim(o.Ref)
+	c, err := ParseClaim(o.At)
 	if err != nil {
 		return Claim{}, err
 	}
-	c.Field = o.At
+	c.Field = o.Path
 	return c, nil
 }
 

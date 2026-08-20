@@ -60,7 +60,7 @@ func TestRegistrationCheck(t *testing.T) {
 		{"a url with no host", source.Entity{Name: "a", System: "git", URL: "http://"},
 			"no host"},
 		{"an unparseable claim", source.Entity{Name: "a", System: "git", URL: "http://x:1",
-			Owns: []source.Own{{Ref: "git.ref.a*b"}}}, "TRAILING"},
+			Owns: []source.Own{{At: "git.ref.a*b"}}}, "TRAILING"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.e.Check()
@@ -112,7 +112,7 @@ func TestRegistrationCheckFields(t *testing.T) {
 	}
 	// Everything verse itself writes is known, so `verse source show` piped back into
 	// `verse source add` is not refused for carrying what it was just handed.
-	full := "{name: a, system: git, url: \"http://x:1\", owns: [{ref: \"git.*.a/*\"}], scope: s, " +
+	full := "{name: a, system: git, url: \"http://x:1\", owns: [{at: \"git.*.a/*\"}], scope: s, " +
 		"lastReflect: \"2026-01-01T00:00:00Z\", lastError: \"\"}"
 	if err := source.CheckFields(parse(t, full)); err != nil {
 		t.Fatalf("a registration verse wrote should be re-installable: %v", err)
@@ -126,7 +126,7 @@ func TestRegistrationCheckFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("a list of ref globs should be refused")
 	}
-	for _, want := range []string{"{ref:", "git.*.verse/*", "path inside a payload"} {
+	for _, want := range []string{"{at:", "git.*.verse/*", "path inside a payload"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("the refusal does not say %q: %v", want, err)
 		}
@@ -145,7 +145,7 @@ func TestRegistrationFindAndList(t *testing.T) {
 		entitytest.Set(t, store, source.Ref(e.System, e.Name), node)
 	}
 	write(source.Entity{Name: "laptop", System: "git", URL: "http://a:1",
-		Owns: []source.Own{{Ref: "git.*.verse/*"}}})
+		Owns: []source.Own{{At: "git.*.verse/*"}}})
 	write(source.Entity{Name: "build", System: "git", Dir: "/repos"})
 	write(source.Entity{Name: "eng", System: "linear", URL: "http://b:1", Scope: "s"})
 
@@ -165,7 +165,7 @@ func TestRegistrationFindAndList(t *testing.T) {
 		}
 		// Every field survives the round trip — the `owns` one especially, since a claim lost
 		// on the way is a registration that can be proved disjoint from nothing.
-		if e.URL != "http://a:1" || len(e.Owns) != 1 || e.Owns[0].Ref != "git.*.verse/*" {
+		if e.URL != "http://a:1" || len(e.Owns) != 1 || e.Owns[0].At != "git.*.verse/*" {
 			t.Fatalf("Find(%q) = %+v", spelling, e)
 		}
 	}

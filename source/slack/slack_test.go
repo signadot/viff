@@ -260,14 +260,14 @@ func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
 	owns := source.Describe(src).Owns
-	if len(owns) != 1 || owns[0].Ref != "slack.*.Acme/*" {
+	if len(owns) != 1 || owns[0].At != "slack.*.Acme/*" {
 		t.Fatalf("owns %v", owns)
 	}
-	ok, err := source.Disjoint(owns, []source.Own{{Ref: "slack.*.Other/*"}})
+	ok, err := source.Disjoint(owns, []source.Own{{At: "slack.*.Other/*"}})
 	if err != nil || !ok {
 		t.Fatalf("two workspaces were not provably disjoint (%v, %v)", ok, err)
 	}
-	if ok, _ := source.Disjoint(owns, []source.Own{{Ref: "slack.*.Acme/*"}}); ok {
+	if ok, _ := source.Disjoint(owns, []source.Own{{At: "slack.*.Acme/*"}}); ok {
 		t.Fatal("a workspace was proved disjoint from itself")
 	}
 	// Every ref this source writes is inside what it claims — which is the bound on what a

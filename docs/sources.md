@@ -177,7 +177,7 @@ separated slice names it. That is why it is a flag rather than the shape.
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
 read; an install compares two *declarations* with nothing in hand. Addresses compare
-statically; predicates do not. So `owns` is a ref with `*` allowed — `{ref: "git.*.verse/*"}` —
+statically; predicates do not. So `owns` is an address with `*` allowed — `{at: "git.*.verse/*"}` —
 with id globs restricted to a literal prefix and a trailing `*`, which makes disjointness a
 string comparison where general glob disjointness would be automata intersection. Two claims are
 disjoint when any segment is; a `*` segment is disjoint from nothing, so `git.*.*` claims the

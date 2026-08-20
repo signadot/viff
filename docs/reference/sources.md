@@ -39,11 +39,11 @@ own.
 because an install compares declarations with no entities in hand.
 
 ```tony
-{ref: "git.ref.verse/main"}    one entity
-{ref: "git.*.verse/*"}         a level may be `*`, and may END in one — a literal prefix
-{ref: "git"}                   a whole subtree: everything under it, at every depth
-{ref: "verse-dev.drift"}       …which is how a source that keeps two levels of its own says so
-{ref: "linear.project.*", at: [owners, ENG]}   …at a place INSIDE the payload
+{at: "git.ref.verse/main"}     one entity
+{at: "git.*.verse/*"}          a level may be `*`, and may END in one — a literal prefix
+{at: "git"}                    a whole subtree: everything under it, at every depth
+{at: "verse-dev.drift"}        …which is how a source that keeps two levels of its own says so
+{at: "linear.project.*", path: [owners, ENG]}   …at a place INSIDE the payload
 ```
 
 A claim is **one pattern per level, at whatever depth** — the same shape an address is. It is
@@ -70,7 +70,7 @@ Git claims **two entries per repo**, because refs and commits are `<repo>/<name>
 is the bare `<repo>`:
 
 ```tony
-owns: [{ref: "git.*.verse/*"}, {ref: "git.head.verse"}]
+owns: [{at: "git.*.verse/*"}, {at: "git.head.verse"}]
 ```
 
 The single glob `verse*` would cover both and also claim `verse-extras/main` — a real
@@ -153,9 +153,9 @@ covers:
 - {path: [git, ref, *], value: {repo: verse}}
 - {path: [git, head, *], value: {repo: verse}}
 entities:
-- ref: git.ref.verse/main
+- at: git.ref.verse/main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}
-- ref: git.head.verse
+- at: git.head.verse
   payload: {repo: verse, ref: main, sha: "82bd107…", dirty: false}
 ```
 

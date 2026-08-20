@@ -312,8 +312,8 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 		}
 	}
 	for _, o := range source.Describe(src).Owns {
-		if !strings.HasPrefix(o.Ref, "github-internal.") {
-			t.Fatalf("a claim outside the chosen system: %s", o.Ref)
+		if !strings.HasPrefix(o.At, "github-internal.") {
+			t.Fatalf("a claim outside the chosen system: %s", o.At)
 		}
 	}
 	// Two systems are disjoint on the first segment, which is the whole reason this is a flag:
