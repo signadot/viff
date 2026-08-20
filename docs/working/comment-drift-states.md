@@ -258,11 +258,11 @@ verse:
       subject: verse-dev.drift.range.643602e878685ad1fc4c2c2c799b2b13cd36dd8f
 ```
 
-Read as STEPS — `verse data verse-dev drift finding entity.JoinSegs` — the id needs no quoting at
-all, because a segment handed over as its own word is never re-split. The same address written as
-one token is `'verse-dev.drift.finding."entity.JoinSegs"'`, quotes and all, since a Go symbol
-carries dots and a kinded path would otherwise read them as delimiters. Both name the entity; the
-steps form is the one a person can type.
+Read as STEPS — `verse data verse-dev drift finding entity.JoinSegs` — the id needs no quoting
+at all, because a segment handed over as its own word is never re-split. As one token the same
+address is `'verse-dev.drift.finding."entity.JoinSegs"'`, quotes and all, since a Go symbol
+carries dots and a kinded path would otherwise read them as delimiters. Both name the entity;
+the steps form is the one a person can type.
 
 A fix lives on a branch until somebody approves it, and branches are declined, superseded and
 retired — so `proposedAt` records where the attempt was made while `status` stays `open`. A
@@ -329,6 +329,116 @@ condition's read the train would sit loaded with nothing and nobody would be ask
 **`proposal-outrun` is the staleness test, and it is just a comparison.** `base ≠ tip`, read from
 the same snapshot the condition is evaluated against. No ancestry walk, no remote asked anything,
 no model.
+
+## Tricky bits
+
+Seven places where the charter reads like something it is not. Each one cost a session to find,
+and all but the last are silent when you get them wrong — the rule installs, fires, and does
+less than it says.
+
+### `!let` is how a condition reads another entity
+
+A match tests a field against a literal or an operator, so "this field differs from that entity's
+field" is unsayable in a plain condition. `!let` binds a read and substitutes it into the pattern:
+
+```tony
+value: !let
+  let:
+  - tip: !get-path {at: [git, head, verse], path: sha}
+  in:
+    stage: idle
+    sha: !not .[tip]
+```
+
+Three things about it:
+
+- **The read joins the trigger's reads**, which is what wakes the rule when the thing it reads
+  changes. That is the entire wake mechanism in the review half — there is no `on:` anywhere.
+- **A condition's read may not name `$subject`.** The subject is what the condition SELECTS, so
+  there is no one entity to read a field from yet, and the engine refuses it at install by name
+  rather than letting it resolve to nothing. This is why `advance` asks whether `covering` is in a
+  bound LIST (`covering: !or .[done]`) instead of reading the range at `$subject.value.covering`.
+- **An unbound name is an error, not a null.** It used to expand to null, and a null pattern
+  matches anything, so a misspelt binding matched every document there is.
+
+### `$sha` or `$subject.value.sha` — which reference works where
+
+Both name the same value and neither works in both places.
+
+| where | spelling | why |
+|---|---|---|
+| a spawn's prompt, or any string | `$sha` | in a string, `$subject` interpolates to the whole REF and the rest stays literal text: `verse-dev:drift:at.value.sha` |
+| a node — an address, a patch value | `$subject.value.sha` | resolves as a kpath into the subject's payload |
+| inside a completion hook | `$subject.value.sha` | a hook's flat names resolve against the TASK's payload (`status`, `result`, `data`, `err`), so `$sha` there names nothing |
+
+That last row is the one that bites: `sha: $covering` in an `onDone` refuses the whole firing and
+writes nothing, silently, leaving the record in no state at all (`91jktrr3h12ksa8fgsn0`).
+`$subject` is the one reference that still means the subject inside a hook.
+
+### `!each` with `id:` rather than `key:`
+
+A keyed fan-out lands every element under (rule, subject, key), so it can only ever create its
+OWN copies — which is right for a rule's own findings and wrong the moment two reviews have
+something to say about one symbol. `id:` makes the address the place plus the value:
+
+```tony
+derive:
+- path: [verse-dev, drift, finding]
+  value: !each
+    over: $data.findings
+    id: $item.symbol          # `key:` here would be one row per (review, symbol)
+    value: {symbol: $item.symbol, status: $item.status, …}
+```
+
+With `key:`, a later review's `resolved` lands beside the open row and nothing a review says can
+ever close one. With `id:`, it lands on it. Either way the key must be a SOLE reference rooted at
+the element — no literals, no text with a reference in it.
+
+### What a derive may carry, and why the cursor is patched
+
+A derive's address is a function of (rule, subject), and its content may reference the firing's
+IDENTITY and never its STATE. That is what makes a re-fire write the same bytes to the same
+address — a no-op the store ends — which in turn is what lets a rule read a HIGHER level without
+the read becoming a cycle.
+
+So a single slot that everybody overwrites cannot be derived at all: `id:` must be a sole
+reference rooted at the subject, so `id: main` is refused outright. The cursor is therefore
+PATCHED, by rules whose subject it is, which is recursion inside one stratum — permitted, and
+what `docs/examples/level-ping-pong.yaml` exists to show.
+
+The relaxation worth knowing: a KEYED derive may carry the state its key is a function of, which
+is why the range can hold `{from, to}` and the ledger row can hold its own `status`.
+
+### A read in a condition wakes the rule; a read in an action does not
+
+An action's read is resolved when the action fires and opens no watch. So a rule that reads
+something in its action is not watching it — and a rule that needs to fire when that thing
+changes must read it in the CONDITION, even if the action reads it again.
+
+`train-load` is the whole lesson: its `says` read is in the action, so a report landing never
+re-evaluated it, and the train sat loaded with nothing while nobody was asked. The binding that
+fixed it reads the reviewed shas in the condition and asks whether this tip is among them.
+
+### Absence is `!not.has-path`, never a null
+
+`!not {reviewed: null}` is the documented spelling of "no such field" and verse cannot store one:
+absence is written as a bare null and every bare null is hidden on read, so the durable rule comes
+back as `!not {}` and selects nothing. A charter written that way works until the first restart
+and then silently stops.
+
+`!not.has-path stage` is the spelling. `restart-latch.sh` drives exactly this — a rule that
+selects on an absence, across a restart — because the failure is invisible until the process comes
+back.
+
+### `on:` is a formula over the verse, not an edge on an entity
+
+`on:` is evaluated over the whole verse and fires on the EDGE — false at the previous commit, true
+at this one. So `on: {system: git, kind: commit}` means "a git:commit exists", which rises once,
+the first time one ever does, and then stands forever. It is a level, not an edge, and the rule
+never fires again.
+
+This is why there is no `on:` in the review half at all. What wakes those rules is either their
+own subject changing or a condition read, and both are edges by construction.
 
 ## Where this is not the whole truth
 
