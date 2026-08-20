@@ -237,11 +237,21 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 
 // List reads every installed source, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
+	out, _ := ListErr(r)
+	return out
+}
+
+// ListErr is List, reporting the error THIS read failed with — see entity.ListErr.
+func ListErr(r entity.Reader) ([]Entity, error) {
 	var out []Entity
 	// At the subtree — see runner.List for why a List(pred) is the wrong read here: it is a
 	// Match on the root, so listing the sources read the whole verse, sources' own output
 	// included.
-	for _, ent := range r.ListAt([]string{entity.VerseRoot, System}, entity.Depth+1, IsRegistration) {
+	ents, err := entity.ListAtErr(r, []string{entity.VerseRoot, System}, entity.Depth+1, IsRegistration)
+	if err != nil {
+		return nil, err
+	}
+	for _, ent := range ents {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue
@@ -254,7 +264,7 @@ func List(r entity.Reader) []Entity {
 		}
 		return out[i].Name < out[j].Name
 	})
-	return out
+	return out, nil
 }
 
 // IsRegistration reports whether an address is an installed source's — the namespace's own

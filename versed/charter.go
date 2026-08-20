@@ -278,7 +278,12 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if unreadable(w, r, s.Store) {
+	// THE STORE'S FLAG, not a read's own, and this is the one caller for which that is the
+	// right question: a charter tree is assembled from the ENGINES' state, not from a listing
+	// made here, so there is no read of this request's to report. What it is guarding against
+	// is the same thing either way — a charter that renders as no rules because the store could
+	// not be read. See unreadable, and entity.ReadFailed for the distinction.
+	if unreadable(w, r, storeUnreadable(s.Store)) {
 		return
 	}
 	if tree == nil {

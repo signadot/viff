@@ -256,7 +256,8 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	probe := r.URL.Query().Get("probe") == "true"
 	out := make([]map[string]any, 0)
-	for _, e := range source.List(store) {
+	ents, readErr := source.ListErr(store)
+	for _, e := range ents {
 		rec := map[string]any{
 			"ref": source.Ref(e.System, e.Name).String(), "name": e.Name, "system": e.System,
 		}
@@ -303,8 +304,9 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
 	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
-	// operator acts on. Same guard /state has carried all along, for the same reason.
-	if unreadable(w, r, store) {
+	// operator acts on. Same guard /state has carried all along, for the same reason. THIS
+	// read's error, not the store's last one — see unreadable.
+	if unreadable(w, r, readErr) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)

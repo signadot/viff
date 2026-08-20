@@ -1391,14 +1391,21 @@ func storeUnreadable(st entity.Reader) error {
 	return nil
 }
 
-// unreadable answers 503 when the store could not be read, and reports whether it did.
+// unreadable answers 503 when THIS request's read did not happen, and reports whether it did.
 //
 // 503 rather than 500: the request is fine and the verse may be fine again in a moment — what
 // failed is this server's ability to read its own store, which is what Service Unavailable
 // says. The body names the cause, because "cannot read the store" with no cause sends an
 // operator back to the log-reading this exists to replace.
-func unreadable(w http.ResponseWriter, r *http.Request, st entity.Reader) bool {
-	err := storeUnreadable(st)
+//
+// IT TAKES THE READ'S OWN ERROR, where it used to ask the store for the last one it remembered.
+// That flag is one field shared by every reader — the engine, the sources, and each request in
+// flight — so whether a request noticed its own failure depended on who else read in between:
+// a neighbour's success hid it and the handler answered 200 with an empty document, and a
+// neighbour's failure refused a request whose read was fine. Both directions were wrong at the
+// same line (git-issue tyr7f6dhh12ksdd4gnn0), and the window is microseconds, which is why it
+// read as `--paths` disagreeing with the document form rather than as a race.
+func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 	if err == nil {
 		return false
 	}
@@ -1420,8 +1427,8 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	// across the wire, filtered here — whatever `at` said, which made every read cost the same
 	// as reading everything: 0.74s for one registration on a 6900-entity store, against under
 	// 50ms for the narrow form the substrate already answers. See entity.AtPrefix.
-	ents := listAt(store, sel)
-	if unreadable(w, r, store) {
+	ents, err := listAt(store, sel)
+	if unreadable(w, r, err) {
 		return
 	}
 	kept := make([]entity.Entity, 0, len(ents))
@@ -1449,12 +1456,12 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 // listAt reads the entities a selector can pick, under the narrowest prefix its path allows.
 // A path that names nothing falls back to the root read, because the whole verse spans both
 // halves and their entities sit at different depths.
-func listAt(store entity.Store, sel selector) []entity.Entity {
+func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
 	prefix, depth, ok := entity.AtPrefix(sel.at)
 	if !ok {
-		return store.List(sel.matchRef)
+		return entity.ListErr(store, sel.matchRef)
 	}
-	return store.ListAt(prefix, depth, sel.matchRef)
+	return entity.ListAtErr(store, prefix, depth, sel.matchRef)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
@@ -1634,7 +1641,8 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// docket as of now, and `⊤` is a person reading.
 	s.escalateOverdue(s.scopedStore(r))
 	out := make([]map[string]any, 0)
-	for _, ent := range pendingQuestions(s.scopedStore(r)) {
+	ents, readErr := pendingQuestionsErr(s.scopedStore(r))
+	for _, ent := range ents {
 		p := entity.ToObj(ent.Payload)
 		rec := map[string]any{}
 		for k, v := range p {
@@ -1658,7 +1666,7 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// without this a store that could not be read renders as "nothing is installed" — and
 	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
-	if unreadable(w, r, s.scopedStore(r)) {
+	if unreadable(w, r, readErr) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
@@ -1718,18 +1726,28 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 // holds nothing at all after a restart, so it could report no gates beside a docket listing
 // several.
 func pendingQuestions(store entity.Store) []entity.Entity {
+	out, _ := pendingQuestionsErr(store)
+	return out
+}
+
+// pendingQuestionsErr is the same read, reporting the error IT failed with — see entity.ListErr.
+func pendingQuestionsErr(store entity.Store) ([]entity.Entity, error) {
 	var out []entity.Entity
 	// At the questions subtree. This is on the READINESS path (`/status` reports the count),
 	// and a List(pred) is a Match on the root — so a probe every five seconds read the entire
 	// verse to count what was pending.
-	for _, ent := range store.ListAt(
+	ents, err := entity.ListAtErr(store,
 		[]string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind},
-		entity.Depth+1, mirror.IsQuestion) {
+		entity.Depth+1, mirror.IsQuestion)
+	if err != nil {
+		return nil, err
+	}
+	for _, ent := range ents {
 		if p := entity.ToObj(ent.Payload); p != nil && p["status"] == mirror.QuestionPending {
 			out = append(out, ent)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
@@ -2320,12 +2338,13 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	for _, ent := range entity.ListUnder(s.scopedStore(r), func(ref entity.Ref) bool {
+	resolvers, readErr := entity.ListUnderErr(s.scopedStore(r), func(ref entity.Ref) bool {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
 		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
-	}, entity.VerseRoot, resolver.System) {
+	}, entity.VerseRoot, resolver.System)
+	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -2337,7 +2356,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	// without this a store that could not be read renders as "nothing is installed" — and
 	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
-	if unreadable(w, r, s.scopedStore(r)) {
+	if unreadable(w, r, readErr) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)

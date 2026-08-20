@@ -293,7 +293,9 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 // is simply unreadable. That is how an unreplayable patch in the log presents: `verse data`
 // empty, the charter tree showing no rules, every write still reporting success.
 //
-// The surfaces ask the store instead, and answer 503.
+// The surfaces answer 503 instead. `storeUnreadable` is the store-wide question — right for a
+// caller with no read of its own to report, which is what this asks about; a listing that CAN
+// report its own read uses entity.ListErr, for the reason that helper gives.
 func TestAnUnreadableStoreIsNotAnEmptyVerse(t *testing.T) {
 	if got := storeUnreadable(entitytest.Store(t)); got != nil {
 		t.Fatalf("a healthy store reports %v", got)
@@ -304,7 +306,7 @@ func TestAnUnreadableStoreIsNotAnEmptyVerse(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/state", nil)
-	if !unreadable(rec, req, unreadableStore{}) {
+	if !unreadable(rec, req, storeUnreadable(unreadableStore{})) {
 		t.Fatal("the read failure did not answer")
 	}
 	if rec.Code != 503 {

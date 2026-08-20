@@ -537,6 +537,48 @@ func ListUnder(r Reader, pred func(Ref) bool, at ...string) []Entity {
 	return r.ListAt(at, depth, pred)
 }
 
+// ListErr, ListAtErr and ListUnderErr are the three listings, each answering with the error
+// THIS read failed with rather than with whatever the store last remembered.
+//
+// A LISTING CANNOT SAY SO IN ITS SIGNATURE — List answers a slice, so a read that did not happen
+// and a verse holding nothing are the same value — and ReadFailed below was the answer to that
+// for a while. It asks the STORE, which keeps one error for every reader sharing it, so what a
+// caller gets back depends on who else read in between: a neighbour's success hides this read's
+// failure, and a neighbour's failure condemns a read that was fine. A request that could not
+// read its own store answered 200 with an empty document (git-issue tyr7f6dhh12ksdd4gnn0).
+//
+// A store that reports per read says so (`ListErr`/`ListAtErr` — LogdStore does); one that
+// cannot falls back to the store-wide flag, which is exactly what the caller had before, so
+// adopting these is never worse and is right wherever the capability is there.
+func ListErr(r Reader, pred func(Ref) bool) ([]Entity, error) {
+	if h, ok := r.(interface {
+		ListErr(func(Ref) bool) ([]Entity, error)
+	}); ok {
+		return h.ListErr(pred)
+	}
+	out := r.List(pred)
+	return out, ReadFailed(r)
+}
+
+func ListAtErr(r Reader, at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
+	if h, ok := r.(interface {
+		ListAtErr([]string, int, func(Ref) bool) ([]Entity, error)
+	}); ok {
+		return h.ListAtErr(at, depth, pred)
+	}
+	out := r.ListAt(at, depth, pred)
+	return out, ReadFailed(r)
+}
+
+// ListUnderErr is ListUnder, reporting its own read's failure.
+func ListUnderErr(r Reader, pred func(Ref) bool, at ...string) ([]Entity, error) {
+	depth := Depth
+	if len(at) > 0 && at[0] == VerseRoot {
+		depth = Depth + 1
+	}
+	return ListAtErr(r, at, depth, pred)
+}
+
 // ReadFailed answers the error a store's last read failed with, or nil.
 //
 // It exists for the callers that must not read an empty answer as an empty verse. List returns
@@ -544,6 +586,11 @@ func ListUnder(r Reader, pred func(Ref) bool, at ...string) []Entity {
 // the whole question at startup: a charter that restored nothing because there is nothing, and
 // one that restored nothing because the store was busy, are the same value and opposite facts.
 // The second silently brings a verse back running no rules.
+//
+// IT ASKS ABOUT THE STORE, not about one read, and the difference matters wherever several
+// readers share one: use ListErr and friends above when the question is "did MY read happen".
+// This is right for the caller whose question really is about the store — a restore deciding
+// whether an empty charter is empty.
 func ReadFailed(r Reader) error {
 	if h, ok := r.(interface{ ReadError() error }); ok {
 		return h.ReadError()

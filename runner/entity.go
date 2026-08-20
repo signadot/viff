@@ -148,13 +148,25 @@ func Find(r entity.Reader, ref string) (Entity, bool) {
 
 // List reads every installed runner, ordered by address, so two readers see one order.
 func List(r entity.Reader) []Entity {
+	out, _ := ListErr(r)
+	return out
+}
+
+// ListErr is List, reporting the error THIS read failed with — see entity.ListErr for why a
+// listing cannot say so in its signature, and why asking the store afterwards is a different
+// question from asking the read.
+func ListErr(r entity.Reader) ([]Entity, error) {
 	var out []Entity
 	// AT THE SUBTREE, not over the document. A List(pred) is a Match on the ROOT — the whole
 	// verse across the wire and filtered here — so a listing of a handful of runners cost a
 	// read of everything every source had ever reflected. On a store carrying two mirrored
 	// repositories that was 455 KB a call, and `verse status` (which lists runners, sources
 	// and questions) paid it three times per readiness probe.
-	for _, ent := range r.ListAt([]string{entity.VerseRoot, System}, entity.Depth+1, Is) {
+	ents, err := entity.ListAtErr(r, []string{entity.VerseRoot, System}, entity.Depth+1, Is)
+	if err != nil {
+		return nil, err
+	}
+	for _, ent := range ents {
 		var e Entity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue
@@ -167,7 +179,7 @@ func List(r entity.Reader) []Entity {
 		}
 		return out[i].Name < out[j].Name
 	})
-	return out
+	return out, nil
 }
 
 // Is reports whether an address is an installed runner's — the namespace's own question, since

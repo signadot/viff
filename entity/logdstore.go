@@ -879,12 +879,29 @@ func (s *LogdStore) ensureSynced() {
 // has no key (logd removes it) and is simply not there to walk. That is why this reads with
 // walkEntityDoc rather than the delta walk — every leaf it finds is a payload, null included.
 func (s *LogdStore) List(pred func(Ref) bool) []Entity {
+	out, _ := s.ListErr(pred)
+	return out
+}
+
+// ListErr is List, answering with the error THIS read failed with.
+//
+// The pair exists because `readErr` is one field for the whole store and every reader shares it
+// — the engine, the sources and a request in flight — so "the last read failed" is not the same
+// question as "my read failed". Whichever one a caller asks, it gets the other's answer as soon
+// as somebody else reads in between: a neighbour's success hides this read's failure, and a
+// neighbour's failure condemns a read that was fine. A request that could not read its own store
+// then answered 200 with an empty document (git-issue tyr7f6dhh12ksdd4gnn0).
+//
+// The store-wide flag stays for the callers that are asking about the store rather than about a
+// read of their own — a charter restore deciding whether "no rules" means no rules
+// (entity.ReadFailed, trigger/charter.go).
+func (s *LogdStore) ListErr(pred func(Ref) bool) ([]Entity, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	node, err := s.sess.Match(ctx, seg(s.root))
 	s.noteRead(err)
 	if err != nil || node == nil {
-		return nil
+		return nil, err
 	}
 	var out []Entity
 	for _, e := range walkEntityDoc(node) {
@@ -892,7 +909,7 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 			out = append(out, e)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // ListAt enumerates the nodes at a stated depth under a prefix — see Reader.ListAt for why the
@@ -902,8 +919,14 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 // business materializing the whole verse, and the prefix is exactly the path the substrate
 // routes on.
 func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
+	out, _ := s.ListAtErr(at, depth, pred)
+	return out
+}
+
+// ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
+func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
 	if depth < len(at) {
-		return nil
+		return nil, nil
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -920,11 +943,11 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// always exists; asking at a path is what makes it reachable.
 	if isNotFound(err) {
 		s.noteRead(nil)
-		return nil
+		return nil, nil
 	}
 	s.noteRead(err)
 	if err != nil || node == nil {
-		return nil
+		return nil, err
 	}
 	// Match answers the content AT the path it was given — not a document wrapped in it — so the
 	// walk starts here and the remaining depth is what is left to descend. (List asks at the
@@ -937,7 +960,7 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 				out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
 			}
 		})
-	return out
+	return out, nil
 }
 
 // WatchSubtree observes one (system,kind) slice — the kinded subtree
