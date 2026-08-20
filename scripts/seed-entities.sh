@@ -70,7 +70,7 @@ fi
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
+if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
 	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
@@ -101,7 +101,7 @@ WORLD=(
 
 if $clean; then
 	step "clean"
-	for w in "${WORLD[@]}"; do v data "${w%% --rm|*}" >/dev/null 2>&1 || true; done
+	for w in "${WORLD[@]}"; do v data --ref "${w%%|*}" --rm >/dev/null 2>&1 || true; done
 	ok "removed ${#WORLD[@]} seeded entities"
 	exit 0
 fi
@@ -116,7 +116,8 @@ fi
 
 step "seeding ${#WORLD[@]} entities"
 for w in "${WORLD[@]}"; do
-	v data "${w%%|*}" --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
+	# --ref: the WORLD table names entities as refs, and a positional is a step.
+	v data --ref "${w%%|*}" --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
 done
 ok "demo:pr:1–5        three open, one draft, one merged; nested labels"
 ok "demo:task:*        two high-priority, one low"

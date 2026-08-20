@@ -117,7 +117,8 @@ for _ in $(seq 1 "$WATCH"); do
 	stage=$(field "$(v data gh issue 1 2>/dev/null || true)" stage)
 	feat=$(v data --paths signadot feature 2>/dev/null | head -1 || true)
 	phase=""
-	[ -n "$feat" ] && phase=$(field "$(v data "$feat" 2>/dev/null || true)" phase)
+	# shellcheck disable=SC2086
+	[ -n "$feat" ] && phase=$(field "$(v data $feat 2>/dev/null || true)" phase)
 	fired=$(v status 2>/dev/null | grep -oE '"?fired"?[: ]+[0-9]+' | grep -oE '[0-9]+$' || true)
 	printf '  %-10s %-12s %s\n' "${stage:-…}" "${phase:-—}" "${fired:-}"
 	sleep 1
@@ -133,7 +134,9 @@ feat=$(v data --paths signadot feature | head -1)
 [ -n "$feat" ] || die "the derive never landed"
 ok "the derived entity is $feat"
 note "its id is the engine's — f(rule, subject) — and it records what it is about:"
-v data "$feat"
+# UNQUOTED: `--paths` answers in steps, and the shell splitting them is what a read takes.
+# shellcheck disable=SC2086
+v data $feat
 
 step "the throttle's report"
 # The deliverable is not that it was throttled but WHICH rules were firing each other.

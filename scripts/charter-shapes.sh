@@ -206,7 +206,7 @@ fi
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
+if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
 	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
@@ -281,7 +281,7 @@ next_steps() {
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)
-		printf '  %s data derived:feature:shape-derive@demo:derive:1\n' "$c"
+		printf '  %s data --ref derived:feature:shape-derive@demo:derive:1\n' "$c"
 		printf '  %s strata                 ← the ordering it was checked against\n' "$c"
 		printf '\n  the derived id is the ENGINE'"'"'s — f(rule, subject) — so the rule name and the\n'
 		printf '  subject are both in it, and no two rules can ever address the same entity.\n'
@@ -341,7 +341,7 @@ clean)
 	step "clean"
 	for s in "${SHAPES[@]}"; do
 		remove_shape "$s"
-		v data "demo:$s:1" --rm >/dev/null 2>&1 || true
+		v data --ref "demo:$s:1" --rm >/dev/null 2>&1 || true
 	done
 	v data ci status shapes --rm >/dev/null 2>&1 || true
 	v data ci status release --rm >/dev/null 2>&1 || true

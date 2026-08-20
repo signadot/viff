@@ -73,7 +73,7 @@ ok "the drift charter is installed"
 # (`range."77777777"`), because the quoting is about tony TYPES rather than about the path — so a
 # script composing a task id by hand would build one that matches nothing. Real shas are hex and
 # almost always carry a letter; the harness should not be the one place that depends on it.
-push()    { v data git:head:verse --put "{repo: verse, sha: $1}" >/dev/null; }
+push()    { v data git head verse --put "{repo: verse, sha: $1}" >/dev/null; }
 cursor()  { v data verse-dev.drift.at 2>/dev/null; }
 at()      { sed -n 's/^sha: //p' <<<"$(cursor)"; }
 stage()   { sed -n 's/^stage: //p' <<<"$(cursor)"; }

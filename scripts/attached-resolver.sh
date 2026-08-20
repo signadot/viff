@@ -133,7 +133,7 @@ setup() {
 
 	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
-	v data "$SUBJECT" --put '{area: payments, title: "raise the retry budget"}' >/dev/null
+	v data --ref "$SUBJECT" --put '{area: payments, title: "raise the retry budget"}' >/dev/null
 	ok "subject $SUBJECT"
 
 	# A run that stops at its first action, so there is a real question to answer.
@@ -202,7 +202,7 @@ question_id() {
 	done
 }
 
-field() { v data "verse:gate:question:$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
+field() { v data verse gate question "$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
 
 state() {
 	step "the bindings — who may answer, and for what"
@@ -356,7 +356,7 @@ clean() {
 	for kn in security:reviewer security:payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done
-	v data "$SUBJECT" --rm >/dev/null 2>&1 || true
+	v data --ref "$SUBJECT" --rm >/dev/null 2>&1 || true
 	ok "removed the bindings, the run and $SUBJECT"
 	printf '  answered questions are kept: a docket that forgets is one nobody can audit.\n\n'
 }
@@ -385,7 +385,7 @@ fi
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
+if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
 	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."

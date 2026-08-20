@@ -74,7 +74,7 @@ fi
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
 _verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *state '; then
+if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
 	die "$BIN does not have \`verse data\` — it predates the one-document read.
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
@@ -97,7 +97,9 @@ if $clean; then
 	step "clean"
 	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
-	for e in "${ENTITIES[@]}"; do v data "$e" --rm >/dev/null 2>&1 || true; done
+	# --ref, because these are REFS: a positional is a step, so a whole ref in one word would
+	# name a system called `demo:pr:1`.
+	for e in "${ENTITIES[@]}"; do v data --ref "$e" --rm >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
 	printf '\nseeded state is gone. Live tasks and answered gates are not touched.\n'
 	exit 0
@@ -190,7 +192,7 @@ Watch it move (another terminal, before approving):
 
 Then drive it yourself — a put is how you speak to the verse:
 
-  $BIN$scope_note data demo pr 2 '{stage: open}' open the draft; demo-review fires --put again
+  $BIN$scope_note data demo pr 2 --put '{stage: open}'   open the draft; demo-review fires again
 
 Undo it all with: $0 --clean
 EOF
