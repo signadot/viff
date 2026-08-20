@@ -25,30 +25,12 @@ func (s *PutEntity) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Ref
-	irMap["ref"] = ir.FromString(string(s.Ref))
-
-	// Field: Path
-	if len(s.Path) > 0 {
-		slice := make([]*ir.Node, len(s.Path))
-		for i, v := range s.Path {
-			slice[i] = ir.FromString(string(v))
-		}
-		irMap["path"] = ir.FromSlice(slice)
-	}
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
 
 	// Field: Sub
 	if s.Sub != "" {
 		irMap["sub"] = ir.FromString(string(s.Sub))
-	}
-
-	// Field: Field
-	if len(s.Field) > 0 {
-		slice := make([]*ir.Node, len(s.Field))
-		for i, v := range s.Field {
-			slice[i] = ir.FromString(string(v))
-		}
-		irMap["field"] = ir.FromSlice(slice)
 	}
 
 	// Field: Payload (optional)
@@ -102,52 +84,18 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "ref":
-			// Field: Ref
+		case "at":
+			// Field: At
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "ref", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
-			s.Ref = string(fieldNodeUnwrapped.String)
-		case "path":
-			// Field: Path
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					elem = v.String
-					slice[i] = string(elem)
-				}
-				s.Path = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"path\"", fieldNodeUnwrapped.Type)
-			}
+			s.At = string(fieldNodeUnwrapped.String)
 		case "sub":
 			// Field: Sub
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "sub", fieldNodeUnwrapped.Type)
 			}
 			s.Sub = string(fieldNodeUnwrapped.String)
-		case "field":
-			// Field: Field
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					elem = v.String
-					slice[i] = string(elem)
-				}
-				s.Field = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"field\"", fieldNodeUnwrapped.Type)
-			}
 		case "payload":
 			if gomap.GetUnmapComments(opts...) {
 				s.Payload = fieldNode
@@ -214,18 +162,9 @@ func (s *Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Ref
-	if s.Ref != "" {
-		irMap["ref"] = ir.FromString(string(s.Ref))
-	}
-
-	// Field: Field
-	if len(s.Field) > 0 {
-		slice := make([]*ir.Node, len(s.Field))
-		for i, v := range s.Field {
-			slice[i] = ir.FromString(string(v))
-		}
-		irMap["field"] = ir.FromSlice(slice)
+	// Field: At
+	if s.At != "" {
+		irMap["at"] = ir.FromString(string(s.At))
 	}
 
 	// Field: Exists (optional)
@@ -271,29 +210,12 @@ func (s *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "ref":
-			// Field: Ref
+		case "at":
+			// Field: At
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "ref", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
-			s.Ref = string(fieldNodeUnwrapped.String)
-		case "field":
-			// Field: Field
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					elem = v.String
-					slice[i] = string(elem)
-				}
-				s.Field = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"field\"", fieldNodeUnwrapped.Type)
-			}
+			s.At = string(fieldNodeUnwrapped.String)
 		case "exists":
 			// Field: Exists
 			if fieldNodeUnwrapped.Type == ir.NullType {

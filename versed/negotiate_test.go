@@ -102,7 +102,7 @@ func TestRequestBodyNegotiation(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	body := "ref: demo:pr:1\npayload:\n  stage: open\n"
+	body := "at: demo.pr.1\npayload:\n  stage: open\n"
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/entity", strings.NewReader(body))
 	req.Header.Set("Content-Type", codec.MediaTony)
 	resp, err := http.DefaultClient.Do(req)
@@ -125,7 +125,7 @@ func TestRequestBodyNegotiation(t *testing.T) {
 
 func mustRef(t *testing.T, s string) entity.Ref {
 	t.Helper()
-	r, err := entity.ParseRef(s)
+	r, err := entity.ParseAddr(s)
 	if err != nil {
 		t.Fatal(err)
 	}

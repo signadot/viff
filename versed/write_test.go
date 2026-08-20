@@ -48,26 +48,36 @@ func TestWriteEntityMergesAndGoesDeep(t *testing.T) {
 	defer ts.Close()
 
 	if code, got := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "open", "env": "prod"}.Payload(),
 	}); code != 200 || got["stage"] != "open" {
 		t.Fatalf("create: %d %+v", code, got)
 	}
 
 	// A second write mentioning one field leaves the others alone…
-	code, got := post(t, ts, api.PutEntity{Ref: "demo:pr:1", Payload: entity.Obj{"stage": "reviewed"}.Payload()})
+	code, got := post(t, ts, api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "reviewed"}.Payload()})
 	if code != 200 || got["stage"] != "reviewed" || got["env"] != "prod" {
 		t.Fatalf("merge: %d %+v", code, got)
 	}
 
-	// …and a write can address a field directly, answering with the whole entity.
-	code, got = post(t, ts, api.PutEntity{Ref: "demo:pr:1", Field: []string{"labels", "urgent"}, Payload: ir.FromBool(true)})
-	if code != 200 {
-		t.Fatalf("deep write: %d", code)
+	// …and a write can address a place INSIDE a payload, which is the same request with a
+	// longer address: the wire has no field list any more, because nothing on it says where an
+	// entity ends.
+	// It answers with what stands at the address WRITTEN, which here is a bool rather than an
+	// object — so this one goes through postTony rather than post's map decode.
+	deep := postTony(t, ts.URL+"/entity", api.PutEntity{At: "demo.pr.1.labels.urgent", Payload: ir.FromBool(true)})
+	deep.Body.Close()
+	if deep.StatusCode != 200 {
+		t.Fatalf("deep write: %s", deep.Status)
 	}
-	labels, _ := got["labels"].(map[string]any)
-	if labels["urgent"] != true || got["stage"] != "reviewed" {
-		t.Fatalf("deep write = %+v, want urgent set and the rest intact", got)
+	// The merge is what a read at the entity shows: the field landed and the rest is untouched.
+	e, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1"))
+	if !ok {
+		t.Fatal("the entity is gone after a write inside it")
+	}
+	labels, _ := entity.ToObj(e.Payload)["labels"].(map[string]any)
+	if labels["urgent"] != true || entity.Str(e.Payload, "stage") != "reviewed" {
+		t.Fatalf("deep write = %+v, want urgent set and the rest intact", e.Payload)
 	}
 }
 
@@ -80,21 +90,21 @@ func TestWriteEntityConditions(t *testing.T) {
 	yes, no := true, false
 
 	if code, _ := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
 		When:    []api.Condition{{Exists: &yes}},
 	}); code != http.StatusConflict {
 		t.Fatalf("update of an absent entity = %d, want 409", code)
 	}
 	if code, _ := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
 		When:    []api.Condition{{Exists: &no}},
 	}); code != 200 {
 		t.Fatalf("create of an absent entity = %d, want 200", code)
 	}
 	if code, _ := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "hijacked"}.Payload(),
 		When:    []api.Condition{{Exists: &no}},
 	}); code != http.StatusConflict {
@@ -103,22 +113,22 @@ func TestWriteEntityConditions(t *testing.T) {
 
 	// A pattern condition, and a cross-entity one.
 	if code, got := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "reviewed"}.Payload(),
 		When:    []api.Condition{{Pattern: entity.Obj{"stage": "open"}.Payload()}},
 	}); code != 200 || got["stage"] != "reviewed" {
 		t.Fatalf("conditional update: %d %+v", code, got)
 	}
 	if code, _ := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "deployed"}.Payload(),
-		When:    []api.Condition{{Ref: "demo:gate:1", Pattern: entity.Obj{"open": true}.Payload()}},
+		When:    []api.Condition{{At: "demo.gate.1", Pattern: entity.Obj{"open": true}.Payload()}},
 	}); code != http.StatusConflict {
 		t.Fatalf("write gated on an absent entity = %d, want 409", code)
 	}
 
 	// The entity still says what the last successful write left.
-	if _, got := post(t, ts, api.PutEntity{Ref: "demo:pr:1", Payload: entity.Obj{}.Payload()}); got["stage"] != "reviewed" {
+	if _, got := post(t, ts, api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{}.Payload()}); got["stage"] != "reviewed" {
 		t.Fatalf("a refused write left a mark: %+v", got)
 	}
 }
@@ -130,7 +140,7 @@ func TestWriteEntityRejectsAnEmptyCondition(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	if code, _ := post(t, ts, api.PutEntity{
-		Ref:     "demo:pr:1",
+		At:      "demo.pr.1",
 		Payload: entity.Obj{"stage": "open"}.Payload(),
 		When:    []api.Condition{{}},
 	}); code != http.StatusBadRequest {
@@ -143,7 +153,7 @@ func TestRemoveEntityAndField(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	post(t, ts, api.PutEntity{Ref: "demo:pr:1", Payload: entity.Obj{"stage": "open", "tmp": "scratch"}.Payload()})
+	post(t, ts, api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "open", "tmp": "scratch"}.Payload()})
 
 	rm := func(q url.Values) int {
 		t.Helper()
@@ -156,7 +166,7 @@ func TestRemoveEntityAndField(t *testing.T) {
 		return resp.StatusCode
 	}
 
-	if code := rm(url.Values{"ref": {"demo:pr:1"}, "field": {"tmp"}}); code != http.StatusNoContent {
+	if code := rm(url.Values{"at": {"demo.pr.1.tmp"}}); code != http.StatusNoContent {
 		t.Fatalf("remove a field = %d, want 204", code)
 	}
 	e, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1"))
@@ -167,14 +177,14 @@ func TestRemoveEntityAndField(t *testing.T) {
 		t.Fatalf("field not removed: %+v", e.Payload)
 	}
 
-	if code := rm(url.Values{"ref": {"demo:pr:1"}}); code != http.StatusNoContent {
+	if code := rm(url.Values{"at": {"demo.pr.1"}}); code != http.StatusNoContent {
 		t.Fatalf("remove the entity = %d, want 204", code)
 	}
 	if _, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1")); ok {
 		t.Fatal("entity still present after removal")
 	}
 	// Removing what is not there is not an error.
-	if code := rm(url.Values{"ref": {"demo:pr:1"}}); code != http.StatusNoContent {
+	if code := rm(url.Values{"at": {"demo.pr.1"}}); code != http.StatusNoContent {
 		t.Fatalf("remove an absent entity = %d, want 204", code)
 	}
 }
@@ -192,13 +202,13 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 	defer ts.Close()
 
 	for _, ref := range []string{
-		"verse:trigger:rule:sneaky",
-		"verse:task:instance:run-1",
-		"verse:gate:question:run-1~d1",
-		"verse:motion:channel:abcd",
-		"verse:resolvers:security:mine",
+		"verse.trigger.rule.sneaky",
+		"verse.task.instance.run-1",
+		`verse.gate.question."run-1~d1"`,
+		"verse.motion.channel.abcd",
+		"verse.resolvers.security.mine",
 	} {
-		resp := postTony(t, ts.URL+"/entity", api.PutEntity{Ref: ref, Payload: entity.Obj{"x": 1}.Payload()})
+		resp := postTony(t, ts.URL+"/entity", api.PutEntity{At: ref, Payload: entity.Obj{"x": 1}.Payload()})
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
@@ -211,7 +221,7 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 
 	// And the two halves of a vote: the ballot lands, the motion does not.
 	if resp := postTony(t, ts.URL+"/entity", api.PutEntity{
-		Ref: "vote:abcd:scott", Payload: entity.Obj{"choice": "approve"}.Payload(),
+		At: "vote.abcd.scott", Payload: entity.Obj{"choice": "approve"}.Payload(),
 	}); resp.StatusCode >= http.StatusBadRequest {
 		t.Errorf("casting a ballot = %s, want it accepted", resp.Status)
 	} else {
@@ -219,9 +229,8 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 	}
 }
 
-// A WRITE NAMES A PLACE, at whatever depth. The ref spelling stops at three segments — `a:b:c:d`
-// re-reads as three plus an id holding a colon — so the wire carries a `path` beside it, and a
-// write four segments down is an ordinary write.
+// A WRITE NAMES A PLACE, at whatever depth — one kinded path, which is what let the wire drop
+// the three-segment `ref` it carried beside it. A write four segments down is an ordinary write.
 //
 // The answer is what stands at the address written, which is what makes a merge visible: a
 // second write mentioning one field leaves the others alone and shows them back.
@@ -230,14 +239,14 @@ func TestAWriteMayNameAPlaceAtAnyDepth(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	deep := []string{"verse-dev", "drift", "head", "abc"}
+	const deep = "verse-dev.drift.head.abc"
 	if code, got := post(t, ts, api.PutEntity{
-		Path:    deep,
+		At:      deep,
 		Payload: entity.Obj{"sha": "deadbeef"}.Payload(),
 	}); code != 200 || got["sha"] != "deadbeef" {
 		t.Fatalf("a four-segment write: %d %+v", code, got)
 	}
-	code, got := post(t, ts, api.PutEntity{Path: deep, Payload: entity.Obj{"reviewed": "done"}.Payload()})
+	code, got := post(t, ts, api.PutEntity{At: deep, Payload: entity.Obj{"reviewed": "done"}.Payload()})
 	if code != 200 || got["reviewed"] != "done" || got["sha"] != "deadbeef" {
 		t.Fatalf("the merge at depth: %d %+v", code, got)
 	}
@@ -250,7 +259,7 @@ func TestAWriteMayNameAPlaceAtAnyDepth(t *testing.T) {
 	// A path with an empty segment names no place, and is refused rather than written somewhere
 	// close to what was meant.
 	if code, _ := post(t, ts, api.PutEntity{
-		Path:    []string{"verse-dev", "", "head"},
+		At:      `verse-dev."".head`,
 		Payload: entity.Obj{"x": 1}.Payload(),
 	}); code != 400 {
 		t.Errorf("an empty segment was accepted (%d)", code)

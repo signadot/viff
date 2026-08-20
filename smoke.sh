@@ -176,7 +176,7 @@ v --ifmt json data demo pr 7 --put '{"stage":"open"}' >/dev/null || die "--ifmt 
 haskv "$(v data demo pr 7)" stage open || die "the --ifmt json write did not land"
 ok "--ifmt json writes (the input dialect is not the wire rendering)"
 # curl straight at the API: no Accept header at all gets the configured default...
-haskv "$(curl -s "http://$ADDR/entity?ref=demo:pr:1")" stage open || die "the wire did not answer"
+haskv "$(curl -s "http://$ADDR/entity?at=demo.pr.1")" stage open || die "the wire did not answer"
 # And the document route, raw: the id is a KEY under the kind, not a `ref:` field beside it.
 raw=$(curl -s "http://$ADDR/state?at=demo.pr")
 has "$raw" '"1":' || die "GET /state?at=demo.pr did not key by id: $raw"
@@ -184,11 +184,11 @@ has "$raw" 'stage' || die "GET /state?at=demo.pr did not carry the payload: $raw
 case "$raw" in *ref:*) die "GET /state still renders a ref: $raw" ;; esac
 # ...demanding JSON is 406, not tony wearing a JSON label...
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' \
-	"http://$ADDR/entity?ref=demo:pr:1")
+	"http://$ADDR/entity?at=demo.pr.1")
 [ "$code" = "406" ] || die "Accept: application/json returned $code, want 406"
 # ...and listing it as one preference among several is satisfiable, so it is satisfied.
 haskv "$(curl -s -H 'Accept: application/json, application/tony;q=0.5' \
-	"http://$ADDR/entity?ref=demo:pr:1")" stage open || die "a mixed Accept did not negotiate"
+	"http://$ADDR/entity?at=demo.pr.1")" stage open || die "a mixed Accept did not negotiate"
 ok "the wire negotiates (Accept honored, json refused with 406)"
 
 # ── scope: copy-on-write isolation (docd overlays) ───────────────────────────

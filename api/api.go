@@ -34,44 +34,38 @@ import (
 // wire. Creating, updating, patching a field and removing one are all this request with
 // different fields set.
 //
-// Ref names the entity; Field goes further, naming a place INSIDE its payload
-// ({"labels","urgent"}), so a write can be a whole entity or one field of one.
+// THE ADDRESS IS ONE KINDED PATH, at whatever depth, and it is the whole place written:
+// `demo.pr.1` is an entity, `demo.pr.1.labels.urgent` is a field of one, and nothing on the
+// wire says which — entity-hood is a LENS rather than a stored fact
+// (docs/working/entity-tree.md), so a write that had to declare where the entity ended was
+// answering a question the store does not ask. It carried three spellings to avoid it: a
+// three-segment `ref`, a `path` vector for anything deeper, and a `field` list for the place
+// inside. They are one path, so that is what this takes — the same grammar the READ takes
+// (`GET /state?at=`).
 //
-// THE WIRE STAYS SPLIT while the CLI takes one address. `verse data put
-// demo.pr.1.labels.urgent true` is one kinded path, and entity.ParsePath is the one parser
-// that reads it — the wire has no reason to re-parse what the CLI has already split, and the
-// structured form is what the store's writePath consumes. A list rather than a dotted string
-// for the reason the CLI needs quoting: an entity id may itself contain dots (a file path is a
-// perfectly good id), so a dotted field spelling could not be told apart from one.
+// A KINDED PATH RATHER THAN A VECTOR because the quoting is the grammar's own: an entity id
+// may hold a dot (a file path is a perfectly good id), and `demo.pr."a.b"` says so where a
+// bare dotted string could not. That was the argument for the vector, and kpath answers it
+// without a second spelling.
 //
 // The value MERGES at that place: fields it does not mention are left alone, and an absent
 // (null) Payload removes whatever stands there. A writer that means to drop a field says
 // so, by writing null at it.
 //
 // Payload is a tony node, not a map: an entity payload is ANY tony value (see
-// entity.Payload), so `verse data demo:count:1 --put 42` has to survive the wire as the
+// entity.Payload), so `verse data demo count 1 --put 42` has to survive the wire as the
 // number it is. A map here would have re-imposed on the wire exactly the object constraint
 // the store just dropped.
 //
 //tony:schemagen=verse-put-entity,notag
 type PutEntity struct {
-	// Ref is the address as a REF — three segments, which is what the colon spelling names and
-	// what every write before addresses became trees carried.
-	Ref string `tony:"field=ref"`
-	// Path is the address as a PATH, of whatever depth, and it is what a client sends when the
-	// address is deeper than a ref can spell (`verse-dev.drift.head.abc`). When it is set it is
-	// the address and Ref is ignored.
-	//
-	// Two fields rather than a deeper Ref because the ref spelling cannot carry it: `a:b:c:d`
-	// re-reads as `a:b:` plus an id holding a colon, so a fourth segment has no unambiguous
-	// colon form. The path does, and the colons move last (docs/working/entity-tree.md).
-	Path []string `tony:"field=path,omitzero"`
-	// Sub is the place INSIDE the entity when it is richer than a field path: an array access,
-	// and anything under it — `votes[0]`, `votes(scott).choice`. A kinded path fragment, and it
-	// replaces the field path when set. See entity.Write.Sub for why it rides beside the
-	// address rather than inside it.
+	// At is the place written, as a kinded path: `demo.pr.1`, `demo.pr.1.labels.urgent`,
+	// `demo.pr."a.b"`.
+	At string `tony:"field=at"`
+	// Sub is the place inside the address when it is richer than names: an array access, and
+	// anything under it — `votes[0]`, `votes(scott).choice`. A kinded path fragment below At.
+	// See entity.Write.Sub for why it rides beside the address rather than inside it.
 	Sub     string         `tony:"field=sub,omitzero"`
-	Field   []string       `tony:"field=field,omitzero"`
 	Payload entity.Payload `tony:"field=payload,omitzero"`
 	// When are preconditions, ALL of which must hold. They are checked WITH the write, in
 	// one step at the store, so there is no window between the check and the write for
@@ -81,13 +75,13 @@ type PutEntity struct {
 
 // Condition is one precondition on a write: what must be true, and where.
 //
-// Ref/Field name the place asked about; both empty means the write's own place, which is
-// what create ("nothing is there yet") and update ("something is") are about.
+// At names the place asked about, in the same grammar the write's own address is in; empty
+// means the write's own place, which is what create ("nothing is there yet") and update
+// ("something is") are about.
 //
 //tony:schemagen=verse-condition,notag
 type Condition struct {
-	Ref   string   `tony:"field=ref,omitzero"`
-	Field []string `tony:"field=field,omitzero"`
+	At string `tony:"field=at,omitzero"`
 	// Exists asks only whether anything stands there: false is a create, true is an update.
 	// It is a pointer so that "did not ask" is distinguishable from "asked for absence".
 	Exists *bool `tony:"field=exists,omitzero"`

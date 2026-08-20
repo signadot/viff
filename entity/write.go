@@ -51,15 +51,13 @@ func (p Path) String() string {
 // which is why it exists beside String — String picks the spelling a reader expects for the
 // depth, and this one picks the grammar the wire takes.
 func (p Path) KPath() string {
-	var out string
-	for _, s := range append(p.Ref.Segs(), p.Field...) {
-		if out != "" {
-			out += "."
-		}
-		out += seg(s)
-	}
-	return out
+	return JoinSegs(append(p.Ref.Segs(), p.Field...))
 }
+
+// KPath spells a REF as a kinded path — the grammar the wire speaks, at every depth, where
+// String still picks the spelling by depth for a reader. `Path.KPath` is this plus the field
+// path, and it is the same rendering.
+func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 
 // A STEP IS ONE PLACE, and which one is decided by its first character — three clauses, no
 // splitting, no delimiter scan:

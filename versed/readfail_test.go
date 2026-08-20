@@ -41,7 +41,7 @@ func TestEntityReadFailureIsNot404(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	q := url.Values{"ref": {"demo:pr:1"}}
+	q := url.Values{"at": {"demo.pr.1"}}
 	resp, err := http.Get(ts.URL + "/entity?" + q.Encode())
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -67,7 +67,7 @@ func TestAbsentEntityIsStill404(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	q := url.Values{"ref": {"demo:pr:does-not-exist"}}
+	q := url.Values{"at": {"demo.pr.does-not-exist"}}
 	resp, err := http.Get(ts.URL + "/entity?" + q.Encode())
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -122,14 +122,14 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, ref := range []string{"demo:pr:2", "demo:issue:1", "verse:motion:channel:x"} {
-		resp, err := http.Get(ts.URL + "/entity?" + url.Values{"ref": {ref}}.Encode())
+	for _, ref := range []string{"demo.pr.2", "demo.issue.1", "verse.motion.channel.x"} {
+		resp, err := http.Get(ts.URL + "/entity?" + url.Values{"at": {ref}}.Encode())
 		if err != nil {
 			t.Fatalf("get %s: %v", ref, err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("GET /entity?ref=%s = %d, want 404 for an entity that is simply absent", ref, resp.StatusCode)
+			t.Errorf("GET /entity?at=%s = %d, want 404 for an entity that is simply absent", ref, resp.StatusCode)
 		}
 	}
 }

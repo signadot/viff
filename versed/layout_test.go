@@ -63,14 +63,14 @@ func TestAStoredPayloadRendersInOneShape(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	body := `{"ref":"demo:pr:1","payload":{"stage":"open","tags":["a","b"]}}`
+	body := `{"at":"demo.pr.1","payload":{"stage":"open","tags":["a","b"]}}`
 	resp, err := http.Post(ts.URL+"/entity", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("put entity: %v", err)
 	}
 	resp.Body.Close()
 
-	got, err := http.Get(ts.URL + "/entity?ref=demo:pr:1")
+	got, err := http.Get(ts.URL + "/entity?at=demo.pr.1")
 	if err != nil {
 		t.Fatalf("get entity: %v", err)
 	}

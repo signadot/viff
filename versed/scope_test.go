@@ -20,7 +20,7 @@ func TestScopeOverHTTP(t *testing.T) {
 
 	put := func(scope, ref, stage string) {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"ref": ref, "payload": map[string]any{"stage": stage}})
+		body, _ := json.Marshal(map[string]any{"at": ref, "payload": map[string]any{"stage": stage}})
 		u := ts.URL + "/entity"
 		if scope != "" {
 			u += "?scope=" + scope
@@ -33,7 +33,7 @@ func TestScopeOverHTTP(t *testing.T) {
 	}
 	stageOf := func(scope, ref string) (string, bool) {
 		t.Helper()
-		q := url.Values{"ref": {ref}}
+		q := url.Values{"at": {ref}}
 		if scope != "" {
 			q.Set("scope", scope)
 		}
@@ -53,17 +53,17 @@ func TestScopeOverHTTP(t *testing.T) {
 		return s, true
 	}
 
-	put("", "demo:pr:1", "open") // baseline
+	put("", "demo.pr.1", "open") // baseline
 
 	// Scope reads baseline through, then its write is isolated.
-	if s, _ := stageOf("me", "demo:pr:1"); s != "open" {
+	if s, _ := stageOf("me", "demo.pr.1"); s != "open" {
 		t.Fatalf("scope did not read baseline through: %q", s)
 	}
-	put("me", "demo:pr:1", "scoped")
-	if s, _ := stageOf("me", "demo:pr:1"); s != "scoped" {
+	put("me", "demo.pr.1", "scoped")
+	if s, _ := stageOf("me", "demo.pr.1"); s != "scoped" {
 		t.Fatalf("scope write not visible in scope: %q", s)
 	}
-	if s, _ := stageOf("", "demo:pr:1"); s != "open" {
+	if s, _ := stageOf("", "demo.pr.1"); s != "open" {
 		t.Fatalf("scope write leaked into baseline: %q", s)
 	}
 
@@ -76,7 +76,7 @@ func TestScopeOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("scope delete status = %d, want 204", resp.StatusCode)
 	}
-	if s, _ := stageOf("me", "demo:pr:1"); s != "open" {
+	if s, _ := stageOf("me", "demo.pr.1"); s != "open" {
 		t.Fatalf("after delete, overlay survived: %q", s)
 	}
 }

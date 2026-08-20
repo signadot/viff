@@ -168,7 +168,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 	}
 	// Baseline /entity (no ?scope) → versed's baseline store → the content mount.
 	u := "http://" + g.Addr + "/entity?" + url.Values{
-		"ref": {source.FederationSystem + ":" + contentKind + ":" + probe},
+		"at": {entity.JoinSegs([]string{source.FederationSystem, contentKind, probe})},
 	}.Encode()
 	deadline := time.After(30 * time.Second)
 	for {
@@ -412,7 +412,7 @@ func removeLocalEntities(cc *cli.Context) error {
 		return fmt.Errorf("disconnect: %w", err)
 	}
 	for _, e := range ents {
-		if r, err := httpDelete("/entity", url.Values{"ref": {e.Ref.String()}}); err == nil {
+		if r, err := httpDelete("/entity", url.Values{"at": {e.Ref.KPath()}}); err == nil {
 			r.Body.Close()
 		}
 	}

@@ -3,10 +3,9 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  at: .[string]
   exists: .[nullable(bool)]
-  field: .[array(string)]
   pattern: .[tony-base:ir]
-  ref: .[string]
 signature:
   name: verse-condition
 ---
@@ -75,10 +74,8 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  field: .[array(string)]
-  path: .[array(string)]
+  at: .[string]
   payload: .[tony-base:ir]
-  ref: .[string]
   sub: .[string]
   when: .[array(verse-condition)]
 signature:

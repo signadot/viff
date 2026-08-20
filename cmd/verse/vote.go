@@ -63,9 +63,8 @@ func (cfg *voteConfig) run(cc *cli.Context, args []string) error {
 	if err := checkChoice(motion, choice); err != nil {
 		return err
 	}
-	ref := "vote:" + motion + ":" + cfg.As
 	resp, err := httpPost("/entity", api.PutEntity{
-		Ref:     ref,
+		At:      entity.JoinSegs([]string{"vote", motion, cfg.As}),
 		Payload: entity.Obj{"choice": choice, "by": cfg.As}.Payload(),
 	})
 	if err != nil {
@@ -183,7 +182,7 @@ func readMotion(id string) (map[string]any, bool, error) {
 	if id == "" {
 		return nil, false, nil
 	}
-	resp, err := httpGet("/entity", url.Values{"ref": {"verse:motion:channel:" + id}})
+	resp, err := httpGet("/entity", url.Values{"at": {entity.VerseRef("motion", "channel", id).KPath()}})
 	if err != nil {
 		return nil, false, err
 	}
@@ -355,7 +354,13 @@ func docketCmd() *cli.Command {
 // between items. The alternative to asking at all is the engine denormalising a summary onto
 // every motion it writes, which is a schema decision that should be made by somebody who wants it.
 func subjectSays(ref string) string {
-	resp, err := httpGet("/entity", url.Values{"ref": {ref}})
+	// The subject is a rendered address on the motion's record, so it is read back the way
+	// every recovered address is (ParseAddr) and sent as the kinded path the wire takes.
+	subj, err := entity.ParseAddr(ref)
+	if err != nil {
+		return ""
+	}
+	resp, err := httpGet("/entity", url.Values{"at": {subj.KPath()}})
 	if err != nil {
 		return ""
 	}

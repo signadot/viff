@@ -1471,7 +1471,7 @@ func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
-	ref, err := entity.ParseRef(r.URL.Query().Get("ref"))
+	ref, err := addressAt(r.URL.Query().Get("at"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1495,9 +1495,9 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, e)
 }
 
-// deleteEntity removes whatever stands at a ref — or, with ?field=a&field=b, at one place
-// inside it. Removing what is not there is not an error: the request says what should stand
-// there afterwards, and nothing already does.
+// deleteEntity removes whatever stands at `?at=` — an entity, or a place inside one, the
+// address saying which by how deep it goes. Removing what is not there is not an error: the
+// request says what should stand there afterwards, and nothing already does.
 // reservedWrite refuses a client write into verse's own half of the tree.
 //
 // The entity routes are the GENERIC write, and before the boundary had a name anyone who could
@@ -1523,7 +1523,7 @@ func reservedWrite(ref entity.Ref) error {
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	ref, err := entity.ParseRef(q.Get("ref"))
+	ref, err := addressAt(q.Get("at"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1533,7 +1533,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
-		At: ref.At(q["field"]...), Sub: q.Get("sub"),
+		At: ref.At(), Sub: q.Get("sub"),
 	}); err != nil {
 		http.Error(w, "entity remove failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -1554,7 +1554,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ref, err := writeAddress(body)
+	ref, err := addressAt(body.At)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1570,7 +1570,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	store := s.scopedStore(r)
 	committed, _, err := store.Write(entity.Write{
-		At: ref.At(body.Field...), Sub: body.Sub, Value: body.Payload, When: when,
+		At: ref.At(), Sub: body.Sub, Value: body.Payload, When: when,
 	})
 	if err != nil {
 		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
@@ -1592,18 +1592,24 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, e)
 }
 
-// writeAddress reads the address a write names, in either spelling: a `path` of whatever depth,
-// or the three-segment `ref` every write carried before addresses became trees.
-func writeAddress(body api.PutEntity) (entity.Ref, error) {
-	if len(body.Path) > 0 {
-		ref, ok := entity.RefOfAny(body.Path)
-		if !ok {
-			return entity.Ref{}, fmt.Errorf("path %v does not name a place: a segment is a name, "+
-				"and none of them may be empty", body.Path)
-		}
-		return ref, nil
+// addressAt reads an address off the wire: one kinded path, at whatever depth, as the segments
+// it stands at.
+//
+// PathSegs is the reader rather than a dot split, because the quoting is what makes the path a
+// spelling at all — an id may hold a dot (`demo.pr."a.b"`), and splitting would make that entity
+// two. It refuses a WILDCARD, which is right for every caller here: this is where something is
+// read or written, and a `*` names no one place.
+func addressAt(at string) (entity.Ref, error) {
+	segs, err := entity.PathSegs(at)
+	if err != nil {
+		return entity.Ref{}, fmt.Errorf("address %q: %w", at, err)
 	}
-	return entity.ParseRef(body.Ref)
+	ref, ok := entity.RefOfAny(segs)
+	if !ok {
+		return entity.Ref{}, fmt.Errorf("address %q does not name a place: a segment is a name, "+
+			"and none of them may be empty", at)
+	}
+	return ref, nil
 }
 
 // conditions maps the wire's preconditions onto the store's. A condition that asks nothing
@@ -1613,12 +1619,12 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 	out := make([]entity.Require, 0, len(cs))
 	for _, c := range cs {
 		var at entity.Path
-		if c.Ref != "" {
-			ref, err := entity.ParseRef(c.Ref)
+		if c.At != "" {
+			ref, err := addressAt(c.At)
 			if err != nil {
-				return nil, fmt.Errorf("condition ref %q: %w", c.Ref, err)
+				return nil, fmt.Errorf("condition: %w", err)
 			}
-			at = ref.At(c.Field...)
+			at = ref.At()
 		}
 		switch {
 		case c.Pattern != nil:

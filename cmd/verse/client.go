@@ -1030,12 +1030,8 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	// at a path, and where the entity "ends" is a question this command does not answer. The
 	// answer comes back from the address written, so a put still shows the merge wherever the
 	// address IS an entity, which is the ordinary case.
-	//
-	// `ref` rides along for a server that predates `path`, carrying the first three segments as
-	// it always did.
 	resp, err := httpPost("/entity", api.PutEntity{
-		Ref:     at.Ref.String(),
-		Path:    append(at.Ref.Segs(), at.Field...),
+		At:      at.KPath(),
 		Sub:     sub,
 		Payload: payload,
 		When:    when,
@@ -1056,12 +1052,9 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 	if err != nil {
 		return fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
 	}
-	q := url.Values{"ref": {at.Ref.String()}}
+	q := url.Values{"at": {at.KPath()}}
 	if sub != "" {
 		q.Set("sub", sub)
-	}
-	for _, f := range at.Field {
-		q.Add("field", f)
 	}
 	resp, err := httpDelete("/entity", q)
 	if err != nil {
