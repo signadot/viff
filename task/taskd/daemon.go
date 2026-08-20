@@ -52,11 +52,27 @@ type Daemon struct {
 	// no store and makes no decision about where anything goes — it repeats what the launch
 	// said, and the publisher decides what that means.
 	onQuestion func(taskID, scope string, p task.Pending)
+	// onDrop is the counterpart, and is not optional in the way it looks. A question is
+	// WITHDRAWN when its last waiter stops waiting — an intervention that redirects the run,
+	// a pause, a deadline — and without a publisher for that half the record posted by
+	// onQuestion above stays `pending` on the docket, offering a decision nothing is left to
+	// receive. It was announced and never retracted, so `verse gate` listed a withdrawn
+	// question beside a live one with nothing to tell them apart, and answering it was a 404
+	// (git-issue zdaqh9vkh12ksxneg9n0).
+	//
+	// It carries the scope for the reason onQuestion does: the retraction has to reach the
+	// store the post went to, or a scope's question is published in one place and retired in
+	// another.
+	onDrop func(taskID, scope, questionID, why string)
 }
 
 // OnQuestion registers the publisher. Optional: taskd runs standalone in tests and under
 // `verse task run` with nothing behind it.
 func (d *Daemon) OnQuestion(f func(taskID, scope string, p task.Pending)) { d.onQuestion = f }
+
+// OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
+// caller that registers one without the other publishes questions it never retires.
+func (d *Daemon) OnDrop(f func(taskID, scope, questionID, why string)) { d.onDrop = f }
 
 type hosted struct {
 	task   *task.Task
@@ -192,6 +208,14 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 		})
+	})
+	// And the counterpart, on the SAME registry. This is the one that was missing: the
+	// registry's own drop wiring works and is tested, and a hosted task's questions simply had
+	// nobody registered to hear it.
+	reg.OnDrop(func(q task.GateQuestion, why string) {
+		if d.onDrop != nil {
+			d.onDrop(l.ID, l.Scope, q.ID, why)
+		}
 	})
 
 	// Re-checked under the lock: two concurrent spawns of one id race the check above, and

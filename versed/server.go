@@ -269,6 +269,12 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	reg.OnDrop(func(q task.GateQuestion, why string) {
 		mirror.DropQuestion(s.storeForScope(q.Scope), q.ID, why)
 	})
+	// A HOSTED task's questions are retired here. The registry above is the ENGINE's — a
+	// firing's own gates — and a task spawned into taskd gets a registry of its own, which is
+	// why this is a second registration rather than the same one reaching both.
+	taskd.OnDrop(func(_, scope, questionID, why string) {
+		mirror.DropQuestion(s.storeForScope(scope), questionID, why)
+	})
 	taskd.OnQuestion(func(taskID, scope string, p task.Pending) {
 		// WHERE this question goes is the task's to say, not this closure's. taskd is one
 		// runtime under baseline and every scoped engine, so a publisher registered once
