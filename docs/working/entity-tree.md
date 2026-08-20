@@ -1,6 +1,8 @@
 # An address is as deep as the tree it lives in
 
-Status: done, with one residual named in §8. The charter became a tree (`verse charter`,
+Status: done. One thing is deferred rather than residual, and §8 says which: a selection of N
+segments identifies entities at depth N, and asking across depths — recursive descent — is
+refused by name until the rest has settled. The charter became a tree (`verse charter`,
 packages at an address) and the entity model did not, which was half a change: a charter
 installed at `verse-dev.drift` could write only `verse-dev.drift.<id>` — one level of ids and
 nothing below — so a drive keeping two kinds of thing (a tip fact and a ledger of findings)
@@ -145,8 +147,22 @@ Each lands with the suite green.
    derived entity is ADDRESSED by its provenance — `<target>.<rule>.<subject…>` — rather than
    named after a flattening of it.
 
-   What that last one cost, and it is the residual worth knowing: **a rule reading a derivation
-   says how deep one is**, and how deep follows from the depth of the subjects the PRODUCING
-   rule selects — `{path: [signadot, feature, "*", "*", "*", "*"]}`, and the same in a
-   `!list-paths` `at:`. A path element meaning "at or below" would retire it, and is not in the
-   grammar.
+   What that last one means, and it is worth stating as a rule rather than as a cost: **a
+   selection of N segments identifies entities at depth N.** Exactly N — the identifying kpath
+   of a subject IS the path its selection matches, with nothing appended. So a rule reading a
+   derivation says how deep one is, and how deep follows from the depth of the subjects the
+   PRODUCING rule selects — `{path: [signadot, feature, "*", "*", "*", "*"]}`, and the same in a
+   `!list-paths` `at:`.
+
+   N, not N+1, and the case that settles it is a SINGLETON: the document has `a.b.c` holding
+   `42`, and `subject: [a, b, c]` selects it. There is nothing below `a.b.c` to be identified
+   by, so a convention adding a level would name no entity at all. A selection may of course
+   match one node or many, and each of `a`, `b`, `c` may be a name, an operator or a `*` — none
+   of which changes the depth, because the depth is the LENGTH of the question and the operators
+   act within a segment.
+
+   The one question this cannot ask is a set spanning depths — "everything under here, however
+   deep", which is what a reader of derivations from two rules of different subject depth would
+   want. That is recursive descent, `..` in kpath's own grammar, and it is **deliberately out of
+   scope**: both address readers refuse it by name (`entity/descent_test.go`), because designing
+   for it is better done once everything else is settled than folded in beside it.

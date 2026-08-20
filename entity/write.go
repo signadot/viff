@@ -570,9 +570,14 @@ func shellSpecial(r rune) bool {
 // parses as the two fields `demo` and `1`, so a template that expanded to nothing would select
 // something narrower instead of being refused.
 func ExprSegs(s string) ([]string, error) {
-	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
-		return nil, fmt.Errorf("address %q has an empty segment: a segment is a name, and `*` "+
-			"is how a position is left open", s)
+	// A LEADING dot is the one thing kpath does not object to and this must: `.demo` parses as
+	// `demo`, so an address with a stray dot in front would silently name a different place.
+	// Everything else about dots belongs to the parser and reports better than a guard here can
+	// — a trailing `foo.` is "expected field at end of string", and a leading or trailing `..`
+	// is a recursive descent, refused below by its own name rather than as a typo.
+	if strings.HasPrefix(s, ".") && !strings.HasPrefix(s, "..") {
+		return nil, fmt.Errorf("address %q begins with an empty segment: a segment is a name, "+
+			"and `*` is how a position is left open", s)
 	}
 	kp, err := kpath.Parse(s)
 	if err != nil {
@@ -616,6 +621,11 @@ func ExprSegs(s string) ([]string, error) {
 func PathSegs(at string) ([]string, error) {
 	if at == "" {
 		return nil, nil
+	}
+	// The same leading-dot guard ExprSegs carries, for the same reason and so that the two
+	// readers of one grammar agree on what an address is: `.demo` parses as `demo`.
+	if strings.HasPrefix(at, ".") && !strings.HasPrefix(at, "..") {
+		return nil, fmt.Errorf("path %q begins with an empty segment: a segment is a name", at)
 	}
 	kp, err := kpath.Parse(at)
 	if err != nil {
