@@ -183,6 +183,26 @@ func TriggerOf(chain string) string {
 // handle (control still goes through the task API).
 //
 // The provenance a task carries beyond its own state is Meta.
+// RecordFields is every field a task record carries — the flat vocabulary a completion hook's
+// `$name` resolves against, since a hook is handed the task's own payload.
+//
+// It is a LIST BESIDE THE WRITES rather than a derivation of them, and the failure mode of that
+// is what decides how it may be used: a field added below and not added here is missing from
+// this list, so nothing may be REFUSED on the strength of it. What it is for is advice — a hook
+// naming something no task record ever holds is almost always a field of the SUBJECT, written in
+// the one place the subject's fields are not flat (git-issue 91jktrr3h12ksa8fgsn0), and saying so
+// at install costs nothing if this list is a name short.
+//
+// `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
+var RecordFields = map[string]bool{
+	"chain": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
+	"ended": true, "err": true, "flow": true, "grant": true, "hook": true,
+	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
+	"paused": true, "pending": true, "prompt": true, "resolver": true, "result": true,
+	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
+	"status": true, "tools": true, "trigger": true, "vector": true, "vectorBy": true,
+}
+
 func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	ch, unsub := h.Subscribe()
 	// A brokered task starts in the pre-running `unclaimed` state — it is hosted on

@@ -1604,7 +1604,12 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 // `hook` is one reserved name on an entity the engine and the mirror already co-own, the way
 // `verse` is one reserved root on a subject. status is the mirror's field and is left alone.
 func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
-	e.tracef("hook %s on %s: %v", chain, ref, err)
+	// AND SAID OUT LOUD. It was traced, which is off by default — so the paragraph above,
+	// about this being the failure an operator most needs to see, was true of the RECORD and
+	// not of the log. An operator who does not already suspect a hook has nothing to go on:
+	// the subject simply did not advance (git-issue 91jktrr3h12ksa8fgsn0).
+	e.logger.Warn("completion hook failed: the firing wrote nothing",
+		"chain", chain, "task", ref.String(), "err", err.Error())
 	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		p := clonePayload(cur)
 		p["hook"] = entity.Obj{"chain": chain, "status": "failed", "err": err.Error()}
