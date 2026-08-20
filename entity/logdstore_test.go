@@ -84,7 +84,18 @@ func startLogd(t *testing.T) string {
 	return srv.TCPAddr()
 }
 
-func openStore(t *testing.T) *LogdStore { return openStoreAt(t, startLogd(t)) }
+// openStore opens a store the way a person runs one: THROUGH DOCD. `verse up` brings up
+// logd and docd and points the store at docd's client face, so a store spoken straight to
+// logd is a configuration nobody deploys — and the two do not accept the same writes. docd
+// decomposes a patch by mount, statically, over the path's FIELD names, so it refuses a
+// path holding an array index that logd takes (tony-format: docd non-field segment). These
+// tests said an array element could be written; against every real verse it could not.
+//
+// A test that needs the logd underneath — one restarting it, or reading its commits — takes
+// startLogd directly.
+func openStore(t *testing.T) *LogdStore {
+	return openStoreAt(t, startDocd(t, startLogd(t)).ClientTCPAddr())
+}
 
 // openStoreAt opens a store on an already-running logd — for a test that needs two
 // clients (or two opened at different commits) over one substrate.
