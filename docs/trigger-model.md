@@ -569,6 +569,25 @@ In a JSON-shaped charter, write the operator as a single-key object — `{"id": 
 "hotfix-*"}}` — the same spelling a formula uses for its tags. The two are one grammar; only
 tony can write the tag directly.
 
+**That second spelling reaches the DIMENSIONS only.** Inside `value` an operator is written as a
+tag and nothing else:
+
+```tony
+value: !not {reviewed: null}      # the absence latch
+value: {not: {reviewed: null}}    # a payload EQUAL to that object — which is nothing, ever
+```
+
+Both lines are legal, and the second means what it says: `value` is a predicate over payload
+DATA, where a field genuinely named `not` holding one key is an ordinary thing to match. That
+ambiguity is exactly what a dimension does not have — `system`, `kind` and `id` take a string or
+an operator and nothing else — which is why the sugar is unambiguous there and impossible here.
+A charter writing the second earns a note at install; nothing rewrites it, because rewriting it
+would take away the only way to match the data.
+
+**So a JSON-shaped charter cannot spell an operator under `value` at all.** JSON has no tag
+syntax, and this is the one position the single-key object does not stand in for one. A
+condition that needs an operator over the payload is written in tony.
+
 `system` and `kind` take no operator, and that is structural rather than unfinished: they
 name the subtree verse watches and the set it lists — they become a docd watch path
 (`Formula.Subtrees`) and the store's `List` prefilter — and a watch path cannot be a
