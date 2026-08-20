@@ -397,10 +397,10 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 	defer ts.Close()
 
 	for _, c := range []struct{ path, body, wantVerb string }{
-		{"/flow/pause", `{subject: "demo:pr:*"}`, "pause"},
-		{"/flow/resume", `{subject: "demo:pr:*"}`, "resume"},
-		{"/flow/cancel", `{subject: "demo:pr:*"}`, "cancel"},
-		{"/flow/say", `{subject: "demo:pr:*", text: "hi"}`, "say"},
+		{"/flow/pause", `{subject: "demo.pr.*"}`, "pause"},
+		{"/flow/resume", `{subject: "demo.pr.*"}`, "resume"},
+		{"/flow/cancel", `{subject: "demo.pr.*"}`, "cancel"},
+		{"/flow/say", `{subject: "demo.pr.*", text: "hi"}`, "say"},
 	} {
 		resp, err := http.Post(ts.URL+c.path, "application/tony", strings.NewReader(c.body))
 		if err != nil {
@@ -414,7 +414,7 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 		if got.Verb != c.wantVerb {
 			t.Errorf("%s verb = %q, want %q", c.path, got.Verb, c.wantVerb)
 		}
-		if got.Subject != "demo:pr:*" {
+		if got.Subject != "demo.pr.*" {
 			t.Errorf("%s subject = %q, want the address it was asked about", c.path, got.Subject)
 		}
 	}

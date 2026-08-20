@@ -81,7 +81,7 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 	case <-t.Context().Done():
 		t.Fatal("hook never spawned")
 	}
-	if want := "s=done r=SHIPIT f=demo:pr:1"; hookPrompt != want {
+	if want := `s=done r=SHIPIT f=demo.pr."1"`; hookPrompt != want {
 		t.Errorf("hook task = %q, want %q", hookPrompt, want)
 	}
 }

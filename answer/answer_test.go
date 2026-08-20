@@ -193,7 +193,7 @@ func TestProseIsNoDocument(t *testing.T) {
 }
 
 // A document that was written and is broken must come back with the parser's complaint. This
-// is the observed failure (friction:entry:f024): a classifier answered `class: design drift`
+// is the observed failure (friction.entry.f024): a classifier answered `class: design drift`
 // — two bare words, which makes the whole document unparseable — and was told only that its
 // message "carries no answer document". Both repair attempts went on the container while the
 // line that actually broke went unmentioned, which is the budget misspend the design set out

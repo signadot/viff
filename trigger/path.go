@@ -387,20 +387,18 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 // splitAddress splits one address into the entity it starts from and the kpath it continues
 // into the payload with, empty when it names the entity whole.
 //
-// WHICH SPELLING IT IS comes first, and it is decided by WHERE THE COLONS ARE — the rule
-// entity.DottedAddr states, asked here rather than restated. `Ref.String` only ever puts a colon
-// in the last segment, so a dotted string whose FIRST segment holds one is `system:kind:<id with
-// dots>` and nothing else; anything else with a dot in it is a path.
-//
-// ParseRef used to be tried first, which is the same answer for every address whose segments are
-// plain and the wrong one as soon as a segment is quoted:
+// THERE IS ONE SPELLING, so there is nothing to decide first. This used to try `ParseRef` and
+// fall back, which asked "is this the colon form or the path form" — the same question
+// entity.DottedAddr answered, stated twice because the two needed different splits. Both are
+// gone with the colon form: kpath parses the string, and the quoting says where each segment
+// ends, including in the shape every derived entity has:
 //
 //	verse-dev.drift.head."head-moved@git:head:verse@aaaa1111".result.report
 //
-// SplitN on `:` found three parts inside the quotes and ParseRef accepted them, so the entity was
+// SplitN on `:` found three parts INSIDE those quotes, so the entity came out as
 // `verse-dev.drift.head."head-moved@git` : `head` : `verse@aaaa1111".result.report` and the read
-// answered "nothing stands there" — for an address of exactly the shape every derived entity has
-// (git-issue p5qcmpgch12ksd4wgnn0). The colon rule reads it as the six segments it is.
+// answered "nothing stands there" (git-issue p5qcmpgch12ksd4wgnn0). Read as a kpath it is the six
+// segments it is, and no rule about colons is involved.
 //
 // THE ENTITY IS THE FIRST THREE SEGMENTS and the rest is the payload path — rendered back through
 // KPath.String, so `(scott)` and `[0]` survive into the read that will follow them.
@@ -415,11 +413,6 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 // against the same fixture. What the count cannot survive is a WRONG SPLIT of the segments
 // themselves, which is what the rule above is for.
 func splitAddress(s string) (entity.Ref, string, error) {
-	if _, dotted := entity.DottedAddr(s); !dotted {
-		if ref, err := entity.ParseRef(s); err == nil {
-			return ref, "", nil
-		}
-	}
 	kp, err := kpath.Parse(s)
 	if err != nil {
 		return entity.Ref{}, "", err

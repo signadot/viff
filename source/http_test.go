@@ -181,7 +181,7 @@ func TestProbe(t *testing.T) {
 	}
 	// The ownership claim an install proves disjointness with: two ref globs per repo, since
 	// refs and commits are <repo>/<name> while a head is the bare <repo>.
-	want := []source.Own{{Ref: "git:*:A/*"}, {Ref: "git:head:A"}}
+	want := []source.Own{{Ref: "git.*.A/*"}, {Ref: "git.head.A"}}
 	// EqualFunc rather than Equal: a claim carries a path, so it holds a slice and is not
 	// comparable. Its rendering is the whole of it.
 	if !slices.EqualFunc(d.Owns, want, func(a, b source.Own) bool { return a.String() == b.String() }) {
@@ -268,7 +268,7 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 	has("a cover", covers.Values[0], "system", "kind", "value")
 	has("an entity", entities.Values[0], "ref", "payload")
 
-	// A ref is one string, `system:kind:id`, everywhere it is written — a charter, a CLI
+	// A ref is one string, `system.kind.id`, everywhere it is written — a charter, a CLI
 	// argument, and here. Structurally spelled it would be the one identifier every surface
 	// shares having two spellings depending on who wrote it.
 	if r := entity.Get(entities.Values[0], "ref"); entity.Str(entities.Values[0], "ref") == "" {

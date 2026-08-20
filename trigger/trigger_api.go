@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"fmt"
-	"hash/fnv"
 	"sort"
 	"strings"
 
@@ -291,55 +290,31 @@ func (e *Engine) Triggers() []Trigger {
 	return out
 }
 
-// ChainSep bounds a task id's CHAIN from its SUBJECT: `review.onDone@demo:pr:1` is
-// "the onDone hook of trigger review, about demo:pr:1". It is '@' because the chain is a
-// kpath (dots and, once actions hold lists, brackets) and the ref is an address (colons),
-// so the boundary needs a character neither grammar spends — and because '@' survives a
-// URL path segment and a shell word intact.
+// ChainSep bounds a task id's CHAIN from its SUBJECT: `review.onDone@demo.pr.1` is
+// "the onDone hook of trigger review, about demo.pr.1". It is '@' because the chain is a
+// kpath and so is the address, so the boundary needs a character neither grammar spends —
+// and because '@' survives a URL path segment and a shell word intact.
 //
 // A chain cannot contain '@' (validTriggerName rejects it, and every descent appends a
-// Go field name), so the FIRST '@' is always the boundary, whatever the ref carries.
+// Go field name), so the FIRST '@' is always the boundary, whatever the address carries.
 const ChainSep = "@"
-
-// hashSep marks the disambiguating hash that a lossy safeSeg rewrite forces. Its own
-// character, so nothing in the id has to guess whether a '-' is structure or part of a
-// name — the defect the previous `name + "-" + ref` form had, since trigger names
-// routinely carry '-' (ship-reviewed).
-const hashSep = "+"
 
 // spawnID makes a legible, collision-resistant, URL- and shell-safe task id from a
 // CHAIN (the kpath of the spawning action inside its trigger — "review", "review.onDone",
-// "review.onDone.onFailed") and the full ref. It routes through /tasks/{id} (one path
-// segment), so it must not contain path-breaking characters, and it gets pasted back onto
-// a command line, so it must not contain shell globs either.
+// "review.onDone.onFailed") and the whole address the firing is about. It routes through
+// /tasks/{id} (one path segment), so it must not contain path-breaking characters, and it gets
+// pasted back onto a command line, so it must not contain shell globs either.
 //
-// It keys off the whole ref (not just the id, so demo:pr:1 and other:pr:1 differ), and
-// when safeSeg had to rewrite a character — a lossy step where a/b and a_b would otherwise
-// collapse — it appends a short hash of the raw ref to keep distinct refs distinct.
+// It keys off the whole address (not just the last segment, so demo.pr.1 and other.pr.1 differ).
 func spawnID(chain string, ref entity.Ref) string {
-	s := ref.String()
-	safe := safeSeg(s)
-	if safe == s {
-		return chain + ChainSep + safe // no rewrite → no collision possible
-	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(s))
-	return fmt.Sprintf("%s%s%s%s%08x", chain, ChainSep, safe, hashSep, h.Sum32())
+	return chain + ChainSep + entity.SegToken(ref.Segs())
 }
 
 // namedID is the id an author-NAMED derive writes at: the key alone, with none of the
 // (rule, subject) composition eachID puts in front of it, so the address is one a charter can
 // spell. The rewrite and its hash are eachID's, for eachID's reason — two distinct keys that
 // flatten alike would otherwise share an entity, and a fan-out that reads short is invisible.
-func namedID(key string) string {
-	safe := safeSeg(key)
-	if safe == key {
-		return safe
-	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(key))
-	return fmt.Sprintf("%s%s%08x", safe, hashSep, h.Sum32())
-}
+func namedID(key string) string { return entity.SegToken([]string{key}) }
 
 // CheckFields reports a field name a rule does not have, before the rule is decoded.
 //
@@ -435,7 +410,7 @@ func checkFields(node *ir.Node, what string, known map[string]bool, descend func
 // It is spawnID's rule, deliberately: a derived entity and a spawned task are the same object
 // in different clothes — a thing brought into being by one firing, about exactly one subject —
 // and giving them two id schemes would be two answers to one question. They cannot collide: a
-// task id addresses a task, a derived id addresses an entity at <system>:<kind>.
+// task id addresses a task, a derived id addresses an entity at <system>.<kind>.
 func deriveID(chain string, ref entity.Ref) string { return spawnID(chain, ref) }
 
 // chainOf splits a spawn id back into its chain and the (safeSeg'd) subject it is about.
@@ -469,10 +444,10 @@ func validTriggerName(name string) error {
 			"addresses the action inside a trigger (review.onDone), so the root cannot "+
 			"contain '.', brackets, or anything needing quotes", name)
 	}
-	if i := strings.IndexAny(name, ChainSep+hashSep+"*?[]{}()\\ \t"); i >= 0 {
+	if i := strings.IndexAny(name, ChainSep+entity.HashSep+"*?[]{}()\\ \t"); i >= 0 {
 		return fmt.Errorf("trigger name %q contains %q, which a task id built on it "+
 			"would spend as punctuation — %q bounds the subject, %q marks a hash, and the "+
-			"rest are shell globs that make an id unpasteable", name, name[i], ChainSep, hashSep)
+			"rest are shell globs that make an id unpasteable", name, name[i], ChainSep, entity.HashSep)
 	}
 	return nil
 }
@@ -491,34 +466,22 @@ func validTriggerName(name string) error {
 // It HASHES the subject list rather than spelling it: the id crosses a URL path and a command
 // line (see spawnID and safeSeg), and a broadcast's subject list is unbounded. Subjects arrive
 // sorted (Match.Select), so the same firing always hashes the same.
+//
+// Over SEGMENTS rather than renderings, for segToken's reason: a rendering is a spelling, and an
+// id that tracks the spelling changes when the spelling does. The subjects are flattened into
+// one vector with a NUL between each segment AND between each subject, so nothing about where
+// one address ends is lost to the hash.
 func gateID(trigger, gate string, subjects []entity.Ref) string {
-	h := fnv.New32a()
+	segs := make([]string, 0, len(subjects)*entity.Depth)
 	for _, s := range subjects {
-		_, _ = h.Write([]byte(s.String()))
-		_, _ = h.Write([]byte{0}) // a separator no ref can hold, so [ab,c] and [a,bc] differ
+		segs = append(segs, s.Segs()...)
+		segs = append(segs, "") // an empty segment bounds one subject from the next: none can be one
 	}
-	return fmt.Sprintf("verse:trigger:%s:%s%s%08x",
-		safeSeg(trigger), safeSeg(gate), task.GateSep, h.Sum32())
-}
-
-// safeSeg makes s usable as a single URL path segment: a task id routes through
-// /tasks/{id}, which matches one segment, so characters that break a path
-// (slashes, fragment/query, whitespace) become '_'. It also strips task.GateSep,
-// which does not break a path but delimits a gate id from its owner — an owner id
-// carrying one would make `resolve` split it in the wrong place and route the answer
-// to a task that does not exist. It is lossy — see spawnID, which disambiguates
-// with a hash when a rewrite occurs.
-func safeSeg(s string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', '#', '?', '%', ' ', '\t', '\n':
-			return '_'
-		}
-		if strings.ContainsRune(task.GateSep, r) {
-			return '_'
-		}
-		return r
-	}, s)
+	// Dotted, like every other address-shaped name: it is not parsed back as one, but a
+	// question id that reads as an address in a spelling nothing else uses is a second grammar
+	// growing where nobody meant to plant one.
+	return fmt.Sprintf("%s.trigger.%s.%s%s%s", entity.VerseRoot,
+		entity.SafeSeg(trigger), entity.SafeSeg(gate), task.GateSep, entity.SegHash(segs))
 }
 
 // payloadBinding binds each field of the changed payload by its name (e.g. $flow, $stage,

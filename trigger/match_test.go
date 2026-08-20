@@ -19,7 +19,7 @@ import (
 // Authored in JSON, rendered in tony — which is the shape of every real round trip now.
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
-		`"demo:pr:1"`,
+		`"demo.pr.1"`,
 		`{"system":"demo","kind":"pr","value":{"stage":"open"}}`,
 		`{"system":"demo","kind":"pr","id":"*"}`,
 		`{}`,
@@ -38,7 +38,7 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		}
 		// MEANING, not shape. A match naming only system/kind/id marshals to the address
 		// string, and `id: "*"` is the same thing as an unset id — a wildcard — so
-		// {"system":"demo","kind":"pr","id":"*"} comes back as demo:pr:* and re-parses with
+		// {"system":"demo","kind":"pr","id":"*"} comes back as demo.pr.* and re-parses with
 		// the id dropped. The dimensions the matcher applies are what has to survive.
 		if back.System() != m.System() || back.Kind() != m.Kind() {
 			t.Fatalf("round-trip lost system/kind: %s → %s", in, out)
@@ -96,14 +96,14 @@ func TestSelects(t *testing.T) {
 // deferred `$var` form: a `$` in an address is a typo now, and fails at install.
 func TestStringFormIsAnAddress(t *testing.T) {
 	cases := map[string]Match{
-		`"demo:pr:1"`:        {"system": "demo", "kind": "pr", "id": "1"},
-		`"demo:pr:*"`:        {"system": "demo", "kind": "pr"},
-		`"demo:pr:hotfix-*"`: {"system": "demo", "kind": "pr", "id": "hotfix-*"},
-		`"demo:*:*"`:         {"system": "demo"},
-		`"demo:pr"`:          {"system": "demo", "kind": "pr"},
+		`"demo.pr.1"`:        {"system": "demo", "kind": "pr", "id": "1"},
+		`"demo.pr.*"`:        {"system": "demo", "kind": "pr"},
+		`"demo.pr.hotfix-*"`: {"system": "demo", "kind": "pr", "id": "hotfix-*"},
+		`"demo.*.*"`:         {"system": "demo"},
+		`"demo.pr"`:          {"system": "demo", "kind": "pr"},
 		`"*"`:                {},
 		// An id may itself contain colons, so only the first two separators are structural.
-		`"github:pr:org/repo#42"`: {"system": "github", "kind": "pr", "id": "org/repo#42"},
+		`"github.pr.org/repo#42"`: {"system": "github", "kind": "pr", "id": "org/repo#42"},
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 	}
 	// An empty or half-written address, or a leftover $var, is a typo, not a wildcard: it must
 	// fail at install rather than silently matching nothing (or, for a subject, creating "*").
-	for _, bad := range []string{`""`, `"demo::1"`, `":pr:1"`, `"$flow"`, `"demo:pr:$id"`} {
+	for _, bad := range []string{`""`, `"demo..1"`, `".pr.1"`, `"$flow"`, `"demo:pr:$id"`} {
 		var m Match
 		if err := codec.Unmarshal([]byte(bad), &m, codec.JSON); err == nil {
 			t.Errorf("accepted %s (parsed as %#v)", bad, m)
@@ -127,20 +127,20 @@ func TestStringFormIsAnAddress(t *testing.T) {
 }
 
 // REGRESSION: a string-form `when` used to become a {"ref": …}, which no matcher dimension
-// reads — so `"when": "demo:pr:1"` was an unconstrained match that fired on EVERY event in
+// reads — so `"when": "demo.pr.1"` was an unconstrained match that fired on EVERY event in
 // the verse. It must now constrain exactly the address it names.
 func TestStringFormWhenConstrains(t *testing.T) {
 	var m Match
-	if err := codec.Unmarshal([]byte(`"demo:pr:1"`), &m, codec.JSON); err != nil {
+	if err := codec.Unmarshal([]byte(`"demo.pr.1"`), &m, codec.JSON); err != nil {
 		t.Fatal(err)
 	}
 	named := entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set}
 	other := entity.Event{Ref: entity.RefAt("totally", "unrelated", "9"), Op: entity.Set}
 	if !m.MatchEvent(named) {
-		t.Error(`"demo:pr:1" did not match demo:pr:1`)
+		t.Error(`"demo.pr.1" did not match demo.pr.1`)
 	}
 	if m.MatchEvent(other) {
-		t.Error(`"demo:pr:1" matched an unrelated event — the string form is not constraining`)
+		t.Error(`"demo.pr.1" matched an unrelated event — the string form is not constraining`)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestStringFormWhenConstrains(t *testing.T) {
 func TestMatchNames(t *testing.T) {
 	yes := map[string]entity.Ref{
 		`{"system":"demo","kind":"pr","id":"1"}`: entity.RefAt("demo", "pr", "1"),
-		`"demo:pr:1"`:                            entity.RefAt("demo", "pr", "1"),
+		`"demo.pr.1"`:                            entity.RefAt("demo", "pr", "1"),
 	}
 	for in, want := range yes {
 		var m Match
@@ -163,8 +163,8 @@ func TestMatchNames(t *testing.T) {
 		}
 	}
 	no := []string{
-		`"demo:pr:*"`,                                   // the kind
-		`"demo:pr:hotfix-*"`,                            // a family
+		`"demo.pr.*"`,                                   // the kind
+		`"demo.pr.hotfix-*"`,                            // a family
 		`{"system":"demo","kind":"pr"}`,                 // no id
 		`{"system":"demo","kind":"pr","id":"*"}`,        // explicit wildcard
 		`{"system":"demo","kind":"pr","id":"hotfix-*"}`, // a glob is never a name
@@ -183,7 +183,7 @@ func TestMatchNames(t *testing.T) {
 	}
 }
 
-// The id glob, which is what makes "demo:pr:*" mean the kind and "hotfix-*" a family in it.
+// The id glob, which is what makes "demo.pr.*" mean the kind and "hotfix-*" a family in it.
 func TestGlobMatch(t *testing.T) {
 	cases := []struct {
 		pat, s string
@@ -367,7 +367,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 func TestRequirementFactsWireUnchanged(t *testing.T) {
 	cases := []struct{ keyed, tagged string }{
 		{`{"quorum":2}`, `!quorum 2`},
-		{`{"fact":"ci:status"}`, `!fact "ci:status"`},
+		{`{"fact":"ci.status"}`, `!fact "ci.status"`},
 		{`{"quorum":{"choice":"reject","n":2}}`, `!quorum {choice: reject, n: 2}`},
 		{`{"deadline":"4h"}`, `!deadline "4h"`},
 		{`{"until":[{"quorum":2},{"deadline":"4h"}]}`, `!until [!quorum 2, !deadline "4h"]`},
@@ -406,7 +406,7 @@ func TestRequirementFactsWireUnchanged(t *testing.T) {
 // A fact selector parsed from "system:kind" must read back through the Match accessors, which
 // is what Subtrees()/eval() now use to find what to watch and read.
 func TestFactSelFromRefIsAMatch(t *testing.T) {
-	m := factSelFromRef("ci:status")
+	m := factSelFromRef("ci.status")
 	if m.System() != "ci" || m.Kind() != "status" {
 		t.Fatalf("factSelFromRef(\"ci:status\") = %#v", m)
 	}
@@ -415,10 +415,10 @@ func TestFactSelFromRefIsAMatch(t *testing.T) {
 	}
 	// A THIRD segment is an id, as it is everywhere else a ref is written. Folding it into
 	// the kind gave a requirement selecting kind "status:green", which nothing can be — so
-	// `!fact ci:status:green` installed, read back verbatim, and waited forever.
-	m = factSelFromRef("ci:status:green")
+	// `!fact ci.status.green` installed, read back verbatim, and waited forever.
+	m = factSelFromRef("ci.status.green")
 	if m.System() != "ci" || m.Kind() != "status" || m.ID() != "green" {
-		t.Fatalf("factSelFromRef(\"ci:status:green\") = %#v", m)
+		t.Fatalf("factSelFromRef(\"ci.status.green\") = %#v", m)
 	}
 }
 
@@ -465,7 +465,7 @@ func sameDoc(a, b *ir.Node) bool {
 func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
 	want := Match{"system": "demo", "kind": "pr", "id": "1"}
 	for _, src := range []string{
-		`"demo:pr:1"`,
+		`"demo.pr.1"`,
 		`{at: demo.pr.1}`,
 		`{at: !verse-path [demo pr 1]}`,
 		`!verse-path [demo pr 1]`,
@@ -482,7 +482,7 @@ func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
 	}
 	// And verse's own half, where the address is one segment deeper.
 	for _, src := range []string{
-		`"verse:gate:question:*"`,
+		`"verse.gate.question.*"`,
 		`{at: verse.gate.question}`,
 		`{at: !verse-path [verse gate question]}`,
 		`!verse-path [verse gate question "*"]`,

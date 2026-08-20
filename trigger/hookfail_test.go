@@ -93,7 +93,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	// the failure is persisted against the task whose completion fired the hook
-	pr := mirror.Ref("review@demo:pr:1")
+	pr := mirror.Ref("review@demo.pr.1")
 	waitPath(t, store, pr, "hook.status", "failed")
 
 	e, _, _ := store.Get(pr)
@@ -133,7 +133,7 @@ func TestDriverErrorIsProjectedAsErr(t *testing.T) {
 	}
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
-	pr := mirror.Ref("review@demo:pr:1")
+	pr := mirror.Ref("review@demo.pr.1")
 	waitPath(t, store, pr, "err", "driver error: no credentials")
 
 	e, _, _ := store.Get(pr)
@@ -189,7 +189,7 @@ func TestDerefReadsAFencedAnswer(t *testing.T) {
 	waitField(t, store, prRef("1"), "first", "f1")
 
 	// the narration is still there verbatim: data and result are two faces of one value
-	e, _, _ := store.Get(mirror.Ref("review@demo:pr:1"))
+	e, _, _ := store.Get(mirror.Ref("review@demo.pr.1"))
 	if r := entity.Str(e.Payload, "result"); !strings.Contains(r, "nine files") && !strings.Contains(r, "I read the handler") {
 		t.Errorf("result = %q, want the agent's full text", r)
 	}

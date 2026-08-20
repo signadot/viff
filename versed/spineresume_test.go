@@ -65,7 +65,7 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	qid := waitAnyQuestion(t, srv)
 
-	inst := resolver.InstanceRef("payments-review", "change:pr:1").ID()
+	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(entity.RefAt("change", "pr", "1"))).ID()
 	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet,
 		ts.URL+"/resolvers/instance/"+inst+"/events?since=1", nil)
 	resp, err := http.DefaultClient.Do(req)

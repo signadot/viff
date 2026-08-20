@@ -449,10 +449,14 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 //
 // It is reachable from data rather than from a typo: the coderunner builds a per-child url out
 // of the task id, and every id a trigger spawns is `<chain>@<subject>` — an `@` makes the rest
-// of it userinfo, and the subject's colons are then read as a port. `review@demo:pr:1`, the
+// of it userinfo, and the subject's colons are then read as a port. `review@demo.pr.1`, the
 // shape the tutorial's own charter produces, is enough.
 func TestHTTPRunnerRefusesAnUnparseableURL(t *testing.T) {
-	bad := runner.HTTP("http://task.review@demo:pr:1")
+	// Unparseable on its own terms — a bad percent-escape — rather than by holding characters
+	// some other grammar spends. It used to be `http://task.review@demo:pr:1`, which was
+	// unparseable only because a ref carried colons; once an address is a kinded path that is a
+	// perfectly good URL, and the test quietly stopped being about anything.
+	bad := runner.HTTP("http://%zz")
 	if _, err := bad.(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("list on an unparseable url = %v, want ErrUnreachable", err)
 	}

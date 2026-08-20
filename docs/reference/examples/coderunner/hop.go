@@ -367,7 +367,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		// address anything could reach.
 		//
 		// Through hostSafe, because a task id is not a hostname. Every id a TRIGGER spawns is
-		// `<chain>@<subject>` — `comment-drift@drift:head:head-moved@git:head:verse` — and an @
+		// `<chain>@<subject>` — `comment-drift@drift.head.head-moved@git.head.verse` — and an @
 		// makes the rest of it userinfo, after which the colons read as a port and the url does
 		// not parse. So no charter-spawned task could start here at all, while every
 		// hand-launched `run-<hex>` one could.

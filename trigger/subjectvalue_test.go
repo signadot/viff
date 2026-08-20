@@ -18,7 +18,7 @@ import (
 // a flat substitution instead (launch.expand over bindingFor's map), and `value` was left out of
 // that map — so the bare `subject` key matched the prefix and the rest stayed literal:
 //
-//	Review the drift between verse-dev:drift:at.value.sha and verse-dev:drift:at.value.covering
+//	Review the drift between verse-dev.drift."at.value.sha" and verse-dev.drift."at.value.covering"
 //
 // went to the runner (git-issue s4rx0tr3h12ksa8fgsn0). A charter had to write the flat `$sha` in
 // a prompt and `$subject.value.sha` in the hook two lines below, each the only spelling that

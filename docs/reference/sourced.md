@@ -73,11 +73,11 @@ converges on the resync.
 
 | entity | payload |
 |---|---|
-| `git:ref:<repo>/<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
-| `git:head:<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
-| `git:commit:<repo>/<sha>` | `repo, sha, msg, author, parents` (a LIST of shas: empty for a root commit, two for a merge, first parent first), and `trailers` when the commit has any — covered by nothing, so history stays |
+| `git.ref.<repo>/<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
+| `git.head.<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
+| `git.commit.<repo>/<sha>` | `repo, sha, msg, author, parents` (a LIST of shas: empty for a root commit, two for a merge, first parent first), and `trailers` when the commit has any — covered by nothing, so history stays |
 
-Owns `git:*:<id>/*` and `git:head:<id>` per repo.
+Owns `git.*.<id>/*` and `git.head.<id>` per repo.
 
 **Three ref spaces, named rather than assumed.** `for-each-ref` with no pattern is EVERY ref, and
 a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs/tags` and
@@ -86,7 +86,7 @@ a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs
 merge refs are the reason it matters rather than a size complaint: GitHub RECREATES them
 whenever the base branch moves, so every fetch after any push to main changed a batch of shas
 and the store took writes on every pass with nothing having happened. A pull request's tip is
-`github:pr:<repo>#<n>.headSha`, from the source that owns the concept.
+`github.pr.<repo>#<n>.headSha`, from the source that owns the concept.
 
 `msg` is the **subject** — the first line — and the body is not reflected. `trailers` is the
 exception: the `Key: value` block at the end of a message, as an object, so a charter can
@@ -131,10 +131,10 @@ ordinary case: they write disjoint slices, so nothing coordinates.
 
 | entity | payload |
 |---|---|
-| `git-issue:issue:<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError` |
-| `git-issue:repo:<repo>` | `repo, open, closed, issues` |
+| `git-issue.issue.<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError` |
+| `git-issue.repo.<repo>` | `repo, open, closed, issues` |
 
-Owns `git-issue:*:<id>/*` and `git-issue:repo:<id>` per repo, for the reason git's claim is two
+Owns `git-issue.*.<id>/*` and `git-issue.repo.<id>` per repo, for the reason git's claim is two
 entries: `<id>*` would also claim `<id>-extras/…`.
 
 **Status comes from the ref namespace, not from `meta.tony`.** Closing an issue *moves* its ref,
@@ -174,7 +174,7 @@ manage this: `git issue show` errors on such an issue and `git issue list` silen
 take it. An operator who wants lower latency adds a line to their own hook:
 
 ```sh
-curl -fsS -X POST "$VERSE_HINT_URL?ref=git-issue:repo:<id>" >/dev/null 2>&1 || true
+curl -fsS -X POST "$VERSE_HINT_URL?ref=git-issue.repo.<id>" >/dev/null 2>&1 || true
 ```
 
 A mirror has no hook either — nobody pushes to it — and it is also the only way this source sees
@@ -205,14 +205,14 @@ Point the app's Event Subscriptions request url at `https://<host>/slack/events`
 
 | entity | payload |
 |---|---|
-| `slack:channel:<ws>/<C…>` | `workspace, channel, name, private, archived`, and `topic, purpose, members, created` |
-| `slack:message:<ws>/<C…>/<ts>` | `workspace, channel, ts, text`, and `user, bot, username, subtype, thread, replies, edited, reactions, url` |
-| `slack:user:<ws>/<U…>` | `workspace, user, name, bot, deleted`, and `real, display, email, title, tz` |
+| `slack.channel.<ws>/<C…>` | `workspace, channel, name, private, archived`, and `topic, purpose, members, created` |
+| `slack.message.<ws>/<C…>/<ts>` | `workspace, channel, ts, text`, and `user, bot, username, subtype, thread, replies, edited, reactions, url` |
+| `slack.user.<ws>/<U…>` | `workspace, user, name, bot, deleted`, and `real, display, email, title, tz` |
 
 `reactions` is an object, name → count, so `{reactions: {shipit: null}}` is the presence test a
 charter writes.
 
-Owns `slack:*:<workspace>/*` — one claim, since every id is workspace-prefixed.
+Owns `slack.*.<workspace>/*` — one claim, since every id is workspace-prefixed.
 
 **The window is bounded and covered**, which is the deliberate difference from git's commits: a
 repository's history is finite and immutable, a channel's is an unbounded stream, so a message
@@ -242,17 +242,17 @@ Point Settings → API → Webhooks at `https://<host>/linear/webhook`.
 
 | entity | payload |
 |---|---|
-| `linear:team:<KEY>` | `team, id, name, private`, and `description` |
-| `linear:issue:<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
-| `linear:cycle:<KEY>/<n>` | `team, id, number`, and `name, startsAt, endsAt, completedAt` |
-| `linear:project:<uuid>` | `owners: {<KEY>: {team, id, name, url, …}}` — one slot per owning team, and nothing at the top |
+| `linear.team.<KEY>` | `team, id, name, private`, and `description` |
+| `linear.issue.<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
+| `linear.cycle.<KEY>/<n>` | `team, id, number`, and `name, startsAt, endsAt, completedAt` |
+| `linear.project.<uuid>` | `owners: {<KEY>: {team, id, name, url, …}}` — one slot per owning team, and nothing at the top |
 
 Match on **`stateType`**, not `state`: the type (`triage`, `backlog`, `unstarted`, `started`,
 `completed`, `canceled`) is Linear's own vocabulary, while the name beside it is whatever
 somebody called a column last Tuesday.
 
-Owns `linear:team:<KEY>`, `linear:issue:<KEY>-*`, `linear:cycle:<KEY>/*` and
-`linear:project:*` **at** `owners.<KEY>` per team. The hyphen in the issue claim is load-bearing
+Owns `linear.team.<KEY>`, `linear.issue.<KEY>-*`, `linear.cycle.<KEY>/*` and
+`linear.project.*` **at** `owners.<KEY>` per team. The hyphen in the issue claim is load-bearing
 — `ENG-*` does not claim `ENGINE-1`.
 
 **A team is read to exhaustion**, and `-max-issues` is an error rather than a truncation: the
@@ -293,17 +293,17 @@ Point the repository's Settings → Webhooks at `https://<host>/github/webhook`,
 
 | entity | payload |
 |---|---|
-| `github:repo:<org>/<name>` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
-| `github:issue:<org>/<name>#<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
-| `github:pr:<org>/<name>#<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
-| `github:discussion:<org>/<name>#<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
-| `github:run:<org>/<name>/<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
-| `github:comment:<org>/<name>#<n>/<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
+| `github.repo.<org>/<name>` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
+| `github.issue.<org>/<name>#<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
+| `github.pr.<org>/<name>#<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
+| `github.discussion.<org>/<name>#<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
+| `github.run.<org>/<name>/<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
+| `github.comment.<org>/<name>#<n>/<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
 
-Owns `github:repo:<org>/<name>` and `github:{issue,pr,discussion}:<org>/<name>#*` and
-`github:run:<org>/<name>/*` per repository. The `#` is load-bearing — `acme/app#*` does not claim
+Owns `github.repo.<org>/<name>` and `github:{issue,pr,discussion}:<org>/<name>#*` and
+`github.run.<org>/<name>/*` per repository. The `#` is load-bearing — `acme/app#*` does not claim
 `acme/app2#1` — and the kinds are **named rather than globbed**, which is what leaves room for a
-later source claiming `github:user:*` alone.
+later source claiming `github.user.*` alone.
 
 **The set-shaped kinds are covered twice**: the open set complete, the closed set as a window of
 the most recent `-settled`. Neither precedent fits — git keeps history, Slack keeps a window —
@@ -326,7 +326,7 @@ and `kind` says which a comment was.
 
 A comment hangs off the item it is on (`…#7/900`), so "the comments on #7" is a prefix of one
 address rather than a predicate over the repository. `on` carries that number, and the join is by
-ref rather than by a field naming a kind: `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>`
+ref rather than by a field naming a kind: `github.issue.<repo>#<n>` and `github.pr.<repo>#<n>`
 are two addresses and exactly one of them exists.
 
 **An issue carries a comment count and a pull request does not**, which looks inconsistent and is

@@ -48,7 +48,7 @@ func TestAnIncompatibleClientIsRefusedBeforeItWrites(t *testing.T) {
 	ts := httptest.NewServer(versionedAs(srv.Handler(), "v1.2.0"))
 	defer ts.Close()
 
-	body := strings.NewReader(`{ref: "demo:pr:1", payload: {stage: open}}`)
+	body := strings.NewReader(`{at: demo.pr."1", payload: {stage: open}}`)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/entity", body)
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.VersionHeader, "v2.0.0")

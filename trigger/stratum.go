@@ -26,7 +26,6 @@ package trigger
 import (
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"sort"
 	"strings"
 
@@ -1458,21 +1457,14 @@ func eachRootFor(subject *ir.Node, item entity.Payload) entity.Payload {
 
 // eachID addresses one derived element: (rule, subject, key).
 //
-// The hash is not decoration. safeSeg flattens the characters an id may not hold, and the keys
-// this construct invites are exactly the ones that need flattening — `source/github.Reflect`
+// The hash is not decoration. The flattening drops the characters an id may not hold, and the
+// keys this construct invites are exactly the ones that need flattening — `source/github.Reflect`
 // carries a slash, and Go's own spelling of a method carries more. Two DISTINCT keys that
 // flatten alike would otherwise share one entity, which is the fan-out silently losing a member:
 // the failure that is invisible because the ledger simply reads short. So a rewritten key takes
-// the hash of what it was, the same way a rewritten subject does in spawnID.
+// the hash of what it was, which is segToken's rule asked of a one-segment vector.
 func eachID(chain string, ref entity.Ref, key string) string {
-	base := spawnID(chain, ref)
-	safe := safeSeg(key)
-	if safe == key {
-		return base + ChainSep + safe
-	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(key))
-	return fmt.Sprintf("%s%s%s%s%08x", base, ChainSep, safe, hashSep, h.Sum32())
+	return spawnID(chain, ref) + ChainSep + entity.SegToken([]string{key})
 }
 
 // deriveFromField is where the engine records what a derived entity is about, under the reserved

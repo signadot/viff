@@ -97,10 +97,10 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 
 	// head + commit reflected per repo.
 	if h := get("head", "A"); h["ref"] != "main" || h["repo"] != "A" || h["dirty"] != false {
-		t.Fatalf("git:head:A = %+v", h)
+		t.Fatalf("git.head.A = %+v", h)
 	}
 	if c := get("commit", "A/"+shaA); c["msg"] != "first on A" || c["repo"] != "A" || c["sha"] != shaA {
-		t.Fatalf("git:commit:A/%s = %+v", shaA, c)
+		t.Fatalf("git.commit.A/%s = %+v", shaA, c)
 	}
 	// a commit is repo-scoped, not a global sha key.
 	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "commit", shaA)); ok {

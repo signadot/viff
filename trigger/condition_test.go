@@ -38,7 +38,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 		Name: "reviewed",
 		Condition: Condition{
 			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
-			Subject: mm("demo:pr:*"),
+			Subject: mm("demo.pr.*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
@@ -117,14 +117,14 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	ev := entity.Event{
 		Ref: entity.RefAt("goal", "done", "ship"),
 		Op:  entity.Set,
-		To:  entity.Obj{"subject": "change:pr:42", "flow": "change:pr:42"}.Payload(),
+		To:  entity.Obj{"subject": `change.pr."42"`, "flow": `change.pr."42"`}.Payload(),
 	}
 	b := bindingFor(ev.To, ev.Ref)
 	if got := b["subject"]; got != ev.Ref.String() {
 		t.Fatalf("$subject = %q; a payload field named \"subject\" shadowed the reserved binding "+
 			"(want %q)", got, ev.Ref)
 	}
-	if got := b["flow"]; got != "change:pr:42" {
+	if got := b["flow"]; got != `change.pr."42"` {
 		t.Fatalf("$flow = %q, want the payload field", got)
 	}
 }
@@ -138,7 +138,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 		Name: "needs-flow",
 		Condition: Condition{
 			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance"}),
-			Subject: mm("demo:pr:*"),
+			Subject: mm("demo.pr.*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{"stage": "x"}.Payload()},
@@ -149,7 +149,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// Nothing in the store matches demo:pr:*, so the subject selects nothing and nothing fires
+	// Nothing in the store matches demo.pr.*, so the subject selects nothing and nothing fires
 	// — and, because the subject resolves before any gate, no gate is posed either.
 	entitytest.Set(t, store, mirror.Ref("p1"), entity.Obj{"status": "done"}.Payload())
 	time.Sleep(200 * time.Millisecond)
@@ -182,14 +182,14 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 			Condition{Subject: Match{}}, "condition.subject required",
 		},
 		"temporal when": {
-			Condition{Subject: mm("demo:pr:*"), When: &Formula{Op: OpUntil, Args: []*Formula{
+			Condition{Subject: mm("demo.pr.*"), When: &Formula{Op: OpUntil, Args: []*Formula{
 				matchFormula(Match{"system": "demo"}),
 				{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}},
 			}}},
 			"temporal",
 		},
 		"bad when match": {
-			Condition{Subject: mm("demo:pr:*"), When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
+			Condition{Subject: mm("demo.pr.*"), When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
 		},
 		// A subject that has to SELECT — one whose firing is some other entity's change — must
 		// name a kind, because that is what the engine selects and spawns for. The same subject
@@ -351,7 +351,7 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 // rather than exposing the internal parse node; the subject round-trips as its dimensions.
 func TestConditionJSONRoundTrip(t *testing.T) {
 	const in = `{"name":"reviewed","condition":{"when":{"system":"task","kind":"instance",` +
-		`"value":{"status":"done"}},"subject":"demo:pr:*"},"action":{"patch":{"stage":"reviewed"}}}`
+		`"value":{"status":"done"}},"subject":"demo.pr.*"},"action":{"patch":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)

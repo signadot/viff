@@ -68,11 +68,11 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 	// The mirror half: the task says WHICH doer was selected, beside the driver that ran it.
 	taskRef := mirror.Ref(spawnID(chainID("review"), prRef("1")))
 	waitFor(t, store, taskRef, func(p entity.Payload) bool {
-		return entity.Str(p, "doer") == "provider:review:careful"
-	}, `doer = provider:review:careful`)
+		return entity.Str(p, "doer") == "provider.review.careful"
+	}, `doer = provider.review.careful`)
 
 	// The binding half: a completion hook can read it, so the attribution reaches the subject.
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		return entity.Str(p, "by") == "provider:review:careful" && entity.Str(p, "outcome") == "SHIPIT"
-	}, `by = provider:review:careful, outcome = SHIPIT`)
+		return entity.Str(p, "by") == "provider.review.careful" && entity.Str(p, "outcome") == "SHIPIT"
+	}, `by = provider.review.careful, outcome = SHIPIT`)
 }

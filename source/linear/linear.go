@@ -192,10 +192,10 @@ func (l *Linear) Owns() []source.Own {
 	out := make([]source.Own, 0, 4*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			source.Own{Ref: l.system + ":team:" + key},
-			source.Own{Ref: l.system + ":issue:" + key + "-*"},
-			source.Own{Ref: l.system + ":cycle:" + key + "/*"},
-			source.Own{Ref: l.system + ":project:*", At: slotOf(key)})
+			source.Own{Ref: l.system + ".team." + key},
+			source.Own{Ref: l.system + ".issue." + key + "-*"},
+			source.Own{Ref: l.system + ".cycle." + key + "/*"},
+			source.Own{Ref: l.system + ".project.*", At: slotOf(key)})
 	}
 	return out
 }

@@ -45,7 +45,7 @@ Two facts settle the design:
 1. Create and update are byte-identical. Adding the new key `"1"` looks exactly
    like replacing an existing `"1"`. There is no add-vs-replace marker, no new-node
    flag — create-vs-update is simply not in the stream. The re-create says the same
-   thing from the other side: the commit that brings `demo:pr:1` back after its
+   thing from the other side: the commit that brings `demo.pr.1` back after its
    tombstone is a plain merge, indistinguishable from any other write of `stage`.
    `WatchEvent` carries `{commit, path, state, patch, replayComplete, ended, endReason}`
    and nothing else — no pre-image field to read, and no watch option that asks for one.
@@ -89,14 +89,14 @@ reading it as a removal is what made it one no entity could hold (`entity/logdst
 The delta — the writer's patch for that commit — is the tempting choice: if verse only ever
 writes whole entities, the delta *is* the entity. That reasoning holds exactly as long as its
 premise. The moment a write can address a field
-(`demo:pr:1.stage`), the delta stops being the entity, and a consumer matching on `To` is
+(`demo.pr.1.stage`), the delta stops being the entity, and a consumer matching on `To` is
 matching a fragment.
 
 Measured, on both substrates — a deep write of one field, watched:
 
 ```
-logd   patch at demo:pr:1.stage -> event To = {stage: reviewed}
-docd   patch at demo:pr:1.stage -> event To = {stage: reviewed}
+logd   patch at demo.pr.1.stage -> event To = {stage: reviewed}
+docd   patch at demo.pr.1.stage -> event To = {stage: reviewed}
 ```
 
 The entity at that commit is `{stage: reviewed, env: prod}`. `env` is simply not in the
@@ -254,8 +254,8 @@ change.
 
 The normalisation is reported *inside* its transaction rather than instead of it, which is
 what keeps the entity grain from costing the tx. `Observe`, `Since` and `WatchSubtree` all
-deliver an `entity.Commit` (`{Rev, Changes}`), so a commit that atomically sets `demo:pr:1`
-*and* `demo:pr:2` arrives as one commit carrying two per-entity changes, and the trigger
+deliver an `entity.Commit` (`{Rev, Changes}`), so a commit that atomically sets `demo.pr.1`
+*and* `demo.pr.2` arrives as one commit carrying two per-entity changes, and the trigger
 engine is asked once per commit rather than once per change. Each change still drives its own
 firing with its own subject; what the commit adds is that a consumer can see which changes
 were one transaction.

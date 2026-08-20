@@ -147,10 +147,10 @@ func TestConvergeTombstonesOnlyWhatItCovers(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if _, ok, _ := store.Get(ref("x", "a", "1")); ok {
-		t.Fatal("x:a:1 is covered and was not carried: it should have tombstoned")
+		t.Fatal("x.a.1 is covered and was not carried: it should have tombstoned")
 	}
 	if _, ok, _ := store.Get(ref("x", "b", "1")); !ok {
-		t.Fatal("x:b:1 is covered by nothing: converge had no authority to remove it")
+		t.Fatal("x.b.1 is covered by nothing: converge had no authority to remove it")
 	}
 }
 
@@ -210,7 +210,7 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 	}
 	e, ok, _ := store.Get(ref("x", "a", "1"))
 	if !ok {
-		t.Fatal("x:a:1 vanished")
+		t.Fatal("x.a.1 vanished")
 	}
 	if got := entity.ToObj(e.Payload); len(got) != 1 || got["p"] == nil {
 		t.Fatalf("a field the source stopped reporting should be gone, got %+v", got)

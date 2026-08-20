@@ -366,7 +366,7 @@ func TestHintRefusals(t *testing.T) {
 	}
 	// A ref that is not one is a 400 rather than a resync: a delivery that meant something
 	// specific must not silently become "reflect everything".
-	bad := ts.URL + "/sources/git/local/hint?ref=" + url.QueryEscape("not-a-ref")
+	bad := ts.URL + "/sources/git/local/hint?at=" + url.QueryEscape("a..b")
 	if resp, err := ts.Client().Post(bad, "", nil); err != nil ||
 		resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("hint with a malformed ref = %v (%v), want 400", resp.Status, err)
@@ -480,7 +480,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	srv := testServer(t)
 	ref := source.Ref("git", "a")
 	e := source.Entity{Name: "a", System: "git", URL: "http://x:1",
-		Owns: []source.Own{{Ref: "git:*:A/*"}}}
+		Owns: []source.Own{{Ref: "git.*.A/*"}}}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -506,7 +506,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 	srv := testServer(t)
 	e := source.Entity{Name: "eng", System: "linear", URL: "http://x:1",
-		Owns: []source.Own{{Ref: "linear:project:*", At: []string{"owners", "ENG"}}}}
+		Owns: []source.Own{{Ref: "linear.project.*", At: []string{"owners", "ENG"}}}}
 	entitytest.Set(t, srv.Store, source.Ref("linear", "eng"), entity.Obj{
 		"name": "eng", "system": "linear", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -525,7 +525,7 @@ func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the entity", got, shared)
 	}
 	// The kinded-path spelling, because the address continues INTO the payload: a ref spells an
-	// entity, and `linear:project:p1.owners.ENG` cannot say whether `owners` is a field or part
+	// entity, and `linear.project.p1.owners.ENG` cannot say whether `owners` is a field or part
 	// of an id. See entity.Path.String.
 	if want := "linear.project.p1.owners.ENG"; got[0].String() != want {
 		t.Fatalf("the place is %s, want %s", got[0], want)

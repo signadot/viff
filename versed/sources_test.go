@@ -79,8 +79,8 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["ref"] != "verse:sources:git:laptop" {
-		t.Fatalf("ref = %v, want sources:git:laptop", got["ref"])
+	if got["ref"] != "verse.sources.git.laptop" {
+		t.Fatalf("ref = %v, want sources.git.laptop", got["ref"])
 	}
 	if got["reach"] != "a source" {
 		t.Fatalf("reach = %v — a live source face read as something else", got["reach"])
@@ -97,7 +97,7 @@ func TestSourceAddListShow(t *testing.T) {
 	decodeResp(t, sr, &one)
 	owns, _ := one["owns"].([]any)
 	first, _ := owns[0].(map[string]any)
-	if len(owns) != 2 || first["ref"] != "git:*:verse/*" {
+	if len(owns) != 2 || first["ref"] != "git.*.verse/*" {
 		t.Fatalf("show = %+v, want the ownership the probe read", one)
 	}
 
@@ -107,7 +107,7 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["ref"] != "verse:sources:git:laptop" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["ref"] != "verse.sources.git.laptop" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed source with its url", list)
 	}
 }
@@ -167,7 +167,7 @@ func TestSourceAddProvesDisjointness(t *testing.T) {
 		t.Fatalf("two sources over one repo = %s, want 409", resp.Status)
 	}
 	body := bodyOf(t, resp)
-	for _, want := range []string{"git:*:verse/*", "verse:sources:git:a", "--allow-overlap"} {
+	for _, want := range []string{"git.*.verse/*", "verse.sources.git.a", "--allow-overlap"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the refusal should mention %q, got: %s", want, body)
 		}

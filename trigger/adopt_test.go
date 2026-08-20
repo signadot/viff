@@ -37,9 +37,9 @@ func (h *recHandle) Err() string                          { return "" }
 func TestAdoptMakesResumedTaskSteerable(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	h := &recHandle{ch: make(chan task.Frame)}
-	eng.Adopt("demo:pr:1", "review-demo:pr:1", h)
+	eng.Adopt(`demo.pr."1"`, "review-demo.pr.1", h)
 
-	if n := eng.CancelFlow(mustExpr(t, "demo:pr:1")); n != 1 {
+	if n := eng.CancelFlow(mustExpr(t, `demo.pr."1"`)); n != 1 {
 		t.Fatalf("CancelFlow reached %d tasks, want 1 (adopted task not tracked)", n)
 	}
 	h.mu.Lock()

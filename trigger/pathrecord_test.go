@@ -13,7 +13,7 @@ import (
 //
 // Two spellings, and the difference is exactly three segments long. `{path: [a, b, c]}` is a
 // PLACE at every length. `!verse-path [a b c]` FOLDS into the three dimensions, deliberately, so
-// that the vector spelling names the entity `a:b:c` the way every charter written before paths
+// that the vector spelling names the entity `a.b.c` the way every charter written before paths
 // does. A stratum rendered with the second came back constraining `id` — which a stratum may not
 // do, since a derived id is the engine's — so restore refused it, and then refused every rule
 // whose derive needed the level it named.
@@ -71,7 +71,7 @@ func TestATaggedListIsOneMatchNotAUnion(t *testing.T) {
 			"name matches a whole system", len(ms))
 	}
 	// The union form still reads as a union.
-	node, err = codec.ParseNode([]byte(`[demo:pr:*, {system: gh, kind: issue}]`), codec.Tony)
+	node, err = codec.ParseNode([]byte(`[demo.pr.*, {system: gh, kind: issue}]`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -63,11 +63,11 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	}
 
 	got := payloads(rn)
-	ch := got["slack:channel:Acme/C1"]
+	ch := got["slack.channel.Acme/C1"]
 	if ch == nil || ch["name"] != "incidents" || ch["channel"] != "C1" {
-		t.Fatalf("slack:channel:Acme/C1 = %+v", ch)
+		t.Fatalf("slack.channel.Acme/C1 = %+v", ch)
 	}
-	msg := got["slack:message:Acme/C1/1700000001.000100"]
+	msg := got[`slack.message."Acme/C1/1700000001.000100"`]
 	if msg == nil || msg["text"] != "prod is down" || msg["user"] != "U1" {
 		t.Fatalf("the message = %+v", msg)
 	}
@@ -84,12 +84,12 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	if msg["url"] != "https://acme.slack.com/archives/C1/p1700000001000100" {
 		t.Fatalf("permalink = %v", msg["url"])
 	}
-	reply := got["slack:message:Acme/C1/1700000002.000100"]
+	reply := got[`slack.message."Acme/C1/1700000002.000100"`]
 	if reply == nil || reply["thread"] != "1700000001.000100" {
 		t.Fatalf("the thread reply = %+v", reply)
 	}
-	if u := got["slack:user:Acme/U1"]; u == nil || u["email"] != "ada@example.com" {
-		t.Fatalf("slack:user:Acme/U1 = %+v", u)
+	if u := got["slack.user.Acme/U1"]; u == nil || u["email"] != "ada@example.com" {
+		t.Fatalf("slack.user.Acme/U1 = %+v", u)
 	}
 
 	// A full pass covers the workspace in all three kinds — a channel the bot was removed from
@@ -187,7 +187,7 @@ func TestSlackKeepsTheChannelsWhenThePeopleCannotBeRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a users failure failed the whole pass: %v", err)
 	}
-	if got := payloads(rn)["slack:channel:Acme/C1"]; got == nil {
+	if got := payloads(rn)["slack.channel.Acme/C1"]; got == nil {
 		t.Fatal("the channels went with the people")
 	}
 	for _, c := range rn.Covers {
@@ -260,14 +260,14 @@ func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
 	owns := source.Describe(src).Owns
-	if len(owns) != 1 || owns[0].Ref != "slack:*:Acme/*" {
+	if len(owns) != 1 || owns[0].Ref != "slack.*.Acme/*" {
 		t.Fatalf("owns %v", owns)
 	}
-	ok, err := source.Disjoint(owns, []source.Own{{Ref: "slack:*:Other/*"}})
+	ok, err := source.Disjoint(owns, []source.Own{{Ref: "slack.*.Other/*"}})
 	if err != nil || !ok {
 		t.Fatalf("two workspaces were not provably disjoint (%v, %v)", ok, err)
 	}
-	if ok, _ := source.Disjoint(owns, []source.Own{{Ref: "slack:*:Acme/*"}}); ok {
+	if ok, _ := source.Disjoint(owns, []source.Own{{Ref: "slack.*.Acme/*"}}); ok {
 		t.Fatal("a workspace was proved disjoint from itself")
 	}
 	// Every ref this source writes is inside what it claims — which is the bound on what a
@@ -298,10 +298,10 @@ func TestSlackNarrowingToChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := payloads(rn)
-	if got["slack:channel:Acme/C1"] == nil {
+	if got["slack.channel.Acme/C1"] == nil {
 		t.Fatal("the named channel was not reflected")
 	}
-	if got["slack:channel:Acme/C2"] != nil {
+	if got["slack.channel.Acme/C2"] != nil {
 		t.Fatal("a channel outside -channel was reflected")
 	}
 	// A targeted pass over the un-watched channel covers it and carries nothing: the cover is

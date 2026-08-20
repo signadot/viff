@@ -154,7 +154,7 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 
 	// --paths, because the question is WHICH ENTITIES the filter names and that is exactly what
 	// --paths answers. The document itself spells an id as a key rather than as a ref, so
-	// asserting on `demo:pr:1` in the body would be asserting on a rendering.
+	// asserting on `demo.pr.1` in the body would be asserting on a rendering.
 	out, err := runState(t, "--paths", "--if", "{stage: open}")
 	if err != nil {
 		t.Fatalf("state --if: %v", err)

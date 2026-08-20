@@ -92,7 +92,7 @@ func TestClaimIsCreateOnly(t *testing.T) { claimCreateOnly(t, openStore(t)) }
 
 func claimCreateOnly(t *testing.T, store Store) {
 	t.Helper()
-	claim := RefAt("run", "claim", "review@demo:pr:1")
+	claim := RefAt("run", "claim", "review@demo.pr.1")
 
 	won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()}})
 	if err != nil || !won {
@@ -126,7 +126,7 @@ func claimCreateOnly(t *testing.T, store Store) {
 // absentPath ORed them. The second never existed; see absentPath.)
 func TestClaimIsRetakeableAfterRelease(t *testing.T) {
 	store := openStore(t)
-	claim := RefAt("run", "claim", "review@demo:pr:1")
+	claim := RefAt("run", "claim", "review@demo.pr.1")
 	take := func() bool {
 		t.Helper()
 		won, _, err := store.Write(Write{At: claim.At(), Value: Obj{"by": "runner"}.Payload(), When: []Require{Created()}})

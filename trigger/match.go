@@ -570,37 +570,42 @@ func (m Match) MatchRef(ref entity.Ref) bool {
 
 // ParseExpr parses an entity-address expression into a Match — the ONE string surface for
 // addressing entities by identity, shared by the CLI (`flow pause <addr>`) and the charter
-// wire (a string-form Match). `*` is a wildcard per segment, and an id may also glob:
+// wire (a string-form Match). It is a KINDED PATH, `*` is a wildcard per segment, and an id
+// may also glob:
 //
-//	demo:pr:1         one entity
-//	demo:pr:*         the whole kind
-//	demo:pr:hotfix-*  a family within it (an id glob — see matchID)
-//	demo:*:*          the whole system
-//	demo:pr           trailing segments omitted are wildcards
+//	demo.pr.1         one entity
+//	demo.pr.*         the whole kind
+//	demo.pr.hotfix-*  a family within it (an id glob — see matchID)
+//	demo.*.*          the whole system
+//	demo.pr           trailing segments omitted are wildcards
 //	*                 everything
+//	demo.pr."a.b"     an id holding a dot, which the colon form could not say at all
+//
+// IT WAS ITS OWN COLON SPLITTER, which was the same answer as the address grammar for as long
+// as the address grammar was colons. `Ref.String` renders a kinded path now, so an address
+// copied out of a listing — the everyday way a person gets one — arrived here as a single
+// segment and selected nothing. One grammar, and the quoting comes with it.
 //
 // This is what makes "relational flows" fall out of the model rather than being a second
 // primitive: steering an entity-set is the same selector, at a wider setting. (A subtree
-// form — "demo:pr:1/**" — waits for the reference grammar of the tony leaf.)
+// form — "demo.pr.1/**" — waits for the reference grammar of the tony leaf.)
 func ParseExpr(s string) (Match, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return nil, fmt.Errorf(`empty address: want "system:kind:id", with * as a wildcard`)
+		return nil, fmt.Errorf(`empty address: want "system.kind.id", with * as a wildcard`)
 	}
 	if strings.ContainsRune(s, '$') {
 		return nil, fmt.Errorf("address %q has a $var; there is no deferred subject form — a "+
-			"subject is a pattern matched against the entity a firing is about, e.g. \"demo:pr:*\" "+
+			"subject is a pattern matched against the entity a firing is about, e.g. \"demo.pr.*\" "+
 			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
-	// A leading `verse` is the reserved root, and the three an address has follow it — the
-	// same prefix rule ParseRef applies, so a charter names verse's own half the way an
-	// operator does (`verse:gate:question:*`).
-	rest, reserved := strings.CutPrefix(s, entity.VerseRoot+":")
-	parts := strings.SplitN(rest, ":", 3) // an id may itself contain colons
-	if reserved {
-		parts = append([]string{entity.VerseRoot}, parts...)
+	// entity.ExprSegs is the reader, shared with source.ParseClaim: one answer to "what are the
+	// segments of this string", whatever is going to be done with them.
+	steps, err := entity.ExprSegs(s)
+	if err != nil {
+		return nil, err
 	}
-	return ParseSteps(parts)
+	return ParseSteps(steps)
 }
 
 // ParseSteps is ParseExpr over an address already SPLIT INTO STEPS — the `!verse-path [demo pr

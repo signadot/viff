@@ -2,6 +2,7 @@ package source_test
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,11 @@ func TestGitInstallHook(t *testing.T) {
 	b, _ := os.ReadFile(path)
 	// It posts the registration's hint route, naming the slice that went stale and carrying
 	// nothing else — there is no data in it for verse to parse or to trust.
-	if s := string(b); !contains(s, "/sources/git/laptop/hint") || !contains(s, "ref=git%3Ahead%3A"+id) {
+	// The address is escaped as a query value, and it is asked for rather than spelled: a
+	// segment that kpath quotes (an id that looks like a number, which is exactly what AddRepo
+	// hands out) carries its quotes through the escaping.
+	want := "at=" + url.QueryEscape(g.HeadRef(id).String())
+	if s := string(b); !contains(s, "/sources/git/laptop/hint") || !contains(s, want) {
 		t.Fatalf("hook does not POST a hint at the registration: %s", s)
 	}
 
@@ -117,7 +122,7 @@ func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 // A source answers with entities, and `System()` does not say which HALF a ref is in: a source
-// registered as `task` answering `verse:task:instance:x` used to pass the slice check, and
+// registered as `task` answering `verse.task.instance.x` used to pass the slice check, and
 // converge writes to the store directly — under the refusal that guards `POST /entity`. So a
 // deployed connector was the way into the half the 403 exists to protect.
 func TestAReflectionMayNotNameVersesOwnHalf(t *testing.T) {

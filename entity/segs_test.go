@@ -10,12 +10,12 @@ import (
 // A ref's segments and the ref are the same address said two ways, and the round trip has to
 // be exact for the case that motivates having both: an id CONTAINING A COLON. Walking a
 // document hands back segments, and rebuilding the string for ParseRef to take apart again is
-// how `merge:proposal:x@git:ref:y` comes back as a different entity than the one that was
+// how `merge.proposal.x@git.ref.y` comes back as a different entity than the one that was
 // found — the id would be re-split at its own colons.
 func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 	for _, ref := range []Ref{
 		RefAt("demo", "pr", "1"),
-		RefAt("merge", "proposal", "appeared@git:ref:verse/auto/x"),
+		RefAt("merge", "proposal", "appeared@git.ref.verse/auto/x"),
 		RefAt("github", "pr", "org/repo#42"),
 		RefAt("demo", "pr", "a.b"),
 	} {
@@ -32,8 +32,8 @@ func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 		}
 		// And the string spelling is unchanged by any of this, which is what keeps a charter
 		// and a command line reading the same address as before.
-		if again, err := ParseRef(ref.String()); err != nil || again != ref {
-			t.Errorf("ParseRef(%q) = (%s, %v), want the ref back", ref.String(), again, err)
+		if again, err := ParseAddr(ref.String()); err != nil || again != ref {
+			t.Errorf("ParseAddr(%q) = (%s, %v), want the ref back", ref.String(), again, err)
 		}
 	}
 }
@@ -64,8 +64,10 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 	if got := len(ref.Segs()); got != Depth {
 		t.Fatalf("a ref has %d segments and Depth says %d", got, Depth)
 	}
-	if got := len(strings.Split(ref.String(), ":")); got != Depth {
-		t.Fatalf("the string spelling has %d segments and Depth says %d", got, Depth)
+	segs, err := PathSegs(ref.String())
+	if err != nil || len(segs) != Depth {
+		t.Fatalf("the string spelling reads back as %d segments (%v) and Depth says %d",
+			len(segs), err, Depth)
 	}
 	// PathOf splits an address from the field path at exactly that depth.
 	p, _, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
@@ -87,11 +89,11 @@ func TestEntitiesInterleavesFixedAndCarriedSegments(t *testing.T) {
 		at   string
 		want []string
 	}{
-		{"", []string{"demo:pr:1", "demo:pr:2"}},
-		{"demo", []string{"demo:pr:1", "demo:pr:2"}},
-		{"demo.pr", []string{"demo:pr:1", "demo:pr:2"}},
-		{"demo.pr.1", []string{"demo:pr:1"}},
-		{"demo.*.1", []string{"demo:pr:1"}},
+		{"", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"demo", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"demo.pr", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"demo.pr.1", []string{`demo.pr."1"`}},
+		{"demo.*.1", []string{`demo.pr."1"`}},
 	} {
 		at, err := ParseAt(tc.at)
 		if err != nil {
@@ -127,7 +129,7 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 // It used to take a single token too, split by whichever of `:` `.` ` ` came first. That is
 // ambiguous and could not be made otherwise — a word `w` reads either as the one segment `w` or
 // as `split(w, delim)`, and choosing either makes the other unsayable — so the token spelling is
-// gone from the command line and a ref is taken where it is MARKED (`--ref demo:pr:1`).
+// gone from the command line and a ref is taken where it is MARKED (`--ref demo.pr.1`).
 func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 	for _, c := range []struct {
 		segs []string
@@ -135,8 +137,8 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 	}{
 		{[]string{"demo", "pr", "1"}, RefAt("demo", "pr", "1")},
 		{[]string{"demo", "pr", "a.b"}, RefAt("demo", "pr", "a.b")},                 // a dot INSIDE a step
-		{[]string{"git", "ref", "x@git:ref:y"}, RefAt("git", "ref", "x@git:ref:y")}, // and a colon
-		{[]string{"a:b:c", "pr", "1"}, RefAt("a:b:c", "pr", "1")},                   // …in the SYSTEM, which the token form could not say
+		{[]string{"git", "ref", "x@git.ref.y"}, RefAt("git", "ref", "x@git.ref.y")}, // and a colon
+		{[]string{"a.b.c", "pr", "1"}, RefAt("a.b.c", "pr", "1")},                   // …in the SYSTEM, which the token form could not say
 		{[]string{"demo", "pr", "a b"}, RefAt("demo", "pr", "a b")},                 // and a space
 		{[]string{"verse", "task", "instance", "run-a1"}, RefAt("verse", "task", "instance", "run-a1")},
 	} {
@@ -179,7 +181,7 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 		{[]string{"demo", "pr", "1"}, "demo pr 1"},
 		// The whole point: a dot is ordinary inside a step.
 		{[]string{"demo", "pr", "a.b"}, "demo pr a.b"},
-		{[]string{"verse", "task", "instance", "review@demo:pr:1"}, "verse task instance review@demo:pr:1"},
+		{[]string{"verse", "task", "instance", "review@demo.pr.1"}, "verse task instance review@demo.pr.1"},
 		// The separator IS the space, so a segment holding one carries quotes — the case that
 		// made the bare steps form ambiguous and moved this listing to kinded paths for a while.
 		{[]string{"demo", "pr", "a b.txt"}, "demo pr 'a b.txt'"},
@@ -211,7 +213,7 @@ func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 		{"demo", "pr", "a b.txt"},
 		{"git", "ref", "*"},
 		{"dotted.sys", "pr", "1"},
-		{"verse", "task", "instance", "review@demo:pr:1"},
+		{"verse", "task", "instance", "review@demo.pr.1"},
 	} {
 		if got, want := JoinSegs(segs), RefAt(segs...).At().KPath(); got != want {
 			t.Errorf("steps %q rejoined as %q, want %q", segs, got, want)

@@ -24,7 +24,7 @@ func answerable(t *testing.T, srv *Server, id string) chan task.Resolution {
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
-			task.ToolUse{Name: "verse:trigger:review"})
+			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res
 	}()
 	waitPending(t, srv, id)
@@ -73,7 +73,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const id = "verse:trigger:review:review~1"
+	const id = "verse.trigger.review.review~1"
 	answered := answerable(t, srv, id)
 
 	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, By: "human:scott"})
@@ -126,14 +126,14 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse:trigger:nope:nope~9", Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Approve: true, By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("answering an unknown id = %s, want 404", resp.Status)
 	}
 	// And nothing was minted for it. An answer to no question must not conjure the question
 	// it was answering, or the docket would grow an entry every time somebody mistyped.
-	if _, ok, _ := srv.Store.Get(mirror.QuestionRef("verse:trigger:nope:nope~9")); ok {
+	if _, ok, _ := srv.Store.Get(mirror.QuestionRef("verse.trigger.nope.nope~9")); ok {
 		t.Fatal("answering an unknown id created a question record")
 	}
 }
@@ -146,7 +146,7 @@ func TestAnAnswerMustNameItsAnswerer(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const id = "verse:trigger:review:review~1"
+	const id = "verse.trigger.review.review~1"
 	answerable(t, srv, id)
 
 	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true})
@@ -224,12 +224,12 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const id = "verse:trigger:review:review~1"
+	const id = "verse.trigger.review.review~1"
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		_, _ = srv.Reg.Resolve(ctx,
 			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
-			task.ToolUse{Name: "verse:trigger:review"})
+			task.ToolUse{Name: "verse.trigger.review"})
 	}()
 	waitPending(t, srv, id)
 	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
@@ -267,16 +267,16 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 // several callers are blocked on is not retired because one of them left.
 func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 	srv := testServer(t)
-	const id = "verse:trigger:review:review~1"
+	const id = "verse.trigger.review.review~1"
 	q := task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask}
 
 	stay, keep := context.WithCancel(context.Background())
 	defer keep()
-	go func() { _, _ = srv.Reg.Resolve(stay, q, task.ToolUse{Name: "verse:trigger:review"}) }()
+	go func() { _, _ = srv.Reg.Resolve(stay, q, task.ToolUse{Name: "verse.trigger.review"}) }()
 	waitPending(t, srv, id)
 
 	leave, give := context.WithCancel(context.Background())
-	go func() { _, _ = srv.Reg.Resolve(leave, q, task.ToolUse{Name: "verse:trigger:review"}) }()
+	go func() { _, _ = srv.Reg.Resolve(leave, q, task.ToolUse{Name: "verse.trigger.review"}) }()
 	for srv.Reg.WaiterCount(id) < 2 {
 		time.Sleep(time.Millisecond)
 	}

@@ -119,7 +119,7 @@ forever, so the trip walks the chain back and names the rules that were firing e
 
 ```
 INFO cycle: rules kept firing each other past the point where one must have repeated
-     cycle="fwd → back → fwd → back" subject=demo:pr:1 depth=3 cap=2 from=4 complete=true
+     cycle="fwd → back → fwd → back" subject=demo.pr.1 depth=3 cap=2 from=4 complete=true
 ```
 
 Both rules appear twice, which is the finding: one of them ran a second time about the same

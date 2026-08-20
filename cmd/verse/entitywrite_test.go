@@ -175,7 +175,7 @@ func TestEntityPutPrintsTheEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	for _, want := range []string{"ref: demo:pr:1", "owner: ana", "stage: open"} {
+	for _, want := range []string{`ref: 'demo.pr."1"'`, "owner: ana", "stage: open"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("put printed:\n%s\nwant it to contain %q", out, want)
 		}
@@ -233,7 +233,7 @@ func TestEntityPutRefusesContradictoryGuards(t *testing.T) {
 //
 // The case that matters is verse's own half: the entity routes refuse a write under `verse:*`
 // with 403 — those records are written by the verbs that own them — and the CLI printed
-// "removed verse:task:instance:<id>" while the record stood there untouched. An operator
+// "removed verse.task.instance:<id>" while the record stood there untouched. An operator
 // cleaning up a store was told the opposite of the truth, and the store agreed with neither.
 func TestStateRmReportsARefusal(t *testing.T) {
 	serve(t)

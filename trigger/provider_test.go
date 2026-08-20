@@ -160,10 +160,10 @@ func TestWhyNoEligibleNamesTheFix(t *testing.T) {
 	// Nothing registered: the answer is "go register a doer".
 	p := &launch.Provider{Capability: "review", Match: map[string]any{"tier": "premium"}}
 	got := eng.whyNoEligible(launch.Spec{Provider: p})
-	if !strings.Contains(got, "no provider:review:* is registered") {
+	if !strings.Contains(got, "no provider.review.* is registered") {
 		t.Errorf("empty registry: %q", got)
 	}
-	if !strings.Contains(got, "verse data provider:review:") {
+	if !strings.Contains(got, "verse data provider review ") {
 		t.Errorf("empty registry should show how to register one: %q", got)
 	}
 

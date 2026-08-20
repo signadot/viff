@@ -125,7 +125,7 @@ func (s Subtree) String() string {
 	if !s.confined() {
 		return "*"
 	}
-	return strings.Join(s.Path(), ":") + ":*"
+	return entity.JoinSegs(s.Path()) + ".*"
 }
 
 // checkConfined refuses a rule that would write outside this engine's confinement.

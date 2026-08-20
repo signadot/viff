@@ -264,7 +264,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	entitytest.Set(t, store, CharterRef("elsewhere"), entity.Obj{specField: entity.Raw(doc)}.Payload())
 
 	if err := eng.LoadCharter(); err == nil {
-		t.Fatal("a rule named 'review' installed from trigger:rule:elsewhere")
+		t.Fatal("a rule named 'review' installed from trigger.rule.elsewhere")
 	}
 	if got := eng.Triggers(); len(got) != 0 {
 		t.Fatalf("charter = %v; the misaddressed rule installed anyway", got)
@@ -418,7 +418,7 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 		"# what this is about\n" +
 		"condition: # cause and subject\n" +
 		"  # the subject\n" +
-		"  subject: demo:pr # any PR\n" +
+		"  subject: demo.pr # any PR\n" +
 		"  # what has to hold\n" +
 		"  when: ci:status # a build says so\n" +
 		"# who has to agree\n" +

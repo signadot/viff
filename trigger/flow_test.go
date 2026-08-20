@@ -30,7 +30,7 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 		return tk // the test starts Run after arranging the pause
 	})
 
-	subj := "demo:pr:1"
+	subj := `demo.pr."1"`
 	eng.Spawn("work-1", launch.Spec{Subject: subj})
 	if tk == nil {
 		t.Fatal("spawner was not invoked")
@@ -83,7 +83,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx) // the engine must observe the store to reap
 
-	subj := "demo:pr:1"
+	subj := `demo.pr."1"`
 	eng.Spawn("work-1", launch.Spec{Subject: subj})
 
 	deadline := time.After(2 * time.Second)
@@ -101,7 +101,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 // unguarded. (Behavioral guard; -race is the assertion.)
 func TestReapVsCancelFlowNoRace(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	const subj = "demo:pr:1"
+	const subj = `demo.pr."1"`
 	addr := mustExpr(t, subj)
 	mkTask := func(id string) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
@@ -167,8 +167,8 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 // already-terminal ones.
 func TestReconcileOrphans(t *testing.T) {
 	store := entitytest.Store(t)
-	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(task.Running), "flow": "demo:pr:1"}.Payload())
-	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(task.Done), "flow": "demo:pr:2"}.Payload())
+	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(task.Running), "flow": `demo.pr."1"`}.Payload())
+	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(task.Done), "flow": `demo.pr."2"`}.Payload())
 
 	eng := New(store, task.AutoResolver{})
 	if n := eng.ReconcileOrphans(); n != 1 {

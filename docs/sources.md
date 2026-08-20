@@ -98,8 +98,8 @@ two hundred times.
 reconcile always had, said out loud instead of held in a parameter. An entity under a covered
 pattern and absent from `Entities` is tombstoned; an entity in `Entities` under no covered
 pattern is written and never tombstoned. Git's "keep history" is then a declaration in the
-answer rather than a branch in verse's code: it covers `git:ref:*` and `git:head:*` for a repo
-and does not cover `git:commit:*`, so a commit that has fallen out of the bounded tip window is
+answer rather than a branch in verse's code: it covers `git.ref.*` and `git.head.*` for a repo
+and does not cover `git.commit.*`, so a commit that has fallen out of the bounded tip window is
 simply not mentioned, and stays.
 
 A write **replaces** rather than merges, because the answer is what the entity IS: a field the
@@ -177,10 +177,10 @@ separated slice names it. That is why it is a flag rather than the shape.
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
 read; an install compares two *declarations* with nothing in hand. Addresses compare
-statically; predicates do not. So `owns` is a ref with `*` allowed — `{ref: "git:*:verse/*"}` —
+statically; predicates do not. So `owns` is a ref with `*` allowed — `{ref: "git.*.verse/*"}` —
 with id globs restricted to a literal prefix and a trailing `*`, which makes disjointness a
 string comparison where general glob disjointness would be automata intersection. Two claims are
-disjoint when any segment is; a `*` segment is disjoint from nothing, so `git:*:*` claims the
+disjoint when any segment is; a `*` segment is disjoint from nothing, so `git.*.*` claims the
 lot and can be proved apart from nothing in its own system.
 
 A claim may also name a place **inside** an entity (`at: [owners, ENG]`), which is the one way
@@ -210,7 +210,7 @@ tombstone what the install proved this source was the single writer of.
 `lastReflect` and `lastError` go on the registration. `lastError` is written on **transition**,
 so a source failing every minute writes once and the write that clears it is the one that says
 it recovered. `lastReflect` is written only when a pass actually **wrote** something — it is
-the poll cursor, and stamping it every pass would put a write on `verse:sources:*` once per
+the poll cursor, and stamping it every pass would put a write on `verse.sources.*` once per
 resync interval forever, so anything watching that slice would fire on a verse where nothing is
 happening.
 
@@ -320,7 +320,7 @@ reflected no project at all, and that absence was the first real evidence agains
 grammar.
 
 The way out was not a different vocabulary but a **deeper address**. A claim may name a path
-inside a payload, so a team is not a co-writer of `linear:project:<id>` — it is the single writer
+inside a payload, so a team is not a co-writer of `linear.project.<id>` — it is the single writer
 of that entity's `owners.<KEY>`. Two of those are proved apart at install by the comparison one
 segment further down, converge writes, compares and tombstones there and nowhere else, and the
 last owner out takes the entity with a conditional delete. **Sharing an entity is not an
@@ -336,7 +336,7 @@ org- or user-owned and spans repositories, so no per-repo source can claim it as
 either — which is what makes this a limit of the address grammar rather than a quirk of one data
 model. A GitHub *user* is a third variant and not the same one: it has exactly one owner and that
 owner is the system, so the way out is not a slot but a source of its own, claiming
-`github:user:*` and nothing else. Neither kind is reflected today
+`github.user.*` and nothing else. Neither kind is reflected today
 ([working/gh-source-residual.md](working/gh-source-residual.md)); both are why the GitHub source
 names its kinds in `owns` rather than globbing them, which is what leaves room for that install.
 

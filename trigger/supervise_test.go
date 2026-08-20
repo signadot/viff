@@ -54,7 +54,7 @@ func TestAutoSupervisorRoutes(t *testing.T) {
 		answer: `{"decision": "escalate", "risk": "medium", "why": "touches the auth path"}`,
 		tests:  "green",
 		stage:  "landed",
-		gates:  []string{"sign-off@change:pr:1"},
+		gates:  []string{`sign-off@change.pr."1"`},
 		review: map[string]string{"decision": "escalate", "why": "touches the auth path"},
 	}, {
 		// The supervisor said yes at a risk it does not get to clear. The charter overrides
@@ -63,7 +63,7 @@ func TestAutoSupervisorRoutes(t *testing.T) {
 		answer: `{"decision": "approve", "risk": "high", "why": "small diff"}`,
 		tests:  "green",
 		stage:  "landed",
-		gates:  []string{"sign-off@change:pr:1"},
+		gates:  []string{`sign-off@change.pr."1"`},
 		review: map[string]string{
 			"decision": "escalate", "why": "small diff",
 			"promoted": "outside the supervisor's remit",
@@ -75,7 +75,7 @@ func TestAutoSupervisorRoutes(t *testing.T) {
 		answer: `{"decision": "approve", "risk": "low", "why": "docs only"}`,
 		tests:  "red",
 		stage:  "landed",
-		gates:  []string{"sign-off@change:pr:1"},
+		gates:  []string{`sign-off@change.pr."1"`},
 		review: map[string]string{"decision": "escalate", "promoted": "outside the supervisor's remit"},
 	}, {
 		name:   "a rejection closes the change with no gate",
@@ -91,7 +91,7 @@ func TestAutoSupervisorRoutes(t *testing.T) {
 		answer: "",
 		tests:  "green",
 		stage:  "landed",
-		gates:  []string{"sign-off@change:pr:1"},
+		gates:  []string{`sign-off@change.pr."1"`},
 		review: map[string]string{"decision": "escalate", "risk": "high"},
 	}}
 

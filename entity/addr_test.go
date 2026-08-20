@@ -16,11 +16,11 @@ func TestAnAddressReadsBackAtAnyDepth(t *testing.T) {
 		RefAt("demo", "pr", "1"),
 		RefAt("demo", "pr", "signadot/verse#42"),
 		// The three-segment id that holds colons — the case the colon form is arity-fixed for.
-		VerseRef("task", "instance", "review@demo:pr:1"),
+		VerseRef("task", "instance", "review@demo.pr.1"),
 		RefAt("verse-dev", "drift", "head", "abc"),
 		// THE ONE THAT BIT: four segments, and the id is itself an address.
-		RefAt("verse-dev", "drift", "head", "head-moved@git:head:verse"),
-		RefAt("verse-dev", "merge", "train", "train-cut@git:head:verse@4bb4464d"),
+		RefAt("verse-dev", "drift", "head", "head-moved@git.head.verse"),
+		RefAt("verse-dev", "merge", "train", "train-cut@git.head.verse@4bb4464d"),
 		VerseRef("motion", "channel", "x", "y"),
 		RefAt("vote", "abc"),
 		RefAt("a", "b", "c", "d", "e"),
@@ -36,19 +36,22 @@ func TestAnAddressReadsBackAtAnyDepth(t *testing.T) {
 	}
 }
 
-// THE DISCRIMINATOR IS WHERE THE COLONS ARE, and the two shapes it has to tell apart are these.
-// An id may hold dots, which is what makes a dotted string ambiguous at all.
+// A SEGMENT ENDS WHERE THE QUOTING SAYS, which is the whole of the grammar now that there is
+// only one. An id may hold dots, and that is what a dotted string could not say before: it is
+// said by quoting the segment.
 func TestADottedIDIsStillAnID(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
 		want []string
 	}{
-		{"demo:pr:a.b.c.d", []string{"demo", "pr", "a.b.c.d"}},
-		{"demo:pr:1", []string{"demo", "pr", "1"}},
-		{"verse:task:instance:x.y", []string{"verse", "task", "instance", "x.y"}},
+		{`demo.pr."a.b.c.d"`, []string{"demo", "pr", "a.b.c.d"}},
+		{`demo.pr."1"`, []string{"demo", "pr", "1"}},
+		{`verse.task.instance."x.y"`, []string{"verse", "task", "instance", "x.y"}},
 		{"verse-dev.drift.head.abc", []string{"verse-dev", "drift", "head", "abc"}},
-		{"verse-dev.drift.head.head-moved@git:head:verse",
-			[]string{"verse-dev", "drift", "head", "head-moved@git:head:verse"}},
+		{`verse-dev.drift.head."head-moved@git.head.verse"`,
+			[]string{"verse-dev", "drift", "head", "head-moved@git.head.verse"}},
+		// UNQUOTED, the dots are the delimiter — which is the other half of the same rule.
+		{"demo.pr.a.b.c.d", []string{"demo", "pr", "a", "b", "c", "d"}},
 	} {
 		got, err := ParseAddr(tc.in)
 		if err != nil {
@@ -68,17 +71,27 @@ func TestADottedIDIsStillAnID(t *testing.T) {
 	}
 }
 
-// ParseRef IS UNCHANGED, deliberately: a charter and a command line write the colon form, and a
-// dotted string THERE is an address followed by a payload path (`demo.pr.1.stage`, which
-// trigger.splitAddress reads as demo:pr:1 plus `stage`). Reading it as a four-segment entity
-// would swallow the field silently, which is the same class of bug as the one above.
-func TestParseRefStillReadsThreeSegments(t *testing.T) {
-	if _, err := ParseRef("verse-dev.drift.head.abc"); err == nil {
-		t.Error("ParseRef accepted a dotted path: splitAddress depends on it refusing")
+// THE COLON FORM IS NOT A SPELLING ANY MORE — it is a name that happens to hold colons, which is
+// what that string means in the one grammar left. So `demo.pr.1` is ONE segment, not three.
+//
+// This is the clobber stated as a test rather than left to be discovered: a record written
+// before the change reads as an address one segment deep, and is re-seeded rather than
+// translated. Nothing tries to guess which spelling a string is, because guessing is exactly
+// what the two grammars cost — a discriminator, stated in more than one place, that read
+// `verse-dev.drift.head."head-moved@git.head.verse"` as three segments with a mangled id and
+// answered "nothing stands there".
+func TestTheColonFormIsJustAName(t *testing.T) {
+	const old = "demo" + ":" + "pr" + ":" + "1" // spelled in pieces: nothing may rewrite it here
+	got, err := ParseAddr(old)
+	if err != nil {
+		t.Fatalf("%s: %v", old, err)
 	}
-	ref, err := ParseRef("demo:pr:a.b.c.d")
-	if err != nil || ref.ID() != "a.b.c.d" {
-		t.Errorf("ParseRef(%q) = %v, %v", "demo:pr:a.b.c.d", ref.Segs(), err)
+	if segs := got.Segs(); len(segs) != 1 || segs[0] != old {
+		t.Errorf("%s → %q, want the one segment it names", old, segs)
+	}
+	// And it round-trips as that: a colon needs no quoting, since nothing reads one.
+	if s := got.String(); s != old {
+		t.Errorf("rendered as %q", s)
 	}
 }
 
@@ -96,12 +109,12 @@ func TestPathOfTakesASegmentWhole(t *testing.T) {
 		segs []string
 		ref  string
 	}{
-		{[]string{"a b", "pr", "1"}, "a b:pr:1"},     // a space in the system
-		{[]string{"demo", "p r", "1"}, "demo:p r:1"}, // …and in the kind
-		{[]string{"demo", "pr", "x y"}, "demo:pr:x y"},
-		{[]string{"a.b", "pr", "1"}, "a.b:pr:1"}, // a dot in the system
-		{[]string{"a:b", "pr", "1"}, "a:b:pr:1"}, // a COLON in the system
-		{[]string{"demo", "pr", "a.b"}, "demo:pr:a.b"},
+		{[]string{"a b", "pr", "1"}, `"a b".pr."1"`},     // a space in the system
+		{[]string{"demo", "p r", "1"}, `demo."p r"."1"`}, // …and in the kind
+		{[]string{"demo", "pr", "x y"}, `demo.pr."x y"`},
+		{[]string{"a.b", "pr", "1"}, `"a.b".pr."1"`}, // a dot in the system: the quoting says so
+		{[]string{"a:b", "pr", "1"}, `a:b.pr."1"`},   // a COLON: ordinary, since nothing reads one
+		{[]string{"demo", "pr", "a.b"}, `demo.pr."a.b"`},
 	} {
 		p, _, err := TargetOf(c.segs)
 		if err != nil {
@@ -123,7 +136,7 @@ func TestPathOfSplitsTheFieldOffPositionally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Ref.String() != "demo:pr:a.b" {
+	if p.Ref.String() != `demo.pr."a.b"` {
 		t.Errorf("ref = %q", p.Ref.String())
 	}
 	if len(p.Field) != 2 || p.Field[0] != "labels" || p.Field[1] != "urgent" {

@@ -81,7 +81,7 @@ func (d *demo) System() string { return d.git.System() }
 
 // Owns is what this source claims across every pass, which is what verse proves that
 // disjointness against. Coarser than a Covers below — it says what nobody else may write — and
-// spelled as ref globs (`git:*:verse/*`) rather than as a payload predicate, because an install
+// spelled as ref globs (`git.*.verse/*`) rather than as a payload predicate, because an install
 // compares two declarations with no entities in hand and only addresses compare statically.
 func (d *demo) Owns() []source.Own { return d.git.Owns() }
 

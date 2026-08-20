@@ -15,8 +15,8 @@ import (
 // to explain why — the failure mode a durable lease has and an in-memory one does not.
 func TestReconcileClearsRunClaims(t *testing.T) {
 	srv := testServer(t)
-	claim := mirror.ClaimRef("review@demo:pr:1")
-	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
+	claim := mirror.ClaimRef("review@demo.pr.1")
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": `demo.pr."1"`, "chain": "review"}.Payload())
 
 	srv.reconcileTasks()
 
@@ -29,12 +29,12 @@ func TestReconcileClearsRunClaims(t *testing.T) {
 // task is still orphaned, and a claim is not mistaken for one on the way past.
 func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 	srv := testServer(t)
-	live := mirror.Ref("review@demo:pr:2")
+	live := mirror.Ref("review@demo.pr.2")
 	entitytest.Set(t, srv.Store, live, entity.Obj{
-		"status": string(task.Running), "runner": "local", "flow": "demo:pr:2",
+		"status": string(task.Running), "runner": "local", "flow": `demo.pr."2"`,
 	}.Payload())
-	claim := mirror.ClaimRef("review@demo:pr:2")
-	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:2"}.Payload())
+	claim := mirror.ClaimRef("review@demo.pr.2")
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": `demo.pr."2"`}.Payload())
 
 	srv.reconcileTasks()
 
@@ -61,15 +61,15 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 // test pins that the claim follows the task rather than diverging from it.
 func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
 	srv := testServer(t)
-	live := mirror.Ref("review.seq.1@demo:pr:1")
+	live := mirror.Ref("review.seq.1@demo.pr.1")
 	entitytest.Set(t, srv.Store, live, entity.Obj{
 		"status": string(task.Running),
 		"runner": "http://elsewhere.invalid", // remote → re-attached, believed alive
-		"flow":   "demo:pr:1",
+		"flow":   `demo.pr."1"`,
 		"chain":  "review.seq[1]",
 	}.Payload())
-	claim := mirror.ClaimRef("review@demo:pr:1")
-	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload())
+	claim := mirror.ClaimRef("review@demo.pr.1")
+	entitytest.Set(t, srv.Store, claim, entity.Obj{"flow": `demo.pr."1"`, "chain": "review"}.Payload())
 
 	srv.reconcileTasks()
 
@@ -85,17 +85,17 @@ func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
 // claimIsLive is the decision itself, tested directly: same subject and a chain at or below
 // the claim's own means the sequence is still running.
 func TestClaimIsLive(t *testing.T) {
-	claim := entity.Entity{Payload: entity.Obj{"flow": "demo:pr:1", "chain": "review"}.Payload()}
+	claim := entity.Entity{Payload: entity.Obj{"flow": `demo.pr."1"`, "chain": "review"}.Payload()}
 	cases := []struct {
 		name string
 		res  []resumedRun
 		want bool
 	}{
-		{"an element of this sequence", []resumedRun{{"demo:pr:1", "review.seq[1]"}}, true},
-		{"the carrier itself", []resumedRun{{"demo:pr:1", "review"}}, true},
-		{"another subject", []resumedRun{{"demo:pr:2", "review.seq[1]"}}, false},
-		{"another trigger", []resumedRun{{"demo:pr:1", "audit.seq[0]"}}, false},
-		{"a hook outside the sequence", []resumedRun{{"demo:pr:1", "other.onDone"}}, false},
+		{"an element of this sequence", []resumedRun{{`demo.pr."1"`, "review.seq[1]"}}, true},
+		{"the carrier itself", []resumedRun{{`demo.pr."1"`, "review"}}, true},
+		{"another subject", []resumedRun{{`demo.pr."2"`, "review.seq[1]"}}, false},
+		{"another trigger", []resumedRun{{`demo.pr."1"`, "audit.seq[0]"}}, false},
+		{"a hook outside the sequence", []resumedRun{{`demo.pr."1"`, "other.onDone"}}, false},
 		{"nothing resumed", nil, false},
 	}
 	for _, c := range cases {

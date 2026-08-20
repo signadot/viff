@@ -169,7 +169,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 	p := task.NewTask("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
-		Subject: "demo:pr:1",
+		Subject: `demo.pr."1"`,
 		Runner:  "local",
 		Chain:   "review.onDone",
 	})
@@ -180,7 +180,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	for k, want := range map[string]string{
 		"chain":   "review.onDone",
 		"trigger": "review",
-		"flow":    "demo:pr:1",
+		"flow":    `demo.pr."1"`,
 	} {
 		if got := entity.Str(e.Payload, k); got != want {
 			t.Errorf("payload[%q] = %q; want %q (payload %+v)", k, got, want, e.Payload)
@@ -285,13 +285,13 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 	p := task.NewTask("e1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
-		Runner: "local", Doer: "provider:treat:fixer", Grant: "no-delegate",
+		Runner: "local", Doer: "provider.treat.fixer", Grant: "no-delegate",
 		Tools: []string{"read_file", "run_bash"},
 	})
 
 	got, _, _ := store.Get(Ref("e1"))
 	obj := entity.ToObj(got.Payload)
-	if obj["doer"] != "provider:treat:fixer" {
+	if obj["doer"] != "provider.treat.fixer" {
 		t.Errorf("doer not published: %+v", got.Payload)
 	}
 	if obj["grant"] != "no-delegate" {

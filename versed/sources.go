@@ -330,7 +330,7 @@ func (s *Server) getSource(w http.ResponseWriter, r *http.Request) {
 // an operator reads before deciding whether `--allow-overlap` is honest.
 func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) {
 	system, name := r.PathValue("system"), r.PathValue("name")
-	e, ok := source.Find(s.scopedStore(r), system+":"+name)
+	e, ok := source.Find(s.scopedStore(r), entity.JoinSegs([]string{system, name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -372,7 +372,7 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	system, name := r.PathValue("system"), r.PathValue("name")
 	ref := source.Ref(system, name)
-	e, ok := source.Find(store, system+":"+name)
+	e, ok := source.Find(store, entity.JoinSegs([]string{system, name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -788,13 +788,13 @@ func (s *Server) restoreSources() {
 func (s *Server) hintSource(w http.ResponseWriter, r *http.Request) {
 	system, name := r.PathValue("system"), r.PathValue("name")
 	ref := source.Ref(system, name)
-	if _, ok := source.Find(s.scopedStore(r), system+":"+name); !ok {
+	if _, ok := source.Find(s.scopedStore(r), entity.JoinSegs([]string{system, name})); !ok {
 		http.NotFound(w, r)
 		return
 	}
 	var refs []entity.Ref
-	for _, raw := range r.URL.Query()["ref"] {
-		parsed, err := entity.ParseRef(raw)
+	for _, raw := range r.URL.Query()["at"] {
+		parsed, err := entity.ParseAddr(raw)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

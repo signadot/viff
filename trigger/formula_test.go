@@ -20,10 +20,10 @@ func TestFormulaCompactUnmarshal(t *testing.T) {
 		{`{"quorum":{"choice":"reject","n":3}}`, func(f *Formula) bool {
 			return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.Choice == "reject" && f.Req.N == 3
 		}},
-		{`{"fact":"motion:deadline"}`, func(f *Formula) bool {
+		{`{"fact":"motion.deadline"}`, func(f *Formula) bool {
 			return f.Op == OpAtom && f.Req.Kind == ReqFact && f.Req.Facts.System() == "motion" && f.Req.Facts.Kind() == "deadline"
 		}},
-		{`{"until":[{"quorum":2},{"fact":"motion:deadline"}]}`, func(f *Formula) bool {
+		{`{"until":[{"quorum":2},{"fact":"motion.deadline"}]}`, func(f *Formula) bool {
 			return f.Op == OpUntil && len(f.Args) == 2 && f.Args[0].Req.Kind == ReqQuorum && f.Args[1].Req.Kind == ReqFact
 		}},
 		{`{"op":"atom","req":{"kind":"quorum","n":2}}`, func(f *Formula) bool { // verbose still accepted
@@ -114,14 +114,14 @@ func TestFormulaEvalQuorumWhere(t *testing.T) {
 
 // A fact leaf that NAMES one entity is asked of the store, not granted by its own spelling.
 //
-// `!fact ci:status:green` parses to a match with all three segments definite, and such a
+// `!fact ci.status.green` parses to a match with all three segments definite, and such a
 // match deliberately *names* rather than selects — a set of one whether or not the entity
 // exists, which is how a trigger's subject can publish a fact nothing has written yet. As a
 // requirement that is exactly backwards: the fact would hold from the moment the charter was
 // written, so the gate would proceed before CI had said anything at all.
 func TestFormulaEvalNamedFactNeedsTheEntity(t *testing.T) {
 	st := entitytest.Store(t)
-	green := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: factSelFromRef("ci:status:green")}}
+	green := &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqFact, Facts: factSelFromRef("ci.status.green")}}
 
 	if ok, _ := green.Eval(st); ok {
 		t.Fatal("a named fact held with nothing in the store")
@@ -129,7 +129,7 @@ func TestFormulaEvalNamedFactNeedsTheEntity(t *testing.T) {
 	entitytest.Set(t, st, entity.RefAt("ci", "status", "green"), entity.Obj{"ok": true}.Payload())
 	ok, witness := green.Eval(st)
 	if !ok || len(witness) != 1 || witness[0].ID() != "green" {
-		t.Fatalf("named fact = (%v, %v), want (true, [ci:status:green])", ok, witness)
+		t.Fatalf("named fact = (%v, %v), want (true, [ci.status.green])", ok, witness)
 	}
 	// …and it goes back to unsatisfied when the fact does, like every other leaf.
 	entitytest.Remove(t, st, entity.RefAt("ci", "status", "green"))

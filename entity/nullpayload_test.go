@@ -220,7 +220,7 @@ func TestModifyDoesNotLoseAnUpdateOverNull(t *testing.T) {
 // delete leaves behind.
 func TestClaimAfterReleaseIsAbsentByTheKey(t *testing.T) {
 	s := openStore(t)
-	ref := RefAt("run", "claim", "seq@demo:pr:1")
+	ref := RefAt("run", "claim", "seq@demo.pr.1")
 	claim := func() bool {
 		ok, _, err := s.Write(Write{At: ref.At(), Value: Obj{"by": "engine"}.Payload(), When: []Require{Created()}})
 		if err != nil {

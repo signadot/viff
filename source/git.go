@@ -118,7 +118,7 @@ func (g *Git) Owns() []Own {
 	ids := g.repos.ids()
 	out := make([]Own, 0, 2*len(ids))
 	for _, id := range ids {
-		out = append(out, Own{Ref: g.system + ":*:" + id + "/*"}, Own{Ref: g.system + ":head:" + id})
+		out = append(out, Own{Ref: g.system + ".*." + id + "/*"}, Own{Ref: g.system + ".head." + id})
 	}
 	return out
 }
@@ -167,7 +167,7 @@ func (g *Git) InstallHook(id, hintURL string) error {
 	// the route it posts to stay unauthenticated in a wide-open verse.
 	script := "#!/bin/sh\n" + hookMarker + "\n" +
 		`[ "$1" = committed ] || exit 0` + "\n" +
-		fmt.Sprintf(`curl -fsS -X POST "%s?ref=%s" >/dev/null 2>&1 || true`+"\n",
+		fmt.Sprintf(`curl -fsS -X POST "%s?at=%s" >/dev/null 2>&1 || true`+"\n",
 			hintURL, url.QueryEscape(g.HeadRef(id).String()))
 	return os.WriteFile(path, []byte(script), 0o755)
 }

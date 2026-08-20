@@ -15,7 +15,7 @@ import (
 //
 // A spawn id is derived from the chain and the subject, so a re-fire about one subject reuses
 // it — deliberately, since that is what makes a re-fire idempotent and what `verse flow
-// demo:pr:1` addresses. Nothing named the occurrence, so two runs wrote one record and their
+// demo.pr.1` addresses. Nothing named the occurrence, so two runs wrote one record and their
 // fields interleaved: staging held a task record whose `ended` preceded its `started` by fifty
 // minutes, carrying one run's result beside another's status (git-issue gjv063rrh12ksvgnfsn0).
 //

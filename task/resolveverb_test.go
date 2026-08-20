@@ -14,8 +14,8 @@ func resolution(questionID string) ToolUse {
 // everything a resolver does at once. A grant naming the verb and the question admits that
 // resolution and nothing else.
 func TestGrantCanPermitAnsweringOneQuestion(t *testing.T) {
-	mine := "review@demo:pr:1~d3"
-	yours := "review@demo:pr:2~d1"
+	mine := "review@demo.pr.1~d3"
+	yours := "review@demo.pr.2~d1"
 
 	g := Grant{Allow: []GateMatch{{
 		Verbs:     []Verb{Resolve},
@@ -37,13 +37,13 @@ func TestGrantCanPermitAnsweringOneQuestion(t *testing.T) {
 func TestGrantCanPermitAnsweringOneOrigin(t *testing.T) {
 	g := Grant{Allow: []GateMatch{{
 		Verbs:     []Verb{Resolve},
-		Resources: []ResourcePred{{Kind: KindGate, Pattern: "review@demo:pr:1~*"}},
+		Resources: []ResourcePred{{Kind: KindGate, Pattern: "review@demo.pr.1~*"}},
 	}}}
 
-	if !g.Permits(resolution("review@demo:pr:1~d3")) {
+	if !g.Permits(resolution("review@demo.pr.1~d3")) {
 		t.Error("a glob over one origin's questions refused one of them")
 	}
-	if g.Permits(resolution("review@demo:pr:2~d3")) {
+	if g.Permits(resolution("review@demo.pr.2~d3")) {
 		t.Error("a glob over one origin's questions admitted another origin's")
 	}
 }
@@ -56,12 +56,12 @@ func TestReadOnlyRefusesAnswering(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("NamedGrant(read-only) = %v, %v", ok, err)
 	}
-	if g.Permits(resolution("review@demo:pr:1~d3")) {
+	if g.Permits(resolution("review@demo.pr.1~d3")) {
 		t.Error("read-only admitted a resolution")
 	}
 
 	w := Grant{Allow: []GateMatch{{Verbs: []Verb{Write}}}}
-	if w.Permits(resolution("review@demo:pr:1~d3")) {
+	if w.Permits(resolution("review@demo.pr.1~d3")) {
 		t.Error("a write grant admitted a resolution — answering is not a write, and a verb " +
 			"that collapsed the two would confer it by accident")
 	}
@@ -70,12 +70,12 @@ func TestReadOnlyRefusesAnswering(t *testing.T) {
 // The derivation is what the envelope reads, so it has to produce the effect at all — and
 // nothing else in the vocabulary should claim a resolution.
 func TestResolutionDerivesOneGateEffect(t *testing.T) {
-	tu := resolution("review@demo:pr:1~d3")
+	tu := resolution("review@demo.pr.1~d3")
 	if len(tu.Effects) != 1 {
 		t.Fatalf("effects = %v, want exactly one", tu.Effects)
 	}
 	got := tu.Effects[0]
-	if got.Verb != Resolve || got.Resource.Kind != KindGate || got.Resource.Ref != "review@demo:pr:1~d3" {
+	if got.Verb != Resolve || got.Resource.Kind != KindGate || got.Resource.Ref != "review@demo.pr.1~d3" {
 		t.Errorf("effect = %+v, want {resolve, gate, the question id}", got)
 	}
 }

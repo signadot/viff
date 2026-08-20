@@ -7,20 +7,26 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-func TestParseRefRoundTrip(t *testing.T) {
-	cases := []string{"linear:issue:1090", "github:pr:signadot/hack#12", "verse:task:instance:p1"}
+func TestParseAddrRoundTrip(t *testing.T) {
+	cases := []string{
+		`linear.issue."1090"`,
+		`github.pr."signadot/hack#12"`, // the quoting is the grammar's: a '#' is inside the name
+		"verse.task.instance.p1",
+		"nope", // one segment is an address too — a whole system, which is a real thing to name
+	}
 	for _, s := range cases {
-		r, err := ParseRef(s)
+		r, err := ParseAddr(s)
 		if err != nil {
-			t.Fatalf("ParseRef(%q): %v", s, err)
+			t.Fatalf("ParseAddr(%q): %v", s, err)
 		}
 		if r.String() != s {
 			t.Fatalf("round trip: %q -> %q", s, r.String())
 		}
 	}
-	for _, bad := range []string{"", "a:b", "a::c", ":b:c", "nope"} {
-		if _, err := ParseRef(bad); err == nil {
-			t.Fatalf("ParseRef(%q) should fail", bad)
+	// An empty segment names no place, at either end or in the middle.
+	for _, bad := range []string{"", `a."".b`, `a.b.""`} {
+		if _, err := ParseAddr(bad); err == nil {
+			t.Fatalf("ParseAddr(%q) should fail", bad)
 		}
 	}
 }

@@ -136,7 +136,7 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 // already gone — and this says so beforehand rather than in the report afterwards.
 func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	kind, name := r.PathValue("kind"), r.PathValue("name")
-	e, ok := runner.Find(s.scopedStore(r), kind+":"+name)
+	e, ok := runner.Find(s.scopedStore(r), entity.JoinSegs([]string{kind, name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -168,7 +168,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	kind, name := r.PathValue("kind"), r.PathValue("name")
 	ref := runner.Ref(kind, name)
-	e, ok := runner.Find(store, kind+":"+name)
+	e, ok := runner.Find(store, entity.JoinSegs([]string{kind, name}))
 	if !ok {
 		http.NotFound(w, r)
 		return

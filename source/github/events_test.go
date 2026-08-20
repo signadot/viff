@@ -111,20 +111,20 @@ func TestADeliveryHintsTheThingItIsAbout(t *testing.T) {
 	}{
 		{"an issue", "issues", map[string]any{
 			"repository": repo, "issue": map[string]any{"number": 42},
-		}, "github:issue:acme/app#42"},
+		}, `github.issue."acme/app#42"`},
 		{"a pull request", "pull_request", map[string]any{
 			"repository": repo, "pull_request": map[string]any{"number": 7},
-		}, "github:pr:acme/app#7"},
+		}, `github.pr."acme/app#7"`},
 		{"a review", "pull_request_review", map[string]any{
 			"repository": repo, "pull_request": map[string]any{"number": 7},
-		}, "github:pr:acme/app#7"},
+		}, `github.pr."acme/app#7"`},
 		{"a discussion", "discussion", map[string]any{
 			"repository": repo, "discussion": map[string]any{"number": 3},
-		}, "github:discussion:acme/app#3"},
+		}, `github.discussion."acme/app#3"`},
 		{"a workflow run", "workflow_run", map[string]any{
 			"repository": repo, "workflow_run": map[string]any{"id": 991},
-		}, "github:run:acme/app/991"},
-		{"a push", "push", map[string]any{"repository": repo}, "github:repo:acme/app"},
+		}, "github.run.acme/app/991"},
+		{"a push", "push", map[string]any{"repository": repo}, "github.repo.acme/app"},
 		// A comment delivery names the COMMENT, which is the new thing — one request against
 		// the nine a repository pass costs, and against an item pass that would refresh a title
 		// nobody changed. It arrives as an issue_comment for a pull request's conversation too,
@@ -133,15 +133,15 @@ func TestADeliveryHintsTheThingItIsAbout(t *testing.T) {
 		{"a comment on a pull request", "issue_comment", map[string]any{
 			"repository": repo, "comment": map[string]any{"id": 900},
 			"issue": map[string]any{"number": 7, "pull_request": map[string]any{"url": "x"}},
-		}, "github:comment:acme/app#7/900"},
+		}, `github.comment."acme/app#7/900"`},
 		{"a comment on an issue", "issue_comment", map[string]any{
 			"repository": repo, "comment": map[string]any{"id": 901},
 			"issue": map[string]any{"number": 42},
-		}, "github:comment:acme/app#42/901"},
+		}, `github.comment."acme/app#42/901"`},
 		{"a review comment on a diff", "pull_request_review_comment", map[string]any{
 			"repository": repo, "comment": map[string]any{"id": 902},
 			"pull_request": map[string]any{"number": 7},
-		}, "github:comment:acme/app#7/902"},
+		}, `github.comment."acme/app#7/902"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &hinted{}
@@ -168,7 +168,7 @@ func TestAnUnplaceableDeliveryAsksForAPass(t *testing.T) {
 	post(t, webhook(t, f, h), "release", map[string]any{
 		"repository": map[string]any{"full_name": "acme/app"}})
 	refs := h.only(t)
-	if len(refs) != 1 || refs[0].String() != "github:repo:acme/app" {
+	if len(refs) != 1 || refs[0].String() != "github.repo.acme/app" {
 		t.Fatalf("an unread event hinted %v, want the repository", refs)
 	}
 
@@ -210,7 +210,7 @@ func TestADeliveryCarriesNothingIntoTheStore(t *testing.T) {
 		},
 	})
 	refs := h.only(t)
-	if len(refs) != 1 || refs[0].String() != "github:issue:acme/app#42" {
+	if len(refs) != 1 || refs[0].String() != `github.issue."acme/app#42"` {
 		t.Fatalf("hinted %v", refs)
 	}
 	// And the reconcile that hint asks for reads GitHub, which still says what it said.
@@ -219,7 +219,7 @@ func TestADeliveryCarriesNothingIntoTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := payloads(rn)["github:issue:acme/app#42"]
+	got := payloads(rn)[`github.issue."acme/app#42"`]
 	if got["title"] != "the real title" || got["state"] != "open" {
 		t.Fatalf("a delivery's payload reached the store: %v", got)
 	}
@@ -241,14 +241,14 @@ func TestATargetedRunPassCoversTheRunAndLandsOnItsPullRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := payloads(rn)
-	if got["github:run:acme/app/2"] == nil {
+	if got["github.run.acme/app/2"] == nil {
 		t.Fatalf("the run is missing: %v", got)
 	}
-	if got["github:run:acme/app/1"] != nil {
+	if got["github.run.acme/app/1"] != nil {
 		t.Fatal("a targeted run pass answered for another run")
 	}
-	if c := got["github:pr:acme/app#7"]["checks"]; c != "failure" {
-		t.Fatalf("the run's state did not reach its pull request: %v", got["github:pr:acme/app#7"])
+	if c := got[`github.pr."acme/app#7"`]["checks"]; c != "failure" {
+		t.Fatalf("the run's state did not reach its pull request: %v", got[`github.pr."acme/app#7"`])
 	}
 	// The covers name the run and that pull request, and nothing else: a cover over the run
 	// window would tombstone every other run in the repository.

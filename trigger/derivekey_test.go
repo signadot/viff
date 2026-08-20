@@ -38,7 +38,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [demo, batch]
@@ -110,7 +110,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [demo, batch]
@@ -132,7 +132,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 
 // AND `id:` IS THE SAME KEY WITHOUT THE COMPOSITION, which is the reader's half of it.
 //
-// A keyed id is `cut@git:head:verse@aaa111` — a function of (rule, subject, key), and nothing
+// A keyed id is `cut@git.head.verse@aaa111` — a function of (rule, subject, key), and nothing
 // in the charter grammar composes one, so every rule that wants that entity has to DESCRIBE it
 // (a `"*"` and a predicate on some field it happens to know) rather than name it. `id:` says
 // the value alone identifies the record, so the address is `demo.batch.aaa111` and a reader
@@ -152,7 +152,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [demo, batch]
@@ -192,7 +192,7 @@ func TestADeriveRefusesBothKeyAndID(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [git, batch]
@@ -229,7 +229,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [demo, batch]
@@ -242,7 +242,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 - name: mark
   stratum: reflected
   condition:
-    subject: git:mark:verse
+    subject: git.mark.verse
   action:
     derive:
     - path: [demo, batch]

@@ -174,12 +174,12 @@ func TestAQuestionFollowsItsTasksFate(t *testing.T) {
 func TestARestartOrphansAFiringsQuestion(t *testing.T) {
 	srv := testServer(t)
 	mirror.PostQuestion(srv.Store, task.Pending{
-		Question: task.GateQuestion{ID: "verse:trigger:guard:approval~1", Origin: "guard", Gate: "approval"},
+		Question: task.GateQuestion{ID: "verse.trigger.guard.approval~1", Origin: "guard", Gate: "approval"},
 	}, "") // no task: a firing posed it, before anything spawned
 
 	srv.reconcileTasks()
 
-	e, _, _ := srv.Store.Get(mirror.QuestionRef("verse:trigger:guard:approval~1"))
+	e, _, _ := srv.Store.Get(mirror.QuestionRef("verse.trigger.guard.approval~1"))
 	got := entity.ToObj(e.Payload)
 	if got["status"] != mirror.QuestionOrphaned {
 		t.Fatalf("status = %v, want orphaned — the firing that waited on it died with us: %+v",
@@ -326,10 +326,10 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 func TestAResumedTaskKeepsItsResolver(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	const binding = "verse:resolvers:security:security-review"
+	const binding = "verse.resolvers.security.security-review"
 	entitytest.Set(t, first.Store, mirror.Ref("p"), entity.Obj{
 		"status": string(task.Running), "runner": "http://elsewhere.invalid",
-		"flow": "change:pr:1", "resolver": binding,
+		"flow": `change.pr."1"`, "resolver": binding,
 	}.Payload())
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))

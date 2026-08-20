@@ -25,6 +25,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
+
+	"github.com/signadot/verse/entity"
 )
 
 // ── Match ────────────────────────────────────────────────────────────────────
@@ -90,10 +92,14 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromKeyVals(kvs), nil
 }
 
-// address renders the match as "system:kind:id" when it carries only those dimensions,
-// with "*" for a gap. Reported false when a payload predicate or an op is present (no
-// string can carry those), when the match is empty, or when a segment contains a ":" that
-// would make the result ambiguous to ParseExpr.
+// address renders the match as the kinded path "system.kind.id" when it carries only those
+// dimensions, with "*" for a gap. Reported false when a payload predicate or an op is present
+// (no string can carry those), or when the match is empty.
+//
+// A COLON IS ORDINARY NOW, in any segment: the grammar reads dots, and a segment that would
+// otherwise be mis-read is quoted rather than refused. That is what retires the old caveat here
+// — a colon outside the id used to make the rendering ambiguous to ParseExpr, so a match
+// carrying one had no string form at all.
 func (m Match) address() (string, bool) {
 	if m.HasPredicate() {
 		return "", false // no address spelling carries a payload predicate
@@ -110,11 +116,6 @@ func (m Match) address() (string, bool) {
 	if sys == "" && kind == "" && id == "" {
 		return "", false
 	}
-	// Only the id may contain ":" — ParseExpr splits into at most three segments, so a
-	// colon anywhere else would re-parse as something different.
-	if strings.ContainsRune(sys, ':') || strings.ContainsRune(kind, ':') {
-		return "", false
-	}
 	segs := []string{sys, kind, id}
 	last := 0
 	for i, s := range segs {
@@ -122,12 +123,15 @@ func (m Match) address() (string, bool) {
 			last = i
 		}
 	}
-	for i := range segs[:last+1] {
-		if segs[i] == "" {
-			segs[i] = "*"
+	out := make([]string, 0, last+1)
+	for _, s := range segs[:last+1] {
+		if s == "" {
+			out = append(out, "*") // a gap is any segment, and a `*` is never quoted
+			continue
 		}
+		out = append(out, entity.JoinSegs([]string{s}))
 	}
-	return strings.Join(segs[:last+1], ":"), true
+	return strings.Join(out, "."), true
 }
 
 // FromTonyIR accepts the address string or the object form — the same two shapes the JSON
@@ -368,8 +372,12 @@ func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
 	case r.Choice == "" && !factsSet:
 		return ir.FromInt(int64(r.N)), nil
 	case r.N == 0 && r.Choice == "" && !r.Facts.HasPredicate():
-		if r.Facts.Kind() != "" {
-			return ir.FromString(r.Facts.System() + ":" + r.Facts.Kind()), nil
+		// The address, in the one grammar — through Match.address, so a `!fact` renders the way
+		// a subject does and re-reads through the same ParseExpr. It used to join with a colon
+		// here, which is a second renderer for one spelling and drifted the moment the spelling
+		// moved: `!fact ci.status` came back out as `!fact ci:status`.
+		if addr, ok := r.Facts.address(); ok {
+			return ir.FromString(addr), nil
 		}
 		return ir.FromString(r.Facts.System()), nil
 	}

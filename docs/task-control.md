@@ -8,7 +8,7 @@ task by dialing in; this is the seam that makes that work. It builds on
 
 In one line: the task-control interface is the `taskd` HTTP contract, made resumable
 and claim-aware, behind a base URL. verse is its client and mirrors it into the durable
-`verse:task:instance` entity; the local supervisor is one built-in implementation of the same
+`verse.task.instance` entity; the local supervisor is one built-in implementation of the same
 URL contract with no privileged shortcut; and anyone else (k8s, AWS Lambda, a human-workflow
 service, a custom runtime) plugs in a URL, completely outside verse.
 
@@ -27,14 +27,14 @@ task is its *runner*, and the autonomy dial is its *vector*.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
-| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse:task:instance` and on `verse status` | `verse up --runner <url>` |
+| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up --runner <url>` |
 | how much it may do unasked | `task.Vector` | `vector` on a launch spec | `verse task vector <id>` |
 
 ## What the interface is
 
 verse defines a task not as "an LLM loop" but as a contract: a driver proposes, an executor
 performs, effects are gated by a vector at boundaries, a read plane streams events, a control
-plane steers at boundaries, and the whole thing is mirrored to a `verse:task:instance` entity
+plane steers at boundaries, and the whole thing is mirrored to a `verse.task.instance` entity
 and ends with a terminal. Task control is the durable generalization of the in-process
 `Supervisor` that enforces that contract.
 
@@ -55,7 +55,7 @@ mechanism differs. Takeover falls out for free: `cancel` the agent, a human re-c
 claim transfer plus identity), reads the journal (durable handoff), and continues on the same
 subject under the same runner.
 
-A task-control backend is a reconciler over the `verse:task:instance` resource, not a gated
+A task-control backend is a reconciler over the `verse.task.instance` resource, not a gated
 task itself — which stops the regress, since governing a task must not require another governed
 task. It is the dual of a [Source](sources.md): a Source reflects external state *into* the
 verse; a task-control backend runs and governs *work* on a substrate. Both reconcile a resource
@@ -72,7 +72,7 @@ the durable entity — the same `Observe:Since` / `webhook:reconcile` law verse 
 Two rules follow.
 
 No task control-state lives only in memory. Pending gates, the claim, control fields, the
-event cursor all sit on the `verse:task:instance` entity, and a restart re-reads them.
+event cursor all sit on the `verse.task.instance` entity, and a restart re-reads them.
 
 `verse up` reconciles, and resume is not orphan. An in-process agent whose runtime died is
 orphaned, because the loop is gone. A detached or claimed task — a human still merging, a
@@ -96,7 +96,7 @@ that has moved on.
 ## Everything through the base URL — no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream,
-and mirrors the stream into the `verse:task:instance` entity — so durability lives in verse,
+and mirrors the stream into the `verse.task.instance` entity — so durability lives in verse,
 not the runner. Which runner runs a given task is a per-spawn binding (`runner: <url>` in the
 charter or spec, like `--driver`), and there is deliberately no in-memory shortcut: `verse task
 cancel/say/pause` go through the same dispatch as a remote one, which is what forces the
@@ -138,7 +138,7 @@ Every event carries a per-task, gapless, monotonic cursor — a plain sequence n
 assigned by the runner, which need not be a global logd commit — and a timestamp:
 
 ```json
-{ "cursor": 42, "task": "review@demo:pr:1", "at": "…",
+{ "cursor": 42, "task": "review@demo.pr.1", "at": "…",
   "kind": "exec", "tool": "run_tests", "text": "2 failed" }
 ```
 
@@ -248,7 +248,7 @@ idempotent re-POST converge — no lost gate, no double-merge.
 
 ## Invariants verse CAS-enforces on the entity
 
-Regardless of a misbehaving runner or worker, three things hold on the `verse:task:instance`
+Regardless of a misbehaving runner or worker, three things hold on the `verse.task.instance`
 entity: terminal-once (monotonic status), claim-holder-only writes, and
 gate-before-the-effect — which for a detached or human worker is an attestation verse
 timestamps and audits, since it cannot intercept the merge itself. External autonomy is
@@ -419,7 +419,7 @@ pulled), so it reconnects with `inbox?since=cCursor`, and `rCursor` is its high-
 it has reported and the broker acked, so it reconnects with `report {from: rCursor}`.
 
 Each is independently resumable, so there are three resume points — verse's read, the worker's
-read, the worker's write — over one durable truth, the `verse:task:instance` entity. A worker
+read, the worker's write — over one durable truth, the `verse.task.instance` entity. A worker
 that sleeps and reconnects resumes both of its cursors without verse noticing; a verse that
 restarts re-reads `/events` without the worker noticing. All three use the same
 replay-then-live-with-resync-below-watermark discipline.

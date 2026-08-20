@@ -25,7 +25,7 @@ It is installed rather than declared in a charter, and it carries the whole bind
 pointing at one: what it supervises, how it answers, under what envelope, and its two dials.
 
 ```tony
-name:      security-review                       # verse:resolvers:security:security-review
+name:      security-review                       # verse.resolvers.security.security-review
 kind:      security
 condition:                                       # optional — the standing door
   subject: { system: change, kind: pr, value: { area: payments } }
@@ -64,7 +64,7 @@ name: validate
 condition:
   subject: { system: change, kind: pr, value: { stage: proposed } }
 gating:
-  resolver: verse:resolvers:security:security-review   # answers this RULE's own gates
+  resolver: verse.resolvers.security.security-review   # answers this RULE's own gates
   gates:  [{ name: ship, mode: ask }]
 action:
   spawn:
@@ -72,7 +72,7 @@ action:
     prompt:     "Validate $subject and fix what is trivially wrong."
     grant:    no-delegate                        # what the WORK may do at all
     vector:   ask                                # …and how much of it asks
-    resolver: verse:resolvers:security:security-review # answers this RUN's gates
+    resolver: verse.resolvers.security.security-review # answers this RUN's gates
   onDone:
     patch: { stage: validated }                  # the latch: out of its own selection
 ```
@@ -131,12 +131,12 @@ streams rather than a request and a reply.
 { cursor: 33, kind: exec,    tool: run_tests, text: "2 failed" }
 { cursor: 34, kind: say,     text: "retrying with the fixture rebuilt" }
 { cursor: 35, kind: exec,    tool: write_file, path: "infra/deploy.tf" }
-{ cursor: 36, kind: pending, id: "review-8f30@demo:pr:1~d3", gate: deploy, mode: ask,
+{ cursor: 36, kind: pending, id: "review-8f30@demo.pr.1~d3", gate: deploy, mode: ask,
   tool: run_bash, effects: { verbs: [exec], paths: ["infra/**"] },
   escalatesAt: 2026-08-02T13:12:44Z }
 
 # out — a verdict when it decides, a position whenever it moves
-{ id: "review-8f30@demo:pr:1~d3", verdict: deny, why: "prod path, and staging was asked for",
+{ id: "review-8f30@demo.pr.1~d3", verdict: deny, why: "prod path, and staging was asked for",
   say: "use the staging bucket" }
 { position: 36, notes: "denied the prod path at ~d3; staging is fine if it retries" }
 ```
@@ -250,7 +250,7 @@ is no supervised run that reads as unsupervised, and no way to answer invisibly.
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
-{kind: decision, id: "review-bff7…~d1", by: verse:resolvers:security:reviewer, proceed: true}
+{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.security.reviewer, proceed: true}
 {kind: exec,     tool: run_bash, text: reviewing}
 {kind: status,   text: done}
 ```

@@ -80,7 +80,7 @@ func TestDerefInterpolates(t *testing.T) {
 		{"$status/$result", "done/SHIPIT"},
 		{"n=$count r=$ratio ok=$ok", "n=3 r=1.5 ok=true"},
 		{"step $verse.review.step of 3", "step 2 of 3"},
-		{"about $subject", "about demo:pr:1"},
+		{"about $subject", `about demo.pr."1"`},
 	} {
 		got, err := expandString(tc.in, root)
 		if err != nil {
@@ -215,18 +215,18 @@ func TestRefRootPreservesNumberTypes(t *testing.T) {
 	if n == nil || n.Int64 == nil || *n.Int64 != 3 {
 		t.Fatalf("count did not survive as an integer: %v", n)
 	}
-	if s := resolvedSubject(t, root); s != "demo:pr:1" {
-		t.Errorf("subject = %q, want demo:pr:1", s)
+	if s := resolvedSubject(t, root); s != `demo.pr."1"` {
+		t.Errorf("subject = %q, want demo.pr.1", s)
 	}
 }
 
 // $subject is the one reserved reference and a payload field must not shadow it — the same
 // rule bindingFor states for the spawn side.
 func TestRefRootSubjectWins(t *testing.T) {
-	ev := entity.Event{To: entity.Obj{"subject": "demo:pr:999"}.Payload()}
+	ev := entity.Event{To: entity.Obj{"subject": `demo.pr."999"`}.Payload()}
 	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
-	if s := resolvedSubject(t, root); s != "demo:pr:1" {
-		t.Errorf("subject = %q, want the resolved subject demo:pr:1", s)
+	if s := resolvedSubject(t, root); s != `demo.pr."1"` {
+		t.Errorf("subject = %q, want the resolved subject demo.pr.1", s)
 	}
 }
 
@@ -238,7 +238,7 @@ func TestRefRootScalarPayload(t *testing.T) {
 	if _, err := expandString("$anything", root); err == nil {
 		t.Error("a reference into a scalar payload should error")
 	}
-	if s := resolvedSubject(t, root); s != "demo:count:1" {
+	if s := resolvedSubject(t, root); s != `demo.count."1"` {
 		t.Errorf("$subject must still resolve for a scalar payload, got %q", s)
 	}
 }

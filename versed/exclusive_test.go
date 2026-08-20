@@ -38,7 +38,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 	defer ts.Close()
 	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
-	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
 	// Seen, though. Exclusive governs whose answer counts, never who may look: the question
@@ -61,7 +61,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("a person answered an exclusive question: %s %s", resp.Status, body)
 	}
 	// Named, so the refusal says who to go and ask rather than only that this was not allowed.
-	if !strings.Contains(body, "verse:resolvers:security:payments-review") {
+	if !strings.Contains(body, "verse.resolvers.security.payments-review") {
 		t.Fatalf("the refusal does not name the owner: %s", body)
 	}
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
@@ -77,7 +77,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("the owner could not answer its own question: %s", ok.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "verse:resolvers:security:payments-review" || q["overrode"] != nil {
+	if q["by"] != "verse.resolvers.security.payments-review" || q["overrode"] != nil {
 		t.Fatalf("the owner's own answer was recorded as an override: %+v", q)
 	}
 }
@@ -90,7 +90,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 	defer ts.Close()
 	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
-	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
 	resp := postTony(t, ts.URL+"/gate/resolve",
@@ -100,7 +100,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 		t.Fatalf("the override was refused: %s", resp.Status)
 	}
 	q := settledQuestion(t, srv, qid)
-	if q["by"] != "human:scott" || q["overrode"] != "verse:resolvers:security:payments-review" {
+	if q["by"] != "human:scott" || q["overrode"] != "verse.resolvers.security.payments-review" {
 		t.Fatalf("the record does not name both parties: %+v", q)
 	}
 	if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" {
@@ -115,7 +115,7 @@ func TestAdvisoryTakesTheFirstAnswer(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	pr(t, srv, "1", "payments")
-	spawnFor(t, ts, "run-1", "change:pr:1", "")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
 	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Approve: true, By: "human:scott"})

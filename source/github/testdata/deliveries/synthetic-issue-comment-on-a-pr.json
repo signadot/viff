@@ -6,7 +6,7 @@
   "status_code": 200,
   "event": "issue_comment",
   "action": "created",
-  "verseWant": "github:comment:acme/app#7/1",
+  "verseWant": "github.comment.\"acme/app#7/1\"",
   "request": {
     "headers": {"X-GitHub-Event": "issue_comment"},
     "payload": {

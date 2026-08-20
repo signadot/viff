@@ -44,9 +44,9 @@ var fixture = []struct {
 	ref     string
 	payload entity.Payload
 }{
-	{"demo:pr:1", entity.Obj{"stage": "open", "labels": entity.Obj{"urgent": true}}.Payload()},
-	{"demo:pr:2", entity.Obj{"stage": "merged", "labels": entity.Obj{"urgent": false}}.Payload()},
-	{"demo:pr:3", entity.Obj{"stage": "open"}.Payload()}, // no labels at all
+	{`demo.pr."1"`, entity.Obj{"stage": "open", "labels": entity.Obj{"urgent": true}}.Payload()},
+	{`demo.pr."2"`, entity.Obj{"stage": "merged", "labels": entity.Obj{"urgent": false}}.Payload()},
+	{`demo.pr."3"`, entity.Obj{"stage": "open"}.Payload()}, // no labels at all
 	{sentinel.String(), entity.Obj{
 		"stage": "open", "labels": entity.Obj{"urgent": true}, "sentinel": true,
 	}.Payload()},
@@ -86,7 +86,7 @@ func watchRefs(t *testing.T, q url.Values) []string {
 	}
 
 	for _, e := range fixture {
-		ref, err := entity.ParseRef(e.ref)
+		ref, err := entity.ParseAddr(e.ref)
 		if err != nil {
 			t.Fatalf("%s: %v", e.ref, err)
 		}
@@ -120,7 +120,7 @@ func watchRefs(t *testing.T, q url.Values) []string {
 // same predicate a charter's `when` carries: an operator can watch exactly what a rule fires
 // on.
 func TestWatchFiltersOnThePayload(t *testing.T) {
-	if got := watchRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got, "demo:pr:1", "demo:pr:3") {
+	if got := watchRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got, `demo.pr."1"`, `demo.pr."3"`) {
 		t.Errorf("?if {stage: open} delivered %v, want the two open PRs", got)
 	}
 	// An operator inside the predicate, which is the point of it being a match rather than a
@@ -144,18 +144,18 @@ func TestWatchFiltersOnThePayload(t *testing.T) {
 // predicate that could not be evaluated has not been satisfied.
 func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
-	if got := watchRefs(t, q); !sameRefs(got, "demo:pr:1") {
+	if got := watchRefs(t, q); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("?if-at labels delivered %v, want only the urgent PR", got)
 	}
 	// The same question asked at the root, to pin that rooting is sugar rather than a second
 	// semantics.
-	if got := watchRefs(t, url.Values{"if": {"{labels: {urgent: true}}"}}); !sameRefs(got, "demo:pr:1") {
+	if got := watchRefs(t, url.Values{"if": {"{labels: {urgent: true}}"}}); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("the nested spelling delivered %v, want only the urgent PR", got)
 	}
 	// A path arrives as one parameter PER SEGMENT, so a field name is never re-split at this
 	// end — the wire takes the address as a list for the same reason a deep write does.
 	deep := url.Values{"if": {"true"}, "if-at": {"labels", "urgent"}}
-	if got := watchRefs(t, deep); !sameRefs(got, "demo:pr:1") {
+	if got := watchRefs(t, deep); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("?if-at labels&if-at=urgent delivered %v, want only the urgent PR", got)
 	}
 }
@@ -174,7 +174,7 @@ func listRefs(t *testing.T, q url.Values) []string {
 	defer ts.Close()
 
 	for _, e := range fixture {
-		ref, err := entity.ParseRef(e.ref)
+		ref, err := entity.ParseAddr(e.ref)
 		if err != nil {
 			t.Fatalf("%s: %v", e.ref, err)
 		}
@@ -204,12 +204,12 @@ func listRefs(t *testing.T, q url.Values) []string {
 // differs is only WHEN the question is asked — of the state as it stands here, of each change
 // as it happens there — which is why both faces are pinned against one fixture.
 func TestStateFiltersOnThePayload(t *testing.T) {
-	all := []string{"demo:pr:1", "demo:pr:2", "demo:pr:3", sentinel.String()}
+	all := []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."3"`, sentinel.String()}
 	if got := listRefs(t, url.Values{}); !sameRefs(got, all...) {
 		t.Fatalf("an unfiltered read gave %v, want the whole fixture", got)
 	}
 	if got := listRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got,
-		"demo:pr:1", "demo:pr:3", sentinel.String()) {
+		`demo.pr."1"`, `demo.pr."3"`, sentinel.String()) {
 		t.Errorf("?if {stage: open} listed %v, want the open ones", got)
 	}
 	if got := listRefs(t, url.Values{"if": {"{stage: !or [open, merged]}"}}); !sameRefs(got, all...) {
@@ -230,14 +230,14 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 }
 
 // Rooting works the same on the read as on the stream, including the part that is easy to
-// get wrong: an entity the path does not reach (demo:pr:3 has no labels) is not listed.
+// get wrong: an entity the path does not reach (demo.pr.3 has no labels) is not listed.
 func TestStateRootsThePredicateAtAPath(t *testing.T) {
 	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
-	if got := listRefs(t, q); !sameRefs(got, "demo:pr:1", sentinel.String()) {
+	if got := listRefs(t, q); !sameRefs(got, `demo.pr."1"`, sentinel.String()) {
 		t.Errorf("?if-at labels listed %v, want the urgent ones", got)
 	}
 	deep := url.Values{"if": {"false"}, "if-at": {"labels", "urgent"}}
-	if got := listRefs(t, deep); !sameRefs(got, "demo:pr:2") {
+	if got := listRefs(t, deep); !sameRefs(got, `demo.pr."2"`) {
 		t.Errorf("?if-at labels&if-at=urgent listed %v, want the one that is not urgent", got)
 	}
 }
@@ -413,7 +413,7 @@ func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
 	}
 
 	// Nothing has happened SINCE the watch opened, so the stream is quiet — where a replay
-	// would have delivered demo:pr:1 immediately.
+	// would have delivered demo.pr.1 immediately.
 	done := make(chan []byte, 1)
 	go func() {
 		buf := make([]byte, 512)
@@ -422,7 +422,7 @@ func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
 	}()
 	select {
 	case got := <-done:
-		if strings.Contains(string(got), "demo:pr:1") {
+		if strings.Contains(string(got), `demo.pr."1"`) {
 			t.Errorf("a watch with no cursor replayed history: %s", got)
 		}
 	case <-time.After(300 * time.Millisecond):

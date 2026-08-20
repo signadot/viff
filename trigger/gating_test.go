@@ -28,12 +28,12 @@ func TestARuleNamesWhoAnswersItsOwnGates(t *testing.T) {
 		name: validate,
 		condition: {subject: {system: change, kind: pr, value: {stage: proposed}}},
 		gating: {
-			resolver: "verse:resolvers:security:security-review",
+			resolver: "verse.resolvers.security.security-review",
 			gates:    [{name: ship, mode: ask}],
 		},
 		action: {patch: {stage: validated}},
 	}`)
-	if got := trig.GateResolver(); got != "verse:resolvers:security:security-review" {
+	if got := trig.GateResolver(); got != "verse.resolvers.security.security-review" {
 		t.Fatalf("GateResolver = %q", got)
 	}
 	if g := trig.AllGates(); len(g) != 1 || g[0].Name != "ship" {

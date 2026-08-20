@@ -68,15 +68,15 @@ func needGit(t *testing.T) {
 
 // reflectIssues runs one pass and answers ref-string → payload object, without a store: the
 // tests that are about the ANSWER do not need converge in the way.
-func reflectIssues(t *testing.T, gi *source.GitIssue, ref entity.Ref) (map[string]entity.Obj, source.Reflection) {
+func reflectIssues(t *testing.T, gi *source.GitIssue, ref entity.Ref) (map[entity.Ref]entity.Obj, source.Reflection) {
 	t.Helper()
 	rn, err := gi.Reflect(context.Background(), ref)
 	if err != nil {
 		t.Fatalf("Reflect(%s): %v", ref, err)
 	}
-	out := map[string]entity.Obj{}
+	out := map[entity.Ref]entity.Obj{}
 	for _, e := range rn.Entities {
-		out[e.Ref.String()] = entity.ToObj(e.Payload)
+		out[e.Ref] = entity.ToObj(e.Payload)
 	}
 	return out, rn
 }
@@ -260,7 +260,7 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 	gi.AddRepo("A", dir)
 	got, _ := reflectIssues(t, gi, entity.Ref{})
 
-	p := got["git-issue:issue:A/000005"]
+	p := got[entity.RefAt(source.GitIssueSystem, "issue", "A/000005")]
 	if p == nil {
 		t.Fatalf("the legacy issue was dropped; got %v", len(got))
 	}
@@ -277,10 +277,10 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 		t.Error("no metaError: a thin issue with no explanation reads as an unlabelled one")
 	}
 	// And the healthy issue beside it is untouched — the point of not failing the pass.
-	if q := got["git-issue:issue:A/"+fine]; q == nil || q["metaError"] != nil {
+	if q := got[entity.RefAt(source.GitIssueSystem, "issue", "A/"+fine)]; q == nil || q["metaError"] != nil {
 		t.Errorf("the ordinary issue was collateral: %+v", q)
 	}
-	if sm := got["git-issue:repo:A"]; sm["issues"] != int64(2) {
+	if sm := got[entity.RefAt(source.GitIssueSystem, "repo", "A")]; sm["issues"] != int64(2) {
 		t.Errorf("summary = %+v, want both issues counted", sm)
 	}
 }
@@ -305,17 +305,17 @@ func TestGitIssueMirrorCarriesTheTracker(t *testing.T) {
 		t.Fatalf("AddMirror: %v", err)
 	}
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	if p := got["git-issue:issue:up/"+open]; p == nil || p["status"] != "open" {
+	if p := got[entity.RefAt(source.GitIssueSystem, "issue", "up/"+open)]; p == nil || p["status"] != "open" {
 		t.Errorf("mirror lost the open issue: %+v", p)
 	}
-	if p := got["git-issue:issue:up/"+shut]; p == nil || p["status"] != "closed" {
+	if p := got[entity.RefAt(source.GitIssueSystem, "issue", "up/"+shut)]; p == nil || p["status"] != "closed" {
 		t.Errorf("mirror lost the closed issue: %+v", p)
 	}
 
 	// A pass FETCHES, so an issue filed after the clone arrives without a restart.
 	later := fileIssue(t, origin, "filed after the clone", "", nil)
 	got, _ = reflectIssues(t, gi, entity.Ref{})
-	if got["git-issue:issue:up/"+later] == nil {
+	if got[entity.RefAt(source.GitIssueSystem, "issue", "up/"+later)] == nil {
 		t.Errorf("a later issue did not arrive on the next pass; got %d issues", len(got)-1)
 	}
 }
@@ -352,7 +352,7 @@ func TestGitMirrorHonoursARelativeState(t *testing.T) {
 		t.Error("the state dir was resolved twice: mirror landed in <state>/<state>/<id>")
 	}
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	if got["git-issue:issue:up/"+id] == nil {
+	if got[entity.RefAt(source.GitIssueSystem, "issue", "up/"+id)] == nil {
 		t.Errorf("reflect through a relative -state found nothing; got %+v", got)
 	}
 }
@@ -362,7 +362,7 @@ func TestGitMirrorHonoursARelativeState(t *testing.T) {
 func TestGitIssueOwns(t *testing.T) {
 	gi := source.NewGitIssue()
 	gi.AddRepo("A", t.TempDir())
-	want := map[string]bool{"git-issue:*:A/*": true, "git-issue:repo:A": true}
+	want := map[string]bool{"git-issue.*.A/*": true, "git-issue.repo.A": true}
 	got := gi.Owns()
 	if len(got) != len(want) {
 		t.Fatalf("Owns() = %+v, want %v", got, want)
@@ -375,7 +375,7 @@ func TestGitIssueOwns(t *testing.T) {
 }
 
 // -system moves the whole slice, including what Owns claims and what RepoRef names — a hint at
-// git-issue:repo:x reaches nothing when the source writes tracker:repo:x.
+// git-issue.repo.x reaches nothing when the source writes tracker:repo:x.
 func TestGitIssueSystemMovesTheSlice(t *testing.T) {
 	gi := source.NewGitIssue()
 	if err := gi.SetSystem("tracker"); err != nil {
@@ -385,11 +385,11 @@ func TestGitIssueSystemMovesTheSlice(t *testing.T) {
 	if gi.System() != "tracker" {
 		t.Errorf("System() = %q", gi.System())
 	}
-	if got := gi.RepoRef("A").String(); got != "tracker:repo:A" {
+	if got := gi.RepoRef("A").String(); got != "tracker.repo.A" {
 		t.Errorf("RepoRef = %q", got)
 	}
 	for _, o := range gi.Owns() {
-		if !hasPrefix(o.Ref, "tracker:") {
+		if !hasPrefix(o.Ref, "tracker.") {
 			t.Errorf("claim %q is not in the moved slice", o.Ref)
 		}
 	}
@@ -410,7 +410,7 @@ func TestGitIssueBodiesAreSeparable(t *testing.T) {
 	gi.SetBodies(false)
 	gi.AddRepo("A", dir)
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	p := got["git-issue:issue:A/"+id]
+	p := got[entity.RefAt(source.GitIssueSystem, "issue", "A/"+id)]
 	if p == nil {
 		t.Fatalf("missing the issue; got %+v", got)
 	}

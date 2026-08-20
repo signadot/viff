@@ -324,10 +324,10 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	entitytest.Set(t, store, ref, entity.Obj{"n": 1}.Payload())
 	derived := waitDerived(t, store, "signadot", "feature")
 	obj := entity.ToObj(derived.Payload)
-	if obj["what"] != "gh:issue:1" {
+	if obj["what"] != `gh.issue."1"` {
 		t.Fatalf("$subject did not resolve to the ref: %+v", obj)
 	}
-	if obj["note"] != "raised from gh:issue:1" {
+	if obj["note"] != `raised from gh.issue."1"` {
 		t.Fatalf("$subject did not resolve inside text: %+v", obj)
 	}
 
@@ -340,7 +340,7 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	if !ok {
 		t.Fatal("the derived entity went away on a re-fire")
 	}
-	if got := entity.ToObj(again.Payload)["what"]; got != "gh:issue:1" {
+	if got := entity.ToObj(again.Payload)["what"]; got != `gh.issue."1"` {
 		t.Fatalf("a re-fire changed what the derive wrote: %v", got)
 	}
 	_ = rev
@@ -469,7 +469,7 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 	// The linkage: the engine's, not the charter's, and it is how the higher stratum knows
 	// WHICH issue this derivation is about.
 	from := entity.Get(entity.Get(entity.Get(derived.Payload, entity.ReservedRoot), entity.MetaKey), deriveFromField)
-	if got := entity.ToObj(from)["subject"]; got != "gh:issue:1" {
+	if got := entity.ToObj(from)["subject"]; got != `gh.issue."1"` {
 		t.Fatalf("the derived entity does not record its subject: %+v", entity.ToObj(from))
 	}
 	// And the level above acted on it.
@@ -744,11 +744,11 @@ func waitCount(t *testing.T, s entity.Store, system, kind string, want int) {
 // misspelling discards. This is the check at the decode boundary that names it instead.
 func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 	bad := map[string]entity.Obj{
-		"a misspelled stratum": {"name": "r", "startum": "observe", "condition": entity.Obj{"subject": "gh:issue:*"}},
-		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"derve": entity.Obj{"a": entity.Obj{"b": entity.Obj{}}}}},
-		"one in a condition":   {"name": "r", "condition": entity.Obj{"subjekt": "gh:issue:*"}},
-		"one in a hook":        {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"onDone": entity.Obj{"patsh": entity.Obj{}}}},
-		"one in a seq element": {"name": "r", "condition": entity.Obj{"subject": "gh:issue:*"}, "action": entity.Obj{"seq": []any{entity.Obj{"patsh": entity.Obj{}}}}},
+		"a misspelled stratum": {"name": "r", "startum": "observe", "condition": entity.Obj{"subject": "gh.issue.*"}},
+		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"derve": entity.Obj{"a": entity.Obj{"b": entity.Obj{}}}}},
+		"one in a condition":   {"name": "r", "condition": entity.Obj{"subjekt": "gh.issue.*"}},
+		"one in a hook":        {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"onDone": entity.Obj{"patsh": entity.Obj{}}}},
+		"one in a seq element": {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"seq": []any{entity.Obj{"patsh": entity.Obj{}}}}},
 	}
 	for why, doc := range bad {
 		if err := CheckFields(doc.Payload()); err == nil {
@@ -758,7 +758,7 @@ func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 	// And the shapes a real charter comes in are untouched.
 	ok := entity.Obj{
 		"name": "r", "stratum": "observe",
-		"condition": entity.Obj{"subject": "gh:issue:*", "when": entity.Obj{}, "on": entity.Obj{}},
+		"condition": entity.Obj{"subject": "gh.issue.*", "when": entity.Obj{}, "on": entity.Obj{}},
 		"gates":     []any{entity.Obj{"mode": "ask"}},
 		"action": entity.Obj{
 			"patch":  entity.Obj{"stage": "x"},
@@ -790,7 +790,7 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
 		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
 	)
-	// gh:issue:1 stage a → b (depth 1), b → derive (depth 2), and the level above acts off
+	// gh.issue.1 stage a → b (depth 1), b → derive (depth 2), and the level above acts off
 	// the derive (depth 3).
 	for _, tr := range []Trigger{{
 		Name:      "advance",
@@ -838,12 +838,12 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 // $subject's parts, in a SPAWN string. Spawn templates do not go through the reference
 // machinery at all — launch.Bind is a flat ReplaceAll — so the dotted forms only work if
 // bindingFor publishes them as keys. Forgetting that does not error: `$subject.id` substitutes
-// the bare key and leaves the text "demo:pr:1.id", which is why this is pinned.
+// the bare key and leaves the text "demo.pr.1.id", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.RefAt("demo", "pr", "1"))
 	spec := launch.Spec{Prompt: "review $subject.id in $subject.system ($subject) at $stage"}
 	got := spec.Bind(b).Prompt
-	if want := "review 1 in demo (demo:pr:1) at open"; got != want {
+	if want := `review 1 in demo (demo.pr."1") at open`; got != want {
 		t.Fatalf("task = %q, want %q", got, want)
 	}
 }
@@ -854,8 +854,8 @@ func TestSubjectPartsResolveInAPatch(t *testing.T) {
 	root := refRoot(entity.Obj{"stage": "open"}.Payload(),
 		subjectNode(entity.RefAt("demo", "pr", "7"), entity.Obj{"stage": "open"}.Payload(), 42))
 	for ref, want := range map[string]string{
-		"$subject":             "demo:pr:7",
-		"$subject.ref":         "demo:pr:7",
+		"$subject":             `demo.pr."7"`,
+		"$subject.ref":         `demo.pr."7"`,
 		"$subject.system":      "demo",
 		"$subject.kind":        "pr",
 		"$subject.id":          "7",

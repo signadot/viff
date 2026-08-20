@@ -69,7 +69,7 @@ func TestConditionalWriteReportsItsRevision(t *testing.T) {
 // number as its own commit would attribute somebody else's write to itself.
 func TestRefusedWriteReportsNoRevision(t *testing.T) {
 	s := openStore(t)
-	claim := RefAt("run", "claim", "review@demo:pr:1")
+	claim := RefAt("run", "claim", "review@demo.pr.1")
 
 	if committed, rev, err := s.Write(Write{
 		At: claim.At(), Value: Obj{"by": "first"}.Payload(), When: []Require{Created()},

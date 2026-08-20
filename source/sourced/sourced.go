@@ -60,8 +60,8 @@ func (d *Daemon) describe(w http.ResponseWriter, r *http.Request) {
 // system, and verse would converge to it.
 func (d *Daemon) reflect(w http.ResponseWriter, r *http.Request) {
 	var ref entity.Ref
-	if s := r.URL.Query().Get("ref"); s != "" {
-		parsed, err := entity.ParseRef(s)
+	if s := r.URL.Query().Get("at"); s != "" {
+		parsed, err := entity.ParseAddr(s)
 		if err != nil {
 			codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 			return

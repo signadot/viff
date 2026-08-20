@@ -340,7 +340,7 @@ func noArgs(cmd *cli.Command, name string, args []string) error {
 // first word of its synopsis (see TestEverySynopsisStartsWithItsCommandName).
 //
 // "No positionals of its own" is now enforced rather than assumed: these commands used to
-// discard whatever they were handed, so `verse status demo:pr:1` printed the status of the
+// discard whatever they were handed, so `verse status demo.pr.1` printed the status of the
 // whole verse and looked like it had answered the question asked.
 // listing is leaf for a command that ANSWERS A COLLECTION — it carries --if/--trim, where a
 // leaf that prints a line (`down`, `disconnect`) does not. A flag that silently does nothing is

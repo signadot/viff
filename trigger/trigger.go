@@ -221,7 +221,7 @@ func (c Condition) validate() error {
 	if len(c.Subject) == 0 {
 		return fmt.Errorf(`condition.subject required: a trigger has to say what it acts on, ` +
 			`because nothing else in it does — the action has no target of its own, and a when ` +
-			`that spans kinds has no one entity to inherit. Name it ("demo:pr:1"), or select a ` +
+			`that spans kinds has no one entity to inherit. Name it ("demo.pr.1"), or select a ` +
 			`kind ({system: demo, kind: pr}). A subject alone is a complete condition: it fires ` +
 			`on changes to what it names`)
 	}
@@ -250,7 +250,7 @@ func (c Condition) validate() error {
 	if c.On == nil {
 		_, names := c.Subject.Names()
 		if !names && !c.Subject.Selects() {
-			return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or name ` +
+			return fmt.Errorf(`condition.subject must be an address ("demo.pr.1", "demo.pr.*") or name ` +
 				`both a system and a kind when the condition has its own when: the change that fires ` +
 				`is not the subject then, so the subject has to select out of the store, and it has to ` +
 				`name a definite kind to select and spawn for`)
@@ -290,7 +290,7 @@ func (c Condition) validateOn() error {
 	}
 	_, names := c.Subject.Names()
 	if !names && !c.Subject.Selects() {
-		return fmt.Errorf(`condition.subject must be an address ("demo:pr:1", "demo:pr:*") or ` +
+		return fmt.Errorf(`condition.subject must be an address ("demo.pr.1", "demo.pr.*") or ` +
 			`name both a system and a kind when the condition has an ` + "`on`" + `: the cause is ` +
 			`not the subject then, so the subject selects out of the store, and it has to name a ` +
 			`definite kind to select and spawn for`)

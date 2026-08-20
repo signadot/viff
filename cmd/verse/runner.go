@@ -36,17 +36,9 @@ func runnerCmd() *cli.Command {
 		}, runnerAddCmd(), runnerShowCmd(), runnerCheckCmd(), runnerRemoveCmd())
 }
 
-// runnerPath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `runners:` prefix — an operator reading `verse data` and one typing
-// `verse runner show` should not have to know two spellings of one thing.
-func runnerPath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:runners:"), ":", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("%w: want a ref like verse:runners:pool:gpu (or pool:gpu), got %q",
-			cli.ErrUsage, ref)
-	}
-	return "/runners/" + parts[0] + "/" + parts[1], nil
-}
+// runnerPath turns the address an operator types into the route's two segments — see pairPath,
+// the one reader the three registries share.
+func runnerPath(ref string) (string, error) { return pairPath("runners", "runners", ref) }
 
 type runnerShowConfig struct{ *cli.Command }
 
@@ -185,9 +177,9 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) == 2 {
 		ref, rawURL := args[0], args[1]
-		parts := strings.SplitN(strings.TrimPrefix(ref, "verse:runners:"), ":", 2)
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return fmt.Errorf("%w: want `runner add <kind>:<name> <url>`, got %q",
+		parts, ok := pairSegs("runners", ref)
+		if !ok {
+			return fmt.Errorf("%w: want `runner add <kind>.<name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
 		resp, err := httpPostTo("/runners", q, map[string]any{

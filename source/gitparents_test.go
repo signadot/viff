@@ -44,11 +44,11 @@ func TestCommitParentsAreAList(t *testing.T) {
 	parentsOf := func(sha string) *ir.Node {
 		e, ok, _ := store.Get(entity.RefAt(source.GitSystem, "commit", "R/"+sha))
 		if !ok {
-			t.Fatalf("missing git:commit:R/%s", sha)
+			t.Fatalf("missing git.commit.R/%s", sha)
 		}
 		p := ir.Get(e.Payload, "parents")
 		if p == nil {
-			t.Fatalf("git:commit:R/%s carries no parents at all", sha)
+			t.Fatalf("git.commit.R/%s carries no parents at all", sha)
 		}
 		return p
 	}

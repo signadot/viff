@@ -33,7 +33,7 @@ Which is why the flow is *derived and never stored*. `verse flow show <subject>`
 subject's shape per request by joining three sources, and the note in `trigger/flowtree.go` is
 blunt that no one of them is sufficient: the **charter** knows the future — a hook that has not
 fired yet is shown pending rather than missing — the **mirror** holds the history, since a
-finished task leaves the live registry and survives only as `verse:task:instance` entities, and
+finished task leaves the live registry and survives only as `verse.task.instance` entities, and
 the **registry** has the present. Materializing that tree would reintroduce exactly the stored
 per-subject index a query deliberately replaced.
 
@@ -209,7 +209,7 @@ sequenceDiagram
     B-->>W: queued control: say · pause · cancel
     W->>B: POST /tasks/{id}/report (frames, gates, result)
     B->>V: the same frames an attached observer sees
-    V->>S: mirrored to verse:task:instance:{id}
+    V->>S: mirrored to verse.task.instance:{id}
   end
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```

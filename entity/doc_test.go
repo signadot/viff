@@ -20,7 +20,7 @@ func fixture() []Entity {
 		{Ref: RefAt("demo", "pr", "1"), Payload: Obj{"stage": "open"}.Payload()},
 		{Ref: RefAt("demo", "pr", "2"), Payload: Obj{"stage": "reviewed"}.Payload()},
 		{Ref: RefAt("demo", "pr", "a.b"), Payload: Obj{"stage": "open"}.Payload()},
-		{Ref: RefAt("git", "ref", "proposal-appeared@git:ref:x+2a6c8212"), Payload: Obj{"sha": "2a6c"}.Payload()},
+		{Ref: RefAt("git", "ref", "proposal-appeared@git.ref.x+2a6c8212"), Payload: Obj{"sha": "2a6c"}.Payload()},
 		{Ref: RefAt("count", "n", "hits"), Payload: ir.FromInt(42)},
 		{Ref: RefAt("count", "n", "nothing"), Payload: ir.Null()},
 	}
@@ -100,10 +100,16 @@ func TestANumericIDIsAFieldNotAnIndex(t *testing.T) {
 	}
 }
 
-// An id carrying colons, `@` and `+` needs no quoting: an unquoted kpath field runs until one
-// of `.[{(`, so a derived id is pasteable as written.
-func TestADerivedIDNeedsNoQuoting(t *testing.T) {
-	d := nest(t, fixture(), "git.ref.proposal-appeared@git:ref:x+2a6c8212")
+// A DERIVED ID HOLDS THE ADDRESS IT IS ABOUT, so it holds dots, so it is quoted like any other
+// segment that does — `git.ref."proposal-appeared@git.ref.x+2a6c8212"`. `@` and `+` need no
+// quoting on their own (an unquoted kpath field runs until one of `.[{(`); the dots do.
+//
+// It is the cost of the id token joining an address's segments with the delimiter everything
+// else joins them with, and it is temporary: a derived entity's address is on its way to being
+// a real path — the chain as one segment, then the subject's segments — at which point there is
+// no flattened id to quote (docs/working/entity-tree.md).
+func TestADerivedIDIsOneQuotedSegment(t *testing.T) {
+	d := nest(t, fixture(), `git.ref."proposal-appeared@git.ref.x+2a6c8212"`)
 	if d.Node == nil {
 		t.Fatal("a derived id did not address its entity")
 	}
@@ -148,14 +154,14 @@ func TestEntitiesRecoversTheAddresses(t *testing.T) {
 		want []string
 	}{
 		{"", []string{
-			"count:n:hits", "count:n:nothing", "demo:pr:1", "demo:pr:2", "demo:pr:a.b",
-			"git:ref:proposal-appeared@git:ref:x+2a6c8212",
+			`count.n.hits`, `count.n.nothing`, `demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`,
+			`git.ref."proposal-appeared@git.ref.x+2a6c8212"`,
 		}},
-		{"demo", []string{"demo:pr:1", "demo:pr:2", "demo:pr:a.b"}},
-		{"demo.pr", []string{"demo:pr:1", "demo:pr:2", "demo:pr:a.b"}},
-		{"demo.pr.1", []string{"demo:pr:1"}},
-		{"demo.*.1", []string{"demo:pr:1"}},
-		{"*.pr", []string{"demo:pr:1", "demo:pr:2", "demo:pr:a.b"}},
+		{"demo", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
+		{"demo.pr", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
+		{"demo.pr.1", []string{`demo.pr."1"`}},
+		{"demo.*.1", []string{`demo.pr."1"`}},
+		{"*.pr", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
 		{"demo.pr.1.stage", []string{}}, // inside a payload: no entities down here
 	} {
 		got := nest(t, fixture(), tc.path).EntityPaths(at(t, tc.path))

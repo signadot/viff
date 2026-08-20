@@ -14,7 +14,7 @@ import (
 // document from the piped one.
 func TestEncodeNodeColorRendersTheSameDocument(t *testing.T) {
 	doc := ir.FromKeyVals([]ir.KeyVal{
-		{Key: ir.FromString("ref"), Val: ir.FromString("demo:pr:1")},
+		{Key: ir.FromString("ref"), Val: ir.FromString(`demo.pr."1"`)},
 		{Key: ir.FromString("n"), Val: ir.FromInt(2)},
 	})
 	for _, f := range []Format{Tony, YAML} {

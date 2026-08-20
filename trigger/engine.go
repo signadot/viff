@@ -1342,10 +1342,10 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 		return r.System() == "provider" && r.Kind() == p.Capability
 	}, "provider", p.Capability))
 	if registered == 0 {
-		return fmt.Sprintf("no provider:%s:* is registered (register one, e.g. "+
-			"`verse data provider:%s:<id> --put '{driver: llm}'`)", p.Capability, p.Capability)
+		return fmt.Sprintf("no provider.%s.* is registered (register one, e.g. "+
+			"`verse data provider %s <id> --put '{driver: llm}'`)", p.Capability, p.Capability)
 	}
-	return fmt.Sprintf("all %d registered provider:%s:* were excluded by match %s",
+	return fmt.Sprintf("all %d registered provider.%s.* were excluded by match %s",
 		registered, p.Capability, matchText(p.Match))
 }
 

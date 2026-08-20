@@ -48,12 +48,12 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	defer ts.Close()
 
 	// Raise a gate the way the engine does, and block on it as the engine would.
-	const id = "verse:trigger:review:review~1"
+	const id = "verse.trigger.review.review~1"
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
-			task.ToolUse{Name: "verse:trigger:review"})
+			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res
 	}()
 	waitPending(t, srv, id)
@@ -194,12 +194,22 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	}
 }
 
+// waitPending waits until a question is on the docket AND PUBLISHED — both, because the two
+// happen in that order and a test that stops at the first reads the store in the window between
+// them.
+//
+// task.Registry.Resolve puts the question in `pending` under its lock and calls OnPost after
+// releasing it, so `Reg.Pending()` reports a question whose record is not written yet. Waiting
+// on the registry alone was a race that a slower write turns from rare into reliable — which is
+// how it was found, one write path later.
 func waitPending(t *testing.T, srv *Server, id string) {
 	t.Helper()
 	for range 100 {
 		for _, p := range srv.Reg.Pending() {
 			if p.Question.ID == id {
-				return
+				if _, ok, _ := srv.Store.Get(mirror.QuestionRef(id)); ok {
+					return
+				}
 			}
 		}
 		time.Sleep(5 * time.Millisecond)

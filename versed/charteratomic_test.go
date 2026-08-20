@@ -19,7 +19,7 @@ import (
 // whose second was refused left the first standing:
 //
 //	verse c -a -f <file>
-//	charter add: 400 Bad Request: trigger "good": … is outside probe:pkg:*
+//	charter add: 400 Bad Request: trigger "good": … is outside probe.pkg.*
 //	verse charter probe pkg          # what stands afterwards
 //	name: lvl                        # the stratum from the file that just failed
 //

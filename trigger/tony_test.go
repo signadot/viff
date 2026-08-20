@@ -132,7 +132,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			func(f *Formula) bool { return f.Req.N == 2 && f.Req.Choice == "reject" },
 		},
 		{
-			"tony/fact", `!fact motion:deadline`, codec.Tony,
+			"tony/fact", `!fact motion.deadline`, codec.Tony,
 			func(f *Formula) bool {
 				return f.Req.Kind == ReqFact && f.Req.Facts.System() == "motion" && f.Req.Facts.Kind() == "deadline"
 			},
@@ -149,7 +149,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			},
 		},
 		{
-			"tony/address-sugar", `demo:pr:*`, codec.Tony,
+			"tony/address-sugar", `demo.pr.*`, codec.Tony,
 			func(f *Formula) bool {
 				return f.IsMatchAtom() && f.Req.Facts.System() == "demo" && f.Req.Facts.Kind() == "pr"
 			},
@@ -173,7 +173,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			func(f *Formula) bool { return f.Req.Kind == ReqQuorum && f.Req.N == 2 },
 		},
 		{
-			"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "verse:motion:deadline"}]}`, codec.JSON,
+			"json/tag-keyed-until", `{"until": [{"quorum": 2}, {"fact": "verse.motion.deadline"}]}`, codec.JSON,
 			func(f *Formula) bool { return f.Op == OpUntil && len(f.Args) == 2 },
 		},
 		{
@@ -181,7 +181,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			func(f *Formula) bool { return f.Op == OpAtom && f.Req.Kind == ReqQuorum && f.Req.N == 2 },
 		},
 		{
-			"json/address-sugar", `"demo:pr:*"`, codec.JSON,
+			"json/address-sugar", `"demo.pr.*"`, codec.JSON,
 			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" },
 		},
 	}
@@ -299,7 +299,7 @@ func TestUnknownFormulaTagIsRejected(t *testing.T) {
 func TestAQuorumWithNoThresholdIsRefused(t *testing.T) {
 	for _, c := range []struct{ name, doc string }{
 		{"quoted threshold", `!quorum "2"`},
-		{"a ref where a threshold goes", `!quorum vote:x:*`},
+		{"a ref where a threshold goes", `!quorum vote.x.*`},
 		{"object with no n", `!quorum {choice: reject}`},
 		{"object with n: 0", `!quorum {n: 0, choice: approve}`},
 		{"zero", `!quorum 0`},

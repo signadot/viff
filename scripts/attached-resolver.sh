@@ -3,8 +3,8 @@
 # attached-resolver.sh — a service that answers a run's gates, one act each, so you can watch
 # supervision happen instead of reading about it.
 #
-# A resolver is a BINDING (`verse:resolvers:<kind>:<name>`) plus whatever is currently reading for
-# it (`verse:resolvers:instance:<name>@<origin>`). It is not a callback verse invokes: the service
+# A resolver is a BINDING (`verse.resolvers.<kind>.<name>`) plus whatever is currently reading for
+# it (`verse.resolvers.instance.<name>@<origin>`). It is not a callback verse invokes: the service
 # dials IN, reads the run's own stream, and posts a verdict — which is why the two commands
 # that ACT as the resolver here use curl, and everything else is `verse`.
 #
@@ -37,7 +37,7 @@ ACTS=(named standing layered deadline exclusive)
 # the way it is RENDERED on a record — which is what `--subject` carries and what a payload
 # filter matches against.
 SUBJECT_AT="change pr 1"
-SUBJECT=change:pr:1
+SUBJECT='change.pr."1"'
 RUN_NAME=review
 
 describe() {
@@ -116,18 +116,18 @@ setup() {
 	case "$1" in
 	named)
 		binding_named | v resolver add - >/dev/null
-		bound=verse:resolvers:security:reviewer
+		bound=verse.resolvers.security.reviewer
 		;;
 	standing) binding_standing | v resolver add - >/dev/null ;;
 	layered)
 		binding_named | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=verse:resolvers:security:reviewer
+		bound=verse.resolvers.security.reviewer
 		;;
 	deadline)
 		binding_deadline | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=verse:resolvers:security:reviewer
+		bound=verse.resolvers.security.reviewer
 		;;
 	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
 	esac
@@ -166,14 +166,16 @@ setup() {
 #
 # Not "the last one listed": store order is not spawn order, so that picked an arbitrary run
 # about the subject — sometimes one already finished, whose question never came and never would.
-# The mirror is in verse's own half (`verse:task:instance:*`) and `--paths` answers in steps,
+# The mirror is in verse's own half (`verse.task.instance.*`) and `--paths` answers in steps,
 # so the id is the last step of each line.
 run_id() {
 	# STEPS in and steps out: the address is a vector, and `--paths` answers one address per
 	# line as words — so the run id is the LAST word. `--depth 4` bounds the walk to the
 	# instances themselves (verse + task + instance + id); without it the walk goes on into
 	# each payload and the last word is a field name.
-	v data --paths --depth 4 --if "{flow: \"$SUBJECT\", pending: null}" verse task instance 2>/dev/null |
+	# SINGLE-quoted inside the pattern: an address whose own segment is quoted (`change.pr."1"`)
+	# carries double quotes, and nesting them would end the tony string early.
+	v data --paths --depth 4 --if "{flow: '$SUBJECT', pending: null}" verse task instance 2>/dev/null |
 		awk 'NF {print $NF}' | head -1
 }
 
@@ -251,7 +253,9 @@ instance_of() {
 	if [ -z "$owner" ]; then
 		return 0 # ⊤ owns it: there is no instance to answer as, which is the point
 	fi
-	echo "${owner##*:}@$run"
+	# The NAME half of the binding's address — its last segment — then the run it watches.
+	# `${owner##*:}` was that answer while an address was colons and is the whole string now.
+	echo "${owner##*.}@$run"
 }
 
 # The same run, from the outside. The point of this one is what it does NOT hide: the ask, the
@@ -260,7 +264,7 @@ instance_of() {
 # invisibly — which is a claim worth seeing rather than being told.
 #
 #   {kind: pending,  id: …~d1, mode: ASK, tool: run_bash}
-#   {kind: decision, by: verse:resolvers:security:reviewer, proceed: true}
+#   {kind: decision, by: verse.resolvers.security.reviewer, proceed: true}
 #   {kind: exec,     tool: run_bash, text: reviewing}
 #   {kind: status,   text: done}
 attach() {

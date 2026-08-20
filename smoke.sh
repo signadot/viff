@@ -108,7 +108,7 @@ ok "docd-backed server ready"
 step "data --put / read"
 v data demo pr 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 haskv "$(v data demo pr 1)" stage open || die "data did not roundtrip"
-ok "demo:pr:1 = {stage:open}"
+ok 'demo.pr."1" = {stage: open}'
 # THE ANSWER IS A DOCUMENT, addressed by the same path at any depth: the id is a KEY, not a
 # token inside a rendered ref, and `stage` is what stands under it.
 haskv "$(v data demo pr 1)" stage open || die "data demo pr 1 did not answer the payload"
@@ -402,7 +402,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$MID" ] || die "the quorum gate never reached the docket"
-has "$(v docket)" 'demo:motion:1' || die "the docket does not say what is being decided"
+has "$(v docket)" 'demo.motion."1"' || die "the docket does not say what is being decided"
 ok "the motion is on the docket as $MID, about demo:motion:1"
 haskv "$(v data demo motion 1)" stage open || die "the motion did not hold the action"
 v vote "$MID" approve --as human:smoke >/dev/null || die "vote failed"
@@ -594,7 +594,7 @@ dref=$(v data --paths --depth 3 smokesd feature | head -1)
 # shellcheck disable=SC2086
 haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
-has "$(v data $dref)" 'smokegh:issue:1' || die "unquoted steps did not reach the same entity"
+has "$(v data $dref)" 'smokegh.issue."1"' || die "unquoted steps did not reach the same entity"
 ok "the engine wrote the linkage: $dref is about smokegh:issue:1"
 
 # And the level above acted on it, which is the whole point of the ordering.

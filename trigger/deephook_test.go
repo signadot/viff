@@ -14,7 +14,7 @@ import (
 // what was quietly not happening.
 //
 // The engine recovers a finished task's subject from the text it recorded, and a subject four
-// segments deep whose id is itself an address (`verse-dev.drift.head.head-moved@git:head:verse`
+// segments deep whose id is itself an address (`verse-dev.drift.head.head-moved@git.head.verse`
 // — every derived entity's id has this shape) came back through ParseRef as a DIFFERENT ref:
 // three segments, everything past the second colon read as the id. No error. The hook then
 // patched that ref, the package's confinement saw an address outside itself, and refused.
@@ -59,7 +59,7 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
 
 	// The id is one an engine writes: `<rule>@<subject>`, so it holds the colons that made the
 	// round trip lossy. A hand-picked short id would pass with the bug still in place.
-	ref := entity.RefAt("verse-dev", "drift", "head", "head-moved@git:head:verse")
+	ref := entity.RefAt("verse-dev", "drift", "head", "head-moved@git.head.verse")
 	entitytest.Set(t, store, ref, entity.Obj{"reviewed": "gathered"}.Payload())
 	waitField(t, store, ref, "reviewed", "done")
 }

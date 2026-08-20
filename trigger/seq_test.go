@@ -68,7 +68,7 @@ func TestSeqRunsInOrder(t *testing.T) {
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 
 	got := spawned()
-	want := []string{"review.seq.0@demo:pr:1", "review.seq.1@demo:pr:1"}
+	want := []string{"review.seq.0@demo.pr.1", "review.seq.1@demo.pr.1"}
 	if len(got) != len(want) {
 		t.Fatalf("spawned %v; want exactly %v", got, want)
 	}
@@ -191,7 +191,7 @@ func TestSeqFailStops(t *testing.T) {
 	waitField(t, store, prRef("1"), "stage", "rejected")
 
 	for _, id := range spawned() {
-		if id == "review.seq.1@demo:pr:1" {
+		if id == "review.seq.1@demo.pr.1" {
 			t.Error("the element after a failure ran; a sequence is fail-stop")
 		}
 	}
@@ -239,7 +239,7 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	// a claim write wakes anything at all.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "watchall",
-		Condition: Condition{Subject: mm("demo:pr:1"), When: MatchWhen(Match{})},
+		Condition: Condition{Subject: mm(`demo.pr."1"`), When: MatchWhen(Match{})},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -537,7 +537,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	}
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
-	ref := mirror.Ref("review.seq.0@demo:pr:1")
+	ref := mirror.Ref("review.seq.0@demo.pr.1")
 	waitFor(t, store, ref, func(p entity.Payload) bool {
 		return entity.Str(p, "chain") == "review.seq[0]"
 	}, `task entity carries chain "review.seq[0]"`)

@@ -14,7 +14,7 @@ func pose(t *testing.T, store entity.Store, id, gate, taskID string, effs ...tas
 	t.Helper()
 	origin, _, _ := strings.Cut(id, task.GateSep)
 	PostQuestion(store, task.Pending{
-		Question: task.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: "demo:pr:1"},
+		Question: task.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: `demo.pr."1"`},
 		Tool:     "write",
 		Effects:  effs,
 	}, taskID)
@@ -82,10 +82,10 @@ func TestAPatternSelectsByResolver(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "run-a~d1", "write-guard", "run-a")
 	pose(t, store, "run-a~d2", "write-guard", "run-a")
-	writeAt(store, QuestionRef("run-a~d2"), entity.Obj{"resolver": "verse:resolvers:llm:reviewer"})
+	writeAt(store, QuestionRef("run-a~d2"), entity.Obj{"resolver": "verse.resolvers.llm.reviewer"})
 
 	only(t, ids(t, store, entity.Pattern{
-		Predicate: entity.Obj{"resolver": "verse:resolvers:llm:reviewer"}.Payload(),
+		Predicate: entity.Obj{"resolver": "verse.resolvers.llm.reviewer"}.Payload(),
 	}), "run-a~d2")
 
 	// The unaddressed one is not addressed to "": the key is absent, which is what a later

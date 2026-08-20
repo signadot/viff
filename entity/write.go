@@ -556,6 +556,43 @@ func shellSpecial(r rune) bool {
 	return false
 }
 
+// ExprSegs is a kinded path as its raw segments, WITH `*` allowed as a whole segment — the
+// reader for an address that SELECTS rather than names: a charter's subject
+// (trigger.ParseExpr), a source's ownership claim (source.ParseClaim).
+//
+// It is separate from PathSegs because the two answer different questions, and the difference
+// is exactly the wildcard: PathSegs is asked where something is read or written, and a `*`
+// names no one place. Both live here so that "what are the segments of this string" has one
+// answer, whatever is going to be done with them — every caller that grew its own splitter
+// grew a different grammar, and each one drifted the day the spelling moved.
+//
+// An empty segment is refused rather than dropped, which kpath will not do for us: `demo..1`
+// parses as the two fields `demo` and `1`, so a template that expanded to nothing would select
+// something narrower instead of being refused.
+func ExprSegs(s string) ([]string, error) {
+	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") || strings.Contains(s, "..") {
+		return nil, fmt.Errorf("address %q has an empty segment: a segment is a name, and `*` "+
+			"is how a position is left open", s)
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return nil, fmt.Errorf("address %q: %w", s, err)
+	}
+	var out []string
+	for p := kp; p != nil; p = p.Next {
+		switch {
+		case p.Field != nil:
+			out = append(out, *p.Field)
+		case p.Wild():
+			out = append(out, "*")
+		default:
+			return nil, fmt.Errorf("address %q: %q is not a segment — an address names entities, "+
+				"and an element of a payload is not one", s, p.String())
+		}
+	}
+	return out, nil
+}
+
 // PathSegs is a kinded path as its raw segments — the names, unquoted, in order.
 //
 // It is the inverse of JoinSegs, and it goes through the kpath parser rather than splitting on

@@ -137,7 +137,7 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 // A task id that does not exist is answered in verse's own voice, naming the id and the id
 // SPACE — because the CLI hands you the wrong one and this is where that gets caught.
 //
-// `verse flows` lists SUBJECTS (`drift:head:head-moved@git:head:verse`) while a trigger names its
+// `verse flows` lists SUBJECTS (`drift.head.head-moved@git.head.verse`) while a trigger names its
 // task `<chain>@<subject>`. Both carry `@` and `:`, so nothing about their shape tells them
 // apart, and the obvious copy-paste used to answer `404 page not found` — Go's default, about a
 // URL, naming neither what was missing nor where to look. It cost a real minute of staring.
@@ -146,7 +146,7 @@ func TestAnUnknownTaskIDSaysWhichIDSpaceItWanted(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const subject = "drift:head:head-moved@git:head:verse" // what `verse flows` prints
+	const subject = "drift.head.head-moved@git.head.verse" // what `verse flows` prints
 	for _, path := range []string{"/tasks/" + subject, "/tasks/" + subject + "/events"} {
 		resp, err := http.Get(ts.URL + path)
 		if err != nil {

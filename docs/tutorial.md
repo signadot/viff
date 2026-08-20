@@ -45,7 +45,7 @@ by a path — three segments (system, kind, id) in the ordinary case, more where
 its own tree — and carrying a document. That is the whole data model.
 
 At a command you type those segments as separate words — `demo pr 1` — and in a document they
-are written with `:` between them, `demo:pr:1`. One address, and
+are written as a kinded path, `demo.pr."1"`. One address, and
 [§Addressing](reference/entities.md#addressing) is the whole grammar; you can read this section
 without it.
 
@@ -75,8 +75,8 @@ verse data --at demo.pr.1                          # …an address copied out of
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
 path, so the same address works at every depth and the answer is the subtree standing there.
 An id is a KEY in it rather than a token inside a rendered `ref:`, which is what `--paths` is
-for. A ref is that path with `:` for a delimiter, which is why a read, a `--put` and a `--rm` all take
-one — three spellings of one grammar, laid out in
+for. A read, a `--put` and a `--rm` all take the same address — two spellings of one grammar,
+steps and a kinded path, laid out in
 [reference/entities §Addressing](reference/entities.md#addressing).
 
 AN ADDRESS IS TYPED AS STEPS, which is what a shell makes easy — each step arrives as its own
@@ -156,9 +156,9 @@ verse watch --if '{stage: open}' demo
 ```
 
 ```tony
-{op: set ref: demo:pr:1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
-{op: set ref: demo:pr:3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
-{op: set ref: demo:pr:5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
+{op: set ref: demo.pr.1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
+{op: set ref: demo.pr.3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
+{op: set ref: demo.pr.5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
 ```
 
 Two things to read off that. It **replays** — a watch is level-triggered at the open, so what
@@ -238,7 +238,7 @@ which of the two rules applies when you hand verse a *command* and it satisfies 
 ### A task is an entity too
 
 This is the join between entities and tasks. Every task is mirrored into the store as
-`verse:task:instance:<id>` — in verse's own half of the tree, since it is a record verse keeps
+`verse.task.instance.<id>` — in verse's own half of the tree, since it is a record verse keeps
 about its own running — so observing the fleet is observing entities:
 
 ```sh
@@ -267,11 +267,11 @@ out-of-band from observation, so it never queues behind a backlog of changes:
 
 ```sh
 verse flow                        # the distinct subjects with live work
-verse flow pause  demo:latch:1    # freeze its tasks at their next boundary
-verse flow resume demo:latch:1
-verse flow say    demo:latch:1 "hurry"
-verse flow cancel demo:latch:1    # stop them (destructive)
-verse flow say 'demo:*:*' "hurry" # the address is a selector: * per segment
+verse flow pause  demo.latch.1    # freeze its tasks at their next boundary
+verse flow resume demo.latch.1
+verse flow say    demo.latch.1 "hurry"
+verse flow cancel demo.latch.1    # stop them (destructive)
+verse flow say 'demo.*.*' "hurry" # the address is a selector: * per segment
 ```
 
 A flow is not a stored thing — it is a query over the subjects of live tasks — so
@@ -293,8 +293,8 @@ name it, and that work runs there while every spawn that names none goes to the 
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add pool:demo http://localhost:9800      # `reach: a runner` — the install probes it
-verse task run --runner verse:runners:pool:demo "fetch the data; retrain; report"
-verse ps --runner verse:runners:pool:demo
+verse task run --runner verse.runners.pool.demo "fetch the data; retrain; report"
+verse ps --runner verse.runners.pool.demo
 ```
 
 That is its own subject: [runners](runners.md) for installing one, naming it on a spawn, and
@@ -328,7 +328,7 @@ knowing, and each is one command:
 ./scripts/charter-shapes.sh clean            # remove every shape and what it acted on
 ```
 
-Each shape acts on its own kind — `demo:latch:*`, `demo:seq:*` — so you can install several
+Each shape acts on its own kind — `demo.latch.*`, `demo.seq.*` — so you can install several
 at once without them arguing over an entity.
 
 ### patch — a rule need not spawn anything
@@ -399,13 +399,13 @@ running is not a second firing.
 ./scripts/charter-shapes.sh run ask
 verse gate
 # - gate: approval
-#   id: trigger:shape-ask:approval~093e7c94
+#   id: trigger.shape-ask.approval~093e7c94
 #   mode: ASK
 #   origin: shape-ask
-#   reason: "trigger shape-ask gate approval on demo:ask:1"
-#   spawns: shape-ask@demo:ask:1
-#   subject: demo:ask:1
-verse gate approve trigger:shape-ask:approval~093e7c94 --as human:you
+#   reason: "trigger shape-ask gate approval on demo.ask.1"
+#   spawns: shape-ask@demo.ask.1
+#   subject: demo.ask.1
+verse gate approve trigger.shape-ask.approval~093e7c94 --as human:you
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about,
@@ -457,7 +457,7 @@ address:
 
 ```sh
 ./scripts/charter-shapes.sh run seq
-verse flow show demo:seq:1
+verse flow show demo.seq.1
 ```
 
 ```tony
@@ -465,9 +465,9 @@ verse flow show demo:seq:1
   - chain: shape-seq
     children:
     - chain: shape-seq.seq[0]
-      id: shape-seq.seq.0@demo:seq:1
+      id: shape-seq.seq.0@demo.seq.1
       status: done
-      prompt: "echo lint demo:seq:1"
+      prompt: "echo lint demo.seq.1"
     - chain: shape-seq.seq[1]
       children:
       - chain: shape-seq.seq[1].onFailed
@@ -476,12 +476,12 @@ verse flow show demo:seq:1
     - chain: shape-seq.onDone
       kind: onDone
       status: applied
-  subject: demo:seq:1
+  subject: demo.seq.1
 ```
 
 Each node is one action in the charter, addressed by its `chain` — the position of that
 action inside its rule — and that same string is the id the task spawns under
-(`shape-seq.seq.0@demo:seq:1`). So the tree is not a second model of the work; it is the
+(`shape-seq.seq.0@demo.seq.1`). So the tree is not a second model of the work; it is the
 charter and the runtime read together. Statuses that come from no task are the point:
 `applied` fired but only set fields, `skipped` is a branch its parent's outcome did not
 answer to, `pending` may still fire — and `failed`, with the reason beside it in `err`, is
@@ -518,7 +518,7 @@ verse data demo on 2                        # …and this one stays `waiting`
 ```
 
 Two properties, and both are the point of choosing `on` over `when`. **An edge does not
-re-fire while it stays true** — the predicate never fell, so `demo:on:2` waits for CI to go
+re-fire while it stays true** — the predicate never fell, so `demo.on.2` waits for CI to go
 red and green again. And an `on` rule **does not act on the backlog**, for the same reason: a
 predicate that already holds never rose.
 
@@ -559,7 +559,7 @@ write in a circle, it comes with the thing that bounds it: a **stratum**, a decl
 ```sh
 ./scripts/charter-shapes.sh run derive
 verse charter                                                  # the ordering
-verse data derived feature shape-derive@demo:derive:1
+verse data derived feature shape-derive@demo.derive.1
 ```
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
@@ -609,8 +609,8 @@ verse c -r rules shape-latch
 verse charter                     # and `verse c rules <name>` for one of them
 ```
 
-A charter is durable — each rule is an entity (`verse:trigger:rule:<name>`), and each stratum
-is one too (`verse:trigger:strata:<name>`), so the program a verse comes back up running is the
+A charter is durable — each rule is an entity (`verse.trigger.rule.<name>`), and each stratum
+is one too (`verse.trigger.strata.<name>`), so the program a verse comes back up running is the
 one it went down with. Every field, both grammars, the answer contract a spawn can demand of an
 agent, chains and ids, and what a match can say are in [the trigger model](trigger-model.md).
 
@@ -646,7 +646,7 @@ verse docket
     id: proceed
     need: 2
   status: open
-  subject: demo:vote:1
+  subject: demo.vote.1
 ```
 
 The listing is a document like every other, so `verse docket -o yaml`, a read into one entry
@@ -667,7 +667,7 @@ The motion then reads `status: closed`, `outcome: proceed`, `tally: 2` and a `wi
 the ballots that carried it — the audit trail, on the entity, rather than a line that scrolled
 past.
 
-A motion is an ordinary entity (`verse:motion:channel:<id>`), so the docket is a view of the
+A motion is an ordinary entity (`verse.motion.channel.<id>`), so the docket is a view of the
 store: you can watch it, get one, and write a rule that reacts to it. It stays live until it
 commits — if alice retracts first, the tally drops and the gate re-blocks — and it is checked
 against the world on the way out: if the subject has moved out of what the rule selects, the
@@ -687,7 +687,7 @@ A vote you can only win isn't a vote. `!until` reads as *this, unless that gets 
 ```tony
 formula: !until [ !quorum 2, !quorum { choice: reject, n: 2 } ]   # two rejects → deny
 formula: !until [ !quorum 2, !deadline "4h" ]                     # the clock defaults it to deny
-formula: !until [ !quorum 2, !fact ci:status:green ]              # an external fact settles it
+formula: !until [ !quorum 2, !fact ci.status.green ]              # an external fact settles it
 ```
 
 Quote the duration. A tony literal may not start with a digit and commas are optional, so

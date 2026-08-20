@@ -28,7 +28,7 @@ func TestAnInterruptedHostedTaskWithdrawsItsQuestionAtOnce(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "held-1", Prompt: "true", Subject: "demo:pr:1"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "held-1", Prompt: "true", Subject: `demo.pr."1"`})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)

@@ -37,17 +37,9 @@ func sourceCmd() *cli.Command {
 		}, sourceAddCmd(), sourceShowCmd(), sourceCheckCmd(), sourceRemoveCmd())
 }
 
-// sourcePath turns the ref an operator types into the route's two segments, accepting it with
-// or without the `sources:` prefix — an operator reading `verse data` and one typing
-// `verse source show` should not have to know two spellings of one thing.
-func sourcePath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:sources:"), ":", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("%w: want a ref like verse:sources:git:laptop (or git:laptop), got %q",
-			cli.ErrUsage, ref)
-	}
-	return "/sources/" + parts[0] + "/" + parts[1], nil
-}
+// sourcePath turns the address an operator types into the route's two segments — see pairPath,
+// the one reader the three registries share.
+func sourcePath(ref string) (string, error) { return pairPath("sources", "sources", ref) }
 
 type sourceShowConfig struct{ *cli.Command }
 
@@ -191,9 +183,9 @@ func (cfg *sourceAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) >= 1 && (len(args) == 2 || cfg.Dir != "") {
 		ref := args[0]
-		parts := strings.SplitN(strings.TrimPrefix(ref, "verse:sources:"), ":", 2)
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return fmt.Errorf("%w: want `source add <system>:<name> <url>`, got %q",
+		parts, ok := pairSegs("sources", ref)
+		if !ok {
+			return fmt.Errorf("%w: want `source add <system>.<name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
 		body := map[string]any{"system": parts[0], "name": parts[1]}

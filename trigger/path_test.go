@@ -39,7 +39,7 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		"a globbing kind":  entity.Obj{"system": "git", "kind": "*", "id": "abc"},
 		"a glob on kind":   entity.Obj{"system": "git", "kind": "re*", "id": "abc"},
 		"a ref for system": entity.Obj{"system": "$subject.system", "kind": "repo", "id": "abc"},
-		"a short address":  "git:repo",
+		"a short address":  "git.repo",
 		"a bare address":   "git",
 	}
 	for why, addr := range bad {
@@ -54,10 +54,10 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 	}
 	ok := map[string]any{
 		"the object form":       entity.Obj{"system": "git", "kind": "repo", "id": "abc"},
-		"the address form":      "git:repo:abc",
+		"the address form":      "git.repo.abc",
 		"a reference id":        entity.Obj{"system": "git", "kind": "repo", "id": "$subject.value.head"},
 		"a payload path":        entity.Obj{"system": "git", "kind": "repo", "id": "abc", "path": "branch"},
-		"a reference in a addr": "git:repo:$subject.value.head",
+		"a reference in a addr": `git.repo."$subject.value.head"`,
 	}
 	for why, addr := range ok {
 		if err := eng.AddTrigger(Trigger{
@@ -111,7 +111,7 @@ func TestReadOfSomethingAbsentFailsTheFiring(t *testing.T) {
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"repo":  get("git:repo:nope"),
+			"repo":  get("git.repo.nope"),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestReadAnswersAtTheCausingCommit(t *testing.T) {
 		Gates:     []Gate{{Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"repo":  get("git:repo:abc"),
+			"repo":  get("git.repo.abc"),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -191,20 +191,20 @@ func TestReadInADeriveMustBeAtOrBelow(t *testing.T) {
 		}
 	}
 	// Below, and at its own level: both fine.
-	if err := eng.AddTrigger(derivingRead("reads-below", "mid", "signadot", "gh:issue:1")); err != nil {
+	if err := eng.AddTrigger(derivingRead("reads-below", "mid", "signadot", `gh.issue."1"`)); err != nil {
 		t.Errorf("a derive reading BELOW its level was refused: %v", err)
 	}
-	if err := eng.AddTrigger(derivingRead("reads-level", "mid", "signadot", "signadot:other:1")); err != nil {
+	if err := eng.AddTrigger(derivingRead("reads-level", "mid", "signadot", "signadot.other.1")); err != nil {
 		t.Errorf("a derive reading AT its level was refused: %v", err)
 	}
 	// Above, and outside the ordering: both refused.
-	err := eng.AddTrigger(derivingRead("reads-above", "low", "gh", "signadot:feature:1"))
+	err := eng.AddTrigger(derivingRead("reads-above", "low", "gh", "signadot.feature.1"))
 	if err == nil {
 		t.Error("a derive read ABOVE its own level, which is how a cycle crosses a level")
 	} else if !strings.Contains(err.Error(), "above") {
 		t.Errorf("the refusal does not say what is wrong: %v", err)
 	}
-	if err := eng.AddTrigger(derivingRead("reads-nowhere", "low", "gh", "elsewhere:thing:1")); err == nil {
+	if err := eng.AddTrigger(derivingRead("reads-nowhere", "low", "gh", `elsewhere.thing."1"`)); err == nil {
 		t.Error("a derive read an entity in no stratum, which has no level to compare")
 	}
 }
@@ -221,7 +221,7 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 		Name:      "reads-up",
 		Stratum:   "low",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    Action{Patch: entity.Obj{"why": get("signadot:feature:1")}.Payload()},
+		Action:    Action{Patch: entity.Obj{"why": get("signadot.feature.1")}.Payload()},
 	}); err != nil {
 		t.Fatalf("a patch reading a higher level was refused: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestReadInAPatchIsUnconstrained(t *testing.T) {
 func TestReadWithNoCauseHasNoCommit(t *testing.T) {
 	eng, _ := newEng(t)
 	oc := occasion{} // no cause: nothing to be as of
-	_, err := eng.resolveRead(get("git:repo:abc"), nil, oc)
+	_, err := eng.resolveRead(get("git.repo.abc"), nil, oc)
 	if err == nil {
 		t.Fatal("a read resolved with no causing commit")
 	}
@@ -262,9 +262,9 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 	}
 	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}}
 	patch := entity.Obj{
-		"a": get("git:repo:a"),
-		"b": get("git:repo:b"),
-		"c": get("git:repo:c"),
+		"a": get("git.repo.a"),
+		"b": get("git.repo.b"),
+		"c": get("git.repo.c"),
 	}.Payload()
 	out, err := expandPatch(patch, refRoot(nil, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0)),
 		eng.readerFor(oc))
@@ -377,7 +377,7 @@ func TestListPathsCollects(t *testing.T) {
 	if strings.Join(vals, ",") != "one,two,three" {
 		t.Fatalf("branches = %v, want [one two three] — the selection's order, sorted by ref", vals)
 	}
-	// The kind is literal, so `git:other:x` is not in the selection however its payload looks.
+	// The kind is literal, so `git.other.x` is not in the selection however its payload looks.
 	if len(vals) != 3 {
 		t.Fatalf("the list crossed a kind: %v", vals)
 	}
@@ -577,11 +577,11 @@ func TestGetPathTakesOneAddress(t *testing.T) {
 		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage":  "read",
-			"whole":  get("git:repo:abc"),              // a ref: the entity, whole
+			"whole":  get("git.repo.abc"),              // a ref: the entity, whole
 			"branch": get("git.repo.abc.branch"),       // …continued into the payload
 			"second": get("git.repo.abc.meta.tags[1]"), // …and into an array
 			"dotted": get(`git.repo."a.b".branch`),     // an id with a dot in it
-			"asref":  get("git:repo:a.b"),              // the same entity, by ref
+			"asref":  get(`git.repo."a.b"`),            // the same entity, by ref
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)

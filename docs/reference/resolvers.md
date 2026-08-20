@@ -7,7 +7,7 @@ verbs an operator types. Why it is shaped this way is
 
 ## The binding
 
-Installed as `verse:resolvers:<kind>:<name>`.
+Installed as `verse.resolvers.<kind>:<name>`.
 
 ```tony
 name:      security-review
@@ -46,19 +46,19 @@ first binding *by name* owns the questions they both cover.
 
 | ref | what it is |
 |---|---|
-| `verse:resolvers:<kind>:<name>` | the binding — what is installed |
-| `verse:resolvers:instance:<name>@<origin>` | who is *reading*, one per (binding, origin) |
+| `verse.resolvers.<kind>:<name>` | the binding — what is installed |
+| `verse.resolvers.instance.<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
 One `verse data resolvers` shows both, which is why the instance is a reserved
 *kind* inside the system rather than a second system with a singular/plural pair to mistype.
 
 The origin is the **run** for a run's gates (`payments-review@review-8f30…`) and the **subject**
-for a firing's (`payments-review@change:pr:1`), because a firing has no event stream of its own.
+for a firing's (`payments-review@change.pr.1`), because a firing has no event stream of its own.
 An instance carries `binding`, `origin`, `position`, and `notes` if any.
 
 ## The question record
 
-A gate awaiting an answer is `verse:gate:question:<id>`, and the fields a resolver puts there
+A gate awaiting an answer is `verse.gate.question.<id>`, and the fields a resolver puts there
 or reads from there:
 
 | field | |
@@ -112,7 +112,7 @@ a hidden answerer — `verse task attach <run>` shows the whole exchange in orde
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
-{kind: decision, id: "review-bff7…~d1", by: verse:resolvers:security:reviewer, proceed: true}
+{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.security.reviewer, proceed: true}
 {kind: exec,     tool: run_bash, text: reviewing}
 {kind: status,   text: done}
 ```
@@ -133,15 +133,15 @@ moment.
 ```sh
 verse resolver                                  # list the bindings
 verse resolver add <file>                       # install one (- = stdin)
-verse resolver show   verse:resolvers:security:review # or security:review
-verse resolver remove verse:resolvers:security:review
+verse resolver show   verse.resolvers.security.review # or security:review
+verse resolver remove verse.resolvers.security.review
 
 verse data verse resolvers instance            # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
 verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
 ```
 
-A resolver ref is typed the way it is stored — `verse:resolvers:security:review` — because an
+A resolver ref is typed the way it is stored — `verse.resolvers.security.review` — because an
 operator reading `verse data` and one typing `verse resolver show` should not have to know two
 spellings of one thing. The leading `verse:resolvers:` may be dropped, leaving `<kind>:<name>`.
 
@@ -149,9 +149,9 @@ spellings of one thing. The leading `verse:resolvers:` may be dropped, leaving `
 
 ```sh
 verse task run 'check the migration' \
-  --subject change:pr:1 \
+  --subject change.pr.1 \
   --vector ask \
-  --resolver verse:resolvers:security:review
+  --resolver verse.resolvers.security.review
 ```
 
 `--vector ask` is what makes the run stop and ask; without it the run is `auto` and a bound
@@ -162,11 +162,11 @@ In a charter, the same two doors:
 
 ```tony
 gating:
-  resolver: verse:resolvers:security:review    # answers this rule's own gates
+  resolver: verse.resolvers.security.review    # answers this rule's own gates
   gates: [{ name: ship, mode: ask }]
 action:
   spawn:
-    resolver: verse:resolvers:security:review  # answers this run's gates
+    resolver: verse.resolvers.security.review  # answers this run's gates
 ```
 
 ## Not built

@@ -127,7 +127,7 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 //
 // The old reasoning was that the check should not become a second authority on what the server
 // will accept. What it missed is that the server accepts a ballot for a motion that does not
-// exist: a ballot is an ordinary entity write, so `vote:nosuch:alice` lands, no tally ever reads
+// exist: a ballot is an ordinary entity write, so `vote.nosuch.alice` lands, no tally ever reads
 // it, and the voter watches a number that will not move. Nobody is the authority in that story.
 //
 // It was found the way these things are: `verse vote approve <id>` — the arguments the wrong way
@@ -204,7 +204,7 @@ func TestVoteReportsARefusal(t *testing.T) {
 			// the store — which is what this test is about. A motion that is not there is
 			// refused before that (TestVoteRefusesAMotionThatIsNotThere).
 			w.Header().Set("Content-Type", "application/tony")
-			_, _ = w.Write([]byte("ref: verse:motion:channel:m1\npayload: {axis: whether, status: open}\n"))
+			_, _ = w.Write([]byte("ref: verse.motion.channel.m1\npayload: {axis: whether, status: open}\n"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -239,7 +239,7 @@ func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
 		"axis":    "whether",
 		"gate":    "approvals",
 		"status":  "open",
-		"subject": "demo:vote:1",
+		"subject": `demo.vote."1"`,
 		"trigger": "shape-vote",
 	}.Payload())
 
@@ -255,7 +255,7 @@ func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
 	if !strings.Contains(out, "id: m1") {
 		t.Errorf("the docket does not name the motion by id:\n%s", out)
 	}
-	if !strings.Contains(out, "demo:vote:1") {
+	if !strings.Contains(out, `demo.vote."1"`) {
 		t.Errorf("the docket does not say what is being decided:\n%s", out)
 	}
 }

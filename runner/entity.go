@@ -126,13 +126,15 @@ func unwrapNode(n *ir.Node) *ir.Node {
 	return n
 }
 
-// Find reads one installed runner by the ref a charter or a CLI argument names, accepting it
-// as it is stored (`verse:runners:<kind>:<name>`) or as the bare pair — an operator reading
-// `verse data` and one typing `verse runner show` should not have to know two spellings of
-// one thing. The middle form is refused; trimAddress says why.
+// Find reads one installed runner by the address a charter or a CLI argument names, accepting
+// it as it is stored (`verse.runners.<kind>.<name>`) or as the bare pair below it (`pool.gpu`) —
+// an operator reading `verse data` and one typing `verse runner show` should not have to know
+// two spellings of one thing. The middle form is refused; trimAddress says why.
+//
+// ONE GRAMMAR, TWO DEPTHS — see source.Find, which is the same reader for the same reason.
 func Find(r entity.Reader, ref string) (Entity, bool) {
-	parts := strings.SplitN(trimAddress(ref), ":", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	parts, ok := trimAddress(ref)
+	if !ok {
 		return Entity{}, false
 	}
 	e, ok, err := r.Get(Ref(parts[0], parts[1]))
@@ -188,11 +190,21 @@ func Is(ref entity.Ref) bool { return ref.Reserved() && ref.System() == System }
 
 // trimAddress takes the two segments that name one of these, from either spelling an operator
 // has in front of them: the whole address as it is listed and stored
-// (`verse:runners:<kind>:<name>`), or the bare pair typed on a command line.
+// (`verse.runners.<kind>.<name>`), or the bare pair typed on a command line (`pool.gpu`).
 //
 // The middle form — the address without its reserved root — is deliberately NOT accepted. It
 // was the whole spelling before verse's own half of the tree had a name, and keeping it would
 // leave two ways to say one address, which is the mush the reserved root exists to end.
-func trimAddress(ref string) string {
-	return strings.TrimPrefix(ref, entity.VerseRoot+":"+System+":")
+func trimAddress(ref string) ([2]string, bool) {
+	segs, err := entity.PathSegs(ref)
+	if err != nil {
+		return [2]string{}, false
+	}
+	if len(segs) == entity.Depth+1 && segs[0] == entity.VerseRoot && segs[1] == System {
+		segs = segs[2:]
+	}
+	if len(segs) != 2 || segs[0] == "" || segs[1] == "" {
+		return [2]string{}, false
+	}
+	return [2]string{segs[0], segs[1]}, true
 }

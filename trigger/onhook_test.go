@@ -148,9 +148,9 @@ func TestOnDoneChains(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	want := map[string]bool{
-		"review@demo:pr:1":               false,
-		"review.onDone@demo:pr:1":        false,
-		"review.onDone.onDone@demo:pr:1": false,
+		"review@demo.pr.1":               false,
+		"review.onDone@demo.pr.1":        false,
+		"review.onDone.onDone@demo.pr.1": false,
 	}
 	for _, id := range ids {
 		if _, ok := want[id]; ok {
@@ -330,7 +330,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 	// rather than with startHookTask, which starts the task itself — adopting a task
 	// that may already have finished would test nothing.)
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
-	p := task.NewTask("review@demo:pr:1", sup, immediate{}, noExec{})
+	p := task.NewTask("review@demo.pr.1", sup, immediate{}, noExec{})
 	mirror.Reflect(store, p.ID, p, mirror.Meta{Subject: prRef("1").String(), Runner: "local", Chain: "review"})
 	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
 	go p.Run(context.Background())
@@ -345,9 +345,9 @@ func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
-	p := task.NewTask("gone@demo:pr:1", sup, immediate{}, noExec{})
+	p := task.NewTask("gone@demo.pr.1", sup, immediate{}, noExec{})
 	eng.AdoptChain(prRef("1").String(), p.ID, "gone.onDone", p)
-	if got := eng.SubjectOf("gone@demo:pr:1"); got != prRef("1").String() {
+	if got := eng.SubjectOf("gone@demo.pr.1"); got != prRef("1").String() {
 		t.Errorf("task not adopted when its chain did not resolve: subject = %q", got)
 	}
 }

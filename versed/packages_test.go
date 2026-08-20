@@ -99,7 +99,7 @@ func TestACharterPackageCannotReachOutsideItsAddress(t *testing.T) {
 	if code == 201 {
 		t.Fatal("a package installed a rule writing outside its address")
 	}
-	if !strings.Contains(msg, "demo:pr") || !strings.Contains(msg, "notes") {
+	if !strings.Contains(msg, "demo.pr") || !strings.Contains(msg, "notes") {
 		t.Errorf("the refusal names neither the address nor the package: %s", msg)
 	}
 }
@@ -417,7 +417,7 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 	for _, def := range []string{
 		`{name: reflected, level: 0, match: {system: git}}`,
 		`{name: tip, level: 10, match: {path: [verse-dev, drift, head]}}`,
-		`{name: head-moved, stratum: reflected, condition: {subject: "git:head:verse"},
+		`{name: head-moved, stratum: reflected, condition: {subject: "git.head.verse"},
 		  action: {derive: [{path: [verse-dev, drift, head], value: {sha: $subject.value.sha}}]}}`,
 	} {
 		if code, msg := installAt(t, ts.URL, "verse-dev.drift", def); code != 201 {

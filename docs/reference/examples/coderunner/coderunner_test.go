@@ -73,7 +73,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	}
 
 	l := task.Launch{ID: "p1", Environment: "test", Provenance: task.Provenance{
-		Principal: "scott", Subject: "demo:pr:1", Chain: "review",
+		Principal: "scott", Subject: `demo.pr."1"`, Chain: "review",
 	}}
 	if _, err := deliver(t, ws, l, "fixed the flaky test\n\ndetails", autoDestination); err != nil {
 		t.Fatalf("deliver: %v", err)
@@ -93,7 +93,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 			"fixed the flaky test",
 			"Verse-Task: p1",
 			"Verse-Principal: scott",
-			"Verse-Subject: demo:pr:1",
+			`Verse-Subject: demo.pr."1"`,
 			"Verse-Chain: review",
 			"Verse-Environment: test",
 		} {
@@ -1181,7 +1181,7 @@ func TestALocalRemoteIsResolvedWhereItWasWritten(t *testing.T) {
 // answer was dropped entirely — the body held nothing but trailers.
 func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	l := task.Launch{ID: "run-1", Environment: "verse-fix", Provenance: task.Provenance{
-		Chain: "comment-drift", Subject: "drift:head:head-moved@git:head:verse",
+		Chain: "comment-drift", Subject: "drift.head.head-moved@git.head.verse",
 	}}
 	answer := "{\"files\": 1, \"fixed\": 1, \"findings\": [{\"symbol\": \"main.shortSha\"}]}"
 	msg := commitMessage(l, answer)
@@ -1190,7 +1190,7 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	if strings.Contains(subject, "{") {
 		t.Errorf("the subject is the document: %q", subject)
 	}
-	if subject != "comment-drift on drift:head:head-moved@git:head:verse" {
+	if subject != "comment-drift on drift.head.head-moved@git.head.verse" {
 		t.Errorf("subject = %q, want what fired and about what", subject)
 	}
 	if !strings.Contains(msg, answer) {
@@ -1218,7 +1218,7 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 // (git-issue qwbacp11h12krq1tgsn0).
 func TestAFencedAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	l := task.Launch{ID: "run-1", Environment: "verse-fix", Provenance: task.Provenance{
-		Chain: "review-range", Subject: "verse-dev:drift:at",
+		Chain: "review-range", Subject: "verse-dev.drift.at",
 	}}
 	for _, answer := range []string{
 		"```json\n{\"files\": 2, \"findings\": []}\n```",
@@ -1230,7 +1230,7 @@ func TestAFencedAnswerIsTheBodyNotTheSubject(t *testing.T) {
 		if strings.HasPrefix(subject, "```") {
 			t.Errorf("the subject is the fence: %q", subject)
 		}
-		if subject != "review-range on verse-dev:drift:at" {
+		if subject != "review-range on verse-dev.drift.at" {
 			t.Errorf("subject = %q, want what fired and about what", subject)
 		}
 		if !strings.Contains(msg, answer) {

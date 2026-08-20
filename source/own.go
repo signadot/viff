@@ -8,7 +8,7 @@ import (
 )
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
-// address in verse is — `<system>:<kind>:<id>` — with `*` allowed: `git:*:verse/*`.
+// address in verse is — `<system>.<kind>.<id>` — with `*` allowed: `git.*.verse/*`.
 //
 // It is NOT an entity.Pattern, which is what a Reflection's Covers is and what a charter's
 // `when` becomes, and the difference is where the two questions are asked rather than a
@@ -31,7 +31,7 @@ import (
 //
 // THE PATH IS NOT PART OF THE PARSEABLE SPELLING, and that is a fact about ids rather than a
 // first version. `@` — the obvious separator — is trigger.ChainSep and already appears inside
-// ids: `scripts/lineage.sh` writes `lineage:trace:<rule>@<subject>`, which carries both a `@`
+// ids: `scripts/lineage.sh` writes `lineage.trace.<rule>@<subject>`, which carries both a `@`
 // and two colons, so no split rule recovers a path from one end or the other. A claim that
 // carries a path is therefore spelled as a document; ParseClaim reads the terse form, which is
 // every claim in the tree today and every claim a person types.
@@ -51,14 +51,14 @@ import (
 // read twice everywhere. The terse spelling survives where it belongs, as the value of `ref` —
 // an address has a spelling, and a path is a list.
 //
-//	{ref: "git:*:verse/*"}
-//	{ref: "linear:project:*", at: [owners, ENG]}
+//	{ref: "git.*.verse/*"}
+//	{ref: "linear.project.*", at: [owners, ENG]}
 //
 // It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
 // through this package on which an unparseable claim is silently skipped.
 type Own struct {
-	// Ref is the address, as a ref glob: `<system>:<kind>:<id>`, any segment `*`, an id
+	// Ref is the address, as a ref glob: `<system>.<kind>.<id>`, any segment `*`, an id
 	// ending in one. ParseClaim is what reads it.
 	Ref string `tony:"field=ref"`
 	// At is the path inside the payload, empty for the whole entity.
@@ -122,7 +122,13 @@ type Claim struct {
 	Field []string
 }
 
-// ParseClaim reads a claim from its ref-glob spelling.
+// ParseClaim reads a claim from its address-glob spelling.
+//
+// It is the ADDRESS GRAMMAR — `entity.ExprSegs`, the same reader a charter's subject goes
+// through — rather than a splitter of its own. It had one, and it was the same answer only for
+// as long as an address was colons: a claim is written beside the addresses it covers, so the
+// day those became kinded paths a source's `owns` was the one place still spelling them the old
+// way.
 //
 // An id glob is a literal prefix and an optional TRAILING `*`, and nothing richer. That is a
 // deliberate floor rather than a first version: prefix-disjointness is a string comparison,
@@ -130,13 +136,18 @@ type Claim struct {
 // ownership is an address is to stop proving things the hard way. A `*` anywhere else is
 // refused rather than approximated, because a claim that quietly meant something narrower than
 // it looked would be a single-writer guarantee resting on a typo.
+//
+// STILL THREE SEGMENTS. A claim over a tree — one segment pattern per level, at whatever depth
+// — is what the shape wants to be, and is a change to Claim and to Disjoint rather than to the
+// spelling this reads.
 func ParseClaim(s string) (Claim, error) {
-	// Three ways, so an id may contain colons — the same split entity.ParseRef makes, for the
-	// same reason: the id is whatever is left.
-	parts := strings.SplitN(s, ":", 3)
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return Claim{}, fmt.Errorf("ownership claim %q: want <system>:<kind>:<id>, where any "+
-			"segment may be * and an id may end in one (git:*:verse/*)", s)
+	parts, err := entity.ExprSegs(s)
+	if err != nil {
+		return Claim{}, fmt.Errorf("ownership claim %q: %w", s, err)
+	}
+	if len(parts) != entity.Depth || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return Claim{}, fmt.Errorf("ownership claim %q: want <system>.<kind>.<id>, where any "+
+			"segment may be * and an id may end in one (git.*.verse/*)", s)
 	}
 	var c Claim
 	for i, seg := range []string{parts[0], parts[1]} {
@@ -186,7 +197,9 @@ func (c Claim) String() string {
 	if c.Prefix {
 		id += "*"
 	}
-	out := seg(c.System) + ":" + seg(c.Kind) + ":" + seg(id)
+	// Rendered as the address it is — the `*`s bare, since a wildcard is a position rather than
+	// a name, and everything else quoted where the grammar needs it.
+	out := seg(c.System) + "." + seg(c.Kind) + "." + seg(id)
 	if len(c.Field) > 0 {
 		out += " at " + strings.Join(c.Field, ".")
 	}
@@ -223,7 +236,7 @@ func (c Claim) Disjoint(o Claim) bool {
 //
 // SEGMENT-WISE, and never as a string. `owners.ENG` and `owners.ENGINE` are two different
 // fields, and a string-prefix test would say the first contains the second and refuse two
-// perfectly disjoint sources — the same false alarm `git:*:verse*` makes against
+// perfectly disjoint sources — the same false alarm `git.*.verse*` makes against
 // `verse-extras/main`, which is the mistake the id grammar is shaped to avoid. Here it costs
 // nothing to avoid, because a path is a list of segments before it is ever a string.
 func pathsDisjoint(a, b []string) bool {

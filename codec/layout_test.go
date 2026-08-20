@@ -79,19 +79,19 @@ func TestStripBracketsDoesNotMutate(t *testing.T) {
 // every field that is an opaque tony node (a charter's `patch`, a match's `fields`, an
 // entity payload) and missing one is invisible until someone notices braces coming back.
 func TestReadDropsTheBracketHint(t *testing.T) {
-	body := `{"ref":"demo:pr:1","payload":{"stage":"open","tags":["a","b"]}}`
+	body := `{"at":"demo.pr.\"1\"","payload":{"stage":"open","tags":["a","b"]}}`
 	r := httptest.NewRequest("POST", "/entity", strings.NewReader(body))
 	r.Header.Set("Content-Type", MediaJSON)
 
 	var got struct {
-		Ref     string   `tony:"field=ref"`
+		At      string   `tony:"field=at"`
 		Payload *ir.Node `tony:"field=payload"`
 	}
 	if err := Read(r, &got); err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if got.Ref != "demo:pr:1" {
-		t.Errorf("ref = %q, want demo:pr:1", got.Ref)
+	if got.At != `demo.pr."1"` {
+		t.Errorf(`at = %q, want demo.pr."1"`, got.At)
 	}
 	// JSON is read BY the tony parser, so a JSON body is tony written in brackets. Keeping
 	// the hint is how `entity put '{"stage":"open"}'` came back as bracket-shaped tony.

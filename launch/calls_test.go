@@ -20,7 +20,7 @@ func TestBindExpandsCallInputs(t *testing.T) {
 		},
 		Fatal: &[]string{"err"},
 	}}}
-	got := s.Bind(Binding{"ref": `origin/it's-fine`, "subject": "demo:pr:1"})
+	got := s.Bind(Binding{"ref": `origin/it's-fine`, "subject": `demo.pr."1"`})
 
 	in := got.Calls[0].Input
 	if in["command"] != `git merge --ff-only origin/it's-fine` {
@@ -28,10 +28,10 @@ func TestBindExpandsCallInputs(t *testing.T) {
 	}
 	// Nested, because a charter writing `input: {env: {REF: $ref}}` means the same thing by it
 	// and a rule that stopped at the first level is a rule nobody could remember.
-	if env := in["env"].(map[string]any); env["SUBJECT"] != "demo:pr:1" {
+	if env := in["env"].(map[string]any); env["SUBJECT"] != `demo.pr."1"` {
 		t.Errorf("nested map not expanded: %v", env)
 	}
-	if args := in["args"].([]any); args[1] != "about demo:pr:1" {
+	if args := in["args"].([]any); args[1] != `about demo.pr."1"` {
 		t.Errorf("nested list not expanded: %v", args)
 	}
 	if in["timeout"] != 30 {

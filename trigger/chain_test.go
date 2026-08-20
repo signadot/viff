@@ -18,9 +18,9 @@ func TestChainIsAKPath(t *testing.T) {
 	for _, chain := range []string{"review", "review.onDone", "review.onDone.onFailed"} {
 		id := spawnID(chain, ref)
 		got, rest, ok := chainOf(id)
-		if !ok || got != chain || rest != ref.String() {
+		if !ok || got != chain || rest != ref.Token() {
 			t.Errorf("chainOf(%q) = (%q, %q, %v); want (%q, %q, true)",
-				id, got, rest, ok, chain, ref.String())
+				id, got, rest, ok, chain, ref.Token())
 			continue
 		}
 		kp, err := kpath.Parse(got)
@@ -59,7 +59,7 @@ func TestChainPrefixMatching(t *testing.T) {
 
 // A spawn id is pasted back onto a command line constantly (task show, gate resolve,
 // task events), so it must survive a shell word unquoted. This is the constraint that
-// kept kpath's bracket syntax OUT of the id: under zsh, review.seq[2]@demo:pr:1 dies with
+// kept kpath's bracket syntax OUT of the id: under zsh, review.seq[2]@demo.pr.1 dies with
 // "no matches found" before verse ever runs. The same principle shortID already states.
 func TestSpawnIDIsPasteSafe(t *testing.T) {
 	const globs = `*?[]{}()~!$&;'"<>|` + "`\\"
@@ -77,6 +77,14 @@ func TestSpawnIDIsPasteSafe(t *testing.T) {
 		if strings.Contains(id, task.GateSep) {
 			t.Errorf("spawn id %q contains GateSep %q", id, task.GateSep)
 		}
+	}
+	// entity.SafeSeg spells the gate separator out rather than importing it, so that the
+	// substrate does not depend on the task package. This is the pairing that keeps the two
+	// honest — it is the only place that imports both.
+	if entity.SafeSeg(task.GateSep) == task.GateSep {
+		t.Errorf("entity.SafeSeg leaves %q alone, and task.GateSep is %q: an id carrying one "+
+			"would make an answer split at the wrong place and route to a task that is not there",
+			task.GateSep, task.GateSep)
 	}
 }
 
@@ -131,16 +139,16 @@ func TestTriggerNameValidation(t *testing.T) {
 	}
 }
 
-// A trigger name carrying '-' used to make the id undecodable: `ship-reviewed-demo:pr:1`
+// A trigger name carrying '-' used to make the id undecodable: `ship-reviewed-demo.pr.1`
 // could not be split back into (chain, ref), because the trigger name and the ref both
 // spend '-'. The '@' boundary fixes it, and this is the regression.
 func TestDashInTriggerNameStillDecodes(t *testing.T) {
 	ref := entity.RefAt("demo", "pr", "hotfix-1")
 	id := spawnID("ship-reviewed", ref)
 	chain, rest, ok := chainOf(id)
-	if !ok || chain != "ship-reviewed" || rest != ref.String() {
+	if !ok || chain != "ship-reviewed" || rest != ref.Token() {
 		t.Fatalf("chainOf(%q) = (%q, %q, %v); want (\"ship-reviewed\", %q, true)",
-			id, chain, rest, ok, ref.String())
+			id, chain, rest, ok, ref.Token())
 	}
 }
 

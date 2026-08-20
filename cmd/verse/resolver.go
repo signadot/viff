@@ -17,18 +17,9 @@ func resolverCmd() *cli.Command {
 		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd())
 }
 
-// resolverPath turns the ref an operator types into the route's two segments. A resolver is
-// addressed the way it is stored — `resolvers:security:security-review` — because an operator
-// reading `verse entity` and one typing `verse resolver show` should not have to know two
-// spellings of one thing.
-func resolverPath(ref string) (string, error) {
-	parts := strings.SplitN(strings.TrimPrefix(ref, "verse:resolvers:"), ":", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("%w: want a ref like resolvers:security:security-review "+
-			"(or security:security-review), got %q", cli.ErrUsage, ref)
-	}
-	return "/resolvers/" + parts[0] + "/" + parts[1], nil
-}
+// resolverPath turns the address an operator types into the route's two segments — see
+// pairPath, the one reader the three registries share.
+func resolverPath(ref string) (string, error) { return pairPath("resolvers", "resolvers", ref) }
 
 type resolverShowConfig struct{ *cli.Command }
 

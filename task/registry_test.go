@@ -95,8 +95,8 @@ func TestChildModeFromAskAnswer(t *testing.T) {
 // docket with copies of it.
 func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	r := NewRegistry()
-	const id = "verse:trigger:ship:ship~deadbeef"
-	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: "demo:pr:1"}
+	const id = "verse.trigger.ship.ship~deadbeef"
+	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: `demo.pr."1"`}
 
 	var posts atomic.Int32
 	r.OnPost(func(Pending) { posts.Add(1) })
@@ -105,7 +105,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	res := make(chan Resolution, n)
 	for range n {
 		go func() {
-			got, err := r.Resolve(context.Background(), q, ToolUse{Name: "verse:trigger:ship"})
+			got, err := r.Resolve(context.Background(), q, ToolUse{Name: "verse.trigger.ship"})
 			if err != nil {
 				t.Errorf("Resolve: %v", err)
 			}
@@ -130,7 +130,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 			if !got.Proceed || got.By != "alice" {
 				t.Fatalf("waiter got %+v, want alice/proceed", got)
 			}
-			if got.Question.Subject != "demo:pr:1" {
+			if got.Question.Subject != `demo.pr."1"` {
 				t.Fatalf("waiter lost the question: %+v", got.Question)
 			}
 		case <-time.After(2 * time.Second):
@@ -150,7 +150,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 // would wait forever on something no longer answerable.
 func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 	r := NewRegistry()
-	const id = "verse:trigger:ship:ship~cafe"
+	const id = "verse.trigger.ship.ship~cafe"
 	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask}
 
 	stay := make(chan Resolution, 1)

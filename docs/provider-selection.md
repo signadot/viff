@@ -191,7 +191,7 @@ as the same agent.
 
 ```sh
 verse data verse task instance <id>
-# doer: provider:treat:fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
+# doer: provider.treat.fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 
 **The docket** carries each option's envelope, so what a ballot would authorise is beside the
@@ -216,7 +216,7 @@ verse docket
     need: 2
     tools: [read_file, list_dir]
   status: open
-  subject: demo:finding:7
+  subject: demo.finding.7
 ```
 
 A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary

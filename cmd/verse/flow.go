@@ -29,11 +29,11 @@ type flowShowConfig struct{ *cli.Command }
 func flowShowCmd() *cli.Command {
 	cfg := &flowShowConfig{}
 	return cli.NewCommandAt(&cfg.Command, "show").
-		WithSynopsis("show a subject's flow as a tree: show <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("show a subject's flow as a tree: show <subject|demo.pr.*>").WithRun(cfg.run)
 }
 
 func (cfg *flowShowConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow show wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow show wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
 	if err != nil {
 		return err
 	}
@@ -49,11 +49,11 @@ type flowPauseConfig struct{ *cli.Command }
 func flowPauseCmd() *cli.Command {
 	cfg := &flowPauseConfig{}
 	return cli.NewCommandAt(&cfg.Command, "pause").
-		WithSynopsis("pause the addressed tasks at their next boundary: pause <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("pause the addressed tasks at their next boundary: pause <subject|demo.pr.*>").WithRun(cfg.run)
 }
 
 func (cfg *flowPauseConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow pause wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow pause wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
 	if err != nil {
 		return err
 	}
@@ -69,11 +69,11 @@ type flowResumeConfig struct{ *cli.Command }
 func flowResumeCmd() *cli.Command {
 	cfg := &flowResumeConfig{}
 	return cli.NewCommandAt(&cfg.Command, "resume").
-		WithSynopsis("resume held tasks: resume <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("resume held tasks: resume <subject|demo.pr.*>").WithRun(cfg.run)
 }
 
 func (cfg *flowResumeConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow resume wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow resume wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
 	if err != nil {
 		return err
 	}
@@ -89,11 +89,11 @@ type flowCancelConfig struct{ *cli.Command }
 func flowCancelCmd() *cli.Command {
 	cfg := &flowCancelConfig{}
 	return cli.NewCommandAt(&cfg.Command, "cancel").
-		WithSynopsis("cancel the addressed tasks (destructive): cancel <subject|demo:pr:*>").WithRun(cfg.run)
+		WithSynopsis("cancel the addressed tasks (destructive): cancel <subject|demo.pr.*>").WithRun(cfg.run)
 }
 
 func (cfg *flowCancelConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow cancel wants a subject address (e.g. demo:pr:1 or demo:pr:*)")
+	subject, err := oneArg(cfg.Command, cc, args, "flow cancel wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ type flowSayConfig struct{ *cli.Command }
 func flowSayCmd() *cli.Command {
 	cfg := &flowSayConfig{}
 	return cli.NewCommandAt(&cfg.Command, "say").
-		WithSynopsis("say an instruction into the addressed tasks: say <subject|demo:pr:*> <text…>").WithRun(cfg.run)
+		WithSynopsis("say an instruction into the addressed tasks: say <subject|demo.pr.*> <text…>").WithRun(cfg.run)
 }
 
 func (cfg *flowSayConfig) run(cc *cli.Context, args []string) error {

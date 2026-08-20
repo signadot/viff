@@ -16,15 +16,15 @@ program that compiles with the tree, and the two functions you change are marked
 
 ## Installing one
 
-A runner lives at `verse:runners:<kind>:<name>` and carries a url — the verse-facing
+A runner lives at `verse.runners.<kind>:<name>` and carries a url — the verse-facing
 [task-control](task-control.md) base. `kind` is the operator's own category, what this
 runner *is*, the way a resolver's kind is what it is *for*.
 
 ```sh
 verse runner add pool:gpu http://runner-gpu.verse.svc:9797
 verse runner
-verse runner check verse:runners:pool:gpu
-verse runner show verse:runners:pool:gpu
+verse runner check verse.runners.pool.gpu
+verse runner show verse.runners.pool.gpu
 ```
 
 `add` also reads a document, which is what a deployment writes:
@@ -77,7 +77,7 @@ condition:
 action:
   spawn:
     prompt:   "retrain the ranker on $subject"
-    runner: verse:runners:pool:gpu          # ← where it runs
+    runner: verse.runners.pool.gpu          # ← where it runs
     driver: scripted                  # ← what runs it
     vector: auto                      # ← how much it may decide alone
     grant:  no-delegate               # ← what it may do
@@ -88,7 +88,7 @@ action:
 and so does an ad-hoc run:
 
 ```sh
-verse task run --runner verse:runners:pool:gpu "retrain the ranker"
+verse task run --runner verse.runners.pool.gpu "retrain the ranker"
 ```
 
 A **name**, not a url, and the indirection is the point: a url on the spawn would spread the
@@ -117,7 +117,7 @@ entity per (doer, place) pair.
 
 ```sh
 verse ps                           # each task names its runner; the default reads `local`
-verse ps --runner verse:runners:pool:gpu # only that runner's work
+verse ps --runner verse.runners.pool.gpu # only that runner's work
 verse runner                       # what is installed, and what each is carrying
 verse runner --probe               # …and what each of them says right now
 ```
@@ -137,13 +137,13 @@ whether a runner is well, the next ask is that it act on one.
 keeps answering for a runner that has since been removed — which is when an operator most wants
 it, that being exactly the case `verse runner` does not show.
 
-`verse ps` reads the `verse:task:instance` mirror rather than asking each installed runner, so
+`verse ps` reads the `verse.task.instance` mirror rather than asking each installed runner, so
 one runner being down costs live detail and not rows. A fan-out would let a single dead runner
 take out the whole list, in a feature whose point is that runners come and go.
 
 ## What a restart does
 
-`verse:task:instance` records both the resolved **url** and the **name** the spawn used. The
+`verse.task.instance` records both the resolved **url** and the **name** the spawn used. The
 url is what a restart reconstructs the runner from, so work outlives the verse that started it
 *and* outlives the entity that named its runner: removing a runner entity cannot orphan work by
 making it unreconstructible. The name is what a person reads and what `verse ps --runner`
@@ -160,12 +160,12 @@ difference is an intent it cannot read from a delete. So **removal with work on 
 until told which**:
 
 ```
-$ verse runner remove verse:runners:pool:gpu
-refused: 3 task(es) are running on verse:runners:pool:gpu, and removing it means one of two
+$ verse runner remove verse.runners.pool.gpu
+refused: 3 task(es) are running on verse.runners.pool.gpu, and removing it means one of two
   things this cannot tell apart:
     --cancel "<why>"   the place is going away; end them with a reason their charters see
     --leave            the place stays; they keep running on the url already stamped on them
-$ verse runner remove verse:runners:pool:gpu --cancel "gpu pool retired"
+$ verse runner remove verse.runners.pool.gpu --cancel "gpu pool retired"
 ```
 
 Neither default survives the motivating use. *Leave* looks safe and is not: the lifecycle this
@@ -238,7 +238,7 @@ second vocabulary for. What crosses back is an ordinary action with a typed effe
 vector like anything else, so nothing about the arrangement is private to the runner.
 
 **Running work cannot be moved.** Named because the entity model invites the assumption: entities
-are level truth, so writing a different runner onto a `verse:task:instance` looks like it
+are level truth, so writing a different runner onto a `verse.task.instance` looks like it
 should move the task. It does not. That field is a record of where the work went, not an
 instruction about where it should go.
 

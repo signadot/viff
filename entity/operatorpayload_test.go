@@ -17,7 +17,7 @@ import (
 // null gave cannot patch with irtype operation". Not the poisoned entity. Any of them.
 //
 // A staging deployment did this, twice. Writes kept succeeding, which is the cruel part: the
-// engine went on appending to a log nobody could ever read again, `verse data a:b:c` on
+// engine went on appending to a log nobody could ever read again, `verse data a.b.c` on
 // an unrelated entity failed, and a wipe was the only way back. The tags came from an agent's
 // answer — `answer.Extract` parses a driver's final message AS TONY, and an agent asked to
 // satisfy a contract written in `!or` and `!irtype` sometimes echoes that shape back, so the

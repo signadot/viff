@@ -71,7 +71,7 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	setPayload(t, store, entity.RefAt("git", "head", "verse"), `{repo: verse, sha: aaa111}`)
 	// The id an engine writes, colons and all — the shape the live charter's subjects have.
-	subj := entity.RefAt("verse-dev", "merge", "train", "train-cut@git:head:verse@aaa111")
+	subj := entity.RefAt("verse-dev", "merge", "train", "train-cut@git.head.verse@aaa111")
 	setPayload(t, store, subj, `{sha: aaa111, branches: [one]}`)
 
 	if err := eng.AddTrigger(mustParseCharter(t, `

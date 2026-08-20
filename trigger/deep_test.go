@@ -373,7 +373,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: head-moved
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [verse-dev, drift, head]
@@ -402,7 +402,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: reach
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
     - path: [somebody-else, notes]

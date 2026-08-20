@@ -2265,16 +2265,26 @@ func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.
 	mirror.Reflect(store, id, h, m)
 }
 
-// resolverName is the name half of a binding's ref — the last segment of
-// `resolvers:<kind>:<name>`. An instance is addressed by name and origin rather than by the
-// whole ref, because the kind is the operator's filing and the name is the identity: two
-// resolvers cannot share a name, so carrying the kind into every instance address would be
+// resolverName is the name half of a binding's address — the last segment of
+// `verse.resolvers.<kind>.<name>`. An instance is addressed by name and origin rather than by
+// the whole address, because the kind is the operator's filing and the name is the identity:
+// two resolvers cannot share a name, so carrying the kind into every instance address would be
 // spelling out a fact that is already implied.
+//
+// THE LAST SEGMENT, asked of the address rather than cut at the last delimiter. Cutting at the
+// last ':' was the same answer while an address was colons, and is no answer at all now — it
+// returned the whole string, so every instance was minted at
+// `verse.resolvers.security.reviewer@<origin>` and nothing that looked one up by name found it.
 func resolverName(ref string) string {
-	if i := strings.LastIndex(ref, ":"); i >= 0 {
-		return ref[i+1:]
+	r, err := entity.ParseAddr(ref)
+	if err != nil {
+		return ref
 	}
-	return ref
+	segs := r.Segs()
+	if len(segs) == 0 {
+		return ref
+	}
+	return segs[len(segs)-1]
 }
 
 // ── resolvers: who answers ───────────────────────────────────────────────────

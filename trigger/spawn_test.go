@@ -43,13 +43,13 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	})
 
 	spec := launch.Spec{Driver: "scripted", Prompt: "review $subject"}.
-		Bind(launch.Binding{"subject": "demo:pr:1"})
+		Bind(launch.Binding{"subject": `demo.pr."1"`})
 
 	p := eng.Spawn("rev-1", spec)
 	if p == nil {
 		t.Fatal("Spawn returned nil")
 	}
-	if got.Driver != "scripted" || got.Prompt != "review demo:pr:1" {
+	if got.Driver != "scripted" || got.Prompt != `review demo.pr."1"` {
 		t.Fatalf("spawner received unbound/wrong spec: %+v", got)
 	}
 
@@ -107,10 +107,10 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		if strings.ContainsAny(id, `/\#?% `) {
 			t.Fatalf("spawn id is not a safe URL segment: %q", id)
 		}
-		// Chain, then the subject boundary, then the full ref (slashes sanitized), plus a
-		// hash suffix behind its own marker (the ref had rewritten characters, so it is
+		// Chain, then the subject boundary, then the whole address as a token (slashes sanitized),
+		// plus a hash behind its own marker — the address had rewritten characters, so it is
 		// disambiguated).
-		if !strings.HasPrefix(id, "validate@local:file:task_taskd_daemon.go+") {
+		if !strings.HasPrefix(id, "validate@local.file.task_taskd_daemon.go+") {
 			t.Fatalf("unexpected sanitized id: %q", id)
 		}
 		// and it is routable/findable in the verse under that id (mirror is async)

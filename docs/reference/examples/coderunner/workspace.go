@@ -750,7 +750,7 @@ func isDocument(result string) bool {
 }
 
 // describe is the subject line for work that did not come with a sentence: what fired, about
-// what. `comment-drift on drift:head:head-moved@git:head:verse` says more to somebody reading
+// what. `comment-drift on drift.head.head-moved@git.head.verse` says more to somebody reading
 // `git log` than the task id does, and both are recorded in the trailers below anyway.
 func describe(l task.Launch) string {
 	p := l.Provenance

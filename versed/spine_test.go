@@ -75,7 +75,7 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments", "stage": "proposed"}.Payload())
 	waitOwner(t, srv, "guard")
 
-	inst := resolver.InstanceRef("payments-review", subject.String())
+	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
 	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
 	if len(got) < 2 {
 		t.Fatalf("the spine carried %d commits, want the subject's history: %+v", len(got), got)
@@ -136,8 +136,8 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
 	subject := entity.RefAt("change", "pr", "1")
-	mirror.Watch(srv.Store, "verse:resolvers:security:payments-review", "payments-review", subject)
-	inst := resolver.InstanceRef("payments-review", subject.String())
+	mirror.Watch(srv.Store, "verse.resolvers.security.payments-review", "payments-review", subject)
+	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
 	before, _, _ := srv.Store.Get(inst)
 	startedAt := entity.ToObj(before.Payload)["position"]
 
@@ -200,12 +200,12 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 
 	subject := entity.RefAt("change", "pr", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
-	mirror.Watch(srv.Store, "verse:resolvers:security:payments-review", "payments-review", subject)
+	mirror.Watch(srv.Store, "verse.resolvers.security.payments-review", "payments-review", subject)
 
 	spawnFor(t, ts, "run-1", subject.String(), "")
 	waitQuestion(t, srv, "run-1")
 
-	inst := resolver.InstanceRef("payments-review", subject.String())
+	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
 	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
 
 	var anchor entity.Event

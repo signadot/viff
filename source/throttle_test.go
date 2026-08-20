@@ -125,13 +125,13 @@ func TestThrottleNeverCachesAFailure(t *testing.T) {
 // The wrapper must not swallow the ownership claim: a source that owns nothing is refused an
 // install beside anything it cannot be proved apart from.
 func TestThrottleKeepsTheOwnershipClaim(t *testing.T) {
-	src := &counted{owns: []source.Own{{Ref: "demo:*:acme/*"}}}
+	src := &counted{owns: []source.Own{{Ref: "demo.*.acme/*"}}}
 	th := source.Throttle(src, time.Minute)
 	d := source.Describe(th)
 	if d.System != "demo" {
 		t.Fatalf("system %q, want demo", d.System)
 	}
-	if len(d.Owns) != 1 || d.Owns[0].Ref != "demo:*:acme/*" {
+	if len(d.Owns) != 1 || d.Owns[0].Ref != "demo.*.acme/*" {
 		t.Fatalf("owns %v, want the wrapped source's claim", d.Owns)
 	}
 	// A source that declines to say still declines to say through the wrapper — a claim

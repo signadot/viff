@@ -104,7 +104,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const binding = "verse:resolvers:security:security-review"
+	const binding = "verse.resolvers.security.security-review"
 
 	askingRun(t, srv, ts, "byhand", "")
 	byHand := planeOf(t, ts, "byhand", func(qid string) {
@@ -160,7 +160,7 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	askingRun(t, srv, ts, "watched", "verse:resolvers:security:security-review")
+	askingRun(t, srv, ts, "watched", "verse.resolvers.security.security-review")
 	qid := waitQuestion(t, srv, "watched")
 	ref := resolver.InstanceRef("security-review", "watched")
 

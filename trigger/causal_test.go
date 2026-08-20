@@ -139,7 +139,7 @@ func TestRefusedWriteRecordsNothing(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	w := eng.caused("claimer", 0)
 
-	claim := entity.RefAt("run", "claim", "review@demo:pr:1")
+	claim := entity.RefAt("run", "claim", "review@demo.pr.1")
 	won, rev, err := w.Write(entity.Write{
 		At: claim.At(), Value: entity.Obj{"by": "first"}.Payload(), When: []entity.Require{entity.Created()},
 	})

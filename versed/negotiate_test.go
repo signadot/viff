@@ -114,7 +114,7 @@ func TestRequestBodyNegotiation(t *testing.T) {
 		t.Fatalf("posting a tony body: %s", resp.Status)
 	}
 
-	e, ok, err := srv.Store.Get(mustRef(t, "demo:pr:1"))
+	e, ok, err := srv.Store.Get(mustRef(t, `demo.pr."1"`))
 	if err != nil || !ok {
 		t.Fatalf("entity not stored: ok=%v err=%v", ok, err)
 	}

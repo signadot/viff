@@ -19,13 +19,13 @@ func TestParseExpr(t *testing.T) {
 		in   string
 		want Match
 	}{
-		{"demo:pr:1", Match{"system": "demo", "kind": "pr", "id": "1"}},
-		{"demo:pr:*", Match{"system": "demo", "kind": "pr"}},
-		{"demo:*:*", Match{"system": "demo"}},
-		{"demo:pr", Match{"system": "demo", "kind": "pr"}},
+		{`demo.pr."1"`, Match{"system": "demo", "kind": "pr", "id": "1"}},
+		{"demo.pr.*", Match{"system": "demo", "kind": "pr"}},
+		{"demo.*.*", Match{"system": "demo"}},
+		{"demo.pr", Match{"system": "demo", "kind": "pr"}},
 		{"demo", Match{"system": "demo"}},
 		{"*", Match{}},
-		{"local:file:a/b:c", Match{"system": "local", "kind": "file", "id": "a/b:c"}},
+		{"local.file.a/b:c", Match{"system": "local", "kind": "file", "id": "a/b:c"}},
 	}
 	for _, c := range cases {
 		got, err := ParseExpr(c.in)
@@ -37,7 +37,7 @@ func TestParseExpr(t *testing.T) {
 			t.Errorf("ParseExpr(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
-	for _, bad := range []string{"", "   ", "demo::1", ":pr:1"} {
+	for _, bad := range []string{"", "   ", "demo..1", ".pr.1"} {
 		if m, err := ParseExpr(bad); err == nil {
 			t.Errorf("ParseExpr(%q) accepted, got %v", bad, m)
 		}
@@ -66,22 +66,22 @@ func (blockForever) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, 
 // flows" without a second primitive. This is the capability step 4 exists to unlock.
 func TestFlowAddressingSelectsSets(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	spawnFP(t, eng, "p1", "demo:pr:1")
-	spawnFP(t, eng, "p2", "demo:pr:1") // two tasks on one subject
-	spawnFP(t, eng, "p3", "demo:pr:2")
-	spawnFP(t, eng, "p4", "demo:issue:9")
-	spawnFP(t, eng, "p5", "other:pr:1")
+	spawnFP(t, eng, "p1", `demo.pr."1"`)
+	spawnFP(t, eng, "p2", `demo.pr."1"`) // two tasks on one subject
+	spawnFP(t, eng, "p3", `demo.pr."2"`)
+	spawnFP(t, eng, "p4", `demo.issue."9"`)
+	spawnFP(t, eng, "p5", `other.pr."1"`)
 
 	cases := map[string]int{
-		"demo:pr:1":    2, // one subject, both its tasks
-		"demo:pr:2":    1,
-		"demo:pr:*":    3, // the whole kind — the relational case
-		"demo:*:*":     4, // the whole system
-		"*":            5, // everything
-		"demo:pr:404":  0, // no live work
-		"nothing:x:y":  0,
-		"other:pr:*":   1,
-		"demo:issue:9": 1,
+		`demo.pr."1"`:    2, // one subject, both its tasks
+		`demo.pr."2"`:    1,
+		"demo.pr.*":      3, // the whole kind — the relational case
+		"demo.*.*":       4, // the whole system
+		"*":              5, // everything
+		`demo.pr."404"`:  0, // no live work
+		"nothing.x.y":    0,
+		"other.pr.*":     1,
+		`demo.issue."9"`: 1,
 	}
 	for addr, want := range cases {
 		if got := len(eng.matchFlow(mustExpr(t, addr))); got != want {
@@ -90,7 +90,7 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	}
 
 	// Flows() reports the distinct subjects, sorted — a query over the same registry.
-	want := []string{"demo:issue:9", "demo:pr:1", "demo:pr:2", "other:pr:1"}
+	want := []string{`demo.issue."9"`, `demo.pr."1"`, `demo.pr."2"`, `other.pr."1"`}
 	if got := eng.Flows(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Flows() = %v, want %v", got, want)
 	}
@@ -100,20 +100,20 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 // {subject, verb, affected} contract the tutorial documents (api.Steered).
 func TestSteerWholeKind(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	spawnFP(t, eng, "p1", "demo:pr:1")
-	spawnFP(t, eng, "p2", "demo:pr:2")
-	spawnFP(t, eng, "p3", "demo:issue:9")
+	spawnFP(t, eng, "p1", `demo.pr."1"`)
+	spawnFP(t, eng, "p2", `demo.pr."2"`)
+	spawnFP(t, eng, "p3", `demo.issue."9"`)
 
-	if n := eng.PauseFlow(mustExpr(t, "demo:pr:*")); n != 2 {
-		t.Fatalf("PauseFlow(demo:pr:*) signalled %d, want 2", n)
+	if n := eng.PauseFlow(mustExpr(t, "demo.pr.*")); n != 2 {
+		t.Fatalf("PauseFlow(demo.pr.*) signalled %d, want 2", n)
 	}
-	if n := eng.ResumeFlow(mustExpr(t, "demo:pr:*")); n != 2 {
-		t.Fatalf("ResumeFlow(demo:pr:*) signalled %d, want 2", n)
+	if n := eng.ResumeFlow(mustExpr(t, "demo.pr.*")); n != 2 {
+		t.Fatalf("ResumeFlow(demo.pr.*) signalled %d, want 2", n)
 	}
-	if n := eng.SteerFlow(mustExpr(t, "demo:*:*"), "hurry", "human:scott"); n != 3 {
-		t.Fatalf("SteerFlow(demo:*:*) said to %d, want 3", n)
+	if n := eng.SteerFlow(mustExpr(t, "demo.*.*"), "hurry", "human:scott"); n != 3 {
+		t.Fatalf("SteerFlow(demo.*.*) said to %d, want 3", n)
 	}
-	if n := eng.CancelFlow(mustExpr(t, "demo:issue:9")); n != 1 {
+	if n := eng.CancelFlow(mustExpr(t, `demo.issue."9"`)); n != 1 {
 		t.Fatalf("CancelFlow signalled %d, want 1", n)
 	}
 }
@@ -128,9 +128,9 @@ func TestFlowAddressingByPayload(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "3"), entity.Obj{"stage": "open"}.Payload())
 
 	eng := New(store, task.AutoResolver{})
-	spawnFP(t, eng, "p1", "demo:pr:1")
-	spawnFP(t, eng, "p2", "demo:pr:2")
-	spawnFP(t, eng, "p3", "demo:pr:3")
+	spawnFP(t, eng, "p1", `demo.pr."1"`)
+	spawnFP(t, eng, "p2", `demo.pr."2"`)
+	spawnFP(t, eng, "p3", `demo.pr."3"`)
 
 	open := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}
 	if n := eng.PauseFlow(open); n != 2 {
@@ -150,7 +150,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
-	spec := launch.Spec{Subject: "demo:pr:1", Prompt: "review"}
+	spec := launch.Spec{Subject: `demo.pr."1"`, Prompt: "review"}
 	h1 := eng.Spawn("rev-1", spec)
 	h2 := eng.Spawn("rev-1", spec) // the same firing again
 	if spawned != 1 {
@@ -159,7 +159,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 	if h1 != h2 {
 		t.Fatal("a duplicate spawn must return the live handle, not nil or a new one")
 	}
-	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:1"))); n != 1 {
+	if n := len(eng.matchFlow(mustExpr(t, `demo.pr."1"`))); n != 1 {
 		t.Fatalf("live registry holds %d tasks for one id, want 1", n)
 	}
 
@@ -186,7 +186,7 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	eng.Spawn(spawnID("review", a), launch.Spec{Subject: a.String()})
 	eng.Spawn(spawnID("review", b), launch.Spec{Subject: b.String()})
 
-	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:*"))); n != 2 {
+	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 2 {
 		t.Fatalf("two subjects yielded %d live tasks, want 2", n)
 	}
 }

@@ -43,7 +43,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	// At the address the design gives it, readable field by field like any other entity.
 	e, ok, _ := srv.Store.Get(resolver.Ref("security", "security-review"))
 	if !ok {
-		t.Fatal("nothing at resolvers:security:security-review")
+		t.Fatal("nothing at resolvers.security.security-review")
 	}
 	got := entity.ToObj(e.Payload)
 	if got["byRef"] != true {
@@ -60,7 +60,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	defer list.Body.Close()
 	var out []map[string]any
 	decodeResp(t, list, &out)
-	if len(out) != 1 || out[0]["ref"] != "verse:resolvers:security:security-review" {
+	if len(out) != 1 || out[0]["ref"] != "verse.resolvers.security.security-review" {
 		t.Fatalf("list = %v, want the one installed", out)
 	}
 

@@ -193,20 +193,20 @@ func TestAPullRequestNeverAppearsAsAnIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := payloads(rn)
-	if got["github:issue:acme/app#2"] != nil {
+	if got[`github.issue."acme/app#2"`] != nil {
 		t.Fatal("a pull request was reflected as an issue")
 	}
-	if got["github:pr:acme/app#2"] == nil {
+	if got[`github.pr."acme/app#2"`] == nil {
 		t.Fatalf("the pull request is missing: %v", got)
 	}
-	if got["github:issue:acme/app#1"] == nil {
+	if got[`github.issue."acme/app#1"`] == nil {
 		t.Fatalf("the issue is missing: %v", got)
 	}
 	// The join to a git source is the head sha, which is what makes "the commit this proposes"
 	// a field read rather than a key anybody minted.
 	if sha := entity.Str(rn.Entities[len(rn.Entities)-1].Payload, "headSha"); sha == "" {
-		if got["github:pr:acme/app#2"]["headSha"] != "cafe1234" {
-			t.Fatalf("a pull request carries no headSha: %v", got["github:pr:acme/app#2"])
+		if got[`github.pr."acme/app#2"`]["headSha"] != "cafe1234" {
+			t.Fatalf("a pull request carries no headSha: %v", got[`github.pr."acme/app#2"`])
 		}
 	}
 	// A targeted pass at the issue number of a pull request writes nothing under the issue
@@ -281,7 +281,7 @@ func TestASecondPassAsksConditionallyAndIsAnsweredFromTheCache(t *testing.T) {
 		t.Fatal("a second pass asked unconditionally: no request was answered 304")
 	}
 	// And the answer is the same one, decoded from the cached body rather than lost.
-	if payloads(rn)["github:issue:acme/app#1"] == nil {
+	if payloads(rn)[`github.issue."acme/app#1"`] == nil {
 		t.Fatalf("a 304 lost the answer: %v", payloads(rn))
 	}
 }
@@ -312,7 +312,7 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 		}
 	}
 	for _, o := range source.Describe(src).Owns {
-		if !strings.HasPrefix(o.Ref, "github-internal:") {
+		if !strings.HasPrefix(o.Ref, "github-internal.") {
 			t.Fatalf("a claim outside the chosen system: %s", o.Ref)
 		}
 	}
@@ -382,7 +382,7 @@ func TestTheRepoCarriesTheDefaultBranchAndTheJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := payloads(rn)["github:repo:acme/app"]
+	got := payloads(rn)["github.repo.acme/app"]
 	if got == nil {
 		t.Fatalf("no repo entity: %v", payloads(rn))
 	}
@@ -408,7 +408,7 @@ func TestAnUnbornDefaultBranchIsNotAFailedPass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an unborn branch failed the pass: %v", err)
 	}
-	got := payloads(rn)["github:repo:acme/app"]
+	got := payloads(rn)["github.repo.acme/app"]
 	if got == nil || got["defaultBranchSha"] != nil {
 		t.Fatalf("repo = %v, want no sha and no failure", got)
 	}
@@ -537,7 +537,7 @@ func TestALongRunningRunFallsOutOfASmallWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payloads(rn)["github:run:acme/app/1"] == nil {
+	if payloads(rn)["github.run.acme/app/1"] == nil {
 		t.Fatal("a larger window does not keep the in-flight run, so the lever does not work")
 	}
 }
@@ -557,7 +557,7 @@ func TestTheCheckStateLandsOnThePullRequest(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return payloads(rn)["github:pr:acme/app#1"]
+		return payloads(rn)[`github.pr."acme/app#1"`]
 	}
 	if c := got()["checks"]; c != "failure" {
 		t.Fatalf("the PR's checks = %v, want the run's conclusion", c)
@@ -594,13 +594,13 @@ func TestAPullRequestWithNoRunCarriesNoCheckState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c, ok := payloads(rn)["github:pr:acme/app#1"]["checks"]; ok {
+	if c, ok := payloads(rn)[`github.pr."acme/app#1"`]["checks"]; ok {
 		t.Fatalf("a PR with no run of its own carries checks = %v", c)
 	}
 }
 
-// Discussions have their own number space, so `github:issue:org/repo#1` and
-// `github:discussion:org/repo#1` are different things carrying the same number. That is fine —
+// Discussions have their own number space, so `github.issue.org/repo#1` and
+// `github.discussion.org/repo#1` are different things carrying the same number. That is fine —
 // a ref is (system, kind, id) — and worth pinning because `#1` alone reads like an identifier
 // and is not one.
 func TestADiscussionDoesNotCollideWithAnIssue(t *testing.T) {
@@ -615,11 +615,11 @@ func TestADiscussionDoesNotCollideWithAnIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := payloads(rn)
-	if got["github:issue:acme/app#1"]["title"] != "an issue" {
-		t.Fatalf("the issue is wrong: %v", got["github:issue:acme/app#1"])
+	if got[`github.issue."acme/app#1"`]["title"] != "an issue" {
+		t.Fatalf("the issue is wrong: %v", got[`github.issue."acme/app#1"`])
 	}
-	if got["github:discussion:acme/app#1"]["title"] != "a discussion" {
-		t.Fatalf("the discussion is wrong: %v", got["github:discussion:acme/app#1"])
+	if got[`github.discussion."acme/app#1"`]["title"] != "a discussion" {
+		t.Fatalf("the discussion is wrong: %v", got[`github.discussion."acme/app#1"`])
 	}
 }
 
@@ -874,7 +874,7 @@ func TestAFailureIsNotCachedAndDoesNotAnswerFromTheCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payloads(rn)["github:issue:acme/app#1"] == nil {
+	if payloads(rn)[`github.issue."acme/app#1"`] == nil {
 		t.Fatalf("a failure poisoned the cache: %v", payloads(rn))
 	}
 }
@@ -930,8 +930,8 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 }
 
 // A source pointed at a system of its own writes, covers, claims AND HINTS there. The last is
-// the one that is easy to miss: a delivery endpoint hinting `github:issue:x` reaches nothing
-// when the source writes `github-internal:issue:x`, and the failure is silent — the hint 404s
+// the one that is easy to miss: a delivery endpoint hinting `github.issue.x` reaches nothing
+// when the source writes `github-internal.issue.x`, and the failure is silent — the hint 404s
 // or lands on somebody else's registration, and only the resync converges.
 func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
 	f := newFake()
@@ -945,7 +945,7 @@ func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
 		"issue":      map[string]any{"number": 42},
 	})
 	refs := h.only(t)
-	if len(refs) != 1 || refs[0].String() != "gh-internal:issue:acme/app#42" {
+	if len(refs) != 1 || refs[0].String() != `gh-internal.issue."acme/app#42"` {
 		t.Fatalf("a delivery hinted %v, want the source's own system", refs)
 	}
 }
@@ -974,8 +974,8 @@ func TestAFullPassAndATargetedPassAgree(t *testing.T) {
 	whole := payloads(full)
 
 	for _, tc := range []struct{ kind, ref string }{
-		{"pr", "github:pr:acme/app#7"},
-		{"issue", "github:issue:acme/app#8"},
+		{"pr", `github.pr."acme/app#7"`},
+		{"issue", `github.issue."acme/app#8"`},
 	} {
 		num := 7
 		if tc.kind == "issue" {
@@ -998,7 +998,7 @@ func TestAFullPassAndATargetedPassAgree(t *testing.T) {
 	// windowed separately made unsafe: a closed PR can sit inside the pulls window and past the
 	// end of the issues one, and the count would read 0 there and flip as items updated. The
 	// comments are entities instead, which is the better answer to what that field was for.
-	if c, ok := whole["github:pr:acme/app#7"]["comments"]; ok {
+	if c, ok := whole[`github.pr."acme/app#7"`]["comments"]; ok {
 		t.Fatalf("a pull request still carries a comment count: %v", c)
 	}
 }
@@ -1033,7 +1033,7 @@ func TestCommentsAreReflectedAndWindowed(t *testing.T) {
 	onIssue := src.CommentRef("acme/app", 1, 100)
 	onPR := src.CommentRef("acme/app", 2, 101)
 	review := src.CommentRef("acme/app", 2, 102)
-	if got := onPR.String(); got != "github:comment:acme/app#2/101" {
+	if got := onPR.String(); got != `github.comment."acme/app#2/101"` {
 		t.Fatalf("comment ref = %s", got)
 	}
 	for _, ref := range []entity.Ref{onIssue, onPR, review} {
@@ -1188,7 +1188,7 @@ func TestARealCommentBodySurvivesTheWire(t *testing.T) {
 		t.Fatalf("the wire lost entities: %d of %d", len(back.Entities), len(rn.Entities))
 	}
 	// And the body is the text, with the line endings normalised rather than mangled.
-	got := payloads(back)["github:comment:acme/app#1/901"]
+	got := payloads(back)[`github.comment."acme/app#1/901"`]
 	if got == nil || got["body"] != "a\nb\n" {
 		t.Fatalf("comment body = %q", got["body"])
 	}

@@ -292,7 +292,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		if obj["sym"] == nil || obj["was"] != "stale" {
 			t.Errorf("%s carries %v", e.Ref, obj)
 		}
-		if !strings.Contains(e.Ref.ID(), "fan@git:commit:verse_abc") {
+		if !strings.Contains(e.Ref.ID(), "fan@git.commit.verse_abc") {
 			t.Errorf("id %q does not carry (rule, subject)", e.Ref.ID())
 		}
 	}

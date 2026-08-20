@@ -90,7 +90,7 @@ libctl.RunController(ctx, &libctl.ControllerConfig{
 `entity.MountKPath(system, kind)` renders the kpath so the store and the controller agree on
 where the subtree lives — under `MountRoot`, not under the entity root, per the rule above. The
 entity namespace is unchanged by that: the slice is still addressed as the ordinary ref
-`system:kind:id`, and only the path it renders to differs. Add the `(system, kind-prefix)` pair
+`system.kind.id`, and only the path it renders to differs. Add the `(system, kind-prefix)` pair
 to `entity.mountedKinds` so `refPath` routes reads there; a mount the store does not know about
 is a mount every read misses. Cancel `ctx` to unmount (docd tombstones the mount cleanly).
 
@@ -133,7 +133,7 @@ In verse, we've chosen to simply not have such mounts and it simplifies things.
    too; a subtree read shouldn't stream an unbounded blob into one node.
 
 3. Own the subtree — be its single writer. A controller owns `system:*` (or a
-   `system:kind:*` slice) and is the only writer there, so reflected data needs no CAS
+   `system.kind.*` slice) and is the only writer there, so reflected data needs no CAS
    (the parked lost-update concern doesn't apply to a single-writer slice). Mount
    per-system or per-`(system,kind)`.
 

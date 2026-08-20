@@ -163,7 +163,7 @@ func TestResolverSubstitution(t *testing.T) {
 // delimiter changed in one and not the others compiles, passes every other test, and fails
 // only at resolve time with "unknown or already-answered decision".
 func TestGateIDSplitsOnGateSepToItsOwner(t *testing.T) {
-	const origin = "review-demo:pr:1" // a real spawnID shape: hyphens and colons, no GateSep
+	const origin = "review-demo.pr.1" // a real spawnID shape: hyphens and colons, no GateSep
 	sup := NewSupervisor(&Vector{Default: Auto}, AutoResolver{Who: "agent"})
 	sup.SetOrigin(origin)
 

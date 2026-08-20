@@ -141,7 +141,7 @@ The parts:
 
 | reference | resolves to |
 |---|---|
-| `$subject` | the whole ref, `"gh:issue:1"` — a match address as it stands |
+| `$subject` | the whole ref, `"gh.issue.1"` — a match address as it stands |
 | `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
 | `$subject.value` | the subject's payload **at the commit that caused the firing** |
 | `$subject.commit` | that commit's revision — not in a derive |
@@ -169,14 +169,14 @@ sentence with the element's key in it — and the engine writes the subject link
 `verse.meta.derivedFrom`:
 
 ```
-$ verse data signadot feature urgent-label@gh:issue:1
+$ verse data signadot feature urgent-label@gh.issue.1
 priority: urgent
-what: gh:issue:1
+what: gh.issue.1
 verse:
   meta:
     derivedFrom:
       rule: urgent-label
-      subject: gh:issue:1
+      subject: gh.issue.1
 ```
 
 The id reads `<system>:<kind>:<rule>@<subject>`, and the rule is in there because identity is
@@ -212,7 +212,7 @@ action:
 The address becomes (rule, subject, key) — the fan-out's identity with one element — and it is
 there for the case a plain derive cannot say: **the same subject, decided more than once.**
 
-A merge train is the one that forced it. `git:head:verse` is a single entity whose `sha` moves;
+A merge train is the one that forced it. `git.head.verse` is a single entity whose `sha` moves;
 a rule deriving a batch from it writes ONE address, and a
 [gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of
 (trigger, gate, subject) — so the second batch arrived at an address whose motion was already
@@ -350,8 +350,8 @@ the ordering exists to remove. Declaring a stratum is what buys a derive.
 
 ## Installing, and the order it does not depend on
 
-A stratum is one entity (`verse:trigger:strata:<name>`) as a rule is one
-(`verse:trigger:rule:<name>`, prefixed with the package for a charter installed at an
+A stratum is one entity (`verse.trigger.strata.<name>`) as a rule is one
+(`verse.trigger.rule.<name>`, prefixed with the package for a charter installed at an
 address), for the same reasons: installing writes one and removing deletes
 one, so there is no read-modify-write and two concurrent installs cannot lose each other.
 

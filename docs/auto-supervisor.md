@@ -37,7 +37,7 @@ the whole example.
 
 ## The charter
 
-The subject is a change, `change:pr:<n>`, carrying a `stage`, a `tests` fact, and — once
+The subject is a change, `change.pr.<n>`, carrying a `stage`, a `tests` fact, and — once
 assessed — the supervisor's `review`. Install it:
 
 ```sh
@@ -166,7 +166,7 @@ review:
   risk:     high
   why:
     "the supervisor did not decide: No files are accessible in the working directory;"
-    " the PR diff and test files for change:pr:9 could not be found under any path tried."
+    " the PR diff and test files for change.pr.9 could not be found under any path tried."
 ```
 
 The same route covers the crudest failure of all: with no model credentials configured,
@@ -225,13 +225,13 @@ verse data change pr 8
 #   stage: assessed          ← waiting on a person
 verse gate
 # - gate: sign-off
-#   id: trigger:land-ask:sign-off~090ea377
+#   id: trigger.land-ask.sign-off~090ea377
 #   mode: ASK
 #   origin: land-ask
-#   reason: "trigger land-ask gate sign-off on change:pr:8"
-#   subject: change:pr:8
-verse gate approve trigger:land-ask:sign-off~090ea377 --as human:scott
-# approved trigger:land-ask:sign-off~090ea377
+#   reason: "trigger land-ask gate sign-off on change.pr.8"
+#   subject: change.pr.8
+verse gate approve trigger.land-ask.sign-off~090ea377 --as human:scott
+# approved trigger.land-ask.sign-off~090ea377
 verse data change pr 8      # stage: landed
 ```
 
@@ -240,7 +240,7 @@ decision re-reached is the same question rather than a second one.
 
 With credentials, `verse data change pr 9 '{stage: proposed, tests: green}' ` runs --put the
 real thing: `verse flow` shows the assessment in flight, `verse data verse task instance
-assess@change:pr:9` shows what the supervisor read and said, and the change
+assess@change.pr.9` shows what the supervisor read and said, and the change
 ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops

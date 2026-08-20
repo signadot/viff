@@ -165,7 +165,7 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 // is how you say "this CI status, not any of them", and it used to cost the rest of the
 // match: a definite system+kind+id was treated as an entity NAMED rather than selected, and a
 // named match is a set of one whether or not it exists — so `{state: green}` was dropped and
-// the predicate meant "ci:status:release is there at all".
+// the predicate meant "ci.status.release is there at all".
 //
 // Both faces of that were broken, in opposite directions. As an `on` it never fired: the
 // predicate held from the moment the entity appeared, so the edge had risen before anyone

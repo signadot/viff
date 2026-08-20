@@ -91,7 +91,7 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 		}
 	}
 
-	fix, memo := got["demo:finding:1"], got["demo:finding:2"]
+	fix, memo := got[`demo.finding."1"`], got[`demo.finding."2"`]
 	if fix.Driver != "llm" || memo.Driver != "llm" {
 		t.Fatalf("drivers = %q / %q, want both llm — the point is that the driver is what they SHARE", fix.Driver, memo.Driver)
 	}
@@ -108,12 +108,12 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 		t.Errorf("frames did not come from the doers: %q / %q", fix.Frame, memo.Frame)
 	}
 	// The task is the charter's, always: a doer varies how the work is done, not what it is.
-	if fix.Prompt != "treat demo:finding:1" {
+	if fix.Prompt != `treat demo.finding."1"` {
 		t.Errorf("task = %q, want the charter's, bound", fix.Prompt)
 	}
 	// And each spawn says WHICH doer it got. The driver cannot answer that here — both ran
 	// `llm` — which is the whole reason a task carries the doer separately.
-	if fix.Doer != "provider:treat:fixer" || memo.Doer != "provider:treat:memo" {
+	if fix.Doer != "provider.treat.fixer" || memo.Doer != "provider.treat.memo" {
 		t.Errorf("doers = %q / %q, want the two provider refs", fix.Doer, memo.Doer)
 	}
 }

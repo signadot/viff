@@ -121,7 +121,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"1", "2", "3"} {
-		ref := "demo:pr:" + id
+		ref := `demo.pr."` + id + `"`
 		if seen[ref] != "ship "+ref {
 			t.Errorf("member %s: task = %q, want $subject bound to that member", ref, seen[ref])
 		}
@@ -130,7 +130,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 		t.Fatalf("members shared a spawn id (%v) — control would be cross-wired", ids)
 	}
 	// And each is its own flow, addressable as a set.
-	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:*"))); n != 3 {
+	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 3 {
 		t.Fatalf("%d live tasks for 3 members", n)
 	}
 }
@@ -267,7 +267,7 @@ func TestSubjectSelectionIsDeterministic(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "b", "a", "c")
 	m := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}
-	want := []string{"demo:pr:a", "demo:pr:b", "demo:pr:c"}
+	want := []string{"demo.pr.a", "demo.pr.b", "demo.pr.c"}
 	for range 20 { // map iteration order varies per range, so repeat
 		refs := m.Select(store)
 		for i, r := range refs {
@@ -349,9 +349,9 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 }
 
 // An ADDRESS GLOB is the string spelling of a set-valued Subject, and it must dispatch
-// identically to the object form — `"demo:pr:*"` is the whole kind, exactly as `verse flow
-// demo:pr:*` addresses the whole kind's live tasks. It used to parse to a `ref` naming an
-// entity literally called "*", so nothing fanned out and `set` created `demo:pr:*` instead.
+// identically to the object form — `"demo.pr.*"` is the whole kind, exactly as `verse flow
+// demo.pr.*` addresses the whole kind's live tasks. It used to parse to a `ref` naming an
+// entity literally called "*", so nothing fanned out and `set` created `demo.pr.*` instead.
 func TestGlobSubjectFansOut(t *testing.T) {
 	store := entitytest.Store(t)
 	open := prs(t, store, "open", "1", "2", "3")
@@ -359,7 +359,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:*"},
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo.pr.*"},
 		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	}
 	// And no entity called "*" was conjured by the action's `set`.
 	if e, ok, _ := store.Get(entity.RefAt("demo", "pr", "*")); ok {
-		t.Fatalf("the glob was named instead of selected: created demo:pr:* = %#v", e.Payload)
+		t.Fatalf("the glob was named instead of selected: created demo.pr.* = %#v", e.Payload)
 	}
 }
 
@@ -389,7 +389,7 @@ func TestIdGlobSelectsAFamily(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo:pr:hotfix-*"},
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo.pr.hotfix-*"},
 		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"record",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit:record:latest"},
+		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit.record.latest"},
 		"action":{"patch":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 		Name: "reviewed",
 		Condition: Condition{
 			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
-			Subject: mm("demo:pr:*"), // acts on demo:pr, whatever the cause carries
+			Subject: mm("demo.pr.*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {

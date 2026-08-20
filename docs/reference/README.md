@@ -114,7 +114,7 @@ verse
           --put [--expect <pattern>]         only if what is there matches. `--expect` rather
                                              than `--if`, which is the READ's filter: they were
                                              told apart by the `put` subcommand that is gone
-          An address is one grammar in three delimiters — `demo:pr:1` names the entity
+          An address is one grammar in three delimiters — `demo.pr.1` names the entity
           whole, `demo.pr.1.labels` continues into the payload, `demo pr 1 labels` is the
           same as separate words — and whichever comes FIRST is the one in use, so an id may
           hold the others. entities.md#addressing is the whole of it, including which
@@ -196,11 +196,11 @@ verse
           add [--file <f>|-] [file] · show <ref> · remove <ref>
   flow (flows)                               the distinct subjects with live work
           show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
-          <addr> addresses live tasks by the subject they are about: demo:pr:1 (one),
-          demo:pr:* (a kind), demo:*:* (a system) — a flow is a query, not a stored key
+          <addr> addresses live tasks by the subject they are about: demo.pr.1 (one),
+          demo.pr.* (a kind), demo.*.* (a system) — a flow is a query, not a stored key
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
-          the shell would expand, so it is the ref spelling here and `verse data`'s vector
-          spelling there. A second positional is refused rather than read as a step
+          the shell would expand — so quote it. A second positional is refused rather
+          than read as a step
   docket                                     the motions on the docket (votes + provider
                                              selections), open and settled — a settled one
                                              carries its outcome, or `orphaned` and a `why`

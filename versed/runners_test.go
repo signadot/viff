@@ -79,8 +79,8 @@ func TestRunnerAddListShow(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["ref"] != "verse:runners:pool:gpu" {
-		t.Fatalf("ref = %v, want runners:pool:gpu", got["ref"])
+	if got["ref"] != "verse.runners.pool.gpu" {
+		t.Fatalf("ref = %v, want runners.pool.gpu", got["ref"])
 	}
 	// The probe ran and said what it found, rather than the install being a silent write.
 	if got["reach"] != "a runner" {
@@ -93,7 +93,7 @@ func TestRunnerAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["ref"] != "verse:runners:pool:gpu" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["ref"] != "verse.runners.pool.gpu" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed runner with its url", list)
 	}
 
@@ -248,7 +248,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 	p := runner.HTTP(face.URL)
 	p.Spawn(task.Launch{ID: "w1", Prompt: "long work", Driver: "scripted"}, nil)
 	setInstance(t, srv, "w1", entity.Obj{
-		"status": "running", "runner": face.URL, "runnerName": "verse:runners:pool:gpu",
+		"status": "running", "runner": face.URL, "runnerName": "verse.runners.pool.gpu",
 	})
 
 	resp, err := ts.Client().Do(mustReq(t, http.MethodDelete, ts.URL+"/runners/pool/gpu"))
@@ -259,7 +259,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 		t.Fatalf("remove with work on it = %s, want 409", resp.Status)
 	}
 	msg := readBody(t, resp)
-	for _, want := range []string{"--cancel", "--leave", "verse:runners:pool:gpu"} {
+	for _, want := range []string{"--cancel", "--leave", "verse.runners.pool.gpu"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("refusal = %q, want it to name %q", msg, want)
 		}
@@ -322,7 +322,7 @@ func TestRunnerRemoveCancelReportsWhatItCouldNotReach(t *testing.T) {
 	p := runner.HTTP(face.URL)
 	h := p.Spawn(task.Launch{ID: "c1", Prompt: "long work", Driver: "scripted"}, nil)
 	setInstance(t, srv, "c1", entity.Obj{
-		"status": "running", "runner": face.URL, "runnerName": "verse:runners:pool:gpu",
+		"status": "running", "runner": face.URL, "runnerName": "verse.runners.pool.gpu",
 	})
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -353,7 +353,7 @@ func TestRunnerRemoveCancelReportsWhatItCouldNotReach(t *testing.T) {
 		"name": "ghost", "kind": "pool", "url": goneURL,
 	}).Body.Close()
 	setInstance(t, srv, "g1", entity.Obj{
-		"status": "running", "runner": goneURL, "runnerName": "verse:runners:pool:ghost",
+		"status": "running", "runner": goneURL, "runnerName": "verse.runners.pool.ghost",
 	})
 
 	resp, err = ts.Client().Do(mustReq(t, http.MethodDelete,
@@ -431,13 +431,13 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 	}).Body.Close()
 
 	// One naming the runner, one naming none.
-	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "prompt": "t", "runner": "verse:runners:pool:gpu"})
+	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "prompt": "t", "runner": "verse.runners.pool.gpu"})
 	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "prompt": "t"})
 
 	// It really went there: the runner face has it, and the default one does not.
 	remote := runner.HTTP(face.URL).(task.Lister)
 	if _, err := remote.TaskSnapshot(named); err != nil {
-		t.Fatalf("the spawn naming runners:pool:gpu did not reach it: %v", err)
+		t.Fatalf("the spawn naming runners.pool.gpu did not reach it: %v", err)
 	}
 	if _, err := remote.TaskSnapshot(deflt); err == nil {
 		t.Fatal("the spawn naming NO runner went to the named one — the default is what an " +
@@ -455,7 +455,7 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 	if rec["runner"] != face.URL {
 		t.Fatalf("runner = %v, want the resolved url — it is what a restart can act on", rec["runner"])
 	}
-	if rec["runnerName"] != "verse:runners:pool:gpu" {
+	if rec["runnerName"] != "verse.runners.pool.gpu" {
 		t.Fatalf("runnerName = %v, want the name the spawn wrote", rec["runnerName"])
 	}
 	if got := instanceOf(t, srv, deflt)["runnerName"]; got != nil {
@@ -474,13 +474,13 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 
 	// The ad-hoc path.
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "nope", "prompt": "t", "runner": "verse:runners:pool:typo",
+		"id": "nope", "prompt": "t", "runner": "verse.runners.pool.typo",
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("spawn naming an uninstalled runner = %s, want 400", resp.Status)
 	}
-	if msg := readBody(t, resp); !strings.Contains(msg, "verse:runners:pool:typo") {
+	if msg := readBody(t, resp); !strings.Contains(msg, "verse.runners.pool.typo") {
 		t.Fatalf("refusal = %q, want it to name the runner that is not installed", msg)
 	}
 	if _, ok := srv.Taskd.SnapshotOf("nope"); ok {
@@ -493,12 +493,12 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 	// The charter path, where the refusal has to travel as a failed spawn rather than as an
 	// HTTP status, because there is nobody to answer.
 	h := srv.spawnerFor(srv.Store, "", nil)("fired", launch.Spec{
-		Prompt: "t", Driver: "scripted", Runner: "verse:runners:pool:typo",
+		Prompt: "t", Driver: "scripted", Runner: "verse.runners.pool.typo",
 	})
 	if h == nil {
 		t.Fatal("a refused charter spawn returned no handle at all")
 	}
-	if e := h.Err(); !strings.Contains(e, "verse:runners:pool:typo") {
+	if e := h.Err(); !strings.Contains(e, "verse.runners.pool.typo") {
 		t.Fatalf("failure = %q, want the runner named in it", e)
 	}
 	if _, ok := srv.Taskd.SnapshotOf("fired"); ok {
@@ -548,7 +548,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "kind": "pool", "url": face.URL,
 	}).Body.Close()
-	id := spawnOK(t, ts, map[string]any{"id": "survivor", "prompt": "long work", "runner": "verse:runners:pool:gpu"})
+	id := spawnOK(t, ts, map[string]any{"id": "survivor", "prompt": "long work", "runner": "verse.runners.pool.gpu"})
 	ts.Close()
 
 	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
@@ -567,7 +567,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 			"but the url on the task is what a restart reconstructs from")
 	}
 	// And it still says which runner it was named for, so an operator can still select it.
-	if rec["runnerName"] != "verse:runners:pool:gpu" {
+	if rec["runnerName"] != "verse.runners.pool.gpu" {
 		t.Fatalf("runnerName = %v after restart, want it carried through the re-attach — "+
 			"Reflect replaces the payload, so what is not handed back is forgotten", rec["runnerName"])
 	}
@@ -577,7 +577,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()
 	resp := postTony(t, ts2.URL+"/tasks", map[string]any{
-		"id": "later", "prompt": "t", "runner": "verse:runners:pool:gpu",
+		"id": "later", "prompt": "t", "runner": "verse.runners.pool.gpu",
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -596,7 +596,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "kind": "pool", "url": face.URL,
 	}).Body.Close()
-	named := spawnOK(t, ts, map[string]any{"id": "there", "prompt": "t", "runner": "verse:runners:pool:gpu"})
+	named := spawnOK(t, ts, map[string]any{"id": "there", "prompt": "t", "runner": "verse.runners.pool.gpu"})
 	here := spawnOK(t, ts, map[string]any{"id": "here", "prompt": "t"})
 
 	// ps names the runner per task, and the default reads `local` rather than blank.
@@ -604,7 +604,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	for _, m := range psList(t, ts, "") {
 		byID[m["id"].(string)] = m
 	}
-	if got := byID[named]["runnerName"]; got != "verse:runners:pool:gpu" {
+	if got := byID[named]["runnerName"]; got != "verse.runners.pool.gpu" {
 		t.Fatalf("runnerName = %v, want the name it was spawned under", got)
 	}
 	if got := byID[here]["runner"]; got != "local" {
@@ -612,7 +612,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	}
 
 	// --runner selects, on the name that was written.
-	only := psList(t, ts, "verse:runners:pool:gpu")
+	only := psList(t, ts, "verse.runners.pool.gpu")
 	if len(only) != 1 || only[0]["id"] != named {
 		t.Fatalf("ps --runner = %+v, want just the one on that runner", only)
 	}
@@ -656,7 +656,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "kind": "pool", "url": face.URL,
 	}).Body.Close()
-	live := spawnOK(t, ts, map[string]any{"id": "live", "prompt": "t", "runner": "verse:runners:pool:gpu"})
+	live := spawnOK(t, ts, map[string]any{"id": "live", "prompt": "t", "runner": "verse.runners.pool.gpu"})
 
 	// A second installed runner that is not there at all, carrying work of its own.
 	gone := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -666,7 +666,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 		"name": "ghost", "kind": "pool", "url": goneURL,
 	}).Body.Close()
 	setInstance(t, srv, "stranded", entity.Obj{
-		"status": "running", "prompt": "t", "runner": goneURL, "runnerName": "verse:runners:pool:ghost",
+		"status": "running", "prompt": "t", "runner": goneURL, "runnerName": "verse.runners.pool.ghost",
 	})
 
 	ids := map[string]bool{}
@@ -677,7 +677,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 		t.Fatalf("ps = %v, want both — the dead runner cost detail, not rows", ids)
 	}
 	// And it still answers for the dead runner by name, which is when an operator most wants it.
-	if only := psList(t, ts, "verse:runners:pool:ghost"); len(only) != 1 || only[0]["id"] != "stranded" {
+	if only := psList(t, ts, "verse.runners.pool.ghost"); len(only) != 1 || only[0]["id"] != "stranded" {
 		t.Fatalf("ps --runner on a dead runner = %+v, want its work", only)
 	}
 	// `task get` finds work on a named runner too, rather than 404ing on work that is running.

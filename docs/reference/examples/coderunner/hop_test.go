@@ -656,9 +656,9 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 func TestChildURLSurvivesATriggerSpawnedTaskID(t *testing.T) {
 	for _, id := range []string{
 		"run-7818e07b47dd",
-		"review@demo:pr:1",
-		"comment-drift@drift:head:head-moved@git:head:verse",
-		"review.seq.2@demo:pr:1",
+		"review@demo.pr.1",
+		"comment-drift@drift.head.head-moved@git.head.verse",
+		"review.seq.2@demo.pr.1",
 	} {
 		if _, err := http.NewRequest(http.MethodGet, "http://task."+hostSafe(id)+"/tasks", nil); err != nil {
 			t.Errorf("task %q gives an unusable child url: %v", id, err)
@@ -694,7 +694,7 @@ func TestAFinishedTaskIDRunsAgain(t *testing.T) {
 	defer srv.Close()
 
 	rt := runner.HTTP(srv.URL)
-	id := "comment-drift@drift:head:head-moved@git:head:verse"
+	id := "comment-drift@drift.head.head-moved@git.head.verse"
 	for i, want := range []string{"ran", "ran"} {
 		h := rt.Spawn(task.Launch{ID: id, Prompt: "go", Vector: &task.Vector{Default: task.Auto}}, nil)
 		if st := awaitTerminal(t, h); st != task.Done {

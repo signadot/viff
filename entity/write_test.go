@@ -474,10 +474,10 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 	for _, segs := range [][]string{
 		{"demo", "pr", "1"},
 		{"demo", "pr", "1", "labels", "urgent"},
-		{"git", "ref", "x@git:ref:y"},
+		{"git", "ref", "x@git.ref.y"},
 		{"demo", "pr", "a.b"},
 		{"demo", "pr", "a.b", "labels"},
-		{"a:b:c", "pr", "1"},
+		{"a.b.c", "pr", "1"},
 		{"a b", "pr", "1"},
 		{"verse", "task", "instance", "run-1"},
 	} {

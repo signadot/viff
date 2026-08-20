@@ -123,7 +123,7 @@ func firingQuestions(store entity.Store, origin string) []string {
 // task exists, which is why there is no task; the trigger that posed it is nonetheless running
 // in a scope. So one registry, shared by baseline and every scoped engine, published every
 // dev's rule gates to baseline: `verse gate` in baseline listed a question about
-// `demo:ask2:1`, and `verse data demo ask2 1` there answered nothing stands there.
+// `demo.ask2.1`, and `verse data demo ask2 1` there answered nothing stands there.
 func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	srv.Start(t.Context())

@@ -1,8 +1,6 @@
 package trigger
 
 import (
-	"strings"
-
 	"github.com/signadot/verse/entity"
 )
 
@@ -73,24 +71,24 @@ func (f *Formula) IsMatchAtom() bool {
 	return f != nil && f.Op == OpAtom && f.Req != nil && f.Req.Kind == ReqMatch
 }
 
-// factSelFromRef parses "system", "system:kind" or "system:kind:id" into a fact-selecting
-// Match — the same three segments an entity ref has, so `!fact ci:status:green` names the
-// entity a reader thinks it names.
+// factSelFromRef parses an address into a fact-selecting Match, at whatever depth it names —
+// `!fact ci.status.green` names the entity a reader thinks it names, and `!fact ci.status` the
+// kind above it.
 //
-// It used to stop at two, folding everything after the first colon into the KIND. That did
-// not fail: it produced a requirement selecting kind "status:green", which no entity can have
-// (a kind holds no colon), so the leaf was simply never satisfied — a gate that installs,
-// round-trips, reads correctly, and waits forever.
+// IT IS ParseExpr, and it did not used to be: it had its own splitter, which stopped at two
+// segments and folded everything after the first colon into the KIND. That did not fail — it
+// produced a requirement selecting kind "status:green", which no entity can have, so the leaf
+// was simply never satisfied. A gate that installs, round-trips, reads correctly, and waits
+// forever. One reader is how that stops being possible.
+//
+// A malformed address selects nothing rather than erroring, which is this function's contract
+// with its one caller: a requirement's ref is validated where the requirement is.
 func factSelFromRef(s string) Match {
-	parts := strings.SplitN(s, ":", 3)
-	fs := Match{mKeySystem: parts[0]}
-	if len(parts) > 1 && parts[1] != "" {
-		fs[mKeyKind] = parts[1]
+	m, err := ParseExpr(s)
+	if err != nil {
+		return Match{mKeySystem: s}
 	}
-	if len(parts) > 2 && parts[2] != "" {
-		fs[mKeyID] = parts[2]
-	}
-	return fs
+	return m
 }
 
 // Requirement is a leaf of a Formula: a named, verse-native requirement a producer

@@ -144,10 +144,10 @@ func TestResumeOrphansAMotionWhoseRuleIsGone(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	whether := channel(t, store, "w1", entity.Obj{
-		"axis": "whether", "status": "open", "subject": "demo:pr:1", "trigger": "removed",
+		"axis": "whether", "status": "open", "subject": `demo.pr."1"`, "trigger": "removed",
 	})
 	who := channel(t, store, "s1", entity.Obj{
-		"axis": "select", "status": "open", "subject": "demo:pr:1", "chain": "removed",
+		"axis": "select", "status": "open", "subject": `demo.pr."1"`, "chain": "removed",
 	})
 
 	if n := eng.ResumeMotions(); n != 0 {
@@ -223,7 +223,7 @@ func TestResumeSettlesAMotionItsRuleNoLongerSelects(t *testing.T) {
 		t.Fatalf("status = %v, want orphaned — the rule cannot select this subject any more: %+v",
 			got["status"], got)
 	}
-	if why, _ := got["why"].(string); !strings.Contains(why, "merge:proposal:p1") {
+	if why, _ := got["why"].(string); !strings.Contains(why, "merge.proposal.p1") {
 		t.Errorf("why = %q, want it to name the subject the rule stopped selecting", why)
 	}
 	// Settled, not decided: the vote stands in the log, and no outcome was invented from it.
@@ -253,7 +253,7 @@ func TestResumeLeavesALiveWhetherMotionOpen(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 	ref := channel(t, store, "w2", entity.Obj{
-		"axis": "whether", "status": "open", "subject": "demo:pr:1", "trigger": "merge",
+		"axis": "whether", "status": "open", "subject": `demo.pr."1"`, "trigger": "merge",
 	})
 
 	eng.ResumeMotions()
@@ -270,7 +270,7 @@ func TestResumeLeavesACommittedMotionAlone(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, denyResolver{})
 	ref := channel(t, store, "c1", entity.Obj{
-		"axis": "select", "status": "closed", "outcome": "claude", "subject": "demo:pr:1",
+		"axis": "select", "status": "closed", "outcome": "claude", "subject": `demo.pr."1"`,
 		"chain": "gone", // the rule is gone too, and it still must not be touched
 	})
 
@@ -306,13 +306,13 @@ func TestBaselineDoesNotSettleAPackagesMotion(t *testing.T) {
 
 	// Stamped, as a motion opened by that engine now is.
 	mine := channel(t, store, "p1", entity.Obj{
-		"axis": "whether", "status": "open", "subject": "verse-dev:merge:1",
+		"axis": "whether", "status": "open", "subject": "verse-dev.merge.1",
 		"trigger": "train-run", "at": "verse-dev.merge",
 	})
 	// And unstamped, as every motion written before the charter was recorded is — the
 	// staging one. Baseline can only tell by asking the engines it runs.
 	older := channel(t, store, "p2", entity.Obj{
-		"axis": "whether", "status": "open", "subject": "verse-dev:merge:2",
+		"axis": "whether", "status": "open", "subject": "verse-dev.merge.2",
 		"trigger": "train-run",
 	})
 	base.KnowsElsewhere(pkg.Knows)
@@ -331,7 +331,7 @@ func TestBaselineAloneStillSettlesAGoneRule(t *testing.T) {
 	store := entitytest.Store(t)
 	base := New(store, denyResolver{})
 	ref := channel(t, store, "g1", entity.Obj{
-		"axis": "whether", "status": "open", "subject": "demo:pr:1", "trigger": "removed",
+		"axis": "whether", "status": "open", "subject": `demo.pr."1"`, "trigger": "removed",
 	})
 	base.ResumeMotions()
 	if got := statusOf(t, store, ref); got["status"] != motionOrphaned {
@@ -347,7 +347,7 @@ func TestAMotionRecordsItsCharter(t *testing.T) {
 	eng.Confine(SubtreeAt("verse-dev", "merge"))
 	m := &motion{
 		channel: entity.VerseRef(motionSystem, motionChannelKind, "c1"),
-		axis:    "whether", subject: "verse-dev:merge:1", trigger: "train-run",
+		axis:    "whether", subject: "verse-dev.merge.1", trigger: "train-run",
 		options: []motionOption{{id: "proceed", choice: "approve", need: 1}, {id: "deny"}},
 	}
 	eng.openChannel(m)

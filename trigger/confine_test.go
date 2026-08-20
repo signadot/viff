@@ -28,7 +28,7 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("a rule acting on another charter's subtree installed")
 	}
-	if !strings.Contains(err.Error(), "other:thing") || !strings.Contains(err.Error(), "demo:*") {
+	if !strings.Contains(err.Error(), "other.thing") || !strings.Contains(err.Error(), "demo.*") {
 		t.Errorf("error %q names neither the address nor the confinement", err)
 	}
 
@@ -101,7 +101,7 @@ func TestAWriteOutsideTheConfinementIsRefusedAtTheWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("a write outside the confinement landed")
 	}
-	if !strings.Contains(err.Error(), "other:thing:x") {
+	if !strings.Contains(err.Error(), "other.thing.x") {
 		t.Errorf("the refusal does not name what was refused: %v", err)
 	}
 	if _, ok, _ := store.Get(outside); ok {
@@ -168,7 +168,7 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 // usable at all: two charters both reacting to `git:*` is the ordinary arrangement, not an
 // exotic one, and a source is nobody's package to be inside.
 //
-// comment-drift's own `head-moved` is the shape, reduced: select `git:head:verse`, derive into
+// comment-drift's own `head-moved` is the shape, reduced: select `git.head.verse`, derive into
 // `drift:head`. It reads its subject and writes somewhere else, so the subject's address is a
 // READ and only the derive is confined.
 func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
@@ -192,7 +192,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 - name: head-moved
   stratum: reflected
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     derive:
       drift:
@@ -232,7 +232,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: touch-the-source
   condition:
-    subject: git:head:verse
+    subject: git.head.verse
   action:
     patch: {touched: "yes"}
 `)); err == nil {

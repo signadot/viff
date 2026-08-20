@@ -90,7 +90,7 @@ The scope's engine observes via per-trigger subtree watches, each watching exact
 
 A scope runs **the rules installed into it**, and only those. `verse c -a --scope me`
 writes the rule into the scope's own layer, where it is durable and addressable (`verse data
-get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is what says whose
+get verse.trigger.rule.x --scope me`); the record carries `scope: me`, which is what says whose
 it is.
 
 Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store

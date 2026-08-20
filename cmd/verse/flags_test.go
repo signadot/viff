@@ -307,9 +307,9 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 		{"demo", "pr", "1"},
 		{"demo", "pr", "a.b"},
 		{"demo", "pr", "a.b", "labels", "urgent"},
-		{"git", "ref", "x@git:ref:y"},
+		{"git", "ref", "x@git.ref.y"},
 		// The system holding a colon — which the one-token spelling could not say at all.
-		{"a:b:c", "pr", "1"},
+		{"a.b.c", "pr", "1"},
 		{"verse", "task", "instance", "run-1"},
 	} {
 		segs, err := address(steps)
@@ -330,7 +330,7 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 	// ONE WORD IS ONE SEGMENT, whatever is in it. The token spellings are not read as addresses
 	// any more: `demo.pr.1` names a system called `demo.pr.1`, which is what the step form MEANS
 	// and is why it is not ambiguous.
-	for _, in := range []string{"demo.pr.1", "demo:pr:1"} {
+	for _, in := range []string{"demo.pr.1", `demo.pr."1"`} {
 		got, err := address([]string{in})
 		if err != nil || len(got) != 1 || got[0] != in {
 			t.Errorf("address([%q]) = (%q, %v), want it whole as one step", in, got, err)
@@ -390,7 +390,7 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 	}
 
 	// And one token still works, which is the half that must not break.
-	if _, err := runCLI(t, "flow", "show", "demo:seq:1"); err != nil {
+	if _, err := runCLI(t, "flow", "show", `demo.seq."1"`); err != nil {
 		t.Errorf("one token was refused: %v", err)
 	}
 }

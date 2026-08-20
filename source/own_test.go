@@ -13,8 +13,8 @@ import (
 // --allow-overlap then the flag would be the ordinary path and would mark nothing — which is
 // why "distinct system or distinct kind" was not enough on its own.
 func TestTwoReposAreProvablyDisjoint(t *testing.T) {
-	verse := owns("git:*:verse/*", "git:head:verse")
-	kernel := owns("git:*:kernel/*", "git:head:kernel")
+	verse := owns("git.*.verse/*", "git.head.verse")
+	kernel := owns("git.*.kernel/*", "git.head.kernel")
 
 	if ok, err := source.Disjoint(verse, kernel); err != nil || !ok {
 		t.Fatalf("two repos should be provably disjoint: ok=%v err=%v", ok, err)
@@ -23,11 +23,11 @@ func TestTwoReposAreProvablyDisjoint(t *testing.T) {
 	// The near miss, and the reason a repo claims two globs rather than the one that looks
 	// tidier. `verse*` would claim `verse-extras/main`, and these two would refuse to install
 	// alongside each other for an overlap that is not real.
-	extras := owns("git:*:verse-extras/*", "git:head:verse-extras")
+	extras := owns("git.*.verse-extras/*", "git.head.verse-extras")
 	if ok, err := source.Disjoint(verse, extras); err != nil || !ok {
 		t.Fatalf("verse and verse-extras should be disjoint: ok=%v err=%v", ok, err)
 	}
-	if ok, _ := source.Disjoint(owns("git:*:verse*"), extras); ok {
+	if ok, _ := source.Disjoint(owns("git.*.verse*"), extras); ok {
 		t.Fatal("`verse*` really does claim verse-extras/*; it must not read as disjoint")
 	}
 }
@@ -39,20 +39,20 @@ func TestClaimDisjoint(t *testing.T) {
 		name, a, b string
 		want       bool
 	}{
-		{"different systems", "git:ref:x", "linear:issue:x", true},
-		{"different literal kinds", "git:ref:x", "git:head:x", true},
-		{"same everything", "git:ref:x", "git:ref:x", false},
-		{"a wildcard kind overlaps a literal one", "git:*:x", "git:head:x", false},
-		{"a wildcard system overlaps a literal one", "*:ref:x", "git:ref:x", false},
-		{"different literal ids", "git:ref:a", "git:ref:b", true},
-		{"disjoint prefixes", "git:ref:a/*", "git:ref:b/*", true},
-		{"a prefix that extends another is not disjoint", "git:ref:a/*", "git:ref:a/b/*", false},
-		{"a literal under a prefix is not disjoint", "git:ref:a/b", "git:ref:a/*", false},
-		{"a literal outside a prefix is disjoint", "git:ref:b", "git:ref:a/*", true},
+		{"different systems", "git.ref.x", "linear.issue.x", true},
+		{"different literal kinds", "git.ref.x", "git.head.x", true},
+		{"same everything", "git.ref.x", "git.ref.x", false},
+		{"a wildcard kind overlaps a literal one", "git.*.x", "git.head.x", false},
+		{"a wildcard system overlaps a literal one", "*.ref.x", "git.ref.x", false},
+		{"different literal ids", "git.ref.a", "git.ref.b", true},
+		{"disjoint prefixes", "git.ref.a/*", "git.ref.b/*", true},
+		{"a prefix that extends another is not disjoint", "git.ref.a/*", "git.ref.a/b/*", false},
+		{"a literal under a prefix is not disjoint", "git.ref.a/b", "git.ref.a/*", false},
+		{"a literal outside a prefix is disjoint", "git.ref.b", "git.ref.a/*", true},
 		// The claim that swallows its system. It is the one the note calls out: it claims the
 		// lot, so nothing in git can be proved apart from it.
-		{"everything in a system", "git:*:*", "git:ref:anything", false},
-		{"everything, against another system", "git:*:*", "linear:issue:x", true},
+		{"everything in a system", "git.*.*", "git.ref.anything", false},
+		{"everything, against another system", "git.*.*", "linear.issue.x", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, err := source.ParseClaim(tc.a)
@@ -79,7 +79,7 @@ func TestClaimDisjoint(t *testing.T) {
 // which is two single writers rather than two writers. The table is the one in
 // docs/working/shared-ownership.md.
 func TestASlotIsAClaimAtADeeperAddress(t *testing.T) {
-	// `linear:project:*` — every project — at the given path. Prefix with an empty ID is `*`.
+	// `linear.project.*` — every project — at the given path. Prefix with an empty ID is `*`.
 	project := func(field ...string) source.Claim {
 		return source.Claim{System: "linear", Kind: "project", Prefix: true, Field: field}
 	}
@@ -122,8 +122,8 @@ func TestTheTerseSpellingIsPathLess(t *testing.T) {
 	g.AddRepo("verse", t.TempDir())
 	declared := g.Owns() // git's own, built by the code that ships
 	declared = append(declared, owns(
-		"slack:*:acme/*",                                              // slack.Owns
-		"linear:team:ENG", "linear:issue:ENG-*", "linear:cycle:ENG/*", // linear.Owns
+		"slack.*.acme/*",                                              // slack.Owns
+		"linear.team.ENG", "linear.issue.ENG-*", "linear.cycle.ENG/*", // linear.Owns
 	)...)
 	for _, o := range declared {
 		s := o.Ref
@@ -141,15 +141,15 @@ func TestTheTerseSpellingIsPathLess(t *testing.T) {
 	// A claim WITH a path has no terse spelling and does not pretend to: it renders for a
 	// person reading a refusal, and nothing parses it back.
 	slot := source.Claim{System: "linear", Kind: "project", Prefix: true, Field: []string{"owners", "ENG"}}
-	if got, want := slot.String(), "linear:project:* at owners.ENG"; got != want {
+	if got, want := slot.String(), "linear.project.* at owners.ENG"; got != want {
 		t.Fatalf("a slot claim renders as %q, want %q", got, want)
 	}
 }
 
 // Ownership is a union, so one overlapping pair is an overlap however disjoint the rest are.
 func TestDisjointIsEveryPair(t *testing.T) {
-	a := owns("git:*:verse/*", "git:head:verse")
-	b := owns("git:*:kernel/*", "git:head:verse") // the second entry collides
+	a := owns("git.*.verse/*", "git.head.verse")
+	b := owns("git.*.kernel/*", "git.head.verse") // the second entry collides
 	if ok, err := source.Disjoint(a, b); err != nil || ok {
 		t.Fatalf("one overlapping pair is an overlap: ok=%v err=%v", ok, err)
 	}
@@ -166,19 +166,19 @@ func TestParseClaimRefusals(t *testing.T) {
 	for _, s := range []string{
 		"git:ref",        // two segments
 		"git::x",         // empty kind
-		"git:ref:",       // empty id
-		"gi*t:ref:x",     // a glob in the system
-		"git:re*:x",      // a glob in the kind
-		"git:ref:a*b",    // a `*` that is not trailing
-		"git:ref:*/main", // ditto, at the front
-		"git:ref:a/*/b",  // ditto, in the middle
+		"git.ref.",       // empty id
+		"gi*t.ref.x",     // a glob in the system
+		"git.re*.x",      // a glob in the kind
+		"git.ref.a*b",    // a `*` that is not trailing
+		"git.ref.*/main", // ditto, at the front
+		"git.ref.a/*/b",  // ditto, in the middle
 	} {
 		if c, err := source.ParseClaim(s); err == nil {
 			t.Fatalf("%q should be refused, parsed as %s", s, c)
 		}
 	}
 	// And what a well-formed one round-trips to, since the refusal messages quote it back.
-	for _, s := range []string{"git:*:verse/*", "git:head:verse", "*:*:*"} {
+	for _, s := range []string{"git.*.verse/*", "git.head.verse", "*.*.*"} {
 		c, err := source.ParseClaim(s)
 		if err != nil {
 			t.Fatalf("parse %q: %v", s, err)
@@ -188,7 +188,7 @@ func TestParseClaimRefusals(t *testing.T) {
 		}
 	}
 	// An id may contain colons — the same three-way split entity.ParseRef makes.
-	c, err := source.ParseClaim("git:ref:a:b/*")
+	c, err := source.ParseClaim("git.ref.a:b/*")
 	if err != nil || c.ID != "a:b/" || !c.Prefix {
 		t.Fatalf("an id may contain colons: %+v %v", c, err)
 	}
@@ -204,7 +204,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git declares a claim that does not parse: %v", err)
 	}
-	for _, ref := range []string{"git:ref:A/main", "git:head:A", "git:commit:A/abc123"} {
+	for _, ref := range []string{`git.ref."A/main"`, "git.head.A", `git.commit."A/abc123"`} {
 		// The place claimed is the ENTITY, since git claims no path — which is what makes a
 		// --forget on it exactly the removal it has always been.
 		places := source.Claimed(claims, mustRef(t, ref))
@@ -214,7 +214,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	}
 	// And it does not claim a neighbour's — which is what bounds a --forget removal to the
 	// slice this registration was proved to own.
-	for _, ref := range []string{"git:ref:B/main", "git:head:B"} {
+	for _, ref := range []string{"git.ref.B/main", "git.head.B"} {
 		if places := source.Claimed(claims, mustRef(t, ref)); len(places) != 0 {
 			t.Fatalf("%s belongs to another repo but is claimed at %v", ref, places)
 		}
@@ -232,9 +232,9 @@ func owns(refs ...string) []source.Own {
 
 func mustRef(t *testing.T, s string) entity.Ref {
 	t.Helper()
-	ref, err := entity.ParseRef(s)
+	ref, err := entity.ParseAddr(s)
 	if err != nil {
-		t.Fatalf("ParseRef(%q): %v", s, err)
+		t.Fatalf("ParseAddr(%q): %v", s, err)
 	}
 	return ref
 }
@@ -255,12 +255,12 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 		t.Fatalf("git System() = %q", g.System())
 	}
 	for _, o := range g.Owns() {
-		if !strings.HasPrefix(o.Ref, "mirror:") {
+		if !strings.HasPrefix(o.Ref, "mirror.") {
 			t.Fatalf("a git claim outside the chosen system: %s", o.Ref)
 		}
 	}
 	// The hook a git source installs hints in its own system, or the hint reaches nothing.
-	if got := g.HeadRef("verse").String(); got != "mirror:head:verse" {
+	if got := g.HeadRef("verse").String(); got != "mirror.head.verse" {
 		t.Fatalf("git HeadRef = %q", got)
 	}
 	// And two systems are provably disjoint with nothing else said.
@@ -278,13 +278,13 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 	}
 }
 
-// A claim carries three segments and no root, so `task:*:*` — and the wildcard `*:*:*`, which
-// a source may register when nothing else is installed — asks about `verse:task:instance:x` as
-// readily as about the world's `task:instance:x`. It must own neither: the caller that deletes
+// A claim carries three segments and no root, so `task.*.*` — and the wildcard `*:*:*`, which
+// a source may register when nothing else is installed — asks about `verse.task.instance.x` as
+// readily as about the world's `task.instance.x`. It must own neither: the caller that deletes
 // (`verse source remove --forget`) writes straight to the store, below the refusal that guards
 // the HTTP face, so this was the one client-reachable path to a tombstone over verse's charter.
 func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
-	for _, spell := range []string{"*:*:*", "task:*:*", "trigger:rule:*", "sources:git:verse"} {
+	for _, spell := range []string{"*.*.*", "task.*.*", "trigger.rule.*", "sources.git.verse"} {
 		claims, err := source.ParseOwns([]source.Own{{Ref: spell}})
 		if err != nil {
 			t.Fatalf("%s: %v", spell, err)
@@ -299,7 +299,7 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 			}
 		}
 		// And the world's half is unchanged: the same claim still owns what it is for.
-		if spell == "task:*:*" {
+		if spell == "task.*.*" {
 			if got := source.Claimed(claims, entity.RefAt("task", "instance", "run-1")); len(got) != 1 {
 				t.Errorf("owns %q lost its own slice: %v", spell, got)
 			}

@@ -68,7 +68,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// Spawned onto that runner BY NAME. The verse's own default runner is the in-process one
 	// and knows nothing about this task, which is the condition being tested.
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse:runners:pool:code", "name": "onrunner",
+		"prompt": "work", "runner": "verse.runners.pool.code", "name": "onrunner",
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -160,7 +160,7 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 	}).Body.Close()
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse:runners:pool:code", "name": "streamed",
+		"prompt": "work", "runner": "verse.runners.pool.code", "name": "streamed",
 	})
 	var sp map[string]any
 	decodeResp(t, resp, &sp)

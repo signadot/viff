@@ -4,7 +4,7 @@
 //
 //	go run ./docs/reference/examples/runner -addr :9800
 //	verse runner add pool:gpu http://localhost:9800
-//	verse task run --runner verse:runners:pool:gpu "retrain the ranker"
+//	verse task run --runner verse.runners.pool.gpu "retrain the ranker"
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
 // block goes stale the first time a signature moves and nobody finds out. See

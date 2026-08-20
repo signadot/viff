@@ -136,20 +136,25 @@ func (r Ref) Len() int {
 	return strings.Count(r.key, sep) + 1
 }
 
-func (r Ref) String() string {
-	segs := r.Segs()
-	// THE COLON FORM NAMES THREE SEGMENTS, which is what every stored ref, every charter and
-	// every command line holds — so an address of that shape renders exactly as it always did.
-	// A deeper one has no colon spelling that can be read back (an id may contain colons, so
-	// `a:b:c:d` is already `a:b:` + an id), and renders as the dotted path, which can.
-	if r.Len() == Depth {
-		return strings.Join(segs, ":")
-	}
-	return JoinSegs(segs)
-}
+// String spells an address as the kinded path it is, at every depth — `demo.pr."1"`,
+// `verse-dev.drift.head.abc`, `git.ref."x@git:ref:y"`. ParseAddr reads back exactly this, and
+// there is nothing else to read.
+//
+// IT USED TO PICK A SPELLING BY DEPTH: the colon form at three segments, the path at any other,
+// because `a:b:c:d` cannot be read back — an id may hold colons, so it is already `a:b:` plus an
+// id. That worked and cost a DISCRIMINATOR: every reader recovering an address from text had to
+// decide which of two grammars it was looking at, by asking where the colons were, and the rule
+// was stated in more than one place because a read address (an address followed by a payload
+// path) needed the same question answered with a different split. One grammar has no such rule.
+//
+// The quoting is what makes one grammar enough. A segment that would otherwise read as something
+// else is quoted — a numeric id, a name holding a dot — so `demo.pr."a.b"` and `demo.pr."a"."b"`
+// are different addresses on the page as well as in the store, which is exactly what the colon
+// form could not say.
+func (r Ref) String() string { return JoinSegs(r.Segs()) }
 
 // MarshalText / UnmarshalText spell a Ref as its address, which is how it is written
-// everywhere else — a charter, a CLI argument, `ref: demo:pr:1` on the wire. Without them a
+// everywhere else — a charter, a CLI argument, `at: demo.pr.1` on the wire. Without them a
 // Ref would serialize structurally, as {system, kind, id}, and the one identifier every
 // surface agrees on would have two spellings depending on who wrote it.
 //
@@ -158,7 +163,7 @@ func (r Ref) String() string {
 func (r Ref) MarshalText() ([]byte, error) { return []byte(r.String()), nil }
 
 func (r *Ref) UnmarshalText(b []byte) error {
-	ref, err := ParseRef(string(b))
+	ref, err := ParseAddr(string(b))
 	if err != nil {
 		return err
 	}
@@ -166,81 +171,28 @@ func (r *Ref) UnmarshalText(b []byte) error {
 	return nil
 }
 
-// ParseRef parses "system:kind:id", or "verse:system:kind:id" for verse's own half. The id may
-// itself contain colons; the segments before it may not.
+// ParseAddr reads an address: a kinded path, at any depth, and the inverse of String.
 //
-// THE RESERVED SEGMENT IS A PREFIX, not a fourth dimension, and that is what keeps the grammar
-// decidable. `a:b:c:d` is ambiguous the moment an address can be four segments — an id may hold
-// colons, and `verse:task:instance:review@demo:pr:1` is a real one — so exactly one leading
-// segment is read as a root, by name, and everything after it is the three an address has had
-// all along. An arbitrary-depth address has a spelling of its own coming (`!verse-path [a b c]`,
-// a vector rather than a string); this is not it, and does not pretend to be.
-func ParseRef(s string) (Ref, error) {
-	rest, reserved := strings.CutPrefix(s, VerseRoot+":")
-	parts := strings.SplitN(rest, ":", 3)
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return Ref{}, fmt.Errorf("invalid ref %q: want system:kind:id", s)
-	}
-	if reserved {
-		return VerseRef(parts[0], parts[1], parts[2]), nil
-	}
-	return RefAt(parts[0], parts[1], parts[2]), nil
-}
-
-// ParseAddr reads back exactly what String wrote, AT ANY DEPTH — and it exists because
-// ParseRef cannot, which is not a gap in ParseRef but the point of it.
+// It is the ONE reader. `system:kind:id` is not a spelling any more — it parses as a single
+// segment whose name happens to hold colons, which is what that string now means — so a record
+// written before this reads as an address one segment deep rather than three. That is the
+// clobber this change is: the spelling moved, and what was stored under the old one is re-seeded
+// rather than translated (docs/working/entity-tree.md §7).
 //
-// The two spellings serve different readers. `system:kind:id` is what a person types, what a
-// charter holds and what every stored record from before paths carries, and its id may hold
-// colons — so it is read with a fixed arity and everything past the second colon is the id. The
-// dotted path is what an address DEEPER than that renders as, because `a:b:c:d` re-reads as
-// three segments plus an id holding a colon. Neither can be read as the other without knowing
-// which was written.
-//
-// SO THE DISCRIMINATOR IS WHERE THE COLONS ARE. String only ever puts a colon in the LAST
-// segment (system and kind are names; an id may hold anything), so a dotted string whose first
-// segment holds a colon is `system:kind:<id with dots>` and nothing else. That is the whole
-// rule, and it is decidable without a marker:
-//
-//	verse-dev.drift.head.head-moved@git:head:verse   → 4 segments (the colons are in the id)
-//	demo:pr:a.b.c.d                                  → system demo, kind pr, id a.b.c.d
-//
-// USE IT WHERE A REF IS BEING RECOVERED, not where one is being typed: a task's subject, a
-// motion's subject, a flow. Charter and CLI input keep ParseRef, because there a dotted string
-// is an address FOLLOWED BY A PAYLOAD PATH (`demo.pr.1.stage`, splitAddress) and reading it as a
-// four-segment entity would silently swallow the field.
-//
-// It was a completion hook that found this. `applyHook` recovered its subject with ParseRef, so
-// a rule whose subject was four segments deep patched — through the mangled ref — outside its own
-// package, and the confinement refused the write. The review that had just done its work could
-// not record that it had: docs/working/entity-tree.md §7.
+// A wildcard is refused, and an empty segment with it: this answers "which one place", and
+// neither names one. `PathSegs` is where both refusals live, so the read routes that DO take a
+// wildcard ask it directly rather than going through here.
 func ParseAddr(s string) (Ref, error) {
-	if segs, ok := DottedAddr(s); ok {
-		return RefAt(segs...), nil
-	}
-	return ParseRef(s)
-}
-
-// DottedAddr reads the path spelling, or reports that this is not one.
-//
-// Exported because ParseAddr is not the only reader that has to make this call. A READ ADDRESS
-// (trigger.splitAddress) is an address followed by a payload path, so it cannot use ParseAddr —
-// it needs the same discriminator and a different split. Stating the rule twice is how the two
-// would come to disagree about which spelling a string is.
-func DottedAddr(s string) ([]string, bool) {
-	if !strings.Contains(s, ".") {
-		return nil, false // no dots: the colon form, or nothing
-	}
 	segs, err := PathSegs(s)
-	if err != nil || len(segs) < 2 {
-		return nil, false
+	if err != nil {
+		return Ref{}, fmt.Errorf("invalid address %q: %w", s, err)
 	}
-	// A colon in the first segment says the dots are inside an ID: `demo:pr:a.b.c.d` splits on
-	// dots into four fields and is three segments.
-	if strings.Contains(segs[0], ":") {
-		return nil, false
+	ref, ok := RefOfAny(segs)
+	if !ok {
+		return Ref{}, fmt.Errorf("invalid address %q: a segment is a name, and none of them "+
+			"may be empty", s)
 	}
-	return segs, true
+	return ref, nil
 }
 
 // Segs is a ref's segments, in order — the form everything that WALKS an address speaks,

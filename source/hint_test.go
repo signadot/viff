@@ -41,8 +41,8 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 	if len(body) != 0 {
 		t.Fatalf("a hint sent a body: %q — there is nothing to send but which slice", body)
 	}
-	refs := got.URL.Query()["ref"]
-	if len(refs) != 2 || refs[0] != "git:head:verse" || refs[1] != "git:head:tony" {
+	refs := got.URL.Query()["at"]
+	if len(refs) != 2 || refs[0] != "git.head.verse" || refs[1] != "git.head.tony" {
 		t.Fatalf("refs %v", refs)
 	}
 }

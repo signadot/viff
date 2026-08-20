@@ -68,7 +68,7 @@ entities, tasks, and the charters that relate them.
 - `resolver/` — who answers a gate. A binding is *installed* rather than written into a
   charter, because it outlives any one rule and belongs to whoever supervises rather than to
   whoever wrote the work. It covers a subject by match or a run by name, and one instance is
-  minted per thing it watches (`resolvers:instance:<name>@<origin>`), carrying that watcher's
+  minted per thing it watches (`resolvers.instance.<name>@<origin>`), carrying that watcher's
   own position. A binding that goes silent past its deadline hands the question to the layer
   above, and the second hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you

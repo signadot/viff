@@ -22,8 +22,8 @@ Then, against a verse:
 
 ```sh
 verse runner add pool:gpu http://localhost:9800
-verse task run --runner verse:runners:pool:gpu "fetch the data; retrain; report"
-verse ps --runner verse:runners:pool:gpu
+verse task run --runner verse.runners.pool.gpu "fetch the data; retrain; report"
+verse ps --runner verse.runners.pool.gpu
 ```
 
 It is a placeholder driver — it splits the prompt on semicolons and does each part — so you can
@@ -44,7 +44,7 @@ may reach — and a spawn names one:
 
 ```sh
 verse runner add pool:code http://localhost:9802
-verse task run --runner verse:runners:pool:code --environment local --as "$USER" "add a test for firstLine"
+verse task run --runner verse.runners.pool.code --environment local --as "$USER" "add a test for firstLine"
 ```
 
 ### A workspace per task
@@ -207,7 +207,7 @@ The commit carries what verse told the runner:
 ```
 Verse-Task: run-8f30…
 Verse-Principal: scott
-Verse-Subject: demo:pr:1
+Verse-Subject: demo.pr.1
 Verse-Chain: review
 ```
 
@@ -252,7 +252,7 @@ what it sees — so you can look at exactly what verse would be told:
 
 ```sh
 curl localhost:9801/source
-curl "localhost:9801/reflect?ref=git:head:verse"
+curl "localhost:9801/reflect?ref=git.head.verse"
 ```
 
 As shipped it reflects real git repositories, so what you copy already works before you change

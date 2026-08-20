@@ -129,8 +129,9 @@ C=90abcdef1234567890abcdef1234567890abcdef
 # everything that asks about the correlation asks about this.
 PR="github pr acme/widget#42"
 # The same address as the store RENDERS it inside a document — which is what a grep over a
-# rendered record looks for, and the one place this script still writes the colon spelling.
-PR_SUBJ="github:pr:acme/widget#42"
+# rendered record looks for. A `#` makes kpath quote the segment, so the rendering carries
+# quotes the steps form does not.
+PR_SUBJ='github.pr."acme/widget#42"'
 
 TRIGGERS=(lin-pr-lineage lin-release-manifest)
 STRATA=(lin-source lin-change lin-trace)
@@ -321,7 +322,10 @@ for _ in $(seq 1 100); do
 		# which is what the address grammar takes. (A segment holding whitespace would not
 		# survive this; none of these ids do. `xargs -L1` is the form that does.)
 		# shellcheck disable=SC2086
-		if v data $t -o tony 2>/dev/null | grep -qF "subject: \"$PR_SUBJ\""; then
+		# The ADDRESS alone, not `subject: "<address>"`: tony quotes a value by what is inside
+		# it, so an address whose own segment is quoted comes back in single quotes and a
+		# pattern that spelled the outer pair matched nothing.
+		if v data $t -o tony 2>/dev/null | grep -qF "$PR_SUBJ"; then
 			tref=$t
 			break 2
 		fi
@@ -375,7 +379,7 @@ rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -
 # and for the same reason: one is what a command takes, the other is what a grep over a rendered
 # record finds.
 REL="lintag release v1.4.$rev"
-REL_SUBJ="lintag:release:v1.4.$rev"
+REL_SUBJ="lintag.release.\"v1.4.$rev\""
 # shellcheck disable=SC2086
 v data $REL --put '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \

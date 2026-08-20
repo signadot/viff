@@ -50,11 +50,11 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	store := serve(t)
 	face := runnerFace(t)
 
-	out, err := runCLI(t, "runner", "add", "pool:demo", face.URL)
+	out, err := runCLI(t, "runner", "add", "pool.demo", face.URL)
 	if err != nil {
 		t.Fatalf("runner add: %v", err)
 	}
-	if !strings.Contains(out, "verse:runners:pool:demo") {
+	if !strings.Contains(out, "verse.runners.pool.demo") {
 		t.Fatalf("add printed %q, want the ref it installed", out)
 	}
 	// The probe ran and said what it found — which is the half of `add` that only happens on
@@ -69,10 +69,10 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	// …and --no-probe, which is the flag that was silently unreachable.
 	dead := httptest.NewServer(http.NewServeMux()) // answers, and is not a runner
 	defer dead.Close()
-	if _, err := runCLI(t, "runner", "add", "pool:nope", dead.URL); err == nil {
+	if _, err := runCLI(t, "runner", "add", "pool.nope", dead.URL); err == nil {
 		t.Fatal("a url that answers as something else installed; the probe did not run")
 	}
-	if _, err := runCLI(t, "runner", "add", "--no-probe", "pool:nope", dead.URL); err != nil {
+	if _, err := runCLI(t, "runner", "add", "--no-probe", "pool.nope", dead.URL); err != nil {
 		t.Fatalf("--no-probe: %v — the flag never reached the server", err)
 	}
 	if payloadOf(t, store, runner.Ref("pool", "nope")) == nil {
@@ -84,15 +84,15 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 func TestRunnerVerbsThroughTheClient(t *testing.T) {
 	store := serve(t)
 	face := runnerFace(t)
-	if _, err := runCLI(t, "runner", "add", "pool:demo", face.URL); err != nil {
+	if _, err := runCLI(t, "runner", "add", "pool.demo", face.URL); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	if out, err := runCLI(t, "runner", "show", "pool:demo"); err != nil ||
+	if out, err := runCLI(t, "runner", "show", "pool.demo"); err != nil ||
 		!strings.Contains(out, face.URL) {
 		t.Fatalf("show = %q, %v; want the url", out, err)
 	}
-	if out, err := runCLI(t, "runner", "check", "verse:runners:pool:demo"); err != nil ||
+	if out, err := runCLI(t, "runner", "check", "verse.runners.pool.demo"); err != nil ||
 		!strings.Contains(out, "a runner") {
 		t.Fatalf("check = %q, %v; want a live verdict", out, err)
 	}
@@ -108,9 +108,9 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 
 	// Removal, with work on it: refused until told which, and the message names both flags.
 	writeInstance(t, store, "w1", entity.Obj{
-		"status": "running", "runner": face.URL, "runnerName": "verse:runners:pool:demo",
+		"status": "running", "runner": face.URL, "runnerName": "verse.runners.pool.demo",
 	})
-	_, err := runCLI(t, "runner", "remove", "pool:demo")
+	_, err := runCLI(t, "runner", "remove", "pool.demo")
 	if err == nil {
 		t.Fatal("removed a runner with work on it without being told what to do with the work")
 	}
@@ -119,8 +119,8 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 			t.Fatalf("refusal = %q, want it to name %q", err, want)
 		}
 	}
-	if out, err := runCLI(t, "runner", "remove", "pool:demo", "--leave"); err != nil ||
-		!strings.Contains(out, "verse:runners:pool:demo") {
+	if out, err := runCLI(t, "runner", "remove", "pool.demo", "--leave"); err != nil ||
+		!strings.Contains(out, "verse.runners.pool.demo") {
 		t.Fatalf("remove --leave = %q, %v; want it to succeed and say so", out, err)
 	}
 	if payloadOf(t, store, runner.Ref("pool", "demo")) != nil {
@@ -142,7 +142,7 @@ func writeInstance(t *testing.T, s entity.Store, id string, rec entity.Obj) {
 // the person never mentioned. The way it happens is a pasted command with a trailing `#` comment:
 // interactive zsh does not strip those, so four more arguments arrive.
 func TestRunnerAddNamesExtraArgumentsRatherThanAMissingFile(t *testing.T) {
-	_, err := runCLI(t, "runner", "add", "pool:code", "http://localhost:9802",
+	_, err := runCLI(t, "runner", "add", "pool.code", "http://localhost:9802",
 		"#", "prints:", "reach:", "a runner")
 	if err == nil {
 		t.Fatal("extra arguments were accepted")

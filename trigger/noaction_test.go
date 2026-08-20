@@ -20,7 +20,7 @@ func TestARuleWithNoActionIsRefused(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	err := eng.AddTrigger(mustParseCharter(t, `
 - name: noact
-  condition: {subject: demo:pr:1}
+  condition: {subject: demo.pr.1}
 `))
 	if err == nil {
 		t.Fatal("installed a rule that watches its subtree and writes nothing")

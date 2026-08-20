@@ -19,14 +19,14 @@ import (
 const (
 	// DescribePath answers what this program is: GET /source → Descriptor.
 	DescribePath = "/source"
-	// ReflectPath answers what it sees: GET /reflect[?ref=<ref>] → Reflection. A missing or
+	// ReflectPath answers what it sees: GET /reflect[?at=<address>] → Reflection. A missing or
 	// empty ref is the zero ref, which asks for everything the source owns.
 	ReflectPath = "/reflect"
 )
 
 // Descriptor is what a source says it is when asked, and it is what an install probes for.
 //
-// Owns is the ownership claim the registration is checked against (`{ref: "git:*:verse/*"}`)
+// Owns is the ownership claim the registration is checked against (`{ref: "git.*.verse/*"}`)
 // — coarser than a Reflection's Covers, which is per-pass, and an ADDRESS rather than a
 // Pattern because an install compares two declarations with no entities in hand.
 // See own.go. It is optional: a source that declines to say cannot have its disjointness from
@@ -131,9 +131,9 @@ func (c *Client) Describe(ctx context.Context) (Descriptor, error) {
 func (c *Client) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 	path := ReflectPath
 	// The zero ref is spelled by ABSENCE rather than by an empty parameter, so a source
-	// reading `?ref=` as a ref rather than as nothing cannot mistake it for one.
+	// reading `?at=` as an address rather than as nothing cannot mistake it for one.
 	if ref != (entity.Ref{}) {
-		path += "?ref=" + url.QueryEscape(ref.String())
+		path += "?at=" + url.QueryEscape(ref.String())
 	}
 	var rn Reflection
 	if err := c.get(ctx, path, &rn); err != nil {

@@ -377,7 +377,7 @@ func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 
 // Find reads one binding by its ref, for a caller that has an owner and wants its dials.
 func Find(r entity.Reader, ref string) (Resolver, bool) {
-	parsed, err := entity.ParseRef(ref)
+	parsed, err := entity.ParseAddr(ref)
 	if err != nil {
 		return Resolver{}, false
 	}

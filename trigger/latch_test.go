@@ -333,7 +333,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 	if now := eng.Fired(); now != fired {
 		t.Fatalf("budget spent %d more times on work already running", now-fired)
 	}
-	if n := len(eng.matchFlow(mustExpr(t, "demo:pr:1"))); n != 1 {
+	if n := len(eng.matchFlow(mustExpr(t, `demo.pr."1"`))); n != 1 {
 		t.Fatalf("%d tasks for one subject, want 1", n)
 	}
 }

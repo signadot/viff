@@ -57,12 +57,12 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 	}
 	got := payloads(rn)
 
-	if team := got["linear:team:ENG"]; team == nil || team["name"] != "Engineering" {
-		t.Fatalf("linear:team:ENG = %+v", team)
+	if team := got["linear.team.ENG"]; team == nil || team["name"] != "Engineering" {
+		t.Fatalf("linear.team.ENG = %+v", team)
 	}
-	one := got["linear:issue:ENG-1"]
+	one := got["linear.issue.ENG-1"]
 	if one == nil || one["title"] != "ship the source" || one["team"] != "ENG" {
-		t.Fatalf("linear:issue:ENG-1 = %+v", one)
+		t.Fatalf("linear.issue.ENG-1 = %+v", one)
 	}
 	// stateType is the one to write a rule against: a workspace renames "In Progress", the
 	// type behind it is Linear's own vocabulary and does not move.
@@ -82,8 +82,8 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 	if one["project"] != "Sources" {
 		t.Fatalf("project = %v", one["project"])
 	}
-	if c := got["linear:cycle:ENG/4"]; c == nil || c["endsAt"] != "2026-01-14T00:00:00Z" {
-		t.Fatalf("linear:cycle:ENG/4 = %+v", c)
+	if c := got["linear.cycle.ENG/4"]; c == nil || c["endsAt"] != "2026-01-14T00:00:00Z" {
+		t.Fatalf("linear.cycle.ENG/4 = %+v", c)
 	}
 
 	kinds := map[string]bool{}
@@ -126,7 +126,7 @@ func TestLinearPagesATeamToExhaustion(t *testing.T) {
 	}
 	got := payloads(rn)
 	for _, id := range []string{"ENG-1", "ENG-2", "ENG-3", "ENG-4", "ENG-5"} {
-		if got["linear:issue:"+id] == nil {
+		if got["linear.issue."+id] == nil {
 			t.Fatalf("%s did not survive paging: %d entities", id, len(rn.Entities))
 		}
 	}
@@ -192,7 +192,7 @@ func TestLinearTargetsTheTeamARefBelongsTo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", ref, err)
 		}
-		if got := payloads(rn); got["linear:team:ENG"] == nil {
+		if got := payloads(rn); got["linear.team.ENG"] == nil {
 			t.Fatalf("%s did not narrow to ENG", ref)
 		}
 	}
@@ -220,8 +220,8 @@ func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
 
 	owns := source.Describe(src).Owns
 	want := []source.Own{
-		{Ref: "linear:team:ENG"}, {Ref: "linear:issue:ENG-*"}, {Ref: "linear:cycle:ENG/*"},
-		{Ref: "linear:project:*", At: []string{"owners", "ENG"}},
+		{Ref: "linear.team.ENG"}, {Ref: "linear.issue.ENG-*"}, {Ref: "linear.cycle.ENG/*"},
+		{Ref: "linear.project.*", At: []string{"owners", "ENG"}},
 	}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)

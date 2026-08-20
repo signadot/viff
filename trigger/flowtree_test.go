@@ -77,7 +77,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "merged")
 
-	tree := onlyTree(t, eng, "demo:pr:1")
+	tree := onlyTree(t, eng, `demo.pr."1"`)
 	if len(tree.Roots) != 1 || tree.Roots[0].Chain != "review" || tree.Roots[0].Kind != "root" {
 		t.Fatalf("want one root `review`; got %+v", tree.Roots)
 	}
@@ -91,8 +91,8 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		if n.Status != string(task.Done) {
 			t.Errorf("node %q status = %q; want done", chain, n.Status)
 		}
-		if n.ID != chain+ChainSep+"demo:pr:1" {
-			t.Errorf("node %q id = %q; want %q", chain, n.ID, chain+ChainSep+"demo:pr:1")
+		if n.ID != chain+ChainSep+"demo.pr.1" {
+			t.Errorf("node %q id = %q; want %q", chain, n.ID, chain+ChainSep+"demo.pr.1")
 		}
 		if n.Prompt == "" {
 			t.Errorf("node %q has no task", chain)
@@ -154,7 +154,7 @@ func TestFlowTreeSeqCarrierHooks(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "built") // only the carrier's onDone writes this
 
-	tree := onlyTree(t, eng, "demo:pr:1")
+	tree := onlyTree(t, eng, `demo.pr."1"`)
 	done, ok := find(tree.Roots, "build.onDone")
 	if !ok {
 		t.Fatalf("carrier onDone missing from tree %+v", tree.Roots)
@@ -194,10 +194,10 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo:pr:2"),
-		entity.Obj{"status": "running", "flow": "demo:pr:2", "chain": "review", "trigger": "review"}.Payload())
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr.2"),
+		entity.Obj{"status": "running", "flow": `demo.pr."2"`, "chain": "review", "trigger": "review"}.Payload())
 
-	tree := onlyTree(t, eng, "demo:pr:2")
+	tree := onlyTree(t, eng, `demo.pr."2"`)
 	root, ok := find(tree.Roots, "review")
 	if !ok || root.Status != "running" {
 		t.Fatalf("root not running: %+v", tree.Roots)
@@ -218,9 +218,9 @@ func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	entitytest.Set(t, store, entity.VerseRef("task", "instance", "run-abc"),
-		entity.Obj{"status": "running", "flow": "demo:pr:3", "prompt": "poke at it"}.Payload())
+		entity.Obj{"status": "running", "flow": `demo.pr."3"`, "prompt": "poke at it"}.Payload())
 
-	tree := onlyTree(t, eng, "demo:pr:3")
+	tree := onlyTree(t, eng, `demo.pr."3"`)
 	if len(tree.Roots) != 1 {
 		t.Fatalf("want one root; got %+v", tree.Roots)
 	}
@@ -235,10 +235,10 @@ func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "gone@demo:pr:4"),
-		entity.Obj{"status": "done", "flow": "demo:pr:4", "chain": "gone", "trigger": "gone"}.Payload())
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "gone@demo.pr.4"),
+		entity.Obj{"status": "done", "flow": `demo.pr."4"`, "chain": "gone", "trigger": "gone"}.Payload())
 
-	tree := onlyTree(t, eng, "demo:pr:4")
+	tree := onlyTree(t, eng, `demo.pr."4"`)
 	n, ok := find(tree.Roots, "gone")
 	if !ok {
 		t.Fatalf("history lost when the trigger was gone: %+v", tree.Roots)
@@ -254,14 +254,14 @@ func TestFlowTreeAddressing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
-		entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo:pr:"+id),
-			entity.Obj{"status": "done", "flow": "demo:pr:" + id, "chain": "review", "trigger": "review"}.Payload())
+		entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr."+id),
+			entity.Obj{"status": "done", "flow": `demo.pr."` + id + `"`, "chain": "review", "trigger": "review"}.Payload())
 	}
-	m, _ := ParseExpr("demo:pr:*")
+	m, _ := ParseExpr("demo.pr.*")
 	if trees := eng.FlowTrees(m); len(trees) != 2 {
 		t.Fatalf("pattern selected %d trees; want 2", len(trees))
 	}
-	m, _ = ParseExpr("demo:pr:99")
+	m, _ = ParseExpr(`demo.pr."99"`)
 	if trees := eng.FlowTrees(m); len(trees) != 0 {
 		t.Fatalf("untouched subject yielded %d trees; want 0", len(trees))
 	}
@@ -288,13 +288,13 @@ func TestFlowTreeHookFailure(t *testing.T) {
 	}
 	// The task that ran, plus the failure its completion hook recorded — written here rather
 	// than provoked, because what the tree owes is to READ the record wherever it comes from.
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo:pr:7"),
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr.7"),
 		entity.Obj{
-			"status": "done", "flow": "demo:pr:7", "chain": "review", "trigger": "review",
+			"status": "done", "flow": `demo.pr."7"`, "chain": "review", "trigger": "review",
 			"hook": entity.Obj{"chain": "review.onDone", "status": "failed", "err": "$subject.value: no causing commit"},
 		}.Payload())
 
-	n, ok := find(onlyTree(t, eng, "demo:pr:7").Roots, "review.onDone")
+	n, ok := find(onlyTree(t, eng, `demo.pr."7"`).Roots, "review.onDone")
 	if !ok {
 		t.Fatalf("hook node missing from the tree")
 	}
@@ -324,13 +324,13 @@ func TestFlowTreeSeqCarrierHookFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rollout.seq.0@demo:pr:8"),
+	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rollout.seq.0@demo.pr.8"),
 		entity.Obj{
-			"status": "done", "flow": "demo:pr:8", "chain": "rollout.seq[0]", "trigger": "rollout",
+			"status": "done", "flow": `demo.pr."8"`, "chain": "rollout.seq[0]", "trigger": "rollout",
 			"hook": entity.Obj{"chain": "rollout.onDone", "status": "failed", "err": "derive did not resolve"},
 		}.Payload())
 
-	n, ok := find(onlyTree(t, eng, "demo:pr:8").Roots, "rollout.onDone")
+	n, ok := find(onlyTree(t, eng, `demo.pr."8"`).Roots, "rollout.onDone")
 	if !ok {
 		t.Fatalf("carrier hook node missing from the tree")
 	}

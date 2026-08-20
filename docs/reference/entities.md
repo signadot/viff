@@ -1,7 +1,7 @@
 # Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status, a running
-task — addressed by a PATH (`demo:pr:1`, `verse-dev.drift.head.abc`) and carrying a document.
+task — addressed by a PATH (`demo.pr.1`, `verse-dev.drift.head.abc`) and carrying a document.
 [Tutorial §2](../tutorial.md#2-entities) drives all of this; here is the surface flat, with
 the corners that section leaves out.
 
@@ -12,30 +12,33 @@ shape — system, kind, id — and it is what most of this repository is written
 installed at `verse-dev.drift` keeps its entities at `verse-dev.drift.head.<id>`, four segments
 down, and that is an address like any other.
 
-It has **three spellings**, which are one grammar delimited three ways:
+It has **two spellings**, which are one grammar written two ways:
 
 ```
-demo:pr:1                  a REF, delimited by `:` — three segments, and only three
-demo.pr.1                  a PATH, delimited by `.` — any depth, and it carries on into the payload
-demo pr 1                  STEPS, delimited by spaces — one shell word per segment, any depth
+demo.pr."1"                a KINDED PATH — any depth, and it carries on into the payload
+demo pr 1                  STEPS — one shell word per segment, any depth
 ```
 
-**The ref spelling stops at three.** `a:b:c:d` cannot be read back — the id may itself contain
-colons, so the grammar splits at the first two and the rest is the id — which is why an address
-deeper than three is written as a path or as steps, and why a deeper one RENDERS as a path. The
-colon form is what every stored record, every task id and every charter written so far carries,
-and it means exactly what it always did.
-
-**Whichever delimiter comes FIRST is the one in use.** That single rule is what keeps all three
-unambiguous when an id contains the others, which ids routinely do:
+**The path is the one a parser reads**, and a segment ends where the quoting says it does.
+Nothing scans for a delimiter to decide how many segments a word is; a segment that would
+otherwise read as something else is quoted, and reads back as itself:
 
 ```
-demo:pr:a.b                `:` first — a ref, so the dots belong to the id
-git.ref.x@git:ref:y        `.` first — a path, so the colons belong to the id
-demo pr a.b                ` ` first — steps, so the dot belongs to the step
-github:pr:org/repo#42      only the leading colons split; the id keeps the rest
-verse:task:instance:run-a1b2   a leading `verse` is the reserved root, and the three follow it
+demo.pr."a.b"              the id `a.b` — quoted, so the dots are in the NAME
+demo.pr.a.b                four segments, because these dots are not quoted
+demo.pr."1"                the id `1`, quoted so it is a name rather than a number
+git.ref.x@git:ref:y        `@` and `:` are ordinary characters in a name; nothing reads them
+github.pr.org/repo#42      …and so are `/` and `#`
+verse.task.instance.run-a1b2   a leading `verse` is the reserved root, a level like any other
 ```
+
+**There used to be a third**, `demo:pr:1`, and it is gone. It could not carry an address deeper
+than three segments — `a:b:c:d` re-reads as three plus an id holding a colon — so every reader
+that recovered an address from text had to decide which of two grammars it was looking at, by
+asking where the colons were. One grammar has no such rule, and the quoting says everything the
+delimiter could not. A colon in a string is now a character in a name: `demo:pr:1` is a
+one-segment address named `demo:pr:1`, and a record written before this is re-seeded rather than
+translated.
 
 **How deep is an entity?** It is a property of the QUESTION, not of the store. A document
 holding `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c` — or one at `a.b` whose payload
@@ -52,8 +55,7 @@ marker in the store.
 
 | | |
 |---|---|
-| a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
-| a path | any depth, and anywhere the address may continue into the payload — the spelling a DOCUMENT and the wire use: `demo.pr."1".labels.urgent`, `verse-dev.drift.head.abc` |
+| a path | anywhere a parser reads one and no shell is involved: inside a document (`ref: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
 | steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN, and what every listing answers with |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
@@ -70,7 +72,7 @@ verse data --paths demo.pr | xargs -L1 verse data
 
 **One spelling, in and out.** A step is a whole word, so a dot inside one is a character in a
 name and needs no quoting — which is the ergonomic win, and it holds at every position: `verse
-data dotted.sys pr 1` is three segments, and `verse data a:b:c pr 1` names the system `a:b:c`.
+data dotted.sys pr 1` is three segments, and `verse data a.b.c pr 1` names the system `a.b.c`.
 The shell's own quoting is applied only where a segment would otherwise be split or expanded (a
 space, a `*`), and it is single quotes, which are literal — so nothing inside is globbed or
 substituted, and `xargs` understands them.
@@ -149,8 +151,8 @@ path: [demo, pr, !or ["*"]]     # the id that IS an asterisk
 path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
 ```
 
-An id may itself glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*` and a charter's
-`subject: demo:pr:*` mean the same set — and the `verse flow` verbs take one token and refuse a
+An id may itself glob (`demo.pr.hotfix-*`), so `verse flow demo.pr.*` and a charter's
+`subject: demo.pr.*` mean the same set — and the `verse flow` verbs take one token and refuse a
 second rather than reading it as a step, because a selector is exactly the case steps cannot
 express.
 
@@ -172,7 +174,7 @@ verse data verse task instance                # …and a prefix of it: the whole
 
 Two consequences worth knowing before they surprise you:
 
-- **No world system may be called `verse`.** `verse:x:1` does not parse as an entity — it reads
+- **No world system may be called `verse`.** `verse.x.1` does not parse as an entity — it reads
   as the root plus two segments, and says so: *"an address starts with system.kind.id … and this
   names 3 of the 4"*.
 - **The address parses; the WRITE is refused.** `verse data verse task instance x '{…}' ` --put is
@@ -217,18 +219,18 @@ The root has one reserved key. Everything **verse writes about its own running**
 
 ```sh
 verse data --paths
-# demo:pr:1                          the world's half: yours
-# verse:task:instance:run-a1b2       verse's own
-# verse:trigger:rule:review
+# demo.pr.1                          the world's half: yours
+# verse.task.instance.run-a1b2       verse's own
+# verse.trigger.rule.review
 ```
 
-Under `verse:` are `task:instance:*` (the mirror of every running task), `task:run:*` (the
-record of a run that happened) and `task:claim:*` (a sequence's run claim); `gate:question:*`
-(every gate awaiting an answer); `resolvers:*` (who answers them, and `resolvers:instance:*`
-for who is watching one run — see [resolvers.md](resolvers.md)); `trigger:rule:*` (the
-installed charter — `trigger:rule:<package>:<name>` for a rule installed at an address),
-`trigger:strata:*` (its declared levels) and `trigger:package:*` (what each package declares it reads);
-`motion:channel:*` (the docket); `runners:*` (where work can run) and `sources:*` (what
+Under `verse:` are `task.instance.*` (the mirror of every running task), `task.run.*` (the
+record of a run that happened) and `task.claim.*` (a sequence's run claim); `gate.question.*`
+(every gate awaiting an answer); `resolvers:*` (who answers them, and `resolvers.instance.*`
+for who is watching one run — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
+installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
+`trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
+`motion.channel.*` (the docket); `runners:*` (where work can run) and `sources:*` (what
 reflects an external system in).
 
 Two things are deliberately NOT in verse's half. `vote:*` — a ballot is an act somebody takes,
@@ -249,7 +251,7 @@ condition:
   subject: {root: verse, system: gate, kind: question, value: {status: pending}}
 ```
 
-An unwritten `root:` is the world's half, so a rule about `demo:pr:*` cannot quietly select the
+An unwritten `root:` is the world's half, so a rule about `demo.pr.*` cannot quietly select the
 task records of the runs reviewing them.
 
 `local:*` (a federated working tree) is a third thing again: it is mount-owned and lives under
@@ -288,9 +290,9 @@ it. The cut is where a path stops describing a slice and starts naming a thing: 
 a system that is not there have" has `none` as a true answer; `demo.pr.nosuch` names one
 entity, and `{}` would say it is there and empty.
 
-A ref is that same path with `:` for a delimiter, which is why a read, a `--put` and a `--rm` all take one
-and why nothing about identity changed: `demo:pr:1` and `demo.pr.1` are one grammar spelled two
-ways.
+A read, a `--put` and a `--rm` all take the same address, at the same depths, because there is
+only one thing to take: `demo pr 1` typed and `demo.pr."1"` written down are the one grammar,
+separated by the shell in the first case and by the quoting in the second.
 
 ```sh
 verse data demo pr 1
@@ -431,8 +433,8 @@ nobody typed a flag for, and on a store that cannot replay from the beginning it
 rather than a stream.
 
 ```tony
-{op: set ref: demo:pr:1 rev: 1 to: {stage: open owner: ana}}
-{op: delete ref: demo:pr:9 rev: 7}
+{op: set ref: demo.pr.1 rev: 1 to: {stage: open owner: ana}}
+{op: delete ref: demo.pr.9 rev: 7}
 ```
 
 One line per change — flow form, so a watch stays greppable and one event never wraps into
@@ -463,7 +465,7 @@ why a long hold costs a cursor rather than a buffer. See
 `verse-dev.drift` while something is written at `verse-dev.drift.head.abc` gives
 
 ```tony
-{op: set ref: verse-dev:drift:head rev: 152 to: {abc: {sha: aaa}}}
+{op: set ref: verse-dev.drift.head rev: 152 to: {abc: {sha: aaa}}}
 ```
 
 — the entity that changed is `abc`, nested inside `to`. The stream reports at the depth an

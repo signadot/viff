@@ -1,7 +1,7 @@
 # The trigger model — entities, matches, and one selector grammar
 
 One noun and two grammars carry the whole model. An entity is a node at an address —
-`system:kind:id` in the ordinary case, a path of any depth where a charter keeps its own tree —
+`system.kind.id` in the ordinary case, a path of any depth where a charter keeps its own tree —
 with a small payload. A match names entities at an instant; a formula relates the
 verse over time. Every trigger concept — `when`, `subject`, gates, flows — lands on
 exactly one of those two, and knowing which is the thing to be unambiguous about.
@@ -140,7 +140,7 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
   match: {system: drift}
 - name: head-moved          # in the `drift` package
   stratum: reflected
-  condition: {subject: git:head:verse}    # a source: read, never written
+  condition: {subject: git.head.verse}    # a source: read, never written
   action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
 ```
 
@@ -152,7 +152,7 @@ address and whatever it names, and nothing else — an undeclared read does not 
 refusal says which line to add:
 
 ```
-rule "note-the-head" reads git:head:*, which notes:* does not declare: a charter installed
+rule "note-the-head" reads git.head.*, which notes:* does not declare: a charter installed
 at an address reads inside it and what it declares, so that the graph over packages can be
 checked for a cycle. Add it: `reads: [git.head]` (this package reads nothing)
 ```
@@ -170,7 +170,7 @@ its levels and its rules install together or not at all, so a refusal anywhere p
 before it (see [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records: a package's rules and strata are addressed
-by package (`verse:trigger:rule:drift:head-moved`), so two packages may each declare a
+by package (`verse.trigger.rule.drift:head-moved`), so two packages may each declare a
 `reflected` level without one overwriting the other — which is what comment-drift's two halves
 need, since both read the git source and both want a bottom level for it. They are not
 confined: a package's lowest level owns the slice it READS, and its rules select from there and
@@ -265,8 +265,8 @@ address is a stamp anyone can list.
 
 ### The charter is durable
 
-Installing a trigger writes it into the verse as `verse:trigger:rule:<name>` — or
-`verse:trigger:rule:<package>:<name>` for a package, so two of them may use one name; removing one
+Installing a trigger writes it into the verse as `verse.trigger.rule.<name>` — or
+`verse.trigger.rule.<package>:<name>` for a package, so two of them may use one name; removing one
 deletes that entity; and a start reads them back before anything observes. So the program a
 verse comes back up running is the one it went down with.
 
@@ -381,7 +381,7 @@ subject is *selected*, not *awaited*.
 
 It is the one field a condition cannot leave out, because nothing else in a trigger can answer
 for it. The action has no target of its own, and a `when` need not pin one kind: `{system:
-demo}` spans all of them, and a disjunction (`!or [a:b:c, {system: d, kind: e}]`) makes it
+demo}` spans all of them, and a disjunction (`!or [a.b.c, {system: d, kind: e}]`) makes it
 plain — "the entity the when matched" answers *which entity fired* when the question is *what
 is this rule about*. A rule that acts on whichever disjunct happened to fire is not a rule
 anyone wrote down. So the subject is always stated, and everything else in the trigger is read
@@ -391,8 +391,8 @@ It resolves in one of two ways, both the same match grammar:
 
 | subject | resolves to | example |
 |---|---|---|
-| an address naming one entity (`demo:pr:1`) | that entity, whether or not it exists — an action's `patch` *creates* it | publishing a fact nothing has written yet |
-| a pattern — a glob (`demo:pr:*`), or a `system`+`kind` selector with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
+| an address naming one entity (`demo.pr.1`) | that entity, whether or not it exists — an action's `patch` *creates* it | publishing a fact nothing has written yet |
+| a pattern — a glob (`demo.pr.*`), or a `system`+`kind` selector with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
 
 A subject is always a SELECTION, never "the entity that changed". A rule is a statement about
 the world, so which entities it is about cannot depend on who happened to be written last —
@@ -427,8 +427,8 @@ just `{system: demo, kind: pr, value: {stage: open}}`, and the same thing one le
 
 There is one string grammar for addressing entities by identity, and both the charter
 wire and the CLI (`verse flow <addr>`) parse it with `ParseExpr`: three segments, `*` a
-wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo:pr:*"` in a
-charter and `verse flow demo:pr:*` on the command line mean the same set, as they read like
+wildcard per segment, and an id that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a
+charter and `verse flow demo.pr.*` on the command line mean the same set, as they read like
 they should.
 
 The string form is the three-segment one, because that is what a colon spelling can carry. An
@@ -439,7 +439,7 @@ Nothing here enumerates the operators; `tony.Match` owns them, so a segment is a
 a payload predicate.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
-whose cause is a `verse:task:instance` change and which acts on PRs acts on the PRs its own
+whose cause is a `verse.task.instance` change and which acts on PRs acts on the PRs its own
 `subject` selects — every one of them — not on the one the completed task happened to name.
 
 In particular, a `flow` field on the changed payload does not short-circuit that. Letting it
@@ -526,7 +526,7 @@ that precedes removal. A charter carrying `op` is refused with that explanation 
 "unknown key", because the author is reaching for a distinction the model deliberately does not
 carry, and "unknown key" would not say so.
 
-The address string is sugar for the identity dimensions, so `demo:pr:*` means
+The address string is sugar for the identity dimensions, so `demo.pr.*` means
 `{system: demo, kind: pr}` — and since a trailing wildcard *is* an unset dimension, that is
 what reads back when you read it out of `verse c`: `demo:pr`. Same match, shorter spelling.
 
@@ -610,7 +610,7 @@ space-separated: `demo pr 1`. One spelling, wherever an address is written by ha
 wherever the string form goes:
 
 ```tony
-subject: !verse-path [demo pr 1]      # the same as "demo:pr:1"
+subject: !verse-path [demo pr 1]      # the same as "demo.pr.1"
 when:    !verse-path [git head verse]
 ```
 
@@ -903,7 +903,7 @@ instead of (rule, subject). One entity per value of something, where the same su
 moving: see [strata](strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key with the composition dropped**, and the difference is the reader's. A keyed
-entity's id is `head-moved@git:head:verse@aaaa1111` — nothing in the grammar composes one, so
+entity's id is `head-moved@git.head.verse@aaaa1111` — nothing in the grammar composes one, so
 anything that wants that record has to *describe* it (a `"*"` and a predicate on a field it
 happens to know) instead of naming it. With `id: $subject.value.sha` the record is
 `verse-dev.drift.head.aaaa1111`, and a reader spells it: `!get-path {at: [verse-dev, drift,
@@ -912,7 +912,7 @@ head, $subject.value.sha], path: result.report}`.
 What the composition bought was uniqueness, and `id:` hands that to the author: two subjects of
 one rule that compute the same value share one entity, where `key:` gives them one each. So
 `id:` claims the value identifies the record **across subjects** — true when the subject is a
-singleton, as `git:head:verse` is — and `key:` claims it only within one. The *place* stays the
+singleton, as `git.head.verse` is — and `key:` claims it only within one. The *place* stays the
 engine's either way: a derive may only write inside its own stratum, checked at install. A
 derive carrying both is refused, since which one stands would decide that question silently.
 
@@ -1028,7 +1028,7 @@ and wrong for anything that branches.
 
 ```tony
 gating:
-  resolver: verse:resolvers:security:security-review
+  resolver: verse.resolvers.security.security-review
   gates:    [{name: ship, mode: ask}]
 ```
 
@@ -1068,7 +1068,7 @@ They are facts about a run, with no entity to hang a path off.
 `$subject` is a record, and the bare form is its address — so everything written before it had
 parts still means what it meant:
 
-| `$subject` | the whole ref, `demo:pr:1` |
+| `$subject` | the whole ref, `demo.pr.1` |
 | `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
@@ -1101,7 +1101,7 @@ action:
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
     # and `at:` names the address as a PATH, at whatever depth the tree is
-    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git:head:verse"], path: result.report }
+    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git.head.verse"], path: result.report }
     open:     !list-paths { at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says }
 ```
 
@@ -1172,7 +1172,7 @@ Every open proposal cut from a commit that is no longer the tip of main — "whi
 still land", with no ancestry walk and nothing to poll.
 
 **It joins what the rule reads**, which is the difference from an action's read and is not a
-detail: the rule above is re-evaluated when `git:head:verse` moves, over proposals that did not
+detail: the rule above is re-evaluated when `git.head.verse` moves, over proposals that did not
 change. A trigger is skipped at a commit that touched nothing it reads, and a condition comparing
 against another entity reaches a different verdict the moment that entity moves — so the read
 counts, or the skip would be wrong.
@@ -1337,7 +1337,7 @@ action:
 ```
 
 The alternative is a *decoupled* completion trigger — a separate rule that fires on the
-`verse:task:instance` change and names the PR by pattern (`reviewed`, below). That is the tool
+`verse.task.instance` change and names the PR by pattern (`reviewed`, below). That is the tool
 when a completion should fan into several reactions, advance a different subject, or be
 authored separately; the hook is the tool for a linear chain owned by one trigger, with the
 task step visible inline.
@@ -1376,8 +1376,8 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
 ```
 
 There is deliberately no `par`. Breadth is what independent triggers matching the same
-condition already do, and a task id already carries both directions: `review@demo:pr:1`
-and `hold@demo:pr:1` are two roots about one subject, while `review.onDone@demo:pr:1` is an
+condition already do, and a task id already carries both directions: `review@demo.pr.1`
+and `hold@demo.pr.1` are two roots about one subject, while `review.onDone@demo.pr.1` is an
 extension of one chain. Putting breadth *inside* a chain would cost that reading.
 
 The rules:
@@ -1408,13 +1408,13 @@ A spawned task is identified by `<chain>@<subject>`, where the chain is the
 inside its trigger — dotted field names, brackets for list positions. Hooks descend by field
 name and sequence elements by index:
 
-| the action | chain | id for `demo:pr:1` |
+| the action | chain | id for `demo.pr.1` |
 |---|---|---|
-| the trigger's own | `review` | `review@demo:pr:1` |
-| its done-hook | `review.onDone` | `review.onDone@demo:pr:1` |
-| a nested done-hook | `review.onDone.onDone` | `review.onDone.onDone@demo:pr:1` |
-| the third sequence step | `review.seq[2]` | `review.seq.2@demo:pr:1` |
-| that step's failure branch | `review.seq[2].onFailed` | `review.seq.2.onFailed@demo:pr:1` |
+| the trigger's own | `review` | `review@demo.pr.1` |
+| its done-hook | `review.onDone` | `review.onDone@demo.pr.1` |
+| a nested done-hook | `review.onDone.onDone` | `review.onDone.onDone@demo.pr.1` |
+| the third sequence step | `review.seq[2]` | `review.seq.2@demo.pr.1` |
+| that step's failure branch | `review.seq[2].onFailed` | `review.seq.2.onFailed@demo.pr.1` |
 
 Because the chain addresses the action rather than naming it privately, it is deterministic,
 which is what makes a re-fire idempotent — a spawn dedups by id. It is also a lookup key back
@@ -1424,7 +1424,7 @@ its next step. And it is published on the task entity as `chain`, with its root 
 ids.
 
 The id drops the brackets because they are shell-hostile: `zsh` kills
-`review.seq[2]@demo:pr:1` with `no matches found` before verse ever sees it, and ids get
+`review.seq[2]@demo.pr.1` with `no matches found` before verse ever sees it, and ids get
 pasted onto command lines constantly. The dotted form is lossless because `Action`'s field
 set is closed — a segment after `seq` is an element, a segment matching a hook name is a
 field. The `@` join replaced an earlier `-`, which could not be decoded back because trigger
@@ -1497,8 +1497,8 @@ what changed.
 A flow is not a stored key. It is a match evaluated over the subjects of *live* tasks:
 
 ```sh
-verse flow pause demo:pr:1      # tasks whose subject matches demo:pr:1
-verse flow pause demo:pr:*      # …the whole kind
+verse flow pause demo.pr.1      # tasks whose subject matches demo.pr.1
+verse flow pause demo.pr.*      # …the whole kind
 ```
 
 Relating tasks is what a match *does*, so "relational flows" are not a second primitive
@@ -1564,7 +1564,7 @@ the negative into a positive, and a departure becomes an ordinary rising edge:
 - name: note-departures
   condition:
     on:      { system: demo, kind: pr, value: { verse: { meta: { vanishing: null } } } }
-    subject: audit:record:latest
+    subject: audit.record.latest
   action:
     patch: { saw: "a departure" }
 ```
@@ -1581,7 +1581,7 @@ about it, raises a gate on it — and doing any of that to something on its way 
 something that will not be there. So `subject: {system: demo, kind: pr}` skips it, and naming
 the marker is the opt-in that sees it again — which is how the reaper works.
 
-A NAMED subject (`demo:pr:1`) is skipped too, and this is the one place naming does not beat
+A NAMED subject (`demo.pr.1`) is skipped too, and this is the one place naming does not beat
 selecting. You may name something that does not exist yet; you may not name something on its
 way out. Otherwise a rule reacting to a departure acts on the departing entity, and since a
 patch over an absent entity CREATES, a removal landing first means the rule RESURRECTS it —

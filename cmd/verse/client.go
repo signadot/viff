@@ -1251,6 +1251,41 @@ func addressWire(args []string, at string) (string, error) {
 	return entity.KPathOf(segs)
 }
 
+// pairPath turns the address an operator types for one of verse's own registries into the two
+// segments its route takes: the whole address as it is stored and listed
+// (`verse.runners.pool.gpu`), or the bare pair below it (`pool.gpu`). An operator reading
+// `verse data` and one typing `verse runner show` should not have to know two spellings.
+//
+// ONE READER for the three registries, and one grammar for both depths. Each of them used to
+// trim a colon prefix by hand and split what was left on another colon — three copies of an
+// address grammar that is not the address grammar, which is exactly how a spelling change
+// leaves a command answering "want a ref like verse:runners:pool:gpu" about an address the
+// verse itself now prints with dots.
+func pairPath(route, system, ref string) (string, error) {
+	pair, ok := pairSegs(system, ref)
+	if !ok {
+		return "", fmt.Errorf("%w: want an address like %s.%s.<kind>.<name> (or <kind>.<name>), got %q",
+			cli.ErrUsage, entity.VerseRoot, system, ref)
+	}
+	return "/" + route + "/" + pair[0] + "/" + pair[1], nil
+}
+
+// pairSegs is pairPath's reading, for the `add` verbs that want the two segments themselves
+// rather than a route built from them.
+func pairSegs(system, ref string) ([2]string, bool) {
+	segs, err := entity.PathSegs(ref)
+	if err != nil {
+		return [2]string{}, false
+	}
+	if len(segs) == entity.Depth+1 && segs[0] == entity.VerseRoot && segs[1] == system {
+		segs = segs[2:]
+	}
+	if len(segs) != 2 || segs[0] == "" || segs[1] == "" {
+		return [2]string{}, false
+	}
+	return [2]string{segs[0], segs[1]}, true
+}
+
 // onlyOne refuses an address given in more than one spelling.
 func onlyOne(args []string, at string) error {
 	if len(args) > 0 && at != "" {

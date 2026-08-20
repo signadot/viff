@@ -47,10 +47,10 @@ func TestAScopedSourceWritesIntoItsScopeAndNotBaseline(t *testing.T) {
 		t.Fatal("a scoped reflection landed in baseline, where everybody reads it")
 	}
 	// …and so did the registration, which is what makes its lifetime free.
-	if _, ok := source.Find(srv.Store, "git:mine"); ok {
+	if _, ok := source.Find(srv.Store, "git.mine"); ok {
 		t.Fatal("the registration landed in baseline rather than in the scope it reflects into")
 	}
-	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git:mine"); !ok {
+	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git.mine"); !ok {
 		t.Fatal("the registration should live in the scope it reflects into")
 	}
 }
@@ -132,7 +132,7 @@ func TestDeletingAScopeTakesItsSources(t *testing.T) {
 	}
 	// Give a pass that was already in flight a moment to be wrong, if it is going to be.
 	time.Sleep(200 * time.Millisecond)
-	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git:mine"); ok {
+	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git.mine"); ok {
 		t.Fatal("the registration survived its scope")
 	}
 	if _, ok, _ := srv.Store.Get(head); ok {
@@ -208,7 +208,7 @@ func TestTwoSlotSourcesInstallAlongsideEachOther(t *testing.T) {
 		return postTony(t, ts.URL+"/sources?probe=false", map[string]any{
 			"system": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{
-				"ref": "linear:project:*", "at": []any{"owners", team},
+				"ref": "linear.project.*", "at": []any{"owners", team},
 			}},
 		})
 	}
@@ -249,7 +249,7 @@ func TestAScopedSourceMayShadowABaselineSlot(t *testing.T) {
 		return postTony(t, u, map[string]any{
 			"system": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{
-				"ref": "linear:project:*", "at": []any{"owners", "ENG"},
+				"ref": "linear.project.*", "at": []any{"owners", "ENG"},
 			}},
 		})
 	}
@@ -276,7 +276,7 @@ func TestASourceThatClaimsNothingIsStillRefusedBesideASlotSource(t *testing.T) {
 
 	if resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
 		"system": "linear", "name": "eng", "url": "http://x:1",
-		"owns": []any{map[string]any{"ref": "linear:project:*", "at": []any{"owners", "ENG"}}},
+		"owns": []any{map[string]any{"ref": "linear.project.*", "at": []any{"owners", "ENG"}}},
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("slot install = %s: %s", resp.Status, bodyOf(t, resp))
 	}

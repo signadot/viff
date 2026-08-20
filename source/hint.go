@@ -79,7 +79,7 @@ const hintTimeout = 10 * time.Second
 func PostHint(ctx context.Context, hintURL string, refs ...entity.Ref) error {
 	q := url.Values{}
 	for _, ref := range refs {
-		q.Add("ref", ref.String())
+		q.Add("at", ref.String())
 	}
 	target := hintURL
 	if len(q) > 0 {

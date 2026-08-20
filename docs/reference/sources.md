@@ -4,7 +4,7 @@ The surface. For what a source *is* and why it is shaped this way, see
 [../sources.md](../sources.md). To build one, copy
 [examples/source](examples/source/main.go).
 
-A source is an entity at `verse:sources:<system>:<name>`:
+A source is an entity at `verse.sources.<system>:<name>`:
 
 | | |
 |---|---|
@@ -22,7 +22,7 @@ A source is an entity at `verse:sources:<system>:<name>`:
 `Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
 field present says which it is.
 
-The system is what the address is keyed on (`verse:sources:<system>:<name>`, under the
+The system is what the address is keyed on (`verse.sources.<system>:<name>`, under the
 reserved root like everything verse keeps about its own running) because it is a question verse
 already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
@@ -52,7 +52,7 @@ the whole entity.
 
 Two claims are **disjoint** when any segment is: two literal systems that differ, two literal
 kinds that differ, two id prefixes neither of which prefixes the other, or two paths neither of
-which contains the other. A `*` segment is disjoint from nothing, so `git:*:*` claims its whole
+which contains the other. A `*` segment is disjoint from nothing, so `git.*.*` claims its whole
 system and can be proved apart from nothing in it. A `*` anywhere but the end of an id is a
 parse error, not an approximation. Paths compare **segment-wise**, so `owners.ENG` and
 `owners.ENGINE` are disjoint, while `owners` contains `owners.ENG` and an absent path contains
@@ -62,15 +62,15 @@ Git claims **two entries per repo**, because refs and commits are `<repo>/<name>
 is the bare `<repo>`:
 
 ```tony
-owns: [{ref: "git:*:verse/*"}, {ref: "git:head:verse"}]
+owns: [{ref: "git.*.verse/*"}, {ref: "git.head.verse"}]
 ```
 
 The single glob `verse*` would cover both and also claim `verse-extras/main` — a real
 overclaim, and one that would make two disjoint repos refuse to install alongside each other.
 
 **A claim is a document rather than a string**, and the ids are what forced it: `@` — the
-separator a terse `git:*:verse/*@owners.ENG` would need — already appears inside ids
-(`lineage:trace:<rule>@<subject>`), so nothing could parse one back. A grammar with two forms
+separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids
+(`lineage.trace.<rule>@<subject>`), so nothing could parse one back. A grammar with two forms
 would have to be read twice everywhere, so there is one.
 
 An install with no `owns` takes what the probe reported. A registration carrying none can be
@@ -93,8 +93,8 @@ verse source add <system>:<name> <url>       install one, probing the url first
               [--keep]                       …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse:sources:git:laptop` or `git:laptop` — the whole address or the bare pair;
-the middle form (`sources:git:laptop`) is not accepted, since that was the whole address before
+A `<ref>` is `verse.sources.git.laptop` or `git:laptop` — the whole address or the bare pair;
+the middle form (`sources.git.laptop`) is not accepted, since that was the whole address before
 verse's own half of the tree had a name.
 
 `verse status` names the installed sources — refs only, health left to `verse source`. It is
@@ -145,9 +145,9 @@ covers:
 - {system: git, kind: ref, value: {repo: verse}}
 - {system: git, kind: head, value: {repo: verse}}
 entities:
-- ref: git:ref:verse/main
+- ref: git.ref.verse/main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}
-- ref: git:head:verse
+- ref: git.head.verse
   payload: {repo: verse, ref: main, sha: "82bd107…", dirty: false}
 ```
 

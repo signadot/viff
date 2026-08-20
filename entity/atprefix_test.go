@@ -29,7 +29,7 @@ func TestAtPrefix(t *testing.T) {
 	}{
 		{"demo.pr", []string{"demo", "pr"}, 3, true},
 		{"demo.pr.1", []string{"demo", "pr", "1"}, 3, true},
-		// Deeper than an entity: the entity is still demo:pr:1, and Nest trims the rest.
+		// Deeper than an entity: the entity is still demo.pr.1, and Nest trims the rest.
 		{"demo.pr.1.labels.urgent", []string{"demo", "pr", "1"}, 3, true},
 		// A wildcard ends the prefix — nothing below it is a literal to read under.
 		{"demo.pr.*.stage", []string{"demo", "pr"}, 3, true},

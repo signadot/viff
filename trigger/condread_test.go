@@ -113,7 +113,7 @@ func TestAConditionReadOfAnAbsentEntitySelectsNothing(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// git:head:verse does not exist. Touch the proposal to give the engine a commit to consider.
+	// git.head.verse does not exist. Touch the proposal to give the engine a commit to consider.
 	setPayload(t, store, open, `{state: open, base: aaa111, touched: 1}`)
 	if got := field(t, store, open, "state"); got != "open" {
 		t.Fatalf("state = %q — a read of an absent entity should leave the rule selecting nothing", got)
@@ -182,7 +182,7 @@ func TestExpansionKeepsATagOnAString(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			root := refRoot(entity.Obj{"name": "verse/auto/1"}.Payload(), ir.FromString("demo:pr:1"))
+			root := refRoot(entity.Obj{"name": "verse/auto/1"}.Payload(), ir.FromString(`demo.pr."1"`))
 			out, err := expandPatch(pred, root, nil)
 			if err != nil {
 				t.Fatal(err)

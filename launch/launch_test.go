@@ -16,12 +16,12 @@ func TestBindExpandsSubject(t *testing.T) {
 		Environment: "sandbox-$subject",
 		Vector:      "supervised",
 	}
-	got := s.Bind(Binding{"subject": "demo:pr:1"})
+	got := s.Bind(Binding{"subject": `demo.pr."1"`})
 
-	if got.Prompt != "review demo:pr:1 and report" {
+	if got.Prompt != `review demo.pr."1" and report` {
 		t.Fatalf("Prompt = %q", got.Prompt)
 	}
-	if got.Environment != "sandbox-demo:pr:1" {
+	if got.Environment != `sandbox-demo.pr."1"` {
 		t.Fatalf("Environment = %q", got.Environment)
 	}
 	// fields without a $var are untouched
@@ -32,8 +32,8 @@ func TestBindExpandsSubject(t *testing.T) {
 
 func TestBindLeavesUnboundVarsAndIsPure(t *testing.T) {
 	s := Spec{Prompt: "do $subject for $owner"}
-	got := s.Bind(Binding{"subject": "x:y:1"}) // no "owner" binding
-	if got.Prompt != "do x:y:1 for $owner" {
+	got := s.Bind(Binding{"subject": "x.y.1"}) // no "owner" binding
+	if got.Prompt != "do x.y.1 for $owner" {
 		t.Fatalf("unbound var not preserved: %q", got.Prompt)
 	}
 	if s.Prompt != "do $subject for $owner" {
@@ -55,8 +55,8 @@ func TestBindLongestKeyFirst(t *testing.T) {
 // per-firing detail back into the task.
 func TestBindExpandsFrame(t *testing.T) {
 	s := Spec{Frame: "You review $subject. Answer with a severity and nothing else."}
-	got := s.Bind(Binding{"subject": "demo:pr:1"})
-	if got.Frame != "You review demo:pr:1. Answer with a severity and nothing else." {
+	got := s.Bind(Binding{"subject": `demo.pr."1"`})
+	if got.Frame != `You review demo.pr."1". Answer with a severity and nothing else.` {
 		t.Fatalf("Frame = %q", got.Frame)
 	}
 }
@@ -123,7 +123,7 @@ func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
 // Provider.Match is waiting on.
 func TestBindCarriesTheAnswerContract(t *testing.T) {
 	pat, _ := codec.ParseNode([]byte("severity: !or [low, high]"), codec.Tony)
-	got := Spec{Answer: pat}.Bind(Binding{"subject": "demo:pr:1"})
+	got := Spec{Answer: pat}.Bind(Binding{"subject": `demo.pr."1"`})
 	if !matches(t, got.Answer, `{severity: low}`) || matches(t, got.Answer, `{severity: nope}`) {
 		t.Fatalf("Answer = %v, want the pattern as written", got.Answer)
 	}

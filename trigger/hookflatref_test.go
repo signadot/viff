@@ -98,7 +98,7 @@ func TestAHookThatCannotResolveWritesTheFailureDown(t *testing.T) {
 	}
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "covering": "aaa111"}.Payload())
 
-	pr := mirror.Ref("review@demo:pr:1")
+	pr := mirror.Ref("review@demo.pr.1")
 	waitPath(t, store, pr, "hook.status", "failed")
 	e, _, _ := store.Get(pr)
 	got, _ := e.Payload.GetKPath("hook.err")
