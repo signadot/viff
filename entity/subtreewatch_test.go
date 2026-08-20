@@ -63,7 +63,7 @@ func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open", "note": "ship it"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestWatchSubtreeLevelsAcrossSeveralDeepWrites(t *testing.T) {
 	ref := RefAt("demo", "task", "t1")
 	set(t, s, ref, Obj{"note": "write the doc"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree("demo", "task")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "task")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestWatchSubtreeSystemWideLevelsFromInitialState(t *testing.T) {
 	ref := RefAt("demo", "pr", "7")
 	set(t, s, ref, Obj{"stage": "open", "note": "keep me"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree("demo", "")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestWatchSubtreeAppearAndDeleteAfterSeeding(t *testing.T) {
 	seeded := RefAt("demo", "pr", "1")
 	set(t, s, seeded, Obj{"stage": "open"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestSubtreeWatchStampsTheCommit(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("WatchSubtree: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestWatchSubtreeDoesNotCoalesceCommits(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 
-	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("WatchSubtree: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestWatchSubtreeDoesNotCoalesceCommits(t *testing.T) {
 // subtree; a consumer of it has no use for the revisions where its slice stood still.
 func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 	s := openStore(t)
-	ch, unsub, err := s.WatchSubtree("demo", "pr")
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("WatchSubtree: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestScopedWatchSeesADeleteOfAnInheritedEntity(t *testing.T) {
 	if !ok {
 		t.Fatal("Scope did not return a *LogdStore")
 	}
-	ch, unsub, err := scoped.WatchSubtree("demo", "pr")
+	ch, unsub, err := scoped.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("scoped WatchSubtree: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestWatchSubtreeTakesAPrefix(t *testing.T) {
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
 	for _, prefix := range [][]string{{"demo"}, {"demo", ""}} {
-		ch, unsub, err := s.WatchSubtree(prefix...)
+		ch, unsub, err := s.WatchSubtree(Depth, prefix...)
 		if err != nil {
 			t.Fatalf("watch %q: %v", prefix, err)
 		}

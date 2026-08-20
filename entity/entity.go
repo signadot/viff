@@ -14,6 +14,8 @@ package entity
 import (
 	"fmt"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Ref is a concrete, org-addressable entity: <system, kind, id>, e.g.
@@ -360,4 +362,47 @@ type Commit struct {
 	// Gap is >0 when commits were dropped before this one (a slow observer). The consumer
 	// recovers them with Since; see Store.Observe.
 	Gap int
+	// delta is the change this commit made, as the store received it, root already stripped.
+	// It is what lets ChangedAt answer at a depth Changes was not built for; see there.
+	//
+	// Unexported because the delta's ENCODING is the store's — a merge, a `!replace`, a
+	// `!delete`, a field order — and nothing outside this package should learn to read one. A
+	// commit that carries none (a subtree watch's, which diffs a reconstructed document rather
+	// than reading the delta) answers from Changes instead.
+	delta *ir.Node
 }
+
+// ChangedAt lists the addresses this commit changed, AT A DEPTH THE CALLER NAMES.
+//
+// Changes reports at the ordinary arity, because a stream serving every consumer at once has to
+// pick one and that is the one nearly all of them mean. A consumer whose addresses are deeper —
+// a rule over derived entities, which stand at their target, the rule that derived them and the
+// subject's own segments — asks here instead, and gets an exact answer rather than an ancestor.
+//
+// It is the same question `ListAt` answers about the store, asked of one commit: the document
+// does not say where its entities end, so the depth is the question's (docs/working/entity-tree.md).
+func (c Commit) ChangedAt(depth int) []Ref {
+	if c.delta == nil {
+		// A subtree watch built its Changes at the depth its caller asked for, so that IS the
+		// answer at any depth it can speak to. Nothing else has a delta to walk.
+		out := make([]Ref, 0, len(c.Changes))
+		for _, ev := range c.Changes {
+			if ev.Ref.Len() == depth {
+				out = append(out, ev.Ref)
+			}
+		}
+		return out
+	}
+	var out []Ref
+	walkLeaves(c.delta, depth, func(segs []string, _ *ir.Node) {
+		if ref, ok := RefOfAny(segs); ok {
+			out = append(out, ref)
+		}
+	})
+	return out
+}
+
+// WithDelta is the store stamping the change it received onto the commit it emits, so a
+// consumer can ask ChangedAt about a depth Changes was not built for. Package-internal by
+// convention: only a Store builds a Commit.
+func (c Commit) WithDelta(delta *ir.Node) Commit { c.delta = delta; return c }

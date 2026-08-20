@@ -1,9 +1,10 @@
 # An address is as deep as the tree it lives in
 
-Status: in progress. The charter became a tree (`verse charter`, packages at an address) and the
-entity model did not, which is half a change: a charter installed at `verse-dev.drift` may write
-only `verse-dev:drift:<id>` — one level of ids and nothing below — so a drive that keeps two
-kinds of thing (a tip fact and a ledger of findings) cannot live where its charter lives.
+Status: done, with one residual named in §8. The charter became a tree (`verse charter`,
+packages at an address) and the entity model did not, which was half a change: a charter
+installed at `verse-dev.drift` could write only `verse-dev.drift.<id>` — one level of ids and
+nothing below — so a drive keeping two kinds of thing (a tip fact and a ledger of findings)
+could not live where its charter lives.
 
 This note is what the rest of the change rests on. It records the one decision that shapes
 everything after it, so that the next person — or the next session — does not have to re-derive
@@ -92,12 +93,21 @@ Each lands with the suite green.
    form was `Doc.EntitiesAt`, which unset answered at
    the depth an address has always had, which is what every listing written before this wants.
 
-   **Watches** report at the fixed depth, so a live change four segments down arrives as a
-   change to its three-segment ancestor — and a deep rule still fires, because the engine
-   re-evaluates its condition against the store rather than against the event's ref alone (there
-   is a test for exactly this). So the depth is a matter of PRECISION here, not correctness: a
-   deep rule wakes on any change under its literal head and then selects. Teaching
-   `WatchSubtree` a depth is worth doing when the waking becomes measurable, not before.
+   ~~**Watches** report at the fixed depth … the depth is a matter of PRECISION here, not
+   correctness … teaching `WatchSubtree` a depth is worth doing when the waking becomes
+   measurable, not before.~~ **Wrong, and §8 is where it was paid for.** Firing was never the
+   question — the engine does re-evaluate against the store, so a deep rule woke and selected
+   correctly. What broke was every consumer that compared the REPORTED address to one it already
+   had. The causal chain is the one that bit: `changedIn` asked "did this commit change my
+   subject", the answer arrived about a three-segment ancestor, and so every firing about a
+   derived entity began a fresh chain — the causal report named the level crossing as an origin,
+   and the throttle, which walks back parents to find a loop, could not see one that ran through
+   a derive.
+
+   `WatchSubtree` takes a depth now, and `Commit.ChangedAt` is the same question asked of the
+   ROOT stream, which serves every consumer at once and so must still pick one arity for
+   `Changes`. The depth is not knowable up front; it is knowable at every point of use, which is
+   the whole of what a tree costs here.
 6. **The charter tree, whole.** Done. `at:` is a place of any depth and a charter writes where
    it is: `at: verse-dev.drift` keeps its tip fact at `verse-dev.drift.head.<id>` and its ledger
    at `verse-dev.drift.finding.<id>`, two levels under one address, each with a stratum of its
@@ -123,6 +133,20 @@ Each lands with the suite green.
    and a dotted string there is an address followed by a payload path (`demo.pr.1.stage`), which
    reading as a four-segment entity would swallow.
 
-   Also left, and smaller: `Doc.Entities` (the fixed-depth walk every listing still uses),
-   `WatchSubtree`'s reporting depth (precision, see §5), and `verse data --paths` defaulting to
-   three.
+   Also left, and smaller: `Doc.Entities` (the fixed-depth walk every listing still uses). ~~and
+   `WatchSubtree`'s reporting depth~~ — done in §8, and not smaller than it looked.
+
+8. **The colons, whole; and the shapes that came with them.** Done. `Ref.String` renders the
+   kinded path at every depth, `ParseAddr` is the one reader, and `ParseRef`/`DottedAddr` are
+   gone with the discriminator they existed for. Five separate address splitters became one
+   (`trigger.ParseExpr`, `trigger.factSelFromRef`, `source.ParseClaim`, and the CLI's three
+   `<kind>:<name>` parsers), an id token is built from SEGMENTS rather than from a rendering
+   (`entity.SegToken`), an ownership claim is a pattern per level at whatever depth, and a
+   derived entity is ADDRESSED by its provenance — `<target>.<rule>.<subject…>` — rather than
+   named after a flattening of it.
+
+   What that last one cost, and it is the residual worth knowing: **a rule reading a derivation
+   says how deep one is**, and how deep follows from the depth of the subjects the PRODUCING
+   rule selects — `{path: [signadot, feature, "*", "*", "*", "*"]}`, and the same in a
+   `!list-paths` `at:`. A path element meaning "at or below" would retire it, and is not in the
+   grammar.

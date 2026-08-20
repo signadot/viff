@@ -271,7 +271,7 @@ func TestChangesTellNullFromDeleted(t *testing.T) {
 // entity sets read out of a document it maintains, rather than reading the delta.
 func TestSubtreeWatchTellsNullFromDeleted(t *testing.T) {
 	s := openStore(t)
-	commits, unsub, err := s.WatchSubtree("demo", "pr")
+	commits, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}

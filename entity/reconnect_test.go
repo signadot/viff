@@ -358,7 +358,7 @@ func TestWatchReestablishDoesNotStarveWrites(t *testing.T) {
 	requireLong(t)
 
 	s, g := storeThroughGate(t)
-	events, stop, err := s.WatchSubtree("demo", "pr")
+	events, stop, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}

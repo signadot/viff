@@ -177,34 +177,23 @@ func (e *Engine) causeFor(t Trigger, c entity.Commit, subj entity.Ref) int64 {
 	return c.Rev
 }
 
-// changedIn reports whether the commit changed this entity — at it, or at an ancestor of it.
+// changedIn reports whether the commit changed this entity.
 //
-// THE ANCESTOR CASE IS THE WATCH'S GRAIN, not a looseness. A change stream reports one event
-// per entity at the FIXED depth (entity.walkEntityLeaves: three segments, four under the
-// reserved root), so a write to something deeper — a derived entity, which stands at its
-// target, the rule that derived it, and the subject's own segments — arrives as a change to its
-// three-segment ancestor with the rest of the structure in the payload. Asked for an exact
-// match, this answered "no" for every such subject, so the firing began a FRESH chain: the
-// causal report named the level crossing as an origin, and the throttle that walks back parents
-// could not see a loop that ran through a derive.
+// IT ASKS AT THE SUBJECT'S OWN DEPTH, which is the whole of what a tree costs here: a commit's
+// `Changes` is built at the ordinary arity, because a stream serving every rule at once has to
+// pick one — so a change to something deeper appears there as a change to its three-segment
+// ancestor, and comparing that to a deeper subject answers no however you compare it. The depth
+// is not knowable up front; it IS knowable here, from the subject in hand. So this asks the
+// commit the question it can answer exactly (entity.Commit.ChangedAt).
 //
-// It over-links rather than under-links, and deliberately: two deep entities under one
-// three-segment ancestor report as the same event, so a firing about one is linked to a commit
-// that may have changed the other. That direction is the safe one — the chain is what the
-// throttle uses to STOP a runaway, so a spurious link makes it more eager and a missing one
-// makes it blind. Reporting at the entity's real depth is WatchSubtree's to fix
-// (docs/working/entity-tree.md §5), and this is the honest reading until it does.
+// Answering no was not a near miss. Every firing about a derived entity began a FRESH chain, so
+// the causal report named the level crossing as an origin, and the throttle — which walks back
+// parents to see a loop — could not see one that ran through a derive.
 func changedIn(c entity.Commit, ref entity.Ref) bool {
-	segs := ref.Segs()
-	for _, ev := range c.Changes {
-		if ev.Ref == ref {
-			return true
-		}
-		if at := ev.Ref.Segs(); len(at) <= len(segs) && slices.Equal(at, segs[:len(at)]) {
-			return true
-		}
-	}
-	return false
+	// len(Segs()), not Len(): Len counts the segments BELOW the reserved root, and the delta a
+	// commit walks has that root as a level like any other. Asked with Len, every address in
+	// verse's own half was looked for one level too shallow.
+	return slices.Contains(c.ChangedAt(len(ref.Segs())), ref)
 }
 
 // blocks reports whether a firing of this trigger will wait on a decision — an ask or a park

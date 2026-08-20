@@ -1022,7 +1022,7 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 // the engine restarts over a verse still in that state. The latch idiom answers it — match
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
-func (s *LogdStore) WatchSubtree(prefix ...string) (<-chan Commit, func(), error) {
+func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error) {
 	// A trailing empty segment names no level and is dropped, which is the two-argument
 	// (system, kind) shape still speaking: `WatchSubtree("demo", "")` is a whole-system watch
 	// and always was.
@@ -1103,7 +1103,7 @@ func (s *LogdStore) WatchSubtree(prefix ...string) (<-chan Commit, func(), error
 		// commit: this watch reports one subtree, and a consumer of it has no use for the
 		// revisions where its slice stood still.
 		emitDiff := func() bool {
-			cur := entitiesFromDoc(doc, s.root, prefix)
+			cur := entitiesFromDoc(doc, s.root, prefix, depth)
 			var changes []Event
 			for ref, p := range cur {
 				// ir.Node.DeepEqual, NOT reflect.DeepEqual. A node carries structural
@@ -1256,29 +1256,29 @@ func stateDoc(at *ir.Node, segs []string) *ir.Node {
 // WatchSubtree maintains by applying watch events), keyed by full Ref. It navigates to
 // the watched (system[,kind]) node and walks the remaining depth to the entity leaves —
 // pure structure, no diff interpretation.
-func entitiesFromDoc(doc *ir.Node, root string, prefix []string) map[Ref]Payload {
+func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[Ref]Payload {
 	node := childByKey(doc, root)
 	for _, p := range prefix {
 		node = childByKey(node, p)
 	}
 	out := map[Ref]Payload{}
-	if node == nil || node.Type != ir.ObjectType {
+	if node == nil || node.Type != ir.ObjectType || depth < len(prefix) {
 		return out
 	}
 	// What the watch fixed, plus what the document still carries below it, is the address —
-	// so the remaining depth is a subtraction rather than a case per watch shape.
-	full := Depth
-	if len(prefix) > 0 && prefix[0] == VerseRoot {
-		full++
-	}
-	walkLeaves(node, full-len(prefix), func(segs []string, v *ir.Node) {
+	// so the remaining depth is a subtraction. The TOTAL is the caller's: it used to be the
+	// fixed arity computed here, which left a watch unable to report an entity deeper than
+	// three (see Store.WatchSubtree).
+	walkLeaves(node, depth-len(prefix), func(segs []string, v *ir.Node) {
 		// A missing leaf is nothing; a null one is an entity holding null. The document here is
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
 		// `!delete` by removing the key — so absence never reaches this as a value.
 		if v == nil {
 			return
 		}
-		if ref, ok := RefOf(append(append([]string{}, prefix...), segs...)); ok {
+		// RefOfAny, not RefOf: the depth was named by the caller, so the only thing left to
+		// refuse is an empty segment — a nameless level addresses nothing.
+		if ref, ok := RefOfAny(append(append([]string{}, prefix...), segs...)); ok {
 			out[ref] = nodeToPayload(v)
 		}
 	})
@@ -1488,7 +1488,7 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 				out = append(out, Commit{
 					Rev:     ev.Commit,
 					Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc),
-				})
+				}.WithDelta(childByKey(ev.Patch, s.root)))
 			}
 		}
 	}
@@ -1651,7 +1651,10 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		s.doc = applyDelta(s.doc, ev.Patch)
 		doc := s.doc
 		s.mu.Unlock()
-		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)})
+		// The delta rides along, so a consumer whose addresses are deeper than the arity
+		// Changes was built at can ask ChangedAt for an exact answer.
+		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
+			WithDelta(childByKey(ev.Patch, s.root)))
 	}
 }
 

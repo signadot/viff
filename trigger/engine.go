@@ -279,7 +279,9 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
 	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike
 	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
-	if ch, unsub, err := e.store.WatchSubtree(mirror.System, "instance"); err == nil {
+	// The mirror's own depth: a run's record stands at `<task>.<instance>.<id>`, three under
+	// this store's root, so that is what the watch reports at.
+	if ch, unsub, err := e.store.WatchSubtree(entity.Depth, mirror.System, "instance"); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
 		e.tracef("mirror subtree watch: %v", err)
@@ -315,7 +317,11 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 	}
 	ctx, cancel := context.WithCancel(e.bgctx)
 	for _, st := range subtrees {
-		ch, unsub, err := e.store.WatchSubtree(st.Path()...)
+		// AT THE SUBTREE'S OWN DEPTH — the depth the match that named it says its subjects
+		// stand at. Reported at the fixed arity instead, a change to anything deeper arrived
+		// as a change to its three-segment ancestor, which is not the entity this rule is
+		// about (see entity.Store.WatchSubtree).
+		ch, unsub, err := e.store.WatchSubtree(st.Depth(), st.Path()...)
 		if err != nil {
 			cancel() // stop this trigger's already-opened watchers; none of it is installed
 			return fmt.Errorf("scoped trigger %q: watch %s: %w", t.Name, strings.Join(st.Path(), ":"), err)

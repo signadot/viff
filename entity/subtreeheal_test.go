@@ -27,7 +27,7 @@ func TestSubtreeWatchSurvivesABurst(t *testing.T) {
 	subtreeHealAfter, subtreeHealMax = 2*time.Second, 4*time.Second
 
 	s := openStore(t)
-	ch, unsub, err := s.WatchSubtree("bench", "k")
+	ch, unsub, err := s.WatchSubtree(Depth, "bench", "k")
 	if err != nil {
 		t.Fatal(err)
 	}

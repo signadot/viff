@@ -357,7 +357,7 @@ func TestSameValueWriteRaisesNoCommit(t *testing.T) {
 
 	root, unsubRoot := s.Observe()
 	defer unsubRoot()
-	sub, unsubSub, err := s.WatchSubtree("demo", "pr")
+	sub, unsubSub, err := s.WatchSubtree(Depth, "demo", "pr")
 	if err != nil {
 		t.Fatalf("WatchSubtree: %v", err)
 	}

@@ -843,10 +843,26 @@ type Subtree struct {
 	// what the tree operations below do, and they are asked at install and at watch setup
 	// rather than per event.
 	kp string
+	// depth is how deep the entities this subtree is watched FOR stand — the whole address's
+	// depth, not the depth below the prefix. A watch cannot work it out (a document does not
+	// say where its entities end), and the thing that knows is whatever named the subtree: a
+	// match knows how deep its subjects are, and a caller naming one entity knows its depth.
+	//
+	// It is part of the value because a Subtree is a map key and one watch is opened per
+	// distinct one — two rules reading one prefix at two depths are two watches, which is
+	// exactly right.
+	depth int
 }
+
+// Depth is how deep the entities under this subtree stand. See the field.
+func (s Subtree) Depth() int { return s.depth }
 
 // SubtreeAt builds the subtree standing at these segments, a leading `verse` being the root
 // like any other segment.
+//
+// Its depth is the segments' own: this names A PLACE, and the caller that watches one named
+// this way is watching what stands AT it. A prefix whose entities are deeper comes from
+// subtreeOf, which asks the match.
 func SubtreeAt(segs ...string) Subtree {
 	for len(segs) > 0 && segs[len(segs)-1] == "" {
 		segs = segs[:len(segs)-1]
@@ -857,7 +873,7 @@ func SubtreeAt(segs ...string) Subtree {
 			out = append(out, sg)
 		}
 	}
-	return Subtree{kp: entity.JoinSegs(out)}
+	return Subtree{kp: entity.JoinSegs(out), depth: len(out)}
 }
 
 // SubtreeOfPath builds the subtree a kinded path names.
@@ -934,10 +950,21 @@ func subtreeOf(m Match) Subtree {
 				break
 			}
 		}
-		return SubtreeAt(segs[:cut]...)
+		return atDepth(SubtreeAt(segs[:cut]...), len(segs))
 	}
-	return SubtreeAt(append(rootSegs(m.Root()), m.System(), m.Kind())...)
+	// THE DIMENSION FORM NAMES THE ORDINARY ARITY, which is what its own Select does (it lists
+	// at entity.Depth rather than at the pattern's length), so that is the depth its watch
+	// reports at. A path form says its own.
+	full := entity.Depth
+	if m.Root() != "" {
+		full++
+	}
+	return atDepth(SubtreeAt(append(rootSegs(m.Root()), m.System(), m.Kind())...), full)
 }
+
+// atDepth is a subtree watched for entities at a depth other than its own — a PREFIX, where
+// what stands under it is deeper than the prefix itself.
+func atDepth(s Subtree, depth int) Subtree { s.depth = depth; return s }
 
 // rootSegs is the leading root segment of a path, or none.
 func rootSegs(root string) []string {

@@ -98,6 +98,17 @@ type Store interface {
 	// implementation built a path out of the two and the second was optional. A trailing
 	// empty segment is dropped, so the pair form still says what it said.
 	//
+	// DEPTH IS THE CALLER'S, and it is the whole address's depth rather than the depth below
+	// the prefix — the same number `ListAt` takes, for the same reason. A document does not say
+	// where its entities end (docs/working/entity-tree.md), so a watch cannot know: it used to
+	// report at the fixed arity, which meant a change to something deeper arrived as a change
+	// to its three-segment ancestor. Every consumer that compared the reported ref to an
+	// address it already had — the causal chain is the one that bit — was then comparing an
+	// ancestor with a descendant and answering no.
+	//
+	// The caller always knows. A rule's own pattern says how deep its subjects are, and a
+	// caller watching one entity passes that entity's depth.
+	//
 	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
 	// stands in the slice as Set events, then streams changes. A rule is a statement about
 	// the world, and a trigger installed over a populated verse should act on the entities
@@ -108,7 +119,7 @@ type Store interface {
 	// edge — a value that appeared and disappeared across two commits of one burst would
 	// leave no trace in the merged diff — and a consumer cannot recover a transition the
 	// stream never reported.
-	WatchSubtree(prefix ...string) (<-chan Commit, func(), error)
+	WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
 	// This is the seam for local-dev / sandbox federation — a developer's working tree

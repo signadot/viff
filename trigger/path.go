@@ -46,14 +46,12 @@ package trigger
 // read is answered from ONE snapshot taken at the causing commit (occasion.snapshot), so a
 // predicate is evaluated against the same world the rule was evaluated against.
 //
-// EVERY SEGMENT ABOVE THE ENTITY IS A LITERAL OR A `*`, in both. That is not style: the level
-// check reads the leading segments, so a reference or a glob there would make it undecidable at
-// install — the same reason a stratum's own pattern may not constrain an id. A whole segment
-// left OPEN is fine, because a stratum's pattern has to prefix the read's place to place it at
-// all, and a `*` where the stratum has a literal does not — so such a read lands in no stratum
-// and is refused there. That is what lets a rule read the set another rule DERIVED, whose
-// addresses carry the deriving rule and its subject and are therefore not literal below the
-// target.
+// EVERY SEGMENT ABOVE THE ENTITY IS A NAME OR AN OPEN POSITION, in both — a literal or a bare
+// `*`, never a glob or a reference. The LEVEL is decided by the literal prefix, which is
+// calculated rather than assumed (pathSpec.place): it stops at the first open position, and a
+// read whose settled part places it in no stratum is refused there. That is what lets a rule
+// read the set another rule DERIVED, whose addresses carry the deriving rule and its subject and
+// are therefore not literal below the target.
 //
 // THEY COPY, AND DO NOT TRACK. Whatever is read is read once, at the commit that caused the
 // firing. If it changes afterwards nothing re-runs: this rule fires again only when its own
@@ -126,10 +124,15 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 // validateAt is validate for an address written as a path. The rules are the same ones, said
 // about segments rather than about three named dimensions.
 //
-// WHAT IS FIXED AT INSTALL is the point of both: the level check asks whether a read lands at or
-// below the rule's own stratum, and it can only ask that of the segments it can read. So every
-// segment but the LAST is a literal or a `*` — the last is the entity being named, which may
-// glob in a list read and may be a `$reference` in either.
+// A SEGMENT ABOVE THE ENTITY IS A NAME OR AN OPEN POSITION — a literal or a bare `*` — and the
+// last is the entity being named, which may glob in a list read and may be a `$reference` in
+// either.
+//
+// What is REFUSED above the entity is a glob and a reference, and for one reason each: a glob
+// there is a pattern nothing evaluates per segment on this path, and a reference is not resolved
+// until the firing. Neither is refused because the level check needs them, which is what this
+// rule used to say — the level is decided by the literal PREFIX (see place), calculated, so an
+// open position simply ends it and the check refuses a read it cannot place.
 func (p pathSpec) validateAt() error {
 	if len(p.At) < 2 {
 		return fmt.Errorf("!%s: an address names a place and something in it; %q names %d segment(s)",
@@ -138,15 +141,10 @@ func (p pathSpec) validateAt() error {
 	for i, seg := range p.At[:len(p.At)-1] {
 		lit, ok := entity.PathLiteral(seg)
 		if isWildSeg(seg) {
-			// A WHOLE SEGMENT LEFT OPEN IS ALLOWED, and the level check is what makes it safe
-			// rather than a hole. A stratum's pattern must PREFIX the read's place to place it
-			// (pathContains), and a `*` where the stratum has a literal does not — so a read
-			// whose wildcard sits above the level being decided lands in no stratum and is
-			// refused there, with the message that says so.
-			//
-			// It is allowed because a derived entity is as deep as what it is about: reading
-			// the set a rule derived means naming the target literally and leaving the rule and
-			// the subject open, which under the old rule was unspellable.
+			// A WHOLE SEGMENT LEFT OPEN, which is what reaching a tree needs: a derived entity
+			// stands at its target, the rule that derived it and the subject's own segments, so
+			// reading the set a rule derived means naming the target and leaving the rest open.
+			// The level is decided by what is settled above it — see place.
 			continue
 		}
 		if !ok || strings.ContainsAny(lit, "$*?[") {
@@ -300,16 +298,43 @@ func (p pathSpec) match() Match {
 	return m
 }
 
-// place is the read's address as a PATTERN OF A PLACE — the address minus the entity being
-// named, which is what a stratum owns and what the level check compares against.
+// place is the read's address as a PATTERN OF A PLACE — what a stratum owns, and what the level
+// check compares against.
 //
 // A read names an entity; a stratum names where entities live. Comparing the two directly would
 // ask whether a stratum owns one id, which it never does.
+//
+// IT IS THE LITERAL PREFIX, calculated, and that is what lets a read reach a tree. The address
+// minus its last segment was the same answer while every segment above the entity was literal —
+// but a derived entity stands at its target, the rule that derived it, and the SUBJECT'S own
+// segments, so reading the set a rule derived means leaving everything below the target open.
+// Stopping at the first non-literal segment names exactly the part that decides the level, and
+// the check then either places it in one stratum or refuses it for naming none.
+//
+// The refusal is not a fallback. A stratum's pattern has to PREFIX the place to contain it, so a
+// place that stops above the level being decided is contained by nothing and is refused there,
+// by the check that is the reason for the rule.
 func (p pathSpec) place() Match {
 	if len(p.At) > 0 {
-		return Match{mKeyPath: p.At[:len(p.At)-1]}
+		return Match{mKeyPath: literalPrefix(p.At)}
 	}
 	return Match{mKeySystem: p.System, mKeyKind: p.Kind}
+}
+
+// literalPrefix is the leading segments of an address that name a place rather than leaving one
+// open — the deepest part of it that is settled at install.
+//
+// The LAST segment is never in it, whatever it holds: that one names the entity, and a place is
+// what the entity stands in.
+func literalPrefix(at []*ir.Node) []*ir.Node {
+	out := at[:0:0]
+	for _, seg := range at[:len(at)-1] {
+		if _, ok := entity.PathLiteral(seg); !ok {
+			break
+		}
+		out = append(out, seg)
+	}
+	return out
 }
 
 // ref is the entity a one-node read names, for an address written as a path.

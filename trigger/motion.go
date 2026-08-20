@@ -356,7 +356,7 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 			return
 		}
 		seen[st] = true
-		ch, unsub, err := e.store.WatchSubtree(st.Path()...)
+		ch, unsub, err := e.store.WatchSubtree(st.Depth(), st.Path()...)
 		if err != nil {
 			return
 		}
