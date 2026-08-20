@@ -218,7 +218,7 @@ state() {
 		return
 	fi
 	step "the question — an entity, and it knows who owns it"
-	v data "verse:gate:question:$q"
+	v data verse gate question "$q"
 	printf '\n  resolver:      the owner. absent means ⊤, the docket a person reads.\n'
 	printf '  escalatesAt:   its clock, if the owner has a deadline. absolute, so a restart cannot slide it.\n'
 	printf '  reownedFrom/Why: the handover, once it has changed hands.\n'

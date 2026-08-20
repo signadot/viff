@@ -5,7 +5,7 @@
 # review that fails, a finding carried from one review to the next — and none of it is reachable
 # against staging in less than ten minutes: a real review is an llm task over a real checkout,
 # behind a real git source polling a real remote. Iterating on the rules that way does not
-# converge. Here a push is a `verse data git:head:verse --put` and the review is a brokered task
+# converge. Here a push is a `verse data git head verse --put` and the review is a brokered task
 # this script completes with a fixture, so the whole cycle is a few seconds and the timing is the
 # script's rather than the model's.
 #

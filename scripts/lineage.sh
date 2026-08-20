@@ -328,7 +328,7 @@ note "the trace's id is f(rule, subject) — re-merging #42 rewrites THIS addres
 
 # #44 is the control. It shares a headSha with #42, so a rule keyed on the commit would have
 # correlated it; the subject predicate is what says only merged PRs have lineage.
-v -o tony state lineage | grep -qF 'github:pr:acme/widget#44' &&
+v -o tony data lineage | grep -qF 'github:pr:acme/widget#44' &&
 	die "an unmerged PR was correlated — the subject predicate is not selecting"
 ok "#44 is unmerged, so nothing was derived about it (it shares its headSha with #42)"
 
@@ -361,7 +361,7 @@ rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -
 REL="lintag:release:v1.4.$rev"
 v data --ref "$REL" --put '{stage: cut, target: main}' >/dev/null
 until_ok 100 "the manifest never landed" \
-	bash -c "$BIN ${scope[*]} data '$REL' 2>/dev/null | grep -q shipped"
+	bash -c "$BIN ${scope[*]} data --ref '$REL' 2>/dev/null | grep -q shipped"
 # shellcheck disable=SC2086
 v data --ref "$REL"
 printf '\n'
@@ -421,9 +421,9 @@ EDGES
 
 step "poke at it"
 cat <<EOF
-  $BIN state lineage                       every correlation verse has written
+  $BIN data lineage                        every correlation verse has written
   $BIN data $tref
-  $BIN data $REL    the reassembled chain
+  $BIN data --ref $REL    the reassembled chain
   $BIN flows                               the flow, keyed by one id
   ./scripts/lineage.sh --clean             put it all back
 EOF
