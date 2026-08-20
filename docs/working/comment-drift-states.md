@@ -154,14 +154,13 @@ Standing still, it is two fields — and the absence of `covering` is what says 
 flight:
 
 ```tony
-verse data verse-dev drift at
-
+# verse data verse-dev drift at
 sha: 07c4d164220836aec5c04afd0cb53a39067f90e4
 stage: idle
 ```
 
 `advance` asks whether `covering` is among the shas of ranges that are `done`, so a failed review
-is not in that set and the cursor stops where it broke. `verse data verse-dev.drift.at --put
+is not in that set and the cursor stops where it broke. `verse data verse-dev drift at --put
 '{stage: idle}'` is the retry, and by then the range covers everything since.
 
 ## The range: one review, with a subject of its own
@@ -199,8 +198,7 @@ stateDiagram-v2
 A range that has been through, on a push carrying no Go at all — `files: 0` is a real answer:
 
 ```tony
-verse data verse-dev drift range
-
+# verse data verse-dev drift range
 07c4d164220836aec5c04afd0cb53a39067f90e4:
   from: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
   outstanding: []
@@ -247,8 +245,7 @@ One row, after the fix landed and the review that followed confirmed it — `at`
 confirmed, `proposedAt` where the fix was proposed:
 
 ```tony
-verse data 'verse-dev.drift.finding."entity.JoinSegs"'
-
+# verse data verse-dev drift finding entity.JoinSegs
 at: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
 proposedAt: fc3175a731930673cbc03065f2359e92614133a5
 says: "the comment claims JoinSegs joins segments with a `/` and drops any that are empty, but the code joins with `.` and does not skip empty segments"
@@ -261,8 +258,11 @@ verse:
       subject: verse-dev.drift.range.643602e878685ad1fc4c2c2c799b2b13cd36dd8f
 ```
 
-The address is quoted because the id is: `entity.JoinSegs` carries a dot, and a kinded path
-quotes a segment whose content would otherwise split it.
+Read as STEPS — `verse data verse-dev drift finding entity.JoinSegs` — the id needs no quoting at
+all, because a segment handed over as its own word is never re-split. The same address written as
+one token is `'verse-dev.drift.finding."entity.JoinSegs"'`, quotes and all, since a Go symbol
+carries dots and a kinded path would otherwise read them as delimiters. Both name the entity; the
+steps form is the one a person can type.
 
 A fix lives on a branch until somebody approves it, and branches are declined, superseded and
 retired — so `proposedAt` records where the attempt was made while `status` stays `open`. A
@@ -297,6 +297,7 @@ as `says` so the docket can ask a real question, and is `stale` now because main
 base it was cut from:
 
 ```tony
+# verse data verse-dev merge proposal
 proposal-appeared@git:ref:verse_verse_auto_fc3175a7_review-range_…-962ad9e6+8b0cc03e:
   base: fc3175a731930673cbc03065f2359e92614133a5
   branch: verse/auto/fc3175a7/review-range_…-962ad9e6
@@ -305,7 +306,8 @@ proposal-appeared@git:ref:verse_verse_auto_fc3175a7_review-range_…-962ad9e6+8b
   sha: 610e3325e67393617fdb9596664f773e317a9634
   state: stale
 
-fc3175a731930673cbc03065f2359e92614133a5:            # the train for that tip
+# verse data verse-dev merge train
+fc3175a731930673cbc03065f2359e92614133a5:
   branches:
   - verse/auto/fc3175a7/review-range_…-962ad9e6
   decided: landed
