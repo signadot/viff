@@ -5,8 +5,8 @@
 #
 # Every rule verse runs has the same four parts (condition / gates / action, under a name).
 # What varies is which parts are present, and the variations below are the ones that change
-# how a rule BEHAVES rather than what it is about. Each acts on its own kind — demo:latch:*,
-# demo:seq:* — so several can stand at once without arguing over an entity.
+# how a rule BEHAVES rather than what it is about. Each acts on its own kind — demo.latch.*,
+# demo.seq.* — so several can stand at once without arguing over an entity.
 #
 #   ./scripts/charter-shapes.sh                   list the shapes
 #   ./scripts/charter-shapes.sh show    <shape>   print the rule, without installing it
@@ -274,7 +274,7 @@ drive_shape() {
 next_steps() {
 	# The subject twice: as the STEPS `verse data` takes, and as the one token `flow show`
 	# takes — a flow is keyed by its subject as the store renders it.
-	local sub_at="demo $1 1" sub="demo:$1:1" c="$BIN"
+	local sub_at="demo $1 1" sub="demo.$1.\"1\"" c="$BIN"
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
 	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub_at"
 	case "$1" in
