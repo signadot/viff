@@ -195,7 +195,7 @@ func listRefs(t *testing.T, q url.Values) []string {
 	if err != nil {
 		t.Fatalf("?at %q: %v", q.Get("at"), err)
 	}
-	refs := doc.Paths(at)
+	refs := doc.EntityPaths(at)
 	sort.Strings(refs)
 	return refs
 }
