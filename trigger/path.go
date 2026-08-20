@@ -387,15 +387,38 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 // splitAddress splits one address into the entity it starts from and the kpath it continues
 // into the payload with, empty when it names the entity whole.
 //
-// A REF IS TRIED FIRST, so every address that ever worked still names what it named: an id
-// carrying colons or dots is the id. Only a string that is not a ref is read as a kinded path,
-// and then the first three segments are the entity and the rest is the payload path — rendered
-// back through KPath.String, so `(scott)` and `[0]` survive into the read that will follow
-// them. (entity.ParsePath is the WRITE-side sibling, and refuses those, because a write cannot
-// reach into an array.)
+// WHICH SPELLING IT IS comes first, and it is decided by WHERE THE COLONS ARE — the rule
+// entity.DottedAddr states, asked here rather than restated. `Ref.String` only ever puts a colon
+// in the last segment, so a dotted string whose FIRST segment holds one is `system:kind:<id with
+// dots>` and nothing else; anything else with a dot in it is a path.
+//
+// ParseRef used to be tried first, which is the same answer for every address whose segments are
+// plain and the wrong one as soon as a segment is quoted:
+//
+//	verse-dev.drift.head."head-moved@git:head:verse@aaaa1111".result.report
+//
+// SplitN on `:` found three parts inside the quotes and ParseRef accepted them, so the entity was
+// `verse-dev.drift.head."head-moved@git` : `head` : `verse@aaaa1111".result.report` and the read
+// answered "nothing stands there" — for an address of exactly the shape every derived entity has
+// (git-issue p5qcmpgch12ksd4wgnn0). The colon rule reads it as the six segments it is.
+//
+// THE ENTITY IS THE FIRST THREE SEGMENTS and the rest is the payload path — rendered back through
+// KPath.String, so `(scott)` and `[0]` survive into the read that will follow them.
+// (entity.ParsePath is the WRITE-side sibling, and refuses those, because a write cannot reach
+// into an array.)
+//
+// Counting to three is not where a package-deep entity ends — `verse-dev.drift.head.abc` is one
+// entity, four segments — and it does not have to be. A verse is ONE DOCUMENT and entity-hood is
+// a LENS over it (docs/working/entity-tree.md), so the node at `verse-dev:drift:head` is the
+// subtree holding `abc`, and a kpath continuing `abc.result.report` through it reaches the same
+// value the deep entity's own read would. Checked, not assumed: both spellings answer `hello`
+// against the same fixture. What the count cannot survive is a WRONG SPLIT of the segments
+// themselves, which is what the rule above is for.
 func splitAddress(s string) (entity.Ref, string, error) {
-	if ref, err := entity.ParseRef(s); err == nil {
-		return ref, "", nil
+	if _, dotted := entity.DottedAddr(s); !dotted {
+		if ref, err := entity.ParseRef(s); err == nil {
+			return ref, "", nil
+		}
 	}
 	kp, err := kpath.Parse(s)
 	if err != nil {

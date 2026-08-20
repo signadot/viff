@@ -215,14 +215,19 @@ func ParseRef(s string) (Ref, error) {
 // package, and the confinement refused the write. The review that had just done its work could
 // not record that it had: docs/working/entity-tree.md §7.
 func ParseAddr(s string) (Ref, error) {
-	if segs, ok := dottedAddr(s); ok {
+	if segs, ok := DottedAddr(s); ok {
 		return RefAt(segs...), nil
 	}
 	return ParseRef(s)
 }
 
-// dottedAddr reads the path spelling, or reports that this is not one.
-func dottedAddr(s string) ([]string, bool) {
+// DottedAddr reads the path spelling, or reports that this is not one.
+//
+// Exported because ParseAddr is not the only reader that has to make this call. A READ ADDRESS
+// (trigger.splitAddress) is an address followed by a payload path, so it cannot use ParseAddr —
+// it needs the same discriminator and a different split. Stating the rule twice is how the two
+// would come to disagree about which spelling a string is.
+func DottedAddr(s string) ([]string, bool) {
 	if !strings.Contains(s, ".") {
 		return nil, false // no dots: the colon form, or nothing
 	}
