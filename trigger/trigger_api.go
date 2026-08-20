@@ -577,14 +577,68 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	// launch.expand sorts its keys longest-first, so the dotted key wins over the bare one.
 	// That sort was written for an unrelated reason and is what makes this work at all.
 	//
-	// `value` is absent on purpose: it is a payload, which has no text form, and the payload's
-	// own top-level fields are already flat here ($stage). `commit` is absent because a spawn
-	// is not where provenance belongs and a firing may have none.
+	// `commit` is absent because a spawn is not where provenance belongs and a firing may have
+	// none.
 	b[refSubject+"."+subjPartRef] = subject.String()
 	b[refSubject+"."+subjPartSystem] = subject.System()
 	b[refSubject+"."+subjPartKind] = subject.Kind()
 	b[refSubject+"."+subjPartID] = subject.ID()
+	// `value`, AND EVERY PATH INTO IT. In a node position `$subject.value.sha` is a kpath into
+	// the payload and has always resolved; in a string it did not, because this map is all a
+	// spawn's strings get and `value` was left out of it — so the bare `subject` key matched the
+	// prefix and `.value.sha` stayed literal text:
+	//
+	//	Review the drift between verse-dev:drift:at.value.sha and verse-dev:drift:at.value.covering
+	//
+	// which is what went to the runner (git-issue s4rx0tr3h12ksa8fgsn0). A charter then had to
+	// use the flat `$sha` in a prompt and `$subject.value.sha` in the hook two lines below it,
+	// each being the only spelling that works where it sits, with nothing saying so.
+	//
+	// It was left out on the argument that a payload has no text form. That stopped being true
+	// when bindText learned to render a composite as tony, which is what `$stage` already does
+	// for an object-valued field — so `value` is bound the same way, and so is every path under
+	// it. `launch.expand` substitutes longest key first, which is what makes the deep path win
+	// over the shallow one and both over the bare `subject`.
+	if text, ok := bindText(payload); ok {
+		b[refSubject+"."+subjPartValue] = text
+	}
+	for path, v := range payloadPaths(payload) {
+		if text, ok := bindText(v); ok {
+			b[refSubject+"."+subjPartValue+"."+path] = text
+		}
+	}
 	return b
+}
+
+// payloadPaths is every node under an object payload, keyed by its dotted path — the spelling a
+// charter writes after `$subject.value.`.
+//
+// A SEGMENT HOLDING A DOT IS SKIPPED, itself and everything under it. This map is matched by
+// literal text, so `a.b` as a field name and `a` containing `b` would produce the same key and
+// one would silently win; a name that cannot be addressed unambiguously is better left
+// unaddressable. Such a field is still reachable as a node (`$subject.value` resolves through
+// kpath, which quotes), and its top-level form is still flat here.
+func payloadPaths(payload entity.Payload) map[string]entity.Payload {
+	out := map[string]entity.Payload{}
+	var walk func(n entity.Payload, prefix string)
+	walk = func(n entity.Payload, prefix string) {
+		if !entity.IsObj(n) {
+			return
+		}
+		for k, v := range ir.ToMap(n) {
+			if strings.Contains(k, ".") {
+				continue
+			}
+			path := k
+			if prefix != "" {
+				path = prefix + "." + k
+			}
+			out[path] = v
+			walk(v, path)
+		}
+	}
+	walk(payload, "")
+	return out
 }
 
 // ParseMode maps a gate mode name to a task.Mode.
