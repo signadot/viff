@@ -164,7 +164,11 @@ setup() {
 # The mirror is in verse's own half (`verse:task:instance:*`) and `--paths` answers in steps,
 # so the id is the last step of each line.
 run_id() {
-	v data --paths --if "{flow: \"$SUBJECT\", pending: null}" verse.task.instance 2>/dev/null |
+	# STEPS in and steps out: the address is a vector, and `--paths` answers one address per
+	# line as words — so the run id is the LAST word. `--depth 4` bounds the walk to the
+	# instances themselves (verse + task + instance + id); without it the walk goes on into
+	# each payload and the last word is a field name.
+	v data --paths --depth 4 --if "{flow: \"$SUBJECT\", pending: null}" verse task instance 2>/dev/null |
 		awk 'NF {print $NF}' | head -1
 }
 

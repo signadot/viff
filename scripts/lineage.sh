@@ -142,12 +142,14 @@ if $clean; then
 	ok "removed the rules"
 	# The derived entities are the engine's, named f(rule, subject) — so they are removed by
 	# the address the engine chose, not by one this script invented.
-	# `--paths` answers in steps, one address per LINE — so it is read a line at a time and
-	# handed over whole. Splitting on whitespace would tear each address into three words.
+	# `--paths` answers in steps, one address per LINE — read a line at a time, and handed over
+	# UNQUOTED so the shell splits it into the steps it is. `--depth 3` because the walk goes
+	# INTO the payload: without it this would try to remove every field of every entity.
 	for sys in lineage lintag; do
 		while IFS= read -r e; do
-			[ -n "$e" ] && v data --ref "$e" --rm >/dev/null 2>&1 || true
-		done < <(v data --paths "$sys" 2>/dev/null)
+			# shellcheck disable=SC2086
+			[ -n "$e" ] && v data $e --rm >/dev/null 2>&1 || true
+		done < <(v data --paths --depth 3 "$sys" 2>/dev/null)
 	done
 	# --ref: these are refs, and a positional is a step.
 	for e in "${ENTITIES[@]}"; do v data --ref "$e" --rm >/dev/null 2>&1 || true; done
@@ -312,7 +314,7 @@ for _ in $(seq 1 100); do
 			tref=$t
 			break 2
 		fi
-	done < <(v data --paths lineage 2>/dev/null)
+	done < <(v data --paths --depth 3 lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||
