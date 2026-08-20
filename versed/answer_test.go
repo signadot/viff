@@ -61,7 +61,16 @@ func settledQuestion(t *testing.T, srv *Server, id string) map[string]any {
 
 func question(t *testing.T, srv *Server, id string) map[string]any {
 	t.Helper()
-	e, _, _ := srv.Store.Get(mirror.QuestionRef(id))
+	e, ok, err := srv.Store.Get(mirror.QuestionRef(id))
+	// SAY WHICH IT WAS. Dropping these turned every unreadable or absent question into an
+	// empty record, so a test asserting on one field failed as "the field is <nil>" — a
+	// sentence about the record when the truth was that there was no record, or no read.
+	if err != nil {
+		t.Fatalf("read question %s: %v", id, err)
+	}
+	if !ok {
+		t.Fatalf("no question stands at %s", id)
+	}
 	return entity.ToObj(e.Payload)
 }
 

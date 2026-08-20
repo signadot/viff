@@ -305,8 +305,11 @@ func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
 }
 
 // Paths is every address in a document, in order, deepest last within each branch — the walk
-// `verse data --paths` prints, AS STEPS (see JoinSteps): the segments separated by spaces, each
-// quoted only where a shell would otherwise mis-split or expand it.
+// `verse data --paths` prints.
+//
+// AS SEGMENTS, so the caller renders them: `--paths` joins with JoinSteps and `--kpaths` with
+// JoinSegs, and the walk has no opinion about which. One walk, two spellings, rather than the
+// walk knowing about either.
 //
 // EVERY node, not the ones at some depth, and that is the difference between a listing that can
 // be wrong and one that cannot. Entity-hood is a LENS rather than a stored fact
@@ -319,7 +322,7 @@ func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
 // max is the total number of segments an address may have, so it is comparable with the depths
 // the rest of the model counts in (`entity.Depth`); 0 means no bound. The prefix the read fixed
 // is part of every address, so a max below it yields nothing rather than truncating into a lie.
-func (d Doc) Paths(at *kpath.KPath, max int) []string {
+func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
 	prefix, err := pathPrefix(at)
 	if err != nil {
 		return nil
@@ -327,11 +330,11 @@ func (d Doc) Paths(at *kpath.KPath, max int) []string {
 	if max > 0 && max < len(prefix) {
 		return nil
 	}
-	var out []string
+	var out [][]string
 	var rec func(n *ir.Node, segs []string)
 	rec = func(n *ir.Node, segs []string) {
 		if len(segs) > len(prefix) {
-			out = append(out, JoinSteps(segs))
+			out = append(out, append([]string{}, segs...))
 		}
 		if max > 0 && len(segs) >= max {
 			return

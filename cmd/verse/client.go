@@ -502,7 +502,7 @@ func filterBy(q url.Values, pattern, at string) error {
 
 // fieldPath splits a dot-separated --if-at into the segments the wire takes.
 //
-// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.ParsePath), which quotes a
+// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.TargetOf), which quotes a
 // field name carrying a dot, while this stays the flat split because `--if-at` says where to
 // root a predicate inside one payload rather than naming a place in the verse. The wire takes
 // the segments as a list either way, so nothing but this spelling is in the way if a dotted
@@ -565,7 +565,7 @@ func watchCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "watch").
-		WithSynopsis("watch — stream store changes (cursored): watch [<path>] [--if <pattern>]").
+		WithSynopsis("watch — stream store changes (cursored): watch [<step>…] [--if <pattern>]").
 		// --trim only: watch's own --if is the SERVER's selector, which narrows what crosses
 		// the wire rather than what is printed of it.
 		WithOpts(append(opts, trimOpt()...)...).
@@ -849,14 +849,19 @@ type stateConfig struct {
 	// --create expects nothing, --update expects something, --expect names what.
 	If    string `cli:"name=if desc='only entities whose payload matches this tony pattern'"`
 	IfAt  string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
-	Paths bool   `cli:"name=paths desc='print one address per line instead of the document'"`
+	Paths bool   `cli:"name=paths desc='print one address per line instead of the document, as steps'"`
+	// KPaths is the same listing in the KINDED PATH spelling: one TOKEN per line, quoted where
+	// the grammar needs it. Steps are what a person types and what `xargs -L1` hands back; a
+	// kinded path is what survives being captured into a shell variable and passed as ONE
+	// argument, which steps cannot — `ref=$(… | head -1); verse data --at "$ref"`.
+	KPaths bool `cli:"name=kpaths desc='…the same listing as one kinded path per line (for --at)'"`
 	// Depth BOUNDS the walk rather than picking a level out of it, and the difference is
 	// whether a listing can be silently wrong. Entity-hood is a lens rather than a stored fact
 	// (docs/working/entity-tree.md), so nothing in an answer says where an entity ends — and
 	// `--paths` asking for one depth answered with whatever happened to live there and omitted
 	// everything deeper, which is how a place holding four-segment records listed as the place
 	// itself and nothing else. The walk omits nothing; this says how far it goes.
-	Depth int `cli:"name=depth desc='with --paths: bound the walk to addresses of at most N segments (default: no bound)'"`
+	Depth int `cli:"name=depth desc='with --paths/--kpaths: bound the walk to addresses of at most N segments (default: no bound)'"`
 
 	// WHAT TO DO IS A FLAG, and the positional is a path in every case — the same reason
 	// `verse c` says it that way. `get`, `put` and `rm` were verbs, and a path's first segment
@@ -897,7 +902,7 @@ func dataCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "data").WithAliases("d").
-		WithSynopsis("data — the verse at a path: data [<path>] [--if <pattern>] [--paths]; --put|--rm one").
+		WithSynopsis("data — the verse at an address: data [<step>…] [--if <pattern>] [--paths]; --put|--rm one").
 		// --trim only, for the reason watch takes only that: `data --if` is the server's
 		// selector, and it names WHICH ENTITIES rather than what to print of them.
 		WithOpts(append(opts, trimOpt()...)...).
@@ -986,8 +991,10 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("data: %w", err)
 	}
-	if cfg.Paths {
-		return printPaths(cc, resp, kp, cfg.Depth)
+	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
+	// passed beside --paths.
+	if cfg.Paths || cfg.KPaths {
+		return printPaths(cc, resp, kp, cfg.Depth, cfg.KPaths)
 	}
 	return printDoc(cc, resp, kp)
 }
@@ -1137,7 +1144,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 // token inside a rendered ref, so the server would only be sending back what the document
 // already says. It is the `ls -R` of a read — what a script uses instead of grepping `ref:` out
 // of a listing, which is what scripts had to do while the answer was a table.
-func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int) error {
+func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int, kpaths bool) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -1181,10 +1188,20 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	// `xargs` understands them, and reads the kpath form's `\"` as an unterminated quote.
 	// Checked, both idioms, including a segment holding a space, a `*`, a double quote, and the
 	// empty one.
-	for _, p := range (entity.Doc{Node: node}).Paths(at, depth) {
-		fmt.Fprintln(cc.Out, p)
+	for _, segs := range (entity.Doc{Node: node}).Paths(at, depth) {
+		fmt.Fprintln(cc.Out, renderAddr(segs, kpaths))
 	}
 	return nil
+}
+
+// renderAddr is one address in the spelling a listing was asked for: STEPS by default — the
+// words this command line takes — or a KINDED PATH under `--kpaths`, which is the one token
+// `--at` reads back. The walk answers in segments so this is the only place either is chosen.
+func renderAddr(segs []string, kpaths bool) string {
+	if kpaths {
+		return entity.JoinSegs(segs)
+	}
+	return entity.JoinSteps(segs)
 }
 
 // address reads the address positionals a read command takes: a VECTOR OF STEPS, one segment
@@ -1226,10 +1243,11 @@ func address(args []string) ([]string, error) {
 // addressWire is the address as the WIRE takes it — a kinded path — from whichever of the two
 // spellings was used, and exactly one may be.
 //
-// Steps are joined here and never scanned back: JoinSegs quotes each segment as kpath needs, and
-// the server parses with ParseAt, so the round trip holds for every segment. `--at` is already
-// that spelling and goes through verbatim, which is what lets it carry a WILDCARD — the one
-// thing steps cannot say, since a `*` step is the id that is an asterisk.
+// Steps are joined here and never scanned back: KPathOf quotes each segment as kpath needs and
+// applies the three step clauses (a name, a quoted name, an array access), and the server parses
+// with ParseAt, so the round trip holds for every segment. `--at` is already that spelling and
+// goes through verbatim, which is what lets it carry a WILDCARD — the one thing steps cannot
+// say, since a `*` step is the id that is an asterisk.
 func addressWire(args []string, at string) (string, error) {
 	if at != "" {
 		// Declared as a kinded path, so it goes through as one — WITHOUT the segment view

@@ -103,6 +103,10 @@ verse
                                              --depth bounds the walk to addresses of at most
                                              <n> segments (default: no bound)
                                              flags go on either side of the path
+          [--kpaths]                         … the same listing as one KINDED PATH per line,
+                                             which is the spelling that survives a shell
+                                             variable as one argument:
+                                             `r=$(data --kpaths … | head -1); data --at "$r"`
           --put <payload>                    write it there: a write reaches object fields, not
                                              array elements. A put MERGES — fields it does not
                                              name are left alone, and --rm is how one goes away
@@ -136,9 +140,11 @@ verse
           [--depth <n>]                      how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [--scope <name>]                   …a federation's own charter instead
-          [--paths]                          one line per rule and level instead of the document,
-                                             as STEPS — the spelling this command takes, so
-                                             `c --paths | xargs -L1 verse c` round-trips. A
+          [--paths] [--kpaths]               one line per rule and level instead of the document.
+                                             --paths answers in STEPS — the spelling this
+                                             command takes, so `c --paths | xargs -L1 verse c`
+                                             round-trips — and --kpaths in one kinded path per
+                                             line, for a line captured into a shell variable. A
                                              package that holds nothing yet prints itself,
                                              since that is the state worth seeing
           <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its

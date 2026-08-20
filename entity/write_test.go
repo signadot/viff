@@ -290,10 +290,20 @@ func TestAbsentReadsAreNotFailures(t *testing.T) {
 	s := openStore(t)
 	mustWrite(t, s, Write{At: RefAt("demo", "pr", "1").At(), Value: Obj{"a": "1"}.Payload()})
 
+	// An entity whose payload is a SCALAR, so a read below it meets something that cannot
+	// hold an entity. logd calls that path_conflict rather than not_found (go-tony v0.0.187),
+	// and it is still nothing standing there — the distinction is about what is in the store,
+	// not about whether the read succeeded. Before this was classified, it answered not_found
+	// and read as absent; if it ever reads as a FAILURE again, `verse data demo pr 1 sub`
+	// answers 502 and says the store is unreachable.
+	mustWrite(t, s, Write{At: RefAt("demo", "scalar", "1").At(), Value: Raw(mustParseNode(t, `5`))})
+
 	for _, ref := range []Ref{
-		RefAt("demo", "pr", "2"),           // the id has never been written
-		RefAt("demo", "issue", "1"),        // nor the kind
-		VerseRef("motion", "channel", "x"), // nor the system
+		RefAt("demo", "pr", "2"),               // the id has never been written
+		RefAt("demo", "issue", "1"),            // nor the kind
+		VerseRef("motion", "channel", "x"),     // nor the system
+		RefAt("demo", "scalar", "1", "sub"),    // and here an ancestor is a number
+		RefAt("demo", "scalar", "1", "s", "u"), // two below it, so nothing resolves at all
 	} {
 		e, ok, err := s.Get(ref)
 		if err != nil {
