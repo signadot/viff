@@ -568,7 +568,7 @@ func watchCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "watch").
-		WithSynopsis("watch — stream store changes (cursored): watch [<path>] [--if <pattern>]").
+		WithSynopsis("watch — stream store changes (cursored): watch [<step>…] [--if <pattern>]").
 		// --trim only: watch's own --if is the SERVER's selector, which narrows what crosses
 		// the wire rather than what is printed of it.
 		WithOpts(append(opts, trimOpt()...)...).
@@ -865,7 +865,7 @@ type stateConfig struct {
 	// `--paths` asking for one depth answered with whatever happened to live there and omitted
 	// everything deeper, which is how a place holding four-segment records listed as the place
 	// itself and nothing else. The walk omits nothing; this says how far it goes.
-	Depth int `cli:"name=depth desc='with --paths: bound the walk to addresses of at most N segments (default: no bound)'"`
+	Depth int `cli:"name=depth desc='with --paths/--kpaths: bound the walk to addresses of at most N segments (default: no bound)'"`
 
 	// WHAT TO DO IS A FLAG, and the positional is a path in every case — the same reason
 	// `verse c` says it that way. `get`, `put` and `rm` were verbs, and a path's first segment
@@ -906,7 +906,7 @@ func dataCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "data").WithAliases("d").
-		WithSynopsis("data — the verse at a path: data [<path>] [--if <pattern>] [--paths]; --put|--rm one").
+		WithSynopsis("data — the verse at an address: data [<step>…] [--if <pattern>] [--paths]; --put|--rm one").
 		// --trim only, for the reason watch takes only that: `data --if` is the server's
 		// selector, and it names WHICH ENTITIES rather than what to print of them.
 		WithOpts(append(opts, trimOpt()...)...).

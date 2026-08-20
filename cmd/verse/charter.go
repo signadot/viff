@@ -82,7 +82,7 @@ func charterCmd() *cli.Command {
 	trig = &charterFlags{Depth: -1} // per-invocation, like the filter flags
 	return cli.NewCommandAt(&cfg.Command, "charter").
 		WithAliases("charters", "c").
-		WithSynopsis("charter — the charter at a path; -a install, -r remove, -R remove under").
+		WithSynopsis("charter — the charter at an address (steps); -a install, -r remove, -R remove under").
 		WithOpts(append(mustOpts(trig), filterOpts()...)...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
