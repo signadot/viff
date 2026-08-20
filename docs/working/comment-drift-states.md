@@ -8,7 +8,7 @@ Five entities carry the whole flow, and each field that changes is written by ex
 | entity | what it holds |
 |---|---|
 | `verse-dev.drift.at` | the cursor — where the review has got to, and what it has claimed |
-| `verse-dev.drift.range.<to>` | one review, of `from..to`: its standing set, its report, its state |
+| `verse-dev.drift.range.<to>` | one review, of `from..to`: its standing set, its report, its state. Addressed by its FAR end — see below |
 | `verse-dev.drift.finding.<symbol>` | the ledger — one row per symbol, open or resolved |
 | `verse-dev.merge.proposal.*` | a delivered branch, the base it was cut from, and what became of it |
 | `verse-dev.merge.train.<tip>` | the batch somebody is asked about, one per tip of main |
@@ -153,6 +153,14 @@ is not in that set and the cursor stops where it broke. `verse data verse-dev.dr
 `verse-dev.drift.range.<to>`, derived by `open-range`. It exists so the review has an entity to
 be about — a task's id is (rule, subject), and with the cursor as the subject every review would
 share one id.
+
+**Why `to` and not `from`, and not both.** The chain is serial: each range begins where the last
+one ended, so the far end determines the near one and an id carrying both would be a separator
+convention somebody has to parse. The deciding reason is who asks. Everything downstream wants
+"what did the review of the commit main is standing on say" — `train-load` reads
+`drift.range.<tip>.report`, and that tip is a range's far end. Keyed by `from`, no reader could
+name that review without searching for it by content. `from` is in the payload, where a reader
+who wants the span can have it.
 
 ```mermaid
 stateDiagram-v2

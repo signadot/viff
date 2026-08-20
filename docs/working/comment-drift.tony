@@ -81,8 +81,13 @@ reads: [ !verse-path [git] ]
   match:
     path: [verse-dev, drift, at]
 
-# One entity per range, keyed by the commit it covers. It is what gives each review its own TASK
-# ID: a task's id is (rule, subject), so with the cursor as the subject every review would be
+# One entity per range, keyed by the commit it covers — its FAR end, and not the near one. The
+# chain is serial, so `to` determines `from` and an id carrying both would be a separator
+# convention to parse; and it is `to` that every reader downstream names, since `train-load` asks
+# for the review of the tip main is standing on (`drift.range.<tip>.report`). `from` rides in the
+# payload for whoever wants the span.
+#
+# It is also what gives each review its own TASK ID: a task's id is (rule, subject), so with the cursor as the subject every review would be
 # `review-range@verse-dev:drift:at` — and a spawn on an id that already completed comes back
 # instantly carrying the OLD answer, so the range is never looked at and the cursor advances past
 # it (git issue 6j911yhzh12kswgjgsn0, found by watching exactly that happen).
