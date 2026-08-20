@@ -159,7 +159,12 @@ if $clean; then
 	# shellcheck disable=SC2086
 	for e in "${ENTITIES[@]}"; do v data $e --rm >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
-	for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
+	# `-r strata`, the way the rules above go with `-r rules`. A bare `charter remove <name>`
+	# addresses `remove.<name>` in the charter tree, finds nothing, and — under `|| true` — said
+	# the ordering was gone while all three levels stood. The next run then failed to install,
+	# blaming whichever stratum already held level 0, which reads as a collision with somebody
+	# else's charter rather than as this script's own leftovers.
+	for s in "${STRATA[@]}"; do v charter -r strata "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
 	printf '\nwhat this script wrote is gone. The tasks it started are left where they are —\nthey are the record that they ran, and removing one would not make the engine forget\nit anyway. The next run keys its release on the store revision, so it does not care.\n'
 	exit 0
