@@ -65,7 +65,12 @@ type PutEntity struct {
 	// Two fields rather than a deeper Ref because the ref spelling cannot carry it: `a:b:c:d`
 	// re-reads as `a:b:` plus an id holding a colon, so a fourth segment has no unambiguous
 	// colon form. The path does, and the colons move last (docs/working/entity-tree.md).
-	Path    []string       `tony:"field=path,omitzero"`
+	Path []string `tony:"field=path,omitzero"`
+	// Sub is the place INSIDE the entity when it is richer than a field path: an array access,
+	// and anything under it — `votes[0]`, `votes(scott).choice`. A kinded path fragment, and it
+	// replaces the field path when set. See entity.Write.Sub for why it rides beside the
+	// address rather than inside it.
+	Sub     string         `tony:"field=sub,omitzero"`
 	Field   []string       `tony:"field=field,omitzero"`
 	Payload entity.Payload `tony:"field=payload,omitzero"`
 	// When are preconditions, ALL of which must hold. They are checked WITH the write, in

@@ -84,14 +84,15 @@ verse
   every case. `get`, `put` and `rm` were verbs, and a path's first segment is a system name.
 
   data (d) [<step>…]                         the verse at an address, given as STEPS — one
-                                             segment per word, whatever is inside it:
-                                             demo · demo pr · demo pr 1 · demo pr 1 labels urgent
+                                             place per word, its first character saying which:
+                                             demo pr 1 · demo pr 1 labels urgent  (a name)
+                                             demo pr 1 votes '[0]'   (array; also {0} (k))
+                                             demo pr 1 '"[0]"'       (the FIELD named [0])
                                              (none) = the whole verse
           [--ref <ref>]                      …or as a ref copied out of a document: demo:pr:1
           [--at <path>]                      …or as a kinded path, which is the one spelling
-                                             that carries a WILDCARD, and the one that reaches
-                                             into an array:
-                                             'demo.pr.*.stage' · merge.proposal.X.votes(scott)
+                                             that carries a SEGMENT wildcard:
+                                             'demo.pr.*.stage'
                                              An address is given ONCE, in one of the three
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths] [--depth <n>]            … one address per line, as STEPS, instead of the

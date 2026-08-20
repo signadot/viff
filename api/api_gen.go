@@ -37,6 +37,11 @@ func (s *PutEntity) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["path"] = ir.FromSlice(slice)
 	}
 
+	// Field: Sub
+	if s.Sub != "" {
+		irMap["sub"] = ir.FromString(string(s.Sub))
+	}
+
 	// Field: Field
 	if len(s.Field) > 0 {
 		slice := make([]*ir.Node, len(s.Field))
@@ -120,6 +125,12 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"path\"", fieldNodeUnwrapped.Type)
 			}
+		case "sub":
+			// Field: Sub
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "sub", fieldNodeUnwrapped.Type)
+			}
+			s.Sub = string(fieldNodeUnwrapped.String)
 		case "field":
 			// Field: Field
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

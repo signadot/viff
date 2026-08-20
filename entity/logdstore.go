@@ -625,7 +625,7 @@ func isNotFound(err error) bool {
 func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.writeCtx()
 	defer cancel()
-	path := s.writePath(w.At)
+	path := s.writePath(w.At, w.Sub)
 	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
 	// that stops being readable — see entity.CheckPatchable, and the two staging deployments
 	// that were lost to it. This is the one place every write passes through, which is the only
@@ -646,7 +646,22 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	}
 	pre := make([]pathPattern, 0, len(w.When))
 	for _, r := range w.When {
-		pre = append(pre, pathPattern{at: r.path(w), pattern: r.Pattern, absent: r.Absent})
+		at := r.path(w)
+		// A PRECONDITION AT AN ARRAY ACCESS IS REFUSED rather than checked somewhere else. It
+		// nests as an object keyed by field name (nestPattern), and an index has no key to nest
+		// under — so a precondition that defaulted to this write's own path would silently be
+		// asked about the ENTITY instead of the element, and a guard that checks the wrong place
+		// is worse than no guard.
+		//
+		// An implementation limit, not a principle: tony matches an array position, and what is
+		// missing is a constructor for that pattern beside the map walk (see Write.When).
+		if w.Sub != "" && at.Ref == w.At.Ref && len(at.Field) == 0 {
+			return false, 0, fmt.Errorf("write %s %s: a precondition cannot be expressed at an "+
+				"array element yet — it nests by field name, and %q has no name to nest under. "+
+				"Write it unconditionally, or guard the field that holds the array",
+				w.At, w.Sub, w.Sub)
+		}
+		pre = append(pre, pathPattern{at: at, pattern: r.Pattern, absent: r.Absent})
 	}
 	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
@@ -674,9 +689,19 @@ func (s *LogdStore) Head() int64 {
 	return s.sess.KnownCommit()
 }
 
-// writePath renders a path as a kpath: the entity's path, then a segment per field.
-func (s *LogdStore) writePath(at Path) string {
+// writePath renders a write's target as a kpath: the entity's path, then the place inside it —
+// a segment per field, or the `sub` fragment when the target is an array access.
+//
+// An access takes NO dot before it, which is the kpath grammar's shape: `…."1".votes[0]`, and
+// `…."1"[0]` when the payload is itself an array.
+func (s *LogdStore) writePath(at Path, sub string) string {
 	path := s.refPath(at.Ref)
+	if sub != "" {
+		if StepIsAccess(sub) {
+			return path + sub
+		}
+		return path + "." + sub
+	}
 	for _, f := range at.Field {
 		path += "." + seg(f)
 	}

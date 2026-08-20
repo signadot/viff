@@ -61,115 +61,109 @@ func (p Path) KPath() string {
 	return out
 }
 
-// ParsePath parses the one address a command takes: an entity, or a place inside one.
+// A STEP IS ONE PLACE, and which one is decided by its first character — three clauses, no
+// splitting, no delimiter scan:
 //
-//	demo:pr:1                    an entity, by ref — dots and all belong to the id
-//	demo.pr.1                    the same entity, as a kinded path
-//	demo.pr.1.labels.urgent      a place inside its payload
-//	demo.pr."a.b".labels         …an id with a dot in it, which is why quoting exists
+//	[0]  {0}  (scott)  [*]  {*}     an array, sparse-array or keyed access
+//	"[0]"  'a.b'                    the NAME inside the quotes, literally
+//	labels  a.b  x@git:ref:y        the name as given
 //
-// WHICHEVER DELIMITER COMES FIRST is the one the address is written in, and that single rule
-// is what keeps both spellings unambiguous:
+// One word in, one path element out, whatever is inside it. The bracketed forms are
+// SELF-DELIMITING — they open and close — so recognising one needs no guess about where the
+// token ends, which is what tells this apart from reading a delimiter out of a word: that
+// changed how MANY segments a word was, and this does not.
 //
-//	demo:pr:a.b            `:` first — a ref, so the dots belong to the id
-//	git.ref.x@git:ref:y    `.` first — a kinded path, so the colons belong to the id
-//
-// Trying a ref first instead does not work, and the second line is why: SplitN on ":" happily
-// reads `git.ref.x@git:ref:y` as the system `git.ref.x@git`, which is not a thing anybody
-// wrote. Nor does trying a kpath first, which reads `demo:pr:1.labels` as a system called
-// `demo:pr:1`. Each spelling has to be recognized before it is parsed.
-//
-// So every address that ever worked still names what it named — a ref is a ref — and the dot
-// spelling is what carries a field path.
-//
-// The field path is object fields only. `[0]` and `(scott)` address into an ARRAY, and they are
-// refused here, where the message can say so.
-//
-// THE REASON HAS CHANGED, and the old one is worth knowing because it was load-bearing twice.
-// It was "the substrate would reject them", which was simply wrong — logd patches an in-range
-// index perfectly well. Then it was the real hazard: an index PAST THE END was ACCEPTED and the
-// log was unreadable ever after, so a bad write did not fail, it succeeded and took every later
-// read with it. That is fixed upstream (go-tony v0.0.149, tony-format 7cdvym1fh12ksmd5g5n0):
-// the patch is now refused, naming the length, and nothing is damaged.
-//
-// What is left is ordinary work rather than a hazard. A write path is `Ref` + a list of object
-// FIELD NAMES, and offering an element means teaching that list to carry a kpath segment —
-// through `writePath`, through `segments()`, and through the preconditions built from it. So
-// this stays refused until somebody does that, and entity/arraywrite_test.go pins the three
-// answers the substrate gives so the reasoning is checked rather than inherited.
-//
-// Reading into an array is a different matter and is offered: it navigates a materialized
-// document here rather than at the substrate, and `verse data` takes both spellings.
-// subscriptShaped reports whether kpath would read this step as anything but a name — an index
-// `[0]`, a sparse index `{0}`, a keyed element `(scott)`, or their `*` forms.
-//
-// A step that does not parse as a kpath at all is NOT subscript-shaped: it is a name that needs
-// quoting, which is what seg() does to it.
-func subscriptShaped(step string) bool {
-	kp, err := kpath.Parse(step)
-	if err != nil {
+// The quoted clause is the escape, and it costs the spelling of a field whose name literally
+// begins and ends with a quote. Array access is what people address; a field named `[0]` is
+// not, and verse writes none.
+func StepIsAccess(step string) bool {
+	if step == "" {
 		return false
 	}
-	for p := kp; p != nil; p = p.Next {
-		if p.Field == nil {
-			return true
-		}
+	switch step[0] {
+	case '[', '{', '(':
+		return true
 	}
 	return false
 }
 
-// PathOf is a write path from the SEGMENTS themselves — no delimiter, no parse, no quoting.
+// StepName is the name a step carries — itself, or what is inside its quotes. It is not asked
+// of an access step, which names no field.
+func StepName(step string) string {
+	if len(step) >= 2 && (step[0] == '"' || step[0] == '\'') && step[len(step)-1] == step[0] {
+		return step[1 : len(step)-1]
+	}
+	return step
+}
+
+// KPathOf renders a vector of steps as the kinded path they name, applying the three clauses —
+// which is what a READ sends, since the wire takes a kpath and the server parses it with kpath.
 //
-// It is what a command line produces: the shell has already said where each segment ends, so
-// argv IS the vector and there is nothing left to interpret. That is the whole reason it exists
-// beside ParsePath — assembling the steps into a string and reading the string back is a round
-// trip through a grammar that has to GUESS, and a guess cannot be right for every input (a step
-// holding a `:` used to come back as a different address entirely).
+// An access step is appended with no dot before it (`votes[0]`, not `votes.[0]`), which is the
+// kpath grammar's own shape; a name is appended as a quoted-where-needed field. An access may
+// LEAD, which is what addresses an element of a payload that is itself an array.
+func KPathOf(segs []string) (string, error) {
+	var out string
+	for _, step := range segs {
+		if StepIsAccess(step) {
+			out += step // no dot before an access: `votes[0]`, and `[0]` when it leads
+			continue
+		}
+		if out != "" {
+			out += "."
+		}
+		out += seg(StepName(step))
+	}
+	return out, nil
+}
+
+// TargetOf is the place a WRITE addresses, from the steps themselves: the entity, and either
+// the object fields inside it or — when any step is an array access — the kpath fragment that
+// reaches it (Write.Sub).
 //
-// The split is positional and is the only rule here: the first Depth segments name the entity —
-// one more under verse's own root, which is a level deeper — and the rest is the field path
-// inside the payload.
-func PathOf(segs []string) (Path, error) {
+// The entity's own segments may not be an access: an id is a name, and an entity is not an
+// element of anything.
+func TargetOf(segs []string) (Path, string, error) {
 	want := Depth
-	if len(segs) > 0 && segs[0] == VerseRoot {
-		want++ // verse's own half is one level deeper: verse.task.instance.<id>
+	if len(segs) > 0 && StepName(segs[0]) == VerseRoot {
+		want++
 	}
 	if len(segs) < want {
-		return Path{}, fmt.Errorf("an address starts with system kind id, and %q names %d of "+
+		return Path{}, "", fmt.Errorf("an address starts with system kind id, and %q names %d of "+
 			"the %d", strings.Join(segs, " "), len(segs), want)
 	}
-	ref, ok := RefOf(segs[:want])
+	names := make([]string, 0, want)
+	for _, step := range segs[:want] {
+		if StepIsAccess(step) {
+			return Path{}, "", fmt.Errorf("%q: %q addresses an array element, and an entity is "+
+				"named by its segments", strings.Join(segs, " "), step)
+		}
+		names = append(names, StepName(step))
+	}
+	ref, ok := RefOf(names)
 	if !ok {
-		return Path{}, fmt.Errorf("%q: its first %d segments do not name an entity",
+		return Path{}, "", fmt.Errorf("%q: its first %d segments do not name an entity",
 			strings.Join(segs, " "), want)
 	}
-	field := segs[want:]
-	// A STEP THAT KPATH WOULD READ AS A SUBSCRIPT IS REFUSED on the write side — `votes[0]`,
-	// `votes{0}` (the sparse form), `votes(scott)`, and `[*]`/`{*}` with them.
-	//
-	// ASKED OF KPATH'S OWN GRAMMAR rather than of a list of characters, and that is the whole
-	// point: a list is complete only until the grammar grows one. This was written as
-	// `[…]`-or-`(…)` first and missed `{…}` entirely, which let a put at `votes {0}` through to
-	// do exactly what the check exists to prevent.
-	//
-	// A NAME THAT MERELY NEEDS QUOTING IS NOT A SUBSCRIPT: `a.b` parses as two FIELDS and is a
-	// legitimate field name, so it passes. What is refused is a step any of whose parsed
-	// segments is not a field — which is precisely what the string parser used to refuse, said
-	// once and without a table.
-	//
-	// WHY A WRITE CARES. It does not reach the element and does not fail either: a put at
-	// `votes [0]` REPLACES the array with the object `{"[0]": …}`. Measured — `votes: [ana, bo]`
-	// came back `votes: {[0]: zed}`, both ballots gone. (An ORDINARY name does the same, which
-	// this check does not and cannot address: see git-issue for where that guard belongs.)
-	for _, f := range field {
-		if subscriptShaped(f) {
-			return Path{}, fmt.Errorf("%q: a write does not address an array element, and %q is "+
-				"how one is spelled. Writing it as a field name would REPLACE the array with an "+
-				"object of that one key; address the field that holds the array instead",
-				strings.Join(segs, " "), f)
+	rest := segs[want:]
+	access := false
+	for _, step := range rest {
+		if StepIsAccess(step) {
+			access = true
 		}
 	}
-	return Path{Ref: ref, Field: field}, nil
+	if !access {
+		field := make([]string, 0, len(rest))
+		for _, step := range rest {
+			field = append(field, StepName(step))
+		}
+		return Path{Ref: ref, Field: field}, "", nil
+	}
+	sub, err := KPathOf(rest)
+	if err != nil {
+		return Path{}, "", fmt.Errorf("%q: %w", strings.Join(segs, " "), err)
+	}
+	return Path{Ref: ref}, sub, nil
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.
@@ -187,9 +181,28 @@ func (p Path) IsEntity() bool { return len(p.Field) == 0 }
 // nil at that field — which is one more line at the two call sites that need it, and is
 // what lets every other write skip the read that whole-value replace requires.
 type Write struct {
-	At    Path
+	At Path
+	// Sub is the place inside the entity when it is richer than a Path can spell: an ARRAY
+	// ACCESS, and anything under it — `votes[0]`, `votes(scott).choice`. It is a kinded path
+	// fragment below the entity, and it replaces At.Field when set.
+	//
+	// A FIELD ALONGSIDE, rather than Path growing a segment kind, because Path is what
+	// ownership claims and the reflector are written in (source/own.go, valueAt) and "is
+	// votes[0] disjoint from votes[1]" is a question those would then have to answer. Nothing
+	// but a command line addresses an element: a charter patches a field, and so does every
+	// source. The same shape api.PutEntity already uses, where Ref and Path sit side by side
+	// because the ref spelling cannot carry a fourth segment.
+	Sub   string
 	Value Payload
 	// When are the preconditions, ALL of which must hold. Empty means unconditional.
+	//
+	// A precondition is built by NESTING the pattern under the path's segments, as an object
+	// keyed by field name (logdstore.nestPattern), so it cannot express one at an array index —
+	// there is no key to nest under. That is an implementation limit and not a principle: tony
+	// matches an array position perfectly well, and what is missing is a constructor for an
+	// array-shaped pattern beside the map walk. Until there is one, a conditional write at a
+	// Sub is refused where it is asked for rather than silently checked against the wrong
+	// place (git-issue zf1sz225h12ksm6agsn0).
 	When []Require
 }
 

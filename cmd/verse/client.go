@@ -1004,8 +1004,9 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	}
 	// FROM THE SEGMENTS, not from a string: argv already is the vector, and assembling it into
 	// a path only to parse the path back is the round trip that could not be right for every
-	// input. See address.
-	at, err := entity.PathOf(segs)
+	// input. See address. `sub` is set when a step is an ARRAY ACCESS, which a field path
+	// cannot carry — see entity.Write.Sub.
+	at, sub, err := entity.TargetOf(segs)
 	if err != nil {
 		return fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
 	}
@@ -1035,6 +1036,7 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	resp, err := httpPost("/entity", api.PutEntity{
 		Ref:     at.Ref.String(),
 		Path:    append(at.Ref.Segs(), at.Field...),
+		Sub:     sub,
 		Payload: payload,
 		When:    when,
 	})
@@ -1050,11 +1052,14 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 		return fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
 			"--ref demo:pr:1)", cli.ErrUsage)
 	}
-	at, err := entity.PathOf(segs)
+	at, sub, err := entity.TargetOf(segs)
 	if err != nil {
 		return fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
 	}
 	q := url.Values{"ref": {at.Ref.String()}}
+	if sub != "" {
+		q.Set("sub", sub)
+	}
 	for _, f := range at.Field {
 		q.Add("field", f)
 	}
@@ -1252,7 +1257,9 @@ func addressWire(args []string, ref, at string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return entity.JoinSegs(segs), nil
+	// KPathOf, not JoinSegs: the steps carry the three clauses (a name, a quoted name, an
+	// array access), and a READ reaches an element as readily as a field.
+	return entity.KPathOf(segs)
 }
 
 // onlyOne refuses an address given in more than one spelling.

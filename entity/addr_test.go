@@ -103,23 +103,23 @@ func TestPathOfTakesASegmentWhole(t *testing.T) {
 		{[]string{"a:b", "pr", "1"}, "a:b:pr:1"}, // a COLON in the system
 		{[]string{"demo", "pr", "a.b"}, "demo:pr:a.b"},
 	} {
-		p, err := PathOf(c.segs)
+		p, _, err := TargetOf(c.segs)
 		if err != nil {
-			t.Errorf("PathOf(%q): %v", c.segs, err)
+			t.Errorf("TargetOf(%q): %v", c.segs, err)
 			continue
 		}
 		if got := p.Ref.String(); got != c.ref {
-			t.Errorf("PathOf(%q) → %q, want %q", c.segs, got, c.ref)
+			t.Errorf("TargetOf(%q) → %q, want %q", c.segs, got, c.ref)
 		}
 		if len(p.Field) != 0 {
-			t.Errorf("PathOf(%q) named a field path %v", c.segs, p.Field)
+			t.Errorf("TargetOf(%q) named a field path %v", c.segs, p.Field)
 		}
 	}
 }
 
 // …and the field path is simply the segments past the entity.
 func TestPathOfSplitsTheFieldOffPositionally(t *testing.T) {
-	p, err := PathOf([]string{"demo", "pr", "a.b", "labels", "urgent"})
+	p, _, err := TargetOf([]string{"demo", "pr", "a.b", "labels", "urgent"})
 	if err != nil {
 		t.Fatal(err)
 	}

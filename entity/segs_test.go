@@ -68,7 +68,7 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 		t.Fatalf("the string spelling has %d segments and Depth says %d", got, Depth)
 	}
 	// PathOf splits an address from the field path at exactly that depth.
-	p, err := PathOf([]string{"demo", "pr", "1", "labels", "urgent"})
+	p, _, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
 	if err != nil {
 		t.Fatalf("PathOf: %v", err)
 	}
@@ -140,13 +140,13 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 		{[]string{"demo", "pr", "a b"}, RefAt("demo", "pr", "a b")},                 // and a space
 		{[]string{"verse", "task", "instance", "run-a1"}, RefAt("verse", "task", "instance", "run-a1")},
 	} {
-		p, err := PathOf(c.segs)
+		p, _, err := TargetOf(c.segs)
 		if err != nil {
-			t.Errorf("PathOf(%q): %v", c.segs, err)
+			t.Errorf("TargetOf(%q): %v", c.segs, err)
 			continue
 		}
 		if p.Ref != c.want || len(p.Field) != 0 {
-			t.Errorf("PathOf(%q) = %s%v, want %s", c.segs, p.Ref, p.Field, c.want)
+			t.Errorf("TargetOf(%q) = %s%v, want %s", c.segs, p.Ref, p.Field, c.want)
 		}
 		// And the READ of the same segments reaches the same place: the wire takes a kinded
 		// path, and JoinSegs quotes each segment as kpath needs — which is lossless, since the
@@ -158,9 +158,9 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 	}
 
 	// A field path is just the segments past the entity.
-	p, err := PathOf([]string{"demo", "pr", "1", "labels", "urgent"})
+	p, _, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
 	if err != nil || p.Ref != RefAt("demo", "pr", "1") || strings.Join(p.Field, ".") != "labels.urgent" {
-		t.Errorf("PathOf(demo pr 1 labels urgent) = (%v, %v)", p, err)
+		t.Errorf("TargetOf(demo pr 1 labels urgent) = (%v, %v)", p, err)
 	}
 }
 

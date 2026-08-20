@@ -1532,7 +1532,9 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(q["field"]...)}); err != nil {
+	if _, _, err := s.scopedStore(r).Write(entity.Write{
+		At: ref.At(q["field"]...), Sub: q.Get("sub"),
+	}); err != nil {
 		http.Error(w, "entity remove failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -1567,7 +1569,9 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
-	committed, _, err := store.Write(entity.Write{At: ref.At(body.Field...), Value: body.Payload, When: when})
+	committed, _, err := store.Write(entity.Write{
+		At: ref.At(body.Field...), Sub: body.Sub, Value: body.Payload, When: when,
+	})
 	if err != nil {
 		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
 		return

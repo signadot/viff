@@ -77,9 +77,25 @@ substituted, and `xargs` understands them.
 
 **A POSITIONAL IS A STEP AND NOTHING ELSE**, because it cannot be both. A single word `w` has
 two legal readings — the one segment `w`, and `split(w, delim)` — and choosing either makes the
-other unsayable. Quoting does not settle it: quoting is putting *which reading I meant* back
-inside the token, which is the escape grammar steps exist to remove. So there is no delimiter
-scan on the command line at all, and `verse data demo.pr.1` names a system called `demo.pr.1`.
+other unsayable. So there is no delimiter scan on the command line at all, and `verse data
+demo.pr.1` names a system called `demo.pr.1`.
+
+**A step is one PLACE, and its first character says which.** Three clauses, no splitting:
+
+```sh
+verse data demo pr 1 votes '[0]'     # the array element   — also {0} sparse, (scott) keyed
+verse data demo pr 1 '"[0]"'         # the FIELD named [0] — the name inside the quotes
+verse data demo pr 1 labels urgent   # a name, as given
+```
+
+The bracketed forms are *self-delimiting* — they open and close — so recognising one needs no
+guess about where the word ends. That is what tells this apart from reading a delimiter out of a
+word: a delimiter changes how **many** segments a word is, and this does not. One word in, one
+place out, whatever is inside it.
+
+The quoted clause is the escape, and it costs the spelling of a field whose name literally
+begins and ends with a quote. Array access is what people address; a field named `[0]` is not,
+and verse writes none.
 
 **The string spellings are taken where they are MARKED**, which is unambiguous for the reason
 the positional is not — a flag is a different *place* on the line, not a second reading of the
@@ -97,17 +113,18 @@ An address is given once: steps, `--ref`, or `--at`, never two of them.
 A `*` passes through the shell, the address grammar and a charter match, and each of the three
 reads it differently. They are consistent once seen together, and surprising one at a time.
 
-**In the address grammar, a `*` is a wildcard only where the spelling is a PATH.**
+**In the address grammar, a bare `*` is a wildcard only where the spelling is a PATH.**
 
 ```sh
-verse data --at 'demo.pr.*'     # every id under demo.pr
+verse data --at 'demo.pr.*'     # every id under demo.pr — a SEGMENT wildcard
 verse data --at 'demo.pr."*"'   # the one entity whose id IS an asterisk
-verse data demo pr '*'          # the same entity — a step is a name, never a pattern
+verse data demo pr '*'          # the same entity — a bare `*` step is a name, never a pattern
+verse data demo pr 1 votes '[*]'  # …but a BRACKETED one is an access, and steps carry it
 ```
 
-Steps cannot say "any", and that is the trade: they are the easy way to name an id that is
-punctuation, and `--at` is how a selector is written. That is why the `verse flow` verbs take
-one token and refuse a second — a selector is exactly the case steps cannot express.
+A bare `*` is not self-delimiting — it is a plausible id and the shell expands it — so it stays
+a name in a step, and a segment wildcard is written with `--at`. That is why the `verse flow`
+verbs take one token and refuse a second: a selector is exactly the case steps cannot express.
 
 **The shell gets there first, and a bare `*` as its own word is the dangerous one.** Inside a
 longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
@@ -296,13 +313,14 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 `(key)` addresses an array element by identity, and `[0]` by position:
 
 ```sh
-verse data --at 'merge.proposal.X.votes(scott)'
-verse data --at 'merge.proposal.X.votes[0].choice'
+verse data merge proposal X votes '(scott)'
+verse data merge proposal X votes '[0]' choice
+verse data --at 'merge.proposal.X.votes[0].choice'    # the same, as one token
 ```
 
-A subscript is part of the PATH spelling, so a read into an array is written with `--at`. As a
-step it is a name — `verse data merge proposal X votes '[0]' choice` asks for the field `[0]`
-and is told `"[0]": a field of a Array`, which is a clear miss rather than a wrong answer.
+Both spellings reach it: a step beginning `[`, `{` or `(` **is** that access, and `--at` carries
+the kinded path whole. The shell quoting on the step is the shell's — `(` and `[` are its
+characters too.
 
 `(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been STORED.
 That is not automatic: `!key` is a tony merge operator, so an ordinary write EXECUTES it — the
@@ -310,16 +328,26 @@ array is merged by key and kept without the tag — which means an array put thr
 `verse data --put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
-Writing into an array is a different matter, and `data --put` refuses `[0]` and `(scott)` in
-either spelling — `--at` because a subscript is not a name, and as a step because a field named
-`[0]` would REPLACE the array with an object of that one key rather than reaching into it. The
-reason it refuses is not the one it used to have.
+**A write reaches an element too**, and lands in place:
+
+```sh
+verse data merge proposal X votes '[0]' choice --put '"approve"'
+```
+
+It was refused for years, on a hazard that is gone: an index past the end used to be *accepted*
+and left the log unreadable. The substrate guards it now, which is why the CLI does not:
 
 | a write at | what logd does |
 |---|---|
 | `votes[1].choice`, in range | patches it, and it reads back |
 | `votes(scott).choice`, keyed | refuses it at the commit; nothing is harmed |
 | `votes[2]` where two stand | refuses it at the patch, naming the length |
+
+**One thing a write at an element cannot carry is a GUARD.** `--create`, `--update` and
+`--expect` nest their pattern as an object keyed by field name, and an index has no key to nest
+under, so they are refused at an access rather than checked against the entity instead. That is
+an implementation limit and not a principle — tony matches an array position perfectly well; what
+is missing is a constructor for that pattern beside the map walk.
 
 The third row is new, and it is why this section is shorter than it was. Until go-tony v0.0.149
 a patch past the end was **accepted**, and the log was unreadable ever after — a bad write that

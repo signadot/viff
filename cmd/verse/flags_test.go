@@ -317,7 +317,7 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 			t.Errorf("address(%q): %v", steps, err)
 			continue
 		}
-		p, err := entity.PathOf(segs)
+		p, _, err := entity.TargetOf(segs)
 		if err != nil {
 			t.Errorf("address(%q) = %q, which does not name a path: %v", steps, segs, err)
 			continue

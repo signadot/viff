@@ -79,6 +79,7 @@ define:
   path: .[array(string)]
   payload: .[tony-base:ir]
   ref: .[string]
+  sub: .[string]
   when: .[array(verse-condition)]
 signature:
   name: verse-put-entity

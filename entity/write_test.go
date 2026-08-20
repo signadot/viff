@@ -481,14 +481,14 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 		{"a b", "pr", "1"},
 		{"verse", "task", "instance", "run-1"},
 	} {
-		got, err := PathOf(segs)
+		got, _, err := TargetOf(segs)
 		if err != nil {
-			t.Errorf("PathOf(%q): %v", segs, err)
+			t.Errorf("TargetOf(%q): %v", segs, err)
 			continue
 		}
 		back := append(append([]string{}, got.Ref.Segs()...), got.Field...)
 		if strings.Join(back, "\x00") != strings.Join(segs, "\x00") {
-			t.Errorf("PathOf(%q) → %q, which is not the same address", segs, back)
+			t.Errorf("TargetOf(%q) → %q, which is not the same address", segs, back)
 		}
 		// …and the kpath it renders to parses back to the same segments, which is what the
 		// wire depends on: the CLI joins once and the server reads with ParseAt.
@@ -511,46 +511,58 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 	}
 }
 
-// A WRITE STILL CANNOT REACH AN ARRAY ELEMENT, and the refusal is what keeps it that way.
+// A WRITE REACHES AN ARRAY ELEMENT, and the address that reaches it is a STEP.
 //
-// The string form parsed `votes[0]` into an index node and turned it away there. Steps have no
-// index to parse — a step is a name — so this is a rule about what a WRITE may target, checked
-// on the field path by asking KPATH'S OWN GRAMMAR whether the step reads as anything but a name.
-// Written as a list of characters first, it missed `{…}` — the sparse index — and let the write
-// through to do the very thing the check exists to prevent.
-//
-// IT IS NOT TIDINESS. Letting the step through does not reach the element and does not fail
-// either: a put at `votes [0]` REPLACES the array with the object `{"[0]": …}`. Measured, with
-// the CLI, on `votes: [ana, bo]` — it came back `votes: {[0]: zed}` and both ballots were gone.
-// The original reason stands too: an index past the end is accepted by the substrate and takes
-// the log with it, and nothing here can know which side of the end it will land on.
-func TestAWriteStillCannotReachAnArrayElement(t *testing.T) {
-	for _, sub := range []string{
-		"(scott)", // keyed
-		"[0]",     // dense index
-		"{0}",     // SPARSE index — the form a character list missed
-		"[*]", "{*}",
-		"votes[0]", // …and a subscript after a name
+// It used to be refused here — the string parser read `votes[0]` as an index and turned it away,
+// because an index past the end was once accepted and took the log with it. That hazard is gone
+// (go-tony v0.0.149: an index past the end is refused at the patch, naming the length), so the
+// refusal was outliving its reason. What replaces it is the grammar: a step beginning `[`, `{`
+// or `(` IS that access, and it travels as Write.Sub because a field path cannot carry one.
+func TestAWriteReachesAnArrayElement(t *testing.T) {
+	for _, c := range []struct {
+		segs []string
+		sub  string
+	}{
+		{[]string{"merge", "proposal", "X", "votes", "[0]"}, "votes[0]"},
+		{[]string{"merge", "proposal", "X", "votes", "{0}"}, "votes{0}"},
+		{[]string{"merge", "proposal", "X", "votes", "(scott)"}, "votes(scott)"},
+		{[]string{"merge", "proposal", "X", "votes", "[*]"}, "votes[*]"},
+		{[]string{"merge", "proposal", "X", "votes", "[0]", "choice"}, "votes[0].choice"},
+		// An access may LEAD, which addresses an element of a payload that is itself an array.
+		{[]string{"merge", "proposal", "X", "[0]"}, "[0]"},
 	} {
-		segs := []string{"merge", "proposal", "X", "votes", sub}
-		if got, err := PathOf(segs); err == nil {
-			t.Errorf("PathOf(%q) = %+v, want a refusal — a write would replace the array", segs, got)
+		at, sub, err := TargetOf(c.segs)
+		if err != nil {
+			t.Errorf("TargetOf(%q): %v", c.segs, err)
+			continue
+		}
+		if sub != c.sub {
+			t.Errorf("TargetOf(%q) sub = %q, want %q", c.segs, sub, c.sub)
+		}
+		if at.Ref != RefAt("merge", "proposal", "X") || len(at.Field) != 0 {
+			t.Errorf("TargetOf(%q) = %+v, want the entity with the place in sub", c.segs, at)
 		}
 	}
-	// A NAME THAT MERELY NEEDS QUOTING IS NOT A SUBSCRIPT. `a.b` parses as two fields, so it is
-	// a legitimate field name and passes — which is what tells this check apart from "quote it".
-	if _, err := PathOf([]string{"demo", "pr", "1", "a.b"}); err != nil {
-		t.Errorf("a field name holding a dot was refused as a subscript: %v", err)
+	// A NAME that merely needs quoting is still a field, not an access.
+	if _, sub, err := TargetOf([]string{"demo", "pr", "1", "a.b"}); err != nil || sub != "" {
+		t.Errorf(`"a.b" became an access: sub=%q err=%v`, sub, err)
 	}
-	// The ENTITY segments are not field names and are not checked here: an id may be anything,
-	// and `RefOf` is what says whether it names an entity.
-	if _, err := PathOf([]string{"merge", "proposal", "[0]"}); err != nil {
-		t.Errorf("an id shaped like a subscript is still an id: %v", err)
+}
+
+// AN ENTITY IS NAMED BY ITS SEGMENTS, so an access among them is refused — an entity is not an
+// element of anything. An id that merely LOOKS like one is reached through the quoted clause.
+func TestAnEntitySegmentIsNotAnAccess(t *testing.T) {
+	if _, _, err := TargetOf([]string{"merge", "proposal", "[0]"}); err == nil {
+		t.Error("an access was accepted as an entity id")
+	}
+	at, sub, err := TargetOf([]string{"merge", "proposal", `"[0]"`})
+	if err != nil || sub != "" || at.Ref.ID() != "[0]" {
+		t.Errorf(`TargetOf(merge proposal "[0]") = (%+v, %q, %v), want the id [0]`, at, sub, err)
 	}
 	// Too short to name an entity is refused for its own reason.
 	for _, bad := range [][]string{{"demo", "pr"}, {"demo"}, {}} {
-		if got, err := PathOf(bad); err == nil {
-			t.Errorf("PathOf(%q) = %+v, want a refusal", bad, got)
+		if got, _, err := TargetOf(bad); err == nil {
+			t.Errorf("TargetOf(%q) = %+v, want a refusal", bad, got)
 		}
 	}
 }
