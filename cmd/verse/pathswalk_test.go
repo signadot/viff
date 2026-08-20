@@ -28,7 +28,7 @@ func TestPathsWalksEverythingUnderTheAddress(t *testing.T) {
 	write([]string{"demo", "drift", "range", "abc"}, entity.Obj{"to": "abc"})
 	write([]string{"demo", "drift", "range", "def"}, entity.Obj{"to": "def"})
 
-	out, err := runState(t, "demo.drift.range", "--paths")
+	out, err := runState(t, "demo", "drift", "range", "--paths")
 	if err != nil {
 		t.Fatalf("data --paths: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDepthBoundsTheWalk(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runState(t, "demo.drift.range", "--paths", "--depth", "4")
+	out, err := runState(t, "demo", "drift", "range", "--paths", "--depth", "4")
 	if err != nil {
 		t.Fatalf("data --paths --depth 4: %v", err)
 	}

@@ -242,15 +242,21 @@ func TestStateTakesAPath(t *testing.T) {
 	if cmd.Hooks.Run == nil {
 		t.Fatal("verse data: no run — bare it answers the whole verse")
 	}
-	// No server is running, so a path that PARSES fails at the dial and a path that does not
-	// fails before it — which is how this tells the guard from the request.
-	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "and-another"}); !errors.Is(err, cli.ErrUsage) {
-		t.Errorf("two positionals gave %v, want a usage error — state takes one path", err)
+	// EVERY POSITIONAL IS A STEP, so several of them are one address rather than an error —
+	// which is what this used to assert, back when the positional was one token. No server is
+	// running, so a well-formed address fails at the DIAL, and that is how this tells an
+	// accepted address from a refused one.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo", "pr", "and-another"}); errors.Is(err, cli.ErrUsage) {
+		t.Errorf("three steps gave %v — they are one address", err)
 	}
-	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr["}); err == nil {
-		t.Error("a malformed path was accepted")
-	} else if errors.Is(err, cli.ErrUsage) == false && !strings.Contains(err.Error(), "path") {
-		t.Errorf("a malformed path gave %v, want it named as a path", err)
+	// And there is no such thing as a MALFORMED address any more: a step is a name, so a word
+	// that used to be an unparseable path is now simply a system called that.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr["}); errors.Is(err, cli.ErrUsage) {
+		t.Errorf("a step holding punctuation gave %v — a step is a name", err)
+	}
+	// An EMPTY step is refused, because it names nothing and would vanish from the line.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo", "", "1"}); !errors.Is(err, cli.ErrUsage) {
+		t.Errorf("an empty step gave %v, want a usage error", err)
 	}
 }
 
@@ -269,11 +275,11 @@ func TestStateTakesFlagsAfterThePath(t *testing.T) {
 
 	cmd := rootCmd().FindSub(cli.DefaultContext(), "data")
 	for _, args := range [][]string{
-		{"demo.pr", "--paths"},
-		{"--paths", "demo.pr"},
-		{"demo.pr", "--if", "{stage: open}"},
-		{"demo.pr", "--scope", "m"},
-		{"demo.pr", "-o", "yaml"},
+		{"demo", "pr", "--paths"},
+		{"--paths", "demo", "pr"},
+		{"demo", "pr", "--if", "{stage: open}"},
+		{"demo", "pr", "--scope", "m"},
+		{"demo", "pr", "-o", "yaml"},
 	} {
 		// No server is running, so reaching the dial is proof the parse got that far: a usage
 		// error would mean it did not.
@@ -281,100 +287,95 @@ func TestStateTakesFlagsAfterThePath(t *testing.T) {
 			t.Errorf("verse data %v: %v — the flag did not parse", args, err)
 		}
 	}
-	// A second POSITIONAL is still an error: one path is what it takes.
-	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo.pr", "demo.other"}); !errors.Is(err, cli.ErrUsage) {
-		t.Errorf("two paths gave %v, want a usage error", err)
+	// THERE IS NO "SECOND PATH" ANY MORE, and that follows from every positional being a step:
+	// the parser takes the flags wherever they sit and hands over what is left, so `demo pr`
+	// with a flag between them is the two-step address it reads as. It used to be an error,
+	// back when the positional was one token and a second one could only be a mistake.
+	if err := cmd.Hooks.Run(cli.DefaultContext(), []string{"demo", "--paths", "pr"}); errors.Is(err, cli.ErrUsage) {
+		t.Errorf("steps either side of a flag gave %v — they are one address", err)
 	}
 }
 
-// AN ADDRESS AS STEPS is the spelling this CLI takes on the way in, and `--paths` is what it
-// answers with — so a listing pipes back into a read without anybody quoting anything.
+// AN ADDRESS IS STEPS, one segment per word, and `--paths` answers the same way — so a listing
+// pipes back into a read without anybody quoting anything.
 //
-// What is asserted is the ROUND TRIP rather than the rendering: the steps go in, the path comes
-// out, and parsing it back yields the same steps. How each one is quoted along the way is
-// kpath's business (a numeric-looking id is quoted, a colon-bearing one is not) and pinning it
+// What is asserted is the ROUND TRIP: the words go in, the path comes out, and parsing it back
+// yields the same words. How each is quoted along the way is kpath's business and pinning it
 // here would be pinning somebody else's decision.
-func TestAnAddressMayBeWrittenAsSteps(t *testing.T) {
+func TestAnAddressIsItsSteps(t *testing.T) {
 	for _, steps := range [][]string{
 		{"demo", "pr", "1"},
 		{"demo", "pr", "a.b"},
 		{"demo", "pr", "a.b", "labels", "urgent"},
 		{"git", "ref", "x@git:ref:y"},
+		// The system holding a colon — which the one-token spelling could not say at all.
+		{"a:b:c", "pr", "1"},
 		{"verse", "task", "instance", "run-1"},
 	} {
-		at, err := address(steps)
+		segs, err := address(steps)
 		if err != nil {
 			t.Errorf("address(%q): %v", steps, err)
 			continue
 		}
-		p, err := entity.ParsePath(at)
+		p, err := entity.PathOf(segs)
 		if err != nil {
-			t.Errorf("address(%q) = %q, which does not parse: %v", steps, at, err)
+			t.Errorf("address(%q) = %q, which does not name a path: %v", steps, segs, err)
 			continue
 		}
 		got := append(p.Ref.Segs(), p.Field...)
 		if strings.Join(got, "\x00") != strings.Join(steps, "\x00") {
-			t.Errorf("address(%q) = %q → %q, want the steps back", steps, at, got)
+			t.Errorf("address(%q) → %q, want the steps back", steps, got)
 		}
 	}
-	// One token stays one token, in either delimiter, and the whole verse is no token at all.
-	for _, tc := range []struct{ in, want string }{
-		{"demo.pr.1", "demo.pr.1"},
-		{"demo:pr:1", "demo:pr:1"},
-	} {
-		if got, err := address([]string{tc.in}); err != nil || got != tc.want {
-			t.Errorf("address([%q]) = (%q, %v), want %q", tc.in, got, err, tc.want)
+	// ONE WORD IS ONE SEGMENT, whatever is in it. The token spellings are not read as addresses
+	// any more: `demo.pr.1` names a system called `demo.pr.1`, which is what the step form MEANS
+	// and is why it is not ambiguous.
+	for _, in := range []string{"demo.pr.1", "demo:pr:1"} {
+		got, err := address([]string{in})
+		if err != nil || len(got) != 1 || got[0] != in {
+			t.Errorf("address([%q]) = (%q, %v), want it whole as one step", in, got, err)
 		}
 	}
-	if got, err := address(nil); err != nil || got != "" {
-		t.Errorf("address(nil) = (%q, %v), want the empty path", got, err)
-	}
-}
-
-// Mixing the spellings is refused rather than read as something else: `verse data demo.pr 1`
-// would otherwise address a system literally called `demo.pr`, which is not what anybody typed.
-// The refusal names the step and offers the one-token form.
-//
-// TOLD APART BY ARITY, not by looking for a delimiter. Half of one spelling and half of the
-// other is short a word — two given for an address that needs three — and that is what is
-// refused. Given enough words the steps speak for themselves: the shell has already said where
-// each segment ends, so a dot inside one is a character in a NAME. See TestAStepMayHoldADot.
-func TestMixingTheAddressSpellingsIsRefused(t *testing.T) {
-	for _, args := range [][]string{
-		{"demo.pr", "1"},
-		{"demo:pr", "1"},
-		{"verse", "task.instance"},
-	} {
-		got, err := address(args)
-		if !errors.Is(err, cli.ErrUsage) {
-			t.Errorf("address(%q) = (%q, %v), want a usage error", args, got, err)
-		}
+	if got, err := address(nil); err != nil || len(got) != 0 {
+		t.Errorf("address(nil) = (%q, %v), want no steps", got, err)
 	}
 }
 
-// A STEP MAY HOLD A DOT — anywhere, the system included — and that is what makes the steps form
-// total rather than nearly total.
-//
-// A segment above the id used to be refused for holding one, so `dotted.sys pr 1` could not be
-// typed and `--paths` could not print an address it named. The delimiter is the SPACE here; a
-// dot inside a word the shell already separated is not one, and the arity check above is what
-// keeps the genuinely mixed spelling refused without costing this.
-func TestAStepMayHoldADot(t *testing.T) {
-	for _, c := range []struct {
-		args []string
-		want string
-	}{
-		{[]string{"dotted.sys", "pr", "1"}, `"dotted.sys".pr."1"`},
-		{[]string{"demo", "dot.kind", "1"}, `demo."dot.kind"."1"`},
-		{[]string{"demo", "pr", "a.b"}, `demo.pr."a.b"`},
-		{[]string{"verse", "task", "instance", "review@demo:pr:1"}, `verse.task.instance.review@demo:pr:1`},
-		// A two-segment prefix read has nothing above the id and never did.
-		{[]string{"demo", "pr"}, `demo.pr`},
-	} {
-		got, err := address(c.args)
-		if err != nil || got != c.want {
-			t.Errorf("address(%q) = (%q, %v), want %q", c.args, got, err, c.want)
-		}
+// A REF IS TAKEN WHERE IT IS MARKED, which is the escape hatch for an address copied out of a
+// document (`subject: demo:pr:1`). It is unambiguous for the reason the positional is not: a
+// flag is a different PLACE on the line, not a second reading of the same word.
+func TestARefIsTakenAsAFlag(t *testing.T) {
+	got, err := addressOf(nil, "demo:pr:1", "")
+	if err != nil || strings.Join(got, " ") != "demo pr 1" {
+		t.Errorf("--ref demo:pr:1 = (%q, %v), want the three steps", got, err)
+	}
+	if _, err := addressOf([]string{"demo", "pr", "1"}, "demo:pr:1", ""); !errors.Is(err, cli.ErrUsage) {
+		t.Error("--ref beside positional steps names the address twice and must be refused")
+	}
+	if _, err := addressOf(nil, "not-a-ref", ""); !errors.Is(err, cli.ErrUsage) {
+		t.Error("--ref takes a ref, and a word that is not one is a usage error")
+	}
+}
+
+// A PATH IS TAKEN WHERE IT IS MARKED TOO, and it is the one spelling that carries a WILDCARD:
+// steps cannot, since a `*` step is the id that IS an asterisk. `--at` declares the grammar, so
+// the `*` is read as the selector it is rather than guessed at.
+func TestAPathIsTakenAsAFlag(t *testing.T) {
+	got, err := addressWire(nil, "", `demo.pr.*.stage`)
+	if err != nil || got != `demo.pr.*.stage` {
+		t.Errorf("--at = (%q, %v), want it through verbatim — the wildcard is the point", got, err)
+	}
+	// As SEGMENTS it is refused, which is right: that view is for a write, and a wildcard
+	// names several places where a write names one.
+	if _, err := addressOf(nil, "", `demo.pr.*.stage`); !errors.Is(err, cli.ErrUsage) {
+		t.Error("a wildcard reached the segment view, which a write would then use")
+	}
+	// And the three spellings are exclusive.
+	if _, err := addressOf([]string{"demo"}, "", "demo.pr.1"); !errors.Is(err, cli.ErrUsage) {
+		t.Error("steps beside --at name the address twice and must be refused")
+	}
+	if _, err := addressOf(nil, "demo:pr:1", "demo.pr.1"); !errors.Is(err, cli.ErrUsage) {
+		t.Error("--ref beside --at name the address twice and must be refused")
 	}
 }
 

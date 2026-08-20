@@ -83,12 +83,16 @@ verse
   so there is no plural to alias — and WHAT TO DO IS A FLAG, so its positional is a path in
   every case. `get`, `put` and `rm` were verbs, and a path's first segment is a system name.
 
-  data (d) [<path>]                          the verse at a path: the subtree standing there
-                                             demo · demo.pr · demo.pr.1 · demo.pr.1.labels.urgent
-                                             'demo.pr.*.stage' · (none) = the whole verse
-                                             a ref names the same place: demo:pr:1
-                                             and a read may reach into an array:
-                                             merge.proposal.X.votes(scott)
+  data (d) [<step>…]                         the verse at an address, given as STEPS — one
+                                             segment per word, whatever is inside it:
+                                             demo · demo pr · demo pr 1 · demo pr 1 labels urgent
+                                             (none) = the whole verse
+          [--ref <ref>]                      …or as a ref copied out of a document: demo:pr:1
+          [--at <path>]                      …or as a kinded path, which is the one spelling
+                                             that carries a WILDCARD, and the one that reaches
+                                             into an array:
+                                             'demo.pr.*.stage' · merge.proposal.X.votes(scott)
+                                             An address is given ONCE, in one of the three
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths] [--depth <n>]            … one address per line, as STEPS, instead of the
                                              document: EVERY address under the one asked for,

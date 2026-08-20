@@ -109,13 +109,13 @@ ok "a cycle ACROSS levels cannot be written; a cycle inside one is ordinary recu
 
 # ── seed, and watch ──────────────────────────────────────────────────────────
 step "seed gh:issue:1 and watch for ${WATCH}s"
-v data gh:issue:1 --put '{"stage":"triaged"}' >/dev/null || die "data --put failed"
+v data gh issue 1 --put '{"stage":"triaged"}' >/dev/null || die "data --put failed"
 
 field() { printf '%s' "$1" | grep -oE "\"?$2\"?[: ]+\"?[a-z-]+" | head -1 | grep -oE '[a-z-]+$' || true; }
 printf '  \033[2m%-10s %-12s %s\033[0m\n' "gh:issue" "feature" "fired"
 for _ in $(seq 1 "$WATCH"); do
-	stage=$(field "$(v data gh:issue:1 2>/dev/null || true)" stage)
-	feat=$(v data --paths signadot.feature 2>/dev/null | head -1 || true)
+	stage=$(field "$(v data gh issue 1 2>/dev/null || true)" stage)
+	feat=$(v data --paths signadot feature 2>/dev/null | head -1 || true)
 	phase=""
 	[ -n "$feat" ] && phase=$(field "$(v data "$feat" 2>/dev/null || true)" phase)
 	fired=$(v status 2>/dev/null | grep -oE '"?fired"?[: ]+[0-9]+' | grep -oE '[0-9]+$' || true)
@@ -126,10 +126,10 @@ done
 # ── what the run leaves behind ───────────────────────────────────────────────
 step "what happened"
 printf '\n'
-v data gh.issue
-v data signadot.feature
+v data gh issue
+v data signadot feature
 printf '\n'
-feat=$(v data --paths signadot.feature | head -1)
+feat=$(v data --paths signadot feature | head -1)
 [ -n "$feat" ] || die "the derive never landed"
 ok "the derived entity is $feat"
 note "its id is the engine's — f(rule, subject) — and it records what it is about:"

@@ -63,13 +63,13 @@ as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 verse data                                         # the whole verse, one document
 verse data demo pr                                 # by where it lives
 verse data demo pr 1                               # one entity, whole
-verse data 'demo.pr.*.stage'                       # one field of each, keyed by id
+verse data --at 'demo.pr.*.stage'                  # one field of each, keyed by id
 verse data --if '{stage: open}'                    # by what it says
 verse data --if '{stage: !or [open, merged]}'      # …an operator, not just equality
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
 verse data demo pr --trim '{stage: null}'          # …and how much of each entity to print
 verse data --paths demo pr                         # just the addresses
-verse data demo:pr:1                               # …the same address written as a ref
+verse data --ref demo:pr:1                         # …a ref copied out of a document
 ```
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
@@ -91,9 +91,16 @@ verse data --paths demo pr | xargs -L1 verse data
 
 One spelling in and out. A step is a whole word, so a dot inside one is part of the NAME; the
 shell's own quoting appears only where a segment holds a space or a `*`, and it is single
-quotes, which `xargs` understands. The one-token forms (`demo.pr.1`, `demo:pr:1`) are still
-taken on the way in — for an address captured into a variable, and for the refs a document
-holds — and they are the ambiguous ones, which is why nothing prints them.
+quotes, which `xargs` understands.
+
+A POSITIONAL IS A STEP AND NOTHING ELSE — `verse data demo.pr.1` names a system called
+`demo.pr.1` — because a word cannot be both one segment and several. The string spellings are
+taken where they are MARKED, which says which grammar applies instead of guessing it:
+
+```sh
+verse data --ref demo:pr:1          # a ref copied out of a document
+verse data --at 'demo.pr.*.stage'   # a path — the one spelling that carries a wildcard
+```
 
 Flags go on either side of the path — `verse data --paths demo pr` and
 `verse data demo pr --paths` are the same command.

@@ -130,18 +130,18 @@ cat <<EOF
 seeded. Now select over it:
 
   $BIN$scope_note data                                     the whole verse, one document
-  $BIN$scope_note data demo.pr                             by where it lives
-  $BIN$scope_note data demo.pr.1                           one of them
+  $BIN$scope_note data demo pr                             by where it lives
+  $BIN$scope_note data demo pr 1                           one of them
   $BIN$scope_note data 'demo.pr.*.stage'                   one field of each, keyed by id
   $BIN$scope_note data --if '{stage: open}'                by what it says
   $BIN$scope_note data --if '{stage: !or [open, merged]}'      …with an operator
   $BIN$scope_note data --if '{urgent: true}' --if-at labels     …rooted inside the payload
-  $BIN$scope_note data --paths demo.pr                     just the addresses
+  $BIN$scope_note data --paths demo pr                     just the addresses
 
 And watch it move (another terminal), then write to it:
 
   $BIN$scope_note watch --if '{stage: open}' demo
-  $BIN$scope_note data demo:pr:2 --put '{stage: open}'
+  $BIN$scope_note data demo pr 2 --put '{stage: open}'
 
 Undo it all with: $0 --clean
 EOF

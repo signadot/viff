@@ -94,7 +94,7 @@ get verse:trigger:rule:x --scope me`); the record carries `scope: me`, which is 
 it is.
 
 Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store
-layers baseline underneath, so `verse data verse:trigger:rule:x --scope me` answers for a
+layers baseline underneath, so `verse data verse trigger rule x --scope me` answers for a
 rule the scope never installed, and the `scope` field on the record is what tells the two
 apart. Whether a federation *should* inherit baseline's program is open, and the reason it is
 open is cost rather than taste — a scoped subtree watch is seeded

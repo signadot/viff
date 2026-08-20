@@ -208,8 +208,8 @@ state() {
 	step "the bindings — who may answer, and for what"
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v data verse.resolvers.instance
-	printf '\n  the address is `<name>@<origin>`, so one `verse data verse.resolvers` shows both what is\n'
+	v data verse resolvers instance
+	printf '\n  the address is `<name>@<origin>`, so one `verse data verse resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
 	q=$(question_id)

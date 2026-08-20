@@ -100,126 +100,32 @@ func (p Path) KPath() string {
 //
 // Reading into an array is a different matter and is offered: it navigates a materialized
 // document here rather than at the substrate, and `verse data` takes both spellings.
-func ParsePath(s string) (Path, error) {
-	s = fromSteps(s)
-	if colonFirst(s) {
-		ref, err := ParseRef(s)
-		if err != nil {
-			return Path{}, fmt.Errorf("path %q: %w", s, err)
-		}
-		return Path{Ref: ref}, nil
-	}
-	kp, err := kpath.Parse(s)
-	if err != nil {
-		return Path{}, fmt.Errorf("path %q: %w", s, err)
-	}
-	var segs []string
-	for p := kp; p != nil; p = p.Next {
-		switch {
-		case p.Field != nil:
-			segs = append(segs, *p.Field)
-		case p.FieldAll, p.IndexAll, p.SparseIndexAll:
-			return Path{}, fmt.Errorf("path %q: a wildcard names several places, and this names one", s)
-		default:
-			return Path{}, fmt.Errorf("path %q: a write does not address an array element — an "+
-				"index that is out of range by the time it lands takes the log with it, and "+
-				"nothing here can tell. Address the field that holds the array", s)
-		}
-	}
+// PathOf is a write path from the SEGMENTS themselves — no delimiter, no parse, no quoting.
+//
+// It is what a command line produces: the shell has already said where each segment ends, so
+// argv IS the vector and there is nothing left to interpret. That is the whole reason it exists
+// beside ParsePath — assembling the steps into a string and reading the string back is a round
+// trip through a grammar that has to GUESS, and a guess cannot be right for every input (a step
+// holding a `:` used to come back as a different address entirely).
+//
+// The split is positional and is the only rule here: the first Depth segments name the entity —
+// one more under verse's own root, which is a level deeper — and the rest is the field path
+// inside the payload.
+func PathOf(segs []string) (Path, error) {
 	want := Depth
 	if len(segs) > 0 && segs[0] == VerseRoot {
 		want++ // verse's own half is one level deeper: verse.task.instance.<id>
 	}
 	if len(segs) < want {
-		return Path{}, fmt.Errorf("path %q: an address starts with system.kind.id (or the ref "+
-			"system:kind:id), and this names %d of the %d", s, len(segs), want)
+		return Path{}, fmt.Errorf("an address starts with system kind id, and %q names %d of "+
+			"the %d", strings.Join(segs, " "), len(segs), want)
 	}
 	ref, ok := RefOf(segs[:want])
 	if !ok {
-		return Path{}, fmt.Errorf("path %q: its first %d segments do not name an entity", s, want)
+		return Path{}, fmt.Errorf("%q: its first %d segments do not name an entity",
+			strings.Join(segs, " "), want)
 	}
 	return Path{Ref: ref, Field: segs[want:]}, nil
-}
-
-// fromSteps folds the THIRD spelling — an address as steps, `demo pr a.b` — into the kinded
-// path the other two already parse to, by the same whichever-comes-first rule: a space before
-// any `:` or `.` means the whole token is a vector of steps, and each step is handed to
-// JoinSegs whole, so its own dots and colons are quoted rather than read as delimiters.
-//
-// It is here rather than only in the CLI's argv walk because that walk sees steps only when
-// the shell split them, and the shell does that only when nobody quoted the address. A script
-// that writes `verse data "$ref"` hands the whole address over as one token — the correct shell
-// idiom — so the same string has to read the same way whether the shell split it or not. One
-// rule, so the two forms are the same address.
-//
-// (`--paths` answers in kinded paths rather than steps, so what a listing hands back arrives
-// here as a kpath. Steps remain what a command line makes easy on the way IN.)
-//
-// A step holding a space is not addressable THIS WAY — steps are space-separated, so the space
-// is the delimiter — which is the same trade the printed form makes: `--paths` writes them
-// space-separated, so a space inside one does not read back. The ref spelling still names it,
-// and so does the quoted kinded path.
-//
-// That last clause is what this used to get wrong. `"a b".pr.1` is a kinded path whose SYSTEM
-// holds a space, and the steps test found that space before the first `.` and split the address
-// through the middle of a quoted segment. Only the first segment could reach it — anywhere later
-// there is a `.` in front of the space — so `demo."p r".1` parsed and `"a b".pr.1` did not, which
-// is drift rather than a trade. The delimiters belong to the kpath grammar, and so does the
-// quoting: see firstDelim.
-func fromSteps(s string) string {
-	if !spaceFirst(s) {
-		return s
-	}
-	return JoinSegs(strings.Fields(s))
-}
-
-// spaceFirst reports whether an address is written as steps: an UNQUOTED space before any
-// unquoted `:` or `.`.
-//
-// QUOTED, because a segment may CONTAIN any of the three. `"a b".pr.1` is one kinded path whose
-// system holds a space, and reading that space as the steps delimiter split it into `"a` and
-// `b".pr.1` — an address that names two segments where three were written, refused with a
-// message quoting the wreckage back. Only the FIRST segment could reach it: a space later in
-// the path always has a `.` before it, which is what the old comparison happened to test.
-//
-// The delimiters and the quoting are the kpath grammar's, so the scan is the one the grammar
-// implies rather than three IndexByte calls that agree with it most of the time.
-func spaceFirst(s string) bool {
-	kind, _ := firstDelim(s)
-	return kind == ' '
-}
-
-// firstDelim answers the first delimiter that is not inside a quoted segment, and where it is.
-// A kpath quotes a field that needs it (token.Quote), so a `.`, `:` or space between quotes is
-// part of a name rather than a break between two.
-func firstDelim(s string) (delim byte, at int) {
-	var q byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case q != 0:
-			if c == '\\' {
-				i++ // an escaped character cannot close the quote
-				continue
-			}
-			if c == q {
-				q = 0
-			}
-		case c == '"' || c == '\'':
-			q = c
-		case c == ' ' || c == ':' || c == '.':
-			return c, i
-		}
-	}
-	return 0, -1
-}
-
-// colonFirst reports whether an address is written in the ref spelling: a `:` before any `.`.
-// An address with neither is neither, and reads as a kinded path so that the message about it
-// names the three segments it is missing.
-func colonFirst(s string) bool {
-	kind, _ := firstDelim(s)
-	return kind == ':'
 }
 
 // IsEntity reports whether the path addresses a whole entity rather than a place inside one.
@@ -617,31 +523,4 @@ func PathSegs(at string) ([]string, error) {
 		out = append(out, *p.Field)
 	}
 	return out, nil
-}
-
-// ReadPath renders a command-line address as the kinded path a READ takes, and the kpath it
-// parsed to — a ref spelled with `:` normalized into the one grammar the read routes speak.
-//
-// IT APPLIES THE DELIMITER RULE rather than trying a ref first, and that is the whole reason it
-// exists here instead of at the call site. `ParseRef` succeeds on `smokesd.feature.x@gh:issue:1`
-// — three colon-delimited parts, the first holding dots — so a caller that tries it first reads
-// a dotted path as a ref whose system is `smokesd.feature.x@gh`, and answers about an entity
-// nobody named. Whichever delimiter comes FIRST is the one in use, which is what ParsePath
-// already says and what this now says too.
-func ReadPath(s string) (string, *kpath.KPath, error) {
-	s = fromSteps(s)
-	if colonFirst(s) {
-		ref, err := ParseRef(s)
-		if err != nil {
-			return "", nil, err
-		}
-		at := ref.At().KPath()
-		kp, err := ParseAt(at)
-		return at, kp, err
-	}
-	kp, err := ParseAt(s)
-	if err != nil {
-		return "", nil, err
-	}
-	return s, kp, nil
 }

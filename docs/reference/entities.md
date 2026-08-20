@@ -53,7 +53,7 @@ marker in the store.
 | | |
 |---|---|
 | a ref | inside a document or a charter (`subject: demo:pr:1`), where a parser reads it and no shell is involved — three segments |
-| a path | any depth, and anywhere the address may continue into the payload: `verse data demo.pr.1.labels.urgent`, `verse-dev.drift.head.abc` |
+| a path | any depth, and anywhere the address may continue into the payload — the spelling a DOCUMENT and the wire use: `demo.pr."1".labels.urgent`, `verse-dev.drift.head.abc` |
 | steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN, and what every listing answers with |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
@@ -70,55 +70,57 @@ verse data --paths demo.pr | xargs -L1 verse data
 
 **One spelling, in and out.** A step is a whole word, so a dot inside one is a character in a
 name and needs no quoting — which is the ergonomic win, and it holds at every position: `verse
-data dotted.sys pr 1` is three segments. The shell's own quoting is applied only where a
-segment would otherwise be split or expanded (a space, a `*`), and it is single quotes, which
-are literal — so nothing inside is globbed or substituted, and `xargs` understands them.
+data dotted.sys pr 1` is three segments, and `verse data a:b:c pr 1` names the system `a:b:c`.
+The shell's own quoting is applied only where a segment would otherwise be split or expanded (a
+space, a `*`), and it is single quotes, which are literal — so nothing inside is globbed or
+substituted, and `xargs` understands them.
 
-**The one-token form is the ambiguous one**, and it is the reason the listing does not use it.
-A single token has to guess where the segments end, and two shapes defeat the guess: a segment
-holding a space (there is no spelling of it), and a delimiter above the id — `dotted.sys.pr.1`
-reads as four segments, not three. Steps have neither problem, because the shell has already
-said where each segment ends. A token is still accepted on the way in, for an address captured
-into a variable and for the `system:kind:id` refs a document holds.
+**A POSITIONAL IS A STEP AND NOTHING ELSE**, because it cannot be both. A single word `w` has
+two legal readings — the one segment `w`, and `split(w, delim)` — and choosing either makes the
+other unsayable. Quoting does not settle it: quoting is putting *which reading I meant* back
+inside the token, which is the escape grammar steps exist to remove. So there is no delimiter
+scan on the command line at all, and `verse data demo.pr.1` names a system called `demo.pr.1`.
 
-Mixing the two IS refused, and is told apart by arity: `verse data demo.pr 1` is two words for
-an address that needs three, with a delimiter in one of them. Given three words there is
-nothing to be ambiguous about.
+**The string spellings are taken where they are MARKED**, which is unambiguous for the reason
+the positional is not — a flag is a different *place* on the line, not a second reading of the
+same word. Which grammar applies is declared rather than guessed:
+
+```sh
+verse data --ref demo:pr:1          a ref copied out of a document
+verse data --at 'demo.pr.*.stage'   a kinded path — the one spelling that carries a WILDCARD
+```
+
+An address is given once: steps, `--ref`, or `--at`, never two of them.
 
 ### `*`: three layers, three rules
 
 A `*` passes through the shell, the address grammar and a charter match, and each of the three
 reads it differently. They are consistent once seen together, and surprising one at a time.
 
-**In a one-token address, a bare `*` is a wildcard and a quoted one is a name.**
+**In the address grammar, a `*` is a wildcard only where the spelling is a PATH.**
 
 ```sh
-verse data 'demo.pr.*'        # every id under demo.pr
-verse data 'demo.pr."*"'      # the one entity whose id IS an asterisk
+verse data --at 'demo.pr.*'     # every id under demo.pr
+verse data --at 'demo.pr."*"'   # the one entity whose id IS an asterisk
+verse data demo pr '*'          # the same entity — a step is a name, never a pattern
 ```
 
-**As a step it is always a NAME.** The steps form assembles the path itself and quotes each word
-as a literal, so there is no way to write a wildcard in it:
-
-```sh
-verse data demo pr '*'        # the entity whose id is an asterisk — not a wildcard
-```
-
-That is the trade the two forms make, and it goes both ways: **a selector is the one place the
-one-token spelling is the better command line**, and steps are the easy way to name an id that
-happens to be punctuation.
+Steps cannot say "any", and that is the trade: they are the easy way to name an id that is
+punctuation, and `--at` is how a selector is written. That is why the `verse flow` verbs take
+one token and refuse a second — a selector is exactly the case steps cannot express.
 
 **The shell gets there first, and a bare `*` as its own word is the dangerous one.** Inside a
 longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
 alone it matches *every file in the directory*:
 
 ```sh
-verse data demo pr * stage    # bash: expands to every filename in the cwd
-verse data demo.pr.*.stage    # bash: passed through if no file looks like that; zsh: error
+verse data demo pr * stage        # bash: expands to every filename in the cwd
+verse data --at demo.pr.*.stage   # …and so does this, unquoted — the shell does not care
+                                  # which flag it is after
 ```
 
-So quote it, in either form. `--paths` prints it quoted for the same reason, which is why a
-listing containing such an id pipes back correctly.
+So quote it, in either form — `--at 'demo.pr.*.stage'`. `--paths` prints it quoted for the same
+reason, which is why a listing containing such an id pipes back correctly.
 
 **In a charter, quoting does not change it.** Tony quoting is about a value's TYPE, not about
 matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
@@ -147,7 +149,7 @@ three:
 
 ```sh
 verse data verse task instance run-a1b2       # steps
-verse data verse:task:instance:run-a1b2       # …as a ref
+verse data --ref verse:task:instance:run-a1b2 # …a ref copied out of a document
 verse data verse task instance                    # …and as steps, at whatever depth
 ```
 
@@ -217,7 +219,7 @@ not a record verse keeps, which is why casting one is an ordinary write. And `pr
 registry of doers is written by whoever runs the verse.
 
 **The reserved half is read like anything else and written only through the verbs that own
-it.** `verse data verse:trigger:rule:review` reads a rule; `verse data --put` at any
+it.** `verse data verse trigger rule review` reads a rule; `verse data --put` at any
 `verse:` address is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
 boundary had a name, anyone who could reach the store could install a rule, stamp a task record
@@ -249,7 +251,7 @@ verse data demo                                    # {kind: {id: payload}}
 verse data demo pr                                 # {id: payload}
 verse data demo pr 1                               # one payload
 verse data demo pr 1 labels urgent                 # one place inside it
-verse data 'demo.pr.*.stage'                       # one field of each, still keyed by id
+verse data --at 'demo.pr.*.stage'                  # one field of each, still keyed by id
 verse data --paths demo pr                         # one address per line
 verse data --if '{stage: open}'                    # by what it says
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
@@ -274,7 +276,7 @@ and why nothing about identity changed: `demo:pr:1` and `demo.pr.1` are one gram
 ways.
 
 ```sh
-verse data demo:pr:1
+verse data demo pr 1
 ```
 
 `--if` narrows WHICH ENTITIES the document holds, per entity, before the nesting — it never
@@ -345,7 +347,7 @@ writes there, and the answer is that place. A write is a value at a path, so whe
 
 ```sh
 verse data demo pr 1 --put '{stage: open}'       # as steps: nothing needs quoting
-verse data demo:pr:1 --put '{owner: ana}'       # …or by ref: adds an owner, keeps the stage
+verse data --ref demo:pr:1 --put '{owner: ana}' # …or by ref: adds an owner, keeps the stage
 verse data demo pr 1 labels urgent --put true   # write INSIDE the payload
 verse data demo pr 1 labels urgent --rm         # remove one field
 verse data demo pr 1 --rm                       # the whole entity

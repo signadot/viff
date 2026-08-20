@@ -246,25 +246,25 @@ install_shape() {
 # world put in the right order, which is itself the point of those shapes.
 drive_shape() {
 	case "$1" in
-	patch) v data demo:patch:1 --put '{stage: open, title: "a triage"}' >/dev/null ;;
-	latch) v data demo:latch:1 --put '{stage: open, title: "a review"}' >/dev/null ;;
-	ask) v data demo:ask:1 --put '{stage: open, title: "a gated review"}' >/dev/null ;;
-	seq) v data demo:seq:1 --put '{stage: ready, title: "a build"}' >/dev/null ;;
+	patch) v data demo patch 1 --put '{stage: open, title: "a triage"}' >/dev/null ;;
+	latch) v data demo latch 1 --put '{stage: open, title: "a review"}' >/dev/null ;;
+	ask) v data demo ask 1 --put '{stage: open, title: "a gated review"}' >/dev/null ;;
+	seq) v data demo seq 1 --put '{stage: ready, title: "a build"}' >/dev/null ;;
 	when)
-		v data demo:when:1 --put '{stage: ready, title: "a release"}' >/dev/null
-		v data ci:status:shapes --put '{state: green}' >/dev/null
+		v data demo when 1 --put '{stage: ready, title: "a release"}' >/dev/null
+		v data ci status shapes --put '{state: green}' >/dev/null
 		;;
 	on)
 		# An edge has to RISE, so drop it first: a `ci:status:release` left green by an
 		# earlier run is a predicate that never becomes true again, and the rule that reads
 		# it would look broken rather than edge-triggered.
-		v data ci:status:release --put '{state: red}' >/dev/null
-		v data demo:on:1 --put '{stage: waiting, title: "an edge"}' >/dev/null
+		v data ci status release --put '{state: red}' >/dev/null
+		v data demo on 1 --put '{stage: waiting, title: "an edge"}' >/dev/null
 		sleep 1
-		v data ci:status:release --put '{state: green}' >/dev/null
+		v data ci status release --put '{state: green}' >/dev/null
 		;;
-	vote) v data demo:vote:1 --put '{stage: shipped, title: "a merge"}' >/dev/null ;;
-	derive) v data demo:derive:1 --put '{stage: open, title: "a feature request"}' >/dev/null ;;
+	vote) v data demo vote 1 --put '{stage: shipped, title: "a merge"}' >/dev/null ;;
+	derive) v data demo derive 1 --put '{stage: open, title: "a feature request"}' >/dev/null ;;
 	esac
 	ok "drove shape-$1"
 }
@@ -343,8 +343,8 @@ clean)
 		remove_shape "$s"
 		v data "demo:$s:1" --rm >/dev/null 2>&1 || true
 	done
-	v data ci:status:shapes --rm >/dev/null 2>&1 || true
-	v data ci:status:release --rm >/dev/null 2>&1 || true
+	v data ci status shapes --rm >/dev/null 2>&1 || true
+	v data ci status release --rm >/dev/null 2>&1 || true
 	# The derived entity is addressed by the ENGINE — id = f(rule, subject) — so it is named
 	# here rather than guessed at: nothing else in the verse knows to clean it up.
 	v data 'derived:feature:shape-derive@demo:derive:1' --rm >/dev/null 2>&1 || true

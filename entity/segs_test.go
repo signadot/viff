@@ -67,13 +67,13 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 	if got := len(strings.Split(ref.String(), ":")); got != Depth {
 		t.Fatalf("the string spelling has %d segments and Depth says %d", got, Depth)
 	}
-	// ParsePath splits an address from the field path at exactly that depth.
-	p, err := ParsePath("demo.pr.1.labels.urgent")
+	// PathOf splits an address from the field path at exactly that depth.
+	p, err := PathOf([]string{"demo", "pr", "1", "labels", "urgent"})
 	if err != nil {
-		t.Fatalf("ParsePath: %v", err)
+		t.Fatalf("PathOf: %v", err)
 	}
 	if p.Ref != ref || len(p.Field) != 2 {
-		t.Fatalf("ParsePath = %+v, want the entity at Depth with the rest as fields", p)
+		t.Fatalf("PathOf = %+v, want the entity at Depth with the rest as fields", p)
 	}
 }
 
@@ -118,52 +118,49 @@ func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
 	return Doc{Node: n}
 }
 
-// STEPS ARRIVE AS ONE TOKEN when a script quotes them, which is the correct shell idiom —
-// `verse data "$ref"` hands the whole address over as one argument, and a person typing the
-// same thing lets the shell split it. So the address grammar takes an unquoted space as a
-// delimiter by the same whichever-comes-first rule as `:` and `.`, and the two ways a shell can
-// hand over one address name one entity.
+// AN ADDRESS ARRIVES AS ITS SEGMENTS, and each one is whole.
 //
-// (A `--paths` listing answers in the same steps — see JoinSteps — so the line comes back either
-// way: split by the shell into arguments, or captured and quoted as one token.)
-func TestAnAddressMayArriveAsQuotedSteps(t *testing.T) {
+// The shell separates the words, so `verse data demo pr a.b` hands over three strings and the
+// third simply contains a dot. Nothing here scans for a delimiter, which is what makes every
+// row below one row: a dot, a colon or a space inside a segment is a character in a name.
+//
+// It used to take a single token too, split by whichever of `:` `.` ` ` came first. That is
+// ambiguous and could not be made otherwise — a word `w` reads either as the one segment `w` or
+// as `split(w, delim)`, and choosing either makes the other unsayable — so the token spelling is
+// gone from the command line and a ref is taken where it is MARKED (`--ref demo:pr:1`).
+func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 	for _, c := range []struct {
-		steps string
-		want  Ref
+		segs []string
+		want Ref
 	}{
-		{"demo pr 1", RefAt("demo", "pr", "1")},
-		{"demo pr a.b", RefAt("demo", "pr", "a.b")},                                  // a dot INSIDE a step
-		{"git ref x@git:ref:y", RefAt("git", "ref", "x@git:ref:y")},                  // and a colon
-		{"verse task instance run-a1", RefAt("verse", "task", "instance", "run-a1")}, // both halves
-		{"demo  pr   1", RefAt("demo", "pr", "1")},                                   // as a line splits
+		{[]string{"demo", "pr", "1"}, RefAt("demo", "pr", "1")},
+		{[]string{"demo", "pr", "a.b"}, RefAt("demo", "pr", "a.b")},                 // a dot INSIDE a step
+		{[]string{"git", "ref", "x@git:ref:y"}, RefAt("git", "ref", "x@git:ref:y")}, // and a colon
+		{[]string{"a:b:c", "pr", "1"}, RefAt("a:b:c", "pr", "1")},                   // …in the SYSTEM, which the token form could not say
+		{[]string{"demo", "pr", "a b"}, RefAt("demo", "pr", "a b")},                 // and a space
+		{[]string{"verse", "task", "instance", "run-a1"}, RefAt("verse", "task", "instance", "run-a1")},
 	} {
-		p, err := ParsePath(c.steps)
+		p, err := PathOf(c.segs)
 		if err != nil {
-			t.Errorf("ParsePath(%q): %v", c.steps, err)
+			t.Errorf("PathOf(%q): %v", c.segs, err)
 			continue
 		}
 		if p.Ref != c.want || len(p.Field) != 0 {
-			t.Errorf("ParsePath(%q) = %s%v, want %s", c.steps, p.Ref, p.Field, c.want)
+			t.Errorf("PathOf(%q) = %s%v, want %s", c.segs, p.Ref, p.Field, c.want)
 		}
-		// And a read of the same token reaches the same place, since a read and a write have to
-		// agree about what an address is.
-		at, _, err := ReadPath(c.steps)
-		if err != nil || at != c.want.At().KPath() {
-			t.Errorf("ReadPath(%q) = (%q, %v), want %q", c.steps, at, err, c.want.At().KPath())
+		// And the READ of the same segments reaches the same place: the wire takes a kinded
+		// path, and JoinSegs quotes each segment as kpath needs — which is lossless, since the
+		// server parses it with ParseAt and never re-scans it for delimiters.
+		at, err := ParseAt(JoinSegs(c.segs))
+		if err != nil || at.String() != c.want.At().KPath() {
+			t.Errorf("read of %q = (%v, %v), want %q", c.segs, at, err, c.want.At().KPath())
 		}
 	}
 
-	// A field path is steps too, so `verse data demo pr 1 labels urgent` quoted whole
-	// reaches the field rather than being refused as a fourth segment.
-	p, err := ParsePath("demo pr 1 labels urgent")
+	// A field path is just the segments past the entity.
+	p, err := PathOf([]string{"demo", "pr", "1", "labels", "urgent"})
 	if err != nil || p.Ref != RefAt("demo", "pr", "1") || strings.Join(p.Field, ".") != "labels.urgent" {
-		t.Errorf(`ParsePath("demo pr 1 labels urgent") = (%v, %v)`, p, err)
-	}
-
-	// The other spellings are untouched: a space AFTER a delimiter is part of what it delimits,
-	// which is what keeps an id holding a space readable by ref.
-	if p, err := ParsePath("demo:pr:a b"); err != nil || p.Ref.ID() != "a b" {
-		t.Errorf(`ParsePath("demo:pr:a b") = (%v, %v), want the id "a b"`, p, err)
+		t.Errorf("PathOf(demo pr 1 labels urgent) = (%v, %v)", p, err)
 	}
 }
 

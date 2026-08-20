@@ -466,71 +466,80 @@ func TestModifyFromFallsBackWhenNothingIsThere(t *testing.T) {
 	}
 }
 
-// ONE ADDRESS, and ParsePath is Path.String's inverse — which the two were not before.
+// ONE ADDRESS: PathOf is Path.KPath's inverse, over the segments themselves.
 //
-// The colon spelling names an entity WHOLE: dots and all belong to the id, which is what makes
-// it unambiguous and what keeps every address that ever worked meaning what it meant. The dot
-// spelling carries a field path, quoting an id that needs it.
-func TestParsePathIsStringInverted(t *testing.T) {
-	for _, tc := range []struct {
-		in    string
-		want  Path
-		spell string // what String gives back
-	}{
-		{"demo:pr:1", RefAt("demo", "pr", "1").At(), "demo:pr:1"},
-		{"demo.pr.1", RefAt("demo", "pr", "1").At(), "demo:pr:1"},
-		// A numeric id comes back QUOTED — `."1"` — which is the kpath printer being conservative
-		// rather than a second meaning: `.1` parses as the field named 1 either way.
-		{"demo.pr.1.labels.urgent", RefAt("demo", "pr", "1").At("labels", "urgent"), `demo.pr."1".labels.urgent`},
-		// An id carrying colons, `@` and `+` needs no quoting in either spelling.
-		{"git:ref:x@git:ref:y", RefAt("git", "ref", "x@git:ref:y").At(), "git:ref:x@git:ref:y"},
-		{"git.ref.x@git:ref:y", RefAt("git", "ref", "x@git:ref:y").At(), "git:ref:x@git:ref:y"},
-		// A DOTTED id: the colon spelling gives it to the id, the dot spelling needs quotes —
-		// and that is the whole reason the two spellings are not one.
-		{"demo:pr:a.b", RefAt("demo", "pr", "a.b").At(), "demo:pr:a.b"},
-		{`demo.pr."a.b"`, RefAt("demo", "pr", "a.b").At(), "demo:pr:a.b"},
-		{`demo.pr."a.b".labels`, RefAt("demo", "pr", "a.b").At("labels"), `demo.pr."a.b".labels`},
+// There is no string to parse, so there is no spelling to get wrong — the round trip is
+// segments in, segments out, and every character is ordinary inside one.
+func TestPathOfRoundTripsEverySegment(t *testing.T) {
+	for _, segs := range [][]string{
+		{"demo", "pr", "1"},
+		{"demo", "pr", "1", "labels", "urgent"},
+		{"git", "ref", "x@git:ref:y"},
+		{"demo", "pr", "a.b"},
+		{"demo", "pr", "a.b", "labels"},
+		{"a:b:c", "pr", "1"},
+		{"a b", "pr", "1"},
+		{"verse", "task", "instance", "run-1"},
 	} {
-		got, err := ParsePath(tc.in)
+		got, err := PathOf(segs)
 		if err != nil {
-			t.Errorf("ParsePath(%q): %v", tc.in, err)
+			t.Errorf("PathOf(%q): %v", segs, err)
 			continue
 		}
-		if got.Ref != tc.want.Ref || strings.Join(got.Field, "\x00") != strings.Join(tc.want.Field, "\x00") {
-			t.Errorf("ParsePath(%q) = %+v, want %+v", tc.in, got, tc.want)
-			continue
+		back := append(append([]string{}, got.Ref.Segs()...), got.Field...)
+		if strings.Join(back, "\x00") != strings.Join(segs, "\x00") {
+			t.Errorf("PathOf(%q) → %q, which is not the same address", segs, back)
 		}
-		if got.String() != tc.spell {
-			t.Errorf("ParsePath(%q).String() = %q, want %q", tc.in, got.String(), tc.spell)
-			continue
-		}
-		// …and round-trips: whatever String spells, ParsePath reads back the same place.
-		again, err := ParsePath(got.String())
+		// …and the kpath it renders to parses back to the same segments, which is what the
+		// wire depends on: the CLI joins once and the server reads with ParseAt.
+		at, err := ParseAt(got.KPath())
 		if err != nil {
-			t.Errorf("ParsePath(%q) — its own spelling — %v", got.String(), err)
+			t.Errorf("%q renders %q, which does not parse: %v", segs, got.KPath(), err)
 			continue
 		}
-		if again.String() != got.String() {
-			t.Errorf("%q does not round-trip: %q then %q", tc.in, got.String(), again.String())
+		var read []string
+		for kp := at; kp != nil; kp = kp.Next {
+			if kp.Field == nil {
+				t.Errorf("%q renders %q, whose segment %v is not a name", segs, got.KPath(), kp)
+				break
+			}
+			read = append(read, *kp.Field)
+		}
+		if strings.Join(read, "\x00") != strings.Join(segs, "\x00") {
+			t.Errorf("%q renders %q, which reads back as %q", segs, got.KPath(), read)
 		}
 	}
 }
 
-// A write path is object fields. An array element is refused HERE, where the message can say
-// why. Not because the substrate would reject it — it does not, and arraywrite_test.go is what
-// it actually does — but because an index past the end is accepted and takes the log with it,
-// and no parser can know which side of the end an index will be on when it lands.
-func TestParsePathRefusesWhatAWriteCannotReach(t *testing.T) {
-	for _, bad := range []string{
-		"merge.proposal.X.votes(scott)",
-		"merge.proposal.X.votes[0]",
-		"demo.pr.*",
-		"demo.pr",
-		"demo",
-		"",
+// A WRITE STILL CANNOT REACH AN ARRAY ELEMENT, and it is now structural rather than a refusal.
+//
+// It used to be checked: `merge.proposal.X.votes[0]` was PARSED, so `[0]` became an index node
+// and had to be turned away — an index past the end is accepted by the substrate and takes the
+// log with it, and no parser can know which side of the end an index will be on when it lands.
+//
+// Nothing parses a string now. A step is a name, so `[0]` is the field named `[0]`, and KPath
+// quotes it as one — there is no spelling of an index for a write to be given. What is left to
+// refuse is an address too SHORT to name an entity, which PathOf still does.
+func TestAWriteStillCannotReachAnArrayElement(t *testing.T) {
+	for _, segs := range [][]string{
+		{"merge", "proposal", "X", "votes", "(scott)"},
+		{"merge", "proposal", "X", "votes", "[0]"},
 	} {
-		if got, err := ParsePath(bad); err == nil {
-			t.Errorf("ParsePath(%q) = %+v, want a refusal", bad, got)
+		got, err := PathOf(segs)
+		if err != nil {
+			t.Errorf("PathOf(%q): %v", segs, err)
+			continue
+		}
+		kp := got.KPath()
+		if !strings.Contains(kp, `"`+segs[len(segs)-1]+`"`) {
+			t.Errorf("PathOf(%q).KPath() = %q — the last step is not quoted as a NAME, so the "+
+				"substrate could read it as an array element", segs, kp)
+		}
+	}
+	// Too short to name an entity is still refused, which is the check that survives.
+	for _, bad := range [][]string{{"demo", "pr"}, {"demo"}, {}} {
+		if got, err := PathOf(bad); err == nil {
+			t.Errorf("PathOf(%q) = %+v, want a refusal", bad, got)
 		}
 	}
 }

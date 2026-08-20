@@ -278,7 +278,7 @@ intact and nothing left to react to it.
 
 One entity per rule, because that is what the operations already are: an install writes one,
 a removal deletes one, and neither reads the others — so two installs cannot lose each
-other, and a rule is addressable (`verse data verse:trigger:rule:review`).
+other, and a rule is addressable (`verse data verse trigger rule review`).
 
 **A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
 possible, and it is worth saying why it is needed. A write is a tony *patch* — the property
@@ -297,7 +297,7 @@ its own operators the moment anything else about it changed). Raw also *replaces
 merging, so re-installing a rule cannot leave a field of the version before it standing in the
 version after.
 
-The gain is that the record is the rule: `verse data verse:trigger:rule:review` shows a
+The gain is that the record is the rule: `verse data verse trigger rule review` shows a
 document to read field by field, a charter change is an observable fact about a shape rather
 than about a string, and nothing has to re-parse to ask a question about it.
 

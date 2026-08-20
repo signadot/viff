@@ -292,7 +292,7 @@ func TestStateTrimsEachEntitysPayload(t *testing.T) {
 	}
 	// Through the state command itself: the harness walks subcommands by name, so a path
 	// positional has to go to the command rather than through the walk.
-	out, err := runState(t, "demo.pr", "--trim", `{stage: null}`)
+	out, err := runState(t, "demo", "pr", "--trim", `{stage: null}`)
 	if err != nil {
 		t.Fatalf("state --trim: %v", err)
 	}

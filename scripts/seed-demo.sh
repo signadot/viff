@@ -132,17 +132,17 @@ ok "demo-review (ask: a human approves) + demo-escalate (auto)"
 
 # ── the world the charter is about ───────────────────────────────────────────
 step "entities"
-v data demo:pr:1 --put '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
-v data demo:pr:2 --put '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
+v data demo pr 1 --put '{stage: open, title: "add the token TTL", owner: ana}' >/dev/null
+v data demo pr 2 --put '{stage: draft, title: "rename the docket", owner: bo}' >/dev/null
 ok "demo:pr:1 (open — demo-review fires on it), demo:pr:2 (draft — it does not)"
-v data demo:task:hotfix-1 --put '{priority: high, title: "expiring cert"}' >/dev/null
-v data demo:task:cleanup-1 --put '{priority: low, title: "tidy the fixtures"}' >/dev/null
+v data demo task hotfix-1 --put '{priority: high, title: "expiring cert"}' >/dev/null
+v data demo task cleanup-1 --put '{priority: low, title: "tidy the fixtures"}' >/dev/null
 ok "demo:task:hotfix-1 (high — demo-escalate fires), demo:task:cleanup-1 (low — it does not)"
 
 # Providers are ordinary entities, which is the point: `verse provider` is a view of the
 # store, and a spawn that SELECTS its doer picks from these by capability and attributes.
-v data provider:review:claude --put '{driver: llm, tier: premium}' >/dev/null
-v data provider:review:cheapo --put '{driver: scripted, tier: basic}' >/dev/null
+v data provider review claude --put '{driver: llm, tier: premium}' >/dev/null
+v data provider review cheapo --put '{driver: scripted, tier: basic}' >/dev/null
 ok "two review providers (premium + basic) in the registry"
 
 # ── what the seed produced ───────────────────────────────────────────────────
@@ -151,14 +151,14 @@ ok "two review providers (premium + basic) in the registry"
 step "the engine reacts"
 escalated=
 for _ in $(seq 1 50); do
-	if v data demo:task:hotfix-1 2>/dev/null | grep -q escalated; then
+	if v data demo task hotfix-1 2>/dev/null | grep -q escalated; then
 		escalated=1
 		break
 	fi
 	sleep 0.2
 done
 [ -n "$escalated" ] && ok "demo-escalate advanced demo:task:hotfix-1 → escalated (auto: nobody was asked)" ||
-	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse data demo:task:hotfix-1`\n'
+	printf '  \033[33m~\033[0m demo:task:hotfix-1 has not advanced yet — `verse data demo task hotfix-1`\n'
 
 GID=
 for _ in $(seq 1 50); do

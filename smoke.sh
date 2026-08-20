@@ -106,13 +106,13 @@ ok "docd-backed server ready"
 
 # ── data: write/read roundtrip ─────────────────────────────────────────────────
 step "data --put / read"
-v data demo:pr:1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-haskv "$(v data demo:pr:1)" stage open || die "data did not roundtrip"
+v data demo pr 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+haskv "$(v data demo pr 1)" stage open || die "data did not roundtrip"
 ok "demo:pr:1 = {stage:open}"
 # THE ANSWER IS A DOCUMENT, addressed by the same path at any depth: the id is a KEY, not a
 # token inside a rendered ref, and `stage` is what stands under it.
-haskv "$(v data demo.pr.1)" stage open || die "data demo.pr.1 did not answer the payload"
-has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
+haskv "$(v data demo pr 1)" stage open || die "data demo pr 1 did not answer the payload"
+has "$(v data demo pr)" '"1":' || die "data demo pr did not key by id"
 # AS STEPS, which is the spelling this command line TAKES — so the listing hands straight back.
 # A step is a whole word, so a dot inside one needs no quoting at all; the shell's own quoting
 # is applied only where a segment would otherwise be split or expanded.
@@ -121,38 +121,38 @@ has "$(v data demo.pr)" '"1":' || die "data demo.pr did not key by id"
 # what makes the listing one that cannot be wrong about depth. `--depth 3` is what asks for the
 # records alone, and it is the bound this assertion needs rather than an assumption about where
 # the walk stops.
-[ "$(v data --paths --depth 3 demo.pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
-has "$(v data --paths demo.pr)" 'demo pr 1 stage' || die "--paths did not walk into the payload"
+[ "$(v data --paths --depth 3 demo pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
+has "$(v data --paths demo pr)" 'demo pr 1 stage' || die "--paths did not walk into the payload"
 # The round trip is the one steps are for: the shell splits the line into arguments, which is
 # what `xargs -L1` does with it.
-v data --paths --depth 3 demo.pr | while read -r p; do
+v data --paths --depth 3 demo pr | while read -r p; do
 	# shellcheck disable=SC2086
 	haskv "$(v data $p)" stage open || die "--paths did not round-trip back into a read"
 done
-v data --paths --depth 3 demo.pr | xargs -L1 "$BIN" --addr "$ADDR" data >/dev/null ||
+v data --paths --depth 3 demo pr | xargs -L1 "$BIN" --addr "$ADDR" data >/dev/null ||
 	die "--paths did not pipe through xargs"
 # An address may be typed as steps, which is what a shell makes easy: no quoting for an id with
 # a dot, since each step arrives as its own word.
 v data demo pr a.b --put '{stage: open}' >/dev/null || die "data as steps --put failed"
 haskv "$(v data demo pr a.b)" stage open || die "data as steps did not roundtrip"
 # …and the printed form is the same steps, with the dot still needing no quoting.
-[ "$(v data --paths --depth 3 demo.pr | grep 'a.b')" = 'demo pr a.b' ] || die "--paths did not name the dotted id as a step"
+[ "$(v data --paths --depth 3 demo pr | grep 'a.b')" = 'demo pr a.b' ] || die "--paths did not name the dotted id as a step"
 v data demo pr a.b --rm >/dev/null || die "data --rm of the dotted id failed"
 ok "steps on the way in, the same steps on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
 # renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
 # (`|` then the line). The value is verse's answer; the framing is the encoder's.
-has "$(v data demo.pr.1.stage)" open || die "a path into the payload did not answer"
+has "$(v data demo pr 1 stage)" open || die "a path into the payload did not answer"
 ok "one path, four depths: demo / demo.pr / demo.pr.1 / demo.pr.1.stage"
 # ONE ADDRESS on the verbs too: the path reaches inside the payload, which `--at` used to.
-v data demo.pr.1.labels.urgent --put true >/dev/null || die "a deep put by path failed"
-has "$(v data demo.pr.1.labels)" urgent || die "the deep put did not land"
-v data demo.pr.1.labels.urgent --rm >/dev/null || die "a deep rm by path failed"
-case "$(v data demo:pr:1)" in *urgent*) die "the deep rm did not take the field" ;; esac
+v data demo pr 1 labels urgent --put true >/dev/null || die "a deep put by path failed"
+has "$(v data demo pr 1 labels)" urgent || die "the deep put did not land"
+v data demo pr 1 labels urgent --rm >/dev/null || die "a deep rm by path failed"
+case "$(v data demo pr 1)" in *urgent*) die "the deep rm did not take the field" ;; esac
 # …and the two spellings are one grammar: a ref and its kinded path name the same place.
-haskv "$(v data demo.pr.1)" stage open || die "the kinded path did not reach the entity"
-haskv "$(v data demo:pr:1)" stage open || die "the ref spelling did not reach the entity"
-has "$(v data demo.pr.1.stage)" open || die "a path into the payload did not reach the field"
+haskv "$(v data demo pr 1)" stage open || die "the kinded path did not reach the entity"
+haskv "$(v data demo pr 1)" stage open || die "the ref spelling did not reach the entity"
+has "$(v data demo pr 1 stage)" open || die "a path into the payload did not reach the field"
 ok "one address: put/get/rm reach inside a payload, by ref or by path"
 
 # ── the representation: verse READS three dialects and WRITES two ────────────
@@ -161,19 +161,19 @@ ok "one address: put/get/rm reach inside a payload, by ref or by path"
 # JSON spelling. Both halves are asserted here rather than left to the double-run, because
 # a refusal that quietly became a fallback would still pass a suite run only one way.
 step "representation (-o / negotiation)"
-haskv "$(v data demo:pr:1 -o tony)" stage open || die "-o tony did not render"
-has "$(v data demo:pr:1 -o yaml)" 'stage: open' || die "-o yaml did not render"
-v data demo:pr:1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
-v data demo:pr:1 -o json >/dev/null 2>&1 && die "-o json was accepted"
-has "$(v data demo:pr:1 -o json 2>&1 || true)" 'does not render json' \
+haskv "$(v data demo pr 1 -o tony)" stage open || die "-o tony did not render"
+has "$(v data demo pr 1 -o yaml)" 'stage: open' || die "-o yaml did not render"
+v data demo pr 1 -o tny >/dev/null 2>&1 && die "a bad -o value was accepted"
+v data demo pr 1 -o json >/dev/null 2>&1 && die "-o json was accepted"
+has "$(v data demo pr 1 -o json 2>&1 || true)" 'does not render json' \
 	|| die "-o json failed without explaining itself"
 ok "-o tony | yaml render; a bad value and json are rejected"
 # --ifmt says how to READ what the operator supplied; it must not decide how the REQUEST is
 # rendered, because verse renders no json. A WRITE is the case that proves the two are
 # separate: --ifmt json used to fail every command that sends a body — i.e. every write —
 # complaining about rendering json to someone who had only asked to type it.
-v --ifmt json data demo:pr:7 --put '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
-haskv "$(v data demo:pr:7)" stage open || die "the --ifmt json write did not land"
+v --ifmt json data demo pr 7 --put '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
+haskv "$(v data demo pr 7)" stage open || die "the --ifmt json write did not land"
 ok "--ifmt json writes (the input dialect is not the wire rendering)"
 # curl straight at the API: no Accept header at all gets the configured default...
 haskv "$(curl -s "http://$ADDR/entity?ref=demo:pr:1")" stage open || die "the wire did not answer"
@@ -196,16 +196,16 @@ ok "the wire negotiates (Accept honored, json refused with 406)"
 # connect's. The throwaway data dir reclaims the overlay. See docs/scope-lifecycle.md.
 step "scope isolation (--scope)"
 SC="iso$$"
-v --scope "$SC" data demo:pr:9 --put '{"stage":"scoped-only"}' >/dev/null || die "scoped data --put failed"
-has "$(v --scope "$SC" data demo:pr:9)" 'scoped-only' || die "scope does not see its own write"
+v --scope "$SC" data demo pr 9 --put '{"stage":"scoped-only"}' >/dev/null || die "scoped data --put failed"
+has "$(v --scope "$SC" data demo pr 9)" 'scoped-only' || die "scope does not see its own write"
 ok "scoped write visible inside scope $SC"
 # the overlay must not leak into the baseline
-if has "$(v data demo:pr:9 2>/dev/null || true)" 'scoped-only'; then
+if has "$(v data demo pr 9 2>/dev/null || true)" 'scoped-only'; then
 	die "scoped write leaked into the baseline"
 fi
 ok "scoped write invisible in the baseline (isolation)"
 # ...but a baseline entity IS visible from within the scope (copy-on-write read-through)
-haskv "$(v --scope "$SC" data demo:pr:1)" stage open || die "scope cannot read the baseline (no read-through)"
+haskv "$(v --scope "$SC" data demo pr 1)" stage open || die "scope cannot read the baseline (no read-through)"
 ok "baseline entity readable from the scope (read-through)"
 
 # ── reactive core: a non-gated trigger auto-advances its subject ─────────────
@@ -221,10 +221,10 @@ v charter -a -f - >/dev/null <<'JSON' || die "charter -a failed"
 JSON
 ok "charter installed"
 # putting a matching entity fires the trigger, which advances the matched subject.
-v data demo:pr:2 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo pr 2 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:pr:2 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v data demo pr 2 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -258,10 +258,10 @@ v charter -a --file "$tmp/charter.tony" >/dev/null || die "tony charter -a faile
 has "$(v charter)" 'smoke-advance-tony' || die "the tony charter did not install"
 ok "installed a .tony charter (block list, suffix-dispatched)"
 
-v data demo:pr:3 --put '{"stage":"queued"}' >/dev/null || die "data --put failed"
+v data demo pr 3 --put '{"stage":"queued"}' >/dev/null || die "data --put failed"
 advanced=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:pr:3 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v data demo pr 3 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi
@@ -287,19 +287,19 @@ JSON
 has "$(v charter rules smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
 ok "installed; the sugar renders back as a tag"
 # two candidates, one matching the glob and one not — the fan-out must pick exactly one.
-v data demo:task:hotfix-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-v data demo:task:feature-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-v data demo:note:1 --put '{"seen":true}' >/dev/null || die "data --put failed"
+v data demo task hotfix-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo task feature-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo note 1 --put '{"seen":true}' >/dev/null || die "data --put failed"
 escalated=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:task:hotfix-9 2>/dev/null || true)" stage escalated; then
+	if haskv "$(v data demo task hotfix-9 2>/dev/null || true)" stage escalated; then
 		escalated=1
 		break
 	fi
 	sleep 0.2
 done
 [ -n "$escalated" ] || die "the glob subject did not select demo:task:hotfix-9"
-haskv "$(v data demo:task:feature-9)" stage open || die "the glob subject escalated a task it excludes"
+haskv "$(v data demo task feature-9)" stage open || die "the glob subject escalated a task it excludes"
 ok "!glob subject selected hotfix-9 and left feature-9 alone"
 
 # ── `on`: a cause as the RISING EDGE of a store predicate ────────────────────
@@ -319,17 +319,17 @@ v charter -a -f - >/dev/null <<'JSON' || die "on-charter -a failed"
 JSON
 has "$(v charter rules smoke-on-green)" 'on' || die "the \`on\` did not survive install"
 ok "installed a charter with an \`on\`"
-v data demo:build:1 --put '{"stage":"reviewed"}' >/dev/null || die "data --put failed"
+v data demo build 1 --put '{"stage":"reviewed"}' >/dev/null || die "data --put failed"
 # The cause does not hold: no edge, no firing.
-v data smokeci:status:build --put '{"state":"red"}' >/dev/null || die "data --put failed"
+v data smokeci status build --put '{"state":"red"}' >/dev/null || die "data --put failed"
 sleep 1
-haskv "$(v data demo:build:1)" stage reviewed || die "fired before its cause held"
+haskv "$(v data demo build 1)" stage reviewed || die "fired before its cause held"
 ok "no firing while the cause is false"
 # ...and now it rises.
-v data smokeci:status:build --put '{"state":"green"}' >/dev/null || die "data --put failed"
+v data smokeci status build --put '{"state":"green"}' >/dev/null || die "data --put failed"
 shippedb=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:build:1 2>/dev/null || true)" stage shipped; then
+	if haskv "$(v data demo build 1 2>/dev/null || true)" stage shipped; then
 		shippedb=1
 		break
 	fi
@@ -353,7 +353,7 @@ v charter -a --file - >/dev/null <<'JSON' || die "gated charter -a failed"
     "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
-v data demo:release:1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo release 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 # A gate id carries colons (trigger:smoke-gated:ship~1), so it is cut by prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
@@ -364,12 +364,12 @@ done
 [ -n "$GID" ] || die "the ask gate never appeared in verse gate"
 ok "the action is held; verse gate shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
-haskv "$(v data demo:release:1)" stage open || die "the ask gate did not hold the action"
+haskv "$(v data demo release 1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
 v gate y "$GID" -s "ship it" --as human:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:release:1 2>/dev/null || true)" stage shipped; then
+	if haskv "$(v data demo release 1 2>/dev/null || true)" stage shipped; then
 		shipped=1
 		break
 	fi
@@ -394,7 +394,7 @@ v charter -a --file - >/dev/null <<'TONY' || die "quorum charter -a failed"
   action:
     patch: {stage: shipped}
 TONY
-v data demo:motion:1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo motion 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 MID=
 for _ in $(seq 1 100); do
 	MID=$(v docket --if '{axis: whether}' -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
@@ -404,11 +404,11 @@ done
 [ -n "$MID" ] || die "the quorum gate never reached the docket"
 has "$(v docket)" 'demo:motion:1' || die "the docket does not say what is being decided"
 ok "the motion is on the docket as $MID, about demo:motion:1"
-haskv "$(v data demo:motion:1)" stage open || die "the motion did not hold the action"
+haskv "$(v data demo motion 1)" stage open || die "the motion did not hold the action"
 v vote "$MID" approve --as human:smoke >/dev/null || die "vote failed"
 carried=
 for _ in $(seq 1 100); do
-	if haskv "$(v data demo:motion:1 2>/dev/null || true)" stage shipped; then
+	if haskv "$(v data demo motion 1 2>/dev/null || true)" stage shipped; then
 		carried=1
 		break
 	fi
@@ -437,7 +437,7 @@ ok "task vector → ask (as human:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v data "verse:task:instance:$ID" 2>/dev/null || true)" vectorBy human:smoke; then
+	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" vectorBy human:smoke; then
 		observed=1
 		break
 	fi
@@ -489,7 +489,7 @@ ok "federated a.txt + b.txt into scope $SCOPE"
 # path naming a mount-owned slice was rooted at the entity root while the controller sits
 # under MountRoot, so `verse data` could not read what `verse connect` had just federated.
 # A tolerated check is how that survived every run (entity.rootForAt).
-has "$(v data "local:dir-content-$SCOPE:a.txt")" 'hello from a' ||
+has "$(v data local "dir-content-$SCOPE" a.txt)" 'hello from a' ||
 	die "file content did not come back through the content mount"
 ok "file content served through the verse (content mount)"
 # THE VALIDATOR RAN. Federation is only half of what connect promises — its startup line says
@@ -499,21 +499,21 @@ ok "file content served through the verse (content mount)"
 # the loop rather than any part of its middle: the file's own record says it was validated.
 val=
 for _ in $(seq 1 60); do
-	if has "$(v --scope "$SCOPE" data "local:dir-status-$SCOPE:a.txt" 2>/dev/null || true)" 'validated'; then
+	if has "$(v --scope "$SCOPE" data local "dir-status-$SCOPE" a.txt 2>/dev/null || true)" 'validated'; then
 		val=1
 		break
 	fi
 	sleep 0.5
 done
-[ -n "$val" ] || { v --scope "$SCOPE" data verse.task >&2; die "the per-file validator never validated a.txt"; }
+[ -n "$val" ] || { v --scope "$SCOPE" data verse task >&2; die "the per-file validator never validated a.txt"; }
 ok "the validator ran and latched: a.txt is marked validated"
 # And it LATCHES: a validated file is not selected again, which is the whole reason the
 # subject says what is outstanding rather than what exists.
 # Counted with --paths, one address per line, rather than by grepping `ref:` out of a
 # rendering: the answer is a document now, and an id is a key in it.
-before=$(v --scope "$SCOPE" data --paths verse.task | grep -c . || true)
+before=$(v --scope "$SCOPE" data --paths verse task | grep -c . || true)
 sleep 3
-after=$(v --scope "$SCOPE" data --paths verse.task | grep -c . || true)
+after=$(v --scope "$SCOPE" data --paths verse task | grep -c . || true)
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
 ok "a validated file is not validated again ($after tasks)"
 
@@ -573,7 +573,7 @@ v charter -a --file "$tmp/strata.tony" >/dev/null || die "mixed strata+rules cha
 has "$(v charter)" 'smoke-sdlc' || die "the ordering did not install"
 ok "one file installs strata and rules, strata first"
 
-v data smokegh:issue:1 --put '{"label":"urgent"}' >/dev/null || die "data --put failed"
+v data smokegh issue 1 --put '{"label":"urgent"}' >/dev/null || die "data --put failed"
 derived=
 for _ in $(seq 1 100); do
 	out=$(v data --paths 2>/dev/null || true)
@@ -590,7 +590,7 @@ ok "a rule at level 0 wrote an entity at level 10"
 # BOTH WAYS, because `--paths` answers in steps and a script may hand the line over whole or let
 # the shell split it. A whole line quoted as one token is the same address as the same line split
 # into arguments, and a script that captured a path and quoted it used to read nothing.
-dref=$(v data --paths --depth 3 smokesd.feature | head -1)
+dref=$(v data --paths --depth 3 smokesd feature | head -1)
 # shellcheck disable=SC2086
 haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
@@ -650,10 +650,10 @@ has "$(v charter)" 'smoke-sdlc' || die "the ordering did not survive the restart
 has "$(v charter)" 'smoke-derive' || die "a stratified rule did not survive the restart"
 ok "the installed charter is listed again after a restart"
 # And it is live, not merely listed: a PR that opens only now still advances.
-v data demo:pr:restart --put '{"stage":"open"}' >/dev/null || die "post-restart put failed"
+v data demo pr restart --put '{"stage":"open"}' >/dev/null || die "post-restart put failed"
 advanced=
 for _ in $(seq 1 40); do
-	if haskv "$(v data demo:pr:restart 2>/dev/null || true)" stage reviewed; then
+	if haskv "$(v data demo pr restart 2>/dev/null || true)" stage reviewed; then
 		advanced=1
 		break
 	fi

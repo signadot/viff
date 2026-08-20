@@ -201,7 +201,7 @@ is observing entities — and a completion is an entity change, which is what le
 to it.
 
 ```sh
-verse watch verse.task
+verse watch verse task
 verse data verse task instance <id>
 ```
 
