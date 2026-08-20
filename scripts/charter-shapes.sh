@@ -284,7 +284,7 @@ next_steps() {
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)
 		printf '  %s data derived feature shape-derive demo derive 1\n' "$c"
-		printf '  %s strata                 ← the ordering it was checked against\n' "$c"
+		printf '  %s charter strata         ← the ordering it was checked against\n' "$c"
 		printf '\n  the derived ADDRESS is the ENGINE'"'"'s — the place, then the rule, then the\n'
 		printf '  subject'"'"'s own segments — so a derivation is addressed by what it is about,\n'
 		printf '  and no two rules can ever address the same entity.\n'
