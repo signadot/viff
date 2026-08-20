@@ -735,12 +735,18 @@ func commitMessage(l task.Launch, result string) string {
 // `answer:` contract asks for. JSON and tony both start a document the same way, and a sentence
 // does not start with either.
 //
+// A FENCE COUNTS. A model asked for a document commonly returns it fenced, and the fence line is
+// not the document — so `firstLine` took ```` ```json ```` as the subject and every branch the
+// drift flow delivered carried it. `git log --oneline` on main read as a wall of ```` ```json ````
+// and `git shortlog` grouped them as one subject, which is the one place a reader looks to see
+// what an agent changed (git-issue qwbacp11h12krq1tgsn0).
+//
 // Deliberately shallow: it decides where the text GOES and never what it means, so being wrong
 // costs a commit whose subject is derived rather than quoted, which is the safer of the two
 // mistakes. Parsing it to be sure would make this runner a reader of somebody's answer shape.
 func isDocument(result string) bool {
 	s := strings.TrimSpace(result)
-	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")
+	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[") || strings.HasPrefix(s, "```")
 }
 
 // describe is the subject line for work that did not come with a sentence: what fired, about

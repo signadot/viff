@@ -1210,6 +1210,35 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	}
 }
 
+// A FENCED document is a document, and its fence is not a subject line.
+//
+// A model asked for a document commonly returns it fenced, so the answer's first line is
+// ```json — which is what every branch the drift flow delivered carried. `git log --oneline` on
+// main read as a wall of ```json and `git shortlog` grouped them as one subject
+// (git-issue qwbacp11h12krq1tgsn0).
+func TestAFencedAnswerIsTheBodyNotTheSubject(t *testing.T) {
+	l := task.Launch{ID: "run-1", Environment: "verse-fix", Provenance: task.Provenance{
+		Chain: "review-range", Subject: "verse-dev:drift:at",
+	}}
+	for _, answer := range []string{
+		"```json\n{\"files\": 2, \"findings\": []}\n```",
+		"```\n{files: 2}\n```",
+		"```tony\nfiles: 2\n```",
+	} {
+		msg := commitMessage(l, answer)
+		subject, _, _ := strings.Cut(msg, "\n")
+		if strings.HasPrefix(subject, "```") {
+			t.Errorf("the subject is the fence: %q", subject)
+		}
+		if subject != "review-range on verse-dev:drift:at" {
+			t.Errorf("subject = %q, want what fired and about what", subject)
+		}
+		if !strings.Contains(msg, answer) {
+			t.Errorf("the answer is not in the message at all: %q", msg)
+		}
+	}
+}
+
 // A destination that RETIRES deletes a ref the environment permits, and refuses everything else.
 //
 // This is the one act here that destroys something, and it is also the one where the task names
