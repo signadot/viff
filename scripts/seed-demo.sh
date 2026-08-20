@@ -88,18 +88,19 @@ v status >/dev/null 2>&1 ||
 
 TRIGGERS=(demo-review demo-escalate)
 ENTITIES=(
-	demo:pr:1 demo:pr:2
-	demo:task:hotfix-1 demo:task:cleanup-1
-	provider:review:claude provider:review:cheapo
+	"demo pr 1" "demo pr 2"
+	"demo task hotfix-1" "demo task cleanup-1"
+	"provider review claude" "provider review cheapo"
 )
 
 if $clean; then
 	step "clean"
 	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
-	# --ref, because these are REFS: a positional is a step, so a whole ref in one word would
-	# name a system called `demo:pr:1`.
-	for e in "${ENTITIES[@]}"; do v data --ref "$e" --rm >/dev/null 2>&1 || true; done
+	# Unquoted: each entry IS the steps of one address, and the shell splitting it into words
+	# is how `verse data` takes one.
+	# shellcheck disable=SC2086
+	for e in "${ENTITIES[@]}"; do v data $e --rm >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
 	printf '\nseeded state is gone. Live tasks and answered gates are not touched.\n'
 	exit 0

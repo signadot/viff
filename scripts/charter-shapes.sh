@@ -272,16 +272,18 @@ drive_shape() {
 # What to look at once it has fired — different per shape, because what a shape DOES is
 # visible in a different place: a gate, the docket, a flow, or just the entity.
 next_steps() {
-	local sub="demo:$1:1" c="$BIN"
+	# The subject twice: as the STEPS `verse data` takes, and as the one token `flow show`
+	# takes — a flow is keyed by its subject as the store renders it.
+	local sub_at="demo $1 1" sub="demo:$1:1" c="$BIN"
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
-	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub"
+	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub_at"
 	case "$1" in
 	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as you\n' "$c" "$c" ;;
 	vote) printf '  %s docket                 ← it is waiting for a tally\n  %s vote <motion> approve --as alice\n  %s vote <motion> approve --as bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)
-		printf '  %s data --ref derived:feature:shape-derive@demo:derive:1\n' "$c"
+		printf '  %s data derived feature shape-derive@demo:derive:1\n' "$c"
 		printf '  %s strata                 ← the ordering it was checked against\n' "$c"
 		printf '\n  the derived id is the ENGINE'"'"'s — f(rule, subject) — so the rule name and the\n'
 		printf '  subject are both in it, and no two rules can ever address the same entity.\n'
@@ -341,7 +343,7 @@ clean)
 	step "clean"
 	for s in "${SHAPES[@]}"; do
 		remove_shape "$s"
-		v data --ref "demo:$s:1" --rm >/dev/null 2>&1 || true
+		v data demo "$s" 1 --rm >/dev/null 2>&1 || true
 	done
 	v data ci status shapes --rm >/dev/null 2>&1 || true
 	v data ci status release --rm >/dev/null 2>&1 || true

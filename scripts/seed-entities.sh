@@ -81,27 +81,31 @@ v status >/dev/null 2>&1 ||
 	die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\`"
 
 # ── the world ────────────────────────────────────────────────────────────────
-# Written as ref + payload pairs so --clean is the same list read for its refs, and so the
-# variety is visible in one place: two systems, three kinds, and payloads that differ in
+# Written as address + payload pairs so --clean is the same list read for its addresses, and so
+# the variety is visible in one place: two systems, three kinds, and payloads that differ in
 # stage, in owner, and in a nested `labels` object (which is what --if-at is for).
+#
+# The address is STEPS, one word per segment, which is what `verse data` takes and what its
+# listings answer in — so it is handed over unquoted and the shell splits it back.
 WORLD=(
-	'demo:pr:1|{stage: open,   owner: ana, title: "add the token TTL",   labels: {urgent: true,  area: auth}}'
-	'demo:pr:2|{stage: draft,  owner: bo,  title: "rename the docket",   labels: {urgent: false, area: docs}}'
-	'demo:pr:3|{stage: open,   owner: ana, title: "cache the schema",    labels: {urgent: true,  area: store}}'
-	'demo:pr:4|{stage: merged, owner: cy,  title: "bump go-tony",        labels: {urgent: false, area: build}}'
-	'demo:pr:5|{stage: open,   owner: cy,  title: "drop the flow field", labels: {area: engine}}'
-	'demo:task:hotfix-1|{priority: high, owner: ana, title: "expiring cert"}'
-	'demo:task:hotfix-2|{priority: high, owner: bo,  title: "docd skew"}'
-	'demo:task:cleanup-1|{priority: low, owner: cy,  title: "tidy the fixtures"}'
-	'ci:status:build|{state: green, commit: a1b2c3d}'
-	'ci:status:e2e|{state: red, commit: a1b2c3d, failed: [auth, docket]}'
-	'human:person:ana|{team: platform, reviews: [auth, store]}'
-	'human:person:bo|{team: docs, reviews: [docs]}'
+	'demo pr 1|{stage: open,   owner: ana, title: "add the token TTL",   labels: {urgent: true,  area: auth}}'
+	'demo pr 2|{stage: draft,  owner: bo,  title: "rename the docket",   labels: {urgent: false, area: docs}}'
+	'demo pr 3|{stage: open,   owner: ana, title: "cache the schema",    labels: {urgent: true,  area: store}}'
+	'demo pr 4|{stage: merged, owner: cy,  title: "bump go-tony",        labels: {urgent: false, area: build}}'
+	'demo pr 5|{stage: open,   owner: cy,  title: "drop the flow field", labels: {area: engine}}'
+	'demo task hotfix-1|{priority: high, owner: ana, title: "expiring cert"}'
+	'demo task hotfix-2|{priority: high, owner: bo,  title: "docd skew"}'
+	'demo task cleanup-1|{priority: low, owner: cy,  title: "tidy the fixtures"}'
+	'ci status build|{state: green, commit: a1b2c3d}'
+	'ci status e2e|{state: red, commit: a1b2c3d, failed: [auth, docket]}'
+	'human person ana|{team: platform, reviews: [auth, store]}'
+	'human person bo|{team: docs, reviews: [docs]}'
 )
 
 if $clean; then
 	step "clean"
-	for w in "${WORLD[@]}"; do v data --ref "${w%%|*}" --rm >/dev/null 2>&1 || true; done
+	# shellcheck disable=SC2086
+	for w in "${WORLD[@]}"; do v data ${w%%|*} --rm >/dev/null 2>&1 || true; done
 	ok "removed ${#WORLD[@]} seeded entities"
 	exit 0
 fi
@@ -116,8 +120,10 @@ fi
 
 step "seeding ${#WORLD[@]} entities"
 for w in "${WORLD[@]}"; do
-	# --ref: the WORLD table names entities as refs, and a positional is a step.
-	v data --ref "${w%%|*}" --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
+	# Unquoted: the WORLD table names each entity as its steps, and the shell splitting them
+	# back into words is exactly how `verse data` takes an address.
+	# shellcheck disable=SC2086
+	v data ${w%%|*} --put "${w#*|}" >/dev/null || die "put ${w%%|*} failed"
 done
 ok "demo:pr:1–5        three open, one draft, one merged; nested labels"
 ok "demo:task:*        two high-priority, one low"

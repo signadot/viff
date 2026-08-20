@@ -33,6 +33,10 @@ set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 ACTS=(named standing layered deadline exclusive)
+# The subject, in the two spellings this script needs it in: the STEPS `verse data` takes, and
+# the way it is RENDERED on a record — which is what `--subject` carries and what a payload
+# filter matches against.
+SUBJECT_AT="change pr 1"
 SUBJECT=change:pr:1
 RUN_NAME=review
 
@@ -133,7 +137,8 @@ setup() {
 
 	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
-	v data --ref "$SUBJECT" --put '{area: payments, title: "raise the retry budget"}' >/dev/null
+	# shellcheck disable=SC2086
+	v data $SUBJECT_AT --put '{area: payments, title: "raise the retry budget"}' >/dev/null
 	ok "subject $SUBJECT"
 
 	# A run that stops at its first action, so there is a real question to answer.
@@ -360,7 +365,8 @@ clean() {
 	for kn in security:reviewer security:payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done
-	v data --ref "$SUBJECT" --rm >/dev/null 2>&1 || true
+	# shellcheck disable=SC2086
+	v data $SUBJECT_AT --rm >/dev/null 2>&1 || true
 	ok "removed the bindings, the run and $SUBJECT"
 	printf '  answered questions are kept: a docket that forgets is one nobody can audit.\n\n'
 }

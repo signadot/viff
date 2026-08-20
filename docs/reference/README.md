@@ -89,11 +89,11 @@ verse
                                              demo pr 1 votes '[0]'   (array; also {0} (k))
                                              demo pr 1 '"[0]"'       (the FIELD named [0])
                                              (none) = the whole verse
-          [--ref <ref>]                      …or as a ref copied out of a document: demo:pr:1
-          [--at <path>]                      …or as a kinded path, which is the one spelling
+          [--at <path>]                      …or whole, as a kinded path — which is how one is
+                                             copied out of a document, and the one spelling
                                              that carries a SEGMENT wildcard:
-                                             'demo.pr.*.stage'
-                                             An address is given ONCE, in one of the three
+                                             demo.pr.1 · 'demo.pr.*.stage'
+                                             An address is given ONCE, in one of the two
           [--if <pat>] [--if-at <path>]      … only entities whose payload matches (see below)
           [--paths] [--depth <n>]            … one address per line, as STEPS, instead of the
                                              document: EVERY address under the one asked for,

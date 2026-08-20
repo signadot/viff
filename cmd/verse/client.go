@@ -518,19 +518,16 @@ func fieldPath(at string) []string {
 
 type watchConfig struct {
 	*cli.Command
-	// THE OTHER TWO SPELLINGS, each behind a flag that says which it is.
+	// THE OTHER SPELLING, behind a flag that says which it is.
 	//
 	// The positional is steps and only steps, because a lone word cannot be both one segment
 	// and several (see address). A flag disambiguates by POSITION rather than by re-reading the
-	// word, which is what lets these take the string spellings without the ambiguity coming
-	// back: which grammar applies is declared by which flag was used, not guessed from what is
+	// word: which grammar applies is declared by which flag was used, not guessed from what is
 	// inside it.
 	//
-	//	--ref demo:pr:1            an address copied out of a document
 	//	--at 'demo.pr.*.stage'     a kinded path — the one spelling that carries a WILDCARD,
 	//	                           which steps cannot (a `*` step is the id that is an asterisk)
-	Ref string `cli:"name=ref desc='the address as a ref (demo:pr:1) instead of steps'"`
-	At  string `cli:"name=at desc='the address as a kinded path (demo.pr.1, demo.pr.*.stage) instead of steps'"`
+	At string `cli:"name=at desc='the address as a kinded path (demo.pr.1, demo.pr.*.stage) instead of steps'"`
 	// NO DEFAULT, because the default was a question nobody asked. `default=0` sent `since=0`
 	// on every watch — "replay the whole retained log" — so `verse watch <path>` on a store
 	// that cannot replay from 0 was refused, and the refusal advised dropping a flag the
@@ -633,7 +630,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	at, err := addressWire(args, cfg.Ref, cfg.At)
+	at, err := addressWire(args, cfg.At)
 	if err != nil {
 		return err
 	}
@@ -838,10 +835,9 @@ func (cfg *stateConfig) conditions() ([]api.Condition, error) {
 // collection() — the shape is the same, the query is not.
 type stateConfig struct {
 	*cli.Command
-	// THE OTHER TWO SPELLINGS, each behind a flag that says which it is — see watchConfig, and
-	// address() for why the positional cannot carry either.
-	Ref string `cli:"name=ref desc='the address as a ref (demo:pr:1) instead of steps'"`
-	At  string `cli:"name=at desc='the address as a kinded path (demo.pr.1, demo.pr.*.stage) instead of steps'"`
+	// THE OTHER SPELLING, behind a flag that says which it is — see watchConfig, and address()
+	// for why the positional cannot carry it.
+	At string `cli:"name=at desc='the address as a kinded path (demo.pr.1, demo.pr.*.stage) instead of steps'"`
 	// The same pair `watch` takes, meaning the same thing (filterBy) — the read and the stream
 	// are one selector asked at two times.
 	//
@@ -956,7 +952,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: data does one thing at a time: --put writes, --rm removes",
 			cli.ErrUsage)
 	case cfg.Put != "" || cfg.Rm:
-		segs, err := addressOf(addr, cfg.Ref, cfg.At)
+		segs, err := addressOf(addr, cfg.At)
 		if err != nil {
 			return err
 		}
@@ -971,7 +967,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	}
 	// ONE JOIN, NEVER SCANNED BACK — and `--at` goes through as written, being that spelling
 	// already. See addressWire.
-	at, err := addressWire(addr, cfg.Ref, cfg.At)
+	at, err := addressWire(addr, cfg.At)
 	if err != nil {
 		return err
 	}
@@ -1000,7 +996,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	if len(segs) == 0 {
 		return fmt.Errorf("%w: --put wants a path to write at (`demo pr 1`, `demo pr 1 labels "+
-			"urgent`, or --ref demo:pr:1)", cli.ErrUsage)
+			"urgent`, or --at demo.pr.1)", cli.ErrUsage)
 	}
 	// FROM THE SEGMENTS, not from a string: argv already is the vector, and assembling it into
 	// a path only to parse the path back is the round trip that could not be right for every
@@ -1046,7 +1042,7 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 	if len(segs) == 0 {
 		return fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
-			"--ref demo:pr:1)", cli.ErrUsage)
+			"--at demo.pr.1)", cli.ErrUsage)
 	}
 	at, sub, err := entity.TargetOf(segs)
 	if err != nil {
@@ -1207,10 +1203,10 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 // answer rather than an error: `a:b:c pr 1` assembled to `a:b:c.pr."1"`, which read back as the
 // two-segment ref `a`:`b` with a mangled id.
 //
-// So a ref is taken where it is MARKED — `verse data --ref demo:pr:1` — which is unambiguous for
-// the reason the positional is not: it is a different place on the line, not a second reading of
-// the same word. That is the spelling for a ref copied out of a document, which is the one
-// workflow the positional form was carrying.
+// So a whole address in ONE token is taken where it is MARKED — `verse data --at demo.pr.1` —
+// which is unambiguous for the reason the positional is not: it is a different place on the line,
+// not a second reading of the same word. That is the spelling for an address copied out of a
+// document, and the only one that can carry a wildcard.
 func address(args []string) ([]string, error) {
 	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and every
 	// command that takes an address accepts it rather than answering about an address whose
@@ -1227,18 +1223,18 @@ func address(args []string) ([]string, error) {
 	return args, nil
 }
 
-// addressWire is the address as the WIRE takes it — a kinded path — from whichever of the three
+// addressWire is the address as the WIRE takes it — a kinded path — from whichever of the two
 // spellings was used, and exactly one may be.
 //
 // Steps are joined here and never scanned back: JoinSegs quotes each segment as kpath needs, and
 // the server parses with ParseAt, so the round trip holds for every segment. `--at` is already
 // that spelling and goes through verbatim, which is what lets it carry a WILDCARD — the one
 // thing steps cannot say, since a `*` step is the id that is an asterisk.
-func addressWire(args []string, ref, at string) (string, error) {
+func addressWire(args []string, at string) (string, error) {
 	if at != "" {
 		// Declared as a kinded path, so it goes through as one — WITHOUT the segment view
 		// below, which refuses a wildcard because a write may not carry one. A read may.
-		if err := onlyOne(args, ref, at); err != nil {
+		if err := onlyOne(args, at); err != nil {
 			return "", err
 		}
 		if _, err := entity.ParseAt(at); err != nil {
@@ -1246,7 +1242,7 @@ func addressWire(args []string, ref, at string) (string, error) {
 		}
 		return at, nil
 	}
-	segs, err := addressOf(args, ref, at)
+	segs, err := addressOf(args, at)
 	if err != nil {
 		return "", err
 	}
@@ -1256,38 +1252,24 @@ func addressWire(args []string, ref, at string) (string, error) {
 }
 
 // onlyOne refuses an address given in more than one spelling.
-func onlyOne(args []string, ref, at string) error {
-	given := 0
-	for _, on := range []bool{len(args) > 0, ref != "", at != ""} {
-		if on {
-			given++
-		}
-	}
-	if given > 1 {
-		return fmt.Errorf("%w: an address is given once — as steps, as --ref, or as --at",
-			cli.ErrUsage)
+func onlyOne(args []string, at string) error {
+	if len(args) > 0 && at != "" {
+		return fmt.Errorf("%w: an address is given once — as steps, or as --at", cli.ErrUsage)
 	}
 	return nil
 }
 
-// addressOf resolves the address to its SEGMENTS, for the callers that need them (a write splits
-// the entity from the field path positionally). Exactly one spelling may be given.
-func addressOf(args []string, ref, at string) ([]string, error) {
+// addressOf resolves the address to its SEGMENTS, for the callers that need them (a write asks
+// where an array access begins). Exactly one spelling may be given.
+func addressOf(args []string, at string) ([]string, error) {
 	segs, err := address(args)
 	if err != nil {
 		return nil, err
 	}
-	if err := onlyOne(segs, ref, at); err != nil {
+	if err := onlyOne(segs, at); err != nil {
 		return nil, err
 	}
-	switch {
-	case ref != "":
-		r, err := entity.ParseRef(ref)
-		if err != nil {
-			return nil, fmt.Errorf("%w: --ref: %s", cli.ErrUsage, err)
-		}
-		return r.Segs(), nil
-	case at != "":
+	if at != "" {
 		// PathSegs is the kpath reader: quote-aware, and it refuses a wildcard, which is right
 		// here — this is the segment view, and the callers that want it are the WRITES.
 		out, err := entity.PathSegs(at)

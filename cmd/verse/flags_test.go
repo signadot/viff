@@ -341,41 +341,27 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 	}
 }
 
-// A REF IS TAKEN WHERE IT IS MARKED, which is the escape hatch for an address copied out of a
-// document (`subject: demo:pr:1`). It is unambiguous for the reason the positional is not: a
-// flag is a different PLACE on the line, not a second reading of the same word.
-func TestARefIsTakenAsAFlag(t *testing.T) {
-	got, err := addressOf(nil, "demo:pr:1", "")
-	if err != nil || strings.Join(got, " ") != "demo pr 1" {
-		t.Errorf("--ref demo:pr:1 = (%q, %v), want the three steps", got, err)
-	}
-	if _, err := addressOf([]string{"demo", "pr", "1"}, "demo:pr:1", ""); !errors.Is(err, cli.ErrUsage) {
-		t.Error("--ref beside positional steps names the address twice and must be refused")
-	}
-	if _, err := addressOf(nil, "not-a-ref", ""); !errors.Is(err, cli.ErrUsage) {
-		t.Error("--ref takes a ref, and a word that is not one is a usage error")
-	}
-}
-
-// A PATH IS TAKEN WHERE IT IS MARKED TOO, and it is the one spelling that carries a WILDCARD:
+// AN ADDRESS IN ONE TOKEN IS TAKEN WHERE IT IS MARKED, which is the escape hatch for one copied
+// out of a document (`subject: demo.pr.1`) — and it is the one spelling that carries a WILDCARD:
 // steps cannot, since a `*` step is the id that IS an asterisk. `--at` declares the grammar, so
 // the `*` is read as the selector it is rather than guessed at.
 func TestAPathIsTakenAsAFlag(t *testing.T) {
-	got, err := addressWire(nil, "", `demo.pr.*.stage`)
+	got, err := addressWire(nil, `demo.pr.*.stage`)
 	if err != nil || got != `demo.pr.*.stage` {
 		t.Errorf("--at = (%q, %v), want it through verbatim — the wildcard is the point", got, err)
 	}
-	// As SEGMENTS it is refused, which is right: that view is for a write, and a wildcard
-	// names several places where a write names one.
-	if _, err := addressOf(nil, "", `demo.pr.*.stage`); !errors.Is(err, cli.ErrUsage) {
+	// The quoting is the grammar's own, so a segment holding a dot survives the segment view.
+	if segs, err := addressOf(nil, `demo.pr."a.b"`); err != nil || strings.Join(segs, " ") != "demo pr a.b" {
+		t.Errorf("--at with a quoted segment = (%q, %v), want the three steps", segs, err)
+	}
+	// A WILDCARD as SEGMENTS is refused, which is right: that view is for a write, and a
+	// wildcard names several places where a write names one.
+	if _, err := addressOf(nil, `demo.pr.*.stage`); !errors.Is(err, cli.ErrUsage) {
 		t.Error("a wildcard reached the segment view, which a write would then use")
 	}
-	// And the three spellings are exclusive.
-	if _, err := addressOf([]string{"demo"}, "", "demo.pr.1"); !errors.Is(err, cli.ErrUsage) {
+	// And the two spellings are exclusive.
+	if _, err := addressOf([]string{"demo"}, "demo.pr.1"); !errors.Is(err, cli.ErrUsage) {
 		t.Error("steps beside --at name the address twice and must be refused")
-	}
-	if _, err := addressOf(nil, "demo:pr:1", "demo.pr.1"); !errors.Is(err, cli.ErrUsage) {
-		t.Error("--ref beside --at name the address twice and must be refused")
 	}
 }
 

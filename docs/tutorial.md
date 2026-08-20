@@ -69,7 +69,7 @@ verse data --if '{stage: !or [open, merged]}'      # …an operator, not just eq
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
 verse data demo pr --trim '{stage: null}'          # …and how much of each entity to print
 verse data --paths demo pr                         # just the addresses
-verse data --ref demo:pr:1                         # …a ref copied out of a document
+verse data --at demo.pr.1                          # …an address copied out of a document
 ```
 
 A verse is ONE DOCUMENT — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
@@ -94,12 +94,12 @@ shell's own quoting appears only where a segment holds a space or a `*`, and it 
 quotes, which `xargs` understands.
 
 A POSITIONAL IS A STEP AND NOTHING ELSE — `verse data demo.pr.1` names a system called
-`demo.pr.1` — because a word cannot be both one segment and several. The string spellings are
-taken where they are MARKED, which says which grammar applies instead of guessing it:
+`demo.pr.1` — because a word cannot be both one segment and several. A whole address in ONE
+token is taken where it is MARKED, which says which grammar applies instead of guessing it:
 
 ```sh
-verse data --ref demo:pr:1          # a ref copied out of a document
-verse data --at 'demo.pr.*.stage'   # a path — the one spelling that carries a wildcard
+verse data --at demo.pr.1           # an address copied out of a document
+verse data --at 'demo.pr.*.stage'   # …and the one spelling that carries a wildcard
 ```
 
 Flags go on either side of the path — `verse data --paths demo pr` and

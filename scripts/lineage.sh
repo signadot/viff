@@ -124,16 +124,20 @@ A=a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
 B=d4e5f60718293a4b5c6d7e8f901234567890abcd
 C=90abcdef1234567890abcdef1234567890abcdef
 
-# The subject this run is about, spelled once. It is a merged pull request in the seed below,
-# and everything that asks about the correlation asks about this.
-PR="github:pr:acme/widget#42"
+# The subject this run is about, spelled once, as the STEPS an address is: one word per
+# segment, handed to `verse data` unquoted. It is a merged pull request in the seed below, and
+# everything that asks about the correlation asks about this.
+PR="github pr acme/widget#42"
+# The same address as the store RENDERS it inside a document — which is what a grep over a
+# rendered record looks for, and the one place this script still writes the colon spelling.
+PR_SUBJ="github:pr:acme/widget#42"
 
 TRIGGERS=(lin-pr-lineage lin-release-manifest)
 STRATA=(lin-source lin-change lin-trace)
 ENTITIES=(
-	"git:commit:widget/$A" "git:commit:widget/$B" "git:commit:widget/$C"
-	"github:pr:acme/widget#42" "github:pr:acme/widget#43"
-	"github:pr:acme/widget#44" "github:pr:acme/widget#45"
+	"git commit widget/$A" "git commit widget/$B" "git commit widget/$C"
+	"github pr acme/widget#42" "github pr acme/widget#43"
+	"github pr acme/widget#44" "github pr acme/widget#45"
 )
 
 if $clean; then
@@ -151,8 +155,9 @@ if $clean; then
 			[ -n "$e" ] && v data $e --rm >/dev/null 2>&1 || true
 		done < <(v data --paths --depth 3 "$sys" 2>/dev/null)
 	done
-	# --ref: these are refs, and a positional is a step.
-	for e in "${ENTITIES[@]}"; do v data --ref "$e" --rm >/dev/null 2>&1 || true; done
+	# Unquoted: each entry IS the steps of one address, split back by the shell.
+	# shellcheck disable=SC2086
+	for e in "${ENTITIES[@]}"; do v data $e --rm >/dev/null 2>&1 || true; done
 	ok "removed the entities — derived ones, and every release a run cut"
 	for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
 	ok "removed the ordering"
@@ -279,15 +284,16 @@ step "two systems, two id schemes, no coordination"
 # `github:pr:<org>/<repo>#<n>` with `merged`/`headSha`/`base`/`title`. Both spellings are
 # copied from what those sources produce, so a charter written against this demo is a charter
 # that works — which is the whole reason not to invent a vocabulary here.
-v data --ref "git:commit:widget/$A" --put "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
-v data --ref "git:commit:widget/$B" --put "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
-v data --ref "git:commit:widget/$C" --put "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
+v data git commit "widget/$A" --put "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
+v data git commit "widget/$B" --put "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
+v data git commit "widget/$C" --put "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
 ok "three commits — git ids them <repo>/<sha>, because a sha alone is not a cross-repo key"
 
-v data --ref "$PR" --put "{merged: true,  headSha: $A, base: main, title: \"token TTL\", number: 42, repo: acme/widget, state: closed}" >/dev/null
-v data --ref "github:pr:acme/widget#45" --put "{merged: true,  headSha: $C, base: main, title: \"gate vector\", number: 45, repo: acme/widget, state: closed}" >/dev/null
-v data --ref "github:pr:acme/widget#43" --put "{merged: true,  headSha: $B, base: next, title: \"docket label\", number: 43, repo: acme/widget, state: closed}" >/dev/null
-v data --ref "github:pr:acme/widget#44" --put "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
+# shellcheck disable=SC2086
+v data $PR --put "{merged: true,  headSha: $A, base: main, title: \"token TTL\", number: 42, repo: acme/widget, state: closed}" >/dev/null
+v data github pr "acme/widget#45" --put "{merged: true,  headSha: $C, base: main, title: \"gate vector\", number: 45, repo: acme/widget, state: closed}" >/dev/null
+v data github pr "acme/widget#43" --put "{merged: true,  headSha: $B, base: next, title: \"docket label\", number: 43, repo: acme/widget, state: closed}" >/dev/null
+v data github pr "acme/widget#44" --put "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
 ok "four PRs — GitHub ids them <org>/<repo>#<n>; :42 and :45 onto main, :43 onto next, :44 unmerged"
 note "a pull request carries a BARE headSha, and the commit's id has a repo in front of it"
 
@@ -310,7 +316,7 @@ for _ in $(seq 1 100); do
 		# which is what the address grammar takes. (A segment holding whitespace would not
 		# survive this; none of these ids do. `xargs -L1` is the form that does.)
 		# shellcheck disable=SC2086
-		if v data $t -o tony 2>/dev/null | grep -qF "subject: \"$PR\""; then
+		if v data $t -o tony 2>/dev/null | grep -qF "subject: \"$PR_SUBJ\""; then
 			tref=$t
 			break 2
 		fi
@@ -318,7 +324,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$tref" ] ||
-	die "no trace about $PR — is the engine running, and did lin-pr-lineage install?"
+	die "no trace about $PR_SUBJ — is the engine running, and did lin-pr-lineage install?"
 ok "$tref"
 # shellcheck disable=SC2086
 v data $tref
@@ -360,12 +366,17 @@ step "the release: three ids reassembled without a fourth"
 # when this run wrote its seven fixtures a moment ago, and it needs nothing to have caught up.
 rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
 [ -n "$rev" ] || die "could not read storeRev — is this verse answering \`$BIN status\`?"
-REL="lintag:release:v1.4.$rev"
-v data --ref "$REL" --put '{stage: cut, target: main}' >/dev/null
-until_ok 100 "the manifest never landed" \
-	bash -c "$BIN ${scope[*]} data --ref '$REL' 2>/dev/null | grep -q shipped"
+# The address as steps, and beside it the way the store renders it — the same pair as PR above,
+# and for the same reason: one is what a command takes, the other is what a grep over a rendered
+# record finds.
+REL="lintag release v1.4.$rev"
+REL_SUBJ="lintag:release:v1.4.$rev"
 # shellcheck disable=SC2086
-v data --ref "$REL"
+v data $REL --put '{stage: cut, target: main}' >/dev/null
+until_ok 100 "the manifest never landed" \
+	bash -c "$BIN ${scope[*]} data $REL 2>/dev/null | grep -q shipped"
+# shellcheck disable=SC2086
+v data $REL
 printf '\n'
 ok "the release carries the PRs and the commits, each still in its own system's id scheme"
 # Look at `authors` against `commits`: one nests and the other does not, and the difference is
@@ -378,7 +389,8 @@ note "authors nests and commits does not: the join answers with a list, and the 
 # The predicate did the narrowing: #43 is merged and traced, and is not in this release
 # because its base was `next`. That is a different exclusion from #44's, which is not traced
 # at all — one is the read's predicate, the other is the rule's subject.
-v data --ref "$REL" | grep -qF 'github:pr:acme/widget#43' &&
+# shellcheck disable=SC2086
+v data $REL | grep -qF 'github:pr:acme/widget#43' &&
 	die "a trace onto next is in a release cut from main — the read's predicate did not narrow"
 ok "#43 is traced but absent: it went onto next, and this release asked for its own branch"
 
@@ -388,10 +400,10 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 step "the flow, which is keyed by exactly one of them"
 # If this is what fails, the release is a subject the engine already had a task for — see the
 # loop above, which exists to make that impossible.
-until_ok 150 "no flow appeared for $REL — is a task already recorded for it? (verse data verse task instance lin-release-manifest@$REL)" \
-	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL'"
+until_ok 150 "no flow appeared for $REL_SUBJ — is a task already recorded for it? (verse data verse task instance lin-release-manifest@$REL_SUBJ)" \
+	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL_SUBJ'"
 v flow
-ok "the flow's subject is $REL — one id, not a merged one"
+ok "the flow's subject is $REL_SUBJ — one id, not a merged one"
 note "the task can reach the others because the manifest is on its subject: \`verse task get\`"
 
 # ── what this does not do ────────────────────────────────────────────────────
@@ -425,7 +437,7 @@ step "poke at it"
 cat <<EOF
   $BIN data lineage                        every correlation verse has written
   $BIN data $tref
-  $BIN data --ref $REL    the reassembled chain
+  $BIN data $REL    the reassembled chain
   $BIN flows                               the flow, keyed by one id
   ./scripts/lineage.sh --clean             put it all back
 EOF

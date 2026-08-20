@@ -97,16 +97,16 @@ The quoted clause is the escape, and it costs the spelling of a field whose name
 begins and ends with a quote. Array access is what people address; a field named `[0]` is not,
 and verse writes none.
 
-**The string spellings are taken where they are MARKED**, which is unambiguous for the reason
-the positional is not — a flag is a different *place* on the line, not a second reading of the
-same word. Which grammar applies is declared rather than guessed:
+**A whole address in one token is taken where it is MARKED**, which is unambiguous for the
+reason the positional is not — a flag is a different *place* on the line, not a second reading
+of the same word. Which grammar applies is declared rather than guessed:
 
 ```sh
-verse data --ref demo:pr:1          a ref copied out of a document
-verse data --at 'demo.pr.*.stage'   a kinded path — the one spelling that carries a WILDCARD
+verse data --at demo.pr.1           an address copied out of a document
+verse data --at 'demo.pr.*.stage'   …and the one spelling that carries a WILDCARD
 ```
 
-An address is given once: steps, `--ref`, or `--at`, never two of them.
+An address is given once: as steps, or as `--at`, never both.
 
 ### `*`: three layers, three rules
 
@@ -166,8 +166,8 @@ three:
 
 ```sh
 verse data verse task instance run-a1b2       # steps
-verse data --ref verse:task:instance:run-a1b2 # …a ref copied out of a document
-verse data verse task instance                    # …and as steps, at whatever depth
+verse data --at verse.task.instance.run-a1b2  # …the same address copied out of a document
+verse data verse task instance                # …and a prefix of it: the whole kind
 ```
 
 Two consequences worth knowing before they surprise you:
@@ -380,8 +380,8 @@ writes there, and the answer is that place. A write is a value at a path, so whe
 [working/entity-tree.md](../working/entity-tree.md).
 
 ```sh
-verse data demo pr 1 --put '{stage: open}'       # as steps: nothing needs quoting
-verse data --ref demo:pr:1 --put '{owner: ana}' # …or by ref: adds an owner, keeps the stage
+verse data demo pr 1 --put '{stage: open}'      # as steps: nothing needs quoting
+verse data --at demo.pr.1 --put '{owner: ana}'  # …or in one token: adds an owner, keeps the stage
 verse data demo pr 1 labels urgent --put true   # write INSIDE the payload
 verse data demo pr 1 labels urgent --rm         # remove one field
 verse data demo pr 1 --rm                       # the whole entity
