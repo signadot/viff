@@ -85,11 +85,55 @@ Mixing the two IS refused, and is told apart by arity: `verse data demo.pr 1` is
 an address that needs three, with a delimiter in one of them. Given three words there is
 nothing to be ambiguous about.
 
-`*` is a wildcard per segment and an id may glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*`
-and a charter's `subject: demo:pr:*` mean the same set. **A selector is the one place the ref
-spelling is the better command-line form**: the shell would expand a bare `*`, so quoting it
-costs back what steps save — which is why the `verse flow` verbs take one token and refuse a
-second rather than reading it as a step.
+### `*`: three layers, three rules
+
+A `*` passes through the shell, the address grammar and a charter match, and each of the three
+reads it differently. They are consistent once seen together, and surprising one at a time.
+
+**In a one-token address, a bare `*` is a wildcard and a quoted one is a name.**
+
+```sh
+verse data 'demo.pr.*'        # every id under demo.pr
+verse data 'demo.pr."*"'      # the one entity whose id IS an asterisk
+```
+
+**As a step it is always a NAME.** The steps form assembles the path itself and quotes each word
+as a literal, so there is no way to write a wildcard in it:
+
+```sh
+verse data demo pr '*'        # the entity whose id is an asterisk — not a wildcard
+```
+
+That is the trade the two forms make, and it goes both ways: **a selector is the one place the
+one-token spelling is the better command line**, and steps are the easy way to name an id that
+happens to be punctuation.
+
+**The shell gets there first, and a bare `*` as its own word is the dangerous one.** Inside a
+longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
+alone it matches *every file in the directory*:
+
+```sh
+verse data demo pr * stage    # bash: expands to every filename in the cwd
+verse data demo.pr.*.stage    # bash: passed through if no file looks like that; zsh: error
+```
+
+So quote it, in either form. `--paths` prints it quoted for the same reason, which is why a
+listing containing such an id pipes back correctly.
+
+**In a charter, quoting does not change it.** Tony quoting is about a value's TYPE, not about
+matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
+the literal asterisk takes an operator:
+
+```tony
+path: [demo, pr, "*"]           # any id — the quotes change nothing
+path: [demo, pr, !or ["*"]]     # the id that IS an asterisk
+path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
+```
+
+An id may itself glob (`demo:pr:hotfix-*`), so `verse flow demo:pr:*` and a charter's
+`subject: demo:pr:*` mean the same set — and the `verse flow` verbs take one token and refuse a
+second rather than reading it as a step, because a selector is exactly the case steps cannot
+express.
 
 In a charter, `!verse-path [demo pr 1]` is the steps spelling: the tag is required, because a
 bare list where an address belongs would be a second thing a bare list can mean.
