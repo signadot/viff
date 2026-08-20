@@ -51,6 +51,9 @@ func TestStatus(t *testing.T) {
 	if err := srv.Eng.AddTrigger(trigger.Trigger{
 		Name:      "t",
 		Condition: trigger.Condition{Subject: trigger.Match{"system": "demo"}},
+		// A rule must have an action (git-issue b2g9hsnfh12ks5vqg9n0). What it writes is not
+		// what this counts — the counts on /status are.
+		Action: trigger.Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
 	}

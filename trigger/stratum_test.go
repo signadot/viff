@@ -107,10 +107,10 @@ func TestSubjectMustBeInsideItsStratum(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 
 	ok := []Trigger{
-		{Name: "named", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "id": "1"}}},
-		{Name: "kind", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr"}}},
-		{Name: "system", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh"}}},
-		{Name: "glob", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr", "id": "hot-*"}}},
+		{Name: "named", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "id": "1"}}, Action: seenAction()},
+		{Name: "kind", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr"}}, Action: seenAction()},
+		{Name: "system", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh"}}, Action: seenAction()},
+		{Name: "glob", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr", "id": "hot-*"}}, Action: seenAction()},
 	}
 	for _, tr := range ok {
 		if err := eng.AddTrigger(tr); err != nil {
@@ -140,10 +140,17 @@ func TestTheImplicitStratumIsUnconstrained(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "unstratified",
 		Condition: Condition{Subject: Match{"system": "anything", "kind": "at-all"}},
+		Action:    seenAction(),
 	}); err != nil {
 		t.Fatalf("a rule declaring no stratum was refused: %v", err)
 	}
 }
+
+// seenAction is an action for a rule whose test is about INSTALLING it — the level checks, the
+// holding, the removal — and not about what it writes. A rule with no action at all is refused
+// (git-issue b2g9hsnfh12ks5vqg9n0), and a `patch` is the one line that satisfies it without
+// bringing a spawn, a derive or a level of its own into a test about something else.
+func seenAction() Action { return Action{Patch: entity.Obj{"seen": true}.Payload()} }
 
 // ── check #2: a derive lands strictly above ───────────────────────────────────────
 
@@ -541,6 +548,7 @@ func TestAHeldRuleCanBeRemoved(t *testing.T) {
 		Name:      "early",
 		Stratum:   "not-yet",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -564,6 +572,7 @@ func TestAStratumWithRulesCannotBeRemoved(t *testing.T) {
 		Name:      "r",
 		Stratum:   "observe",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -631,6 +640,7 @@ func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
 		Name:      "r",
 		Stratum:   "observe",
 		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
 	}

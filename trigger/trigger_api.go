@@ -64,6 +64,19 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	if err := t.Action.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
+	// rendered back with `action: {}`, and then watched its subtree for the life of the verse
+	// without ever writing anything (git-issue b2g9hsnfh12ks5vqg9n0).
+	//
+	// It is the failure every refusal around it exists to prevent — a rule that looks installed
+	// and is not — and a worse instance than the ones already caught, because there is no
+	// half-written field to notice: the whole action is missing. A gate does not rescue it
+	// either. A gate with no action poses a question whose answer nothing reads.
+	if !t.Action.does() {
+		return fmt.Errorf("trigger %q: the action does nothing — it has no patch, derive, spawn "+
+			"or seq, so the rule watches its subtree and writes nothing whatever it sees. Give "+
+			"it an action (a `patch` is one line), or remove the rule", t.Name)
+	}
 	if err := t.Action.noNestedSeq(false); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}

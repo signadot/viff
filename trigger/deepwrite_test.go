@@ -27,7 +27,10 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 			"system": "demo", "kind": "pr",
 			"value": map[string]any{"stage": "reviewed", "env": "prod"},
 		}},
-		Action: Action{},
+		// A rule must have an action (git-issue b2g9hsnfh12ks5vqg9n0), and this one latches:
+		// the patch takes the subject out of `stage: reviewed`, so the count below is the
+		// number of times the deep write was SEEN and not a rule firing on its own writes.
+		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -822,6 +822,14 @@ withdrawn one takes a live question away from the people it is in front of.
 
 Data, not code. An action needs no target of its own: it acts on the condition's subject.
 
+**Every rule has one, and a rule that would do nothing is refused at install.** `patch`,
+`derive`, `spawn` or `seq` — any one is enough, and a rule with none of them installs, reports
+itself installed, and then watches its subtree for the life of the verse without ever writing
+anything. Completion hooks do not count: a hook is what happens when something finishes, and
+there is nothing there to finish (an `onX` without a spawn or a seq is refused for that reason).
+A gate does not count either — a gate on a rule with no action poses a question whose answer
+nothing reads.
+
 `patch` writes to the subject's payload — a state transition. It is a tony patch, not an
 assignment: a nested write merges into the subtree it names rather than replacing it, so two
 triggers writing under one key do not clobber each other, and the

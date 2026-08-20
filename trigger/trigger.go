@@ -541,6 +541,13 @@ func (a *Action) hasHooks() bool {
 	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil
 }
 
+// does reports whether this action would do anything at all: write the subject, write another
+// entity, or start work. Hooks are not among them — a hook is what happens WHEN something
+// finishes, and there is nothing here to finish (validate refuses that separately).
+func (a *Action) does() bool {
+	return a.Patch != nil || a.Derive != nil || a.Spawn != nil || len(a.Seq) > 0
+}
+
 // validate reports whether the action is installable (called from AddTrigger). A completion
 // hook needs a task to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.

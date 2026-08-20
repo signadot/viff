@@ -17,10 +17,14 @@ import (
 func TestControlOutranksObservation(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
+	// Firing is the only thing this counts, and a rule must still have an action (git-issue
+	// b2g9hsnfh12ks5vqg9n0). The pair below LATCHES — it selects what has no `seen` and writes
+	// one — so the count stays exactly the number of entities in the burst rather than growing
+	// on the rule's own writes.
 	eng.AddTrigger(Trigger{
 		Name:      "count",
-		Condition: Condition{Subject: Match{"system": "demo"}},
-		Action:    Action{}, // firing is the only thing we count
+		Condition: Condition{Subject: Match{"system": "demo", "value": map[string]any{"stage": "new"}}},
+		Action:    Action{Patch: entity.Obj{"stage": "seen"}.Payload()},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -31,7 +35,7 @@ func TestControlOutranksObservation(t *testing.T) {
 
 	// A burst of changes arrives while paused; none may fire.
 	for i := 0; i < 20; i++ {
-		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)), entity.Obj{}.Payload())
+		entitytest.Set(t, store, entity.RefAt("demo", "x", fmt.Sprint(i)), entity.Obj{"stage": "new"}.Payload())
 	}
 	time.Sleep(100 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
