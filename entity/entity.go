@@ -142,12 +142,12 @@ func (r Ref) Len() int {
 // `verse-dev.drift.head.abc`, `git.ref."x@git:ref:y"`. ParseAddr reads back exactly this, and
 // there is nothing else to read.
 //
-// IT USED TO PICK A SPELLING BY DEPTH: the colon form at three segments, the path at any other,
-// because `a:b:c:d` cannot be read back — an id may hold colons, so it is already `a:b:` plus an
-// id. That worked and cost a DISCRIMINATOR: every reader recovering an address from text had to
-// decide which of two grammars it was looking at, by asking where the colons were, and the rule
-// was stated in more than one place because a read address (an address followed by a payload
-// path) needed the same question answered with a different split. One grammar has no such rule.
+// ONE SPELLING AT EVERY DEPTH, rather than one per depth. A grammar that spelled three segments
+// differently from four would need a DISCRIMINATOR: every reader recovering an address from text
+// deciding which of two grammars it is looking at, and the rule restated wherever a read address
+// (an address followed by a payload path) needs the same question answered with a different
+// split. Quoting says what a delimiter cannot — `demo.pr."a.b"` is an id holding a dot — so one
+// grammar needs no such rule.
 //
 // The quoting is what makes one grammar enough. A segment that would otherwise read as something
 // else is quoted — a numeric id, a name holding a dot — so `demo.pr."a.b"` and `demo.pr."a"."b"`
@@ -175,11 +175,10 @@ func (r *Ref) UnmarshalText(b []byte) error {
 
 // ParseAddr reads an address: a kinded path, at any depth, and the inverse of String.
 //
-// It is the ONE reader. `system:kind:id` is not a spelling any more — it parses as a single
-// segment whose name happens to hold colons, which is what that string now means — so a record
-// written before this reads as an address one segment deep rather than three. That is the
-// clobber this change is: the spelling moved, and what was stored under the old one is re-seeded
-// rather than translated (docs/working/entity-tree.md §7).
+// It is the ONE reader. A colon is an ordinary character in a name, so `system:kind:id` is an
+// address ONE segment deep whose name holds colons — which is what makes `git.ref."x@git:ref:y"`
+// readable, and what a store seeded under another spelling would have to be re-seeded for
+// (docs/working/entity-tree.md §7).
 //
 // A wildcard is refused, and an empty segment with it: this answers "which one place", and
 // neither names one. `PathSegs` is where both refusals live, so the read routes that DO take a
@@ -271,10 +270,9 @@ const Depth = 3
 // advances — rather than separate primitives. See payload.go: it is any tony value, and an
 // object is merely the common case.
 //
-// THE ADDRESS IS SPELLED `at`, which is what the request side asks with — `POST /entity`
-// takes `at:` and `GET /state?at=` reads at one, so answering with `ref:` meant the wire asked
-// in one word and answered in another. It is the same word at both ends now, and the value was
-// already a kinded path at any depth.
+// THE ADDRESS IS SPELLED `at`, the same word the request side asks with: `POST /entity` takes
+// `at:` and `GET /state?at=` reads at one. One word at both ends, so nothing has to know which
+// half of the exchange it is looking at, and the value is a kinded path at any depth.
 //
 // Describable as of go-tony v0.0.93, which taught the schema type mapper to consult
 // TextMarshaler: the address generates as .[string], agreeing with the generated code that has

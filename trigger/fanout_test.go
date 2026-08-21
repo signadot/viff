@@ -363,8 +363,8 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 
 // An ADDRESS GLOB is the string spelling of a set-valued Subject, and it must dispatch
 // identically to the object form — `"demo.pr.*"` is the whole kind, exactly as `verse flow
-// demo.pr.*` addresses the whole kind's live tasks. It used to parse to a `ref` naming an
-// entity literally called "*", so nothing fanned out and `set` created `demo.pr.*` instead.
+// demo.pr.*` addresses the whole kind's live tasks. Parsed instead as a `ref` naming an entity
+// literally called "*", nothing fans out and `set` creates `demo.pr.*`.
 func TestGlobSubjectFansOut(t *testing.T) {
 	store := entitytest.Store(t)
 	open := prs(t, store, "open", "1", "2", "3")

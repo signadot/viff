@@ -9,11 +9,11 @@ import (
 // does not say where its entities end, so "which entity changed" is a question with a parameter
 // (docs/working/entity-tree.md).
 //
-// It used to answer at the fixed arity, and the cost was not a rounding error. A derived entity
-// stands at its target, the rule that derived it, and the subject's own segments — six segments
-// where a rule keeps two levels — so a write to one arrived as a change to its THREE-segment
-// ancestor. Every consumer comparing the reported address to one it already had was then
-// comparing an ancestor with a descendant.
+// A FIXED ARITY IS NOT A ROUNDING ERROR HERE. A derived entity stands at its target, the rule
+// that derived it, and the subject's own segments — six segments where a rule keeps two levels —
+// so answering at three delivers a write to one as a change to its ancestor, and every consumer
+// comparing the reported address to one it already holds compares an ancestor with a
+// descendant.
 func TestWatchSubtreeReportsAtTheDepthItWasAsked(t *testing.T) {
 	s := openStore(t)
 	deep := RefAt("verse-dev", "drift", "head", "abc")

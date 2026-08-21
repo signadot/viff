@@ -56,10 +56,9 @@ import (
 //	{at: "linear.project.*", path: [owners, ENG]}
 //
 // `at` IS THE ADDRESS AND `path` IS THE PLACE INSIDE IT, which is what every other surface
-// already means by the two words: `!get-path {at: [...], path: sha}` reads a field of an
-// entity, and `POST /entity` takes an `at`. This said `ref` and `at` for the same two things
-// until the wire stopped saying `ref` anywhere else, at which point `at` would have meant an
-// address in one document and a payload path in the next.
+// means by the two words: `!get-path {at: [...], path: sha}` reads a field of an entity, and
+// `POST /entity` takes an `at`. Spelling them any other way here would make `at` an address in
+// one document and a payload path in the next.
 //
 // It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
@@ -113,11 +112,10 @@ func ParseOwns(owns []Own) ([]Claim, error) {
 // Claim is one parsed ownership claim: a pattern per LEVEL of the address, at whatever depth,
 // and optionally a path inside the payload.
 //
-// IT IS A TREE, and it did not used to be. `{System, Kind string; ID string; Prefix bool}` was
-// three positions with three different rules — the first two a literal or `*`, the third also a
-// prefix glob — which is the arity written down three times and a grammar that could not say
-// what a source actually owns once entities stopped being three segments deep. One Seg per
-// level says it once, and a claim as short as `git` owns the whole subtree under it.
+// IT IS A TREE. Three named positions with three different rules — the first two a literal or
+// `*`, the third also a prefix glob — is the arity written down three times, and it cannot say
+// what a source owns once entities are deeper than three segments. One Seg per level says the
+// rule once, at every level, and a claim as short as `git` owns the whole subtree under it.
 type Claim struct {
 	// Segs is the address pattern, one per level. A claim SHORTER than an address covers
 	// everything under it, which is what makes `git` a claim on the whole system.
@@ -135,8 +133,8 @@ type Claim struct {
 // Seg is one level of a claim: a literal name, or a literal PREFIX when Prefix is set.
 //
 // `*` IS THE EMPTY PREFIX, not a case of its own — every name begins with "" — so the wildcard
-// and the glob are one comparison rather than two, and the three-way switch the id used to need
-// (both prefixes, one prefix, neither) is the whole of it at every level.
+// and the glob are one comparison rather than two, and one three-way switch (both prefixes, one
+// prefix, neither) is the whole of it at every level.
 type Seg struct {
 	Name   string
 	Prefix bool
@@ -177,10 +175,9 @@ func (c Claim) Head() (string, bool) {
 // ParseClaim reads a claim from its address-glob spelling.
 //
 // It is the ADDRESS GRAMMAR — `entity.ExprSegs`, the same reader a charter's subject goes
-// through — rather than a splitter of its own. It had one, and it was the same answer only for
-// as long as an address was colons: a claim is written beside the addresses it covers, so the
-// day those became kinded paths a source's `owns` was the one place still spelling them the old
-// way.
+// through — rather than a splitter of its own. A splitter here agrees with the address grammar
+// only for as long as the two happen to spell things alike, and a claim is written beside the
+// addresses it covers: the moment they differ, `owns` is the one place spelling them wrong.
 //
 // A GLOB IS A LITERAL PREFIX AND A TRAILING `*`, at every level, and nothing richer. That is a
 // deliberate floor rather than a first version: prefix-disjointness is a string comparison,
@@ -189,9 +186,9 @@ func (c Claim) Head() (string, bool) {
 // refused rather than approximated, because a claim that quietly meant something narrower than
 // it looked would be a single-writer guarantee resting on a typo.
 //
-// The rule used to be the id's alone, with the system and the kind allowed only a literal or a
-// bare `*`. That was an arity restriction wearing a safety argument: the comparison is a string
-// prefix at every level, so there was never a reason it could only be made at the third.
+// The rule is the same at every level rather than the last one's alone. Restricting the first
+// two to a literal or a bare `*` would be an arity restriction wearing a safety argument: the
+// comparison is a string prefix wherever it is made.
 func ParseClaim(s string) (Claim, error) {
 	// A `*` ENDS ITS LEVEL, checked on the string before anything reads it. The address grammar
 	// treats a `*` as self-delimiting, so `git.ref.*/main` parses happily as FOUR levels — `git`,

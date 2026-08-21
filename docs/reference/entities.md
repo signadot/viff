@@ -334,8 +334,7 @@ A write reaches an element too, and lands in place:
 verse data merge proposal X votes '[0]' choice --put '"approve"'
 ```
 
-It was refused for years, on a hazard that is gone: an index past the end used to be *accepted*
-and left the log unreadable. The substrate guards it now, which is why the CLI does not:
+The substrate is what guards it, which is why the CLI does not:
 
 | a write at | what logd does |
 |---|---|
@@ -349,16 +348,14 @@ under, so they are refused at an access rather than checked against the entity i
 an implementation limit and not a principle — tony matches an array position perfectly well; what
 is missing is a constructor for that pattern beside the map walk.
 
-The third row is new, and it is why this section is shorter than it was. Until go-tony v0.0.149
-a patch past the end was **accepted**, and the log was unreadable ever after — a bad write that
-succeeded and took every later read of the whole store with it, unrepairably. That hazard was
-what the refusal rested on; it is fixed upstream, and a refused patch now leaves everything
-standing.
+The third row is what makes the other two safe to offer. An accepted patch past the end leaves
+the log unreadable ever after — a bad write that succeeds and takes every later read of the whole
+store with it, unrepairably — so a refusal at the patch is what the CLI's own silence rests on.
 
-What is left is ordinary work: a write path is a ref plus a list of object field names, and
-offering an element means teaching that list — and the preconditions built from it — to carry a
-kpath segment. So it stays refused for now, and `entity/arraywrite_test.go` pins all three
-answers so the reasoning is checked at each go-tony bump rather than inherited.
+What keeps the guard in the CLI is ordinary work rather than a principle: a write path is a ref
+plus a list of object field names, and offering an element means teaching that list — and the
+preconditions built from it — to carry a kpath segment. `entity/arraywrite_test.go` pins all
+three answers, so the reasoning is checked at each go-tony bump rather than inherited.
 
 ### What the document does not cover
 

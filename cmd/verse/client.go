@@ -1274,11 +1274,9 @@ func addressWire(args []string, at string) (string, error) {
 // (`verse.runners.pool.gpu`), or the bare pair below it (`pool.gpu`). An operator reading
 // `verse data` and one typing `verse runner show` should not have to know two spellings.
 //
-// ONE READER for the three registries, and one grammar for both depths. Each of them used to
-// trim a colon prefix by hand and split what was left on another colon — three copies of an
-// address grammar that is not the address grammar, which is exactly how a spelling change
-// leaves a command answering "want a ref like verse:runners:pool:gpu" about an address the
-// verse itself now prints with dots.
+// ONE READER for the three registries, and one grammar for both depths. A splitter per registry
+// is three copies of an address grammar that is not the address grammar, and a copy drifts: the
+// command ends up asking for a spelling the verse itself does not print.
 func pairPath(route, system, ref string) (string, error) {
 	pair, ok := pairSegs(system, ref)
 	if !ok {

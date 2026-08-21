@@ -130,9 +130,9 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 //
 // What is REFUSED above the entity is a glob and a reference, and for one reason each: a glob
 // there is a pattern nothing evaluates per segment on this path, and a reference is not resolved
-// until the firing. Neither is refused because the level check needs them, which is what this
-// rule used to say — the level is decided by the literal PREFIX (see place), calculated, so an
-// open position simply ends it and the check refuses a read it cannot place.
+// until the firing. Neither is refused for the level check's sake: the level is decided by the
+// literal PREFIX (see place), calculated, so an open position simply ends it and the check
+// refuses a read it cannot place.
 func (p pathSpec) validateAt() error {
 	if len(p.At) < 2 {
 		return fmt.Errorf("!%s: an address names a place and something in it; %q names %d segment(s)",
@@ -440,18 +440,15 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 // splitAddress splits one address into the entity it starts from and the kpath it continues
 // into the payload with, empty when it names the entity whole.
 //
-// THERE IS ONE SPELLING, so there is nothing to decide first. This used to try `ParseRef` and
-// fall back, which asked "is this the colon form or the path form" — the same question
-// entity.DottedAddr answered, stated twice because the two needed different splits. Both are
-// gone with the colon form: kpath parses the string, and the quoting says where each segment
-// ends, including in the shape every derived entity has:
+// THERE IS ONE SPELLING, so there is nothing to decide first. kpath parses the string and the
+// quoting says where each segment ends, including in the shape a derived entity has:
 //
 //	verse-dev.drift.head."head-moved@git:head:verse@aaaa1111".result.report
 //
-// SplitN on `:` found three parts INSIDE those quotes, so the entity came out as
-// `verse-dev.drift.head."head-moved@git` : `head` : `verse@aaaa1111".result.report` and the read
-// answered "nothing stands there" (git-issue p5qcmpgch12ksd4wgnn0). Read as a kpath it is the six
-// segments it is, and no rule about colons is involved.
+// A reader that split on `:` would find three parts INSIDE those quotes and take the entity to be
+// `verse-dev.drift.head."head-moved@git` : `head` : `verse@aaaa1111".result.report`, and the read
+// would answer "nothing stands there" (git-issue p5qcmpgch12ksd4wgnn0). Read as a kpath it is the
+// six segments it is, and no rule about colons is involved.
 //
 // THE ENTITY IS THE FIRST THREE SEGMENTS and the rest is the payload path — rendered back through
 // KPath.String, so `(scott)` and `[0]` survive into the read that will follow them.

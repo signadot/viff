@@ -453,9 +453,9 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 // shape the tutorial's own charter produces, is enough.
 func TestHTTPRunnerRefusesAnUnparseableURL(t *testing.T) {
 	// Unparseable on its own terms — a bad percent-escape — rather than by holding characters
-	// some other grammar spends. It used to be `http://task.review@demo:pr:1`, which was
-	// unparseable only because a ref carried colons; once an address is a kinded path that is a
-	// perfectly good URL, and the test quietly stopped being about anything.
+	// some other grammar spends. An address inside a URL is not that case —
+	// `http://task.review@demo.pr.1` is a perfectly good URL — so the bad escape is the whole
+	// of what this asks about, and stays so however addresses are spelled.
 	bad := runner.HTTP("http://%zz")
 	if _, err := bad.(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("list on an unparseable url = %v, want ErrUnreachable", err)

@@ -585,8 +585,8 @@ func (s *LogdStore) keyStands(ctx context.Context, ref Ref) (bool, error) {
 //
 // A CONFLICTING ANCESTOR IS ALSO NOTHING STANDING THERE. Since go-tony v0.0.187 logd
 // separates "nothing is there" (not_found) from "something is there of a shape that cannot
-// hold this" (path_conflict) — a read under an entity whose payload is a scalar used to
-// answer not_found and now answers the second. Both are answers about the store's CONTENTS,
+// hold this" (path_conflict) — a read under an entity whose payload is a scalar answers the
+// second. Both are answers about the store's CONTENTS,
 // and every caller here is asking one question: does anything stand at this path. A scalar
 // at demo:pr:1 means nothing stands at demo:pr:1:sub, the same as never having written it,
 // and a write can make it so — replace the scalar and the path resolves.
@@ -1276,9 +1276,9 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		return out
 	}
 	// What the watch fixed, plus what the document still carries below it, is the address —
-	// so the remaining depth is a subtraction. The TOTAL is the caller's: it used to be the
-	// fixed arity computed here, which left a watch unable to report an entity deeper than
-	// three (see Store.WatchSubtree).
+	// so the remaining depth is a subtraction. The TOTAL is the caller's: computing it here
+	// would fix the arity, and a watch could then never report an entity deeper than three
+	// (see Store.WatchSubtree).
 	walkLeaves(node, depth-len(prefix), func(segs []string, v *ir.Node) {
 		// A missing leaf is nothing; a null one is an entity holding null. The document here is
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a

@@ -122,9 +122,10 @@ func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 // A source answers with entities, and `System()` does not say which HALF a ref is in: a source
-// registered as `task` answering `verse.task.instance.x` used to pass the slice check, and
-// converge writes to the store directly — under the refusal that guards `POST /entity`. So a
-// deployed connector was the way into the half the 403 exists to protect.
+// registered as `task` answering `verse.task.instance.x` would pass a slice check that asked
+// only about `System()`, and converge writes to the store directly — under the refusal that
+// guards `POST /entity`. A deployed connector would then be the way into the half the 403
+// exists to protect.
 func TestAReflectionMayNotNameVersesOwnHalf(t *testing.T) {
 	var r source.Reflection
 	r.Add(entity.VerseRef("task", "instance", "run-1"), entity.Obj{"status": "done"})

@@ -139,9 +139,9 @@ func TestTriggerNameValidation(t *testing.T) {
 	}
 }
 
-// A trigger name carrying '-' used to make the id undecodable: `ship-reviewed-demo.pr.1`
-// could not be split back into (chain, ref), because the trigger name and the ref both
-// spend '-'. The '@' boundary fixes it, and this is the regression.
+// THE BOUNDARY IS '@' because a trigger name may carry '-': `ship-reviewed-demo.pr.1` cannot be
+// split back into (chain, ref) when the separator is one both halves spend. This is the guard on
+// that.
 func TestDashInTriggerNameStillDecodes(t *testing.T) {
 	ref := entity.RefAt("demo", "pr", "hotfix-1")
 	id := spawnID("ship-reviewed", ref)

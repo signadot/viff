@@ -75,11 +75,11 @@ func (f *Formula) IsMatchAtom() bool {
 // `!fact ci.status.green` names the entity a reader thinks it names, and `!fact ci.status` the
 // kind above it.
 //
-// IT IS ParseExpr, and it did not used to be: it had its own splitter, which stopped at two
-// segments and folded everything after the first colon into the KIND. That did not fail — it
-// produced a requirement selecting kind "status:green", which no entity can have, so the leaf
-// was simply never satisfied. A gate that installs, round-trips, reads correctly, and waits
-// forever. One reader is how that stops being possible.
+// IT IS ParseExpr rather than a splitter of its own, and the failure a splitter gives is the
+// argument. One that stopped at two segments and folded the rest into the KIND does not error —
+// it produces a requirement selecting kind "status:green", which no entity can have, so the leaf
+// is simply never satisfied: a gate that installs, round-trips, reads correctly and waits
+// forever. One reader is how that stays impossible.
 //
 // A malformed address selects nothing rather than erroring, which is this function's contract
 // with its one caller: a requirement's ref is validated where the requirement is.

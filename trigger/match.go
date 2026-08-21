@@ -622,10 +622,10 @@ func (m Match) MatchRef(ref entity.Ref) bool {
 //	*                 everything
 //	demo.pr."a.b"     an id holding a dot, which the colon form could not say at all
 //
-// IT WAS ITS OWN COLON SPLITTER, which was the same answer as the address grammar for as long
-// as the address grammar was colons. `Ref.String` renders a kinded path now, so an address
-// copied out of a listing — the everyday way a person gets one — arrived here as a single
-// segment and selected nothing. One grammar, and the quoting comes with it.
+// ONE GRAMMAR, and the quoting comes with it. A splitter of its own agrees with the address
+// grammar only for as long as the two happen to spell things alike: `Ref.String` renders a
+// kinded path, so an address copied out of a listing — the everyday way a person gets one —
+// would arrive here as a single segment and select nothing.
 //
 // This is what makes "relational flows" fall out of the model rather than being a second
 // primitive: steering an entity-set is the same selector, at a wider setting. (A subtree

@@ -96,10 +96,10 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // dimensions, with "*" for a gap. Reported false when a payload predicate or an op is present
 // (no string can carry those), or when the match is empty.
 //
-// A COLON IS ORDINARY NOW, in any segment: the grammar reads dots, and a segment that would
-// otherwise be mis-read is quoted rather than refused. That is what retires the old caveat here
-// — a colon outside the id used to make the rendering ambiguous to ParseExpr, so a match
-// carrying one had no string form at all.
+// A COLON IS ORDINARY in any segment: the grammar reads dots, and a segment that would otherwise
+// be mis-read is quoted rather than refused. So a match carrying a colon outside the id has a
+// string form like any other, where a colon-delimited rendering would be ambiguous to ParseExpr
+// and have none.
 //
 // A PATH IS NOT RENDERED AS ONE OF THESE, whatever its length. System/Kind/ID read a path's
 // segments now (Match.seg), so the two spellings answer alike — but they do not MEAN alike, and
@@ -382,10 +382,10 @@ func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
 	case r.Choice == "" && !factsSet:
 		return ir.FromInt(int64(r.N)), nil
 	case r.N == 0 && r.Choice == "" && !r.Facts.HasPredicate():
-		// The address, in the one grammar — through Match.address, so a `!fact` renders the way
-		// a subject does and re-reads through the same ParseExpr. It used to join with a colon
-		// here, which is a second renderer for one spelling and drifted the moment the spelling
-		// moved: `!fact ci.status` came back out as `!fact ci:status`.
+		// The address, in the one grammar — through Match.address, so a `!fact` renders the way a
+		// subject does and re-reads through the same ParseExpr. Joining the segments here would be
+		// a second renderer for one spelling, and it drifts the moment the spelling moves:
+		// `!fact ci.status` comes back out as `!fact ci:status`.
 		if addr, ok := r.Facts.address(); ok {
 			return ir.FromString(addr), nil
 		}

@@ -12,10 +12,10 @@ import (
 // is the whole decision this package rests on (docs/working/entity-tree.md): the question
 // carries the depth, and a question spanning depths is a different question.
 //
-// It was already refused before this test, twice by accident: a lexical guard called it an
-// EMPTY SEGMENT, and had it got past that guard the wildcard case would have flattened it to a
-// single `*` — every level asked for, one level selected. Both are worse than a refusal,
-// because both send the author somewhere other than the thing they wrote.
+// BY THAT NAME, because the two ways of refusing it by accident are both worse. Flattened to a
+// single `*` it selects one level where the author asked for every level; caught by a lexical
+// guard it reads as an empty segment, which sends the author looking for a typo they did not
+// make. Either way they are sent somewhere other than the thing they wrote.
 func TestDescentIsRefusedByName(t *testing.T) {
 	for _, addr := range []string{
 		"lineage.trace..pr",

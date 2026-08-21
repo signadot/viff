@@ -237,12 +237,11 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 # subject's own segments — so re-firing about the same PR rewrites one address rather than
 # accumulating duplicates.
 #
-# THE SUBJECT IS CARRIED WHOLE. It used to be flattened into a single id segment, where a `#`
-# and a `/` became `_` and a short hash kept the sanitising from collapsing two subjects into
-# one trace — so nothing could spell a trace's address from its subject, and the linkage at
-# `verse.meta.derivedFrom` was the only way back. The address IS the way back now; the linkage
-# is still written, and this script still reads it, because a payload field is what a charter
-# predicate can match on.
+# THE SUBJECT IS CARRIED WHOLE, so a trace's address can be spelled from the subject it is about.
+# Flattened into one id segment it could not be: a `#` and a `/` become `_`, and a hash has to be
+# appended to stop the sanitising from collapsing two subjects into one trace. The linkage at
+# `verse.meta.derivedFrom` is written too, and this script reads it, because a payload field is
+# what a charter predicate can match on.
 - name: lin-pr-lineage
   stratum: lin-change
   condition:

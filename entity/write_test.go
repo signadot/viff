@@ -293,9 +293,9 @@ func TestAbsentReadsAreNotFailures(t *testing.T) {
 	// An entity whose payload is a SCALAR, so a read below it meets something that cannot
 	// hold an entity. logd calls that path_conflict rather than not_found (go-tony v0.0.187),
 	// and it is still nothing standing there — the distinction is about what is in the store,
-	// not about whether the read succeeded. Before this was classified, it answered not_found
-	// and read as absent; if it ever reads as a FAILURE again, `verse data demo pr 1 sub`
-	// answers 502 and says the store is unreachable.
+	// not about whether the read succeeded. Both classifications read as absent; if this one
+	// ever reads as a FAILURE, `verse data demo pr 1 sub` answers 502 and says the store is
+	// unreachable.
 	mustWrite(t, s, Write{At: RefAt("demo", "scalar", "1").At(), Value: Raw(mustParseNode(t, `5`))})
 
 	for _, ref := range []Ref{

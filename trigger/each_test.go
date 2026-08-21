@@ -295,9 +295,9 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		if obj["sym"] == nil || obj["was"] != "stale" {
 			t.Errorf("%s carries %v", e.Ref, obj)
 		}
-		// The ADDRESS carries (rule, subject) — a segment each, verbatim, rather than one id
-		// with them flattened into it. `verse_abc` is what the flattening used to make of
-		// `verse/abc`; nothing flattens now, so the subject reads back as itself.
+		// The ADDRESS carries (rule, subject) — a segment each, verbatim, rather than one id with
+		// them flattened into it. Flattening makes `verse/abc` into `verse_abc`; a segment holds
+		// the slash, so the subject reads back as itself.
 		want := append([]string{"drift", "finding"}, deriveSegs("fan", subj)...)
 		if got := e.Ref.Segs(); len(got) != len(want)+1 {
 			t.Errorf("%s is %d segments, want the target, the rule, the subject and a key", e.Ref, len(got))
@@ -399,12 +399,12 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	}
 }
 
-// TWO KEYS THAT WOULD FLATTEN ALIKE ARE SIMPLY TWO SEGMENTS, and this is the test that used to
-// be about the hash keeping them apart. A key is a segment now — a slash, a space, a dot are
-// all ordinary characters in one — so there is nothing to flatten and nothing to disambiguate.
+// TWO KEYS THAT WOULD FLATTEN ALIKE ARE SIMPLY TWO SEGMENTS. A key is a segment — a slash, a
+// space, a dot are all ordinary characters in one — so there is nothing to flatten and nothing to
+// disambiguate with a hash.
 //
-// The failure this guards against is unchanged and worth keeping named: losing one member of a
-// fan-out to a collision reads as a shorter ledger and nothing else.
+// The failure this guards against is worth keeping named: losing one member of a fan-out to a
+// collision reads as a shorter ledger and nothing else.
 func TestEachSegsSeparatesKeysThatWouldFlattenAlike(t *testing.T) {
 	subj := entity.RefAt("drift", "head", "x")
 	seen := map[string]string{}
@@ -508,8 +508,8 @@ func TestEachOverATaskAnswer(t *testing.T) {
 			t.Errorf("%s lost what the element said: %v", e.Ref, obj)
 		}
 	}
-	// The key that used to need flattening is its own entity, and carries its symbol VERBATIM:
-	// it is the last segment, and a segment holds a `/` as readily as anything else.
+	// A key that no flattening could carry is its own entity, and carries its symbol VERBATIM: it
+	// is the last segment, and a segment holds a `/` as readily as anything else.
 	var keys []string
 	for _, e := range got {
 		segs := e.Ref.Segs()

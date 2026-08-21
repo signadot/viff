@@ -26,19 +26,16 @@ type Path struct {
 // At returns the path to a place inside this entity — with no arguments, the entity itself.
 func (r Ref) At(field ...string) Path { return Path{Ref: r, Field: field} }
 
-// String spells the path, and ParsePath is its inverse — which it was not before, and the
-// reason is the delimiter.
+// String spells the path, and ParsePath is its inverse.
 //
-// An ENTITY is spelled as its ref, `demo:pr:1`, because that is the ref's own spelling and
-// nothing about identity changes here. A path that continues INTO a payload is spelled as a
-// kinded path, `demo.pr.1.labels.urgent`, with each segment quoted as kpath needs it.
+// It is one kinded path at every depth: `demo.pr."1"` for an entity, `demo.pr."1".labels.urgent`
+// for a place inside its payload, with each segment quoted as kpath needs it. An entity and a
+// field of one are the same address asked at different depths, so they get the same spelling.
 //
-// The two cannot be one spelling until kpath takes a delimiter option, and the reason is an id
-// with a dot in it: `demo:pr:a.b` is an entity whose id is `a.b`, and `demo:pr:a.b.labels` can
-// be read as that entity's `labels` or as an entity named `a.b.labels`. The colon spelling has
-// no way to say which. The dot spelling does — `demo.pr."a.b".labels` — so that is the one that
-// carries a field path. This used to claim it emitted "the form the CLI accepts"; the CLI's
-// ParseRef never implemented it, and this is what implementing it turned out to require.
+// The quoting is what lets one spelling carry both, and an id holding a dot is why it must:
+// `demo.pr."a.b"` is an entity whose id is `a.b`, and `demo.pr."a.b".labels` is that entity's
+// `labels` — where an unquoted `demo.pr.a.b.labels` is five segments naming something else.
+// A delimiter alone cannot say which; the quoting says it.
 func (p Path) String() string {
 	if len(p.Field) == 0 {
 		return p.Ref.String()
@@ -594,9 +591,9 @@ func ExprSegs(s string) ([]string, error) {
 			// a reader of derived entities wants and cannot yet ask.
 			//
 			// Refused EXPLICITLY because the alternatives are both bad: flattened to a `*` it
-			// would silently select one level where the author asked for every level, and left
-			// to the lexical guard above it was reported as an empty segment, which sends
-			// somebody looking for a typo they did not make.
+			// silently selects one level where the author asked for every level, and left to the
+			// lexical guard above it reads as an empty segment, which sends somebody looking for
+			// a typo they did not make.
 			return nil, fmt.Errorf("address %q: `..` is recursive descent, which selects across "+
 				"DEPTHS — and an address selects at one. It is not supported here yet: name the "+
 				"levels, or leave one open with `*`", s)

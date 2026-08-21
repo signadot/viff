@@ -705,11 +705,10 @@ func TestStratumRefusesUnknownFields(t *testing.T) {
 
 // waitDerived waits for the entity a rule derived about a subject, and NAMES it rather than
 // searching for one: a derived entity stands at `<target>.<rule>.<subject…>`, so the address is
-// a function of what the test already knows. It used to scan a fixed-depth listing, because the
-// id was `f(rule, subject)` flattened and unspellable.
+// a function of what the test already knows.
 //
-// Naming it is a stronger assertion as well as a simpler one — a scan passes on any derived
-// entity under the target, this passes only on the right one.
+// Naming it is a stronger assertion as well as a simpler one — a scan of the target passes on any
+// derived entity under it, this passes only on the right one.
 func waitDerived(t *testing.T, s entity.Store, target []string, rule string, subj entity.Ref) entity.Entity {
 	t.Helper()
 	ref := entity.RefAt(append(append([]string{}, target...), deriveSegs(rule, subj)...)...)

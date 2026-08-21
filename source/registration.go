@@ -220,9 +220,9 @@ func ownsAreDocuments(node *ir.Node) error {
 // operator reading `verse data` and one typing `verse source show` should not have to know two
 // spellings of one thing. The middle form is refused; trimAddress says why.
 //
-// ONE GRAMMAR, TWO DEPTHS. It used to strip a colon prefix by hand and split what was left on
-// another colon, which was a second address grammar living beside the real one; now the string
-// is read as the kinded path it is and the depth says which of the two spellings arrived.
+// ONE GRAMMAR, TWO DEPTHS. The string is read as the kinded path it is, and its depth says
+// which of the two spellings arrived. Trimming a prefix by hand and splitting what is left
+// would be a second address grammar living beside the real one.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	parts, ok := trimAddress(ref)
 	if !ok {
