@@ -1,4 +1,10 @@
-.claude/
+# Per-machine Claude Code state — settings.local.json, worktrees, whatever a session leaves.
+# The contents are ignored rather than the directory, so that skills/ can be excepted: git
+# does not descend into an excluded DIRECTORY, and a negation inside one never matches.
+.claude/*
+# …except the skills, which are shared work: a skill is instructions for driving this repo,
+# and one that lives on a single laptop is one nobody else can use.
+!.claude/skills/
 .worktrees/
 /verse
 /o
