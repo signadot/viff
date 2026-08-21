@@ -623,7 +623,7 @@ ballots accumulate:
 
 ```sh
 ./scripts/charter-shapes.sh run vote
-verse docket
+verse motion
 ```
 
 ```tony
@@ -638,16 +638,16 @@ verse docket
   subject: demo.vote.1
 ```
 
-The listing is a document like every other, so `verse docket -o yaml`, a read into one entry, and a
+The listing is a document like every other, so `verse motion -o yaml`, a read into one entry, and a
 diff against the docket a minute ago all work. `choice` is the word a ballot must carry — `approve`
-here, not the option's own name — and it is what `verse vote` checks before writing one.
+here, not the option's own name — and it is what `--vote` checks before writing one.
 
 The rule fired and the action is waiting, not on a person but on a tally. Cast ballots, each naming
 its voter, since a motion must be settled attributably:
 
 ```sh
-verse vote 8f306077 approve --as alice    # 1 of 2 — still open
-verse vote 8f306077 approve --as bob      # 2 of 2 → carries
+verse motion 8f306077 --vote approve --as alice    # 1 of 2 — still open
+verse motion 8f306077 --vote approve --as bob      # 2 of 2 → carries
 verse data demo vote 1              # stage: merged
 ```
 
@@ -655,10 +655,11 @@ The motion then reads `status: closed`, `outcome: proceed`, `tally: 2`, and a `w
 ballots that carried it: the audit trail on the entity rather than a line that scrolled past.
 
 A motion is an ordinary entity (`verse.motion.channel.<id>`), so the docket is a view of the store.
-You can watch it, get one, and write a rule that reacts to it. It stays live until it commits, so if
-alice retracts first the tally drops and the gate re-blocks, and it is checked against the world on
-the way out: if the subject has moved out of what the rule selects, the question is moot and the
-motion is withdrawn rather than carried.
+`verse motion 8f306077` is that one, `verse motion --watch` is the docket as it changes, and a rule
+can react to a motion like anything else. It stays live until it commits, so if alice retracts first
+the tally drops and the gate re-blocks, and it is checked against the world on the way out: if the
+subject has moved out of what the rule selects, the question is moot and the motion is withdrawn
+rather than carried.
 
 It also survives verse going down. The channel and the ballots are entities. What dies is the
 goroutine watching the tally, and a start gives it back, so a vote cast a day and a restart later

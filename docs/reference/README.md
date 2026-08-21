@@ -68,7 +68,7 @@ verse
   is an answer rather than an error (exit 0).
 
     verse ps --if '{status: running}' --trim '{id: null, status: null}'
-    verse docket --if '{axis: whether}'
+    verse motion --if '{axis: whether}'
     verse data demo pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
     verse watch demo --trim '{at: null, to: null}'
 
@@ -207,13 +207,26 @@ verse
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
           the shell would expand — so quote it. A second positional is refused rather
           than read as a step
-  docket                                     the motions on the docket (votes + provider
+  motion (motions)                           the motions on the docket (votes + provider
                                              selections), open and settled — a settled one
                                              carries its outcome, or `orphaned` and a `why`
-  vote    <motion> <choice> --as <who>       cast a ballot (approve|reject, or a select-option)
-                                             THE MOTION FIRST: `vote approve <id>` reads as
-                                             English and is the wrong way round; it is refused,
+          <id>                               …just that one, as one document rather than a
+                                             list of one. A motion is ONE TOKEN, its id — an
+                                             id that is not there is refused, not answered
+                                             with nothing
+          <id> --vote <choice> --as <who>    cast a ballot into it (approve|reject, or a
+                                             select-option). The CHOICE IS A FLAG's value
+                                             because it is data — a select's options are
+                                             provider names, an open set — where a gate's
+                                             approve|deny is a closed binary and so a verb.
+                                             The id and the choice are both bare words, so a
+                                             ballot with them the wrong way round is refused
                                              and the refusal says which way it goes
+          --watch                            …the same motions as they change instead of as
+                                             they stand, one frame per line, narrowed to the
+                                             one named. It streams from now; for history,
+                                             `verse watch verse motion channel --ago <n>` is
+                                             the same stream where the cursor lives
   provider (providers)                       the provider registry (provider:<capability>:<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

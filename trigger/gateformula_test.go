@@ -158,7 +158,7 @@ func TestTemporalDenyQuorum(t *testing.T) {
 // The open channel names the FIRING's subject — what the room is deciding about — and not
 // the entity whose change dispatched it. The two come apart here exactly as they do in a
 // charter (`subject` acts on one entity, `when` reads another), and they came apart worse on
-// a REPLAY: a level-triggered firing has no dispatching event at all, so `verse docket` named
+// a REPLAY: a level-triggered firing has no dispatching event at all, so `verse motion` named
 // the subject `::` for every motion a restart or a fresh install raised.
 func TestMotionChannelNamesTheSubject(t *testing.T) {
 	store := entitytest.Store(t)

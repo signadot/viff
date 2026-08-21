@@ -152,10 +152,10 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-�
 ```
 
 **A charter gate carrying a `formula:` is not here.** It becomes a *motion* instead — a different
-entity (`verse.motion.channel`), a different list (`verse docket`), a different verb (`verse
-vote`), settled by a tally rather than by an answer. So `verse gate` is not the whole of what
-is waiting on a person, and asking for one and looking in the other answers *404: no such
-question*.
+entity (`verse.motion.channel`), a different list (`verse motion`), a different answer (`--vote
+<choice>` rather than approve|deny), settled by a tally rather than by one person. So `verse gate`
+is not the whole of what is waiting on a person, and asking for one and looking in the other
+answers *404: no such question*.
 
 That split is a known defect rather than a design: the fork is on whether a formula is *present*,
 when the distinction it needs is whether the gate asks somebody or waits for something — so

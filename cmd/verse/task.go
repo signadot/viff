@@ -828,8 +828,8 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 // requireAs refuses an unattributed action. A claim, a ballot and a report all name who
-// made them, and the refusal is a USAGE error in each — `vote` used to return a plain one,
-// so the one command whose --as is most obviously load-bearing printed no usage.
+// made them, and the refusal is a USAGE error in each — so the command whose --as is most
+// obviously load-bearing prints the usage rather than a bare line.
 func requireAs(as, noun, why string) error {
 	if as == "" {
 		return fmt.Errorf("%w: --as <%s> is required (%s)", cli.ErrUsage, noun, why)
@@ -854,6 +854,25 @@ func oneArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (stri
 	if len(args) < 1 {
 		return "", fmt.Errorf("%w: %s", cli.ErrUsage, want)
 	}
+	return theArg(args, want)
+}
+
+// optionalArg is oneArg for a command that means something without it: a collection that lists
+// bare and acts on one member when named. The second positional is refused for oneArg's reason
+// — it is the `data` spelling typed at a command that takes one token, and reading only the
+// first word would answer about something else.
+func optionalArg(cmd *cli.Command, cc *cli.Context, args []string, want string) (string, error) {
+	args, err := cmd.Parse(cc, args)
+	if err != nil {
+		return "", err
+	}
+	if len(args) == 0 {
+		return "", nil
+	}
+	return theArg(args, want)
+}
+
+func theArg(args []string, want string) (string, error) {
 	if len(args) > 1 {
 		return "", fmt.Errorf("%w: %s — and this takes ONE token, so %q is after it. (An address "+
 			"as separate steps is `verse data`'s; here it is one argument.)",

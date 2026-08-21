@@ -38,7 +38,7 @@ type motion struct {
 	axis     string         // "whether" | "select" — channel rendering + winner mapping
 	options  []motionOption // ORDERED: first to reach threshold wins; earlier wins ties
 	deadline *motionDeadline
-	// provenance for the channel entity (verse docket):
+	// provenance for the channel entity (`verse motion`):
 	trigger, gate, capability string
 	// chain is the kpath of the ACTION this motion belongs to, and it is provenance with a
 	// second job: it is the lookup key back into the charter that lets a restart find the
@@ -163,7 +163,7 @@ func stringsNode(ss []string) *ir.Node {
 // The subject is the FIRING's subject, not the ref of the change that dispatched it — the
 // same distinction the channel id already makes one line up in monitorGate. A motion is a
 // decision about the work, and the work is the subject; keying the id on one and displaying
-// the other let `verse docket` name the doorbell (and name nothing at all on a replay, where
+// the other let `verse motion` name the doorbell (and name nothing at all on a replay, where
 // a level-triggered firing has no dispatching event to speak of).
 func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, subject entity.Ref) *motion {
 	f = f.bind(channel.ID())
@@ -246,7 +246,7 @@ func quorumFormula(mid, opt string, need int) *Formula {
 }
 
 // openChannel writes the discoverable motion:channel entity (unified across both axes) so
-// a voter can find it (`verse docket`) and observe the tally. Idempotent: it never
+// a voter can find it (`verse motion`) and observe the tally. Idempotent: it never
 // reopens a channel that has already closed (an `outcome` is present).
 func (e *Engine) openChannel(m *motion) {
 	e.modify(m.channel, func(cur entity.Payload) entity.Payload {

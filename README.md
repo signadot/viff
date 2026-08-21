@@ -77,7 +77,7 @@ entities, tasks, and the charters that relate them.
   plus one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
   `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
-  `resolver`, `runner`, `source`. What it answers with: `gate`, `docket`, `vote`. What it
+  `resolver`, `runner`, `source`. What it answers with: `gate` and `motion`. What it
   reads: `status`, `watch`, `provider`, `schema`. Each is one command, named in the singular:
   bare it lists, with a verb it acts on one member, and the plural the HTTP surface uses is
   an alias of it. What it runs: `up`, `down`, `connect`, `disconnect`.

@@ -193,7 +193,7 @@ verse data verse task instance <id>
 name it is cast for:
 
 ```sh
-verse docket
+verse motion
 ```
 
 ```tony

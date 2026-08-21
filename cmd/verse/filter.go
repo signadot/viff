@@ -26,7 +26,7 @@ import (
 //
 // WHAT AN ITEM IS depends on what the command lists, and that is the whole design:
 //
-//   - a listing (`ps`, `docket`, `gate`, `trigger`, …) answers an ARRAY: an item is an element.
+//   - a listing (`ps`, `motion`, `gate`, `trigger`, …) answers an ARRAY: an item is an element.
 //   - `state` answers a document keyed by ADDRESS: an item is one entity's payload, found by
 //     the same walk a read uses, so it works at whatever depth the path reaches and across both
 //     halves of the tree.
@@ -35,7 +35,7 @@ import (
 //     null}'` projects a payload, and `--if` on it prints the entity or nothing.
 //
 // EXIT 0 EITHER WAY, unlike `o list`, which exits 1 when nothing survived. An empty docket is a
-// true answer to a question, not a failure to answer it — and a script asking `verse docket --if
+// true answer to a question, not a failure to answer it — and a script asking `verse motion --if
 // …` is asking, not asserting. (`o list`'s convention is right for a grep, which is what it is.)
 
 // filterFlags is the pair, bound to ONE instance shared by every command that offers them: only

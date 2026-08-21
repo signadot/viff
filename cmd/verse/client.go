@@ -641,13 +641,25 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
+	return streamChanges(cc, "watch", q)
+}
+
+// streamChanges prints the store's change stream under one selector, one frame per line, until
+// the server closes it.
+//
+// It is shared rather than `watch`'s own, because watching is not `watch`'s alone: a collection
+// that lives at a known address offers the same stream under its own name (`verse motion
+// --watch`), and a second copy of this loop is a second place a frame can come out rendered
+// differently from everywhere else. `what` is the command asking, which is what the refusals
+// name — the operator typed one command and should be told about that one.
+func streamChanges(cc *cli.Context, what string, q url.Values) error {
 	out, err := outFmt()
 	if err != nil {
 		return err
 	}
 	resp, err := httpGet("/watch", q)
 	if err != nil {
-		return fmt.Errorf("watch: %w (is `verse up` running on %s?)", err, g.Addr)
+		return fmt.Errorf("%s: %w (is `verse up` running on %s?)", what, err, g.Addr)
 	}
 	defer resp.Body.Close()
 	// A rejected watch must not read as a quiet verse. The loop below keeps only "data: "
@@ -659,7 +671,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 		if msg == "" {
 			msg = resp.Status
 		}
-		return fmt.Errorf("watch: %s", msg)
+		return fmt.Errorf("%s: %s", what, msg)
 	}
 	in := streamFmt(resp)
 	color := colorize(cc.Out)
@@ -739,10 +751,11 @@ func gateCmd() *cli.Command {
 // task cancel/say); the gate's answer was the one that had
 // been demoted into a flag, mirroring api.Resolve's `Approve bool` rather than the operator.
 //
-// `vote <motion> <choice>` deliberately stays a positional: a select motion's choice is an
-// arbitrary option id (a provider name), an OPEN set, which is data. A gate's answer is a
-// closed binary, which is grammar.
-// --as is optional here, where `vote --as` is required, and the difference is real rather
+// `motion <id> --vote <choice>` draws that line in the other direction, and for the same
+// reason: a select motion's choice is an arbitrary option id (a provider name), an OPEN set,
+// which is data — and data is a flag's value. A gate's answer is a closed binary, which is
+// grammar.
+// --as is optional here, where a ballot's is required, and the difference is real rather
 // than an oversight: a ballot is meaningless without its voter (a tally of anonymous votes
 // governs nothing), while an approval is an act that happens whether or not it is signed.
 // Unset, the server records "human:cli" — which is what it recorded for EVERY approval

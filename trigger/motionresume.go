@@ -10,7 +10,7 @@ import (
 
 // A motion is durable and its AWAITER is not. The channel entity, the ballots cast into it and
 // the deadline it closes on all live in the store; what watches them is a goroutine inside the
-// firing that opened it. So a restart leaves every open motion on `verse docket` with nothing
+// firing that opened it. So a restart leaves every open motion on `verse motion` with nothing
 // reading the answer — the ballot lands, the tally never moves, and the work behind it never
 // starts. This file is the other half: at startup, every open motion either gets its awaiter
 // back or is settled, so the docket lists only decisions somebody can still make.

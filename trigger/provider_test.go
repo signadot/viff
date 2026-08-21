@@ -142,7 +142,7 @@ func TestSelectProviderVoteDeadline(t *testing.T) {
 	if ok || !frag.IsZero() {
 		t.Fatalf("deadline select = (%+v, %v), want (zero, false) — no pick by the deadline", frag, ok)
 	}
-	// The channel records when it closes, so `verse docket` can show it.
+	// The channel records when it closes, so `verse motion` can show it.
 	ch, _, _ := store.Get(entity.VerseRef("motion", "channel", motionChannelID(providerSpecSeed(subj, p))))
 	if _, stamped := entity.ToObj(ch.Payload)["deadline_at"]; !stamped {
 		t.Fatalf("select channel missing deadline_at: %+v", ch.Payload)

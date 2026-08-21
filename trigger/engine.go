@@ -647,7 +647,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// the split needs.
 	//
 	// One `gating.gates` list produces two surfaces. A formula gate becomes a MOTION
-	// (motion:channel, `verse docket`, `verse vote`, settled by tally); everything else
+	// (motion:channel, `verse motion`, answered with `--vote`, settled by tally); everything else
 	// becomes a QUESTION (gate:question, `verse gate`, `verse gate approve`, settled by an
 	// answer). Different entity, different verb, different docket — and a resolver can own
 	// only the second, so whether a rule can be supervised depends on which of the two an
@@ -873,7 +873,7 @@ func deadlineDuration(f *Formula) (time.Duration, bool) {
 }
 
 // deadlineAt returns the absolute instant a motion closes on timeout, stamping it on the
-// channel the first time (so `verse docket` shows when it closes, and a restart re-arms
+// channel the first time (so `verse motion` shows when it closes, and a restart re-arms
 // against the same absolute time — elapsed wall time is honored). It is terminal-once like
 // commitMotion: it returns the EFFECTIVE stamped value, so a re-fire — or
 // a concurrent arming of the same channel — reads the durable instant rather than sliding

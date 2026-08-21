@@ -31,9 +31,10 @@ func TestVoteRefusesABallotNoTallyCouldCount(t *testing.T) {
 	store := serve(t)
 	whetherMotion(t, store, "m1")
 
-	_, err := runCLI(t, "vote", "m1", "y", "--as", "alice")
+	_, err := runCLI(t, "motion", "m1", "--vote", "y", "--as", "alice")
 	if err == nil {
-		t.Fatal("vote m1 y was accepted; a ballot that cannot be tallied is worse than one refused")
+		t.Fatal("motion m1 --vote y was accepted; a ballot that cannot be tallied " +
+			"is worse than one refused")
 	}
 	if !strings.Contains(err.Error(), "approve") {
 		t.Errorf("error %q does not say what the motion takes — a refusal that does not name "+
@@ -49,8 +50,8 @@ func TestVoteAcceptsWhatTheMotionNames(t *testing.T) {
 	store := serve(t)
 	whetherMotion(t, store, "m1")
 
-	if _, err := runCLI(t, "vote", "m1", "approve", "--as", "alice"); err != nil {
-		t.Fatalf("vote m1 approve: %v", err)
+	if _, err := runCLI(t, "motion", "m1", "--vote", "approve", "--as", "alice"); err != nil {
+		t.Fatalf("motion m1 --vote approve: %v", err)
 	}
 	p := payloadOf(t, store, entity.RefAt("vote", "m1", "alice"))
 	if p == nil || p["choice"] != "approve" {
@@ -70,11 +71,11 @@ func TestVoteAcceptsASelectOption(t *testing.T) {
 		},
 	}.Payload())
 
-	if _, err := runCLI(t, "vote", "m2", "claude", "--as", "bob"); err != nil {
-		t.Fatalf("vote m2 claude: %v", err)
+	if _, err := runCLI(t, "motion", "m2", "--vote", "claude", "--as", "bob"); err != nil {
+		t.Fatalf("motion m2 --vote claude: %v", err)
 	}
-	if _, err := runCLI(t, "vote", "m2", "y", "--as", "sam"); err == nil {
-		t.Error("vote m2 y was accepted; no option of a who-motion is named y")
+	if _, err := runCLI(t, "motion", "m2", "--vote", "y", "--as", "sam"); err == nil {
+		t.Error("motion m2 --vote y was accepted; no option of a who-motion is named y")
 	}
 }
 
@@ -107,7 +108,7 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 				tc.payload.Payload())
 
 			choice, _ := tc.payload["options"].([]any)[0].(entity.Obj)["choice"].(string)
-			_, err := runCLI(t, "vote", tc.id, choice, "--as", "alice")
+			_, err := runCLI(t, "motion", tc.id, "--vote", choice, "--as", "alice")
 			if err == nil {
 				t.Fatalf("a ballot into a %s motion was accepted; nothing will ever read it", tc.name)
 			}
@@ -130,15 +131,15 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 // exist: a ballot is an ordinary entity write, so `vote.nosuch.alice` lands, no tally ever reads
 // it, and the voter watches a number that will not move. Nobody is the authority in that story.
 //
-// It was found the way these things are: `verse vote approve <id>` — the arguments the wrong way
-// round, which reads as English — wrote a ballot on a motion called "approve" and left the
-// docket unchanged. See TestVoteRefusesAMotionThatIsNotThere.
+// It was found the way these things are: `verse motion approve --vote <id>` — the id and the
+// choice the wrong way round, both being bare words — wrote a ballot on a motion called
+// "approve" and left the docket unchanged. See TestVoteRefusesAMotionThatIsNotThere.
 func TestVoteOnAnUnreadableMotionIsTheServersCall(t *testing.T) {
 	// The read itself failing (no server) leaves the decision to the request, which then fails
 	// on its own terms rather than on a guess made here.
 	defer func(addr string) { testAddr = addr }(testAddr)
 	testAddr = "127.0.0.1:1" // nothing listening: the motion read cannot be performed
-	_, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice")
+	_, err := runCLI(t, "motion", "nosuch", "--vote", "approve", "--as", "alice")
 	if err == nil {
 		t.Fatal("a ballot with no server behind it reported success")
 	}
@@ -147,13 +148,13 @@ func TestVoteOnAnUnreadableMotionIsTheServersCall(t *testing.T) {
 	}
 }
 
-// A shell hands an unset variable through as an empty string, so `verse vote "$m" y` with $m
-// unset used to write vote::alice — a ballot belonging to no motion, which no tally reads and
-// nothing reports. It is the same defect as an uncountable choice, one argument to the left.
+// A shell hands an unset variable through as an empty string, so `verse motion "$m" --vote y`
+// with $m unset would write vote::alice — a ballot belonging to no motion, which no tally reads
+// and nothing reports. It is the same defect as an uncountable choice, one argument to the left.
 func TestVoteRefusesAnEmptyMotionID(t *testing.T) {
 	store := serve(t)
 
-	if _, err := runCLI(t, "vote", "", "approve", "--as", "alice"); err == nil {
+	if _, err := runCLI(t, "motion", "", "--vote", "approve", "--as", "alice"); err == nil {
 		t.Fatal("an empty motion id was accepted; the ballot would belong to nothing")
 	}
 	if p := payloadOf(t, store, entity.RefAt("vote", "", "alice")); p != nil {
@@ -161,9 +162,9 @@ func TestVoteRefusesAnEmptyMotionID(t *testing.T) {
 	}
 }
 
-// choices has to name the same words the docket does, or the listing tells a voter to type
+// choices has to name the same words the listing does, or the listing tells a voter to type
 // something the check then rejects.
-func TestChoicesMirrorsTheDocketListing(t *testing.T) {
+func TestChoicesMirrorsTheMotionListing(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		opts any
@@ -213,7 +214,7 @@ func TestVoteReportsARefusal(t *testing.T) {
 
 	defer func(addr string) { testAddr = addr }(testAddr)
 	testAddr = strings.TrimPrefix(srv.URL, "http://")
-	out, err := runCLI(t, "vote", "m1", "approve", "--as", "scott")
+	out, err := runCLI(t, "motion", "m1", "--vote", "approve", "--as", "scott")
 	if err == nil {
 		t.Fatalf("a refused ballot reported success: %q", out)
 	}
@@ -227,12 +228,12 @@ func TestVoteReportsARefusal(t *testing.T) {
 
 // The docket reads the motions where they are STORED, which is verse's own half of the tree.
 // It asked at `motion.channel` — the address before the reserved root — so every docket was
-// empty however many motions stood open, and `verse vote` had nothing to name. A person
+// empty however many motions stood open, and a ballot had nothing to name. A person
 // watching a gate they were meant to answer saw "nothing on the docket".
 //
 // Through the CLI rather than against the listing function, because both halves of the defect
 // were on the path a person takes: the address it asks at, and rendering the id it got back.
-func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
+func TestMotionListsAMotionInVersesHalf(t *testing.T) {
 	store := serve(t)
 
 	entitytest.Set(t, store, entity.VerseRef("motion", "channel", "m1"), entity.Obj{
@@ -243,14 +244,14 @@ func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
 		"trigger": "shape-vote",
 	}.Payload())
 
-	out, err := runCLI(t, "docket")
+	out, err := runCLI(t, "motion")
 	if err != nil {
-		t.Fatalf("docket: %v", err)
+		t.Fatalf("motion: %v", err)
 	}
-	if strings.Contains(out, "nothing on the docket") {
+	if strings.Contains(out, "no motions") {
 		t.Fatalf("an open motion was not on the docket:\n%s", out)
 	}
-	// The id is what `verse vote <id>` takes, so a docket that prints anything else — a Go
+	// The id is what `verse motion <id>` takes, so a listing that prints anything else — a Go
 	// method value, as this did once the address was right — is a docket nobody can answer.
 	if !strings.Contains(out, "id: m1") {
 		t.Errorf("the docket does not name the motion by id:\n%s", out)
@@ -264,15 +265,15 @@ func TestTheDocketListsAMotionInVersesHalf(t *testing.T) {
 // is an ordinary entity — and nothing would ever read it, so the voter learns nothing and the
 // tally they are watching never moves.
 //
-// The swap is why it matters more than it looks. `verse vote approve <id>` reads as English and
-// is the wrong way round, so it recorded a ballot on a motion called "approve" with the id as
-// the choice; the docket was unchanged and the confirmation ("me voted <id> on motion approve")
-// parsed as a sentence either way round. Both halves are checked here.
+// The swap is why it matters more than it looks. The id and the choice are both bare words, so
+// `verse motion approve --vote <id>` records a ballot on a motion called "approve" with the id
+// as the choice, leaving the docket unchanged — and a confirmation naming both ("me voted <id>
+// on motion approve") parses as a sentence either way round. Both halves are checked here.
 func TestVoteRefusesAMotionThatIsNotThere(t *testing.T) {
 	store := serve(t)
 	whetherMotion(t, store, "m1")
 
-	_, err := runCLI(t, "vote", "nosuch", "approve", "--as", "alice")
+	_, err := runCLI(t, "motion", "nosuch", "--vote", "approve", "--as", "alice")
 	if err == nil {
 		t.Fatal("a ballot on a motion that does not exist was accepted")
 	}
@@ -284,16 +285,17 @@ func TestVoteRefusesAMotionThatIsNotThere(t *testing.T) {
 	}
 
 	// And when the choice names a real motion, the refusal says which way round it goes.
-	_, err = runCLI(t, "vote", "approve", "m1", "--as", "alice")
+	_, err = runCLI(t, "motion", "approve", "--vote", "m1", "--as", "alice")
 	if err == nil {
 		t.Fatal("the swapped form was accepted")
 	}
-	if !strings.Contains(err.Error(), "wrong way round") || !strings.Contains(err.Error(), "vote m1 approve") {
+	if !strings.Contains(err.Error(), "wrong way round") ||
+		!strings.Contains(err.Error(), "verse motion m1 --vote approve") {
 		t.Errorf("the refusal does not name the swap: %v", err)
 	}
 
 	// The right way round still works, and the confirmation leads with the motion.
-	out, err := runCLI(t, "vote", "m1", "approve", "--as", "alice")
+	out, err := runCLI(t, "motion", "m1", "--vote", "approve", "--as", "alice")
 	if err != nil {
 		t.Fatalf("a good ballot was refused: %v", err)
 	}

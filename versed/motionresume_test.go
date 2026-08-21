@@ -44,7 +44,7 @@ func waitUntil(t *testing.T, why string, cond func() bool) {
 // This is the case the docket could not survive. A who-motion opens from inside an action,
 // AFTER that action has written its latch — so the subject no longer matches the rule, nothing
 // re-fires it, and the only thing that ever awaited the ballots was a goroutine in the verse
-// that died. The entry stayed on `verse docket` looking answerable, an operator picked a doer,
+// that died. The entry stayed on `verse motion` looking answerable, an operator picked a doer,
 // and nothing whatsoever happened.
 func TestARestartResumesAWhoMotion(t *testing.T) {
 	addr := entitytest.Addr(t)
@@ -86,7 +86,7 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 
-	// The pick, cast from the docket exactly as `verse vote <motion> claude --as scott` does.
+	// The pick, cast from the docket exactly as `verse motion <id> --vote claude --as scott` does.
 	entitytest.Set(t, second.Store, entity.RefAt("vote", mid, "scott"),
 		entity.Obj{"choice": "claude", "by": "scott"}.Payload())
 

@@ -777,7 +777,7 @@ is the deadline's default: it has no threshold, so no number of ballots for it s
 motion. Two people can deny and the motion stays open, with the subject untouched, until the
 deadline passes.
 
-The ballot says so — that option renders `reachedBy: deadline`, and `verse vote` tells the voter
+The ballot says so — that option renders `reachedBy: deadline`, and `--vote` tells the voter
 their ballot is dissent on the record rather than a decision:
 
 ```tony

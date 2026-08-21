@@ -357,7 +357,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 }
 
 // Requirement.Facts is now a Match, so a formula's leaf and a trigger's subject share one
-// grammar. The COMPACT form must be unchanged by that retype — `verse docket` output and
+// grammar. The COMPACT form must be unchanged by that retype — `verse motion` output and
 // `goals add --done-when` inputs are user-visible.
 //
 // Each case is written twice: the tag-keyed spelling a JSON-shaped charter must use, and

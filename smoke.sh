@@ -384,11 +384,11 @@ ok "gate y + -s released it: demo:release:1 open → shipped"
 has "$(v gate)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
-# ── the docket: a gate the verse tallies rather than a person answering ──
-# The OTHER list, and it reads the store where motions are stored — which is verse's own half
-# now, and was not checked here, so a docket that answered "nothing" however many motions stood
-# open got as far as a drive before anybody noticed.
-step "docket: a quorum gate posts a motion, and a vote carries it"
+# ── the motions: a gate the verse tallies rather than a person answering ──
+# The OTHER list, and it reads the store where motions are stored — which is verse's own half,
+# so a docket that answers "nothing" however many motions stand open is the failure this
+# checks for: it got as far as a drive before anybody noticed.
+step "motion: a quorum gate posts a motion, and a ballot carries it"
 v charter -a --file - >/dev/null <<'TONY' || die "quorum charter -a failed"
 - name: smoke-quorum
   condition:
@@ -401,15 +401,15 @@ TONY
 v data demo motion 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 MID=
 for _ in $(seq 1 100); do
-	MID=$(v docket --if '{axis: whether}' -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	MID=$(v motion --if '{axis: whether}' -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
 	[ -n "$MID" ] && break
 	sleep 0.2
 done
 [ -n "$MID" ] || die "the quorum gate never reached the docket"
-has "$(v docket)" 'demo.motion."1"' || die "the docket does not say what is being decided"
+has "$(v motion)" 'demo.motion."1"' || die "the docket does not say what is being decided"
 ok "the motion is on the docket as $MID, about demo:motion:1"
 haskv "$(v data demo motion 1)" stage open || die "the motion did not hold the action"
-v vote "$MID" approve --as human:smoke >/dev/null || die "vote failed"
+v motion "$MID" --vote approve --as human:smoke >/dev/null || die "the ballot was refused"
 carried=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo motion 1 2>/dev/null || true)" stage shipped; then
@@ -420,7 +420,7 @@ for _ in $(seq 1 100); do
 done
 [ -n "$carried" ] || die "the tallied motion did not release the action"
 ok "one approve met the quorum: demo:motion:1 open → shipped"
-has "$(v docket --if '{status: closed}')" "$MID" || die "the settled motion does not carry its outcome"
+has "$(v motion --if '{status: closed}')" "$MID" || die "the settled motion does not carry its outcome"
 ok "the motion is settled on the docket, with its tally and its witness"
 
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
