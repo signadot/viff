@@ -7,10 +7,14 @@ example in a fenced block goes stale the first time a signature moves and nobody
 |---|---|
 | [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
 | [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, a contained process per task, and a push as a gated capability the runner hands a credential for |
+| [worker/](worker/main.go) | a dial-in worker: claims work from a broker and does it with a local `claude`, so nothing has to be able to reach it |
 | [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 The two runners are a ladder rather than one program trying to be both: `runner/` is the
 contract at its smallest, `coderunner/` is what a real one does with it.
+
+`worker/` is the other axis entirely — not a smaller runner but an inverted one. A runner is
+reached; a worker reaches out. Which you want is decided by the network, not the work.
 
 ## Running the runner
 
@@ -30,6 +34,29 @@ It is a placeholder driver — it splits the prompt on semicolons and does each 
 watch a task run end to end before replacing the two functions with the work you actually
 have. The `verse runner add` above will print `reach: a runner`, which is the install probe
 confirming that what is at that url really serves the contract.
+
+## Running the worker
+
+It needs a verse whose tasks are brokered, since a worker claims work rather than being handed
+it:
+
+```sh
+verse up --broker --broker-addr :9090                                  # one terminal
+go run ./docs/reference/examples/worker -verse localhost:9797 -as "$USER"   # another
+verse task run "summarise what changed in cmd/verse this week"         # a third
+```
+
+The task is `unclaimed` until the worker takes it, then `running`, then `done` with the agent's
+answer as its `result` — and `verse task attach <id>` narrates the agent's output line by line
+while it happens.
+
+Nothing is configured with a broker URL. Each task carries the `dialURL` it is claimed through,
+so the same binary works against any verse, and moving the broker face moves it for every
+worker at once. `-agent` picks what does the work (`/bin/echo` is a useful stand-in while you
+are wiring it up) and `-once` takes a single pass and exits.
+
+The credential never crosses verse: the agent runs on this machine under whatever permissions
+this machine's owner gave it, which is what makes a laptop a reasonable place to run a task.
 
 ## Running the coderunner
 
