@@ -1,0 +1,157 @@
+# THE ISSUE TRIAGE DRIVE: a new issue is read against the code, by whoever is at a keyboard.
+#
+# One half, two strata, two rules. A git-issue appears; a row is derived for it; a task is
+# spawned that NAMES NO RUNNER, so it lands `unclaimed` on the broker and waits for a person's
+# session to claim it (.claude/skills/verse-work). The answer lands back as a fact on the row.
+#
+# It is deliberately the small mirror of comment-drift: that one asks whether a comment still
+# agrees with its code and answers with a branch, this one asks whether an ISSUE still agrees
+# with its code and answers with prose. Same question, different subject, and no push.
+#
+#     verse charter -a -f docs/working/issue-triage.tony
+#
+# — but NOT as the first act. See INSTALLING below: 109 issues are already reflected, and a
+# charter installed over them derives 109 rows and spawns 109 tasks at once.
+#
+# INSTALLING, in two steps, which is the same shape the drift cursor is seeded with: stand on
+# the present, so there is no backlog to work through.
+#
+#   1. Install with rule 2 REMOVED (delete its `---` document). Rule 1 alone derives one row
+#      per open issue and spawns nothing.
+#   2. Latch every row that exists now, so only issues that arrive AFTER this fire:
+#
+#        for p in $(verse data verse-dev triage brief --paths --depth 4); do
+#          verse data $p --put '{stage: seeded}'
+#        done
+#
+#   3. Install this file whole. New issues get a row with no `stage`, which is what rule 2
+#      selects on.
+#
+# WHY `repo: verse` AND NOT EVERY REPO. The source reflects tony-format too — 237 issues to
+# verse's 69 — and briefing another repository's backlog is not what this is for. Widening it is
+# deleting one line from rule 1's condition, and the seeding step above becomes load-bearing
+# rather than merely prudent.
+at: verse-dev.triage
+reads: [ !verse-path [git-issue] ]
+---
+# The reflected slice, where an ISSUE is the subject. Level 0 because nothing this package
+# writes is upstream of it: the source writes here and this package never does.
+- name: reflected
+  level: 0
+  match:
+    system: git-issue
+
+# One row per issue, keyed by the issue. It exists so the briefing has a subject of its OWN —
+# a task's id is (rule, subject), and the issue entity is written by the source on every poll,
+# so a rule spawning against it directly would re-fire on `updatedAt` moving.
+#
+# It is also where the answer lands. The source is the SINGLE WRITER of `git-issue.*`
+# (docs/sources.md: "Ownership = single writer = no CAS"), so a brief written onto the issue
+# would be writing into somebody else's slice. Read theirs, write your own.
+- name: brief
+  level: 10
+  match:
+    path: [verse-dev, triage, brief]
+---
+# 1. An open issue in this repository gets a row.
+#
+# FACTS ONLY, and the reason is the one `proposal-appeared` records: a derive MERGES its literal
+# fields on every run, so anything named here is restated every time the source re-reflects the
+# issue. `title` and `status` are the issue's to change and are restated deliberately — a
+# retitled issue shows its new title. `stage` is NOT here, because it is state the row owns and
+# a re-derive would drag a briefed row back to unbriefed and spawn again.
+- name: issue-noticed
+  stratum: reflected
+  condition:
+    subject:
+      system: git-issue
+      kind: issue
+      value:
+        repo: verse
+        status: open
+  action:
+    derive:
+    - path: [verse-dev, triage, brief]
+      id: $subject.value.id
+      value:
+        issue: $subject.value.id
+        repo: $subject.value.repo
+        title: $subject.value.title
+---
+# 2. …and a row nobody has briefed becomes a question somebody answers.
+#
+# NO `runner:`, and that is the entire point rather than an omission. Staging's default runner is
+# the dial-in broker, so this spawn lands `unclaimed` and waits for a person to claim it from
+# their own session. The work happens where the checkout and the credentials already are, and
+# nothing about either crosses verse.
+#
+# NO `answer:` contract either, for the same reason. A contract is what makes an LLM driver's
+# final message parseable; here the executor is a person reporting through
+# `verse task do complete <id> "<text>"`, which is a STRING. A shape contract would refuse every
+# answer a human gives.
+#
+# `!not.has-path stage` is the latch, and the spelling matters: `!not {stage: null}` is what it
+# looks like it should be and does not work — absence is written as a bare null and every bare
+# null is hidden on read, so the durable rule comes back as `!not {}` and selects everything.
+# The failure is invisible until the first restart.
+- name: brief-issue
+  stratum: brief
+  condition:
+    subject:
+      path: [verse-dev, triage, brief, "*"]
+      value: !not.has-path stage
+  action:
+    spawn:
+      vector: auto
+      prompt: |
+        A verse issue has just been filed, and nobody has read it against the code yet.
+
+        Issue $title
+        Its id is $issue, in the verse repository. `git issue show $issue` is the full text,
+        labels and comments.
+
+        ANSWER TWO QUESTIONS, in this order.
+
+        WHAT DOES IT TOUCH. Name the files and Go symbols this issue is actually about —
+        repo-relative and spelled the way Go does: `entity.JoinSegs`, `source/github.Reflect`,
+        `versed.(*Server).HostBroker`. A symbol survives the code moving between files, which a
+        line number does not. If the issue is about docs or deploy rather than code, name those
+        paths instead and say so.
+
+        IS IT STILL TRUE OF MAIN. Read what stands there NOW, not what the issue says stood
+        there when it was filed. An issue outlives the code it was filed against: the thing may
+        be fixed, may have moved, may have been made moot by something unrelated, or may be
+        exactly as described. Say which, and say what you read that settles it.
+
+        Those two together are the deliverable. "Summarise the issue" is not the task — the
+        issue already says what it says, and repeating it back is a turn nobody bought.
+
+        Read each thing once. A second read of a file does not make a verdict truer.
+
+        WHAT TO DO WITH YOUR ANSWER: report it with
+
+            verse task do complete <this task id> "<your answer>" --as <you>
+
+        and narrate what you find along the way with `verse task do note`, so whoever is watching
+        with `verse task attach` sees it happen. If the issue turns out to need a decision rather
+        than a reading — it is ambiguous, or answering it would change something — raise a gate
+        with `verse task do gate` and let somebody answer, rather than deciding it yourself.
+
+        If you cannot settle it, that is an answer too: complete with what you established and
+        what you would need to go further. `fail` is for work that could not be carried out, not
+        for a question that turned out to be hard.
+    onDone:
+      patch:
+        brief: $result
+        stage: briefed
+        err: !delete null
+    onFailed:
+      patch:
+        stage: failed
+        err: $err
+    # A cancelled briefing clears the latch rather than latching a failure, so the row is picked
+    # up again by whoever comes next. Nothing was written and nothing is owed.
+    onCancelled:
+      patch:
+        stage: !delete null
+        err: !delete null
