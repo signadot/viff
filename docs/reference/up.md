@@ -106,6 +106,19 @@ sets the default: a spawn may name an installed runner instead, and go somewhere
 never mentioned — see [runners.md](runners.md). See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
+A brokered task carries a `dialURL`, which is what its worker dials in on, and it is built
+from `--broker-addr`. Where a worker reaches the broker by a name the process cannot bind —
+a pod behind a Service, anything on a tailnet — `--broker-advertise-addr` is what gets
+published instead:
+
+```sh
+verse up --broker --broker-addr :9090 --broker-advertise-addr verse-broker:9090
+```
+
+Without it a wildcard bind advertises `localhost:9090`, which every worker resolves and none
+of them reaches. This is the same split as `--docd-advertise-addr` below: where a face is
+bound and where it is reached are two facts, and neither implies the other.
+
 ## Configuration
 
 Defaults are resolved through layers, each overriding the one before:

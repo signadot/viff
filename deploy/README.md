@@ -193,18 +193,21 @@ an unexposed Service looks exactly like an exposed one until you go looking on t
 | `verse` | the versed API — `verse -addr http://verse:9797 …` | 9797 |
 | `verse-docd` | docd's client face: the store, read/write, including scoped writes | 7071 |
 | `verse-docd-mount` | docd's mount face, where a controller mounts a subtree ([seam 3](../docs/seams.md)) | 7072 |
+| `verse-broker` | the broker face: where a dial-in worker claims work and reports on it (`brokerFace`) | 9090 |
 
 The device names track `namespace`, so a second verse on the same tailnet is a second name
 rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:verse`
 if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
-`tailscaleExpose` adds no Services — it annotates the three the deploy already has. Two
-devices for docd rather than one Service with both ports, because a Service gets one tailnet
-IP, so two is what lets an ACL grant the mount face without granting the store. The fourth
-Service, `docd-headless`, is deliberately not exposed: the operator refuses a headless Service
-outright, recording `headless Services are not supported` as an `INVALIDSERVICE` warning event
-and exposing nothing — which is the reason the plain name `docd` belongs to a face and the
-governing Service carries the suffix.
+`tailscaleExpose` adds no Services — it annotates the ones the deploy already has. A Service
+gets one tailnet IP, so a face that an ACL should be able to grant separately has to be its
+own Service: that is why docd's two are two, and why the broker is a third. The broker's is
+the one reached by parties who are not operators — a laptop agent, a pod in a private cluster,
+a person — and granting it must not thereby grant the operator API. `docd-headless` is
+deliberately not exposed: the operator refuses a headless Service outright, recording `headless
+Services are not supported` as an `INVALIDSERVICE` warning event and exposing nothing — which
+is the reason the plain name `docd` belongs to a face and the governing Service carries the
+suffix.
 
 **`/status` answers with the tailnet names too**, which is what makes `verse connect` work from
 a laptop. `connect` is its own process: it reads docd's two addresses off `/status` and dials
@@ -218,6 +221,12 @@ pod to reach a container beside it would be absurd — and only the answer chang
 There is one published pair, so this is a choice about which client matters, and it goes to the
 one outside. A controller running *inside* the namespace would now be handed tailnet names; it
 should be passed the Service names directly rather than discovering them.
+
+The broker face is the same arrangement one layer along, and its answer travels on the task
+rather than on `/status`: versed is given `--broker-advertise-addr verse-broker:9090`, so each
+brokered task's `dialURL` names the tailnet device while the process goes on binding `:9090`.
+A worker only ever reaches its own task, through the nonce in that URL, which is what makes
+handing it to somebody outside the cluster a different act from handing them the API.
 
 [Tailscale Kubernetes operator]: https://tailscale.com/kb/1236/kubernetes-operator
 

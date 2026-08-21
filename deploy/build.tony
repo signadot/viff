@@ -563,14 +563,40 @@ build:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd-mount"
 
-  # …and tell clients so. /status is where a controller (`verse connect`) reads docd's
-  # addresses, and it reads them from wherever IT is — which, once the faces are on a tailnet,
-  # is somewhere `docd:7071` does not resolve. versed keeps dialling the Service names; only
-  # what it PUBLISHES changes, to the tailnet names those same two Services now answer to.
+  # The broker face, where a dial-in worker claims work and reports on it — a laptop agent, a
+  # pod in a private cluster, a person. Its own device for the reason docd's faces are two:
+  # this is the one face reached by parties that are not operators, and an ACL that grants it
+  # should not thereby grant the operator API. A worker only ever reaches its own task through
+  # a nonce, which is why handing it out is safe and why it goes somewhere separate.
+  - if: '.[tailscaleExpose]'
+    match:
+      kind: Service
+      metadata:
+        name: verse-broker
+    patch:
+      metadata:
+        annotations:
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: "$[namespace]-broker"
+
+  # …and tell clients so. A client reads an address off verse and connects to it from wherever
+  # IT is — which, once the faces are on a tailnet, is somewhere `docd:7071` does not resolve.
+  # versed keeps dialling the Service names; only what it PUBLISHES changes, to the tailnet
+  # names those same Services now answer to.
   #
-  # No knob: these are not a choice, they are the names the two devices were given four
-  # patches up, spelled from the same namespace. A knob would only be a way to disagree with
-  # the annotations.
+  # Three faces, published in two places for the same reason. docd's two go on /status, where
+  # a controller (`verse connect`) looks for them. The broker's goes in each task's dialURL,
+  # where a worker looks for it — and it is the one a party outside the cluster reads, so it is
+  # the one that is useless when it is wrong: a wildcard bind advertises `localhost:9090`, an
+  # address every worker has and none of them wants.
+  #
+  # The broker's is also the only one whose reader is not an operator, which is why the ACL
+  # that grants it should not be the ACL that grants the API. A worker reaches its own task and
+  # nothing else, through the nonce that URL carries.
+  #
+  # No knob: these are not a choice, they are the names the devices were given just above,
+  # spelled from the same namespace. A knob would only be a way to disagree with the
+  # annotations.
   - if: '.[tailscaleExpose]'
     match:
       kind: Deployment
@@ -596,12 +622,20 @@ build:
               - ":9797"
               - --broker-addr
               - ":9090"
+              - --broker-advertise-addr
+              - "$[namespace]-broker:9090"
+              # Run tasks on the dial-in broker, so a spawn that names no runner waits for a
+              # worker to claim it — a laptop agent, or a person answering through
+              # `verse task do`. This is the DEFAULT only: the charters that need code run
+              # somewhere specific already name `verse.runners.pool.code`, and a spawn that
+              # names a runner is unaffected by what stands here.
+              - --broker
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd, docd-mount]
+        name: !or [verse, docd, docd-mount, verse-broker]
     patch:
       metadata:
         annotations:

@@ -48,6 +48,14 @@ type upConfig struct {
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
 	Broker     bool   `cli:"name=broker desc='run tasks on an in-process dial-in broker (requires --broker-addr; publishes each task dialURL from it)'"`
+	// What to PUBLISH as each task's dialURL, when that is not where the broker LISTENS —
+	// the same split docd's two advertise flags exist for, arriving here for the same reason.
+	// A worker reads dialURL off the task and connects to it from where IT is; a process that
+	// binds a wildcard port inside a cluster cannot also bind the name that reaches it from
+	// outside, so the two addresses are different strings and neither can be derived from the
+	// other. Without this the broker advertises where it bound, which for `:9090` is
+	// `localhost:9090` — an address every worker has and none of them wants.
+	BrokerAdvertiseAddr string `cli:"name=broker-advertise-addr desc='publish this address in each task dialURL instead of --broker-addr (for workers that cannot reach it)'"`
 	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
@@ -87,6 +95,13 @@ func (cfg *upConfig) validate() error {
 	}
 	if cfg.Broker && cfg.BrokerAddr == "" {
 		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
+	}
+	// The same rule the docd advertise flags are held to: re-addressing a face needs the face.
+	// The broker one is checked against --broker-addr rather than --broker, because the face is
+	// what --broker-addr serves and a hosted nonce is reachable across it whether or not this
+	// verse also runs tasks on one.
+	if cfg.BrokerAddr == "" && cfg.BrokerAdvertiseAddr != "" {
+		return fmt.Errorf("%w: verse up: --broker-advertise-addr needs --broker-addr (there is no broker face to re-address)", cli.ErrUsage)
 	}
 	return nil
 }
@@ -276,7 +291,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
 	if cfg.Broker { // run tasks on an in-process dial-in broker, hosted on the broker face
-		face := brokerFace(cfg.BrokerAddr)
+		face := brokerFace(advertised(cfg.BrokerAddr, cfg.BrokerAdvertiseAddr))
 		srv.UseBroker(face)
 		fmt.Fprintf(cc.Out, "verse up: dial-in broker runner; workers dial %s\n", face)
 	}
@@ -394,9 +409,14 @@ func advertised(dialled, advertise string) string {
 	return dialled
 }
 
-// brokerFace turns a broker listen address into a URL a worker can dial. An empty or
-// wildcard host (":9090", "0.0.0.0:9090", "[::]:9090") is advertised as localhost — right
-// for dev; a real deployment sets --broker-addr to a routable host:port. Scheme is http.
+// brokerFace turns a broker address into a URL a worker can dial. An empty or wildcard host
+// (":9090", "0.0.0.0:9090", "[::]:9090") becomes localhost — right for dev, where the worker
+// is on the same machine. Scheme is http.
+//
+// It is given the ADVERTISED address, so a deployment whose bind address is not reachable
+// says so with --broker-advertise-addr rather than by binding somewhere it cannot. A pod
+// binds a wildcard and is reached by a Service name; asking one string to be both is what
+// makes localhost the published answer.
 func brokerFace(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil { // not host:port (e.g. bare ":9090" edge) — use as-is under http

@@ -39,6 +39,9 @@ verse
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
                                              (/broker/<nonce>); all default off (local in-process
                                              supervisor). See ../task-control.md.
+       [--broker-advertise-addr host:port]   publish THIS in each task's dialURL instead, when a
+                                             worker dials the broker by a name the process cannot
+                                             bind (a Service, a tailnet device)
   status                                     engine/store snapshot
   schema [<name>]                            the whole schema: the root — what a verse looks like,
                                              by top-level path — then every shape it names.
