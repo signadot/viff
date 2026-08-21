@@ -2705,7 +2705,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		StoreRev: s.Store.Head(),
 		Flows:    len(s.Eng.Flows()),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
-		Tasks:    s.Taskd.Count(),
+		Tasks:    taskCount(s.scopedStore(r)),
 		Fired:    s.Eng.Fired(),
 		Runners:  runnerRefs(s.scopedStore(r)),
 		Sources:  sourceRefs(s.scopedStore(r)),
@@ -3138,9 +3138,7 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		}
 	}
 	out := make([]task.Instance, 0)
-	for _, ent := range entity.ListUnder(store, func(r entity.Ref) bool {
-		return mirror.IsTask(r)
-	}, entity.VerseRoot, mirror.System) {
+	for _, ent := range taskRows(store) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -3179,6 +3177,33 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		out = append(out, inst)
 	}
 	return out, nil
+}
+
+// taskRows is the docket as this view sees it: the task:instance mirror, which is the record
+// written at spawn and complete without asking any runtime. Both the list and the count come
+// through here, so that they are the same rows by construction rather than by agreement.
+func taskRows(store entity.Store) []entity.Entity {
+	return entity.ListUnder(store, mirror.IsTask, entity.VerseRoot, mirror.System)
+}
+
+// taskCount is how many tasks this verse has a record of — the number `verse task` lists.
+//
+// It counts the mirror rather than the in-process runtime, and the difference is the whole
+// point: the runtime's map holds the tasks THIS PROCESS hosts, so a verse that runs its work
+// on a remote runner hosts none of them and would report 0 over a full docket. `status` is
+// read as the cheap orientation and `verse task` as the detail, in that order, by somebody
+// deciding whether anything is happening at all — so the two must not be able to disagree.
+//
+// It skips a row whose payload is not an object for the reason the list does: such a row is
+// not a task anybody can be told about, and counting it would promise a line that never comes.
+func taskCount(store entity.Store) int {
+	n := 0
+	for _, ent := range taskRows(store) {
+		if entity.ToObj(ent.Payload) != nil {
+			n++
+		}
+	}
+	return n
 }
 
 // instanceFromRecord is what verse can say about a task it is not currently holding a

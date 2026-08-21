@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -120,4 +121,64 @@ func charterCount(t *testing.T, m map[string]any, key string) int64 {
 	}
 	n, _ := codec.AsInt64(c[key])
 	return n
+}
+
+// `tasks` is the DOCKET — how many tasks this verse has a record of — and it is the number
+// `verse task` lists. This pins it to that list.
+//
+// The in-process task runtime is NOT that number: it holds the tasks this process hosts, so a
+// verse running its work on a remote runner hosts none of them and a count taken from there
+// reads 0 over a full docket, disagreeing with the very list an operator reads next
+// (git-issue 8hfm5amsh12kr9sah1n0). This server hosts nothing, which is that deployment.
+func TestStatusTasksIsTheDocket(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	tasks := func() int64 {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/status")
+		if err != nil {
+			t.Fatalf("status: %v", err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		decodeResp(t, resp, &m)
+		n, ok := codec.AsInt64(m["tasks"])
+		if !ok {
+			t.Fatalf("tasks is not a number: %v", m["tasks"])
+		}
+		return n
+	}
+
+	if n := tasks(); n != 0 {
+		t.Fatalf("tasks = %d, want 0 on a verse with no record of one", n)
+	}
+
+	// The record a spawn writes, for tasks running somewhere this process cannot see.
+	ids := []string{"run-a", "run-b", "run-c"}
+	for _, id := range ids {
+		entitytest.Set(t, srv.Store, mirror.Ref(id), entity.Obj{
+			"id":     id,
+			"prompt": "do a thing",
+			"status": "running",
+			"runner": "http://coderunner:9802",
+		}.Payload())
+	}
+
+	got := tasks()
+	if got != int64(len(ids)) {
+		t.Fatalf("tasks = %d, want %d — the count is of the records, not of what is hosted here",
+			got, len(ids))
+	}
+
+	// And it is the LIST's own number, which is the property that makes the two surfaces
+	// comparable: whatever `verse task` would answer with, `tasks` counts exactly that.
+	insts, err := srv.taskSnapshots(srv.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int(got) != len(insts) {
+		t.Fatalf("tasks = %d but the list has %d", got, len(insts))
+	}
 }
