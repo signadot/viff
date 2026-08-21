@@ -47,7 +47,7 @@ type upConfig struct {
 	// runner: where tasks run. Default is the in-process local supervisor.
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
-	Broker     bool   `cli:"name=broker desc='run tasks on an in-process dial-in broker (requires --broker-addr; publishes each task dialURL from it)'"`
+	Broker     bool   `cli:"name=broker desc='serve an in-process dial-in broker, nameable as --runner broker (requires --broker-addr; publishes each task dialURL from it)'"`
 	// What to PUBLISH as each task's dialURL, when that is not where the broker LISTENS —
 	// the same split docd's two advertise flags exist for, arriving here for the same reason.
 	// A worker reads dialURL off the task and connects to it from where IT is; a process that
@@ -90,9 +90,9 @@ func (cfg *upConfig) validate() error {
 	if cfg.DocdMountAddr == "" && cfg.DocdMountAdvertiseAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-mount-advertise-addr needs --docd-mount-addr (there is no mount face to re-address)", cli.ErrUsage)
 	}
-	if cfg.Runner != "" && cfg.Broker {
-		return fmt.Errorf("%w: verse up: --runner and --broker are mutually exclusive (one runner)", cli.ErrUsage)
-	}
+	// --runner and --broker compose rather than compete: one says where a spawn naming nobody
+	// runs, the other serves a place a spawn may NAME. A verse can send its unnamed work to a
+	// remote taskd and still put a named task in front of a person.
 	if cfg.Broker && cfg.BrokerAddr == "" {
 		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
 	}
@@ -290,10 +290,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
-	if cfg.Broker { // run tasks on an in-process dial-in broker, hosted on the broker face
+	if cfg.Broker { // serve an in-process dial-in broker, beside the default runner
 		face := brokerFace(advertised(cfg.BrokerAddr, cfg.BrokerAdvertiseAddr))
 		srv.UseBroker(face)
-		fmt.Fprintf(cc.Out, "verse up: dial-in broker runner; workers dial %s\n", face)
+		fmt.Fprintf(cc.Out, "verse up: dial-in broker served as `broker` "+
+			"(--runner broker); workers dial %s\n", face)
 	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the

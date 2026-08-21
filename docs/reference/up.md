@@ -97,13 +97,24 @@ single-machine agent.
 Off by default: the local in-process supervisor runs them.
 
 ```sh
-verse up --runner http://other-verse:9797     # host tasks on a remote verse
-verse up --broker --broker-addr :9090         # …or behind a dial-in broker
+verse up --runner http://other-verse:9797     # send unnamed work to a remote verse
+verse up --broker --broker-addr :9090         # …and/or serve a dial-in broker
 ```
 
-Both are the same seam, and every `verse task` verb works across all three. Either way this
-sets the default: a spawn may name an installed runner instead, and go somewhere this flag
-never mentioned — see [runners.md](runners.md). See also
+They answer different questions and compose. `--runner` sets the DEFAULT — where a spawn that
+names nobody runs. `--broker` SERVES a broker, which a spawn reaches by name:
+
+| a spawn names | where it runs |
+|---|---|
+| nothing | this verse's own runtime, or `--runner` if one is set |
+| `broker` | the dial-in broker: it lands `unclaimed` and waits for a worker |
+| an installed runner | wherever that runner's url says ([runners.md](runners.md)) |
+
+Serving a broker therefore adds a name and takes none away — a charter that never mentioned a
+runner goes on running rather than waiting for somebody. A spawn naming `broker` where none is
+served is refused by name, like any other runner that is not installed.
+
+All of it is the same seam, and every `verse task` verb works across all three. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
 A brokered task carries a `dialURL`, which is what its worker dials in on, and it is built

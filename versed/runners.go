@@ -288,7 +288,20 @@ func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
 	return out
 }
 
+// brokerName is the reserved runner name for this verse's own dial-in broker, and it is
+// broker.Broker's Ref() — the string a task already records in `runner` when it ran on one, so
+// what a spawn names and what its task reports are one word. It is reserved the way `local` is:
+// neither is an installed entity, because an entity carries a url for runner.HTTP to drive and
+// both of these are runtimes this process holds.
+const brokerName = "broker"
+
 // runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.
+//
+// THREE NAMES, and the default is the one nobody types. Naming nothing means "run this", and
+// the answer is this verse's own runtime; `broker` means "somebody should do this", and it
+// waits to be claimed; an installed runner means wherever its url says. Serving a broker adds
+// a name and takes none away, which is what keeps a charter that mentions no runner meaning
+// what it says: run it.
 //
 // A spawn naming a runner that is not installed is REFUSED rather than quietly falling back to
 // the default. A misspelled runner that ran the work in-process would be the same class of bug
@@ -298,12 +311,27 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 	if name == "" {
 		return s.runner, "", nil
 	}
+	// `broker` is a reserved name, resolved here rather than out of the store, for the reason
+	// `local` is the meaning of the empty one: both are runtimes this process holds, and a
+	// runner entity is an address for runner.HTTP to drive. The name is the broker's own
+	// Ref(), which is what a task already records in `runner`, so a spawn names the runner
+	// its task will say it ran on.
+	if name == brokerName {
+		if s.broker == nil {
+			return nil, "", fmt.Errorf("no runner %q — this verse serves no dial-in broker "+
+				"(start it with --broker --broker-addr <host:port>)", name)
+		}
+		return s.broker, brokerName, nil
+	}
 	e, ok := runner.Find(store, name)
 	if !ok {
 		installed := runner.List(store)
 		names := make([]string, 0, len(installed))
 		for _, i := range installed {
 			names = append(names, runner.Ref(i.Kind, i.Name).String())
+		}
+		if s.broker != nil {
+			names = append(names, brokerName)
 		}
 		have := "none are installed"
 		if len(names) > 0 {

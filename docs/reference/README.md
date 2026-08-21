@@ -34,8 +34,11 @@ verse
        [--o-bin path]                        the o binary to spawn daemons with (default: resolved —
                                              see up.md)
        [--runner <url>]                      run tasks on a remote task-control base URL …
-       [--broker      ]                      … or on an in-process dial-in broker (needs --broker-addr;
-                                             publishes each task's dialURL from it) …
+       [--broker      ]                      … and/or SERVE an in-process dial-in broker, which a
+                                             spawn reaches as `--runner broker` (needs --broker-addr;
+                                             publishes each task's dialURL from it). It adds a name
+                                             rather than replacing the default: a spawn naming
+                                             nobody still runs here …
        [--broker-addr host:port]             … the sibling port serving this verse's broker face
                                              (/broker/<nonce>); all default off (local in-process
                                              supervisor). See ../task-control.md.

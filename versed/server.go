@@ -52,6 +52,17 @@ type Server struct {
 	Taskd  *taskd.Daemon
 	runner task.Runner // how tasks are run/governed; local (taskd) today
 
+	// broker is the dial-in broker, when one is served: a place a spawn may NAME, beside the
+	// default rather than instead of it. It is addressed as `broker` the way the in-process
+	// supervisor is addressed as `local` — a reserved name rather than an installed entity,
+	// because a runner entity carries a url for runner.HTTP to drive and this one is a field
+	// on this struct. Making verse dial itself to reach it would buy a loopback hop and a
+	// second copy of the contract.
+	//
+	// Nil when `--broker` was not asked for, and `--runner broker` is then refused by name
+	// like any other runner that is not there.
+	broker task.Runner
+
 	// Addr/BrokerAddr are this verse's OWN listen addresses — the operator API and (if
 	// served) the broker face — published on /status so a client or worker can discover
 	// where verse listens, as the docd addresses are published for a controller. Set by the
@@ -336,16 +347,25 @@ func (localRunner) Ref() string { return "local" }
 // (baseline and scoped). content federation is not forwarded to a remote runner yet.
 func (s *Server) SetRunner(p task.Runner) { s.runner = p }
 
-// UseBroker installs an in-process dial-in broker as the runner, hosted under a
-// minted nonce, and returns it (e.g. for the operator to Revoke a claim). face is this
-// verse's externally-reachable broker base (scheme://host:broker-addr — what a worker can
-// reach); the broker publishes <face>/broker/<nonce> as each task's `dialURL`, closing
-// the mint→publish→dial loop so a worker is told where to dial in rather than pre-configured.
+// UseBroker serves an in-process dial-in broker, hosted under a minted nonce, and returns it
+// (e.g. for the operator to Revoke a claim). face is this verse's externally-reachable broker
+// base (scheme://host:broker-addr — what a worker can reach); the broker publishes
+// <face>/broker/<nonce> as each task's `dialURL`, closing the mint→publish→dial loop so a
+// worker is told where to dial in rather than pre-configured.
+//
+// It is installed BESIDE the default runner and not as it. Serving a broker says a verse can
+// put work in front of a person; it does not say every spawn is for a person. A spawn that
+// names nobody means "run this", and the answer to that is the runtime this verse has —
+// otherwise turning brokering on takes away the ability to run anything at all, and every
+// charter that never mentioned a runner starts waiting for somebody instead of working.
+//
+// So the three ways of running work are three names: nothing is local, `broker` is here, and
+// an installed runner is wherever its url says. See runnerFor.
 func (s *Server) UseBroker(face string) *broker.Broker {
 	b := broker.New()
 	nonce := s.HostBroker("", b.WorkerHandler())
 	b.SetBase(strings.TrimRight(face, "/") + "/broker/" + nonce)
-	s.SetRunner(b)
+	s.broker = b
 	return b
 }
 
@@ -612,13 +632,24 @@ func (s *Server) reconcileTasks() {
 		// forget where it came from. AdoptChain re-derives its hooks from that address —
 		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
-		if runnerRef != "" && runnerRef != "local" { // remote: the work outlived verse
+		// What can still be re-attached is what did not die with this process, and the entity
+		// says which by naming where it ran. `broker` is a reserved NAME rather than a url, so
+		// it is resolved to the runtime this process holds — which survives a restart exactly
+		// when the broker object does, as one handed in from outside does and one this verse
+		// serves itself does not. Dialling the name as a url would instead ask DNS for a host
+		// called "broker" and orphan the task on the failure: the right answer for the
+		// in-process case, reached by a hung request, and the wrong one for the other.
+		if runnerRef != "" && runnerRef != "local" { // the work may have outlived verse
 			// The URL is what this attaches with, and that is the whole reason it is stamped
 			// beside the name. A restart that resolved the name instead would depend on the
 			// runner ENTITY still existing, so removing one would orphan work that is running
 			// perfectly well — a deletion with an action at a distance, and the thing that
 			// would make step 1's `--leave` a lie.
-			if h := runner.HTTP(runnerRef).Attach(ent.Ref.ID()); h != nil {
+			place := task.Runner(runner.HTTP(runnerRef))
+			if runnerRef == brokerName {
+				place = s.brokerRuntime()
+			}
+			if h := attachOn(place, ent.Ref.ID()); h != nil {
 				// re-attach: observe
 				// The binding its spawn named is read back off the entity rather than
 				// remembered: a resumed task must be watched by whoever was watching
@@ -694,6 +725,34 @@ func (s *Server) write(at entity.Path, v entity.Payload) {
 	if _, _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: reconcile: write %s: %v\n", at, err)
 	}
+}
+
+// brokerRuntime is the dial-in broker this process can still reach: the one it serves, or one
+// installed as the default runner from outside. Nil when there is none, which is what a
+// brokered task whose runtime did not outlive the restart resolves to.
+//
+// Two places to look because a broker arrives two ways, and they differ in exactly the thing a
+// restart cares about: `--broker` builds one here, so it is new and knows nothing about what
+// ran before; one handed in with SetRunner is somebody else's object, and a worker dialled into
+// it never noticed this process go away.
+func (s *Server) brokerRuntime() task.Runner {
+	if s.broker != nil {
+		return s.broker
+	}
+	if s.runner != nil && s.runner.Ref() == brokerName {
+		return s.runner
+	}
+	return nil
+}
+
+// attachOn re-attaches to a task on p, tolerating a p that is not there. A nil runner is a
+// runtime that did not outlive the restart, and it re-attaches to nothing rather than panicking
+// on the way to the same answer.
+func attachOn(p task.Runner, id string) task.Handle {
+	if p == nil {
+		return nil
+	}
+	return p.Attach(id)
 }
 
 // resumedRun is a task that survived the restart, and the chain it came from — enough to
@@ -1698,7 +1757,10 @@ func (s *Server) relaysControl(taskID string) bool {
 	if _, ok := s.Taskd.SnapshotOf(taskID); ok {
 		return false
 	}
-	if h := s.runner.Attach(taskID); h != nil {
+	// The same reach the answer itself will take, so this cannot say "applied" about a task
+	// the answer is then queued for: whether control is relayed is a property of the runtime
+	// HOLDING the task, and a broker holds one it was named for without being the default.
+	if h := s.attach(taskID); h != nil {
 		r, ok := h.(interface{ RelaysControl() bool })
 		return ok && r.RelaysControl()
 	}
@@ -2802,19 +2864,22 @@ func sourceRefs(store entity.Store) []string {
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
 // a remote taskd (one URL, no separate worker leg) and diverge for a broker (verse drives
 // it in-process — ephemeral — while a worker dials a separate face). See docs/task-control.md.
+//
+// `kind` is about the DEFAULT — where a spawn that names nobody runs — and `dial` is about
+// the broker, which is a name a spawn may use rather than the place it lands by default. So
+// the two are reported independently: a verse serving a broker still answers `kind: local`,
+// and `dial` being present is what says work can be put in front of a person here.
 func (s *Server) runnerStatus() *api.RunnerStatus {
 	pol := &api.RunnerStatus{Resume: "ephemeral"}
 	switch {
-	case hasFace(s.runner): // a dial-in broker: in-process control, external worker face
-		pol.Kind = "broker"
-		if face := s.runner.(interface{ Face() string }).Face(); face != "" {
-			pol.Dial = face
-		}
 	case s.runner.Ref() == "local":
 		pol.Kind = "local"
 	default: // a remote runner base URL — the Ref IS the re-attach address
 		pol.Kind = "remote"
 		pol.Resume = s.runner.Ref()
+	}
+	if f, ok := s.broker.(interface{ Face() string }); ok {
+		pol.Dial = f.Face()
 	}
 	return pol
 }
@@ -2834,6 +2899,28 @@ func hasFace(p task.Runner) bool {
 // here, as this did, meant a widened signature made the assertion report false rather than
 // fail to build — which is how the same mistake took out gate resolution once already.
 type taskLister = task.Lister
+
+// registries are the runtimes whose OWN task list this verse has to ask, beside the Taskd
+// snapshots every caller reads first: the default runner when it keeps one (a remote taskd
+// does), and the dial-in broker, which a spawn may name without it being the default.
+//
+// It is a list rather than a field because a runtime can be named without being the default,
+// so there is no single one to ask. Consulting only the default omits the other silently, and
+// a task missing from `verse task`, from the gate-holder search and from the snapshot route
+// while running perfectly well is the shape that costs an afternoon.
+//
+// The local supervisor is deliberately absent: it delegates to the same Taskd the callers list
+// first, so including it would double-count rather than add anything.
+func (s *Server) registries() []task.Runner {
+	var out []task.Runner
+	if _, ok := s.runner.(taskLister); ok {
+		out = append(out, s.runner)
+	}
+	if _, ok := s.broker.(taskLister); ok {
+		out = append(out, s.broker)
+	}
+	return out
+}
 
 // gateResolver is a Handle that can answer a gate its worker raised, by relaying the
 // outcome to that worker. It is optional on Handle because only a runner with a worker leg
@@ -3038,12 +3125,12 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		inst.Runner = "local"
 		live[inst.ID] = inst
 	}
-	if l, ok := s.runner.(taskLister); ok {
+	for _, p := range s.registries() {
 		// Best effort, deliberately: an error here means this runner's DETAIL is missing, and
 		// the row survives without it. Failing the list on it would be trading a complete
 		// answer for no answer.
-		if insts, err := l.ListTasks(); err == nil {
-			ref := s.runner.Ref()
+		if insts, err := p.(taskLister).ListTasks(); err == nil {
+			ref := p.Ref()
 			for _, inst := range insts {
 				inst.Runner = ref
 				live[inst.ID] = inst
@@ -3138,8 +3225,8 @@ func (s *Server) isTask(id string) bool {
 	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		return true
 	}
-	if l, ok := s.runner.(taskLister); ok {
-		if _, err := l.TaskSnapshot(id); err == nil {
+	for _, p := range s.registries() {
+		if _, err := p.(taskLister).TaskSnapshot(id); err == nil {
 			return true
 		}
 	}
@@ -3178,6 +3265,13 @@ func (s *Server) placeOf(id string) task.Runner {
 	if ref == "" || ref == "local" || ref == s.runner.Ref() {
 		return nil
 	}
+	// The broker is named, not addressed. Handing back the runtime itself is the whole of why
+	// this is a branch: `broker` is a reserved name rather than a url, so building an HTTP
+	// client from it dials a host by that name — and control for a brokered task has to reach
+	// the object holding the claim, which relays it to a worker that dialled in.
+	if ref == brokerName {
+		return s.broker // nil when this verse serves none, which reads as "not here"
+	}
 	return runner.HTTP(ref)
 }
 
@@ -3207,13 +3301,13 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 			return inst.ID
 		}
 	}
-	if l, ok := s.runner.(taskLister); ok {
+	for _, p := range s.registries() {
 		// A runner that did not answer is not a runner holding no gate, and this does not
 		// distinguish them — deliberately, because it is already the fallback: the caller
 		// consults the mirror's question record first and only lands here when no record
 		// names a task. There is nothing better to say from here, and saying it would
 		// mean widening every caller between this and the resolve.
-		insts, _ := l.ListTasks()
+		insts, _ := p.(taskLister).ListTasks()
 		for _, inst := range insts {
 			if holds(inst) {
 				return inst.ID
@@ -3247,11 +3341,14 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 }
 
 // attach reaches a task wherever it actually runs: the runner its own task:instance records
-// first, this verse's default runner second.
+// first, the dial-in broker second, this verse's default runner last.
 //
 // The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
 // asking, so consulting the default first would reach whichever place happens to be configured
 // rather than the one holding the task — silently, and only for work sent somewhere by name.
+// The broker goes ahead of it for the opposite reason: it answers only for ids it actually
+// holds, so asking costs nothing and skipping it would lose a brokered task that never got a
+// record — one spawned on the broker directly rather than through a firing.
 //
 // One helper rather than the same two lines at each call site, because "reach this task" was
 // written three times and every copy assumed the default runner: answering a gate, streaming a
@@ -3262,6 +3359,9 @@ func (s *Server) attach(id string) task.Handle {
 		if h := p.Attach(id); h != nil {
 			return h
 		}
+	}
+	if h := attachOn(s.broker, id); h != nil {
+		return h
 	}
 	return s.runner.Attach(id)
 }
@@ -3276,23 +3376,23 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, inst)
 		return
 	}
-	if l, ok := s.runner.(taskLister); ok {
-		inst, err := l.TaskSnapshot(id)
+	for _, p := range s.registries() {
+		inst, err := p.(taskLister).TaskSnapshot(id)
 		switch {
 		case err == nil:
-			inst.Runner = s.runner.Ref()
+			inst.Runner = p.Ref()
 			writeOut(w, r, http.StatusOK, inst)
 			return
 		case errors.Is(err, task.ErrNoSuchTask):
-			// The runner answered and has never heard of it. That is a 404 about the id, and
-			// it is the only case below that is — but not yet, because a task on a NAMED
-			// runner is in nobody's registry here. The record is asked before anyone gives up.
+			// This one answered and has never heard of it. Not a 404 yet: another registry
+			// may hold it, and a task on a NAMED runner is in none of them. Keep asking, and
+			// the record is asked before anyone gives up.
 		default:
 			// A runner that did not answer is not a runner without this task. Reporting
 			// 404 sent an operator to look for a typo in an id that was never wrong, for a
 			// task that is running somewhere they cannot currently see.
 			codec.HTTPError(w, r, http.StatusBadGateway,
-				fmt.Sprintf("runner %s: %s", s.runner.Ref(), err))
+				fmt.Sprintf("runner %s: %s", p.Ref(), err))
 			return
 		}
 	}
@@ -3337,9 +3437,18 @@ type inboxReader interface {
 // unfenced, so it doesn't disturb a live worker. A local task has no worker inbox → empty.
 func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
 	items := []api.InboxItem{}
-	if ir, ok := s.runner.(inboxReader); ok {
+	// Every runtime that could hold a worker inbox, not just the default: a broker serves one
+	// whether or not unnamed work lands on it, and asking only the default answers an empty
+	// list about a task with control queued — which reads as "nothing waiting" rather than
+	// "asked the wrong place".
+	for _, p := range s.registries() {
+		ir, ok := p.(inboxReader)
+		if !ok {
+			continue
+		}
 		if got, ok := ir.TaskInbox(r.PathValue("id")); ok {
 			items = got
+			break
 		}
 	}
 	// The bare list, not {items: [...]}. Every other collection this server serves is a

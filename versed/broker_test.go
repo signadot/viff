@@ -17,8 +17,8 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// task run (POST /tasks) goes through the runner, not straight to the local
-// runtime: under a broker runner the ad-hoc run lands on the broker, and it is mirrored as a
+// task run (POST /tasks) goes through the runner it NAMES, not straight to the local
+// runtime: naming `broker` lands the ad-hoc run on the broker, and it is mirrored as a
 // task:instance entity like any other task.
 func TestTaskRunHonorsRunner(t *testing.T) {
 	srv := testServer(t)
@@ -27,7 +27,7 @@ func TestTaskRunHonorsRunner(t *testing.T) {
 	defer ts.Close()
 
 	resp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
-		strings.NewReader(`{"prompt":"ad-hoc run","driver":"human"}`))
+		strings.NewReader(`{"prompt":"ad-hoc run","driver":"human","runner":"broker"}`))
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -106,10 +106,11 @@ func TestBrokeredAttachStreams(t *testing.T) {
 	}
 }
 
-// /status describes the runner along its two legs — `resume` (verse-facing re-attach)
-// and `dial` (worker-facing) — so a worker can discover where to dial in and the two are
-// not confused. For a broker: kind=broker, resume=ephemeral, dial=the hosted face.
-func TestStatusShowsBrokerRunner(t *testing.T) {
+// /status describes the runner along its two INDEPENDENT legs, and they answer different
+// questions: `kind` is where a spawn naming nobody runs, `dial` is where a worker connects to
+// claim one that named `broker`. Serving a broker fills in the second and leaves the first
+// alone — a verse that brokers still runs its own unnamed work.
+func TestStatusShowsBrokerDialBesideTheDefault(t *testing.T) {
 	srv := testServer(t)
 	srv.UseBroker("http://verse.test:9090")
 	ts := httptest.NewServer(srv.Handler())
@@ -128,11 +129,68 @@ func TestStatusShowsBrokerRunner(t *testing.T) {
 		} `tony:"field=runner"`
 	}
 	decodeResp(t, resp, &st)
-	if st.Runner.Kind != "broker" || st.Runner.Resume != "ephemeral" {
-		t.Fatalf("runner = %+v, want kind=broker resume=ephemeral", st.Runner)
+	if st.Runner.Kind != "local" || st.Runner.Resume != "ephemeral" {
+		t.Fatalf("runner = %+v, want kind=local resume=ephemeral: a broker is a name a spawn "+
+			"may use, not the place unnamed work lands", st.Runner)
 	}
 	if !strings.HasPrefix(st.Runner.Dial, "http://verse.test:9090/broker/") {
 		t.Fatalf("runner.dial=%q, want the hosted worker face", st.Runner.Dial)
+	}
+}
+
+// THE THREE NAMES, which is the whole of how a spawn chooses where work runs. Serving a broker
+// adds one and takes none away: a spawn naming nobody still runs here, and only a spawn naming
+// `broker` waits to be claimed.
+//
+// The default is the case worth pinning. A verse that brokers is a verse that can put work in
+// front of a person; it is not a verse that has stopped being able to run anything itself, and
+// a charter that never mentioned a runner must not start waiting the day brokering goes on.
+func TestServingABrokerLeavesTheDefaultAlone(t *testing.T) {
+	srv := testServer(t)
+	srv.UseBroker("http://verse.test:9090")
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	runOn := func(t *testing.T, id, runnerField string) string {
+		t.Helper()
+		body := `{"id":"` + id + `","prompt":"work","driver":"human"` + runnerField + `}`
+		resp, err := ts.Client().Post(ts.URL+"/tasks", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("spawn %s: %v", id, err)
+		}
+		resp.Body.Close()
+		lr, err := ts.Client().Get(ts.URL + "/tasks")
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		defer lr.Body.Close()
+		var list []map[string]any
+		decodeResp(t, lr, &list)
+		for _, m := range list {
+			if m["id"] == id {
+				got, _ := m["runner"].(string)
+				return got
+			}
+		}
+		t.Fatalf("task %s not in the list: %+v", id, list)
+		return ""
+	}
+
+	if got := runOn(t, "unnamed", ""); got != "local" {
+		t.Fatalf("a spawn naming no runner ran on %q, want local — serving a broker must not "+
+			"take the default away", got)
+	}
+	if got := runOn(t, "named", `,"runner":"broker"`); got != brokerName {
+		t.Fatalf("a spawn naming `broker` ran on %q, want %q", got, brokerName)
+	}
+}
+
+// A spawn naming `broker` where none is served is REFUSED by name, like any other runner that
+// is not there — not run somewhere else, which is the failure the refusal exists to prevent.
+func TestNamingABrokerThatIsNotServedIsRefused(t *testing.T) {
+	srv := testServer(t)
+	if _, _, err := srv.runnerFor(srv.Store, brokerName); err == nil {
+		t.Fatal("runnerFor(broker) = nil error, want a refusal: this verse serves no broker")
 	}
 }
 
@@ -173,7 +231,7 @@ func TestTaskListUnionsBrokered(t *testing.T) {
 	// entity, as production does — the unified list filters by scope membership via that
 	// entity, so a task with no entity would (correctly) not appear.
 	sp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
-		strings.NewReader(`{"id":"bp1","prompt":"brokered review","driver":"human"}`))
+		strings.NewReader(`{"id":"bp1","prompt":"brokered review","driver":"human","runner":"broker"}`))
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}

@@ -624,11 +624,10 @@ build:
               - ":9090"
               - --broker-advertise-addr
               - "$[namespace]-broker:9090"
-              # Run tasks on the dial-in broker, so a spawn that names no runner waits for a
-              # worker to claim it — a laptop agent, or a person answering through
-              # `verse task do`. This is the DEFAULT only: the charters that need code run
-              # somewhere specific already name `verse.runners.pool.code`, and a spawn that
-              # names a runner is unaffected by what stands here.
+              # Serve the dial-in broker, so `--runner broker` puts a task in front of a person
+              # — a laptop agent, or somebody answering through `verse task do`. It is a NAME a
+              # spawn may use and not where unnamed work goes: this verse goes on running its
+              # own spawns, and `verse.runners.pool.code` goes on running the charters'.
               - --broker
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
