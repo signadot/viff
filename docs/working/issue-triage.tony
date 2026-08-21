@@ -55,41 +55,26 @@ reads: [ !verse-path [git-issue] ]
   match:
     path: [verse-dev, triage, brief]
 ---
-# 1. An open issue in this repository gets a row — and the REPO ENTITY is what wakes this.
+# 1. An open issue in this repository gets a row.
 #
-# The subject is the issue, which is what the row is about. What fires the rule is the `!let`
-# read of the repo entity: a condition's read joins the trigger's read set, so this rule
-# re-evaluates whenever `git-issue.repo.verse` changes, and that entity carries the counts, so
-# it changes on every poll that finds anything new.
-#
-# The read is there for the WAKE and not for the test — `n` is never compared to anything. A
-# rule is woken by a commit that changes its subject, and an issue APPEARING did not wake this
-# one: rows arrived when the charter was installed and never when an issue was filed. The
-# repository summary moving is the edge that is reliably there, and `claim` in comment-drift
-# is the same shape — its subject is the cursor and what wakes it is reading the git head.
-#
-# Re-evaluating over every issue is not a fan-out: a derive whose value is a function of the
-# subject alone writes the same bytes for a row that already stands, and the store ends a no-op.
-# So a poll that finds nothing new writes nothing.
+# The subject is a PATH, `[git-issue, issue, "*"]`, and that is the spelling that selects. The
+# same rule written as `system: git-issue` with `kind: issue` derives its rows when the charter
+# is installed and never again — an issue arriving does not wake it — while rule 2 below, whose
+# subject is a path, fires on every row it is given.
 #
 # FACTS ONLY in the value, for the reason `proposal-appeared` records: a derive MERGES its
-# literal fields every run, so anything named here is restated on every poll. `title` is the
-# issue's to change and is restated deliberately. `stage` is absent because it is state the row
-# owns, and restating it would drag a briefed row back and spawn again.
+# literal fields every run, so anything named here is restated every time the source re-reflects
+# the issue. `title` is the issue's to change and is restated deliberately. `stage` is absent
+# because it is state the row owns, and restating it would drag a briefed row back and spawn
+# again.
 - name: issue-noticed
   stratum: reflected
   condition:
     subject:
-      system: git-issue
-      kind: issue
-      value: !let
-        let:
-        - n: !get-path
-            at: [git-issue, repo, verse]
-            path: issues
-        in:
-          repo: verse
-          status: open
+      path: [git-issue, issue, "*"]
+      value:
+        repo: verse
+        status: open
   action:
     derive:
     - path: [verse-dev, triage, brief]
