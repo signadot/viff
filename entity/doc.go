@@ -464,9 +464,8 @@ func ParseAt(s string) (*kpath.KPath, error) {
 	return at, nil
 }
 
-// AtDepth counts a path's segments, which is what decides whether a path that names nothing is
-// an empty SLICE (a system or kind that holds nothing — 0 to 2 segments) or a thing that is not
-// there (3 or more).
+// AtDepth counts a path's segments. What it is counted AGAINST is atDepth — the depth an
+// address has under this path — and AtNamesEntity is that comparison.
 func AtDepth(at *kpath.KPath) int {
 	n := 0
 	for kp := at; kp != nil; kp = kp.Next {
@@ -474,6 +473,16 @@ func AtDepth(at *kpath.KPath) int {
 	}
 	return n
 }
+
+// AtNamesEntity reports whether a path names an ADDRESS rather than a slice of the tree, which
+// is what decides how a read that found nothing answers: an empty document where a system or a
+// kind holds nothing, "not there" where a thing is not there.
+//
+// AGAINST THE DEPTH OF ITS OWN HALF, because the two halves are different depths. `demo.pr` is a
+// kind holding nothing and `verse.motion.channel` is the same claim one level down, so counting
+// both against the world's depth makes the second a thing that is not there — which is what an
+// empty docket answered with, under a path that is exactly where motions live.
+func AtNamesEntity(at *kpath.KPath) bool { return AtDepth(at) >= atDepth(at) }
 
 // AtPrefix answers how a read at this path may be NARROWED: the literal segments it can be
 // asked under, and the depth entities beneath it sit at (Store.ListAt's two arguments).

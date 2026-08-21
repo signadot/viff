@@ -146,6 +146,30 @@ func TestAPathNamingNothingIsNothing(t *testing.T) {
 	}
 }
 
+// AND AGAINST ITS OWN HALF'S DEPTH. Verse's own half is one level deeper, so the same claim
+// sits one segment further along: `demo.pr` is a kind that may hold nothing and
+// `verse.motion.channel` is exactly that, one level down. Counted against the world's depth the
+// second reads as a thing that is not there — which is what an empty docket answered with,
+// under the path motions live at.
+func TestAPathNamesAnEntityAtItsOwnHalfsDepth(t *testing.T) {
+	for path, want := range map[string]bool{
+		"":                            false,
+		"demo":                        false,
+		"demo.pr":                     false,
+		"demo.pr.1":                   true,
+		"demo.pr.1.labels":            true,
+		VerseRoot:                     false,
+		"verse.motion":                false,
+		"verse.motion.channel":        false,
+		"verse.motion.channel.m1":     true,
+		"verse.motion.channel.m1.why": true,
+	} {
+		if got := AtNamesEntity(at(t, path)); got != want {
+			t.Errorf("AtNamesEntity(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
 // The addresses come back out of the answer at every depth, which is what --paths is: no
 // payloads, one address per line, and no grepping an id out of a rendered ref.
 func TestEntitiesRecoversTheAddresses(t *testing.T) {
