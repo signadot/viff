@@ -122,18 +122,17 @@ func TestVoteRefusesAMotionNotTakingBallots(t *testing.T) {
 	}
 }
 
-// A motion the client CANNOT READ is still not grounds to refuse — a read that fails says
-// nothing about the motion — but a motion that is definitively NOT THERE is, and that reverses
-// what this test used to assert.
+// A motion the client CANNOT READ is not grounds to refuse — a read that fails says nothing
+// about the motion — where a motion that is definitively NOT THERE is.
 //
-// The old reasoning was that the check should not become a second authority on what the server
-// will accept. What it missed is that the server accepts a ballot for a motion that does not
-// exist: a ballot is an ordinary entity write, so `vote.nosuch.alice` lands, no tally ever reads
-// it, and the voter watches a number that will not move. Nobody is the authority in that story.
+// The line between them is not "don't be a second authority on what the server accepts",
+// because on this the server is no authority either: a ballot is an ordinary entity write, so
+// `vote.nosuch.alice` lands, no tally ever reads it, and the voter watches a number that cannot
+// move. Nobody is the authority in that story, which is what makes it the client's to refuse.
 //
-// It was found the way these things are: `verse motion approve --vote <id>` — the id and the
-// choice the wrong way round, both being bare words — wrote a ballot on a motion called
-// "approve" and left the docket unchanged. See TestVoteRefusesAMotionThatIsNotThere.
+// The reachable way in is the swap — `verse motion approve --vote <id>`, the id and the choice
+// the wrong way round, both being bare words — which writes a ballot on a motion called
+// "approve" and leaves the docket unchanged. See TestVoteRefusesAMotionThatIsNotThere.
 func TestVoteOnAnUnreadableMotionIsTheServersCall(t *testing.T) {
 	// The read itself failing (no server) leaves the decision to the request, which then fails
 	// on its own terms rather than on a guess made here.

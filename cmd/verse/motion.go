@@ -153,8 +153,8 @@ func motionsAt(id string) string {
 	return entity.VerseRef("motion", "channel", id).KPath()
 }
 
-// motionRow is one motion as it was read: its id, which is a key in the document rather than a
-// token inside a rendered ref, and what it says about itself.
+// motionRow is one motion as read: its id, which is a key in the document rather than a token
+// inside a rendered ref, and what it says about itself.
 type motionRow struct {
 	id      string
 	payload map[string]any
@@ -233,11 +233,11 @@ func (cfg *motionConfig) vote(cc *cli.Context, motion string) error {
 	}
 	// The motion FIRST, because that is the argument order and a confirmation that reads back
 	// in the order you typed is one you can check. "me voted 7a11e2ef on motion approve" parses
-	// as a sentence whichever way round the values are, which is how a swap went unnoticed.
+	// as a sentence whichever way round the values are, so a swap reads as success.
 	fmt.Fprintf(cc.Out, "motion %s: %s voted %q\n", motion, cfg.As, cfg.Vote)
 	// AND WHETHER IT CAN DECIDE ANYTHING. An `!until [!quorum 2, !deadline "24h"]` closes on the
 	// quorum or on the clock, so no number of ballots for the deadline's default option settles
-	// it — two people denied, and the motion stayed open with the subject untouched
+	// it: two people can deny and the motion stays open, subject untouched
 	// (git-issue 88r53xm6h12ks6bng9n0). The ballot is still worth casting, and the voter is
 	// entitled to know it is dissent on the record rather than a decision.
 	if why := deadlineOnly(motion, cfg.Vote); why != "" {
