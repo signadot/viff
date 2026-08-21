@@ -11,32 +11,28 @@
 #
 #     verse charter -a -f docs/working/issue-triage.tony
 #
-# — but NOT as the first act. See INSTALLING below: 41 reflected issues already match rule 1's
-# `{repo: verse, status: open}`, and a charter installed over them derives 41 rows and spawns 41
-# tasks at once.
+# INSTALLING BRIEFS THE BACKLOG, once, and that is the design rather than a hazard to work
+# around. Every open verse issue gets a row and a task the moment this installs — 43 of them
+# today — because the charter cannot tell a new issue from an old one and should not pretend to.
 #
-# INSTALLING, in two steps, which is the same shape the drift cursor is seeded with: stand on
-# the present, so there is no backlog to work through.
+# It cannot because nothing in the grammar can say it. `Op` is `set` or `delete` and
+# create-vs-update "needs prior existence the substrate does not carry" (docs/change-events.md),
+# so "this entity just appeared" is unsayable; and the match operators are and/or/not/glob/
+# has-path/let and their kin, with no comparison, so "created after now" is unsayable too. A
+# rule over `git-issue.issue.*` selects the whole backlog, and there is no predicate that does
+# otherwise.
 #
-#   1. Install with rule 2 REMOVED (delete its `---` document). Rule 1 alone derives one row
-#      per open issue and spawns nothing.
-#   2. Latch every row that exists now, so only issues that arrive AFTER this fire:
+# WHAT NOT TO DO ABOUT IT: latch the existing rows first, so only later ones fire. That is a
+# write per row, and every one of them wakes this rule again over the rows not yet latched — a
+# rule re-selects its whole set on any commit, and "a rule acting on member A writes A; that
+# commit re-evaluates the rule, which selects B, already matching and never brought in by
+# anything" (docs/cycle-throttle.md). So the latching IS the storm it means to prevent, and it
+# spawns for whatever it has not reached yet. It fails worse the more rows there are.
 #
-#        for p in $(verse data verse-dev triage brief --kpaths --depth 4); do
-#          verse data --at "$p" --put '{stage: seeded}'
-#        done
-#
-#      `--kpaths` and not `--paths`: `--paths` prints an address as space-separated steps, which
-#      a shell splits into segments, and each `--put` then fails with `an address starts with
-#      system kind id`. A kinded path is one token, and `--at` is what takes it.
-#
-#   3. Install this file whole. New issues get a row with no `stage`, which is what rule 2
-#      selects on.
-#
-# WHY `repo: verse` AND NOT EVERY REPO. The source reflects tony-format too — 237 issues to
-# verse's 74 — and briefing another repository's backlog is not what this is for. Widening it is
-# deleting one line from rule 1's condition, and the seeding step above becomes load-bearing
-# rather than merely prudent.
+# So the backlog is briefed, and a task nobody wants is CANCELLED — which is terminal here, and
+# the reason `onCancelled` latches rather than clearing. A cancel that cleared the latch would
+# put the row back in this rule's selection and spawn it again, which is a loop with a person
+# at one end of it.
 at: verse-dev.triage
 reads: [ !verse-path [git-issue] ]
 ---
@@ -159,9 +155,14 @@ reads: [ !verse-path [git-issue] ]
       patch:
         stage: failed
         err: $err
-    # A cancelled briefing clears the latch rather than latching a failure, so the row is picked
-    # up again by whoever comes next. Nothing was written and nothing is owed.
+    # A cancelled briefing LATCHES, and it is the one hook where that is load-bearing. Clearing
+    # the stage would put the row back in this rule's selection, so cancelling a task would
+    # spawn it again — a loop whose lap time is however long a person takes to press cancel, and
+    # which the cycle throttle paces rather than stops because every lap is a real write.
+    #
+    # `declined` and not `failed`: nothing went wrong, somebody decided this issue does not need
+    # reading. Removing the stage by hand is how it goes back on the docket.
     onCancelled:
       patch:
-        stage: !delete null
+        stage: declined
         err: !delete null
