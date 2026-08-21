@@ -26,19 +26,19 @@ when a controller reaches docd by another address than verse does. See
 
 The store maps each entity to a kinded path `verse.<system>.<kind>.<id>`, reads and writes via
 Match/Patch, and drives the change stream and revision cursor from a single logd watch. That
-mapping is the whole of what `verse data` publishes: the document it answers with IS this one,
+mapping is the whole of what `verse data` publishes: the document it answers with *is* this one,
 addressed by the same path ([entities.md](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking
 the key out — so a deleted ref reads back not_found, and a null is a payload like any other. The
-two walks say the same thing at different times: a MATERIALIZED subtree (`walkEntityDoc`, what a
-read and a snapshot see) has no removals in it to find, while a DELTA (`walkEntityChanges`) has
+two walks say the same thing at different times: a *materialized* subtree (`walkEntityDoc`, what a
+read and a snapshot see) has no removals in it to find, while a *delta* (`walkEntityChanges`) has
 no absence to observe and spells a removal with the `!delete` tag.
 
 `Since` is served natively by a `FromCommit` replay watch, so a long hold costs a cursor
 rather than a buffer. Commit numbers are monotonic but **sparse**, so the engine treats a
 revision as an opaque cursor and reconciles via `Since`. Writes are atomic via CAS
-(`PatchIf`), so concurrent modifies don't lose updates. `Op` is `set` or `delete`, with create
+(`PatchIf`), so concurrent modifies do not lose updates. `Op` is `set` or `delete`, with create
 identical to update, since logd delivers the writer's applied patch verbatim.
 
 ## The reactive grain is the entity, not the transaction
@@ -79,13 +79,13 @@ author has to know:
   standing in the verse, and a restart re-reaches the same verdicts rather than depending on
   what this engine happened to observe. Which is why a rule wants a *latch* rather than an
   edge; see [convergence](../convergence.md).
-- **A write is a PATCH, so a match operator cannot be written as data.** `!irtype`, `!or`,
+- **A write is a patch, so a match operator cannot be written as data.** `!irtype`, `!or`,
   `!glob`, `!let` and the rest of the match vocabulary are operations, and a payload carrying one
   is executed by the store rather than stored by it — which does not fail at the write, it fails
-  every later READ, leaving the store unreadable rather than the entity wrong. Such a write is
+  every later read, leaving the store unreadable rather than the entity wrong. Such a write is
   refused now, naming the operator and the field.
 
-  What to do instead is say the subtree is DATA: `entity.Raw` (`!raw`) on the way in, which is
+  What to do instead is say the subtree is data: `entity.Raw` (`!raw`) on the way in, which is
   what a charter rule already rides on — a rule is dense with operators and is stored verbatim
   under that escape. `entity.AsData` is the same thing for a record being read, edited and put
   back, which `entity.Modify` does for its callers. Read [the trigger

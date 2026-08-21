@@ -1,4 +1,4 @@
-# Strata — a declared level ordering, and writes that cross it
+# Strata
 
 An action has one write target: the condition's subject. That is the whole of `patch`, and it
 means `patch` alone can bring an entity into being *somewhere else* only by spawning an agent
@@ -49,16 +49,16 @@ without renumbering its neighbours.
 
 ## Why the ordering is declared rather than inferred
 
-The alternative was to work it out: build a graph over the installed triggers, edge from a rule
-that writes a key to a rule that selects on it, and refuse a cycle. It is decidable for a literal
-patch and best-effort through anything computed — a patch whose values come from a template can
+The alternative is to work it out: build a graph over the installed triggers, edge from a rule that
+writes a key to a rule that selects on it, and refuse a cycle. That is decidable for a literal patch
+and best-effort through anything computed, since a patch whose values come from a template can
 satisfy a predicate a key-level check cannot see through.
 
-Best-effort is the wrong shape for a guarantee. An edge a template hid is an edge the check
+Best-effort is the wrong shape for a guarantee. An edge a template hides is an edge the check
 silently does not have, and a check that is right most of the time reads exactly like one that is
-right, up until it matters. Declared, a cross-level write is ruled out by construction, so there
-is nothing left for a template to hide — which is also why a derive's content is constrained
-rather than analysed.
+right, up until it matters. Declared, a cross-level write is ruled out by construction, so there is
+nothing left for a template to hide, which is also why a derive's content is constrained rather
+than analysed.
 
 ## Two rules, and they are the whole thing
 
@@ -74,7 +74,7 @@ read from opposite directions.
 
 ## What a stratum may match
 
-**A PLACE**, and nothing below it — no id, no `value` predicate. Write a union as a list:
+**A place**, and nothing below it — no id, no `value` predicate. Write a union as a list:
 `match: [ "gh", "linear" ]`.
 
 A system and optionally a kind is the ordinary spelling. A charter that keeps a deeper tree
@@ -85,26 +85,25 @@ names the place as a path, and it is the same statement one level further down:
 - {name: ledger, level: 20, match: {path: [verse-dev, drift, finding]}}
 ```
 
-`path:` always means a path, at every length — where `!verse-path [a b c]` folds three segments
-into system/kind/id for the sake of every charter written before addresses were trees. A stratum
-is the one place that difference matters: `[verse-dev, drift, head]` is a PLACE entities land
-under, not an entity whose id is `head`.
+`path:` always means a path, at every length, where `!verse-path [a b c]` folds three segments into
+system/kind/id. A stratum is the one place that difference matters: `[verse-dev, drift, head]` is a
+place entities land under, not an entity whose id is `head`.
 
-**An OPERATOR at a level position reads as `*` for containment**, because that is the honest
+**An operator at a level position reads as `*` for containment**, because that is the honest
 answer: `!glob "head*"` might select outside the level and nothing at install can say it does
 not. So a rule whose subject globs a level is not in a stratum that owns one particular level —
 and since strata are pairwise disjoint, there is usually no level that owns it either. Such a
 rule is unstratified, which is fine as long as it does not derive: an operator belongs at the
-LEAF of an address, where the id already globs, rather than at a level of it.
+leaf of an address, where the id already globs, rather than at a level of it.
 
-The restriction is not tidiness. A derived entity's id belongs to the engine (below), so at
-install there is no id to check a pattern against — a stratum matching on one could not be
-checked at the moment the whole ordering is bought for. And a `value` predicate would make a
-level depend on a state that rules change as they fire, which is not a level.
+The restriction is not tidiness. A derived entity's id belongs to the engine, as below, so at
+install there is no id to check a pattern against, and a stratum matching on one could not be
+checked at the moment the whole ordering is bought for. A `value` predicate would make a level
+depend on a state that rules change as they fire, which is not a level.
 
 ## `derive` — identity, not state
 
-The address is a PLACE and the content goes under it. In the nested spelling that place is two
+The address is a place and the content goes under it. In the nested spelling that place is two
 levels — `<system>.<kind>` — and everything below is payload; where a charter keeps a deeper
 tree, the entry names its place as a path and there is still no boundary to find:
 
@@ -178,18 +177,18 @@ verse:
       subject: gh.issue.1
 ```
 
-The ADDRESS reads `<target>.<rule>.<subject…>` — the place the rule derives into, the rule
+The address reads `<target>.<rule>.<subject…>` — the place the rule derives into, the rule
 itself as one segment, then the subject's own segments. The rule is in there because identity is
 (rule, subject) rather than subject alone: without it, two rules deriving into one kind about one
 subject would write the same entity, which is the race single-writer exists to retire.
 
-It is an ADDRESS rather than an id, so it carries the subject faithfully — `derived.feature.raise.gh.issue.1`
-is the entity `raise` derived about `gh.issue.1`, and reads back as exactly those segments.
-Two things follow. `verse data derived feature raise --paths` is "everything this rule has
-derived", a question that needed grepping an id before. And **a derived entity is as deep as
-what it is about**: a rule reading one says how deep, and how deep follows from the depth of the
-subjects the producing rule selects — `{path: [derived, feature, "*", "*", "*", "*"]}` for a rule
-deriving about three-segment entities.
+It is an address rather than an id, so it carries the subject faithfully.
+`derived.feature.raise.gh.issue.1` is the entity `raise` derived about `gh.issue.1`, and reads back
+as exactly those segments. Two things follow. `verse data derived feature raise --paths` is
+"everything this rule has derived". And **a derived entity is as deep as what it is about**: a rule
+reading one says how deep, and how deep follows from the depth of the subjects the producing rule
+selects, so `{path: [derived, feature, "*", "*", "*", "*"]}` for a rule deriving about
+three-segment entities.
 
 The linkage is the spawn's rule, for the spawn's reason: a derivation is about exactly one
 subject, and which one is the condition's answer rather than something a charter should have to
@@ -220,12 +219,12 @@ action:
 The address becomes (rule, subject, key) — the fan-out's identity with one element — and it is
 there for the case a plain derive cannot say: **the same subject, decided more than once.**
 
-A merge train is the one that forced it. `git.head.verse` is a single entity whose `sha` moves;
-a rule deriving a batch from it writes ONE address, and a
-[gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of
-(trigger, gate, subject) — so the second batch arrived at an address whose motion was already
-settled and inherited the first batch's answer. Nobody was asked, and nothing in the docket said
-so. With the sha in the address, a new tip is a new subject and therefore a new question.
+A merge train is the case that needs it. `git.head.verse` is a single entity whose `sha` moves, so
+a rule deriving a batch from it writes one address, and a
+[gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of (trigger, gate, subject).
+Without a key, the second batch lands at an address whose motion is already settled and inherits
+the first batch's answer, with nobody asked and nothing in the docket saying so. With the sha in
+the address, a new tip is a new subject and therefore a new question.
 
 The two install checks are the fan-out's, minus the one about the element: the key must be a
 **single reference** (one embedded in text interpolates to a string, and an address is not
@@ -239,15 +238,15 @@ a higher level safely.
 
 ## `!each` — when one answer holds many facts
 
-One firing derives one entity, which is right until a task answers with twelve findings and
-eleven of them are prose. `!each` is the fan-out:
+One firing derives one entity, which is right until a task answers with twelve findings and eleven
+of them are prose. `!each` is the fan-out:
 
 ```tony
 action:
   derive:
     drift:
       finding: !each
-        over:  $data.findings     # a LIST to walk; each element binds $item
+        over:  $data.findings     # a list to walk; each element binds $item
         key:   $item.symbol       # the address, read out of the element
         value:
           symbol: $item.symbol
@@ -284,14 +283,13 @@ entities. Put the readable key in the payload too; the address is for the engine
 
 A finding that stops appearing in an answer **leaves its entity standing**. Nothing sweeps.
 
-That is not an oversight to be fixed later, and the reason is the shape of what a fan-out is
-usually for. A ledger wants **resolution to be a fact somebody wrote** — resolved, at this
-commit, by this change — not an absence inferred from a model not mentioning something this
-time. A sweep would turn the second into the first silently, which is worse than leaving a stale
-entity a reader can see and delete.
+That is not an oversight to be fixed later. A ledger wants **resolution to be a fact somebody
+wrote** — resolved, at this commit, by this change — rather than an absence inferred from a model
+not mentioning something this time. A sweep would turn the second into the first silently, which is
+worse than leaving a stale entity a reader can see and delete.
 
-A derive that *removes* is also a different capability than a derive that loops, and re-opens
-the ordering argument from the other end: a delete is not idempotent the way a write is. It
+A derive that *removes* is also a different capability from a derive that loops, and re-opens the
+ordering argument from the other end, since a delete is not idempotent the way a write is. It
 should not arrive smuggled inside a fan-out.
 
 ## Path reads inside a derive
@@ -314,9 +312,9 @@ no stratum is refused too: no level, so "at or below" has no answer.
 In a plain `patch` none of this applies, because nothing downstream depends on a patch being
 reproducible. A rule may read any level it likes and write it to its own subject.
 
-Nor in a CONDITION, for the same reason one level further back: a read there decides which
+Nor in a condition, for the same reason one level further back: a read there decides which
 entities a rule is about and writes nothing, so there is nothing for a level above to influence.
-It is unconstrained, and it is the one read that counts toward what the trigger READS — see
+It is unconstrained, and it is the one read that counts toward what the trigger *reads* — see
 [the trigger model](trigger-model.md#a-condition-may-read-too-and-that-one-does-track).
 
 ## What this earns, and what it does not
@@ -333,12 +331,12 @@ exactly what a level ordering permits — stratified Datalog's bargain — so th
 from [convergence](convergence.md#the-cycle-and-how-it-is-caught) survives intact if both rules
 sit in one stratum. What catches it is the throttle, at runtime, as before.
 
-**The loop that remains goes through the world.** The effectuate stratum writes a real approval
-to GitHub; the mirror observes GitHub and writes it back at level 0. That cycle closes — through
-the *world*, which means it is observable (it passes the mirror), paced by real latency rather
-than by how fast the store accepts writes, and the loop a person would draw on a whiteboard
-anyway. Worth saying plainly, because "well founded" reads as "nothing loops", and the first
-person to watch GitHub come back around will think they have found a bug.
+**The loop that remains goes through the world.** The effectuate stratum writes a real approval to
+GitHub, the mirror observes GitHub, and it comes back at level 0. That cycle closes through the
+*world*, which makes it observable, since it passes the mirror, and paces it by real latency rather
+than by how fast the store accepts writes. It is the loop a person would draw on a whiteboard.
+Worth saying plainly, because "well founded" reads as "nothing loops", and the first person to
+watch GitHub come back around will think they have found a bug.
 
 **Tasks are outside the ordering.** A spawned agent writes wherever its tools reach, at no
 level. So the guarantee reads: *the ordering covers a charter to the extent its writes are
@@ -348,9 +346,9 @@ is [authority](roadmap/authority.md)'s business.
 
 ## Declaring nothing is a complete answer
 
-A charter with no `stratum:` anywhere behaves exactly as it always has: one implicit stratum,
-nothing checked, intra-stratum recursion caught by the throttle. The guarantee grows as strata
-are declared rather than arriving as a flag day.
+A charter with no `stratum:` anywhere runs in one implicit stratum, with nothing checked and
+intra-stratum recursion caught by the throttle. The guarantee grows as strata are declared rather
+than arriving as a flag day.
 
 The one thing an unstratified rule may not do is `derive`. "Strictly above" has no answer for a
 rule with no level, and reading that leniently would hand back the unchecked cross-entity write
@@ -359,13 +357,14 @@ the ordering exists to remove. Declaring a stratum is what buys a derive.
 ## Installing, and the order it does not depend on
 
 A stratum is one entity (`verse.trigger.strata.<name>`) as a rule is one
-(`verse.trigger.rule.<name>`, prefixed with the package for a charter installed at an
-address), for the same reasons: installing writes one and removing deletes
-one, so there is no read-modify-write and two concurrent installs cannot lose each other.
+(`verse.trigger.rule.<name>`, prefixed with the package for a charter installed at an address), for
+the same reason: installing writes one and removing deletes one, so there is no read-modify-write
+and two concurrent installs cannot lose each other.
 
-The **name addresses** and the **level orders**. A rule says `stratum: sdlc`, which reads as what
-it means where `10` does not. Two strata may not share a level — the number is the whole ordering
-and a charter giving it twice has not said which comes first — and that is refused at install.
+The **name addresses** and the **level orders**. A rule says `stratum: sdlc`, which reads as what it
+means where `10` does not. Two strata may not share a level, because the number is the whole
+ordering and a charter giving it twice has not said which comes first, and that is refused at
+install.
 
 Because they are separate entities, either can arrive first. **A rule naming a stratum that is
 not installed yet is held, not refused**: written down, not firing, and installed the moment its
@@ -377,9 +376,9 @@ charter written to sit beside another one does. `verse c -a` sends a file's own 
 first, so a self-contained charter never holds; one whose rules name a neighbour's stratum holds
 exactly those rules until the neighbour is installed.
 
-That is the intended behaviour and it is **invisible**, which is the corner worth knowing before
-it costs you an afternoon. A held rule is not in `verse charter`, `verse c <address> rules <name>`
-answers *no such trigger*, and `verse status` counts what fires — so a four-rule charter installs
+That is the intended behaviour and it is **invisible**, which is the corner worth knowing before it
+costs you an afternoon. A held rule is not in `verse charter`, `verse c <address> rules <name>`
+answers *no such trigger*, and `verse status` counts what fires, so a four-rule charter installs
 into a verse that reports two rules and explains nothing. The held ones are there:
 
 ```sh
@@ -391,23 +390,22 @@ Read together those two say it, and nothing says it for you. What is missing is 
 rule itself — held, and waiting for what — since the engine already models exactly that.
 
 **Editing a level is re-applying the file.** A stratum already installed exactly as declared is a
-no-op, and one that differs is **replaced** — the same answer a rule of the same name gets, because
-the file is what the operator means and re-applying an edited one is how a charter changes. What
-the change is checked against is every rule standing in that charter: they were checked against the
-level when they installed, so they face the ordering again, and a rule that no longer fits refuses
-the *change*, naming itself. Nothing is left at a level nothing checked it against — which is what
-the old refusal bought, at the price of taking the whole package down to edit one line.
+no-op, and one that differs is **replaced**, the same answer a rule of the same name gets, because
+the file is what the operator means and re-applying an edited one is how a charter changes. The
+change is checked against every rule standing in that charter: they were checked against the level
+when they installed, so they face the ordering again, and a rule that no longer fits refuses the
+*change*, naming itself. Nothing is left at a level nothing checked it against.
 
 **And a file is applied as one step.** `verse c -a` sends a package's worth of a file in one
 request, and a refusal anywhere puts back what stood before it: the declaration, the levels and the
 rules are all the charter or none of them are. Sent document by document, a file whose levels
-installed and whose rule was refused left the levels standing while reporting that the command had
-failed — a charter in a state nobody wrote down, holding a level that the corrected file could then
-not replace.
+installed and whose rule was refused would leave the levels standing while reporting the command
+failed — a charter in a state nobody wrote down, holding a level the corrected file could then not
+replace.
 
 **Removing a stratum is refused while rules still name it.** Those rules were checked against a
-pattern that would no longer exist, and nothing re-runs a check — they would go on firing,
-unstratified, having been told they were ordered. Remove the rules first, or move them.
+pattern that would cease to exist, and nothing re-runs a check, so they would go on firing
+unstratified having been told they were ordered. Remove the rules first, or move them.
 
 ```
 $ verse charter             # the ordering, by level
@@ -417,12 +415,12 @@ $ verse c -r strata sdlc # refused while rules live there
 
 ## Corners
 
-**A misspelled field is named, to a depth.** An unknown field decodes silently — gomap ignores
-what it does not recognise — so `startum: sdlc` would install into the implicit stratum and report
-success, discarding the one field that says which guarantees apply. `verse c -a` refuses
-it, and likewise an unknown field in a `condition`, in an `action`, or in a sequence element or
-completion hook below one. It stops where the shape stops being the charter's: a `spawn` is a
-launch spec, and a `patch` or `derive` payload has the author's own keys in it.
+**A misspelled field is named, to a depth.** An unknown field decodes silently, since gomap ignores
+what it does not recognise, so `startum: sdlc` would install into the implicit stratum and report
+success, discarding the one field that says which guarantees apply. `verse c -a` refuses it, and
+likewise an unknown field in a `condition`, in an `action`, or in a sequence element or completion
+hook below one. It stops where the shape stops being the charter's: a `spawn` is a launch spec, and
+a `patch` or `derive` payload has the author's own keys in it.
 
 **How a derived entity leaves is unspecified.** Nothing reaps derived entities unless a charter
 says to. Note that the [subject-side protection](trigger-model.md#lifecycle-how-an-entity-leaves)

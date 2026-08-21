@@ -1,16 +1,15 @@
-# Attached resolvers — a service that answers gates
+# Attached resolvers
 
 A gate that blocks has to be answered by somebody. `ask` means a person; `auto` means nobody is
 asked at all. Between them is the thing most flows want: *a service decides, and hands up what
 is not its to decide.*
 
-A **resolver** is that service. It is attached rather than called — it reads the run's own
-stream for as long as the run lasts, so the context arrives before the ask — and it answers
-through the same path `verse gate approve` takes, with `by` naming the binding instead of a
-person.
+A **resolver** is that service. It is attached rather than called: it reads the run's own stream
+for as long as the run lasts, so the context arrives before the ask. It answers through the same
+path `verse gate approve` takes, with `by` naming the binding instead of a person.
 
-Everything here runs. `driver: url` is the only driver built, and the corners that are missing
-are named in [the residual](working/attached-resolvers-residual.md).
+`driver: url` is the only driver built, and the missing corners are named in
+[the residual](working/attached-resolvers-residual.md).
 [An automatic supervisor](auto-supervisor.md) is the charter-level counterpart: an agent that
 decides by writing to the subject, where this decides by answering the gate.
 
@@ -37,24 +36,24 @@ deadline:  { within: "4h", then: escalate }
 exclusive: true
 ```
 
-`condition` selects *entities*, in the vocabulary a trigger already uses. It does not match
-rules and does not need to: a task gate is reachable by the same `subject`, because a
-question's subject is filled from the task's `flow` when it is posed. So "the payments PRs"
-covers the gates a run raises about one as well as the firings that spawn it.
+`condition` selects *entities*, in the vocabulary a trigger already uses. It does not match rules
+and does not need to: a task gate is reachable by the same `subject`, because a question's subject
+is filled from the task's `flow` when it is posed. So "the payments PRs" covers the gates a run
+raises about one as well as the firings that spawn it.
 
 `method` says how it answers and what the answering may do. `vector`, `tools` and `grant` bound
 whatever the driver runs, and are inert for a `url` — which runs nothing verse can gate — but
 are carried anyway so the entity says the same thing about every driver.
 
-The deadline is a **duration** because a binding cannot know when a question will be posed. The
-question stamps `escalatesAt = now + within` when it is posed, absolute, so a restart cannot
-slide it and no arithmetic happens on a wall clock later. It is spelled `{within, then}` rather
-than `escalatesAfter` because a provider selection and a motion already call a duration
-`within` — and because a motion's deadline picks a winning *option* while this one picks a new
-*answerer*, so the outcome is a value rather than a fact about the field's name.
+The deadline is a **duration**, because a binding cannot know when a question will be posed. The
+question stamps `escalatesAt = now + within` when it is posed, absolute, so a restart cannot slide
+it and no arithmetic happens on a wall clock later. It is spelled `{within, then}` rather than
+`escalatesAfter` because a provider selection and a motion already call a duration `within`, and
+because a motion's deadline picks a winning *option* while this one picks a new *answerer*, so the
+outcome is a value rather than a fact about the field's name.
 
-`verse resolver` manages it — bare it lists, and `add|show|remove` act on one. A verb rather
-than a raw write, because a write has nowhere to put the checks that make a binding
+`verse resolver` manages it: bare it lists, and `add`, `show` and `remove` act on one. A verb
+rather than a raw write, because a write has nowhere to put the checks that make a binding
 answerable at all.
 
 ## Two doors, and one of them must be open
@@ -85,11 +84,11 @@ install, because nothing could ever reach it.
 The two are not exclusive. One remit can cover the subjects it always watches and still be
 pulled in where a charter wants it.
 
-A spawn naming a binding that is **not installed** is refused too, and that refusal is worth its
-own sentence: left standing, the question would be owned by something that cannot answer it,
-*and* it would shadow the standing binding covering the same subject — which would never see the
-question and would have no instance through which to reach it. A misspelled binding would turn a
-supervised subject into an unsupervised one, silently.
+A spawn naming a binding that is **not installed** is refused too. Left standing, the question
+would be owned by something that cannot answer it, *and* it would shadow the standing binding
+covering the same subject, which would never see the question and would have no instance through
+which to reach it. A misspelled binding would turn a supervised subject into an unsupervised one,
+silently.
 
 ## Layers
 
@@ -107,19 +106,18 @@ Which layer a resolver occupies follows from what declared it, never from rankin
 against each other. A standing resolver is not a wider claim on the work's questions; it is the
 answerer of a different set of questions.
 
-**Overlap is ordered, not refused.** Two standing conditions may both cover a subject — the
-first binding *by name* owns its questions. Disjointness was the original rule and could not be
-kept: deciding whether two predicates are disjoint is undecidable in general, so the refusal
-would have had to be conservative and would have blocked legitimate pairs. Ordering keeps
-exactly one answerer per layer without deciding anything at install, and it covers the runtime
-case a refusal could not see. Installing an overlapping binding is a **notice**, naming what it
-overlaps.
+**Overlap is ordered, not refused.** Two standing conditions may both cover a subject, and the
+first binding *by name* owns its questions. Requiring disjointness instead is not available:
+deciding whether two predicates are disjoint is undecidable in general, so the refusal would have
+to be conservative and would block legitimate pairs. Ordering keeps exactly one answerer per layer
+without deciding anything at install, and it covers the runtime case a refusal could not see.
+Installing an overlapping binding is a **notice**, naming what it overlaps.
 
 Three properties follow. Escalation reaches ⊤ in at most **two hops**, so no depth counter is
-needed — and none is stored, because a binding cannot hand a question to itself, so the second
-hop always lands at ⊤. Every hop is to a layer answering a smaller class of questions, so there
-is no sideways move. And ⊤ matches everything while escalating to nothing, so "a resolver's own
-doubt ends with a person" falls out rather than being a rule.
+needed, and none is stored: a binding cannot hand a question to itself, so the second hop always
+lands at ⊤. Every hop is to a layer answering a smaller class of questions, so there is no sideways
+move. And ⊤ matches everything while escalating to nothing, so "a resolver's own doubt ends with a
+person" falls out rather than being a rule.
 
 ## What a resolver reads and writes
 
@@ -144,11 +142,10 @@ streams rather than a request and a reply.
 Both streams already existed: this is the run's own `?since=N` and the control POST verse itself
 uses to watch and answer. A resolver is another client of the pair.
 
-**Context arrives before the ask.** By frame 36 the resolver has read 35 and 34, which are why
-the ask means what it means. Nothing has to be gathered and attached to a question, because the
-resolver was there. This is the whole reason a resolver is attached rather than handed a
-question — and why its instance is minted when the run starts, not when the first question is
-posed.
+**Context arrives before the ask.** By frame 36 the resolver has read 35 and 34, which are why the
+ask means what it means. Nothing has to be gathered and attached to a question, because the resolver
+was there. That is why a resolver is attached rather than handed a question, and why its instance is
+minted when the run starts rather than when the first question is posed.
 
 **Reading and deciding are separate.** A hundred frames may produce nothing, which is the
 ordinary case, and the position advances anyway. That is what tells "has not decided" from "has
@@ -163,19 +160,19 @@ resolves. That layer sees the ask, the events around it, and the inner verdict, 
 decision is an event on the same stream. There is no second path anywhere, ⊤ included: the human
 docket is this contract with a person reading at their own pace.
 
-An `escalate` verdict **transfers** the question; it does not ask a favour. The layer above owns
-it from that moment, and its answer resolves the *original* question — the work proceeds or is
+An `escalate` verdict **transfers** the question rather than asking a favour. The layer above owns
+it from that moment, and its answer resolves the *original* question: the work proceeds or is
 denied, on the work's own stream, because escalating changes who answers and not what is being
-answered. Re-owning also mints an instance for the new owner, because re-owning is an ownership
-decision and that is where instances are minted: a layer that inherits a run can read its fine
+answered. Re-owning also mints an instance for the new owner, since re-owning is an ownership
+decision and that is where instances are minted, so a layer that inherits a run can read its fine
 grain rather than only the fact that it now owns something.
 
-**Silence does the same thing more slowly.** `escalatesAt` passes and the question moves up
-without anyone saying so — evaluated when a **reader arrives** rather than by a clock of its
-own, because the layer above is the only party an expiry is for and it learns by reading. A
-sweeper would compute the same transfer slightly earlier, for nobody. Said plainly: a question
-overdue while nothing is reading stays where it is, and moves the instant anything looks. For ⊤
-that is exactly right — the docket a person opens is the docket as of now.
+**Silence does the same thing more slowly.** `escalatesAt` passes and the question moves up without
+anyone saying so, evaluated when a **reader arrives** rather than by a clock of its own, because the
+layer above is the only party an expiry is for and it learns by reading. A sweeper would compute the
+same transfer slightly earlier, for nobody. So a question overdue while nothing is reading stays
+where it is and moves the instant anything looks, which for ⊤ is exactly right: the docket a person
+opens is the docket as of now.
 
 Re-owning **re-arms** rather than inherits. A question handed to a binding with no deadline
 would otherwise keep the last one's; one handed to a binding that has its own would stay overdue
@@ -215,11 +212,11 @@ Three things it is, and is not:
 
 - It governs **whose answer counts**, never who may see the question. Nothing changes about the
   docket, and a person may still read — and argue about — what an exclusive binding owns.
-- It is **not real against somebody holding the operator API**, and pretending otherwise would
-  make the dial a lie. So an override stays possible, as a named act: `verse gate approve <id>
-  --as me --override` lands `overrode: <binding>` beside `by: <who>`, and the record names both
-  parties. The refusal names the owner and says how, so the flag is the answer to a question the
-  operator has just been asked.
+- It is **not real against somebody holding the operator API**, and pretending otherwise would make
+  the dial a lie. So an override stays possible, as a named act: `verse gate approve <id> --as me
+  --override` lands `overrode: <binding>` beside `by: <who>`, and the record names both parties. The
+  refusal names the owner and says how, so the flag answers a question the operator has just been
+  asked.
 - It is **not a security boundary**. It decides who answers an ask, never what an answer may
   authorise; the grant does that, and the two are not the same axis.
 
@@ -228,10 +225,10 @@ one nobody may answer. That is checked at install.
 
 ### A resolver sees what an attached observer sees
 
-The stream carries what was reported — narration, tool calls and their outputs, boundaries,
-children, status. A *boundary* is the point between actions where the loop services control
-before proposing the next one, so it is on the stream because it says the task stopped to
-check rather than that nothing happened.
+The stream carries what was reported: narration, tool calls and their outputs, boundaries, children,
+status. A *boundary* is the point between actions where the loop services control before proposing
+the next one, and it is on the stream because it says the task stopped to check rather than that
+nothing happened.
 
 For a task that is exactly what `verse task attach` shows: the read plane, whole and in
 order, not a projection. There is no supervisor's view to design. What the stream does not carry
@@ -257,12 +254,12 @@ is no supervised run that reads as unsupervised, and no way to answer invisibly.
 
 Nothing about that `decision` frame differs in shape from a person's answer — only the `by`.
 
-What the stream does not show is what was *watched* — a position advancing with no verdict emits
-nothing. So the resolver is a second subject with a record of its own, and the rule of thumb is
-worth keeping: **the task stream is what was decided, the resolver's record is who was
-watching and on what evidence.** That is also why a position is written on the instance rather
-than on the binding: who was watching is per run, so writing it on the binding would be one
-resolver's second run overwriting what its first one saw.
+What the stream does not show is what was *watched*, since a position advancing with no verdict
+emits nothing. So the resolver is a second subject with a record of its own: **the task stream is
+what was decided, the resolver's record is who was watching and on what evidence.** That is also
+why a position is written on the instance rather than on the binding: who was watching is per run,
+so writing it on the binding would be one resolver's second run overwriting what its first one
+saw.
 
 ### Two planes, one spine
 
@@ -284,12 +281,12 @@ A firing has no event stream, so a resolver at that origin reads the store's com
 narrowed to what the rule reads. Its position is a revision rather than a cursor, and its
 evidence is the subject's history rather than a run's.
 
-An instance is **machinery, not an audit trail**: the store is already the evidence, since a
-position report and a note were commits when they were made. So an instance belongs to its
-binding rather than to the thing it watches, and removing the binding is what reaps one.
-Removal hands on what the binding held — its pending questions go to the layer above with
-`reownedWhy: removed`, because a question left naming a binding that will not answer is one
-nobody can answer, listed on a docket as though somebody were coming.
+An instance is **machinery, not an audit trail**. The store is already the evidence, since a
+position report and a note are commits when they are made. So an instance belongs to its binding
+rather than to the thing it watches, and removing the binding is what reaps one. Removal hands on
+what the binding held: its pending questions go to the layer above with `reownedWhy: removed`,
+because a question left naming a binding that will not answer is one nobody can answer, listed on a
+docket as though somebody were coming.
 
 ## Walk it
 

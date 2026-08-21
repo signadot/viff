@@ -30,10 +30,9 @@ verse runner add <kind>:<name> <url>       install one, probing the url first
               [--leave]                    …the place stays: leave it running
 ```
 
-A `<ref>` is `verse.runners.pool.gpu` or `pool:gpu` — the whole address as it is listed and
-stored, or the bare pair typed on a command line. The middle form (`runners.pool.gpu`) is not
-accepted: it was the whole address before verse's own half of the tree had a name, and keeping
-it would leave two ways to say one thing.
+A `<ref>` is `verse.runners.pool.gpu` or `pool:gpu`: the whole address as it is listed and stored,
+or the bare pair typed on a command line. The middle form, `runners.pool.gpu`, is not accepted,
+because two ways to say one thing is one too many.
 
 On the task side:
 

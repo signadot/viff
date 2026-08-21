@@ -72,10 +72,10 @@ verse
     verse data demo pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
     verse watch demo --trim '{at: null, to: null}'
 
-  On `data` and `watch`, `--if` is the SERVER's selector — it says which entities the read is
-  about, before any of them cross the wire — so those two take `--trim` alone. A WRITE's
-  precondition is `--expect`, a different flag for a different question: the two were `--if`
-  apiece until the verbs became flags and there was no subcommand left to tell them apart.
+  On `data` and `watch`, `--if` is the server's selector — it says which entities the read is
+  about, before any of them cross the wire — so those two take `--trim` alone. A write's
+  precondition is `--expect`, a different flag for a different question: what a read selects on
+  and what a write insists on are not the same question, so they are not the same flag.
 
   Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
 
@@ -116,8 +116,8 @@ verse
                                              slip that writes
           --put [--create|--update]          only if nothing is there yet · only if something is
           --put [--expect <pattern>]         only if what is there matches. `--expect` rather
-                                             than `--if`, which is the READ's filter: they were
-                                             told apart by the `put` subcommand that is gone
+                                             than `--if`, which is the read's filter: a write's
+                                             precondition is a different question
           An address is one grammar in three delimiters — `demo.pr.1` names the entity
           whole, `demo.pr.1.labels` continues into the payload, `demo pr 1 labels` is the
           same as separate words — and whichever comes FIRST is the one in use, so an id may
@@ -230,7 +230,7 @@ Flags may appear before or after positionals (`gate approve <id> --as you --say 
 
 ## Selecting by what an entity says
 
-The PATH narrows by where an entity lives. `--if` narrows by what it says: a tony match
+The path narrows by where an entity lives. `--if` narrows by what it says: a tony match
 against the payload, which is the same predicate a charter carries in `value` — in its
 `subject`, its `on` or its `when`. So `verse data --if X` names exactly what
 `verse watch --if X` streams, and both name what a rule with that predicate would select.

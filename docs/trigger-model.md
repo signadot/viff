@@ -1,18 +1,17 @@
-# The trigger model — entities, matches, and one selector grammar
+# The trigger model
 
 One noun and two grammars carry the whole model. An entity is a node at an address —
 `system.kind.id` in the ordinary case, a path of any depth where a charter keeps its own tree —
-with a small payload. A match names entities at an instant; a formula relates the
-verse over time. Every trigger concept — `when`, `subject`, gates, flows — lands on
-exactly one of those two, and knowing which is the thing to be unambiguous about.
+carrying a small payload. A match names entities at an instant; a formula relates the verse over
+time. Every trigger concept, `when` and `subject` and gates and flows, lands on exactly one of
+those two, and knowing which is the thing to be unambiguous about.
 
-This is also the field-by-field reference for a charter rule: the [tutorial](tutorial.md)
-installs one and drives it, and here is what each field means.
+This is also the field-by-field reference for a charter rule. The [tutorial](tutorial.md) installs
+one and drives it; here is what each field means.
 
-The match vocabulary itself is [tony](https://signadot.github.io/tony-format/)'s, not
-verse's: the same operators serve matching, patching and diffing there, which is the argument
-made in [Structured matching, patching and diffing done
-right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci).
+The match vocabulary is [tony](https://signadot.github.io/tony-format/)'s rather than verse's. The
+same operators serve matching, patching and diffing there, which is the argument made in
+[Structured matching, patching and diffing done right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci).
 
 ## Two layers: point-in-time matches, temporal formulas
 
@@ -31,22 +30,22 @@ matches.
 | `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
 
-The cut is: name entities at an instant and you want a match; relate the verse over time and
-you want a formula. `subject` and flow-addressing are point-in-time — a subject is selected at
-the commit a firing happens at, never accumulated — so they are plain matches, and giving them
-a `deadline` or an `until` would be a category error.
+The cut is simple. Name entities at an instant and you want a match; relate the verse over time and
+you want a formula. `subject` and flow-addressing are point-in-time, since a subject is selected at
+the commit a firing happens at and never accumulated, so they are plain matches, and giving them a
+`deadline` or an `until` would be a category error.
 
-`on`, `when` and gates all relate the verse's evolution, so they are formulas. `on`
-and `when` are the SAME predicate asked at different moments — `on` at C-1 and C, firing on
-¬P → P; `when` at C, gating — which is why they share a grammar and a type. Cause and
-condition, told apart by edge and level.
+`on`, `when` and gates all relate the verse's evolution, so they are formulas. `on` and `when` are
+the same predicate asked at different moments — `on` at C-1 and C, firing on ¬P → P, and `when` at
+C, gating — which is why they share a grammar and a type. Cause and condition, told apart by edge
+and level.
 
 ## The trigger
 
-A rule has four parts: a name, the condition that causes it, the gates that guard
-it, and the action that fires. A fifth is optional — `stratum:`, the declared level it lives
-in, which constrains what its subject may be and where a `derive` may land ([strata](strata.md)).
-Omitted, it is unconstrained, which is what every rule here means.
+A rule has four parts: a name, the condition that causes it, the gates that guard it, and the
+action that fires. A fifth is optional: `stratum:`, the declared level it lives in, which
+constrains what its subject may be and where a `derive` may land ([strata](strata.md)). Omitted,
+it is unconstrained, which is what every rule here means.
 
 ```tony
 - name: review
@@ -92,41 +91,40 @@ Three things are worth reading off it before anything else.
 **A firing is about one entity.** N selected members are N firings, each with its own gate
 question and its own spawn id. There is no firing "about a set".
 
-**Everything is read at one snapshot.** The condition and the selection both come from the
-store as it stood at C, so a firing cannot act on a member under a condition that had already
-stopped holding. The edge is C-1 against C rather than "what the engine saw last time", which
-is what makes a replayed commit — a catch-up, a restart — reach the same verdict as the live
-one.
+**Everything is read at one snapshot.** The condition and the selection both come from the store as
+it stood at C, so a firing cannot act on a member under a condition that had already stopped
+holding. The edge is C-1 against C rather than "what the engine saw last time", which is what makes
+a replayed commit — a catch-up, a restart — reach the same verdict as the live one.
 
-**A vacuous `on` is the ordinary shape.** The rule above has no `on`: it is considered at every
-commit touching anything it reads. What ends it is not the dispatcher but the charter — an
-action whose write takes its subject out of the selection fires once and then selects nothing,
-and one that writes the same value again produces no commit and so raises no next evaluation.
-Latch, or run at every commit; a spawning action that cannot latch is refused at install.
+**A vacuous `on` is the ordinary shape.** The rule above has no `on`, so it is considered at every
+commit touching anything it reads. What ends it is the charter rather than the dispatcher. An action
+whose write takes its subject out of the selection fires once and then selects nothing, and one that
+writes the same value again produces no commit and so raises no next evaluation. Latch, or run at
+every commit; a spawning action that cannot latch is refused at install.
 
-A trigger is fully declarative, so a charter can be installed over the wire, persisted, or
-reflected as an entity, and the engine interprets it directly — there is no compiled form.
+A trigger is fully declarative, so a charter can be installed over the wire, persisted, or reflected
+as an entity, and the engine interprets it directly. There is no compiled form.
 
-### A charter can be installed AT an address
+### A charter can be installed at an address
 
-A charter installed AT AN ADDRESS is a **package**: it runs in an engine of its own, and it may
-write only inside that address. The address is where the install points — the positional path —
-or the file's own `at:` declaration.
+A charter installed at an address is a **package**. It runs in an engine of its own, and it may
+write only inside that address. The address is where the install points, either the positional
+path or the file's own `at:` declaration.
 
 ```sh
 verse c -a notes -f notes-charter.tony    # its rules write under notes:*
 verse c -a -f charter.tony                # baseline: may write anywhere
 ```
 
-That is what lets two groups keep rules in one verse without arranging not to collide. Isolation
-by convention holds until somebody edits a rule; a package's holds because the confinement is a
-property of the ENGINE rather than of the rules currently installed in it — a `derive` landing
-outside does not install, and a write that resolves outside at fire time is refused (which is
-the half that matters, since a derive's address can be templated).
+That is what lets two groups keep rules in one verse without arranging not to collide. Isolation by
+convention holds until somebody edits a rule. A package's holds because the confinement is a
+property of the *engine* rather than of the rules currently installed in it: a `derive` landing
+outside does not install, and a write that resolves outside at fire time is refused, which is the
+half that matters, since a derive's address can be templated.
 
-**A rule may SELECT anywhere it only reads.** The subject is a write when the action patches it,
-and a read otherwise — so a package's rule can select a source and derive from it, which is what
-most of them do:
+**A rule may select anywhere it only reads.** The subject is a write when the action patches it and
+a read otherwise, so a package's rule can select a source and derive from it, which is what most of
+them do:
 
 ```tony
 at: drift                        # where this package writes — its engine is confined to it
@@ -147,9 +145,9 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
 Two packages both reacting to `git:*` is the ordinary arrangement, not an exotic one. What each
 may do about it is write in its own address.
 
-**Reads are DECLARED**, which is the `reads:` line above. A package reads inside its own
-address and whatever it names, and nothing else — an undeclared read does not install, and the
-refusal says which line to add:
+**Reads are declared**, which is the `reads:` line above. A package reads inside its own address and
+whatever it names, and nothing else. An undeclared read does not install, and the refusal says
+which line to add:
 
 ```
 rule "note-the-head" reads git.head.*, which notes:* does not declare: a charter installed
@@ -157,34 +155,34 @@ at an address reads inside it and what it declares, so that the graph over packa
 checked for a cycle. Add it: `reads: [git.head]` (this package reads nothing)
 ```
 
-An absent `reads:` is not "everything", it is nothing: a package with no declaration reads only
-inside itself. That is the safe default and the strict one — a package that reads nothing outside
-cannot interfere with anybody — and it is what makes the graph total, since every edge is written
-down.
+An absent `reads:` is not "everything". It is nothing: a package with no declaration reads only
+inside itself. That is the safe default and the strict one, since a package that reads nothing
+outside cannot interfere with anybody, and it is what makes the graph total, because every edge is
+written down.
 
-One file may hold SEVERAL packages: a `---` document carrying `at:` opens one, and everything
-after it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is
-two — a `drift` package that reviews and a `merge` package that gates what the review delivers —
-installed by one `verse c -a --file`, all of them or none. Each package goes in **as one step**: its declaration,
-its levels and its rules install together or not at all, so a refusal anywhere puts back what stood
-before it (see [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
+One file may hold several packages. A `---` document carrying `at:` opens one, and everything after
+it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is two, a
+`drift` package that reviews and a `merge` package that gates what the review delivers, installed
+by one `verse c -a --file`, all of them or none. Each package goes in **as one step**: its
+declaration, its levels and its rules install together or not at all, so a refusal anywhere puts
+back what stood before it (see
+[strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
-**Its levels are its own**, and so are its records: a package's rules and strata are addressed
-by package (`verse.trigger.rule.drift:head-moved`), so two packages may each declare a
-`reflected` level without one overwriting the other — which is what comment-drift's two halves
-need, since both read the git source and both want a bottom level for it. They are not
-confined: a package's lowest level owns the slice it READS, and its rules select from there and
-derive above it. What makes per-package levels coherent is the write confinement rather than a
-second check on the strata — with no cross-package write there is no cross-package derive, so
-there is no cross-package ordering to define, and two packages may both declare a level 10 and
-mean nothing to each other.
+**Its levels are its own**, and so are its records. A package's rules and strata are addressed by
+package (`verse.trigger.rule.drift:head-moved`), so two packages may each declare a `reflected`
+level without one overwriting the other, which is what comment-drift's two halves need, since both
+read the git source and both want a bottom level for it. They are not confined: a package's lowest
+level owns the slice it *reads*, and its rules select from there and derive above it. What makes
+per-package levels coherent is the write confinement rather than a second check on the strata. With
+no cross-package write there is no cross-package derive, so there is no cross-package ordering to
+define, and two packages may both declare a level 10 and mean nothing to each other.
 
 **The reads graph is acyclic.** `a` reading what `b` writes while `b` reads what `a` writes is a
-feedback loop neither charter's author can see in their own file, and nothing else catches it:
-the level discipline is per package, so a cross-package derive has no ordering to violate, and
-the cycle throttle bounds a chain within one engine. So the declaration is also a graph — P → Q
-when what P reads meets what Q may write, which is Q's address — and a cycle is refused at
-install, showing the loop:
+feedback loop neither charter's author can see in their own file, and nothing else catches it. The
+level discipline is per package, so a cross-package derive has no ordering to violate, and the
+cycle throttle bounds a chain within one engine. So the declaration is also a graph — P → Q when
+what P reads meets what Q may write, which is Q's address — and a cycle is refused at install,
+showing the loop:
 
 ```
 reads: this would close a cycle between packages: drift → merge → drift — one reads what
@@ -192,17 +190,17 @@ the next writes, all the way round, so a write on any of them can wake the other
 back. A package graph is acyclic: break the loop, or fold the two halves into one package
 ```
 
-Declaring a read of an address no package is installed at adds no edge: `git` is a source's slice, and
-reading a source is not depending on a package — which is why two packages both reading it,
-the arrangement above, is not a loop.
+Declaring a read of an address no package is installed at adds no edge. `git` is a source's slice,
+and reading a source is not depending on a package, which is why two packages both reading it — the
+arrangement above — is not a loop.
 
-**What it does not cover**: baseline. The unpackaged charter may write anywhere, so a loop
-through it is not a loop between packages and this cannot see it — which is the same reason
-baseline is unconfined in what it writes.
+**What it does not cover** is baseline. The unpackaged charter may write anywhere, so a loop
+through it is not a loop between packages and this cannot see it, which is the same reason baseline
+is unconfined in what it writes.
 
-`verse charter` reads the charter AT AN ADDRESS, the way `verse data` reads the verse at one —
-because the charter is one document with a place for every package, so "what is installed here"
-is the same question at every depth, and every node answers the same shape.
+`verse charter` reads the charter at an address, the way `verse data` reads the verse at one. The
+charter is one document with a place for every package, so "what is installed here" is the same
+question at every depth, and every node answers the same shape.
 
 ```sh
 verse charter                  # the whole charter
@@ -231,9 +229,9 @@ That is comment-drift installed: the review at `drift`, the gate at `merge` read
 baseline nobody has put anything in. A package at `demo.pr` nests under a `demo` that holds only
 `children:`, since nothing is installed at `demo` itself.
 
-THE RULES THEMSELVES, not their names: this is the program the verse is running, and a listing
-of names would leave what it DOES to a second command per rule. `--depth 0` is how it gets
-short. One rule by name is still one command:
+It prints the rules themselves rather than their names. This is the program the verse is running,
+and a listing of names would leave what it *does* to a second command per rule. `--depth 0` is how
+it gets short. One rule by name is still one command:
 
 ```sh
 verse charter merge             # that package alone, rules and all
@@ -241,84 +239,82 @@ verse charter merge --depth 0   # …without whatever is installed under it
 verse c drift rules merge-proposal
 ```
 
-A package comes off whole, too — its rules, its levels, what it reads, and the engine running
-them. What it WROTE stays: a charter's writes are the world's, and `verse data --rm` is how those
-go.
+A package comes off whole, too: its rules, its levels, what it reads, and the engine running them.
+What it *wrote* stays, because a charter's writes are the world's, and `verse data --rm` is how
+those go.
 
 ```sh
 verse c -r merge
 verse c -R demo                          # …and every charter under that address
 ```
 
-**Two more things it does not confine**, stated because the boundary is easy to overstate. A SPAWN:
+**Two more things it does not confine**, stated because the boundary is easy to overstate. A spawn:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see
-[provider selection](provider-selection.md)). And verse's own records — a task's mirror, a
-motion, a posed question — which are written by the engine into
+[provider selection](provider-selection.md)). And verse's own records — a task's mirror, a motion,
+a posed question — which the engine writes into
 [verse's half of the tree](reference/entities.md#two-halves-one-tree), where no charter may be
 installed and no charter may write.
 
-A package is the same shape as a `verse connect` scope one axis over: a scope says whose COPY of
-the verse a charter acts in, an address says which PART of the verse it acts on. Both stamp
-their records so a restore takes only its own — and where a scope waits for its dev to
-reconnect (its layer cannot be enumerated), a package comes back at every start, because its
-address is a stamp anyone can list.
+A package is the same shape as a `verse connect` scope, one axis over. A scope says whose *copy* of
+the verse a charter acts in; an address says which *part* of the verse it acts on. Both stamp their
+records so a restore takes only its own. Where a scope waits for its dev to reconnect, because its
+layer cannot be enumerated, a package comes back at every start, because its address is a stamp
+anyone can list.
 
 ### The charter is durable
 
-Installing a trigger writes it into the verse as `verse.trigger.rule.<name>` — or
-`verse.trigger.rule.<package>:<name>` for a package, so two of them may use one name; removing one
-deletes that entity; and a start reads them back before anything observes. So the program a
-verse comes back up running is the one it went down with.
+Installing a trigger writes it into the verse as `verse.trigger.rule.<name>`, or
+`verse.trigger.rule.<package>:<name>` for a package, so two of them may use one name. Removing one
+deletes that entity, and a start reads them back before anything observes. So the program a verse
+comes back up running is the one it went down with.
 
-Everything else a restart needs is durable in the same way — a task is mirrored, a
-sequence's position is a fact on its subject, a claim is a lease in the store, an open motion
-is a channel with its ballots beside it, and resume rehydrates a chain's hooks and a motion's
-awaiter from them. The program has to be too, or a verse comes back with its work in progress
-intact and nothing left to react to it.
+Everything else a restart needs is durable in the same way. A task is mirrored, a sequence's
+position is a fact on its subject, a claim is a lease in the store, an open motion is a channel
+with its ballots beside it, and resume rehydrates a chain's hooks and a motion's awaiter from them.
+The program has to be durable too, or a verse comes back with its work in progress intact and
+nothing left to react to it.
 
-One entity per rule, because that is what the operations already are: an install writes one,
-a removal deletes one, and neither reads the others — so two installs cannot lose each
-other, and a rule is addressable (`verse data verse trigger rule review`).
+One entity per rule, because that is what the operations already are. An install writes one, a
+removal deletes one, and neither reads the others, so two installs cannot lose each other, and a
+rule is addressable (`verse data verse trigger rule review`).
 
-**A rule is stored as structure, under the `!raw` escape.** The escape is what makes that
-possible, and it is worth saying why it is needed. A write is a tony *patch* — the property
-that makes the store good at everything else — so operator tags in a payload are EXECUTED by
-the store rather than stored by it. A charter is full of them: `id: !glob "hotfix-*"`,
-`patch: {tmp: !delete null}`. Stored as bare structure, a rule is therefore not one that reads
-back wrong, it is one that cannot be read back at all: the write leaves an entity whose own
-patch log no longer applies (`glob patching "null" gave cannot patch with glob operation`).
+**A rule is stored as structure, under the `!raw` escape.** A write is a tony *patch*, the property
+that makes the store good at everything else, so operator tags in a payload are *executed* by the
+store rather than stored by it. A charter is full of them: `id: !glob "hotfix-*"`,
+`patch: {tmp: !delete null}`. Stored as bare structure, a rule is not one that reads back wrong. It
+is one that cannot be read back at all, because the write leaves an entity whose own patch log does
+not apply (`glob patching "null" gave cannot patch with glob operation`).
 
-`!raw` says *this tag is data*: the subtree is stored verbatim, nothing
-beneath it is interpreted at any depth, and the escape itself is consumed, so the rule lands
-carrying its own tags. `entity.Raw` is that wrap on the way in; a rule read back is ordinary
-data, which is why putting one back means escaping it again (`entity.AsData`, which is what
-`entity.Modify` does for its callers — a record that holds a document would otherwise execute
-its own operators the moment anything else about it changed). Raw also *replaces* rather than
-merging, so re-installing a rule cannot leave a field of the version before it standing in the
-version after.
+`!raw` says *this tag is data*. The subtree is stored verbatim, nothing beneath it is interpreted
+at any depth, and the escape itself is consumed, so the rule lands carrying its own tags.
+`entity.Raw` is that wrap on the way in. A rule read back is ordinary data, which is why putting one
+back means escaping it again — `entity.AsData`, which is what `entity.Modify` does for its callers,
+since a record that holds a document would otherwise execute its own operators the moment anything
+else about it changed. Raw also *replaces* rather than merging, so re-installing a rule cannot leave
+a field of the version before it standing in the version after.
 
-The gain is that the record is the rule: `verse data verse trigger rule review` shows a
-document to read field by field, a charter change is an observable fact about a shape rather
-than about a string, and nothing has to re-parse to ask a question about it.
+The gain is that the record is the rule. `verse data verse trigger rule review` shows a document to
+read field by field, a charter change is an observable fact about a shape rather than about a
+string, and nothing has to re-parse to ask a question about it.
 
 **A rule keeps the comments it was written with**, so the record carries the reasons and not only
 the shape — the example above reads back with all three of its notes in place.
 
-A comment attaches to the VALUE it is written about — above it, or beside it on the same line —
-and something has to carry it: the value's own type, the field holding it, or the codec of
-whatever it sits inside. Between them they cover a charter:
+A comment attaches to the *value* it is written about, above it or beside it on the same line, and
+something has to carry it: the value's own type, the field holding it, or the codec of whatever it
+sits inside. Between them they cover a charter:
 
 | a comment on | kept by |
 |---|---|
 | the rule, `action:`, `gating:`, `spawn:`, a gate entry | the value's own type |
 | a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
-| `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:`/`formula:` | the FIELD holding it — which is how a value whose own type cannot carry one still keeps it |
+| `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:`/`formula:` | the *field* holding it — which is how a value whose own type cannot carry one still keeps it |
 | `subject:`, `on:`, `when:` | Condition's own codec, which is hand-written and so carries them by hand |
 
 The two positions are one question asked twice, and both are carried: `name: review # the short
 name` reads back as it was written, as `# what this rule is for` above it does.
 
-The exception is the FIELDS OF A SPAWN — `driver:`, `prompt:`, `runner:` and the rest. A comment
+The exception is the fields of a spawn: `driver:`, `prompt:`, `runner:` and the rest. A comment
 above or beside `spawn:` is kept, and one written on a field inside it is not.
 
 **A comment above a container and one above its first entry are the same comment.** A block list
@@ -350,28 +346,28 @@ what arrived while verse was down. A restart is then just an install over a vers
 moved on, which is the same property described above, and the same reason to write a latch
 rather than an edge.
 
-**Goals are gone.** A goal was a target over this substrate — a `doneWhen` witness, a deadline
-fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome — durable the
-same way a rule is. Nothing installed one: every use case tried against the definition fell
-short of it, and it cost a top-level concept in a model whose whole claim is that it is small.
-So it was removed rather than carried. The finding and the three shapes a better definition
-might take are in [Goals: what is left](working/goals-residual.md); where it is headed is
+**There are no goals.** A goal would be a target over this substrate: a `doneWhen` witness, a
+deadline fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome, durable
+the same way a rule is. Every use case tried against that definition falls short of it, and it
+would cost a top-level concept in a model whose whole claim is that it is small. The finding, and
+the three shapes a better definition might take, are in
+[Goals: what is left](working/goals-residual.md). Where it is headed is
 [a charter authored per change](roadmap/dynamic-charter.md).
 
-A **scoped charter** (`verse c -a --scope`) is restored the same way, when the scope's
-engine is next built — which is on demand, so in practice when the dev reconnects. Its record
-carries `scope: <name>`, which is what makes it restorable at all: a scoped store reads
-baseline layered underneath, so a listing in a scope returns baseline's rules and the scope's
-own, and only the record says which is which. Baseline's are passed over — a scope runs what
-was installed into it (see [connect](reference/connect.md#the-charter-a-scope-runs)).
+A **scoped charter** (`verse c -a --scope`) is restored the same way, when the scope's engine is
+next built, which is on demand and so in practice when the dev reconnects. Its record carries
+`scope: <name>`, which is what makes it restorable at all: a scoped store reads baseline layered
+underneath, so a listing in a scope returns baseline's rules and the scope's own, and only the
+record says which is which. Baseline's are passed over, because a scope runs what was installed
+into it (see [connect](reference/connect.md#the-charter-a-scope-runs)).
 
 What a restart still cannot do is bring back a scope nobody has reconnected to: enumerating
 the scopes that have a charter needs a scope to be a listable thing, and it is not one yet.
 
-The charter is an observable slice like any other, so a trigger can watch the charter
-(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `trigger:*` joins `task:*`
-as the engine's own machinery, kept out of the default match set so the loop cannot ignite on
-itself. Meta-observation stays possible, and stays deliberate.
+The charter is an observable slice like any other, so a trigger can watch it
+(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `trigger:*` joins `task:*` as the
+engine's own machinery, kept out of the default match set so the loop cannot ignite on itself.
+Meta-observation stays possible, and stays deliberate.
 
 ## `subject` — what the firing is about, and required
 
@@ -379,12 +375,12 @@ itself. Meta-observation stays possible, and stays deliberate.
 once, from the store as it stood at the commit. There is no `until` or `deadline` here: a
 subject is *selected*, not *awaited*.
 
-It is the one field a condition cannot leave out, because nothing else in a trigger can answer
-for it. The action has no target of its own, and a `when` need not pin one kind: `{path: [demo, *, *]}` spans all of them, and a disjunction (`!or [a.b.c, {path: [d, e, *]}]`) makes it
-plain — "the entity the when matched" answers *which entity fired* when the question is *what
-is this rule about*. A rule that acts on whichever disjunct happened to fire is not a rule
-anyone wrote down. So the subject is always stated, and everything else in the trigger is read
-relative to it.
+It is the one field a condition cannot leave out, because nothing else in a trigger can answer for
+it. The action has no target of its own, and a `when` need not pin one kind: `{path: [demo, *, *]}`
+spans all of them, and a disjunction such as `!or [a.b.c, {path: [d, e, *]}]` makes it plain.
+"The entity the when matched" answers *which entity fired* when the question is *what is this rule
+about*, and a rule that acts on whichever disjunct happened to fire is not a rule anyone wrote
+down. So the subject is always stated, and everything else in the trigger is read relative to it.
 
 It resolves in one of two ways, both the same match grammar:
 
@@ -393,40 +389,40 @@ It resolves in one of two ways, both the same match grammar:
 | an address naming one entity (`demo.pr.1`) | that entity, whether or not it exists — an action's `patch` *creates* it | publishing a fact nothing has written yet |
 | a pattern — a glob (`demo.pr.*`), or a `system`+`kind` selector with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
 
-A subject is always a SELECTION, never "the entity that changed". A rule is a statement about
-the world, so which entities it is about cannot depend on who happened to be written last —
-and there is no changed entity to inherit from anyway, since the rule is asked once per commit
-rather than once per change.
+A subject is always a *selection*, never "the entity that changed". A rule is a statement about the
+world, so which entities it is about cannot depend on who happened to be written last, and there is
+no changed entity to inherit from anyway, since the rule is asked once per commit rather than once
+per change.
 
 "When a PR opens, review it" and "review all of them" therefore settle in the same place: the
 action advances each PR out of the selection, so both end with every open PR reviewed. What
 differs is how many firings it takes to get there, not where it ends up.
 
-The NAMING case is the exception that proves it. A glob-free address is a set of one *whether
-or not the entity exists*, because naming is addressing by identity rather than selecting from
-what is there. Read "every entity this selects" literally and creating an entity would be
-unspellable: the only way to create one would be to already have it.
+Naming is the exception that proves it. A glob-free address is a set of one *whether or not the
+entity exists*, because naming is addressing by identity rather than selecting from what is there.
+Read "every entity this selects" literally and creating an entity would be unspellable: the only
+way to create one would be to already have it.
 
 A subject must name a definite `system` and `kind`, or one entity outright, since that is what
 the engine selects and spawns for. A pattern that selects nothing is a no-op — it never
 conjures an entity called `*`.
 
-The engine starts one firing per selected entity, each about exactly one subject, and that
-identity is what every part of a firing keys on: its spawn id, its gate question, its motion
-channel, its place in a causal chain. A re-evaluation about a subject already firing — or already
-running work it started — is not a second firing, which is what keeps a rule waiting on a
-human from asking again at every commit.
+The engine starts one firing per selected entity, each about exactly one subject, and that identity
+is what every part of a firing keys on: its spawn id, its gate question, its motion channel, its
+place in a causal chain. A re-evaluation about a subject already firing, or already running work it
+started, is not a second firing, which is what keeps a rule waiting on a human from asking again at
+every commit.
 
-This is why `subject` is bounded where a `when` formula ranges freely: it pins a PLACE and
-predicates over the single entity's payload, rather than composing over time. "all open PRs" is
-just `{path: [demo, pr, *], value: {stage: open}}`, and the same thing one level deeper is
+This is why `subject` is bounded where a `when` formula ranges freely. It pins a place and
+predicates over the single entity's payload rather than composing over time. "All open PRs" is
+`{path: [demo, pr, *], value: {stage: open}}`, and the same thing one level deeper is
 `{path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}`.
 
 ### The pattern says how deep its subjects are
 
-How deep an entity is is a property of the question, not of the store. A document holding
-`{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c`, or one at `a.b` whose payload happens
-to be nested, and nothing in it says which.
+How deep an entity is is a property of the question rather than of the store. A document holding
+`{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c`, or one at `a.b` whose payload happens to
+be nested, and nothing in it says which.
 
 So the pattern carries the depth. A `path:` of N segments identifies entities at depth N,
 exactly: `{path: [demo, pr, "*"]}` selects three-segment entities and
@@ -439,11 +435,11 @@ The `{system, kind, id}` shorthand is the exception, and it is fixed at three wh
 `{path: [demo, pr]}` selects the entity at `demo.pr` itself. A dimension left out is a prefix; a
 segment left out of a `path:` is a shorter address.
 
-A pattern that names the wrong depth does not fail. It selects the node at the depth it asked
-for — a node that exists, holding the subtree below it as its payload — reads the fields it
-wanted and does not find them, and writes its patches there. This is worth knowing wherever a
-rule reads what another rule derived, since a derive's own depth follows from the subjects the
-producing rule selects: see [`action`](#action--what-fires) below.
+A pattern that names the wrong depth does not fail. It selects the node at the depth it asked for,
+a node that exists holding the subtree below it as its payload, reads the fields it wanted, does
+not find them, and writes its patches there. This is worth knowing wherever a rule reads what
+another rule derived, since a derive's own depth follows from the subjects the producing rule
+selects. See [`action`](#action--what-fires) below.
 
 A write names the place it writes, and a listing walks: `verse data --paths` lists every address
 under the one it was given, and `--depth` bounds how far it goes. Asking a listing for one level
@@ -453,41 +449,40 @@ rather than a marker in the store.
 
 ### The string form is an address, in one grammar
 
-There is one string grammar for addressing entities by identity, and both the charter wire and
-the CLI (`verse flow <addr>`) parse it with `ParseExpr`: a kinded path, `*` a wildcard per
-segment, and a segment that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a charter and
-`verse flow demo.pr.*` on the command line mean the same set, as they read like they should.
+There is one string grammar for addressing entities by identity, and both the charter wire and the
+CLI (`verse flow <addr>`) parse it with `ParseExpr`: a kinded path, `*` as a wildcard per segment,
+and a segment that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a charter and
+`verse flow demo.pr.*` on the command line mean the same set.
 
 Fewer than three segments is the shorthand rather than a shallower address — `"demo.pr"` is
 `{system: demo, kind: pr}`, which selects at three. Deeper is itself:
 `"verse-dev.drift.head.*"` selects at four.
 
-An operator per segment needs the VECTOR form — `!verse-path [verse-dev drift head "*"]`, or
-`path: [verse-dev, drift, head, "*"]` in the object form — where every element is a match in its
-own right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment.
-Nothing here enumerates the operators; `tony.Match` owns them, so a segment is as expressive as
-a payload predicate.
+An operator per segment needs the vector form, `!verse-path [verse-dev drift head "*"]`, or
+`path: [verse-dev, drift, head, "*"]` in the object form. Every element is a match in its own
+right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment. Nothing
+here enumerates the operators, because `tony.Match` owns them, so a segment is as expressive as a
+payload predicate.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
 whose cause is a `verse.task.instance` change and which acts on PRs acts on the PRs its own
 `subject` selects — every one of them — not on the one the completed task happened to name.
 
 In particular, a `flow` field on the changed payload does not short-circuit that. Letting it
-resolve the firing onto whatever ref it holds would advance the single PR a completed task
-was about — at the price that whether a firing acts on one entity or on a whole set turns on
-whether some entity happens to carry a key by that name, which no charter says and no reader
-of one could predict.
+resolve the firing onto whatever ref it holds would advance the single PR a completed task was
+about, at the price that whether a firing acts on one entity or on a whole set would turn on
+whether some entity happens to carry a key by that name, which no charter says and no reader of one
+could predict.
 
-What that shortcut does well — advancing exactly the subject a finished task was about —
-is what [completion hooks](#completion-hooks-one-trigger-chaining-visible) do, and do exactly: the
-engine scopes a hook to *that* spawn's task, a correlation the store cannot fake because the
-engine is what spawned it. Reach for a hook when you mean "this task, this subject"; reach
-for an `on` when you mean "when this becomes true, act on that set".
+What that shortcut does well, advancing exactly the subject a finished task was about, is what
+[completion hooks](#completion-hooks-one-trigger-chaining-visible) do exactly. The engine scopes a
+hook to *that* spawn's task, a correlation the store cannot fake because the engine is what spawned
+it. Reach for a hook when you mean "this task, this subject", and for an `on` when you mean "when
+this becomes true, act on that set".
 
-`flow` remains a convention published by `mirror.Reflect` — the field IS
-the task's subject — read by the flow query, and by a rule whose subject carries it as
-`$subject.value.flow`. It is kept distinct from the reserved `$subject` binding, which is the
-firing's own resolved subject.
+`flow` is a convention published by `mirror.Reflect` — the field *is* the task's subject — read by
+the flow query, and by a rule whose subject carries it as `$subject.value.flow`. It is distinct
+from the reserved `$subject` binding, which is the firing's own resolved subject.
 
 The one distinction inside the address form is name vs select, and it is the one place
 existence stops mattering. A glob-free address *names* its entity, so it is a set of one
@@ -510,20 +505,19 @@ A selector subject advances a whole set:
     patch: { stage: shipped }
 ```
 
-Every reviewed PR advances, while CI is green. Each is its OWN firing: its own `ask` gate and —
-with a `spawn` — its own task tagged with that member as its subject, so each is its own flow.
+Every reviewed PR advances, while CI is green. Each is its own firing, with its own `ask` gate and,
+with a `spawn`, its own task tagged with that member as its subject, so each is its own flow.
 
-One gate per member is worth saying out loud, because one gate for the whole set is the easier
-thing to assume. A firing is about one entity, so twelve reviewed PRs are twelve decisions;
-presenting them as one is a summary standing in for twelve. The honest arity costs an operator
-twelve answers until `verse gate approve` grows a bulk form.
+One gate per member is worth saying out loud, because one gate for the whole set is the easier thing
+to assume. A firing is about one entity, so twelve reviewed PRs are twelve decisions, and presenting
+them as one is a summary standing in for twelve. The honest arity costs an operator twelve answers
+until `verse gate approve` grows a bulk form.
 
-Note what the `when` does here and what it does not. It is the CONDITION — while CI is green —
-and the rule is re-evaluated at every commit touching either subtree, so a PR reaching
-`reviewed` afterwards is picked up. Write `on` instead of `when` and you get the other
-sentence: fire once, at the moment CI went green, over whatever was reviewed *then*. Both are
-useful; they are different rules, and the engine warns at install when a narrow `on` leaves
-part of what the rule reads uncovered.
+Note what the `when` does here and what it does not. It is the condition, while CI is green, and the
+rule is re-evaluated at every commit touching either subtree, so a PR reaching `reviewed` afterwards
+is picked up. Write `on` instead of `when` and you get the other sentence: fire once, at the moment
+CI went green, over whatever was reviewed *then*. Both are useful. They are different rules, and the
+engine warns at install when a narrow `on` leaves part of what the rule reads uncovered.
 
 ## `on` and `when` — the cause and the condition
 
@@ -539,40 +533,39 @@ shape: *while* this holds, act on what the subject selects.
 predicate becomes true, and two properties follow that an author has to know:
 
 - **An edge does not re-fire while it stays true.** `on: {path: [demo, pr, *], value:
-  {stage: reviewed}}` rises when the FIRST PR reaches `reviewed` and says nothing about the
-  second — the predicate never fell. There is no way to say "on each PR reaching reviewed";
-  that is what a subject plus a latch is for.
+  {stage: reviewed}}` rises when the first PR reaches `reviewed` and says nothing about the second,
+  because the predicate never fell. There is no way to say "on each PR reaching reviewed"; that is
+  what a subject plus a latch is for.
 - **An `on` trigger does not act on the backlog.** Installed over a verse where its predicate
   already holds, there is no rising edge to observe. A subject-dispatched trigger does the
   opposite, acting on everything already standing (see [level at open](#the-backlog)).
 
-A match is a predicate over the verse. It ANDs its dimensions — `system` / `kind` / `id` / a
-payload predicate. Empty dimensions are wildcards.
+A match is a predicate over the verse. It conjoins its dimensions — `system`, `kind`, `id`, and a
+payload predicate — and an empty dimension is a wildcard.
 
-There is no `op` dimension. It classified a CHANGE — `set` or `delete` — and a match is asked
-only of STATE now, at a revision, where nothing has one. A create is the rising edge of "this
-exists"; a delete is the rising edge of the [vanishing marker](#lifecycle-how-an-entity-leaves)
-that precedes removal. A charter carrying `op` is refused with that explanation rather than an
-"unknown key", because the author is reaching for a distinction the model deliberately does not
-carry, and "unknown key" would not say so.
+There is no `op` dimension. Such a dimension would classify a *change*, `set` or `delete`, and a
+match is asked only of *state*, at a revision, where nothing has one. A create is the rising edge
+of "this exists"; a delete is the rising edge of the
+[vanishing marker](#lifecycle-how-an-entity-leaves) that precedes removal. A charter carrying `op`
+is refused with that explanation rather than an "unknown key", because the author is reaching for a
+distinction the model deliberately does not carry, and "unknown key" would not say so.
 
 The address string is sugar for the identity dimensions, so `demo.pr.*` means
 `{path: [demo, pr, *]}` — and since a trailing wildcard *is* an unset dimension, that is
 what reads back when you read it out of `verse c`: `demo:pr`. Same match, shorter spelling.
 
-Keep it small. This is where complexity hides. To act "only the first time", match a state
-field your action then advances — a LATCH. That is not a nicety: a rule with no latch is
-considered at every commit touching what it reads, so the latch is what gives it an end state,
-and a spawning action that has none is refused at install.
+Keep it small. This is where complexity hides. To act "only the first time", match a state field
+your action then advances: a **latch**. That is not a nicety. A rule with no latch is considered at
+every commit touching what it reads, so the latch is what gives it an end state, and a spawning
+action that has none is refused at install.
 
 <a id="the-backlog"></a>
-**Installing a trigger fires it on what already matches.** A trigger's observation replays
-the slices it reads when it opens, so the backlog standing in the verse when you install the
-charter is acted on immediately; you do not have to re-touch each entity to announce a state it
-has held all along. (An `on` is the exception, and for the same reason it does not re-fire: a
-predicate that already holds has no rising edge.) The same property
-means the latch above is what stops an action re-running when the engine restarts over a verse
-still in the matching state; see
+**Installing a trigger fires it on what already matches.** A trigger's observation replays the
+slices it reads when it opens, so the backlog standing in the verse when you install the charter is
+acted on immediately, and you do not have to re-touch each entity to announce a state it has held
+all along. An `on` is the exception, for the same reason it does not re-fire: a predicate that
+already holds has no rising edge. The same property means the latch above is what stops an action
+re-running when the engine restarts over a verse still in the matching state. See
 [change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
 
 `on` and `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language
@@ -599,7 +592,7 @@ In a JSON-shaped charter, write the operator as a single-key object — `{"id": 
 "hotfix-*"}}` — the same spelling a formula uses for its tags. The two are one grammar; only
 tony can write the tag directly.
 
-**That second spelling reaches the DIMENSIONS only.** Inside `value` an operator is written as a
+**That second spelling reaches the dimensions only.** Inside `value` an operator is written as a
 tag and nothing else:
 
 ```tony
@@ -607,24 +600,24 @@ value: !not {reviewed: null}      # the absence latch
 value: {not: {reviewed: null}}    # a payload EQUAL to that object — which is nothing, ever
 ```
 
-Both lines are legal, and the second means what it says: `value` is a predicate over payload
-DATA, where a field genuinely named `not` holding one key is an ordinary thing to match. That
-ambiguity is exactly what a dimension does not have — `system`, `kind` and `id` take a string or
-an operator and nothing else — which is why the sugar is unambiguous there and impossible here.
-A charter writing the second earns a note at install; nothing rewrites it, because rewriting it
-would take away the only way to match the data.
+Both lines are legal, and the second means what it says. `value` is a predicate over payload
+*data*, where a field genuinely named `not` holding one key is an ordinary thing to match. That
+ambiguity is exactly what a dimension does not have, since `system`, `kind` and `id` take a string
+or an operator and nothing else, which is why the sugar is unambiguous there and impossible here. A
+charter writing the second earns a note at install. Nothing rewrites it, because rewriting it would
+take away the only way to match the data.
 
 **So a JSON-shaped charter cannot spell an operator under `value` at all.** JSON has no tag
 syntax, and this is the one position the single-key object does not stand in for one. A
 condition that needs an operator over the payload is written in tony.
 
-`system` and `kind` take no operator, and that is structural rather than unfinished: they
-name the subtree verse watches and the set it lists — they become a docd watch path
-(`Formula.Subtrees`) and the store's `List` prefilter — and a watch path cannot be a
-predicate. Write the whole segment as `*` for "any", and put the operator on `id`.
+`system` and `kind` take no operator, and that is structural rather than unfinished. They name the
+subtree verse watches and the set it lists, becoming a docd watch path (`Formula.Subtrees`) and the
+store's `List` prefilter, and a watch path cannot be a predicate. Write the whole segment as `*`
+for "any", and put the operator on `id`.
 
-`at` is the whole address prefix as ONE covering path, which is the same three dimensions
-written once:
+`at` is the whole address prefix as one covering path, which is the same three dimensions written
+once:
 
 ```tony
 subject: { at: demo.pr, value: {stage: open} }        # {path: [demo, pr, *]}
@@ -632,20 +625,20 @@ subject: { at: verse.gate.question }                   # …and in verse's own h
 subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 ```
 
-`!verse-path [demo pr 1]` is an address written as STEPS — a list of segments, which is what a
-charter reads and what `verse data` takes on a command line, so no segment needs punctuating
-around a dot or a colon it happens to contain. (`verse data --paths` answers in the same steps,
-space-separated: `demo pr 1`. One spelling, wherever an address is written by hand or read back
-— a charter reads a list, a shell reads words, and neither has to punctuate a segment.) It goes
-wherever the string form goes:
+`!verse-path [demo pr 1]` is an address written as steps: a list of segments, which is what a
+charter reads and what `verse data` takes on a command line, so no segment needs punctuating around
+a dot or a colon it happens to contain. `verse data --paths` answers in the same steps,
+space-separated, as `demo pr 1`. One spelling serves wherever an address is written by hand or read
+back, since a charter reads a list and a shell reads words, and neither has to punctuate a segment.
+It goes wherever the string form goes:
 
 ```tony
 subject: !verse-path [demo pr 1]      # the same as "demo.pr.1"
 when:    !verse-path [git head verse]
 ```
 
-The tag is required on a list, so a list of steps cannot be read as anything else — and an
-address is written one way or the other: `{path: [other, *, *], at: demo.pr}` is refused rather than
+The tag is required on a list, so a list of steps cannot be read as anything else, and an address
+is written one way or the other: `{path: [other, *, *], at: demo.pr}` is refused rather than
 merged.
 
 `root` names which half of the verse the match is about, and an unwritten one is the world's:
@@ -657,11 +650,11 @@ subject: {path: [demo, pr, *]}
 subject: {path: [verse, gate, question, *], value: {status: pending}}
 ```
 
-The default is the point rather than a convenience. `verse:` holds what verse writes about its
-own running ([entities](reference/entities.md#two-halves-one-tree)), and a rule that
-did not ask for it must not select it by omission — otherwise `{path: [task, *, *]}` on a charter
-about the world's tasks would quietly match the mirror of every run in the verse. Like `system`
-and `kind`, it takes no operator: it is the first segment of a watch path.
+The default is the point rather than a convenience. `verse:` holds what verse writes about its own
+running ([entities](reference/entities.md#two-halves-one-tree)), and a rule that did not ask for it
+must not select it by omission. Otherwise `{path: [task, *, *]}` on a charter about the world's
+tasks would quietly match the mirror of every run in the verse. Like `system` and `kind`, it takes
+no operator, because it is the first segment of a watch path.
 
 The payload predicate takes operators too. It is `value`, one dimension: the same tony match,
 evaluated against the payload instead of the id.
@@ -670,51 +663,51 @@ evaluated against the payload instead of the id.
 # a record's fields
 when: {path: [demo, pr, *], value: { stage: !or [open, merged] }}
 on:   {path: [demo, pr, *], value: { branch: !glob "hotfix-*" }}
-# the payload ROOT
+# the payload root
 when: {path: [demo, count, *], value: !or [10, 100]}
 ```
 
-`value` is open in shape because a payload is: an entity's payload is any tony value — a
-record, a count, a flag, a state name, a list — so a predicate over it may be any of those,
-or an operator over one. Almost every charter writes the record form; the rest are why the
-dimension is not called `fields`.
+`value` is open in shape because a payload is. An entity's payload is any tony value — a record, a
+count, a flag, a state name, a list — so a predicate over it may be any of those, or an operator
+over one. Almost every charter writes the record form, and the rest are why the dimension is not
+called `fields`.
 
 Over a record it is a **subset** constraint, as a tony match over an object always is: the
 fields you name must agree, and any others are ignored. Over a scalar there is nothing to be a
 subset of, so `value: 42` means the payload *is* 42.
 
-That cuts one way worth knowing: `value: "stage=open"` is a legal predicate — it matches an
-entity whose whole payload is the string `stage=open` — not an expression language. There used
-to be a `fields` dimension that asserted an object and made exactly that mistake an install
-error; it went away with the collapse to one name, because it caught only the wrong *shape*
-and never `{stge: open}`, the misspelled key that is the typo people actually make.
+That cuts one way worth knowing. `value: "stage=open"` is a legal predicate, matching an entity
+whose whole payload is the string `stage=open`, rather than an expression language. A separate
+dimension that asserted an object would make that an install error, and it would still catch only
+the wrong *shape* and never `{stge: open}`, the misspelled key that is the typo people actually
+make. So there is one name, and no shape assertion.
 
 Four semantics are worth knowing before you rely on one.
 
-`!glob` is stricter than a plain string. It is `filepath.Match`, so `*` does not cross `/`
-and `?`/`[…]` are metacharacters: `id: "a*"` matches `a/b` and `id: !glob "a*"` does not.
-That is the point of it — a path-shaped id can be matched a segment at a time — but it means
-the two spellings are not interchangeable.
+`!glob` is stricter than a plain string. It is `filepath.Match`, so `*` does not cross `/` and `?`
+and `[…]` are metacharacters: `id: "a*"` matches `a/b` and `id: !glob "a*"` does not. That is the
+point of it, since a path-shaped id can then be matched a segment at a time, but it means the two
+spellings are not interchangeable.
 
 A `null` in a predicate is a presence test, not "is null". A null pattern matches any value,
 so the only thing it constrains is that the field is there. The three questions have three
 different spellings:
 
 ```tony
-# stage is PRESENT, whatever its value
+# stage is present, whatever its value
 value: { stage: null }
-# stage is ABSENT
+# stage is absent
 value: !not { stage: null }
-# stage is present AND its value is null
+# stage is present and its value is null
 value: { stage: !irtype null }
 ```
 
 An absent key is not a null one — the store records whether a field was cleared or never
 written.
 
-Numbers are type-exact: `2` and `2.0` are different values, so a predicate written `{n: 2}`
-does not match a payload of `{n: 2.0}`. Integer widths do not matter — that is an artifact of
-whoever wrote the value, not of the value.
+Numbers are type-exact. `2` and `2.0` are different values, so a predicate written `{n: 2}` does
+not match a payload of `{n: 2.0}`. Integer widths do not matter, being an artifact of whoever wrote
+the value rather than of the value.
 
 Operators inside a payload predicate are tony-only. The id dimension accepts the JSON
 single-key spelling because its keyspace is closed, but a payload is *your* document — a key
@@ -724,20 +717,18 @@ operator over a payload needs tony.
 
 ## `gates` — whether it proceeds
 
-A list of gates, all of which must resolve to proceed (conjunctive) before the action fires.
-Gates are per *firing*, and a firing is about one entity — so a rule selecting twelve PRs asks
-twelve questions. Each is `{ name: …, mode: auto|ask|park }`. An empty list fires with no
-approval.
+A list of gates, all of which must resolve before the action fires. Gates are per *firing*, and a
+firing is about one entity, so a rule selecting twelve PRs asks twelve questions. Each is
+`{ name: …, mode: auto|ask|park }`. An empty list fires with no approval.
 
 The question's id is a function of (trigger, gate, subject), which is what makes a re-evaluated
-rule ask ONCE: a firing that finds its question already standing joins it rather than posting a
-copy, and one answer releases everyone waiting. A rule waiting on a human is therefore not a
-rule filling the docket.
+rule ask once. A firing that finds its question already standing joins it rather than posting a
+copy, and one answer releases everyone waiting. A rule waiting on a human is therefore not a rule
+filling the docket.
 
-Multiple gates model multi-approval — a deploy needing both a security and a release-manager
-sign-off is two `ask` gates. A gate can also carry a `formula` the verse resolves itself — a
-vote, a deadline, a threshold — which is the temporal layer of this document at work on the
-guard.
+Multiple gates model multi-approval: a deploy needing both a security and a release-manager sign-off
+is two `ask` gates. A gate can also carry a `formula` the verse resolves itself — a vote, a
+deadline, a threshold — which is the temporal layer of this document at work on the guard.
 
 ### `onDenied` — what a no means
 
@@ -756,15 +747,15 @@ the action never runs. So the gate says what its own refusal means:
     onDenied: { patch: { stage: rejected } }
 ```
 
-It is an ordinary action — `patch`, `derive`, `spawn`, its own completion hooks — applied about
-the same subjects the firing was about. It hangs off the GATE rather than the action because a
-no is the gate's outcome: two gates refuse for different reasons, and each says what its own
-refusal means. It is not a completion hook and needs no spawn of its own.
+It is an ordinary action — `patch`, `derive`, `spawn`, its own completion hooks — applied about the
+same subjects the firing was about. It hangs off the *gate* rather than the action, because a no is
+the gate's outcome: two gates refuse for different reasons, and each says what its own refusal
+means. It is not a completion hook and needs no spawn of its own.
 
 Only a committed refusal runs it. A resolver that could not be reached, or a monitor that ended
-before its motion committed, said nothing at all — and writing a rejection on their behalf would
-put a decision in the store that nobody made. It applies on both arms: a posed `ask` that is
-answered no, and a `formula` whose motion commits a deny.
+before its motion committed, said nothing at all, and writing a rejection on their behalf would put
+a decision in the store that nobody made. It applies on both arms: a posed `ask` that is answered
+no, and a `formula` whose motion commits a deny.
 
 Omitting it is legitimate — "ask again next time somebody touches it" is a real policy — so a
 gate without one earns an advisory at install rather than a refusal. To say a no is final
@@ -796,15 +787,15 @@ options:
 ```
 
 It is marked rather than refused, because a denial is worth recording even when it cannot close
-anything — that is what a vote log is for. A gate that wants a *quorum to deny* wants a formula
-with a threshold on both sides, which `!until` has no place for today.
+anything, which is what a vote log is for. A gate that wants a *quorum to deny* wants a formula
+with a threshold on both sides, which `!until` has no place for.
 
 ### A motion outlives the verse that opened it
 
-The channel, its options and every ballot cast into it are entities, so a restart finds the
-motion exactly where it stood. What does not survive is the *awaiter* — the goroutine watching
-the tally was inside the firing — and a motion with no awaiter is the worst kind of docket
-entry: it lists a decision, somebody makes it, and nothing moves.
+The channel, its options and every ballot cast into it are entities, so a restart finds the motion
+exactly where it stood. What does not survive is the *awaiter*, the goroutine watching the tally,
+which lives inside the firing. A motion with no awaiter is the worst kind of docket entry: it lists
+a decision, somebody makes it, and nothing moves.
 
 Startup gives the awaiter back, by the route the axis makes available:
 
@@ -841,47 +832,44 @@ a crash in the middle of one leaves the half that landed.
 
 ### A gate's answer applies to the world it was asked in
 
-A motion is not settled the moment it is satisfied. Between reaching its threshold and
-committing, the verdict is rechecked — and until this it was rechecked against the wrong thing.
+A motion is not settled the moment it is satisfied. Between reaching its threshold and committing,
+the verdict is rechecked, and two things are rechecked rather than one.
 
-The **revoke guard** covers the ballots: the witness that carried a `proceed` must still stand
-at the commit, so a retracted approval aborts it and the motion goes back to monitoring. That
-is the right rule for the answer. It says nothing about the *question*.
+The **revoke guard** covers the ballots. The witness that carried a `proceed` must still stand at
+the commit, so a retracted approval aborts it and the motion goes back to monitoring. That is the
+right rule for the answer, and it says nothing about the *question*.
 
 So the commit also asks whether the rule would still select the subject. If it would not, the
 question is moot: the motion is **withdrawn** — `status: orphaned` with a `why`, no `outcome`,
 no action, and no `onDenied`, because a moot question is not a refusal. The ballots stay in the
 log, and a rule that selects that subject again reopens the same channel over them.
 
-This is not a hypothetical tidiness. A merge proposal was swept to `state: stale` while its
-gate stood open; the motion, watching only its vote log, reached quorum on the approval already
-cast, committed `proceed`, and merged a branch the sweep had retired — losing the work on it
-(see [merge-gate-residual](working/merge-gate-residual.md)). A gate that can only be answered
-about a world that has moved on is a gate answered by reflex, which is the failure gates exist
-to prevent.
+This is not hypothetical tidiness. Without it, a merge proposal swept to `state: stale` while its
+gate stands open leaves a motion that watches only its vote log: it reaches quorum on the approval
+already cast, commits `proceed`, and merges a branch the sweep retired, losing the work on it (see
+[merge-gate-residual](working/merge-gate-residual.md)). A gate that can only be answered about a
+world that has moved on is a gate answered by reflex, which is the failure gates exist to prevent.
 
-**The withdrawal is prompt**: the monitor watches the subject's own subtree beside the vote log,
-so a motion goes moot at the change that made it moot, with nobody having to vote and nothing
-having to restart. (It was asked only when somebody voted, and again at startup, so a stale
-question was discovered by restarting the verse.)
+**The withdrawal is prompt.** The monitor watches the subject's own subtree beside the vote log, so
+a motion goes moot at the change that made it moot, with nobody having to vote and nothing having
+to restart.
 
-One limit worth knowing: it asks only about the SUBJECT, not the cause — a rule fired by an `on`
-edge may still select its subject and never see that edge again, so a motion that stands is not
-a promise the rule will re-fire. And when it cannot tell — an unreadable store, a predicate
-whose read fails — it lets the motion stand, because a stale docket entry costs a reader a
-moment while a wrongly withdrawn one takes a live question away from the people it is in front
-of.
+One limit is worth knowing. It asks only about the *subject*, not the cause: a rule fired by an
+`on` edge may still select its subject and never see that edge again, so a motion that stands is
+not a promise the rule will re-fire. And when it cannot tell — an unreadable store, a predicate
+whose read fails — it lets the motion stand, because a stale docket entry costs a reader a moment
+while a wrongly withdrawn one takes a live question away from the people it is in front of.
 
 ### An install re-fires, so a derive must own what it writes
 
-Installing a charter evaluates its rules against what is already there — that is what makes an
+Installing a charter evaluates its rules against what is already there, which is what makes an
 install act on the world rather than only on what happens next. A `derive` is a patch merged at
 depth, so it overwrites exactly the fields it names.
 
-Put those together and a derive naming a field ANOTHER rule owns rewrites that field **every time
-the charter is installed**, over whatever the flow had reached. Measured on 131 records: a flow
-sitting at `reviewed: baseline` came back as 85 `pending` and 46 `gathered` after re-applying a
-rule that had not changed. Nothing fails; the derive simply wrote its own value again.
+Put those together and a derive naming a field *another* rule owns rewrites that field **every time
+the charter is installed**, over whatever the flow had reached. Measured on 131 records, a flow
+sitting at `reviewed: baseline` comes back as 85 `pending` and 46 `gathered` after re-applying a
+rule that has not changed. Nothing fails; the derive simply writes its own value again.
 
 So a derive states the facts it owns, and the rule that follows it starts from an **absence**:
 
@@ -898,13 +886,13 @@ A charter that does it the other way earns a note at install naming both rules a
 
 Data, not code. An action needs no target of its own: it acts on the condition's subject.
 
-**Every rule has one, and a rule that would do nothing is refused at install.** `patch`,
-`derive`, `spawn` or `seq` — any one is enough, and a rule with none of them installs, reports
-itself installed, and then watches its subtree for the life of the verse without ever writing
-anything. Completion hooks do not count: a hook is what happens when something finishes, and
-there is nothing there to finish (an `onX` without a spawn or a seq is refused for that reason).
-A gate does not count either — a gate on a rule with no action poses a question whose answer
-nothing reads.
+**Every rule has one, and a rule that would do nothing is refused at install.** `patch`, `derive`,
+`spawn` or `seq`: any one is enough. A rule with none of them would install, report itself
+installed, and then watch its subtree for the life of the verse without ever writing anything.
+Completion hooks do not count, because a hook is what happens when something finishes and there is
+nothing there to finish, which is also why an `onX` without a spawn or a seq is refused. A gate
+does not count either: a gate on a rule with no action poses a question whose answer nothing
+reads.
 
 `patch` writes to the subject's payload — a state transition. It is a tony patch, not an
 assignment: a nested write merges into the subtree it names rather than replacing it, so two
@@ -913,15 +901,15 @@ triggers writing under one key do not clobber each other, and the
 apply. `patch: { tmp: !delete null }` removes a key, which is something no amount of setting
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
-`derive` writes an entity that is NOT the subject — the one thing `patch` cannot do. It names a
-PLACE — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value:
-…}` for a place of any depth — and its content may reference its own subject and, at or below
-its own level, other entities. It is only installable inside a declared level ordering, where it
-must land strictly above the rule that writes it: see [strata](strata.md).
+`derive` writes an entity that is *not* the subject, the one thing `patch` cannot do. It names a
+place — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value: …}`
+for a place of any depth — and its content may reference its own subject and, at or below its own
+level, other entities. It is only installable inside a declared level ordering, where it must land
+strictly above the rule that writes it. See [strata](strata.md).
 
-**Unnamed, the ADDRESS is the engine's, and it is the provenance**: the place, then the rule,
-then the subject's own segments. A rule selecting `git.ref.*` and deriving into `[verse-dev,
-merge, proposal]` writes
+**Unnamed, the address is the engine's, and it is the provenance**: the place, then the rule, then
+the subject's own segments. A rule selecting `git.ref.*` and deriving into
+`[verse-dev, merge, proposal]` writes
 
     verse-dev.merge.proposal.proposal-appeared.git.ref."verse/auto/…"
 
@@ -929,12 +917,12 @@ which is **seven** segments — three for the place, one for the rule, three for
 two rules can address the same entity, which is what the composition is for.
 
 **So a reader of a derivation says how deep one is**, and how deep follows from the depth of the
-subjects the PRODUCING rule selects (`[verse-dev, merge, proposal, "*"]` is four segments and
-selects the RULE level, whose payload is the whole subtree of that rule's derivations rather
-than any one of them). A selection of N segments identifies entities at depth N, exactly — see
-[working/entity-tree.md](working/entity-tree.md). A rule that selects the wrong depth here does
-not fail: it selects a node that exists, reads fields that are not there, and writes its patches
-onto it.
+subjects the producing rule selects. `[verse-dev, merge, proposal, "*"]` is four segments and
+selects the *rule* level, whose payload is the whole subtree of that rule's derivations rather than
+any one of them. A selection of N segments identifies entities at depth N, exactly; see
+[working/entity-tree.md](working/entity-tree.md). A rule that selects the wrong depth here does not
+fail: it selects a node that exists, reads fields that are not there, and writes its patches onto
+it.
 
 **Naming one is how a derive stays shallow.** `id:` (below) puts the entity at the place plus
 that one segment — `verse-dev.merge.proposal."verse/auto/…"`, four — which is what a reader
@@ -953,18 +941,18 @@ instead of (rule, subject). One entity per value of something, where the same su
 moving: see [strata](strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key with the composition dropped**, and the difference is the reader's. A keyed
-entity's id is `head-moved@git.head.verse@aaaa1111` — nothing in the grammar composes one, so
-anything that wants that record has to *describe* it (a `"*"` and a predicate on a field it
-happens to know) instead of naming it. With `id: $subject.value.sha` the record is
-`verse-dev.drift.head.aaaa1111`, and a reader spells it: `!get-path {at: [verse-dev, drift,
-head, $subject.value.sha], path: result.report}`.
+entity's id is `head-moved@git.head.verse@aaaa1111`, and nothing in the grammar composes one, so
+anything that wants that record has to *describe* it — a `"*"` and a predicate on a field it
+happens to know — instead of naming it. With `id: $subject.value.sha` the record is
+`verse-dev.drift.head.aaaa1111`, and a reader spells it:
+`!get-path {at: [verse-dev, drift, head, $subject.value.sha], path: result.report}`.
 
-What the composition bought was uniqueness, and `id:` hands that to the author: two subjects of
-one rule that compute the same value share one entity, where `key:` gives them one each. So
-`id:` claims the value identifies the record **across subjects** — true when the subject is a
-singleton, as `git.head.verse` is — and `key:` claims it only within one. The *place* stays the
-engine's either way: a derive may only write inside its own stratum, checked at install. A
-derive carrying both is refused, since which one stands would decide that question silently.
+What the composition buys is uniqueness, and `id:` hands that to the author. Two subjects of one
+rule that compute the same value share one entity, where `key:` gives them one each. So `id:`
+claims the value identifies the record **across subjects**, true when the subject is a singleton as
+`git.head.verse` is, and `key:` claims it only within one. The *place* stays the engine's either
+way, since a derive may only write inside its own stratum, checked at install. A derive carrying
+both is refused, since which one stands would decide that question silently.
 
 `!each` takes both too, and there the difference has teeth: keyed, every element lands under
 (rule, subject, key), so a fan-out can only ever create its **own** copies. Named, it lands at
@@ -972,30 +960,30 @@ the place plus the value — which is how one rule's fan-out reaches entities an
 and the only way to say "mark every one of those that is already there". A derive merges at
 depth, so the mark lands beside the facts rather than over them.
 
-`spawn` launches a task from a `launch.Spec` — or, instead of a fixed `driver`, a governed
-`provider` selection of the doer. The spawned task is tagged with the subject, which is
-what makes it part of that subject's flow.
+`spawn` launches a task from a `launch.Spec`, or, instead of a fixed `driver`, a governed
+`provider` selection of the doer. The spawned task is tagged with the subject, which is what makes
+it part of that subject's flow.
 
-A selection binds the whole doer, not just its driver: the winning provider entity's `driver`,
-`frame`, `tools` and `grant` overlay the spawn's own, so two doers on one driver can differ in
-what they are told and what they may do. The overlay only ever narrows — a doer's grant must
-be within the spawn's (which is why `grant:` is required on a spawn that selects), its tools
+A selection binds the whole doer rather than just its driver. The winning provider entity's
+`driver`, `frame`, `tools` and `grant` overlay the spawn's own, so two doers on one driver can
+differ in what they are told and what they may do. The overlay only ever narrows: a doer's grant
+must be within the spawn's, which is why `grant:` is required on a spawn that selects, its tools
 intersect rather than replace, and `vector` is not a doer's to set. A doer that would widen is
 refused at *eligibility*, so it never appears on a ballot. See
 [provider selection](provider-selection.md).
 
 The spec's fields fall into three groups, and the difference decides what a charter can say.
 
-*The request* — `prompt` and `frame`. Both are text you write. `prompt` is the one job; `frame`
-is the standing instructions it is read in (the agent's system prompt). A frame is worth
-writing whenever the charter reads the answer rather than a person: the default tells the
-agent its last message *is* the result and not to summarise, but only the charter knows what
-shape it wants back.
+*The request* is `prompt` and `frame`. Both are text you write. `prompt` is the one job; `frame` is
+the standing instructions it is read in, the agent's system prompt. A frame is worth writing
+whenever the charter reads the answer rather than a person: the default tells the agent its last
+message *is* the result and not to summarise, but only the charter knows what shape it wants
+back.
 
-*The contract* — `answer`. This is the shape the final message must have, and unlike the
-frame it is not advice: it is checked. See [the answer contract](#the-answer-contract) below.
+*The contract* is `answer`. This is the shape the final message must have, and unlike the frame it
+is not advice: it is checked. See [the answer contract](#the-answer-contract) below.
 
-*The envelope* — `vector`, `grant`, `tools`. These name things rather than spelling them out.
+*The envelope* is `vector`, `grant` and `tools`. These name things rather than spelling them out.
 `vector: auto|ask|park` sets how much the task must confirm; a firing that already
 answered its own `gates` can say `vector: auto` rather than re-ask per action.
 `grant: read-only|no-delegate|none|all` is the hard authority: an action outside it is
@@ -1004,11 +992,11 @@ what the charter granted. `tools` narrows what the driver offers at all — `too
 list_dir]` on a review agent means shell and delegation never come up. `fail` is always
 offered whatever you list, since it is how a task reports it could not do the work.
 
-An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to
-unbounded: a field that reads back as written and enforces nothing is the failure this is
-built to avoid. `resolver` names the binding that answers this run's gates, and a spawn naming
-one that is not installed is refused rather than left unsupervised — see
-[attached resolvers](attached-resolvers.md). `environment` remains declared and unread — see
+An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to unbounded. A
+field that reads back as written and enforces nothing is the failure this is built to avoid.
+`resolver` names the binding that answers this run's gates, and a spawn naming one that is not
+installed is refused rather than left unsupervised; see
+[attached resolvers](attached-resolvers.md). `environment` is declared and unread; see
 [authority](roadmap/authority.md).
 
 ```tony
@@ -1024,13 +1012,13 @@ spawn:
   retain: 4096
 ```
 
-`retain` is how many of this task's read-plane events are kept for a reader that resumes —
-the window a `?since=` below which gets a resync marker instead of the story. It is per spawn
-because the right number is a property of the work: a task that narrates every token and
-one that reports four boundaries an hour want windows two orders of magnitude apart, and no
-single default is right for both. The charter is the party that knows which it is. Omit it and
-the runtime's own modest default applies; a longer window is paid for in memory per live
-task, which is why the author chooses it rather than inheriting it.
+`retain` is how many of this task's read-plane events are kept for a reader that resumes: the
+window below which a `?since=` gets a resync marker instead of the story. It is per spawn because
+the right number is a property of the work. A task that narrates every token and one that reports
+four boundaries an hour want windows two orders of magnitude apart, and no single default is right
+for both. The charter is the party that knows which it is. Omit it and the runtime's own modest
+default applies. A longer window is paid for in memory per live task, which is why the author
+chooses it rather than inheriting it.
 
 ### `calls` — when the charter knows the actions
 
@@ -1049,29 +1037,28 @@ spawn:
 ```
 
 Its presence **is** the driver — `driver: calls` may be written and must not contradict it — and
-each entry becomes an ordinary action: derived, gated, and narrated the same way, so a gate
-written for an agent's push holds this one. Values are expanded per argument, so a `$branch`
-containing a quote is an argument rather than something that has to survive being spliced into
-text.
+each entry becomes an ordinary action, derived, gated and narrated the same way, so a gate written
+for an agent's push holds this one. Values are expanded per argument, so a `$branch` containing a
+quote is an argument rather than something that has to survive being spliced into text.
 
 An entry may narrow what ends the list:
 
 ```tony
   - tool: push
     input: {destination: retire}
-    fatal: [err]        # a remote declining ONE ref is not a reason to stop
+    fatal: [err]        # a remote declining one ref is not a reason to stop
 ```
 
 out of `err` (the action failed), `blocked` (refused, by a gate or by the far side) and `nonzero`
-(a command exited non-zero). Absent means all three — a list is ordered because its calls depend
-on each other — and `fatal: []` means this call ends nothing, which is what a sweep says. The two
-are different statements, so writing neither is not the same as writing the empty one. A list with an
-unknown outcome, no tool, or a contradicting driver fails the FIRING, where its author can read
-why; a tool name it cannot check belongs to the runner and is refused there.
+(a command exited non-zero). Absent means all three, since a list is ordered because its calls
+depend on each other, and `fatal: []` means this call ends nothing, which is what a sweep says. The
+two are different statements, so writing neither is not the same as writing the empty one. A list
+with an unknown outcome, no tool, or a contradicting driver fails the *firing*, where its author
+can read why. A tool name it cannot check belongs to the runner and is refused there.
 
-What a call list does not get is what belongs to a model: no `answer` contract (there is nobody
-to repair one, so a spawn carrying both fails), no delegation, and no deciding what to do next
-from what the last result said. That last one is the trade: it is right for four git commands
+What a call list does not get is what belongs to a model: no `answer` contract, since there is
+nobody to repair one, so a spawn carrying both fails; no delegation; and no deciding what to do
+next from what the last result said. That last one is the trade. It is right for four git commands
 and wrong for anything that branches.
 
 ### Who answers a rule's own gates
@@ -1082,17 +1069,16 @@ gating:
   gates:    [{name: ship, mode: ask}]
 ```
 
-`gating` groups the two facts about a rule's gates: which they are, and who answers them.
-`gates:` at the top level still works and means `gating: {gates: …}` — one field read two
-ways, not two that can disagree — and writing both is refused rather than merged, because a
-rule that says which gates it has twice has said it twice.
+`gating` groups the two facts about a rule's gates: which they are, and who answers them. `gates:`
+at the top level means `gating: {gates: …}`, one field read two ways rather than two that can
+disagree, and writing both is refused rather than merged, because a rule that says which gates it
+has twice has said it twice.
 
-`resolver` names an installed binding (`verse resolver add`). It is the same word a spawn
-uses for the same act: a spawn names who answers the run it starts, a rule names who answers
-the gates it raises itself. Empty leaves the question to whatever standing binding covers its
-subject, and then to the docket a person reads. A binding that is not installed is refused
-here rather than left to own a question nothing can answer — see [attached
-resolvers](attached-resolvers.md).
+`resolver` names an installed binding (`verse resolver add`). It is the same word a spawn uses for
+the same act: a spawn names who answers the run it starts, a rule names who answers the gates it
+raises itself. Empty leaves the question to whatever standing binding covers its subject, and then
+to the docket a person reads. A binding that is not installed is refused here rather than left to
+own a question nothing can answer; see [attached resolvers](attached-resolvers.md).
 
 `seq` runs a list of actions in order, each starting when the previous one completes. It is
 the depth axis, and it has its own section below.
@@ -1103,11 +1089,11 @@ Every field of **the payload an action reads** is bound by name (`$stage`, `$pat
 `$subject` — the resolved subject. Which payload that is has exactly two answers, and which one
 applies is a property of *why* the action is running.
 
-A trigger firing reads **the subject's own** payload. The change that dispatched it is a
-doorbell and may name an entirely different entity, whose fields would mean nothing on the
-subject being acted on. So `review $subject` in a spawn's prompt names the PR the firing is
-about, even when the entity that fired was a task, not the PR, and `$stage` is that PR's
-stage rather than the task's.
+A trigger firing reads **the subject's own** payload. The change that dispatched it is a doorbell
+and may name an entirely different entity, whose fields would mean nothing on the subject being
+acted on. So `review $subject` in a spawn's prompt names the PR the firing is about, even when the
+entity that fired was a task rather than the PR, and `$stage` is that PR's stage rather than the
+task's.
 
 A completion hook, or a sequence element one drives, reads **the finished task's** payload
 instead: `$status`, `$result`, `$data` and `$err` are the facts it exists to read. The engine
@@ -1115,22 +1101,21 @@ synthesises that payload rather than reading the store, because the mirror may n
 the terminal facts yet — which is both why those bindings resolve at all and why they are flat.
 They are facts about a run, with no entity to hang a path off.
 
-`$subject` is a record, and the bare form is its address — so everything written before it had
-parts still means what it meant:
+`$subject` is a record, and the bare form is its address:
 
 | `$subject` | the whole ref, `demo.pr.1` |
 | `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
 
-A completion hook reads at **the same commit its rule fired at**. It is woken by a task
-finishing rather than by a write, so it has no cause of its own; the one it takes is the firing's,
-carried on the task's record as `occurrence` — which is what makes it survive a restart, since the
-engine that runs the hook may never have seen the firing. So a rule is one statement about one
-moment: `$subject.value` in an `onDone` is the subject as the condition selected it, not as the
-action left it a step earlier, and a charter whose task does not write its own subject gets the
-reading its author meant. A task the charter did not start has no such commit, and `.value` and
-`.commit` fail there by name rather than resolving to a silent zero.
+A completion hook reads at **the same commit its rule fired at**. It is woken by a task finishing
+rather than by a write, so it has no cause of its own. The one it takes is the firing's, carried on
+the task's record as `occurrence`, which is what makes it survive a restart, since the engine that
+runs the hook may never have seen the firing. So a rule is one statement about one moment.
+`$subject.value` in an `onDone` is the subject as the condition selected it, not as the action left
+it a step earlier, and a charter whose task does not write its own subject gets the reading its
+author meant. A task the charter did not start has no such commit, and `.value` and `.commit` fail
+there by name rather than resolving to a silent zero.
 
 In a spawn's strings the identity parts bind flatly; `.value` does not, since a payload has no
 text form and its top-level fields are already bound by name.
@@ -1150,20 +1135,20 @@ action:
     green:    !list-paths {at: [git, repo, "*"], value: {state: green}, path: branch}
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
-    # and `at:` names the address as a PATH, at whatever depth the tree is
+    # and `at:` names the address as a path, at whatever depth the tree is
     says:     !get-path { at: [verse-dev, drift, head, "head-moved@git.head.verse"], path: result.report }
     open:     !list-paths { at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says }
 ```
 
-The address is `at:` here and `path:` in a condition, which looks like an inconsistency and is
-not: in a READ, `path:` is already the field path inside the payload, and the field path was
-there first. Two things cannot both be `path`.
+The address is `at:` here and `path:` in a condition, which looks like an inconsistency and is not.
+In a read, `path:` is already the field path inside the payload, and two things cannot both be
+`path`.
 
-**One grammar, split by cardinality, and the names say which.** A verse is one document —
-`{path: [{kind: {id: payload}}, *, *]}` — so an entity address is a path prefix, and `path:` continues
+**One grammar, split by cardinality, and the names say which.** A verse is one document,
+`{path: [{kind: {id: payload}}, *, *]}`, so an entity address is a path prefix and `path:` continues
 it into the payload. `!get-path` answers with one node; `!list-paths` answers with a list, and is
-where the globs live. They mirror go-tony's own split, where `GetKPath` returns one node and
-rejects a wildcard outright while `ListKPath` collects.
+where the globs live. They mirror go-tony's own split, where `GetKPath` returns one node and rejects
+a wildcard outright while `ListKPath` collects.
 
 Which one you get is legible in the charter rather than inferred from whether some id happened to
 contain a `*`: `!get-path` **refuses** a globbing id or a wildcard path, and names the tag that
@@ -1181,12 +1166,11 @@ Everything above the entity must be literal in either spelling, and for the same
 level check asks whether a read lands at or below the rule's own stratum, and it can only ask
 that of the segments known at install.
 
-`!get-path` refuses a `value` for the reason it refuses a globbing id: a predicate can name
-several, and an entity that is not there does not satisfy one — while one that is there might not
-either. On the list form a predicate is the *cheaper* read, because `id: "*"` already walks the
-whole kind and this is what narrows it. Neither form is a query that slides: both are answered
-from one snapshot at the causing commit, so a predicate is evaluated against the same world the
-rule was.
+`!get-path` refuses a `value` for the reason it refuses a globbing id. A predicate can name several,
+an entity that is not there does not satisfy one, and one that is there might not either. On the
+list form a predicate is the *cheaper* read, because `id: "*"` already walks the whole kind and this
+is what narrows it. Neither form is a query that slides: both are answered from one snapshot at the
+causing commit, so a predicate is evaluated against the same world the rule was.
 
 The string form stops at the entity, because an id may itself contain dots and
 `"git:repo:abc.branch"` has no unambiguous split. Going deeper is the object form's `path:`.
@@ -1194,11 +1178,11 @@ The string form stops at the entity, because an id may itself contain dots and
 **Read at the commit that caused the firing**, the same rule `$subject.value` follows and for the
 same gate reason.
 
-**They copy, and do not track — in an ACTION.** Whatever is read is read once. If it changes
-afterwards nothing re-runs; this rule fires again only when its own subject changes, or when an
-`on`/`when` it carries covers the target. Add the `on` if you want to follow it.
+**In an action, they copy and do not track.** Whatever is read is read once. If it changes
+afterwards nothing re-runs: this rule fires again only when its own subject changes, or when an `on`
+or `when` it carries covers the target. Add the `on` if you want to follow it.
 
-### A condition may read too, and that one DOES track
+### A condition may read too, and that one does track
 
 A read in `condition.subject`'s predicate is answered before the predicate is matched, so a rule
 can select on how its subject compares to another entity — the thing a match alone cannot say,
@@ -1220,15 +1204,15 @@ elsewhere. `!let` binds the read, and the body compares:
 Every open proposal cut from a commit that is no longer the tip of main — "which of these can
 still land", with no ancestry walk and nothing to poll.
 
-**It joins what the rule reads**, which is the difference from an action's read and is not a
+**It joins what the rule reads**, which is the difference from an action's read, and it is not a
 detail: the rule above is re-evaluated when `git.head.verse` moves, over proposals that did not
 change. A trigger is skipped at a commit that touched nothing it reads, and a condition comparing
-against another entity reaches a different verdict the moment that entity moves — so the read
-counts, or the skip would be wrong.
+against another entity reaches a different verdict the moment that entity moves, so the read counts
+or the skip would be wrong.
 
 **It cannot name `$subject`.** In an action the subject is settled and addressing by its fields is
-the point; a condition is what CHOOSES the subject, so there is no one entity to read from yet.
-Refused at install, saying that rather than "unknown reference".
+the point. A condition is what *chooses* the subject, so there is no one entity to read from yet.
+It is refused at install, saying that rather than "unknown reference".
 
 **A missing `!get-path` target fails the firing**, as any unresolved reference does, so that
 "nothing is there" cannot launder into "something is there, and it is nothing". An empty
@@ -1245,15 +1229,15 @@ mean a JSON-shaped charter cannot write one, JSON having no tags.
 
 ### The answer contract
 
-That failure is late. `$data.class` is missing at PATCH time — after the work is done and
-the tokens are spent — and what is left is a hook error on the task entity and a subject
-stranded at a stage no rule matches. A frame asking for a shape does not prevent it: an
-agent that has just read nine files narrates and fences before it answers, and the frame is
-advice a model may ignore.
+A charter that patches `$data.class` onto its subject depends on the task producing a `class`.
+Without a contract, that dependency is checked at patch time, after the work is done and the tokens
+are spent, and what is left is a hook error on the task entity and a subject stranded at a stage no
+rule matches. A frame asking for a shape does not prevent it: an agent that has just read nine files
+narrates and fences before it answers, and a frame is advice a model may ignore.
 
-`answer` is the same request made enforceable — the shape the final message must have,
-written as a tony **match pattern** (the `accept` clause of a schema, which is the same
-vocabulary `when` is written in, stored the same way, under the same `!raw` escape):
+`answer` is the same request made enforceable. It is the shape the final message must have, written
+as a tony **match pattern** — the `accept` clause of a schema, the same vocabulary `when` is written
+in, stored the same way under the same `!raw` escape:
 
 ```tony
 spawn:
@@ -1265,15 +1249,14 @@ spawn:
     why:      !irtype string
 ```
 
-It is checked when the model stops, which is the only moment it can be: a run ends by the
-model ceasing to call tools, so stopping and reporting are one act. A failure goes back to
-the agent as a **diagnosis** — the path, what was expected there, what was found, absent kept
-apart from present-but-wrong, and every such failure rather than the first — and it is asked
-to fix it. That is the match's own account of how it walked (`tony.Explaining`), so a failure
-inside an operator is located as precisely as the operator knows it: `findings[1].severity`,
-not "findings". That is bounded at two
-attempts: if a model cannot produce the shape with the complaint in front of it, more turns
-will not teach it.
+It is checked when the model stops, which is the only moment it can be: a run ends by the model
+ceasing to call tools, so stopping and reporting are one act. A failure goes back to the agent as a
+**diagnosis** — the path, what was expected there, what was found, absent kept apart from
+present-but-wrong, and every such failure rather than the first — and it is asked to fix it. That
+is the match's own account of how it walked (`tony.Explaining`), so a failure inside an operator is
+located as precisely as the operator knows it: `findings[1].severity`, not "findings". Repair is
+bounded at two attempts. If a model cannot produce the shape with the complaint in front of it,
+more turns will not teach it.
 
 A run whose answer never satisfies its contract **fails**. That is the whole point:
 
@@ -1282,17 +1265,17 @@ A run whose answer never satisfies its contract **fails**. That is the whole poi
   but on `onFailed`, which every rule already declares a branch for.
 - The check is on the answer, not the layout: a fenced answer is unwrapped, so the repair
   budget is spent on content.
-- It is a guarantee about SHAPE, not about content. A repair loop pressures a model toward
-  compliance, so the agent is also told to call `fail` rather than invent a value it could
-  not determine — an honest failure is worth more than a well-formed wrong answer.
+- It is a guarantee about *shape*, not about content. A repair loop pressures a model toward
+  compliance, so the agent is also told to call `fail` rather than invent a value it could not
+  determine. An honest failure is worth more than a well-formed wrong answer.
 - A sub-agent (`call_agent`) does not inherit it. A child answers a subtask its parent
   worded, and its result comes back as one more tool result; only the parent's own final
   message is what a charter derefs.
 
-Writing a contract the driver cannot parse fails the firing where it is written, before a
-model call — same as an unknown tool name. A driver with no model to ask again (`scripted`)
-fails the spawn rather than running it unchecked, because a contract silently dropped is
-worse than none: the charter downstream was written believing it holds.
+Writing a contract the driver cannot parse fails the firing where it is written, before a model
+call, the same as an unknown tool name. A driver with no model to ask again, such as `scripted`,
+fails the spawn rather than running it unchecked, because a contract silently dropped is worse than
+none: the charter downstream was written believing it holds.
 
 A `patch` resolves references too, and there it is a **deref by kpath**, not a template
 substitution — it names a value, it does not compute one:
@@ -1310,10 +1293,8 @@ The reference grammar is [tony](https://signadot.github.io/tony-format/)'s, not 
 navigation that addresses an action inside its trigger (`review.seq[2].onFailed`). The
 familiar `$name` spelling *is* that kpath at depth one.
 
-This is what closes the loop. Before it, a task's output could reach the next *prompt* and
-nothing else, so a flow only ever advanced through state the charter wrote by hand. A result
-patched onto the subject is an ordinary fact, and an ordinary condition matches it — no
-knowledge of tasks required:
+This is what closes the loop. A result patched onto the subject is an ordinary fact, and an
+ordinary condition matches it, with no knowledge of tasks required:
 
 ```tony
 subject: {path: [demo, pr, *], value: { stage: reviewed, severity: high }}
@@ -1321,11 +1302,11 @@ subject: {path: [demo, pr, *], value: { stage: reviewed, severity: high }}
 
 Four semantics are worth knowing.
 
-*Whole value versus interpolation.* A value that is **exactly** one reference resolves to
-that reference's node, so a number stays a number and an object stays an object. A reference
-**embedded in text** interpolates and yields a string, because that is how it was written.
-The distinction is load-bearing: payload predicates are type-exact, so a `3` flattened to
-`"3"` is a value `value: {count: 3}` does not match.
+*Whole value versus interpolation.* A value that is **exactly** one reference resolves to that
+reference's node, so a number stays a number and an object stays an object. A reference **embedded
+in text** interpolates and yields a string, because that is how it was written. The distinction is
+load-bearing: payload predicates are type-exact, so a `3` flattened to `"3"` is a value
+`value: {count: 3}` does not match.
 
 ```tony
 # the number 3
@@ -1339,35 +1320,32 @@ a rendering — inventing one would make the same charter mean different things 
 what a task happened to return. Reference it on its own to write the whole value.
 
 *An absent reference fails the firing.* It is not dropped, and this follows from the store
-recording an absent key as different from a null one: omitting it would launder "the task
-never said" into "the task said nothing", which a match reads as a different fact. A field
-written null resolves to null, as it should. The failure is the same one a failed write takes
-— the action stops, and its spawn does not start.
+recording an absent key as different from a null one: omitting it would launder "the task never
+said" into "the task said nothing", which a match reads as a different fact. A field written null
+resolves to null, as it should. The failure is the same one a failed write takes: the action stops,
+and its spawn does not start.
 
-*There is no escape.* `$$` is not a literal dollar; `a$$b` references `$b`. Anything that is
-not a well-formed reference is left exactly as written (`$5.00`, `100$`, a bare `$`), which
-is what keeps a charter that predates patch expansion meaning what it did.
+*There is no escape.* `$$` is not a literal dollar, and `a$$b` references `$b`. Anything that is not
+a well-formed reference is left exactly as written: `$5.00`, `100$`, a bare `$`.
 
-A spawn's strings are still the older, flatter substitution: top-level fields only, always as
-text, and an unresolved `$var` is left in place rather than failing. So `$verse.review.step`
-derefs in a `patch` and does not in a `spawn.prompt`. Unifying the two halves onto one
-resolver is the obvious next step and deliberately not taken here, because making a spawn
-fail on an unbound variable would change what already-installed charters do.
+A spawn's strings are a flatter substitution: top-level fields only, always as text, and an
+unresolved `$var` left in place rather than failing. So `$verse.review.step` derefs in a `patch` and
+does not in a `spawn.prompt`. Unifying the two halves onto one resolver is the obvious next step,
+and it is not taken here because making a spawn fail on an unbound variable would change what
+installed charters do.
 
-A field holding a **document** renders as tony there, and that is the one place the two halves
-disagree on purpose. A patch refuses to give a composite a text form, because `"saw $result"`
-would make one charter mean different things depending on what a task returned. A prompt is text
-by nature — there is no whole-value form to reach for instead — so the question is only *which*
-text, and the answer used to be Go's formatting of a decoded map. A charter that puts a ledger in
-front of an agent now puts a document there:
+A field holding a **document** renders as tony in a prompt, and that is the one place the two halves
+disagree on purpose. A patch refuses to give a composite a text form, because `"saw $result"` would
+make one charter mean different things depending on what a task returned. A prompt is text by
+nature, with no whole-value form to reach for instead, so the only question is *which* text. A
+charter that puts a ledger in front of an agent puts a document there:
 
 ```tony
 prompt: "Outstanding findings:\n$findings\n\nThe diff:\n…"
 ```
 
-Leaves are unchanged, which matters more than the feature: `$stage` and `$count` bind exactly the
-bytes they always did (`3`, never `"3"`). A null field is the single exception — it used to bind
-as `<nil>`, which was a zero value leaking rather than anything anybody chose, and is now empty.
+Leaves are untouched by that, which matters more than the feature: `$stage` and `$count` bind
+exactly their own bytes (`3`, never `"3"`). A null field binds empty.
 
 ### Completion hooks: one trigger, chaining visible
 
@@ -1385,28 +1363,28 @@ action:
   onDone: { patch: { stage: reviewed } }
 ```
 
-The alternative is a *decoupled* completion trigger — a separate rule that fires on the
-`verse.task.instance` change and names the PR by pattern (`reviewed`, below). That is the tool
-when a completion should fan into several reactions, advance a different subject, or be
-authored separately; the hook is the tool for a linear chain owned by one trigger, with the
-task step visible inline.
+The alternative is a *decoupled* completion trigger: a separate rule that fires on the
+`verse.task.instance` change and names the PR by pattern (`reviewed`, below). That is the tool when
+a completion should fan into several reactions, advance a different subject, or be authored
+separately. The hook is the tool for a linear chain owned by one trigger, with the task step visible
+inline.
 
 The four hooks are named fields rather than an `on map[status]*Action`, which is what makes
 an unknown status unwritable: there is no field to write it in, so nothing needs validating.
 The cost is that a fifth terminal status would be a schema change, and that a misspelled
 `onDoen` is dropped like any other unknown field.
 
-Hooks survive a restart: resume rehydrates them from the task's chain, so `done`,
-`failed` and `cancelled` still fire. `onOrphaned` is inert, and not for want of
-rehydration — orphaning and adopting are the two alternatives in reconcile, so a task
-that can be re-attached is adopted and never marked orphaned, and one that cannot is
-orphaned and never tracked. No tracked task reaches that status.
+Hooks survive a restart. Resume rehydrates them from the task's chain, so `done`, `failed` and
+`cancelled` still fire. `onOrphaned` is inert, and not for want of rehydration: orphaning and
+adopting are the two alternatives in reconcile, so a task that can be re-attached is adopted and
+never marked orphaned, and one that cannot is orphaned and never tracked. No tracked task reaches
+that status.
 
 ### `seq`: sequence along the chain, parallel across triggers
 
-Nesting `onDone`s expresses a chain, but it right-drifts and — the reason that matters — has
-no arity. The engine knows there is a next hook; it never knows how many remain, so a
-sequence written that way cannot say where it is. `seq` spells the depth axis directly:
+Nesting `onDone`s expresses a chain, but it right-drifts and, the reason that matters, has no
+arity. The engine knows there is a next hook and never how many remain, so a sequence written that
+way cannot say where it is. `seq` spells the depth axis directly:
 
 ```tony
 - name: review
@@ -1424,31 +1402,29 @@ sequence written that way cannot say where it is. `seq` spells the depth axis di
       patch: { stage: ready }
 ```
 
-There is deliberately no `par`. Breadth is what independent triggers matching the same
-condition already do, and a task id already carries both directions: `review@demo.pr.1`
-and `hold@demo.pr.1` are two roots about one subject, while `review.onDone@demo.pr.1` is an
-extension of one chain. Putting breadth *inside* a chain would cost that reading.
+There is deliberately no `par`. Breadth is what independent triggers matching the same condition
+already do, and a task id carries both directions: `review@demo.pr.1` and `hold@demo.pr.1` are two
+roots about one subject, while `review.onDone@demo.pr.1` is an extension of one chain. Putting
+breadth *inside* a chain would cost that reading.
 
 The rules:
 
 - `seq` and `spawn` are mutually exclusive on one action, or "does the sequence wait for the
-  spawn?" is a coin flip. `patch` alongside `seq` is fine: the patch applies, then the
-  sequence runs.
-- The sequence owns the `done` slot of each element, so an explicit `onDone` on a non-last
-  element is an install error — the list already says what comes next. `onFailed` /
-  `onCancelled` / `onOrphaned` remain per element as off-ramps, and firing one ends the
-  sequence.
+  spawn?" is a coin flip. `patch` alongside `seq` is fine: the patch applies, then the sequence
+  runs.
+- The sequence owns the `done` slot of each element, so an explicit `onDone` on a non-last element
+  is an install error, since the list already says what comes next. `onFailed`, `onCancelled` and
+  `onOrphaned` stay per element as off-ramps, and firing one ends the sequence.
 - `onDone` on the action *carrying* the seq means "after the whole sequence", so a sequence
   is a unit with its own completion and nesting composes.
 - An element with no spawn completes immediately, so `seq: [{patch: …}, {patch: …}]` is two
   ordered writes rather than an error. `seq` sequences actions, not tasks.
 - Gates gate the sequence, not the step: gates are per firing and a sequence is one firing,
   so one `ask` approves the whole thing.
-- No chain may contain two `seq` segments — stated over chains rather than elements, because
-  an element's `onFailed` holding a sequence nests just as much, only further away. With at
-  most one `seq` per chain, "the sequence this task belongs to" is a unique ancestor
-  rather than a stack, which is what keeps re-fire idempotence a predicate rather than a
-  search.
+- No chain may contain two `seq` segments. That is stated over chains rather than elements,
+  because an element's `onFailed` holding a sequence nests just as much, only further away. With at
+  most one `seq` per chain, "the sequence this task belongs to" is a unique ancestor rather than a
+  stack, which keeps re-fire idempotence a predicate rather than a search.
 
 ### Chains and ids
 
@@ -1465,36 +1441,34 @@ name and sequence elements by index:
 | the third sequence step | `review.seq[2]` | `review.seq.2@demo.pr.1` |
 | that step's failure branch | `review.seq[2].onFailed` | `review.seq.2.onFailed@demo.pr.1` |
 
-Because the chain addresses the action rather than naming it privately, it is deterministic,
-which is what makes a re-fire idempotent — a spawn dedups by id. It is also a lookup key back
-into the charter, which is how resume rehydrates a task's hooks and how a sequence finds
-its next step. And it is published on the task entity as `chain`, with its root as
-`trigger`, so "every task of this trigger" is a payload predicate rather than a glob over
-ids.
+Because the chain addresses the action rather than naming it privately, it is deterministic, which
+is what makes a re-fire idempotent: a spawn dedups by id. It is also a lookup key back into the
+charter, which is how resume rehydrates a task's hooks and how a sequence finds its next step. And
+it is published on the task entity as `chain`, with its root as `trigger`, so "every task of this
+trigger" is a payload predicate rather than a glob over ids.
 
-The id drops the brackets because they are shell-hostile: `zsh` kills
-`review.seq[2]@demo.pr.1` with `no matches found` before verse ever sees it, and ids get
-pasted onto command lines constantly. The dotted form is lossless because `Action`'s field
-set is closed — a segment after `seq` is an element, a segment matching a hook name is a
-field. The `@` join replaced an earlier `-`, which could not be decoded back because trigger
-names spend `-` too.
+The id drops the brackets because they are shell-hostile: `zsh` kills `review.seq[2]@demo.pr.1` with
+`no matches found` before verse ever sees it, and ids get pasted onto command lines constantly. The
+dotted form is lossless because `Action`'s field set is closed — a segment after `seq` is an
+element, a segment matching a hook name is a field. The join is `@` rather than `-`, which could
+not be decoded back, because trigger names spend `-` too.
 
 ### Progress facts
 
-A parallel branch is woken by a condition, and a condition matches facts — so a sequence
-publishes its position, or the breadth axis cannot observe the depth axis at all. The engine writes it
-on the subject under one reserved `verse` root as each element completes:
+A parallel branch is woken by a condition, and a condition matches facts, so a sequence publishes
+its position or the breadth axis cannot observe the depth axis at all. The engine writes it on the
+subject under one reserved `verse` root as each element completes:
 
 ```tony
 verse:
-  charter:             # what the engine records about RULES acting on this entity
+  charter:             # what the engine records about rules acting on this entity
     review:            # keyed by trigger
       step:  2         # how many elements have completed
       steps: 3         # len(seq), known at install
       shape: "a3f1…"   # hash of the declared shape, known at install
       done:  true      # latched when step reaches steps
       ended: failed    # …or the terminal status an off-ramp stopped it at
-  meta:                # what verse records about the ENTITY itself
+  meta:                # what verse records about the entity itself
     vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
 
@@ -1504,15 +1478,15 @@ A join reads it at whatever depth it cares about:
 subject: {path: [demo, pr, *], value: { verse: { charter: { review: { done: true } } } }}
 ```
 
-One reserved name, not a family. The alternative — flat per-trigger keys like `review.step` —
-reserves an open-ended set of names out of a payload that is the author's own document. A
-single `verse` root reserves one name and documents once, the way `flow` is one reserved key
-on task entities. Nested predicates keep it readable, since `value` matches structurally
-and so matches a payload carrying any amount of other content.
+One reserved name, not a family. The alternative, flat per-trigger keys like `review.step`, reserves
+an open-ended set of names out of a payload that is the author's own document. A single `verse` root
+reserves one name and documents once, the way `flow` is one reserved key on task entities. Nested
+predicates keep it readable, since `value` matches structurally and so matches a payload carrying
+any amount of other content.
 
 The two halves under it are separated because they grow differently — `charter` gains a key per
-rule, `meta` a field per lifecycle concern — and because flat they collided: a trigger *named*
-`vanishing` would have written its progress exactly where the lifecycle marker goes.
+rule, `meta` a field per lifecycle concern — and because flat they would collide: a trigger *named*
+`vanishing` would write its progress exactly where the lifecycle marker goes.
 
 (The name is plain `verse` and that is not settled. A sigil would say "reserved" at a glance and
 give the word back to authors — `@verse`, `~verse` and `$verse` all parse unquoted, address
@@ -1533,13 +1507,12 @@ must not start matching a run that gave up — and both settle the same repeat p
 that concluded either way does not run again at this shape. Editing the sequence changes the
 shape, which is the one thing that frees it.
 
-`shape` is a hash of the declared sequence, compared on each advance. A mismatch means the
-charter moved underneath, and the sequence fails with a reason rather than silently running
-whatever now sits at `seq[k+1]`. It is a hash rather than a pinned copy because these
-sequences can run for a long time, and a retained snapshot per live sequence is a retention
-floor the store can never compact past. Refusing to continue needs detection, not
-reconstruction — so the error can say that the shape changed and name the trigger, but not
-what changed.
+`shape` is a hash of the declared sequence, compared on each advance. A mismatch means the charter
+moved underneath, and the sequence fails with a reason rather than silently running whatever now
+sits at `seq[k+1]`. It is a hash rather than a pinned copy because these sequences can run for a
+long time, and a retained snapshot per live sequence is a retention floor the store can never
+compact past. Refusing to continue needs detection rather than reconstruction, so the error can say
+that the shape changed and name the trigger, but not what changed.
 
 ## Flow — a subject-match over live tasks
 
@@ -1550,10 +1523,9 @@ verse flow pause demo.pr.1      # tasks whose subject matches demo.pr.1
 verse flow pause demo.pr.*      # …the whole kind
 ```
 
-Relating tasks is what a match *does*, so "relational flows" are not a second primitive
-to add later — they are broader subject-matches. `verse flow` is the distinct subjects with
-live tasks; steering applies the match and acts on the matched tasks. A query, not a
-maintained index.
+Relating tasks is what a match *does*, so "relational flows" are not a second primitive to add
+later. They are broader subject-matches. `verse flow` is the distinct subjects with live tasks, and
+steering applies the match and acts on the matched tasks. A query, not a maintained index.
 
 ## Two rules, read out loud
 
@@ -1568,10 +1540,9 @@ maintained index.
   "action":    { "patch": { "stage": "shipped" } } }
 ```
 
-`review` reads as *while a PR is open, review it*: no cause named, so it is considered at every
-commit touching `demo:pr`, and its patch advances each PR past `open` so it settles. Note that
-its spawn is allowed only BECAUSE of that patch — a spawning action with nothing to latch on is
-refused.
+`review` reads as *while a PR is open, review it*. No cause is named, so it is considered at every
+commit touching `demo:pr`, and its patch advances each PR past `open` so it settles. Its spawn is
+allowed only *because* of that patch: a spawning action with nothing to latch on is refused.
 
 `ship-green` reads as *at the moment CI goes green, ship everything reviewed*. It fires once,
 at the edge, over the set as it then stood. Written with `when` instead of `on` it would say
@@ -1579,21 +1550,21 @@ at the edge, over the set as it then stood. Written with `when` instead of `on` 
 
 ## The commit is the unit
 
-A trigger's rule is a question about the store at a revision, not about one entity, so it is
-asked once per COMMIT. A docd commit is atomic across many branches, and `LogdStore` reports
-it whole: one `Commit`, carrying one change per entity at path-depth `system/kind/id`.
+A trigger's rule is a question about the store at a revision rather than about one entity, so it is
+asked once per commit. A docd commit is atomic across many branches, and `LogdStore` reports it
+whole: one `Commit`, carrying one change per entity at path-depth `system/kind/id`.
 
 That framing has to come from the store, because it cannot be recovered downstream. Changes of
 one commit share a revision, but a consumer reading them one at a time cannot tell whether the
 next belongs to the same commit without waiting for the one after it — while the store, which
 built them from a single delta, knows exactly.
 
-What the engine does with the changes is decide whether asking is worth it: a trigger is
-skipped at a commit that touched none of the subtrees it reads. That skip is exact rather than
-a heuristic. If nothing it reads changed then `on(C) = on(C-1)` — no edge — and a vacuous rule
-would evaluate the same predicates over the same state and write the same values, which produce
-no commit. Either way, indistinguishable from not running, which is what makes per-commit
-evaluation affordable.
+What the engine does with the changes is decide whether asking is worth it. A trigger is skipped at
+a commit that touched none of the subtrees it reads, and that skip is exact rather than a heuristic.
+If nothing it reads changed then `on(C) = on(C-1)`, so there is no edge, and a vacuous rule would
+evaluate the same predicates over the same state and write the same values, which produce no commit.
+Either way it is indistinguishable from not running, which is what makes per-commit evaluation
+affordable.
 
 How the store builds a commit out of one delta — and why the per-entity grain sits inside the
 transaction rather than instead of it — is in
@@ -1618,10 +1589,9 @@ the negative into a positive, and a departure becomes an ordinary rising edge:
     patch: { saw: "a departure" }
 ```
 
-Match the marker's PRESENCE (`vanishing: null` is tony's present-any-value idiom), not its
-value. The value is a timestamp today and may grow into a record — who asked, why, a grace
-period — and a charter that matched on a particular value would have to be rewritten when it
-does.
+Match the marker's *presence*, where `vanishing: null` is tony's present-any-value idiom, rather
+than its value. The value is a timestamp and may grow into a record — who asked, why, a grace
+period — and a charter that matched on a particular value would have to be rewritten when it does.
 
 Three things follow, and the first is the one to know:
 
@@ -1630,16 +1600,15 @@ about it, raises a gate on it — and doing any of that to something on its way 
 something that will not be there. So `subject: {path: [demo, pr, *]}` skips it, and naming
 the marker is the opt-in that sees it again — which is how the reaper works.
 
-A NAMED subject (`demo.pr.1`) is skipped too, and this is the one place naming does not beat
-selecting. You may name something that does not exist yet; you may not name something on its
-way out. Otherwise a rule reacting to a departure acts on the departing entity, and since a
-patch over an absent entity CREATES, a removal landing first means the rule RESURRECTS it —
-back as an ordinary live entity, stripped to whatever the rule wrote, with no marker on it.
-React to a departure by writing somewhere else: an audit record, an archive. The thing that is
-going is not a subject.
+A *named* subject (`demo.pr.1`) is skipped too, and this is the one place naming does not beat
+selecting. You may name something that does not exist yet; you may not name something on its way
+out. Otherwise a rule reacting to a departure acts on the departing entity, and since a patch over
+an absent entity creates, a removal landing first means the rule resurrects it: back as an ordinary
+live entity, stripped to whatever the rule wrote, with no marker on it. React to a departure by
+writing somewhere else, to an audit record or an archive. The thing that is going is not a subject.
 
-The raw read (`verse data`) still shows it — making the intent visible is the whole
-point; only the rule-facing selection hides it.
+The raw read (`verse data`) still shows it, because making the intent visible is the whole point.
+Only the rule-facing selection hides it.
 
 **The removal itself is inert.** When the entity finally goes, a predicate over it falls from
 true to false, and nothing fires on a falling edge. The reactive moment was the intent; the
@@ -1656,14 +1625,13 @@ removes it. `!delete null` is the removal, at the root exactly as at a field:
     patch: !delete null
 ```
 
-A bare `patch: null` used to remove too, and now writes the payload `null` — an entity that
-stands there holding nothing, rather than one that is gone. That was never a second way of
-saying removal so much as the store having no way to hold a null, and it cost `!delete` its
-generality: `{tmp: !delete null}` removed a key while removing the whole entity was spelled
-another way entirely. One operator, any depth.
+A bare `patch: null` writes the payload `null`: an entity that stands there holding nothing, rather
+than one that is gone. Removal is `!delete`, and it is the same operator at the root as at a field,
+so `{tmp: !delete null}` removes a key and `patch: !delete null` removes the entity. One operator,
+any depth.
 
-Which is what makes this a convention rather than a mechanism: nothing in the engine knows how
-to reap. A charter says when, and what grace period, and whether anything should happen first.
+That is what makes this a convention rather than a mechanism. Nothing in the engine knows how to
+reap. A charter says when, and what grace period, and whether anything should happen first.
 
 ## Limits today
 
@@ -1672,35 +1640,29 @@ says so: both are asked of the store at a revision, so they have to be answerabl
 point-in-time match; temporal composition works today in a gate's `formula`, which the motion
 compiler reads (`quorum`, `fact`, `until`, `deadline`).
 
-A rule may declare the STRATUM it lives in, and then its subject must fall inside that stratum's
-pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer:
-a charter with no `stratum:` anywhere behaves exactly as it always has. See [strata](strata.md).
+A rule may declare the stratum it lives in, and then its subject must fall inside that stratum's
+pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer: a
+charter with no `stratum:` anywhere is unconstrained. See [strata](strata.md).
 
-A CYCLE across rules is caught at runtime, not at install. Two triggers each writing what the
-other selects on (`{stage: a} → b` beside `{stage: b} → a`) defeat every install-time
-protection — every write is a real change, so the substrate's no-op suppression never engages;
-every firing completes, so the in-flight guards never engage; and the latch check passes, because
-both rules do advance their subject out of their own selection, into each other's. What catches
-it is [the cycle throttle](cycle-throttle.md): a write made during a firing carries the causal
-depth of the chain that produced it, and a chain deeper than the installed trigger count has
-necessarily repeated a rule. A *paced* cycle — one passing through a task, the world, or a
-decision somebody answers — is a control loop rather than a bug, and never trips. Everything else
-about whether a charter settles is in [convergence](convergence.md), including the one
-rules-level ambiguity that is warned about rather than refused.
+A cycle across rules is caught at runtime rather than at install. Two triggers each writing what
+the other selects on defeat every install-time protection here, and
+[the cycle throttle](cycle-throttle.md) bounds them by causal depth instead. Everything else about
+whether a charter settles is in [convergence](convergence.md), including the one rules-level
+ambiguity that is warned about rather than refused.
 
-A guard about **nothing existing** has no spelling. A match asks what is there, so "an entity
-exists whose payload is not X" is sayable (`!not`) and "no entity matching M exists" — *ship when
-there is no open blocker* — is not. The model is existence-positive throughout, which is why
-[a departure is written down](#lifecycle-how-an-entity-leaves) rather than inferred; the same
-discipline answers a `when` about absence, by making the absence a positive fact somebody writes
-(a count, a summary entity). That is a discipline rather than a grammar.
+A guard about **nothing existing** has no spelling. A match asks what is there, so "an entity exists
+whose payload is not X" is sayable with `!not`, and "no entity matching M exists" — *ship when there
+is no open blocker* — is not. The model is existence-positive throughout, which is why
+[a departure is written down](#lifecycle-how-an-entity-leaves) rather than inferred. The same
+discipline answers a `when` about absence, by making the absence a positive fact somebody writes: a
+count, or a summary entity. That is a discipline rather than a grammar.
 
-An operator on `system` or `kind` is refused for the structural reason given above, and
-recovering it needs either a full scan or expansion into N literal subtrees — a design
-question rather than a port. Keyed sequence steps (`review.seq(lint)`, addressing an element
-by name so it survives an insertion) are the better form on their own terms, but
-[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment
-has no defined semantics upstream yet.
+An operator on `system` or `kind` is refused for the structural reason given above, and recovering
+it needs either a full scan or expansion into N literal subtrees, which is a design question rather
+than a port. Keyed sequence steps — `review.seq(lint)`, addressing an element by name so it survives
+an insertion — are the better form on their own terms, but
+[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment has no
+defined semantics upstream yet.
 
-The substrate all of this leans on is [change events](change-events.md); whether a charter
-written on it settles, and what per-commit evaluation costs, is [convergence](convergence.md).
+The substrate all of this leans on is [change events](change-events.md). Whether a charter written
+on it settles, and what per-commit evaluation costs, is [convergence](convergence.md).

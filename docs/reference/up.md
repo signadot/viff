@@ -102,7 +102,7 @@ verse up --broker --broker-addr :9090         # …or behind a dial-in broker
 ```
 
 Both are the same seam, and every `verse task` verb works across all three. Either way this
-sets the DEFAULT: a spawn may name an installed runner instead, and go somewhere this flag
+sets the default: a spawn may name an installed runner instead, and go somewhere this flag
 never mentioned — see [runners.md](runners.md). See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
@@ -136,7 +136,7 @@ llm: {
 
 `addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
 block, however, is read by the server (`verse up`) — it hosts the task runtime, so
-that's whose config/environment the agent driver reads for its model + creds; setting it for
+that is whose config and environment the agent driver reads for its model + creds; setting it for
 a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
 `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
 Precedence for any value is, low → high:

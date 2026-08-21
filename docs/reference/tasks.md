@@ -74,7 +74,7 @@ spawn:
     input: {destination: main}
 ```
 
-The list is a FIELD, so the engine checks it when the trigger fires, `verse c rules <name>` prints it,
+The list is a field, so the engine checks it when the trigger fires, `verse c rules <name>` prints it,
 and each argument is expanded on its own — a `$branch` with a quote in it is an argument rather
 than text spliced into a document. Its presence selects the driver; `driver: calls` may be
 written and must not contradict it.
@@ -125,9 +125,8 @@ spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
 ```
 
 which is also how it says "the firing already decided this": a trigger's own `gates:` run per
-firing, before the action, and `vector: auto` is what stops the same decision being taken twice.
-It used to be impossible to say — the driver hardcoded `auto` and ignored the spawn's `vector:`,
-so a charter asking to be asked was disobeyed in silence.
+firing, before the action, and `vector: auto` is what stops the same decision being taken twice. A
+driver that ignored the spawn's `vector:` would disobey a charter asking to be asked, in silence.
 
 `llm` asks before effects, because the agent *chose* them. Its reads run freely; writing a
 file, running a shell command, and delegating to a sub-agent block until approved. Approving
@@ -152,13 +151,13 @@ verse gate                                  # task gates, and engine gates that 
 verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-… run-…~d1
 ```
 
-**A charter gate carrying a `formula:` is not here.** It becomes a MOTION instead — a different
+**A charter gate carrying a `formula:` is not here.** It becomes a *motion* instead — a different
 entity (`verse.motion.channel`), a different list (`verse docket`), a different verb (`verse
 vote`), settled by a tally rather than by an answer. So `verse gate` is not the whole of what
 is waiting on a person, and asking for one and looking in the other answers *404: no such
 question*.
 
-That split is a known defect rather than a design: the fork is on whether a formula is PRESENT,
+That split is a known defect rather than a design: the fork is on whether a formula is *present*,
 when the distinction it needs is whether the gate asks somebody or waits for something — so
 `!until [!fact green, !deadline "4h"]`, which asks nobody anything, lands on the docket with no
 ballot anyone can cast. See [attached-resolvers-residual.md §1](../working/attached-resolvers-residual.md),
@@ -189,7 +188,7 @@ which of the two things you meant by the prompt. So today you say it: pass `--dr
 when your prompt *is* a command — that is exactly what it is for — pass `--vector auto` to keep
 the agent and drop the asking, or slide the vector once it starts (`task vector <id> auto`).
 A trigger hits the same edge from the other side: its gates approve *the firing*, not the
-actions the spawned agent then chooses. It can now SAY it already decided — `vector: auto` on
+actions the spawned agent then chooses. It can say it already decided — `vector: auto` on
 the spawn — but that is a charter asserting the equivalence rather than the runtime deriving it,
 and it is all-or-nothing where the firing may have authorized one action and not another. Where
 the permission *should* come from is [authority](../roadmap/authority.md).
@@ -225,11 +224,11 @@ what an observer needs, not the transcript.
 
 ### One id, many runs
 
-A task id names the WORK, not the run: it is derived from the spawning action and the subject,
+A task id names the *work* rather than the run: it is derived from the spawning action and the subject,
 so a rule that fires twice about one subject spawns the same id twice — which is what makes a
 re-fire idempotent and what `verse flow demo.pr.1` addresses.
 
-`verse.task.instance.<id>` is therefore the LATEST run, and each run has a record of its own:
+`verse.task.instance.<id>` is therefore the latest run, and each run has a record of its own:
 
 ```sh
 verse data verse task run '<id>@<occurrence>'
@@ -245,8 +244,8 @@ other times. A failed run followed by a successful one leaves both, which the in
 cannot do — it holds whatever the newest run has written and nothing of the one before.
 
 Run records are written twice, at the run's start and at its end, so a run that never finishes
-still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by
-events, and removing them is `verse data --rm`, or a charter that marks the old ones
+still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by events,
+and removing them is `verse data --rm`, or a charter that marks the stale ones
 [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record
@@ -367,7 +366,7 @@ Three backends, one handle. `verse task` and
 | remote | `verse up --runner <url>` hosts tasks on another verse's task-control face |
 | broker | `verse up --broker --broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
 
-Those three are the verse-wide DEFAULT, set at startup. A spawn can also name its own place —
+Those three are the verse-wide default, set at startup. A spawn can also name its own place —
 `runner: verse.runners.pool.gpu` on a charter, `--runner` on `verse task run` — so a drive can
 run part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.

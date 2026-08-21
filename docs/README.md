@@ -1,30 +1,30 @@
 # verse documentation
 
-Everything here describes what verse does today. Design notes for work that is not built
-live in [roadmap/](roadmap/README.md).
+Everything here describes what verse does. Design notes for work that is not built live in
+[roadmap/](roadmap/README.md).
 
-Four things stand on their own, and the rest are deep-dives on one subject each.
+Four documents stand on their own, and the rest are deep-dives on one subject each.
 
-- [Overview](overview.md) — the architecture, the model, and the load-bearing decisions.
+- [Overview](overview.md) — the architecture, the model, and the decisions that hold it up.
   Read this first.
-- [Tutorial](tutorial.md) — five sections you drive: entities, tasks, and the charters
-  that relate them. Each has a script that seeds it in one command.
+- [Tutorial](tutorial.md) — five sections you drive: entities, tasks, and the charters that
+  relate them. Each has a script that seeds it in one command.
 - [Reference](reference/README.md) — the flat command surface, and a file per topic for the
   detail the tutorial skips.
 - [Seams](seams.md) — the nine seams that can be a *network*, and which side opens each one.
-  The view across the subjects below rather than one of them: what may be remote, what may sit
-  behind a firewall, and why the same payload travels in both directions.
+  This is the view across the subjects below rather than one of them: what may be remote, what
+  may sit behind a firewall, and why the same payload travels in both directions.
 
 ## By subject
 
-Each subject below pairs the part of the tutorial that walks it with the notes that explain
-it. Walk first if you want to see the thing move; read first if you want to know why it is
-shaped that way. Where a subject has unbuilt work, the last row points into the roadmap.
+Each subject pairs the part of the tutorial that walks it with the notes that explain it. Walk
+first to see the thing move; read first to know why it is shaped that way. Where a subject has
+unbuilt work, the last row points into the roadmap.
 
 ### Entities and the store
 
-Everything coordinates through one observable, cursored entity store. Its change model is
-what makes the reactive loop converge.
+Everything coordinates through one observable, cursored entity store. Its change model is what
+makes the reactive loop converge.
 
 | | |
 |---|---|
@@ -49,7 +49,7 @@ core of the model, and almost everything else is something a rule can reach.
 | | [Strata](strata.md) — a declared level ordering, `derive`, the write that is not the subject, and where a path read inside one may reach |
 | | [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only narrow what the spawn granted |
 | ahead | [Firing residual](working/firing-residual.md) — the clock a ticker would be, and what `verse data --rm` should mean |
-| | [Goals: what is left](working/goals-residual.md) — why goals were removed, and three shapes a better definition might take |
+| | [Goals: what is left](working/goals-residual.md) — why there are no goals, and three shapes a better definition might take |
 | | [Dynamic charter](roadmap/dynamic-charter.md) — a charter authored per change, where the goal idea is headed |
 
 ### Tasks and autonomy
@@ -68,7 +68,7 @@ drive a local agent, a remote one, and a human.
 | | [Runners](runners.md) — where work runs: installing one, naming it on a spawn, and what removing one does to the work on it |
 | | [reference/runners.md](reference/runners.md) — the runner surface: the entity, the verbs, the routes, and what a task records |
 | | [reference/examples/runner](reference/examples/runner/main.go) — a runner you can copy and change; it compiles with the tree |
-| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, a contained PROCESS per task, and a push as a capability the gate releases a credential for rather than one canned act |
+| | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, a contained process per task, and a push as a capability the gate releases a credential for rather than one canned act |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External tasks](external-tasks.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
@@ -87,7 +87,7 @@ drive a local agent, a remote one, and a human.
 
 ### Steering
 
-Observation can lag. Steering cannot — an intervention that queues behind a backlog is an
+Observation can lag; steering cannot. An intervention that queues behind a backlog is an
 intervention defeated.
 
 | | |
@@ -97,8 +97,8 @@ intervention defeated.
 
 ### Federation: bringing the outside in
 
-External state — your working tree, a git repo, a cluster — is reflected into the slice of
-the verse that owns it, through a docd controller.
+External state — your working tree, a git repo, a cluster — is reflected into the slice of the
+verse that owns it, through a docd controller.
 
 | | |
 |---|---|
@@ -115,7 +115,7 @@ the verse that owns it, through a docd controller.
 | | [Shared ownership](working/shared-ownership.md) — an entity with more than one writer: the claim that is a path (built), and the charter half that is not |
 | | [expose](roadmap/expose.md) · [Scope lifecycle](roadmap/scope-lifecycle.md) — a named durable surface (with the write half), and the lifetime of the isolation it lives in |
 
-## What is built, and what isn't
+## What is built, and what is not
 
 Every doc in this directory describes something that runs, and says so where a corner of it
 does not. A gap inside something that runs is recorded where it runs — the note stays here

@@ -1,39 +1,36 @@
-# An automatic supervisor — deciding, and deciding when to promote
+# An automatic supervisor
 
 The dial in a charter is per-gate: `auto` runs, `ask` asks a person, `park` stops. Between
-"every change lands on its own" and "a person looks at every change" there is a third thing,
-and it is the one most flows actually want: *an agent decides, and promotes what is not its
-to decide.*
+"every change lands on its own" and "a person looks at every change" there is a third thing, and
+it is the one most flows want: *an agent decides, and promotes what is not its to decide.*
 
-This is a worked example of that — a charter where a supervisor agent assesses each change,
-clears the ones it may clear, and puts a human gate in front of the rest. The interesting
-part is not that it can approve. It is what stops it from approving everything: the
-supervisor's remit is written in the charter, not in the supervisor, and a supervisor that
-fails to decide has thereby decided to promote.
+This is a worked example — a charter where a supervisor agent assesses each change, clears the
+ones it may clear, and puts a human gate in front of the rest. The interesting part is not that
+it can approve. It is what stops it from approving everything: the supervisor's remit is written
+in the charter, not in the supervisor, and a supervisor that fails to decide has thereby decided
+to promote.
 
-Everything here runs today. The gaps are named at the end, and a test drives the charter
-below through each of its routes ([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)).
+The pattern is a simple one. Supervision as a live conversation, rather than a rule fixed at
+install, is [attached resolvers](attached-resolvers.md).
 
-While this work demonstrates a naive way of implementing supervision, it is a valid
-charter pattern and worth keeping. More advanced supervision capabilities are with
-[attached resolvers](attached-resolvers.md) — a service that answers gates, where the
-decision is a live conversation rather than a rule fixed at install.
+A test drives the charter below through each of its routes
+([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)),
+and the gaps are named at the end.
 
 ## Two supervisors, one word
 
-verse already has a thing called a Supervisor, and it is not this one. Keeping them apart is
-the first thing to get right:
+Verse has a thing called a Supervisor, and it is not this one. Keep them apart:
 
 | | what it decides | who writes it |
 |---|---|---|
 | `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go, per runtime — or an [attached resolver](attached-resolvers.md), which is what a spawn's `resolver` field names |
 | the supervisor here | whether *a firing* proceeds — the charter-level question a gate would put to a person | a charter rule, installable over the wire |
 
-The first is the inside of a task: `write_file` on a path, a `call_agent`, a `run_bash`.
-The second is the outside: this change, landing. An automatic supervisor of the second kind
-needs no new machinery, because a charter can already spawn an agent, enforce the shape of
-its answer, patch that answer onto the subject as an ordinary fact, and route on it. That is
-the whole example.
+The first is the inside of a task: `write_file` on a path, a `call_agent`, a `run_bash`. The
+second is the outside: this change, landing. An automatic supervisor of the second kind needs no
+new machinery, because a charter can already spawn an agent, enforce the shape of its answer,
+patch that answer onto the subject as an ordinary fact, and route on it. That is the whole
+example.
 
 ## The charter
 
@@ -130,13 +127,13 @@ Both are properties of the rule set rather than of the agent's judgment.
 
 ## Three things keep it honest
 
-**The supervisor cannot act — only answer.** `grant: read-only` is hard authority: an action
-outside it is *refused*, not asked about. So the supervisor cannot write the field that routes
-its own decision. Its single channel into the verse is the final message, and `answer` makes
-that channel typed — `decision` is one of three words or the run fails and `onFailed` takes
-over. A supervisor that narrated instead of deciding does not get a vote. (`vector: auto` is
-consistent, not lax: with a read-only grant there is nothing left to ask about, and asking a
-person to confirm each `read_file` is how an escalation surface stops being read.)
+**The supervisor cannot act, only answer.** `grant: read-only` is hard authority: an action
+outside it is *refused*, not asked about. So the supervisor cannot write the field that routes its
+own decision. Its single channel into the verse is the final message, and `answer` makes that
+channel typed: `decision` is one of three words, or the run fails and `onFailed` takes over. A
+supervisor that narrated instead of deciding does not get a vote. `vector: auto` is consistent
+rather than lax — with a read-only grant there is nothing left to ask about, and asking a person to
+confirm each `read_file` is how an escalation surface stops being read.
 
 **The remit belongs to the charter.** `land-auto` requires three things, and the supervisor
 authors exactly one of them. `review.risk` is its own claim, and `tests: green` is not: that
@@ -149,11 +146,11 @@ you want and the reason `remit` exists as its own rule. `remit` is the complemen
 leaves `why` alone, so the human at the gate reads the supervisor's reasoning *and* the note
 saying the charter overrode it.
 
-**Failure promotes.** `onFailed` writes `escalate`, `risk: high`, and carries `$err` into
-`why`. A supervisor that crashed, could not produce its answer shape, called `fail` because
-it could not do the work, or was never available at all does not leave a change unassessed —
-it sends it up, with the reason attached. Point this charter at an agent that cannot see the
-change it was asked about and that is what you get, in its own words:
+**Failure promotes.** `onFailed` writes `escalate` and `risk: high`, and carries `$err` into `why`.
+A supervisor that crashed, could not produce its answer shape, called `fail` because it could not
+do the work, or was never available at all does not leave a change unassessed. It sends the change
+up, with the reason attached. Point this charter at an agent that cannot see the change it was
+asked about and that is what you get, in its own words:
 
 ```tony
 review:
@@ -234,33 +231,33 @@ verse data change pr 8      # stage: landed
 The id's suffix is derived from the firing's subjects rather than counted, so the same
 decision re-reached is the same question rather than a second one.
 
-With credentials, `verse data change pr 9 '{stage: proposed, tests: green}' ` runs --put the
-real thing: `verse flow` shows the assessment in flight, `verse data verse task instance
-assess@change.pr.9` shows what the supervisor read and said, and the change
-ends `landed`, `closed`, or waiting at a gate.
+With credentials, `verse data change pr 9 --put '{stage: proposed, tests: green}'` runs the real
+thing. `verse flow` shows the assessment in flight, `verse data verse task instance
+assess@change.pr.9` shows what the supervisor read and said, and the change ends `landed`,
+`closed`, or waiting at a gate.
 
 ## Where this stops
 
-- **Silence has no clock — for THIS shape.** A supervisor task that never terminates leaves
-  its change at `stage: assessing` forever. `onFailed` covers failing; it does not cover
-  hanging. The clock nearby still does not fit: a gate's `!deadline` guards a firing that has
-  not happened. Promote-on-silence wants a deadline on a spawn, and there isn't one. A [resolver](attached-resolvers.md) that owns a gate
-  does have one — `deadline: {within, then}`, and silence past it escalates to the layer above —
-  but that is a clock on an unanswered QUESTION, not on a task that stopped reporting.
+- **Silence has no clock, for this shape.** A supervisor task that never terminates leaves its
+  change at `stage: assessing` forever. `onFailed` covers failing; it does not cover hanging. The
+  clock nearby does not fit: a gate's `!deadline` guards a firing that has not happened, and
+  promote-on-silence wants a deadline on a spawn, which does not exist. A
+  [resolver](attached-resolvers.md) that owns a gate does have one, `deadline: {within, then}`,
+  where silence past it escalates to the layer above, but that is a clock on an unanswered
+  question rather than on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
   wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
   gate keeps an attributable, retractable ballot per voter ([§5 of the
   tutorial](tutorial.md#5-gates-and-the-docket)). An agent casting a
-  ballot on that same surface is what the reserved `!judgment` requirement kind is for, and
-  it is a stub — so today an agent cannot be one of two approvals, only the thing that decides
-  whether the one approval is needed.
-- **No second opinion.** Following from the same gap: two supervisors that must agree is
-  expressible on paper (`!quorum 2` over judgments) and not in the engine. Two `assess`-style
-  rules writing to different fields, with `land-auto` requiring both, is the shape that works
-  today.
-- **The inside is a different layer, and it exists now.** The supervisor here decides whether a
-  change lands, by writing to the subject. What the *worker* agent may do while producing it is
-  the other supervision layer, and binding a resolver from a charter — `gating.resolver` for a
-  rule's own gates, `spawn.resolver` for its run's — is [attached
-  resolvers](attached-resolvers.md), which runs. The two compose: this charter decides about the
-  change, a resolver decides about the actions taken to produce it.
+  ballot on that same surface is what the reserved `!judgment` requirement kind is for, and that
+  is a stub, so an agent cannot be one of two approvals — only the thing that decides whether the
+  one approval is needed.
+- **No second opinion.** From the same gap: two supervisors that must agree is expressible on
+  paper, as `!quorum 2` over judgments, and not in the engine. Two `assess`-style rules writing to
+  different fields, with `land-auto` requiring both, is the shape that works.
+- **The inside is a different layer.** The supervisor here decides whether a change lands, by
+  writing to the subject. What the *worker* agent may do while producing it is the other
+  supervision layer, and binding a resolver from a charter — `gating.resolver` for a rule's own
+  gates, `spawn.resolver` for its run's — is [attached resolvers](attached-resolvers.md). The two
+  compose: this charter decides about the change, a resolver decides about the actions taken to
+  produce it.

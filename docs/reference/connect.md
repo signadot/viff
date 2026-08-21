@@ -55,7 +55,7 @@ Touch or add a file and its validator fires, reading the file through the verse.
 overlay and content mount all go.
 
 For a credential-free smoke test, drop the creds and `--driver llm` — a validator still fires
-per file, on the scripted driver; it just doesn't read.
+per file, on the scripted driver; it simply does not read.
 
 Because contents flow through docd rather than a server-side `--root`, the runtime need not
 share a filesystem with your tree, so the validator can run elsewhere. *File reads are still
@@ -102,7 +102,7 @@ with the entities the scope inherits, so installing baseline's charter into a sc
 replay all of it over everything the scope can see, privately, per connected dev, and then
 fire again in every scope on every baseline change.
 
-The LISTING is the same set: `verse charter --scope me` answers from the scope's engine rather
+The listing is the same set: `verse charter --scope me` answers from the scope's engine rather
 than from the layered store, so it shows what runs here and nothing else — the rules you
 installed, without baseline's underneath them.
 

@@ -36,7 +36,7 @@ Which spelling goes where.
 | | |
 |---|---|
 | a path | anywhere a parser reads one and no shell is involved: inside a document (`at: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
-| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way IN, and what every listing answers with |
+| steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way *in*, and what every listing answers with |
 | a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
 
 A listing answers with steps, the same spelling the command line takes, so a line hands
@@ -189,7 +189,7 @@ subject: {path: [demo, pr, 1]}
 So `!glob "hot-*"`, `!or [hot, cold]` and `!and [!glob "h*", !not hold]` all say at a position
 what they already say about a payload. Nothing in verse enumerates the operators; `tony.Match`
 owns them. One convention sits above that: a bare `*` is any segment, and inside an operator a
-`*` is an ordinary character — which is how an id that IS an asterisk is named (`!glob "[*]"`).
+`*` is an ordinary character — which is how an id that *is* an asterisk is named (`!glob "[*]"`).
 
 A `*` is a position, which is why the length of the path is the depth it selects at:
 `[demo, pr, "*"]` picks three-segment entities and `[demo, pr]` is the place above them.

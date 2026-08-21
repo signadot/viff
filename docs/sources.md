@@ -1,4 +1,4 @@
-# Sources: reflecting external systems into the verse
+# Sources
 
 A Source reflects an external system — a git repo, GitHub, Linear — into the slice of the
 entity-verse it owns (`git:*`, `github:*`, …), and is the single writer of that slice. Triggers
@@ -31,38 +31,34 @@ and converges the owned slice. So:
 > **A hint never writes entities.** It schedules a reconcile of the affected ref(s); the
 > reconcile reads the source of truth and writes to converge.
 
-That one rule buys idempotency, self-healing, and order/duplicate independence for free — you
-converge against the system's real state, not a flaky delivery. Translating a webhook payload
-straight into entity writes is the same mistake as trusting `Observe` without `Since`. A
+That one rule buys idempotency, self-healing, and independence from order and duplicates, because
+you converge against the system's real state rather than a flaky delivery. Translating a webhook
+payload straight into entity writes is the same mistake as trusting `Observe` without `Since`. A
 periodic full reconcile is the net that catches every missed hint.
 
-**verse does not parse deliveries at all.** The source owns its own — it deployed the git hook,
-it holds the webhook secret — and tells verse which refs went stale. A second implementation of
-"map a delivery to refs" per source is exactly how the law comes to be broken in one of two
-places, and across a network a divergence is least recoverable. It pays twice: a delivery
-carrying no data can cost at most a reconcile of a slice its sender does not get to choose the
-contents of, so the hint route can stay unauthenticated in a wide-open dogfood verse.
+**Verse does not parse deliveries at all.** The source owns its own — it deployed the git hook, it
+holds the webhook secret — and tells verse which refs went stale. A second implementation of "map a
+delivery to refs" per source is how the law comes to be broken in one of two places, and across a
+network a divergence is least recoverable. It pays twice: a delivery carrying no data can cost at
+most a reconcile of a slice its sender does not choose the contents of, so the hint route can stay
+unauthenticated in a wide-open dogfood verse.
 
 ## Ownership = single writer = no CAS
 
 A Source owns `github:*` and is its only writer, so within that slice there is no lost-update
-problem — which is the escape hatch for the parked CAS finding: reflected slices need no
-compare-and-swap because they have one writer. (CAS still matters where several triggers write
-a *shared subject*, not a reflected slice.)
+problem: reflected slices need no compare-and-swap because they have one writer. CAS still matters
+where several triggers write a *shared subject*, which a reflected slice is not.
 
-In task that held because there was one `Git` value. Across deployments nothing holds it but
-the install check below.
+In task, one `Git` value holds that. Across deployments nothing holds it but the install check
+below.
 
-**And converge now spends it**, which it did not until a deployment made the cost visible: every
-write it made was a compare-and-swap, defending a single-writer slice against a concurrent
-writer that cannot exist. It now writes with no precondition (`entity.ReplaceFrom`), using the
-snapshot it already read to spell the removals that keep it a replace rather than a merge.
+**Converge spends the single-writer property rather than paying for it twice.** It writes with no
+precondition (`entity.ReplaceFrom`), using the snapshot it already read to spell the removals that
+keep the write a replace rather than a merge. A compare-and-swap here would defend a single-writer
+slice against a concurrent writer that cannot exist.
 
-The cost of *not* doing that was briefly enormous and is now modest: a conditional patch was
-once two orders of magnitude slower than an unconditional one, which is why a first pass over a
-repository reflected as 3400 entities never finished at all. That was an upstream defect and it
-is fixed; the same pass is now worth about a quarter either way. The reason to keep it is the
-rule rather than the measurement — which is the right way round, and was not how it was found.
+What that is worth is modest — a pass costs about a quarter less — and the reason to keep it is the
+rule rather than the measurement.
 
 ## The seam: a source answers, verse converges
 
@@ -80,40 +76,39 @@ type Reflection struct {
 }
 ```
 
-The store cannot cross a process boundary — but that is not the reason it is on this side of
-the seam. Shipping a store client is trivial and `POST /entity` already exists, so an external
-program could write `git:*` today. The reason is what converge *does*, which must not be
-re-implemented once per source:
+The store cannot cross a process boundary, but that is not the reason it is on this side of the
+seam. Shipping a store client is trivial and `POST /entity` already exists, so an external program
+could write `git:*`. The reason is what converge *does*, which must not be re-implemented once per
+source:
 
 - **skip unchanged**, or every periodic resync re-fires every trigger over the slice;
 - **tombstone what is gone**, scoped to what the pass covered, so one repo's reconcile never
   deletes another's refs;
 - **never tombstone what the answer did not claim**.
 
-None of that is knowledge about git. All of it is knowledge about the entity-verse, and a
-connector author holding it will get it wrong in a way nothing notices until a charter fires
-two hundred times.
+None of that is knowledge about git. All of it is knowledge about the entity-verse, and a connector
+author holding it will get it wrong in a way nothing notices until a charter fires two hundred
+times.
 
-`Covers` is the load-bearing field, and it is not new information — it is the scoping a
-reconcile always had, said out loud instead of held in a parameter. An entity under a covered
-pattern and absent from `Entities` is tombstoned; an entity in `Entities` under no covered
-pattern is written and never tombstoned. Git's "keep history" is then a declaration in the
-answer rather than a branch in verse's code: it covers `git.ref.*` and `git.head.*` for a repo
-and does not cover `git.commit.*`, so a commit that has fallen out of the bounded tip window is
-simply not mentioned, and stays.
+`Covers` is the load-bearing field: a reconcile's scoping, said out loud rather than held in a
+parameter. An entity under a covered pattern and absent from `Entities` is tombstoned; an entity in
+`Entities` under no covered pattern is written and never tombstoned. Git's "keep history" is then a
+declaration in the answer rather than a branch in verse's code. It covers `git.ref.*` and
+`git.head.*` for a repo and does not cover `git.commit.*`, so a commit that has fallen out of the
+bounded tip window is not mentioned, and stays.
 
-A write **replaces** rather than merges, because the answer is what the entity IS: a field the
-source stopped reporting is gone. Merging would leave the stale field standing — and since the
-unchanged-check compares against what the source said, the entity would then differ on every
-pass forever, firing its triggers each time.
+A write **replaces** rather than merges, because the answer is what the entity *is*: a field the
+source stopped reporting is gone. Merging would leave the stale field standing, and since the
+unchanged-check compares against what the source said, the entity would then differ on every pass
+forever, firing its triggers each time.
 
 ## A source you deploy
 
-`source/sourced` serves the contract as two routes — `GET /source` for a descriptor, `GET
-/reflect` for a `Reflection` — and `source.HTTP` is the client verse drives it with. That is
-`taskd`'s trick, for `taskd`'s reason: `source.Git` behind `sourced` *is* the sample
-external source, and the same value behind verse's own reflector is the built-in, so there is
-no privileged local path for a deployed one to differ from.
+`source/sourced` serves the contract as two routes — `GET /source` for a descriptor, `GET /reflect`
+for a `Reflection` — and `source.HTTP` is the client verse drives it with. That is `taskd`'s trick,
+for `taskd`'s reason: `source.Git` behind `sourced` *is* the sample external source, and the same
+value behind verse's own reflector is the built-in, so there is no privileged local path for a
+deployed one to differ from.
 
 **Three ways to reach one, one contract.** A registration carries exactly one of `url` (verse
 dials), `dir` (the in-process git source), or `dial-in` (the source dials — designed, not
@@ -122,10 +117,10 @@ built; see [what is left](working/sources-residual.md)). They differ only in whe
 runner's "a runner with no url is refused": there, absence already meant `local`, so a url-less
 entity was ambiguous. Here the field present says which it is.
 
-**verse dials; the hint reverses.** A pushed reflection would move the reconcile loop into
-every source, which is the duplication above one level up and across a network. Pulled, a
-source is a pure function of external truth: no ticker, no backoff, no retry policy, no diff,
-no cursor, no CAS — which is what keeps the sample program short enough to copy.
+**Verse dials; the hint reverses.** A pushed reflection would move the reconcile loop into every
+source, which is the duplication above, one level up and across a network. Pulled, a source is a
+pure function of external truth: no ticker, no backoff, no retry policy, no diff, no cursor, no CAS.
+That is what keeps the sample program short enough to copy.
 
 **Where a source may remember something anyway**, since two of them do: **a source may keep
 state whose loss costs work, never state whose loss costs correctness.** The GitHub source keeps
@@ -143,33 +138,32 @@ believe it.
 
 ## Installing one, and the two checks
 
-Adding a source **probes it**, with the runner's three outcomes and for the runner's reasons —
-*a source* (it answered and decoded), *not a source* (it answered and is not that: refused),
-*unreachable* (installed, with a warning, because a manifest landing before its pod is the
-ordinary state of a source deployed alongside the entity that names it).
+Adding a source **probes it**, with the runner's three outcomes and for the runner's reasons: *a
+source*, meaning it answered and decoded; *not a source*, meaning it answered and is not that,
+which is refused; and *unreachable*, which is installed with a warning, because a manifest landing
+before its pod is the ordinary state of a source deployed alongside the entity that names it.
 
-Two checks have no runner analogue, and both are what an external source loses that an
-in-process one had by construction:
+Two checks have no runner analogue, and both are what an external source loses that an in-process
+one has by construction:
 
 - **The descriptor's system must be the one the operator named.** A `github` registration
   pointed at a git source is unrecoverable later: every reflection would be written into the
   wrong slice by a source that thinks it is right.
-- **Ownership must be provably disjoint from every standing registration in the same scope**,
-  or the install is refused, with both claims in the message — verse could not prove them
-  apart, so the operator is the one who can say. Two sources that write different *places* in
-  the same entities say so with a path on the claim, and are then proved apart like anything
-  else; `--allow-overlap` is what is left for two that genuinely write the same place, with the
-  cost stated rather than discovered: two writers on one slice, each tombstoning what the other
-  reflected.
+- **Ownership must be provably disjoint from every standing registration in the same scope**, or
+  the install is refused, with both claims in the message: verse could not prove them apart, so the
+  operator is the one who can say. Two sources that write different *places* in the same entities
+  say so with a path on the claim and are then proved apart like anything else. `--allow-overlap`
+  is what is left for two that genuinely write the same place, with the cost stated rather than
+  discovered: two writers on one slice, each tombstoning what the other reflected.
 
-**And the system itself is the operator's**, which is a coarser separation than a claim and
-exists for a different reason. A source is deployed, and more than one will be: the partition
-between them is drawn by whoever runs them — by credential, by budget, by which slices are busy —
-and that has no reason to line up with how the external system is organised. Two deployments
-sharing `github:*` need only disjoint claims, which are computed from each source's own
-configuration rather than written by hand; one that wants no coordination at all takes
-`-system` and owes nobody a proof, since two systems are disjoint on the first segment. It is
-also how a second *instance* of a product gets a slice that is not confused with the first.
+**And the system itself is the operator's**, which is a coarser separation than a claim and exists
+for a different reason. A source is deployed, and more than one will be. The partition between them
+is drawn by whoever runs them — by credential, by budget, by which slices are busy — and that has
+no reason to line up with how the external system is organised. Two deployments sharing `github:*`
+need only disjoint claims, computed from each source's own configuration rather than written by
+hand. One that wants no coordination at all takes `-system` and owes nobody a proof, since two
+systems are disjoint on the first segment. It is also how a second *instance* of a product gets a
+slice that is not confused with the first.
 
 What it costs is paid by whoever chose it: a charter cannot glob a system, so every rule about a
 separated slice names it. That is why it is a flag rather than the shape.
@@ -191,13 +185,12 @@ what converge still owes it is in [what is left](working/shared-ownership.md).
 
 ## Removing one, and the fork
 
-Tombstoning what a source wrote is right about the common case — a slice nobody reflects any
-more is a slice nothing can correct, and a charter would go on believing in a branch of a repo
-verse has stopped watching. It is wrong about one that will happen: **moving a repo to another
-host is a remove and an add of the same physical truth**, and tombstoning it fires every
-branch-deleted trigger in the verse and then every branch-created one behind it — a bookkeeping
-change destroying and re-creating live facts, which is the runner's rename case in a different
-costume.
+Tombstoning what a source wrote is right about the common case: a slice nobody reflects any more is
+a slice nothing can correct, and a charter would go on believing in a branch of a repo verse has
+stopped watching. It is wrong about one that will happen. **Moving a repo to another host is a
+remove and an add of the same physical truth**, and tombstoning it fires every branch-deleted
+trigger in the verse and then every branch-created one behind it: a bookkeeping change destroying
+and re-creating live facts, which is the runner's rename case in a different costume.
 
 So removal with a non-empty reflected slice is **refused until told which**: `--forget`
 (the reflection is over) or `--keep` (the same truth is moving; leave the last known state, now
@@ -214,11 +207,11 @@ the poll cursor, and stamping it every pass would put a write on `verse.sources.
 resync interval forever, so anything watching that slice would fire on a verse where nothing is
 happening.
 
-That cursor cannot catch a source that has *wedged* — alive, answering, reflecting nothing new
-— because on a quiet repo a healthy source looks identical. So **when a pass last completed is
-reported and never stored**, read live from the reflector on `verse source`. That is the
-runner's rule about opinions of wellness: a reachability fact that is written down can be stale
-in the direction that costs.
+That cursor cannot catch a source that has *wedged* — alive, answering, reflecting nothing new —
+because on a quiet repo a healthy source looks identical. So **when a pass last completed is
+reported and never stored**, read live from the reflector on `verse source`. That is the runner's
+rule about opinions of wellness: a reachability fact that is written down can be stale in the
+direction that costs.
 
 A clean shutdown is not a failure and is not recorded as one. Cancelling a reflector fails the
 pass in flight; written down, every source would come back from a clean stop carrying it, and a
@@ -226,13 +219,13 @@ listing after a restart would show a verse full of broken sources that are all f
 
 ## Scoped sources
 
-A source registers into a scope, and the obvious-sounding alternative — a reflection is a fact
-about the outside world, so every scope should read the same one — is wrong. `verse connect`
-already refutes it: it reflects a working tree into a per-session scope, which is a scoped
-source built as a special case. The general form is the sandbox: **my checkout's branches
-shadow baseline's view of the same repo, for my triggers, without touching anyone else's.** A
-verse whose reflections are all shared has no way to say "in here, the repo looks like this",
-which is the question a sandbox exists to answer.
+A source registers into a scope. The obvious-sounding alternative — a reflection is a fact about
+the outside world, so every scope should read the same one — is wrong, and `verse connect` refutes
+it: it reflects a working tree into a per-session scope, which is a scoped source built as a
+special case. The general form is the sandbox: **my checkout's branches shadow baseline's view of
+the same repo, for my triggers, without touching anyone else's.** A verse whose reflections are all
+shared has no way to say "in here, the repo looks like this", which is the question a sandbox
+exists to answer.
 
 Shadowing is the feature, which is why the ownership check is scoped: two sources in one scope
 must still be provably disjoint, while a scoped source claiming what a baseline source also
@@ -241,37 +234,36 @@ so `DeleteScope` drops the overlay and takes the registration, everything reflec
 reflector with it — a scoped source has no deregistration path to forget and cannot outlive the
 sandbox it was for.
 
-**A scope can hide what it does not own**, and this was the open question. A scoped converge
-tombstones what external truth no longer has, and inside a scope most of what it finds standing
-is inherited from baseline — so if a scoped delete could only remove scope-local entities, a
-scoped source could not say "that branch does not exist in this sandbox", and every scope would
-be stuck with baseline's set as a floor. It can: the tombstone hides the inherited entity from
-the scope's reads and its watches, leaves baseline holding it, and is dropped with the overlay.
+**A scope can hide what it does not own.** A scoped converge tombstones what external truth no
+longer has, and inside a scope most of what it finds standing is inherited from baseline. If a
+scoped delete could only remove scope-local entities, a scoped source could not say "that branch
+does not exist in this sandbox", and every scope would be stuck with baseline's set as a floor. It
+can: the tombstone hides the inherited entity from the scope's reads and its watches, leaves
+baseline holding it, and is dropped with the overlay.
 
-**And it holds one level down**, which is what a shared entity raised and nothing had answered.
-A scope hides an inherited SLOT the same way — a sandbox can say "that team does not own this
-project in here" — with neither direction leaking: the scoped write does not reach baseline's
-value, and the scoped hide does not remove baseline's key.
+**And it holds one level down.** A scope hides an inherited slot the same way, so a sandbox can say
+"that team does not own this project in here", with neither direction leaking: the scoped write
+does not reach baseline's value, and the scoped hide does not remove baseline's key.
 
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
 
 ## Five of them, and what the ones after git cost
 
-verse ships `sourced`, a second binary with a subcommand per system it connects
-([reference/sourced.md](reference/sourced.md)) — git, git-issue, Slack, Linear, GitHub. It rides
-in the same image as `verse` and is deliberately not in the same process: folding a connector
-into the engine would put every API's wire format and every credential's failure mode in the
-binary that runs everybody's triggers. There is nothing privileged about the five; they are
-ordinary external sources that happen to be maintained here, and the sample program is still the
-thing to copy for a sixth. **Nothing in `source/`, `versed/` or the CLI changed for the third or
-the fourth**, which is the seam's claim, tested twice.
+Verse ships `sourced`, a second binary with a subcommand per system it connects
+([reference/sourced.md](reference/sourced.md)): git, git-issue, Slack, Linear, GitHub. It rides in
+the same image as `verse` and is deliberately not in the same process, because folding a connector
+into the engine would put every API's wire format and every credential's failure mode in the binary
+that runs everybody's triggers. There is nothing privileged about the five. They are ordinary
+external sources that happen to be maintained here, and the sample program is the thing to copy for
+a sixth. **The third and the fourth needed nothing new in `source/`, `versed/` or the CLI**, which
+is the seam's claim, tested twice.
 
-**Only one thing actually differs between them, and it is the credential.** git needs none — nor
-does git-issue, which reads the same directory — so git can also run in task (`--dir`) and its
-"webhook" is a four-line shell script. The three that reach a service hold a token, which is
-what puts them on the far side of the seam for good — and what "nothing new about credentials"
-below turns out to mean in practice.
+**Only one thing differs between them, and it is the credential.** git needs none, nor does
+git-issue, which reads the same directory, so git can also run in task (`--dir`) and its "webhook"
+is a four-line shell script. The three that reach a service hold a token, which is what puts them
+on the far side of the seam for good, and what "nothing new about credentials" below means in
+practice.
 
 Four things came out of building the three that need one.
 
@@ -393,11 +385,8 @@ and is SDLC-native.
 
 ## A Source is not a controller, and cannot be
 
-An earlier version of this note ended with the opposite: that a `Source` *is* a `libctl.Handler`
-run under `RunController`, mounted at its system's subtree. That was written when controller
-mounts still rendered under the entity root, and it is now wrong. It is recorded rather than
-deleted because the mistake is an easy one to make twice — the shape really does fit, right up
-until you ask what fires.
+A `Source` looks like a `libctl.Handler` run under `RunController`, mounted at its system's
+subtree, and the shape really does fit — right up until you ask what fires.
 
 **A mounted slice fires no triggers.** Mounts render under `entity.MountRoot`, a top-level
 segment disjoint from the entity root, because a mount is task-driven and so has no history,
@@ -427,11 +416,10 @@ would put ordering back into a contract whose whole point is that it has none.
 is the same edge the runner install probe already opens, and lands with
 [authority](roadmap/authority.md) rather than before it.
 
-**Nothing new about credentials**, which is a gain worth saying and is now demonstrated rather
-than claimed: the Slack source's events endpoint arrives from the internet and needs an ingress
-and a signature check, and all of that lives in the Slack source — where the signing secret
-already had to be — instead of in a public face verse has to grow. verse learned nothing about
-Slack, and its hint route did not change.
+**Nothing new about credentials.** The Slack source's events endpoint arrives from the internet
+and needs an ingress and a signature check, and all of that lives in the Slack source, where the
+signing secret already has to be, rather than in a public face verse has to grow. Verse knows
+nothing about Slack, and the hint route is the same one every source uses.
 
 What is designed and not built — dial-in, for the source verse cannot reach — is in
 [what is left](working/sources-residual.md).

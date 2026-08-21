@@ -1,4 +1,4 @@
-# Representation — tony, JSON and YAML
+# Representation
 
 A charter is written in [tony](https://signadot.github.io/tony-format/), the document
 language verse reads and writes. Tony is JSON's document model made easier to write —
@@ -28,7 +28,7 @@ What verse will not do is hand JSON back. `-o json`, `VERSE_FORMAT=json` and
 `Accept: application/json` are refused, the last with a 406. The reason is tags. A formula
 is built from them — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
 rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
-unambiguous where the surrounding keys are a closed set, and NOT unambiguous inside a
+unambiguous where the surrounding keys are a closed set, and not unambiguous inside a
 match's `value`, where a payload key may itself be named `or`. A rendering that is
 faithful for most of the model and quietly wrong for the rest is worse than one honestly
 not offered.
@@ -54,7 +54,7 @@ the config default.
 
 To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`
 (CLI stdout) and `format.wire` (HTTP bodies) override it separately, because wanting tony on
-the wire and yaml on stdout is a reasonable thing to want. All three name a format to WRITE,
+the wire and yaml on stdout is a reasonable thing to want. All three name a format to *write*,
 so all three refuse `json`.
 
 ```tony

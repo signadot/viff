@@ -1,47 +1,43 @@
 # Seams that can be a network
 
-Every seam in verse is an interface first. This note is about the subset that can also be a
-*wire* — where the two sides may sit in different processes, on different hosts, in different
-networks — and about the one property that decides what each of them is good for:
+Every seam in verse is an interface first. This note is about the subset that can also be a *wire*,
+where the two sides may sit in different processes, on different hosts, in different networks, and
+about the one property that decides what each of them is good for:
 
 **which side opens the connection.**
 
-That is not a deployment detail. It is what says whether a runtime can live on a laptop, a
-source inside somebody else's cloud, or an executor behind a firewall that permits no inbound
-traffic at all. Two seams here carry almost the same payload in opposite directions, and the
-difference between them is the whole reason both exist.
+That is not a deployment detail. It says whether a runtime can live on a laptop, a source inside
+somebody else's cloud, or an executor behind a firewall that permits no inbound traffic at all. Two
+seams here carry almost the same payload in opposite directions, and the difference between them is
+the whole reason both exist.
 
 ## Why the seams have the shape they do
 
-Read together, these seams say something the rest of the docs state as a preference and should
-probably state as a constraint.
-
 Verse governs systems it does not own. Everything across these boundaries is one of exactly two
-moves: **observe** — a source reflects external truth in, a run reports frames back — or
-**request a change** — a spawn, a patch, a control POST. Nothing here can *hold* the state it
-governs. A repository, a Slack workspace, somebody's laptop and somebody's afternoon all move
-without asking, and a seam is precisely the admission that they do.
+moves. **Observe**: a source reflects external truth in, a run reports frames back. Or **request a
+change**: a spawn, a patch, a control POST. Nothing here can *hold* the state it governs. A
+repository, a Slack workspace, somebody's laptop and somebody's afternoon all move without asking,
+and a seam is precisely the admission that they do.
 
-An orchestrator needs the opposite. To sequence steps it has to hold a position in a plan, and
-that position is a second claim about state it does not own — one that is wrong the moment the
-world moves between two steps. So the absence of an orchestrator is not a stylistic choice
-about workflows. **It is what is left once you accept that every one of these boundaries is
-observe-and-request.** Level-triggered reaction to what was observed is the only model that
-stays true when the far side changes without telling you.
+An orchestrator needs the opposite. To sequence steps it has to hold a position in a plan, and that
+position is a second claim about state it does not own, wrong the moment the world moves between two
+steps. So the absence of an orchestrator is not a stylistic choice about workflows. **It is what is
+left once you accept that every one of these boundaries is observe-and-request.** Level-triggered
+reaction to what was observed is the only model that stays true when the far side changes without
+telling you.
 
-Which is why the flow is *derived and never stored*. `verse flow show <subject>` assembles a
-subject's shape per request by joining three sources, and the note in `trigger/flowtree.go` is
-blunt that no one of them is sufficient: the **charter** knows the future — a hook that has not
-fired yet is shown pending rather than missing — the **mirror** holds the history, since a
-finished task leaves the live registry and survives only as `verse.task.instance` entities, and
-the **registry** has the present. Materializing that tree would reintroduce exactly the stored
-per-subject index a query deliberately replaced.
+Which is why a flow is *derived and never stored*. `verse flow show <subject>` assembles a subject's
+shape per request by joining three sources, and no one of them is sufficient. The **charter** knows
+the future, so a hook that has not fired yet is shown pending rather than missing. The **mirror**
+holds the history, since a finished task leaves the live registry and survives only as
+`verse.task.instance` entities. The **registry** has the present. Materializing that tree would be
+the stored per-subject index a query stands in for.
 
 The consequence is that the model is in the addressing rather than in a structure somebody
-maintains. A task id is a function of (rule, subject). A resolver instance is
-`binding@origin`, minted per subject and per run. Parent and child in a flow tree *are* prefix
-and extension of the chain kpath, so nesting needs no parent pointer to keep correct. There is
-no orchestrator to remove because there is nowhere for one to live.
+maintains. A task id is a function of (rule, subject). A resolver instance is `binding@origin`,
+minted per subject and per run. Parent and child in a flow tree *are* prefix and extension of the
+chain kpath, so nesting needs no parent pointer to keep correct. There is no orchestrator to remove
+because there is nowhere for one to live.
 
 For what the components *are*, read [the overview](overview.md) first. This note assumes it.
 
@@ -88,14 +84,13 @@ flowchart LR
 Blue dials *into* verse. Green is dialled *by* verse. `sourced` is both, and that is the point
 of [seam 6](#6-sources--read-one-way-hint-the-other).
 
-The two paths into a hint are not a choice between routes — they are different systems, and
-which one a source takes is decided by what its external system will let you install. Slack and
-Linear will only *call* you, so `sourced` has to be there to receive the delivery, verify its
-signature, and turn it into a hint. Git will run a script for you, so `Git.InstallHook` writes
-a four-line `reference-transaction` hook that curls the hint route itself — and `sourced git`
-consequently serves **no delivery routes at all** and is not in that path. The comment in
-`cmd/sourced/git.go` calls that the shape every source would have if every external system let
-you install a four-line shell script.
+The two paths into a hint are not a choice between routes. They are different systems, and which
+one a source takes is decided by what its external system will let you install. Slack and Linear
+will only *call* you, so `sourced` has to be there to receive the delivery, verify its signature,
+and turn it into a hint. Git will run a script for you, so `Git.InstallHook` writes a four-line
+`reference-transaction` hook that curls the hint route itself, and `sourced git` serves **no
+delivery routes at all** and is not in that path. That is the shape every source would have if
+every external system let you install a four-line shell script.
 
 ## The seams at a glance
 
@@ -124,14 +119,14 @@ Representation is negotiated rather than fixed: tony by default, JSON or YAML on
 plain text, because a caller reads a non-2xx body as a message and a person running `curl` is
 better served by a sentence than a document.
 
-This is the **trusted** side. There is no authentication on it today; the default bind is
+This is the **trusted** side. There is no authentication on it. The default bind is
 `localhost:9797`, and in the Kubernetes deploy its Service is cluster-internal with no Ingress.
-Where permission is going to come from is [authority](roadmap/authority.md), which is not built.
+Where permission comes from is [authority](roadmap/authority.md), which is not built.
 
 ## 2. The store: two faces, not one
 
-verse holds one logd session to docd and does everything through it — reads, conditional
-writes, per-subtree watches, and `since=<rev>` replays. That is the **client** face.
+Verse holds one logd session to docd and does everything through it: reads, conditional writes,
+per-subtree watches, and `since=<rev>` replays. That is the **client** face.
 
 docd serves a second, separate **mount** face for controllers: the way a program declares
 itself the server of some region of the document. Nothing about verse's own traffic goes there,
@@ -155,11 +150,10 @@ started as its own process has no way to guess them. It asks.
 stored.
 
 What makes this a seam rather than a cache is that the indirection is invisible from above. An
-agent's `read_file` becomes an ordinary `Get` at `local:dir-content-<scope>:<path>` — and docd
+agent's `read_file` becomes an ordinary `Get` at `local:dir-content-<scope>:<path>`, and docd
 resolves that path to the mounted controller, which stats and reads the file *at request time*,
-confined to its root and capped in size, answering null for a traversal attempt or a
-non-regular file. It looks like a store read the whole way down and is a live filesystem read at
-the bottom.
+confined to its root and capped in size, answering null for a traversal attempt or a non-regular
+file. It looks like a store read the whole way down, and is a live filesystem read at the bottom.
 
 So the tree stays where it is, under its owner's lifetime, and only the entities describing it
 are what a charter reacts to. The write half — an agent changing a federated file — is
@@ -179,9 +173,9 @@ POST   {base}/tasks/{id}/cancel|say|resolve
 PUT    {base}/tasks/{id}/vector
 ```
 
-`?since=` is handed to the *remote's* own cursor, so the decision about what is still retained
-is made by the side that knows — and a reader that has fallen below the window gets told, with
-a resync marker, rather than silently handed a stream that starts mid-story.
+`?since=` is handed to the *remote's* own cursor, so the decision about what is still retained is
+made by the side that knows. A reader that has fallen below the window is told, with a resync
+marker, rather than silently handed a stream that starts mid-story.
 
 The cost of this direction is the ordinary one: **verse must be able to reach the runner.** A
 runtime on a private network, a laptop, or a cluster that permits no inbound connection cannot
@@ -214,15 +208,15 @@ sequenceDiagram
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```
 
-Three things make this more than a polling loop. The **nonce is the capability** — 128 bits of
-`crypto/rand`, and knowing the URL is the grant to act as that runner's worker, which is why
-the broker face is meant for a *sibling* port kept distinct from the trusted operator API. The
-**claim mints an epoch**, so a displaced or zombie worker is fenced rather than allowed to
-corrupt the log. And the **terminal is once**: the first terminal writer wins and later reports
-are idempotent no-ops.
+Three things make this more than a polling loop. The **nonce is the capability**: 128 bits of
+`crypto/rand`, where knowing the URL is the grant to act as that runner's worker, which is why the
+broker face is meant for a *sibling* port kept distinct from the trusted operator API. The **claim
+mints an epoch**, so a displaced or zombie worker is fenced rather than allowed to corrupt the log.
+And the **terminal is once**: the first terminal writer wins and later reports are idempotent
+no-ops.
 
 The well-known nonce `local` is the built-in supervisor, so the in-process runtime is reached
-through the same shape as everything else — there is no privileged local path.
+through the same shape as everything else. There is no privileged local path.
 
 Because the seam is uniform, a **human is a runner**. `verse task do <verb> --as <who>`
 is the executor's leg of exactly this protocol, and `--as` is required because a claim must be
@@ -233,8 +227,8 @@ in somebody's terminal.
 
 This is the seam whose direction splits by *question*, and it is worth reading closely.
 
-verse dials the source to **read**. Two routes, and they are the whole contract: one question
-about what the program is, one about what it sees.
+Verse dials the source to **read**. Two routes are the whole contract: one question about what the
+program is, one about what it sees.
 
 ```
 GET {url}/source              → Descriptor  { system, owns }
@@ -264,10 +258,10 @@ sequenceDiagram
   V->>V: converge
 ```
 
-**A hint only schedules; the reconcile is the authority.** A dropped hint costs latency and
-never correctness, because the periodic pass catches it — which is why a full hint queue drops
-rather than blocks. That is the same level-triggered discipline the whole engine runs on, and
-it is what lets this seam be unreliable without being wrong.
+**A hint only schedules; the reconcile is the authority.** A dropped hint costs latency and never
+correctness, because the periodic pass catches it, which is why a full hint queue drops rather than
+blocks. That is the same level-triggered discipline the whole engine runs on, and it is what lets
+this seam be unreliable without being wrong.
 
 The direction split matters in deployment: in the Kubernetes build, verse reaches the source at
 `http://<source>:9801/reflect`, and the source is configured with
@@ -288,10 +282,10 @@ A source may accept deliveries from the system it reflects. Three ship:
 | `POST /linear/webhook` | HMAC-SHA256 over the body, constant-time |
 | `POST /github/webhook` | HMAC-SHA256 over the body, `sha256=`-prefixed, constant-time |
 
-This is the only seam that is meant to be reachable from the public internet — in the deploy it
-is the only one that gets an Ingress, and an absent webhook host *drops* the Ingress rather than
-emitting one pointed at nothing. It is also the only seam that authenticates today, which is not
-a coincidence: it is the only one whose caller is a stranger.
+This is the only seam meant to be reachable from the public internet. In the deploy it is the only
+one that gets an Ingress, and an absent webhook host *drops* the Ingress rather than emitting one
+pointed at nothing. It is also the only seam that authenticates, which is not a coincidence: it is
+the only one whose caller is a stranger.
 
 A delivery is converted to a hint and nothing more. Nothing a webhook says is trusted as truth;
 it is trusted only as a reason to go and look.
@@ -306,13 +300,13 @@ POST /resolvers/instance/{id}/verdicts   approve · deny · escalate
 POST /resolvers/instance/{id}/position   how far it has read
 ```
 
-The events route serves **the same stream an attached observer sees**, not a projection of it.
-That is deliberate and it is a design requirement rather than an implementation convenience: the
-moment it is a different stream there are two orders to reconcile, and a supervised run reads
-differently depending on who is looking.
+The events route serves **the same stream an attached observer sees**, not a projection of it. That
+is a design requirement rather than an implementation convenience: the moment it is a different
+stream there are two orders to reconcile, and a supervised run reads differently depending on who is
+looking.
 
-A resolver that falls below the retained window is told, and — only in that case — is also sent
-the gates still open, because the replay it missed is exactly where they were.
+A resolver that falls below the retained window is told, and only in that case is also sent the
+gates still open, because the replay it missed is exactly where they were.
 
 ## 9. The model provider
 
@@ -332,14 +326,14 @@ Read the whole note as this table.
 | behind a firewall, on a laptop, in a person's hands | broker (5) | the worker opens it, and holds a nonce |
 | in a system verse may dial | source `url` (6) | verse asks; hints are an optimization |
 | in a system verse may **not** dial | source `dial-in` | **designed, not built** |
-| in somebody else's org, pushing to us | webhook (7) | signed, and only ever a hint |
+| in somebody else's org, pushing in | webhook (7) | signed, and only ever a hint |
 
 ## What is not a seam
 
-Worth naming, so the map is not read as bigger than it is. The **driver** (`scripted`, `calls`,
-`llm`, your own `Next`) is a Go interface and never a wire. A `--dir` **source** runs in task. The
-**local runner** is a Go call. The `Store` interface admits a memory implementation with no
-daemon behind it, which is what the tests run on.
+Worth naming, so the map is not read as bigger than it is. The **driver** — `scripted`, `calls`,
+`llm`, your own `Next` — is a Go interface and never a wire. A `--dir` **source** runs in task. The
+**local runner** is a Go call. The `Store` interface admits a memory implementation with no daemon
+behind it, which is what the tests run on.
 
-Each of those can *become* a wire without the callers changing — that is what makes it a seam
-in the first place — but none of them is one today.
+Each of those can *become* a wire without the callers changing, which is what makes it a seam in the
+first place, but none of them is one.

@@ -15,7 +15,7 @@ A source is an entity at `verse.sources.<system>:<name>`:
 | `dial-in` | the source dials verse. Designed, refused at install until it is built |
 | `owns` | the places this source claims to be the single writer of (see below) |
 | `scope` | the copy-on-write scope it reflects into; empty is baseline |
-| `lastReflect` | when verse last WROTE from this source. Written by verse |
+| `lastReflect` | when verse last *wrote* from this source. Written by verse |
 | `lastError` | the last failure, cleared by the next success. Written by verse |
 
 **Exactly one of `url`/`dir`/`dial-in`.** They differ only in where the connection comes from;
@@ -27,7 +27,7 @@ reserved root like everything verse keeps about its own running) because it is a
 already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
 
-A source reflects the WORLD's half and only that: a reflection naming an address under `verse.`
+A source reflects the world's half and only that: a reflection naming an address under `verse.`
 is refused, a claim that names it is refused at install, and no claim reaches there however wide
 it is written — `*.*.*` claims every three-segment entity the world is about and none of verse's
 own.
@@ -58,7 +58,7 @@ Absent — which is every claim the connectors make but Linear's on a project �
 the whole entity.
 
 Two claims are **disjoint** when any level is: two literal names that differ, or two prefixes
-neither of which prefixes the other. Where neither parts company first, the SHORTER claim
+neither of which prefixes the other. Where neither parts company first, the shorter claim
 contains the longer — `git` overlaps `git.ref.x` rather than being disjoint from it — which is
 the same rule the payload path already followed, asked once of the address and once inside the
 payload. A `*` level is disjoint from nothing, so `git.*.*` can be proved apart from nothing in
