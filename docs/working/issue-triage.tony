@@ -1,8 +1,9 @@
 # THE ISSUE TRIAGE DRIVE: a new issue is read against the code, by whoever is at a keyboard.
 #
 # One half, two strata, two rules. A git-issue appears; a row is derived for it; a task is
-# spawned that NAMES NO RUNNER, so it lands `unclaimed` on the broker and waits for a person's
-# session to claim it (.claude/skills/verse-work). The answer lands back as a fact on the row.
+# spawned that NAMES `broker`, so it lands `unclaimed` and waits for a person's session to claim
+# it (.claude/skills/verse-work). Naming it is the whole point: silence means versed runs the
+# task itself, immediately. The answer lands back as a fact on the row.
 #
 # It is deliberately the small mirror of comment-drift: that one asks whether a comment still
 # agrees with its code and answers with a branch, this one asks whether an ISSUE still agrees
@@ -10,8 +11,9 @@
 #
 #     verse charter -a -f docs/working/issue-triage.tony
 #
-# — but NOT as the first act. See INSTALLING below: 109 issues are already reflected, and a
-# charter installed over them derives 109 rows and spawns 109 tasks at once.
+# — but NOT as the first act. See INSTALLING below: 41 reflected issues already match rule 1's
+# `{repo: verse, status: open}`, and a charter installed over them derives 41 rows and spawns 41
+# tasks at once.
 #
 # INSTALLING, in two steps, which is the same shape the drift cursor is seeded with: stand on
 # the present, so there is no backlog to work through.
@@ -20,15 +22,19 @@
 #      per open issue and spawns nothing.
 #   2. Latch every row that exists now, so only issues that arrive AFTER this fire:
 #
-#        for p in $(verse data verse-dev triage brief --paths --depth 4); do
-#          verse data $p --put '{stage: seeded}'
+#        for p in $(verse data verse-dev triage brief --kpaths --depth 4); do
+#          verse data --at "$p" --put '{stage: seeded}'
 #        done
+#
+#      `--kpaths` and not `--paths`: `--paths` prints an address as space-separated steps, which
+#      a shell splits into segments, and each `--put` then fails with `an address starts with
+#      system kind id`. A kinded path is one token, and `--at` is what takes it.
 #
 #   3. Install this file whole. New issues get a row with no `stage`, which is what rule 2
 #      selects on.
 #
 # WHY `repo: verse` AND NOT EVERY REPO. The source reflects tony-format too — 237 issues to
-# verse's 69 — and briefing another repository's backlog is not what this is for. Widening it is
+# verse's 74 — and briefing another repository's backlog is not what this is for. Widening it is
 # deleting one line from rule 1's condition, and the seeding step above becomes load-bearing
 # rather than merely prudent.
 at: verse-dev.triage
