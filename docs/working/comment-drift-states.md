@@ -109,8 +109,8 @@ sequenceDiagram
 12. `train-load` boards the undecided branches onto the train for the current tip — the train
     having been derived by `train-cut` back at arrow 1, when the tip moved.
 13. `train-run` opens the gate: one motion per tip, `!until [!quorum 1, !deadline "24h"]`.
-14. `verse vote <id> approve --as <who>` answers it. A deny, or the deadline, writes `decided`
-    without landing anything.
+14. `verse motion <id> --vote approve --as <who>` answers it. A deny, or the deadline, writes
+    `decided` without landing anything.
 15. The landing task rebases each car onto the tip and fast-forwards it in, then pushes main. The
     rebase is what makes a batch of siblings land as a batch rather than as its first car.
 16. Main moving is a new tip, which is arrow 1 again — and the review that follows reads main,

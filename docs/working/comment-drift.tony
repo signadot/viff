@@ -5,7 +5,7 @@
 # what it found; and the MERGE GATE turns what the review's fixes deliver into a proposal
 # somebody decides. Install it whole —
 #
-#     verse charter add --file docs/working/comment-drift.tony
+#     verse charter -a -f docs/working/comment-drift.tony
 #
 # — which installs the strata first whatever order they appear in (cmd/verse: "STRATA FIRST"),
 # so the ordering is in force before a rule names it.
