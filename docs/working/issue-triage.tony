@@ -80,10 +80,13 @@ reads: [ !verse-path [git-issue] ]
 ---
 # 2. …and a row nobody has briefed becomes a question somebody answers.
 #
-# NO `runner:`, and that is the entire point rather than an omission. Staging's default runner is
-# the dial-in broker, so this spawn lands `unclaimed` and waits for a person to claim it from
-# their own session. The work happens where the checkout and the credentials already are, and
-# nothing about either crosses verse.
+# `runner: broker` is the entire point of this rule. It names the dial-in broker, so the spawn
+# lands `unclaimed` and waits for a person to claim it from their own session — the work happens
+# where the checkout and the credentials already are, and nothing about either crosses verse.
+#
+# It is NAMED and not left to the default, which is what a spawn saying nothing gets: this
+# verse's own runtime, running the work itself. Silence means "run this"; asking for a person is
+# something a rule has to say.
 #
 # NO `answer:` contract either, for the same reason. A contract is what makes an LLM driver's
 # final message parseable; here the executor is a person reporting through
@@ -102,6 +105,7 @@ reads: [ !verse-path [git-issue] ]
       value: !not.has-path stage
   action:
     spawn:
+      runner: broker
       vector: auto
       prompt: |
         A verse issue has just been filed, and nobody has read it against the code yet.
