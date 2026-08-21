@@ -73,10 +73,21 @@ verse
   `--trim <match>` writes only the parts its document names. They compose, and an empty result
   is an answer rather than an error (exit 0).
 
-    verse ps --if '{status: running}' --trim '{id: null, status: null}'
+    verse ps --if '{status: running}' --trim '{id status}'
     verse motion --if '{axis: whether}'
-    verse data demo pr --trim '{stage: null}'      # …per ENTITY, not per top-level key
-    verse watch demo --trim '{at: null, to: null}'
+    verse data demo pr --trim '{stage}'            # …per ENTITY, not per top-level key
+    verse watch demo --trim '{at to}'
+
+  A `--trim` document NAMES keys, so write it as a KEY SET: in brackets, a key with no `:` and
+  no value is that key with a null, which is exactly what a trim wants. `{id status}` and
+  `{id: null, status: null}` are the same document, and the first is the one to type.
+
+  In `--if` the same spelling is a PRESENCE test, because a null there matches any value the
+  key holds: `--if '{status}'` keeps every entity that has a `status` at all, whatever it says,
+  and `--if '{stage}'` is how you ask which ones have got started. What it is NOT is equality —
+  `--if '{status open}'` is two presence tests, `status` and `open`, and selects the entities
+  carrying both keys rather than the ones whose status is open. A key nothing has selects
+  nothing, so the answer to that one is empty rather than wrong-and-plausible.
 
   On `data` and `watch`, `--if` is the server's selector — it says which entities the read is
   about, before any of them cross the wire — so those two take `--trim` alone. A write's

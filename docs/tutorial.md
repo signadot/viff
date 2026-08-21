@@ -65,7 +65,7 @@ verse data --at 'demo.pr.*.stage'                  # one field of each, keyed by
 verse data --if '{stage: open}'                    # by what it says
 verse data --if '{stage: !or [open, merged]}'      # …an operator, not just equality
 verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
-verse data demo pr --trim '{stage: null}'          # …and how much of each entity to print
+verse data demo pr --trim '{stage}'                # …and how much of each entity to print
 verse data --paths demo pr                         # just the addresses
 verse data --at demo.pr.1                          # …an address copied out of a document
 ```
@@ -239,7 +239,7 @@ its own running. So observing the fleet is observing entities:
 ```sh
 verse watch verse.task                        # the whole fleet's lifecycle
 verse data verse task instance <id>      # its result, still there after it finished
-verse data verse task --trim '{status: null}'   # …or just where everything got to
+verse data verse task --trim '{status}'         # …or just where everything got to
 ```
 
 ```tony
