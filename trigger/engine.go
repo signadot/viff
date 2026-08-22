@@ -232,7 +232,10 @@ func (e *Engine) Scope() string { return e.scope }
 func (e *Engine) SetLogger(l *slog.Logger) { e.logger = l }
 func (e *Engine) Store() entity.Store      { return e.store }
 
-// Fired reports how many entities triggers have acted on — the trace counter.
+// Fired reports how many entities triggers have acted on — the trace counter. It only ever
+// rises: countFire increments per firing that proceeds and nothing decrements or persists it,
+// so this is cumulative for the life of THIS engine, and a test reading 0 is asserting that
+// nothing has fired at all rather than that nothing is in flight. What is in flight is Flows.
 func (e *Engine) Fired() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()

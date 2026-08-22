@@ -2706,7 +2706,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Flows:    len(s.Eng.Flows()),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		Tasks:    taskCount(s.scopedStore(r)),
-		Fired:    s.Eng.Fired(),
+		Fired:    s.firedTotal(),
 		Runners:  runnerRefs(s.scopedStore(r)),
 		Sources:  sourceRefs(s.scopedStore(r)),
 		Charter:  s.charterTop(),
@@ -2723,6 +2723,31 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr, Admin: s.AdminAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// firedTotal is how many entities this verse's triggers have acted on: every engine running a
+// charter here, baseline's and each package's, added up.
+//
+// EVERY ENGINE, because a rule fires in the engine that holds it and a package's charter runs
+// in one of its own. Baseline's counter alone is therefore the count of a charter installed at
+// the root, and says nothing about one installed at an address — staging's sixteen rules live
+// under `verse-dev.{drift,greet,merge,triage}`, so `fired` read 0 beside a census listing them
+// and a docket of 73 tasks they had spawned. This is the scoping the census is a tree for,
+// applied to the number next to it.
+//
+// CUMULATIVE SINCE THIS PROCESS STARTED, which is what the counter is: countFire only ever
+// increments, and nothing persists it, so a restart is the one thing that takes it back to 0.
+// Read it as "has this verse ever acted", not as a gauge of what is in flight — `flows` is the
+// live one.
+//
+// Scopes are left out for the reason the census leaves them out: a federation is one dev's
+// overlay, and status answers for this verse.
+func (s *Server) firedTotal() int {
+	n := s.Eng.Fired()
+	for _, eng := range s.packageEngines() {
+		n += eng.Fired()
+	}
+	return n
 }
 
 // charterTop is the charter as a CENSUS: how much is installed, and where.

@@ -182,3 +182,59 @@ func TestStatusTasksIsTheDocket(t *testing.T) {
 		t.Fatalf("tasks = %d but the list has %d", got, len(insts))
 	}
 }
+
+// `fired` is EVERY ENGINE's, because a rule fires in the engine that holds it and a package's
+// charter runs in one of its own. A charter installed at an address left baseline's counter at
+// 0 while its rules acted — which is what staging reads, where the whole charter is packaged
+// under `verse-dev` (git-issue 8hfm5amsh12kr9sah1n0).
+func TestStatusFiredCountsEveryEngine(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	fired := func() int64 {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/status")
+		if err != nil {
+			t.Fatalf("status: %v", err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		decodeResp(t, resp, &m)
+		n, ok := codec.AsInt64(m["fired"])
+		if !ok {
+			t.Fatalf("fired is not a number: %v", m["fired"])
+		}
+		return n
+	}
+
+	if n := fired(); n != 0 {
+		t.Fatalf("fired = %d, want 0 on a verse whose triggers have acted on nothing", n)
+	}
+
+	// A package, and nothing in baseline: the deployment this is about.
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing a package = %d: %s", code, msg)
+	}
+	entitytest.Set(t, srv.Store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	waitUntil(t, "the package's rule to fire", func() bool {
+		e, ok, _ := srv.Store.Get(entity.RefAt("notes", "seen", "head"))
+		return ok && entity.Str(e.Payload, "saw") == "yes"
+	})
+
+	// Baseline holds no rule and has fired at nothing, which is the reading this replaces.
+	if n := srv.Eng.Fired(); n != 0 {
+		t.Fatalf("baseline fired %d times over a charter it does not hold", n)
+	}
+	if n := fired(); n < 1 {
+		t.Fatalf("fired = %d over a package whose rule has acted", n)
+	}
+}
