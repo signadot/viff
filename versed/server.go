@@ -2703,7 +2703,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
 		StoreRev: s.Store.Head(),
-		Flows:    len(s.Eng.Flows()),
+		Flows:    len(s.flowSubjects(r.URL.Query().Get("scope"))),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		Tasks:    taskCount(s.scopedStore(r)),
 		Fired:    s.firedTotal(),
@@ -3640,12 +3640,47 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 // ── flow: engine steering (control plane) ────────────────────────────────────
 
 func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
-	if eng == nil {
-		writeOut(w, r, http.StatusOK, []string{})
-		return
+	writeOut(w, r, http.StatusOK, s.flowSubjects(r.URL.Query().Get("scope")))
+}
+
+// flowSubjects is the distinct subjects with in-flight work: the list `verse flow` prints and
+// the number `status` counts, through one function so that the two are the same answer rather
+// than two that agree.
+//
+// EVERY ENGINE ON THIS PLANE, for the reason firedTotal adds every engine's counter: a live
+// task is tracked by the engine that spawned it (Engine.track) and a package's charter runs in
+// an engine of its own, so baseline's registry alone is blind to the work a packaged rule
+// started — on staging, where the whole charter sits under `verse-dev`, that is all of it.
+//
+// A SCOPE ANSWERS FOR ITSELF: a federation is a plane of its own — its own engine over its own
+// store overlay — so a named scope is that engine's registry and nothing else, which is what
+// this route already meant by it. One nobody has opened has no engine and no live work, and
+// says so with an empty list rather than baseline's. Packages belong to baseline's plane,
+// which is where restorePackages puts them.
+//
+// Deduped, because a subject is a QUESTION ("what is happening to this entity") and two
+// engines with work about the same one are one busy subject, not two. Sorted for the reason
+// Engine.Flows sorts: a listing an operator diffs against the last one.
+func (s *Server) flowSubjects(scope string) []string {
+	engines := []*trigger.Engine{s.engFor(scope)}
+	if scope == "" {
+		engines = append(engines, s.packageEngines()...)
 	}
-	writeOut(w, r, http.StatusOK, eng.Flows())
+	seen := map[string]bool{}
+	out := make([]string, 0, len(engines))
+	for _, eng := range engines {
+		if eng == nil {
+			continue // a scope nobody has opened
+		}
+		for _, subj := range eng.Flows() {
+			if !seen[subj] {
+				seen[subj] = true
+				out = append(out, subj)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // flowTree renders a subject's work as a SHAPE — the trigger that acted on it, the task
