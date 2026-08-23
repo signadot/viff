@@ -71,6 +71,15 @@ verse
                                              left to wait for ever. Exit 0 whether or not it
                                              matched: what happened is the output, not the
                                              status
+         --nowire                            print each frame as a BLOCK, opened by `---`,
+                                             rather than on one line. The default is one frame
+                                             per line, which is what lets `grep` see a whole
+                                             event; this is for the stream somebody is reading
+                                             rather than filtering, where a frame wider than
+                                             the terminal is worse than one six lines tall.
+                                             The brackets go with the wire, and `---` takes
+                                             over as the frame boundary — so the output is a
+                                             tony document stream and parses back as one
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
   acts on one member: `verse gate` shows the pending decisions, `verse gate approve <id>`

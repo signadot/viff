@@ -626,7 +626,10 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		if !ok {
 			continue
 		}
-		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color))
+		// Wire, always: a transcript is a running commentary, and the loop below reads each
+		// frame as a task.Frame to know when the task is over — so one frame per line is what
+		// the person watching and the code watching both want.
+		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color, true))
 		// task.Frame, not a hand-copied subset of it: the six fields this loop reads
 		// were re-declared here with their tony tags, so a rename on the emitting side
 		// would have gone unnoticed and simply stopped populating them.

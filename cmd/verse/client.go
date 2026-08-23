@@ -561,6 +561,9 @@ type watchConfig struct {
 	// It matches the FRAME rather than the payload — see the type, which is where the
 	// coordinate system and the refusal that guards it are explained.
 	Until string `cli:"name=until desc='stop after the first FRAME matching this tony pattern — a frame is {at op to rev gap}, so a payload match is {to: {…}}. It is printed before the stream ends'"`
+	// --nowire trades the line for the shape: see renderFrame, which is where the default goes
+	// the other way and says why.
+	NoWire bool `cli:"name=nowire desc='print each frame as a --- separated BLOCK rather than on one line (a wide frame stops being a wide line; grep stops seeing a whole event)'"`
 }
 
 func watchCmd() *cli.Command {
@@ -650,7 +653,16 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return streamChanges(cc, "watch", q, u)
+	return streamChanges(cc, "watch", q, stream{until: u, nowire: cfg.NoWire})
+}
+
+// stream is what a caller asks of a change stream beyond its selector: where it ends, and what
+// shape its frames are printed in. Both are the CLIENT's questions — the server neither knows
+// when this watcher has seen enough nor what its terminal is like — which is why neither of
+// them appears in the query.
+type stream struct {
+	until  until
+	nowire bool
 }
 
 // streamChanges prints the store's change stream under one selector, one frame per line, until
@@ -661,7 +673,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 // --watch`), and a second copy of this loop is a second place a frame can come out rendered
 // differently from everywhere else. `what` is the command asking, which is what the refusals
 // name — the operator typed one command and should be told about that one.
-func streamChanges(cc *cli.Context, what string, q url.Values, u until) error {
+func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 	out, err := outFmt()
 	if err != nil {
 		return err
@@ -702,13 +714,13 @@ func streamChanges(cc *cli.Context, what string, q url.Values, u until) error {
 			return err
 		}
 		if keep {
-			fmt.Fprintln(cc.Out, renderFrame(line, in, out, color))
+			fmt.Fprintln(cc.Out, renderFrame(line, in, out, color, !s.nowire))
 		}
 		// AFTER the print, which is what makes the matching frame the last line of output
 		// rather than the one the operator never sees. A stream that ends because the server
 		// closed it ends here too, having printed everything and matched nothing — both are
 		// exit 0, and the output says which happened.
-		done, err := u.reached(data, in)
+		done, err := s.until.reached(data, in)
 		if err != nil {
 			return err
 		}
@@ -729,13 +741,19 @@ func streamChanges(cc *cli.Context, what string, q url.Values, u until) error {
 // a stream is where somebody is READING, so it is the last place to render worse than
 // everywhere else.
 //
-// Single-line per event stays, which is not the same question. A stream is read as it scrolls
-// and grepped afterwards; the block form belongs to `data`, where the document is the
-// whole answer rather than one of a thousand.
+// Single-line per event is the DEFAULT, which is not the same question. A stream is read as it
+// scrolls and grepped afterwards, and one frame per line is what lets `grep` see a whole event
+// rather than the two lines of it that happened to hold the word; the block form belongs to
+// `data`, where the document is the whole answer rather than one of a thousand.
+//
+// `wire` is false for the stream somebody is READING rather than filtering, where a frame
+// wider than the terminal is worse than a frame six lines tall. It is the caller's to decide
+// because the tradeoff is the operator's: what is bought is the shape, and what is spent is
+// the line that made the stream greppable.
 //
 // A line it cannot parse is passed through as it arrived. On a live stream a surprising line
 // is better seen than swallowed.
-func renderFrame(s string, in, out codec.Format, color bool) string {
+func renderFrame(s string, in, out codec.Format, color, wire bool) string {
 	n, err := codec.ParseNodeOrNil([]byte(s), in)
 	if err != nil || n == nil {
 		return s
@@ -743,16 +761,38 @@ func renderFrame(s string, in, out codec.Format, color bool) string {
 	if in != out {
 		n = codec.StripLayout(n)
 	}
+	// THE BLOCK FORM IS INDENTATION, so the wire's brackets have to go with the wire. Left on,
+	// they are replayed six lines tall — the wire's punctuation with none of its compactness —
+	// which is a frame written twice rather than a frame written differently.
+	//
+	// And once they are gone nothing separates one frame from the next: `rev: 2` above
+	// `at: demo.pr.2` reads as a single document with a repeated key. So each frame opens with
+	// `---`, which is what tony already spells a document boundary with, and the stream parses
+	// back as the documents it is (codec.ParseNodes). BEFORE each frame rather than between
+	// them, because a stream has no last frame to place a separator against — a watch cut by
+	// --until or by ^C is still a stream of whole documents.
+	if !wire {
+		n = codec.StripBrackets(n)
+	}
 	var b strings.Builder
-	if color {
+	switch {
+	case color && wire:
 		err = codec.EncodeNodeWireColor(&b, n, out)
-	} else {
+	case color:
+		err = codec.EncodeNodeColor(&b, n, out)
+	case wire:
 		err = codec.EncodeNodeWire(&b, n, out)
+	default:
+		err = codec.EncodeNode(&b, n, out)
 	}
 	if err != nil {
 		return s
 	}
-	return strings.TrimRight(b.String(), "\n")
+	text := strings.TrimRight(b.String(), "\n")
+	if !wire {
+		return "---\n" + text
+	}
+	return text
 }
 
 // ── gate ─────────────────────────────────────────────────────────────────────
