@@ -140,7 +140,7 @@ func (cfg *motionConfig) stream(cc *cli.Context, id string) error {
 	if _, err := entity.ParseAt(at); err != nil {
 		return fmt.Errorf("motion: %w", err)
 	}
-	return streamChanges(cc, "motion", url.Values{"at": {at}})
+	return streamChanges(cc, "motion", url.Values{"at": {at}}, until{})
 }
 
 // motionsAt is where the motions live: all of them, or the one named. A motion's id is a KEY

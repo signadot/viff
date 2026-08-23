@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
+	"strings"
 
 	"github.com/scott-cotton/cli"
 	tony "github.com/signadot/tony-format/go-tony"
@@ -204,4 +207,120 @@ func (f filters) frame(data string, in codec.Format) (string, bool, error) {
 		return data, true, nil // unrenderable: say what the server said
 	}
 	return string(b), true, nil
+}
+
+// --until, on the streams.
+//
+// It answers a third question, next to --if's WHICH changes and --trim's HOW MUCH of each:
+// when the stream is over. The first frame that matches is printed, and then the watch ends.
+//
+// PRINTED FIRST, which is what settles the exit code. The matching frame on stdout is the
+// answer, so an --until watch exits 0 whether or not it ever matched — the same convention
+// every filter here already keeps, where an empty result is a true answer to a question rather
+// than a failure to answer it. Had the frame been swallowed, the exit status would have been
+// the only evidence the thing happened, and --until would have had to become an assertion with
+// a non-zero code for "did not", which is not what the rest of this CLI means by an exit code.
+//
+// IT MATCHES THE FRAME — `{at op to rev gap}`, the same document --trim names, with the
+// entity's payload under `to`. That is the coordinate system every client-side per-frame flag
+// on watch already uses. --if is the one that is different and says so: it is the SERVER's
+// selector over entities, answered before there is a frame at all. So the spelling is
+// `--until '{to: {stage: merged}}'`, and the payload-rooted `--until '{stage: merged}'` — what
+// somebody who has just typed --if writes next — is refused rather than left to hang.
+type until struct{ pat *ir.Node }
+
+func readUntil(src string) (until, error) {
+	pat, err := parseFilter("--until", src)
+	if err != nil {
+		return until{}, err
+	}
+	if err := frameShaped(pat); err != nil {
+		return until{}, err
+	}
+	return until{pat: pat}, nil
+}
+
+// reached reports whether this frame is the one the watch was waiting for.
+//
+// The frame is read AS IT ARRIVED, before --trim projected it: --trim says how much of an event
+// to show, and letting a display flag decide which events can end the stream would mean
+// `--trim '{at}' --until '{to: {stage: merged}}'` never matching anything.
+//
+// A line that does not parse never matches. It is still printed — a surprising line on a live
+// stream is better seen than swallowed, which is the rule everywhere else here — but it cannot
+// answer a question asked of a document.
+func (u until) reached(data string, in codec.Format) (bool, error) {
+	if u.pat == nil {
+		return false, nil
+	}
+	n, err := codec.ParseNodeOrNil([]byte(data), in)
+	if err != nil || n == nil {
+		return false, nil
+	}
+	ok, err := tony.Match(n, u.pat)
+	if err != nil {
+		return false, fmt.Errorf("%w: --until: %v", cli.ErrUsage, err)
+	}
+	return ok, nil
+}
+
+// frameFields are the keys a frame has, read off entity.Event's tony tags so that the refusal
+// below cannot come to describe a frame verse no longer sends.
+var frameFields = func() map[string]bool {
+	fields := map[string]bool{}
+	t := reflect.TypeOf(entity.Event{})
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(strings.TrimPrefix(t.Field(i).Tag.Get("tony"), "field="), ",")
+		if name != "" {
+			fields[name] = true
+		}
+	}
+	return fields
+}()
+
+// frameShaped refuses an --until written against the payload instead of the frame.
+//
+// `--until '{stage: merged}'` is what somebody who has just written `--if '{stage: merged}'`
+// reaches for, and against a frame it matches nothing: the watch would stream until the server
+// closed it and then exit 0, having silently never asked the question. That failure has no
+// symptom — a watch waiting is what a watch looks like — so it is worth one refusal at the
+// point of typing, which can name the spelling that means it.
+//
+// ONLY A PLAIN OBJECT IS JUDGED. A tagged one is an operator (`!or [...]`), whose keys are not
+// field names; a non-object is matched against a frame that is always an object, which is a
+// different mistake and not a silent one. Layout tags do not count as tags: `{a: b}` written in
+// flow style carries !bracket, and that records how it was typed rather than what it means.
+func frameShaped(pat *ir.Node) error {
+	pat = codec.Unwrap(pat)
+	if pat == nil || pat.Type != ir.ObjectType {
+		return nil
+	}
+	if ir.TagRemove(ir.TagRemove(pat.Tag, "!bracket"), "!literal") != "" {
+		return nil
+	}
+	var strays []string
+	for _, f := range pat.Fields {
+		if f != nil && !frameFields[f.String] {
+			strays = append(strays, f.String)
+		}
+	}
+	// EVERY key has to be a stray. A pattern naming even one of a frame's fields is written in
+	// the frame's coordinates, and what else it says is the operator's business.
+	if len(strays) == 0 || len(strays) != len(pat.Fields) {
+		return nil
+	}
+	return fmt.Errorf("%w: --until %s: a frame is %s, and the entity's payload is under `to` — "+
+		"so the payload match is `--until '{to: {%s: …}}'`. (--if is the one that takes a bare "+
+		"payload pattern: it is the server's selector, and it selects entities rather than "+
+		"frames)", cli.ErrUsage, strings.Join(strays, ", "), frameShape(), strays[0])
+}
+
+// frameShape names a frame's keys, in a fixed order so the refusal above reads the same twice.
+func frameShape() string {
+	keys := make([]string, 0, len(frameFields))
+	for k := range frameFields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return "{" + strings.Join(keys, " ") + "}"
 }
