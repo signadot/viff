@@ -665,8 +665,8 @@ type stream struct {
 	nowire bool
 }
 
-// streamChanges prints the store's change stream under one selector, one frame per line, until
-// the server closes it.
+// streamChanges prints the store's change stream under one selector — one frame per line, or
+// as --- separated blocks when the caller's stream asks for --nowire — until the server closes it.
 //
 // It is shared rather than `watch`'s own, because watching is not `watch`'s alone: a collection
 // that lives at a known address offers the same stream under its own name (`verse motion
