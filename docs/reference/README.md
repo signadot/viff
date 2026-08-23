@@ -63,6 +63,14 @@ verse
                                              The relative cursor is its own flag because
                                              `--since -<n>` reads as a flag named `-<n>`
          [--if <pat>] [--if-at <field.path>] … only those whose payload matches (see below)
+         --until <pat>                       …and STOP at the first FRAME matching <pat>, which
+                                             is printed before the stream ends. A frame is
+                                             `{at op to rev gap}` — the document `--trim` names
+                                             — so a payload match is `{to: {stage: merged}}`,
+                                             and a bare payload pattern is refused rather than
+                                             left to wait for ever. Exit 0 whether or not it
+                                             matched: what happened is the output, not the
+                                             status
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
   acts on one member: `verse gate` shows the pending decisions, `verse gate approve <id>`
@@ -269,7 +277,16 @@ against the payload, which is the same predicate a charter carries in `value` �
 verse data --if '{stage: !or [open, merged]}'   # an operator, not just equality
 verse data --if '{urgent: true}' --if-at labels # rooted inside the payload
 verse watch --if '{stage: open}' demo            # the same selector, as it happens
+verse watch --until '{to: {stage: merged}}' demo # …until one of them merges, then stop
 ```
+
+`--until` is the exception to that symmetry, and the shape of its pattern says so. `--if` is
+answered at the SERVER, over entities, before there is a frame — so it takes the payload
+pattern bare. `--until` is answered at the client, over the frames that arrive, because only
+the client knows when it has seen enough — so it is written in the frame's coordinates, with
+the payload under `to`. Writing it the other way round (`--until '{stage: merged}'`) matches
+nothing, and a watch matching nothing looks exactly like a watch waiting, so it is refused
+where it is typed.
 
 `--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
 subtree need not restate the shape above it — `--if-at labels --if '{urgent: true}'` is

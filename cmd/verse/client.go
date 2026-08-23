@@ -556,6 +556,11 @@ type watchConfig struct {
 	// no payload left to ask about — so a filtered watch is a stream of states, not of removals.
 	If   string `cli:"name=if desc='only changes whose payload matches this tony pattern (a delete never matches)'"`
 	IfAt string `cli:"name=if-at desc='root --if at this dot-separated field path INSIDE the payload (e.g. labels)'"`
+	// --until is where the stream STOPS, which is the client's question: the server does not
+	// know what the watcher was waiting for, and a cursor cannot say "when this becomes true".
+	// It matches the FRAME rather than the payload — see the type, which is where the
+	// coordinate system and the refusal that guards it are explained.
+	Until string `cli:"name=until desc='stop after the first FRAME matching this tony pattern — a frame is {at op to rev gap}, so a payload match is {to: {…}}. It is printed before the stream ends'"`
 }
 
 func watchCmd() *cli.Command {
@@ -641,7 +646,11 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
-	return streamChanges(cc, "watch", q)
+	u, err := readUntil(cfg.Until)
+	if err != nil {
+		return err
+	}
+	return streamChanges(cc, "watch", q, u)
 }
 
 // streamChanges prints the store's change stream under one selector, one frame per line, until
@@ -652,7 +661,7 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 // --watch`), and a second copy of this loop is a second place a frame can come out rendered
 // differently from everywhere else. `what` is the command asking, which is what the refusals
 // name — the operator typed one command and should be told about that one.
-func streamChanges(cc *cli.Context, what string, q url.Values) error {
+func streamChanges(cc *cli.Context, what string, q url.Values, u until) error {
 	out, err := outFmt()
 	if err != nil {
 		return err
@@ -692,10 +701,20 @@ func streamChanges(cc *cli.Context, what string, q url.Values) error {
 		if err != nil {
 			return err
 		}
-		if !keep {
-			continue
+		if keep {
+			fmt.Fprintln(cc.Out, renderFrame(line, in, out, color))
 		}
-		fmt.Fprintln(cc.Out, renderFrame(line, in, out, color))
+		// AFTER the print, which is what makes the matching frame the last line of output
+		// rather than the one the operator never sees. A stream that ends because the server
+		// closed it ends here too, having printed everything and matched nothing — both are
+		// exit 0, and the output says which happened.
+		done, err := u.reached(data, in)
+		if err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
 	}
 	return nil
 }
