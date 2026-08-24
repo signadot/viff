@@ -143,7 +143,10 @@ verse
                                              `r=$(data --kpaths … | head -1); data --at "$r"`
           --put <payload>                    write it there: a write reaches object fields, not
                                              array elements. A put MERGES — fields it does not
-                                             name are left alone, and --rm is how one goes away
+                                             name are left alone, and --rm is how one goes away.
+                                             It descends only through an object: naming a field
+                                             under an array or a scalar is REFUSED rather than
+                                             replacing it. entities.md#what-a-write-descends-through
           --rm (-r)                          remove what stands there: an entity, or one field.
                                              `-r` is `verse c -r`'s letter: removal is the same
                                              act. `--put` has none — `-p` beside `--paths` is a

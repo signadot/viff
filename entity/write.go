@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -199,6 +200,70 @@ type Write struct {
 	// Sub is refused where it is asked for rather than silently checked against the wrong
 	// place (git-issue zf1sz225h12ksm6agsn0).
 	When []Require
+}
+
+// ErrNotDescendable is a write refused because the path it descends through holds a value that
+// is not an object — an array or a scalar, which a descent would replace. It is the CALLER's
+// error, not the store's: nothing failed, and nothing will change if it is retried.
+var ErrNotDescendable = errors.New("the write would replace what it descends through")
+
+// PatchLands reports whether every nested object in patch has somewhere to land in cur.
+//
+// A patch merges key by key where BOTH sides are objects and replaces where the target is not
+// one — which is well-defined and right, and is also how `patch: {votes: {bo: yes}}` over
+// `votes: [{by: ana}, {by: bo}]` writes an object holding the one field and loses both ballots,
+// with the rule reporting success and nothing logged (git-issue mbjpdr6sh12ksa5zgsn0).
+//
+// ABSENT IS FINE, and that is where this differs from the guard on a write path. A put names a
+// path in its steps and the steps assert it stands; a patch is a DOCUMENT describing the state
+// an entity should reach, and a nested key it does not carry yet is that document's ordinary
+// meaning — every derive that builds structure writes one. What is refused is landing on a
+// VALUE: an array, a scalar, a null.
+//
+// It needs no precondition and costs no round trip. Modify already reads the current payload
+// and hands it to its callback under a compare-and-swap, so the question is asked in process,
+// against the very payload the patch is about to be applied to.
+func PatchLands(cur, patch Payload) error { return patchLands(cur, patch, nil) }
+
+func patchLands(cur, patch Payload, at []string) error {
+	p := ir.Uncomment(patch)
+	if p == nil || p.Type != ir.ObjectType {
+		return nil
+	}
+	c := ir.Uncomment(cur)
+	for i, f := range p.Fields {
+		name := fieldName(f)
+		v := ir.Uncomment(p.Values[i])
+		// A SCALAR OR AN ARRAY REPLACES OUTRIGHT, which is what writing one says. `!delete null`
+		// is the removal mark and lands here too, as it should: it is not a merge into anything.
+		//
+		// THE TAG IS NOT CONSULTED, and that is deliberate rather than an omission. A layout tag
+		// is what the parser attaches to flow style, so `{votes: {bo: yes}}` carries one and a
+		// tag test would skip every JSON and single-line charter — the same hazard as
+		// git-issue srrwnc0kh12kr1r1e1n0. A match operator cannot be here at all: CheckPatchable
+		// refuses one in a written value before the log can hold it.
+		if v.Type != ir.ObjectType {
+			continue
+		}
+		if c == nil || c.Type != ir.ObjectType {
+			continue // nothing to land on and nothing to lose: the patch builds it
+		}
+		here := append(append([]string{}, at...), name)
+		target := ir.Uncomment(ir.Get(c, name))
+		if target == nil {
+			continue // absent: the patch creates the key, which is what a patch is for
+		}
+		if target.Type != ir.ObjectType {
+			return fmt.Errorf("the patch merges an object into %s, where %s stands: "+
+				"nothing would merge and the value would be replaced. Write the whole value "+
+				"at %s, or patch a field inside it",
+				strings.Join(here, "."), standing(target), strings.Join(here, "."))
+		}
+		if err := patchLands(target, p.Values[i], here); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Require is a precondition: whatever stands at At must match Pattern, evaluated against

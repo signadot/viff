@@ -901,6 +901,24 @@ triggers writing under one key do not clobber each other, and the
 apply. `patch: { tmp: !delete null }` removes a key, which is something no amount of setting
 fields could say. Writing a scalar (`patch: 42`) replaces the whole payload.
 
+A nested write merges into an OBJECT, and where the subject holds an array or a scalar under
+that key there is nothing to merge into — so the firing is refused rather than replacing what
+stands there:
+
+```yaml
+# subject: {stage: counting, votes: [{by: ana}, {by: bo}]}
+patch:
+  stage: counted
+  votes: {bo: yes}      # refused: the patch merges an object into votes, where an array stands
+```
+
+The refusal fails the firing, which is what a patch that could not be established already does:
+the subject is left exactly as it was, so the rule still selects it and the next commit tries
+again. To replace a container deliberately, write the whole value at that key
+(`patch: {votes: [...]}`), which is a value rather than a merge and says so. A key the subject
+does not carry yet is not this case — a patch builds it, which is what every derive that grows
+structure relies on.
+
 `derive` writes an entity that is *not* the subject, the one thing `patch` cannot do. It names a
 place — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value: …}`
 for a place of any depth — and its content may reference its own subject and, at or below its own

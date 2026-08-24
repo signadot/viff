@@ -1955,6 +1955,15 @@ func (e *Engine) patchEntity(chain string, parent int64, ref entity.Ref, patch e
 		if cur == nil {
 			cur = ir.Null()
 		}
+		// WHERE THE PATCH WOULD LAND ON A VALUE, refuse instead. A nested object in a patch
+		// merges into an object and REPLACES anything else, so a rule patching a field under a
+		// subject whose field holds an array took the array away and reported success. The
+		// question is asked here because this is where the current payload is in hand — see
+		// entity.PatchLands, and git-issue mbjpdr6sh12ksa5zgsn0.
+		if err := entity.PatchLands(cur, patch); err != nil {
+			perr = err
+			return cur // leave it exactly as it was
+		}
 		out, err := tony.Patch(cur, patch)
 		if err != nil {
 			perr = err

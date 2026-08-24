@@ -1631,6 +1631,13 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	committed, _, err := store.Write(entity.Write{
 		At: ref.At(), Sub: body.Sub, Value: body.Payload, When: when,
 	})
+	// A WRITE THAT WOULD REPLACE WHAT IT DESCENDS THROUGH IS THE CALLER'S, not the gateway's:
+	// nothing failed downstream and a retry changes nothing, so it answers 409 beside the
+	// refused-precondition case rather than 502 (git-issue mbjpdr6sh12ksa5zgsn0).
+	if errors.Is(err, entity.ErrNotDescendable) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	if err != nil {
 		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
 		return

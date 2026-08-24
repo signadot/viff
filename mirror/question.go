@@ -367,7 +367,15 @@ func StaleAnswer(store entity.Store, id string, res task.Resolution) {
 		}
 		rec["say"] = say
 	}
-	_, _, _ = store.Write(entity.Write{At: QuestionRef(id).At("stale", by), Value: rec.Payload()})
+	// WRITTEN AT `stale`, NOT AT `stale.<by>`, because a write does not create the path it
+	// descends through: nothing else writes this field, so the first stale answer to a question
+	// would be descending through a key that does not stand yet. One step shallower reaches the
+	// same document — the record keyed by who gave it, accumulating across answerers — and its
+	// own parent is the question's payload, which stands.
+	_, _, _ = store.Write(entity.Write{
+		At:    QuestionRef(id).At("stale"),
+		Value: entity.Obj{by: rec}.Payload(),
+	})
 }
 
 // effectLists flattens derived effects into the three lists a gate predicate speaks in.

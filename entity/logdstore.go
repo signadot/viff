@@ -647,14 +647,32 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	if w.Value == nil {
 		node = deleteOp() // remove whatever stands there
 	}
-	if len(w.When) == 0 {
+	// A WRITE DESCENDS ONLY THROUGH SOMETHING A FIELD CAN LIVE IN. `verse data demo pr 1 votes
+	// bo --put '"yes"'` names `bo` under `votes`, and where `votes` holds an array there is
+	// nothing to merge into: the patch writes an object holding the one field where the array
+	// stood, every ballot with it, exit 0 — and the answer echoes the value written rather than
+	// the entity, so nothing in the transcript says anything was lost. A scalar goes the same
+	// way. git-issue mbjpdr6sh12ksa5zgsn0 has the transcripts.
+	//
+	// So a write that descends carries a precondition about the place it descends THROUGH:
+	// nothing stands there, or what does is an object or a null. descendablePath is the pattern
+	// and carries why absence and null are on the admitting side — briefly, that an address is a
+	// path of any depth, so refusing to build one refuses a package deriving a deep entity.
+	parent, descends, err := descendsThrough(w)
+	if err != nil {
+		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
+	}
+	if len(w.When) == 0 && !descends {
 		res, err := s.sess.Patch(ctx, path, node)
 		if err != nil {
 			return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 		}
 		return true, res.Commit, nil
 	}
-	pre := make([]pathPattern, 0, len(w.When))
+	pre := make([]pathPattern, 0, len(w.When)+1)
+	if descends {
+		pre = append(pre, pathPattern{at: parent, object: true})
+	}
 	for _, r := range w.When {
 		at := r.path(w)
 		// A PRECONDITION AT AN ARRAY ACCESS IS REFUSED rather than checked somewhere else. It
@@ -675,12 +693,118 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	}
 	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
+		// SAY WHICH REFUSAL IT WAS, when the write descended. "A condition did not hold" is the
+		// honest answer for a caller's own guard, and it is the wrong one here: the whole
+		// defect this guard closes was a transcript that did not say what happened to the data.
+		// One read, on the failure path only.
+		if descends {
+			if err := s.descendRefusal(ctx, w, parent); err != nil {
+				return false, 0, err
+			}
+		}
 		return false, 0, nil // a precondition did not hold — a revoke, or already committed
 	}
 	if err != nil {
 		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 	}
 	return true, res.Commit, nil
+}
+
+// descendsThrough is the place a write DESCENDS THROUGH — its address minus the last step —
+// and whether there is one to ask about.
+//
+// IT IS COMPUTED ON THE ADDRESS AS A KPATH, which is the canonical spelling of one and the only
+// thing both forms of a write share. `verse data demo pr 1 votes bo` arrives as a Ref plus
+// At.Field; `--at demo.pr."1".votes.bo` arrives as a Ref of that whole depth with no Field at
+// all (versed.addressAt, entity.RefOfAny). Path.segments() is what merges them, so the question
+// is asked once rather than once per spelling.
+//
+// The store path is NOT what is parsed, deliberately: refPath prefixes the logd root, which is
+// spelled `verse` by default and would read as the reserved half's own root. The address
+// carries VerseRoot only when it is genuinely in verse's half.
+//
+// THERE IS NO DEPTH TEST, and its absence is the whole design. An address is a path of any
+// depth and entity-hood is a lens over one document, so `verse-dev.drift.head.abc` is a package
+// deriving an entity AND a field under `verse-dev.drift.head` — the same write, and nothing in
+// it says which was meant. Asking every write the same question is what makes that not matter:
+// what is refused is descending through a VALUE, and creating where nothing stands is left
+// alone at every depth (see descendablePath).
+//
+// An ARRAY ACCESS (Write.Sub) answers false: its parent must be an ARRAY, and a nested pattern
+// keys by field name, so there is no shape to say it with (git-issue zf1sz225h12ksm6agsn0).
+// A wildcard answers false too — it names no one place to ask about.
+func descendsThrough(w Write) (Path, bool, error) {
+	if w.Sub != "" {
+		return Path{}, false, nil
+	}
+	segs := w.At.segments()
+	if len(segs) < 2 {
+		return Path{}, false, nil // nothing above it to descend through
+	}
+	spelling, err := KPathOf(segs)
+	if err != nil {
+		return Path{}, false, err
+	}
+	at, err := ParseAt(spelling)
+	if err != nil {
+		return Path{}, false, err
+	}
+	for kp := at; kp != nil; kp = kp.Next {
+		if kp.Field == nil || kp.FieldAll {
+			return Path{}, false, nil
+		}
+	}
+	ref, ok := RefOfAny(segs[:len(segs)-1])
+	if !ok {
+		return Path{}, false, nil
+	}
+	return ref.At(), true, nil
+}
+
+// descendRefusal names what a write descended through, and returns nil when the parent is fine
+// — which means some other precondition failed and the caller's own "did not hold" is the
+// right answer after all.
+//
+// It reads, and it is the only read on this path. That is affordable because it runs ONLY after
+// a write has already been refused: the cost lands on the failure, and what it buys is the
+// difference between a transcript a reader can act on and one they cannot.
+func (s *LogdStore) descendRefusal(ctx context.Context, w Write, parent Path) error {
+	node, err := s.sess.Match(ctx, s.writePath(parent, ""))
+	if err != nil || node == nil {
+		return nil // cannot say; leave it as the ordinary refusal
+	}
+	// A BARE NULL IS INCONCLUSIVE, and saying so is the difference between a message and a wrong
+	// message. logd answers null both for an entity holding one and for a path whose ancestors
+	// do not resolve at all (see Get and keyStands), and the guard admits both — so a null here
+	// means the refusal was somebody else's precondition, not this one.
+	n := ir.Uncomment(node)
+	if n.Type == ir.ObjectType || n.Type == ir.NullType {
+		return nil
+	}
+	// SPELLED AS THE ADDRESS, not as the store path. refPath prefixes the logd root — `verse` by
+	// default, which is also how the reserved half is spelled — and a reader who typed
+	// `demo pr 2 votes bo` has never seen it and cannot act on it.
+	where := JoinSegs(parent.segments())
+	return fmt.Errorf("%w: %s holds %s, so %q is not a place in it — write the whole value AT "+
+		"%s, or address an element of it",
+		ErrNotDescendable, where, standing(n), lastStep(w.At), where)
+}
+
+// standing names what a write ran into, in the words a reader would use for it.
+func standing(n *ir.Node) string {
+	if n.Type == ir.ArrayType {
+		return "an array"
+	}
+	return "a scalar"
+}
+
+// lastStep is the step a write named under its parent — what the refusal quotes back.
+func lastStep(at Path) string {
+	segs := at.segments()
+	if len(segs) == 0 {
+		return ""
+	}
+	return segs[len(segs)-1]
 }
 
 // Head is the highest commit this session knows of, WITHOUT asking the store.
@@ -743,12 +867,15 @@ func rootPattern(pre []pathPattern) *ir.Node {
 	var branches []*ir.Node
 	present, any := patTree{}, false
 	for _, p := range pre {
-		if p.absent {
+		switch {
+		case p.absent:
 			branches = append(branches, absentPath(p.at))
-			continue
+		case p.object:
+			branches = append(branches, descendablePath(p.at))
+		default:
+			nestPattern(present, p.at, p.pattern)
+			any = true
 		}
-		nestPattern(present, p.at, p.pattern)
-		any = true
 	}
 	if any {
 		branches = append(branches, present.node())
@@ -769,6 +896,7 @@ type pathPattern struct {
 	at      Path
 	pattern Payload
 	absent  bool // nothing stands at at; pattern is unused
+	object  bool // nothing stands at at, or an object does; pattern is unused
 }
 
 // absentPath renders "nothing stands at ref": there is no key at the path, which is a negated
@@ -789,6 +917,41 @@ func absentPath(at Path) *ir.Node {
 	noKey := patTree{}
 	nestPattern(noKey, at, ir.Null()) // negated: no key at the path at all
 	return noKey.node().WithTag("!not")
+}
+
+// descendablePath renders "nothing stands here, or what does can be descended through" — what
+// a write reaching past this point needs to assume, and no more than that.
+//
+// `!not {…parent: !not.or [{}, !irtype null]}`, and every layer is load-bearing. `{}` matches
+// any object and nothing else; `!irtype null` matches a null; the `!not.or` of the two matches
+// an array or a scalar, which are exactly the values a descent would replace; and a pattern at
+// a key that is not there fails whatever it says, so the outer negation answers TRUE for an
+// absent parent. Checked, all five (TestAWriteDescendsOnlyThroughAValueThatStands):
+//
+//	object true · array FALSE · scalar FALSE · null true · absent true
+//
+// THE ABSENT COLUMN IS THE DESIGN, not a concession. "A write does not create the path it
+// descends through" was the stricter rule and it cannot be had: an address is a path of any
+// depth and entity-hood is a lens over one document, so a package deriving
+// `verse-dev.drift.head.abc` where `verse-dev.drift.head` was never written IS the write that
+// rule forbids. Twenty-odd tests across entity, trigger and source said so when it was tried.
+//
+// THE NULL COLUMN IS A DECISION. A null payload is a value (git-issue a1k0x5r0h12ksbhxg1n0), so
+// descending through one does replace something — but nothing a reader can read, and absence
+// reads back as a bare null from a path whose ancestors do not resolve, so refusing it would
+// refuse creation under a different name.
+//
+// ITS OWN BRANCH, like absentPath and for the same reason: nestPattern merges into a shared
+// tree and patTree.child replaces a leaf with a fresh subtree, so this guard and a caller's own
+// pattern beneath it would silently overwrite one another.
+func descendablePath(at Path) *ir.Node {
+	replaceable := ir.FromSlice([]*ir.Node{
+		ir.FromMap(map[string]*ir.Node{}), // an object: descend into it
+		ir.Null().WithTag("!irtype"),      // a null: nothing readable to lose
+	}).WithTag("!not.or")
+	t := patTree{}
+	nestPattern(t, at, replaceable)
+	return t.node().WithTag("!not")
 }
 
 // nestPattern places pattern at m[system][kind][id][field...], building intermediate maps —

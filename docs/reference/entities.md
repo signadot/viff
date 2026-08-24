@@ -395,6 +395,41 @@ Because a write is a tony *patch*, the
 to it — `!delete` removes a key, which is something no amount of setting fields could say —
 and a charter's `patch` is the same operation from the other side.
 
+### What a write descends through
+
+A write names a place inside a payload by naming the fields on the way to it, and each of those
+has to be somewhere a field can live. Where nothing stands yet, the write builds it; where an
+object stands, it merges into it; where an **array or a scalar** stands, the write is refused.
+
+```sh
+verse data demo pr 1 --put '{votes: [{by: ana}, {by: bo}]}'
+verse data demo pr 1 votes bo --put '"yes"'
+# the write would replace what it descends through: demo.pr."1".votes holds an array,
+# so "bo" is not a place in it — write the whole value AT demo.pr."1".votes, or address
+# an element of it
+```
+
+It is refused because the alternative is silent: `bo` is not a field of an array and there is
+nothing to merge into, so the array would be replaced by `{bo: yes}` — both ballots gone, exit
+0, and an answer that echoes the value written rather than the entity, so nothing in the
+transcript says anything was lost.
+
+Replacing it is still available and is spelled as what it is — a put AT the array:
+
+```sh
+verse data demo pr 1 votes --put '[{by: ana}, {by: bo}, {by: cy}]'
+```
+
+The guard is a precondition carried with the write, so it is decided at the commit rather than
+in a check beforehand, and `--create`/`--update`/`--expect` compose with it. `--create` is worth
+naming, because it does not stand in for this one: it asks whether the LEAF is absent, which
+under an array it truthfully is, so it admits exactly the write that would do the damage.
+
+A charter's `patch` is guarded on the same principle, one step looser: it is a document rather
+than an address, so a nested key the subject does not carry yet is simply built, and only
+landing on an array or a scalar is refused. A rule whose patch is refused fails the firing and
+leaves its subject untouched — so the rule still selects it, and the next commit tries again.
+
 ## Conditional writes
 
 Each condition is checked *with* the write, in one step at the store, so nothing can change
