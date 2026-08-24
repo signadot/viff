@@ -783,7 +783,7 @@ type resumedRun struct{ subject, chain string }
 func (s *Server) reconcileClaims(resumed []resumedRun) {
 	for _, ent := range entity.ListUnder(s.Store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.ClaimKind
-	}, entity.VerseRoot, mirror.System) {
+	}, entity.VerseRoot, mirror.System, mirror.ClaimKind) {
 		if claimIsLive(ent, resumed) {
 			continue
 		}
@@ -1721,9 +1721,9 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// has to strip.
 	// A reader arriving is when a deadline is evaluated: the docket a person opens is the
 	// docket as of now, and `⊤` is a person reading.
-	s.escalateOverdue(s.scopedStore(r))
 	out := make([]map[string]any, 0)
 	ents, readErr := pendingQuestionsErr(s.scopedStore(r))
+	s.escalateOverdueIn(s.scopedStore(r), ents)
 	for _, ent := range ents {
 		p := entity.ToObj(ent.Payload)
 		rec := map[string]any{}
@@ -2236,8 +2236,16 @@ func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding st
 // where it is, and moves the instant anything looks. For `⊤` that is exactly right — the
 // docket a person opens is the docket as of now.
 func (s *Server) escalateOverdue(store entity.Store) {
+	s.escalateOverdueIn(store, pendingQuestions(store))
+}
+
+// escalateOverdueIn is escalateOverdue over questions ALREADY READ, for a caller that is about
+// to walk the same list. The docket read is the whole question subtree — every question ever
+// asked, since pending and settled share one address space — so a route that escalated and then
+// listed paid for it twice on every request.
+func (s *Server) escalateOverdueIn(store entity.Store, pending []entity.Entity) {
 	now := time.Now()
-	for _, ent := range pendingQuestions(store) {
+	for _, ent := range pending {
 		p := entity.ToObj(ent.Payload)
 		at, _ := p["escalatesAt"].(string)
 		if at == "" {
@@ -2581,7 +2589,7 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// remain commits afterwards.
 	for _, ent := range entity.ListUnder(store, func(ref entity.Ref) bool {
 		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
-	}, entity.VerseRoot, resolver.System) {
+	}, entity.VerseRoot, resolver.System, resolver.InstanceKind) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
@@ -3215,7 +3223,8 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 // written at spawn and complete without asking any runtime. Both the list and the count come
 // through here, so that they are the same rows by construction rather than by agreement.
 func taskRows(store entity.Store) []entity.Entity {
-	return entity.ListUnder(store, mirror.IsTask, entity.VerseRoot, mirror.System)
+	return entity.ListUnder(store, mirror.IsTask,
+		entity.VerseRoot, mirror.System, mirror.InstanceKind)
 }
 
 // taskCount is how many tasks this verse has a record of — the number `verse task` lists.
@@ -3265,7 +3274,7 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
 	for _, e := range entity.ListUnder(store, func(ref entity.Ref) bool {
 		return mirror.IsTask(ref)
-	}, entity.VerseRoot, mirror.System) {
+	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		ids[e.Ref.ID()] = true
 	}
 	return ids

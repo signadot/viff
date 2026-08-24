@@ -107,7 +107,7 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 	// mirror.RunKind). Including them would double every node that has run more than once.
 	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return mirror.IsTask(r)
-	}, entity.VerseRoot, mirror.System) {
+	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		subj := entity.Str(ent.Payload, "flow")
 		if subj == "" {
 			continue // a task about nothing is in no flow
