@@ -86,12 +86,16 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	probe := r.URL.Query().Get("probe") == "true"
 	out := make([]map[string]any, 0)
 	ents, readErr := runner.ListErr(store)
+	// READ ONCE, COUNT PER RUNNER. The counts are a walk of every task instance, and asking
+	// inside the loop made the listing cost runners x instances for an answer that is one pass
+	// over the same rows.
+	instances := taskRows(store)
 	for _, e := range ents {
 		ref := runner.Ref(e.Kind, e.Name)
 		rec := map[string]any{
 			"at": ref.String(), "name": e.Name, "kind": e.Kind, "url": e.URL,
 		}
-		for k, v := range runnerCounts(store, ref, e.URL) {
+		for k, v := range runnerCounts(instances, ref, e.URL) {
 			rec[k] = v
 		}
 		// Asked for, never stored. A reachability column is as of now or it is a cache that
@@ -218,7 +222,7 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	var out []string
 	for _, ent := range entity.ListUnder(r, func(e entity.Ref) bool {
 		return mirror.IsTask(e)
-	}, entity.VerseRoot, mirror.System) {
+	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
@@ -258,12 +262,10 @@ func cancelOn(url string, ids []string, why string) (cancelled, unreachable []st
 // runnerCounts is what a runner is carrying, derived from the store and never probed: verse
 // reports what it has recorded. `running` is now, `total` is ever, and `lastSpawn` is when it
 // was last used — so a runner nobody names is visible as such.
-func runnerCounts(r entity.Reader, ref entity.Ref, url string) map[string]any {
+func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) map[string]any {
 	var running, total int
 	var last string
-	for _, ent := range entity.ListUnder(r, func(e entity.Ref) bool {
-		return mirror.IsTask(e)
-	}, entity.VerseRoot, mirror.System) {
+	for _, ent := range instances {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
