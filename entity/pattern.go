@@ -174,12 +174,17 @@ func (p Pattern) pathCovers(ref Ref) bool {
 // error, not as a dead process.
 //
 // A charter is user input, and a predicate in one is evaluated on the engine's watch goroutine
-// at every commit that lands under its rule. go-tony indexes a `let` binding without checking
-// it has one, so `!let {let: [{}], in: …}` — an empty binding, which is what a typo leaves —
-// takes the whole daemon down at the first change under that subtree. Nothing else in verse
-// lets a written rule do that: an unparseable one is refused at install, a malformed operator
-// is a non-match, a read that cannot resolve fails its firing. This is the same promise for the
-// case where the failure is a panic rather than an error.
+// at every commit that lands under its rule — so a panic in a match is a panic in the daemon,
+// reached by a line somebody typed. Nothing else in verse lets a written rule do that: an
+// unparseable one is refused at install, a malformed operator is a non-match, a read that
+// cannot resolve fails its firing. This is the same promise for the case where the failure is a
+// panic rather than an error.
+//
+// IT IS A FLOOR, NOT A FIX FOR A KNOWN DEFECT, and the distinction is why it stays. The
+// operators are a moving surface — go-tony fixed a `!let` binding indexed without checking, and
+// a dive whose patch deletes what it matched, in the space of one release each — and the floor
+// is what makes the next one a logged refusal instead of a restart. Verifying it against any
+// particular version would be verifying the wrong thing.
 //
 // It does NOT make the rule right — a predicate that panics is broken and its refusal to answer
 // is reported as an error by every caller, which then treats it as a non-match. What it buys is
