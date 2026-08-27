@@ -26,6 +26,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
+	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 )
 
 // rawName is the escape operation's tag label.
@@ -167,7 +168,25 @@ func rawTag(tag string) string {
 // after. `!raw` is patchable and stops the walk by construction, so escaped data is untouched
 // however many operators it holds, which is what makes AsData and Raw still the right thing at
 // the writers.
-func CheckPatchable(p Payload) error { return checkPatchable(p, "") }
+//
+// IsPatch IS NOT THE WHOLE QUESTION, and asking only it is how this got narrower without anyone
+// editing it. "Can this operation appear in a patch" and "can this value be STORED" are two
+// questions that happened to agree: `!let` is a patch operator — it substitutes names and yields
+// a body — and a stored one is still executed on the document it later meets, so it is written,
+// accepted, and gone. Same for `!get-path` and `!list-path`, which answer with a value read from
+// somewhere else and therefore answer differently against a base that has moved.
+//
+// So the storage vocabulary is asked as well, and it is the substrate's own: logd holds a SCOPED
+// write to it (tx.checkStorableInScope) and lets a baseline write past, so a baseline write is
+// exactly the case nothing else covers. Asking both keeps the verse-specific message — with its
+// AsData/Raw hint — for the operators it already named, and adds the ones whose IsPatch says
+// yes while the store says no.
+func CheckPatchable(p Payload) error {
+	if err := checkPatchable(p, ""); err != nil {
+		return err
+	}
+	return logdapi.ValidateForStorage(p)
+}
 
 func checkPatchable(n *ir.Node, at string) error {
 	if n == nil {
