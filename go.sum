@@ -72,8 +72,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/scott-cotton/cli v0.3.0 h1:RwzjjiunEJBfXdnJoNwGW1IxZSlG6uXwyxoRy7+fblc=
-github.com/scott-cotton/cli v0.3.0/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
+github.com/scott-cotton/cli v0.3.1 h1:r2sJUMdbe2gr8xU7jVJJNXDw8VnjrM3GqLdUk+zkfA8=
+github.com/scott-cotton/cli v0.3.1/go.mod h1:LhTisIdlyyRuOGnc7PRigFqblsS4xaG0cFgdjMoom1s=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
 github.com/signadot/tony-format/go-tony v0.0.192 h1:WnH/DKkQ8p5DPo/Vq/3cvUd07nHvvbg8pzYX2r/aQnk=
