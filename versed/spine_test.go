@@ -235,9 +235,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 
 	// The fine grain is where the anchor says: that run's own instance, serving its frames.
 	fine := resolver.InstanceRef("payments-review", "run-1")
-	if _, ok, _ := srv.Store.Get(fine); !ok {
-		t.Fatal("the run the spine anchored has no instance to read it through")
-	}
+	waitInstance(t, srv, "payments-review", "run-1")
 	if len(framesSoFar(t, ts.URL+"/resolvers/instance/"+fine.ID()+"/events?since=0")) == 0 {
 		t.Fatal("the run instance served no frames")
 	}

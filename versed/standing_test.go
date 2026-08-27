@@ -153,13 +153,13 @@ func TestTheLayerRuleDecidesWhoOwnsAQuestion(t *testing.T) {
 		` method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
 	spawnFor(t, ts, "named", `change.pr."1"`, "verse.resolvers.security.security-review")
-	if got := question(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "verse.resolvers.security.security-review" {
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "verse.resolvers.security.security-review" {
 		t.Fatalf("a named run is owned by %v, want the binding its spawn named", got)
 	}
 
 	// The same run with no name: the standing binding covering its flow owns it.
 	spawnFor(t, ts, "unnamed", `change.pr."1"`, "")
-	if got := question(t, srv, waitQuestion(t, srv, "unnamed"))["resolver"]; got != "verse.resolvers.security.payments-review" {
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "unnamed"))["resolver"]; got != "verse.resolvers.security.payments-review" {
 		t.Fatalf("an unnamed run over a covered subject is owned by %v, want the standing binding", got)
 	}
 
@@ -219,6 +219,11 @@ func addRule(t *testing.T, ts *httptest.Server, doc string) {
 }
 
 // waitOwner waits for a question raised by origin and returns the binding that owns it.
+// It waits for the OWNER, not merely for the question. Those are two writes — the question is
+// posted `pending` and the standing layer takes it a moment later — so returning the owner the
+// moment the question appears is reading the first write and asserting about the second. Every
+// caller wants a binding, and under load this returned "" for one that arrived milliseconds
+// after (git-issue nkptp9b3h12ksx3kg9n0).
 func waitOwner(t *testing.T, srv *Server, origin string) string {
 	t.Helper()
 	for range 400 {
@@ -227,13 +232,14 @@ func waitOwner(t *testing.T, srv *Server, origin string) string {
 		}) {
 			p := entity.ToObj(ent.Payload)
 			if p["origin"] == origin && p["status"] == mirror.QuestionPending {
-				owner, _ := p["resolver"].(string)
-				return owner
+				if owner, _ := p["resolver"].(string); owner != "" {
+					return owner
+				}
 			}
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("%s never posed a question", origin)
+	t.Fatalf("%s never posed a question an owner took", origin)
 	return ""
 }
 

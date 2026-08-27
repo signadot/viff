@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/taskd"
 )
@@ -71,6 +72,29 @@ func waitOwned(t *testing.T, srv *Server, qid string) map[string]any {
 		select {
 		case <-deadline:
 			t.Fatalf("question %s was never owned: %+v", qid, p)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// waitInstance waits for a resolver INSTANCE to be minted and returns its id.
+//
+// A question and the instance beside it are two writes: mirror.Watch mints the instance when the
+// question is posed, and a test that builds an instance id and addresses it the moment
+// waitQuestion returns is racing that second write. Every route under
+// /resolvers/instance/{id} answers 404 until it lands, so the race shows up as "no such
+// instance" rather than as a wait (git-issue nkptp9b3h12ksx3kg9n0).
+func waitInstance(t *testing.T, srv *Server, name, origin string) string {
+	t.Helper()
+	ref := resolver.InstanceRef(name, origin)
+	deadline := time.After(5 * time.Second)
+	for {
+		if _, ok, _ := srv.Store.Get(ref); ok {
+			return ref.ID()
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("instance %s was never minted", ref.ID())
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

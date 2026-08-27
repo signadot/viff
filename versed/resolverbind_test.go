@@ -55,7 +55,7 @@ func TestASpawnBindsItsResolver(t *testing.T) {
 
 	// The question knows who owns it, which is what makes a resolver's docket a plain
 	// selection rather than a join against something else.
-	q := question(t, srv, qid)
+	q := waitOwned(t, srv, qid)
 	if q["resolver"] != ref {
 		t.Fatalf("the question names %v as its owner, want %q: %+v", q["resolver"], ref, q)
 	}

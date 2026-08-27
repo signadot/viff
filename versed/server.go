@@ -1954,20 +1954,26 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // Both come off the record rather than being parsed out of the address. The address is for
 // finding it; the fields are what the checks below compare, and a check that re-derives its
 // inputs from a string is one that can disagree with what is stored.
-func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool) {
+// The READ's failure is reported rather than folded into "no such instance": every caller
+// answers 404 on false, so an unreadable store told a resolver its own instance is gone — and a
+// resolver's whole read plane hangs off that address (git-issue nkptp9b3h12ksx3kg9n0).
+func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool, err error) {
 	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
 	e, found, err := s.scopedStore(r).Get(ref)
-	if err != nil || !found {
-		return "", entity.Ref{}, false
+	if err != nil {
+		return "", entity.Ref{}, false, err
+	}
+	if !found {
+		return "", entity.Ref{}, false, nil
 	}
 	p := entity.ToObj(e.Payload)
 	binding, _ = p["binding"].(string)
 	got, _ := p["origin"].(string)
-	origin, err = entity.ParseAddr(got)
-	if err != nil {
-		return "", entity.Ref{}, false
+	origin, perr := entity.ParseAddr(got)
+	if perr != nil {
+		return "", entity.Ref{}, false, nil
 	}
-	return binding, origin, binding != "" && origin.ID() != ""
+	return binding, origin, binding != "" && origin.ID() != "", nil
 }
 
 // watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
@@ -1984,7 +1990,10 @@ func watchesARun(origin entity.Ref) bool {
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 	s.escalateOverdue(s.scopedStore(r)) // a resolver arriving is a reader arriving
-	_, origin, ok := s.instanceOf(r)
+	_, origin, ok, readErr := s.instanceOf(r)
+	if unreadable(w, r, readErr) {
+		return
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -2121,7 +2130,10 @@ func spineCarries(ev entity.Event, subject entity.Ref) bool {
 // takes. Not a new answering path, and not a write: the record is written from the decision
 // after the fact, which is what the steering invariant requires.
 func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
-	binding, origin, ok := s.instanceOf(r)
+	binding, origin, ok, readErr := s.instanceOf(r)
+	if unreadable(w, r, readErr) {
+		return
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -2151,7 +2163,10 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// than a policy about who is asking: the instance names its binding and its origin, so
 	// this is a comparison of two fields the question already carries.
 	q, found, err := s.scopedStore(r).Get(mirror.QuestionRef(v.ID))
-	if err != nil || !found {
+	if unreadable(w, r, err) {
+		return
+	}
+	if !found {
 		http.Error(w, "no such question", http.StatusNotFound)
 		return
 	}
@@ -2335,7 +2350,9 @@ func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
 // know. On the INSTANCE, because who was watching is per run: writing it on the binding would
 // be one resolver's second run overwriting what its first one saw.
 func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.instanceOf(r); !ok {
+	if _, _, ok, readErr := s.instanceOf(r); unreadable(w, r, readErr) {
+		return
+	} else if !ok {
 		http.NotFound(w, r)
 		return
 	}

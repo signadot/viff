@@ -36,12 +36,12 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 	// Named beats standing, so the run's own resolver owns it first.
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security.security-review")
 	qid := waitQuestion(t, srv, "run-1")
-	if got := question(t, srv, qid)["resolver"]; got != "verse.resolvers.security.security-review" {
+	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.security.security-review" {
 		t.Fatalf("owned by %v before any escalation", got)
 	}
 
 	// Hop one: the named layer declines, and the standing binding covering the subject owns it.
-	resp := escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID(), qid)
+	resp := escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("escalate = %s, want 204", resp.Status)
@@ -58,7 +58,7 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 	}
 
 	// Hop two: the standing binding declines, and there is nobody above it. Absent is ⊤.
-	resp = escalateAs(t, ts, resolver.InstanceRef("payments-review", "run-1").ID(), qid)
+	resp = escalateAs(t, ts, waitInstance(t, srv, "payments-review", "run-1"), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("second escalate = %s, want 204", resp.Status)
@@ -91,7 +91,7 @@ func TestEscalatingWhatIsNotYours(t *testing.T) {
 	mine := waitQuestion(t, srv, "run-1")
 	theirs := waitQuestion(t, srv, "run-2")
 
-	inst := resolver.InstanceRef("payments-review", "run-1").ID()
+	inst := waitInstance(t, srv, "payments-review", "run-1")
 	resp := escalateAs(t, ts, inst, theirs)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -125,7 +125,7 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 
 	spawnFor(t, ts, "run-1", subject.String(), "verse.resolvers.security.security-review")
 	qid := waitQuestion(t, srv, "run-1")
-	escalateAs(t, ts, resolver.InstanceRef("security-review", "run-1").ID(), qid).Body.Close()
+	escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid).Body.Close()
 	time.Sleep(50 * time.Millisecond)
 
 	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).ID()
@@ -194,7 +194,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	got := waitArmed(t, srv, qid)
 	// Inside it, nothing moves however much anyone reads.
 	docket(t, srv)
-	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.security.security-review" {
+	if q := waitOwned(t, srv, qid); q["resolver"] != "verse.resolvers.security.security-review" {
 		t.Fatalf("a question inside its deadline moved to %v", q["resolver"])
 	}
 
@@ -233,7 +233,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+resolver.InstanceRef("payments-review", "run-1").ID()+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+waitInstance(t, srv, "payments-review", "run-1")+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {

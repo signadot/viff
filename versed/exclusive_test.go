@@ -9,7 +9,6 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/resolver"
 )
 
 // mustInstall fails loudly rather than leaving a test to wonder why nothing owns its question:
@@ -69,7 +68,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 	}
 
 	// The owner's own verdict is taken, through the same path.
-	inst := resolver.InstanceRef("payments-review", "run-1").ID()
+	inst := waitInstance(t, srv, "payments-review", "run-1")
 	ok := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	defer ok.Body.Close()
