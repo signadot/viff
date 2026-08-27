@@ -305,12 +305,15 @@ accept: .[node]
 
 }
 
-// `accept:` with nothing under it is tony's own "present, whatever the value", and it is
-// kept meaning that rather than being made an error: it is the contract that says "answer
-// with a document, any document", which is a real thing to want and still rules out the
-// failure the contract exists for — an agent that stops on prose.
+// `accept: null` is tony's own "present, whatever the value", and it is kept meaning that
+// rather than being made an error: it is the contract that says "answer with a document, any
+// document", which is a real thing to want and still rules out the failure the contract exists
+// for — an agent that stops on prose.
+//
+// SPELLED WITH THE `null`. A bare `accept:` meant the same thing until go-tony v0.0.194, which
+// refuses a colon with no value after it and says which two spellings to reach for instead.
 func TestEmptyAcceptStillRequiresADocument(t *testing.T) {
-	c := mustParse(t, "signature: {name: any}\naccept:\n")
+	c := mustParse(t, "signature: {name: any}\naccept: null\n")
 	if _, err := c.Check(`{whatever: [1, 2]}`); err != nil {
 		t.Fatalf("a document was rejected: %v", err)
 	}
