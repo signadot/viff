@@ -54,6 +54,28 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 	}
 }
 
+// waitOwned waits for a question to be OWNED, not merely posed.
+//
+// The two are separate writes: the question is posted `pending` and the standing layer takes it
+// a moment later. A test that reads `resolver` the instant waitQuestion returns is racing that
+// second write, and on a loaded machine it loses — which is the same shape 602d25e3 fixed for
+// the tests that read the instant a route answered 204 (git-issue nkptp9b3h12ksx3kg9n0).
+func waitOwned(t *testing.T, srv *Server, qid string) map[string]any {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		p := question(t, srv, qid)
+		if p["resolver"] != nil {
+			return p
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("question %s was never owned: %+v", qid, p)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 // The LOCAL leg of `POST /tasks/{id}/resolve`, which had no test.
 //
 // It is the leg that used to be forwarded rather than handled: a local task's answer went

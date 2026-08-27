@@ -408,7 +408,7 @@ func TestRemovingABindingReRoutesWhatItOwned(t *testing.T) {
 
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	if got := question(t, srv, qid)["resolver"]; got != "verse.resolvers.security.alpha" {
+	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.security.alpha" {
 		t.Fatalf("owned by %v before removal, want alpha", got)
 	}
 

@@ -155,7 +155,7 @@ func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
 	}
 	// And the standing layer still owns what it covers, for a spawn that names nobody.
 	spawnFor(t, ts, "run-2", `change.pr."1"`, "")
-	if got := question(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "verse.resolvers.security.payments-review" {
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "verse.resolvers.security.payments-review" {
 		t.Fatalf("the standing layer does not own an unnamed run: %v", got)
 	}
 }

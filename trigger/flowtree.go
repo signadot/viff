@@ -374,7 +374,12 @@ func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
 		return seqProgress{}
 	}
 	ent, ok, err := e.store.Get(ref)
-	if err != nil || !ok {
+	if err != nil {
+		e.logger.Warn("a flow's sequence progress could not be read; it renders as no progress",
+			"subject", subject, "err", err)
+		return seqProgress{}
+	}
+	if !ok {
 		return seqProgress{}
 	}
 	p := entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), trigger)
@@ -431,7 +436,12 @@ func (e *Engine) gateNameOf(pendingRef string) string {
 		return ""
 	}
 	ent, ok, err := e.store.Get(ref)
-	if err != nil || !ok {
+	if err != nil {
+		e.logger.Warn("a pending gate's name could not be read; the flow renders without it",
+			"at", pendingRef, "err", err)
+		return ""
+	}
+	if !ok {
 		return ""
 	}
 	return entity.Str(ent.Payload, "gate")

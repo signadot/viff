@@ -1872,7 +1872,13 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// unchanged, and a person may read — and argue about — what an exclusive binding owns.
 	// And not a security boundary: it decides who answers an ask, never what an answer may
 	// authorise. The grant does that, and the two are not the same axis.
-	holder, exclusive := exclusiveOwner(store, body.ID)
+	holder, exclusive, err := exclusiveOwner(store, body.ID)
+	// FAIL CLOSED. The guard below refuses a second answerer, so a read that did not happen must
+	// not be allowed to answer "there is nobody to refuse" — that admits exactly what the guard
+	// is for, and stamps the record as if no override happened.
+	if unreadable(w, r, err) {
+		return
+	}
 	if exclusive && body.By != holder && !body.Override {
 		http.Error(w, holder+" answers this question exclusively; "+
 			"say override to answer it anyway, and the record will name you both",
@@ -1885,7 +1891,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		owner = s.ownerOf(store, body.ID)
 	}
 
-	var err error
+	err = nil
 	if owner != "" {
 		err = s.resolveTaskDecision(owner, body.ID, res)
 	} else if !s.Reg.Answer(body.ID, res) {
@@ -1926,7 +1932,12 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// Somebody was here first. The loser is recorded rather than dropped: two people at a
 	// docket answering at once is normal, and a docket that keeps only the winner cannot
 	// show that the question was contested.
-	won, settled := mirror.SettledBy(store, body.ID)
+	won, settled, readErr := mirror.SettledBy(store, body.ID)
+	// Not folded into "nobody was here first": telling an answerer they won a race that could
+	// not be read is the one answer there is no recovering from.
+	if unreadable(w, r, readErr) {
+		return
+	}
 	if settled || errors.Is(err, task.ErrAlreadyAnswered) {
 		if won == "" {
 			won = "an earlier answer"
@@ -2200,7 +2211,13 @@ func ghostResolver(store entity.Store, ref string) string {
 func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding string, origin entity.Ref) {
 	store := s.scopedStore(r)
 	q, ok, err := store.Get(mirror.QuestionRef(id))
-	if err != nil || !ok {
+	// A READ THAT DID NOT HAPPEN IS NOT A MISSING QUESTION. Collapsing the two answered 404
+	// "no such question" for a store that could not be read, which tells a resolver its
+	// question is gone at exactly the moment nothing can be established about it.
+	if unreadable(w, r, err) {
+		return
+	}
+	if !ok {
 		http.Error(w, "no such question", http.StatusNotFound)
 		return
 	}
@@ -2267,17 +2284,27 @@ func (s *Server) escalateOverdueIn(store entity.Store, pending []entity.Entity) 
 // exclusiveOwner reports the binding that owns this question and whether it owns it
 // exclusively. A question nobody owns, or one owned by an advisory binding, is answerable by
 // the first party to answer — which is what advisory means, and is the default.
-func exclusiveOwner(store entity.Store, id string) (string, bool) {
+// It reports the READ's failure rather than folding it into "nobody owns it". Folding it
+// inverted the guard: an unreadable store answered "not exclusive", so the second answerer this
+// exists to refuse was admitted, and `overriding` came out false so the record did not name them
+// both — the exact shape git-issue nkptp9b3h12ksx3kg9n0 reports.
+func exclusiveOwner(store entity.Store, id string) (string, bool, error) {
 	e, ok, err := store.Get(mirror.QuestionRef(id))
-	if err != nil || !ok {
-		return "", false
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return "", false, nil
 	}
 	binding := entity.Str(e.Payload, "resolver")
 	if binding == "" {
-		return "", false
+		return "", false, nil
 	}
-	res, ok := resolver.Find(store, binding)
-	return binding, ok && res.Exclusive
+	res, ok, err := resolver.FindErr(store, binding)
+	if err != nil {
+		return "", false, err
+	}
+	return binding, ok && res.Exclusive, nil
 }
 
 // questionOrigin is what an owner of this question watches: the run that raised it, or the

@@ -376,20 +376,34 @@ func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 }
 
 // Find reads one binding by its ref, for a caller that has an owner and wants its dials.
+//
+// FindErr is the same read reporting whether it HAPPENED. Find keeps the two-value shape for the
+// callers that genuinely cannot act on the difference, but a caller deciding something on the
+// strength of "no such binding" wants FindErr: an unreadable store answering "not installed"
+// makes an exclusive binding look advisory, which is how a second answerer got admitted and the
+// record came out not naming them both (git-issue nkptp9b3h12ksx3kg9n0).
 func Find(r entity.Reader, ref string) (Resolver, bool) {
+	res, ok, _ := FindErr(r, ref)
+	return res, ok
+}
+
+func FindErr(r entity.Reader, ref string) (Resolver, bool, error) {
 	parsed, err := entity.ParseAddr(ref)
 	if err != nil {
-		return Resolver{}, false
+		return Resolver{}, false, nil
 	}
 	e, ok, err := r.Get(parsed)
-	if err != nil || !ok {
-		return Resolver{}, false
+	if err != nil {
+		return Resolver{}, false, err
+	}
+	if !ok {
+		return Resolver{}, false, nil
 	}
 	var res Resolver
 	if codec.FromNode(e.Payload, &res) != nil {
-		return Resolver{}, false
+		return Resolver{}, false, nil
 	}
-	return res, true
+	return res, true, nil
 }
 
 // Overlaps reports the installed bindings that share a (system, kind) with res — what a new

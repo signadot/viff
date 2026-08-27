@@ -323,20 +323,26 @@ func DropQuestion(store entity.Store, id, why string) {
 //
 // A question nobody has answered reports false, as does one that was never posed: from the
 // answerer's side those are the same, since neither is a decision they lost.
-func SettledBy(store entity.Store, id string) (string, bool) {
+// The READ's failure is reported rather than folded into "nobody answered": this decides whether
+// an answerer is told they lost a race, and an unreadable store saying "you did not" is the one
+// wrong answer that cannot be retried into.
+func SettledBy(store entity.Store, id string) (string, bool, error) {
 	e, ok, err := store.Get(QuestionRef(id))
-	if err != nil || !ok {
-		return "", false
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return "", false, nil
 	}
 	p := entity.ToObj(e.Payload)
 	if p["status"] != QuestionAnswered {
-		return "", false
+		return "", false, nil
 	}
 	by, _ := p["by"].(string)
 	if by == "" {
 		by = "an earlier answer"
 	}
-	return by, true
+	return by, true, nil
 }
 
 // StaleAnswer records an answer that arrived after the question was settled. Losing a race is
