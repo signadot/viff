@@ -1,10 +1,11 @@
 # The trigger model
 
-One noun and two grammars carry the whole model. An entity is a node at an address —
-`system.kind.id` in the ordinary case, a path of any depth where a charter keeps its own tree —
-carrying a small payload. A match names entities at an instant; a formula relates the verse over
-time. Every trigger concept, `when` and `subject` and gates and flows, lands on exactly one of
-those two, and knowing which is the thing to be unambiguous about.
+One noun and two grammars carry the whole model. An entity is a node at an address — a path in
+the tree, at whatever depth the thing writing it uses: three segments where a source reflects one
+(`git.commit.acme/9fe1`), four in verse's own half and inside a package's tree
+(`verse-dev.drift.finding.abc`) — carrying a small payload. A match names entities at an instant;
+a formula relates the verse over time. Every trigger concept, `when` and `subject` and gates and
+flows, lands on exactly one of those two, and knowing which is the thing to be unambiguous about.
 
 This is also the field-by-field reference for a charter rule. The [tutorial](tutorial.md) installs
 one and drives it; here is what each field means.

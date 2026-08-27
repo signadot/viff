@@ -82,8 +82,9 @@ libctl.RunController(ctx, &libctl.ControllerConfig{
 
 `entity.MountKPath(system, kind)` renders the kpath so the store and the controller agree on
 where the subtree lives: under `MountRoot`, not under the entity root. The entity namespace is
-unchanged by that. The slice is still addressed as the ordinary ref `system.kind.id`, and only
-the path it renders to differs. Add the `(system, kind-prefix)` pair to `entity.mountedKinds` so
+unchanged by that. The slice is the same two segments it always was — a mount owns a SLICE and
+not an entity, so there is no id in it — and only the path those segments render to differs. Add
+the `(system, kind-prefix)` pair to `entity.mountedKinds` so
 `refPath` routes reads there; a mount the store does not know about is a mount every read misses.
 Cancel `ctx` to unmount, and docd tombstones the mount cleanly.
 
