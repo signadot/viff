@@ -203,11 +203,15 @@ The executor never resolves its own gate. Governance stays on versed's side of t
 
 ## Data and failure model
 
-*Refs and cursors.* A ref is `system.kind.id`, three segments, the ordinary depth. An address may
-be deeper and is then written as a path (`verse-dev.drift.head.abc`). A store revision is
-monotonic but sparse, and is treated as an opaque cursor. The task event stream carries its own
-per-task cursor for resume. Nothing assumes dense numbering, and everything reconciles via
-`since`.
+*Addresses and cursors.* An address is a path in a tree, at any depth, and it carries on into the
+payload: `demo.pr."1"` names an entity, `demo.pr."1".labels.urgent` a place inside one, and
+`verse-dev.drift.head.abc` an entity a package derived four segments down. Three segments is the
+ordinary DEPTH rather than the shape — it is what a listing counts to find the entities under a
+prefix, and it is four in verse's own half, where the reserved root is a level like any other.
+[entities](reference/entities.md#addressing) is the grammar, in both its spellings. A store
+revision is monotonic but sparse, and is treated as an opaque cursor. The task event stream
+carries its own per-task cursor for resume. Nothing assumes dense numbering, and everything
+reconciles via `since`.
 
 *Scopes.* A scope is a copy-on-write overlay: reads see the scope layered on baseline, writes land
 in the scope only. Local-dev federation and a dev's in-flight flows live in a private scope,
