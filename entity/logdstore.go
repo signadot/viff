@@ -659,22 +659,25 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		pre = append(pre, pathPattern{at: parent, object: true})
 	}
 	for _, r := range w.When {
-		at := r.path(w)
-		// A PRECONDITION AT AN ARRAY ACCESS IS REFUSED rather than checked somewhere else. It
-		// nests as an object keyed by field name (nestPattern), and an index has no key to nest
-		// under — so a precondition that defaulted to this write's own path would silently be
-		// asked about the ENTITY instead of the element, and a guard that checks the wrong place
-		// is worse than no guard.
-		//
-		// An implementation limit, not a principle: tony matches an array position, and what is
-		// missing is a constructor for that pattern beside the map walk (see Write.When).
-		if w.Sub != "" && at.Ref == w.At.Ref && len(at.Field) == 0 {
-			return false, 0, fmt.Errorf("write %s %s: a precondition cannot be expressed at an "+
-				"array element yet — it nests by field name, and %q has no name to nest under. "+
-				"Write it unconditionally, or guard the field that holds the array",
-				w.At, w.Sub, w.Sub)
+		at, sub := r.path(w), ""
+		// THE WRITE'S OWN PLACE IS THE ELEMENT when there is a Sub, so a guard that names no
+		// place of its own is about the element — `--create` at `votes[0]` asks whether
+		// `votes[0]` is there, not whether the entity is. It is asked with `!at` rather than by
+		// nesting (elemPattern); a require that spells a place out is nested as it names it.
+		if w.Sub != "" && r.atOwnPlace() {
+			// `!at` carries the address as a TAG ARGUMENT, which has no quoting: a step holding
+			// a top-level comma or an unbalanced parenthesis cannot be written in one, and a
+			// tag that reads back as something else is worse than a refusal (ir.TagArgOK).
+			if !ir.TagArgOK(w.Sub) {
+				return false, 0, fmt.Errorf("write %s %s: a precondition here cannot be "+
+					"written: it is asked with !at(%s), and a tag argument has no quoting, so "+
+					"a comma or an unpaired parenthesis in the address cannot be spelled in "+
+					"one. Write it unconditionally, or guard the field that holds the array",
+					w.At, w.Sub, w.Sub)
+			}
+			sub = w.Sub
 		}
-		pre = append(pre, pathPattern{at: at, pattern: r.Pattern, absent: r.Absent})
+		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent})
 	}
 	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
 	if errors.Is(err, libctl.ErrMatchFailed) {
@@ -715,9 +718,11 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 // what is refused is descending through a VALUE, and creating where nothing stands is left
 // alone at every depth (see descendablePath).
 //
-// An ARRAY ACCESS (Write.Sub) answers false: its parent must be an ARRAY, and a nested pattern
-// keys by field name, so there is no shape to say it with (git-issue zf1sz225h12ksm6agsn0).
-// A wildcard answers false too — it names no one place to ask about.
+// An ARRAY ACCESS (Write.Sub) answers false, and not for want of a way to say it. The guard
+// admits an object, a null, or nothing at all, and the parent of an element must be an ARRAY —
+// the one shape it refuses. Nothing is lost by not asking: the substrate refuses an element
+// write whose parent is not an array standing there, naming what it found instead. A wildcard
+// answers false too — it names no one place to ask about.
 func descendsThrough(w Write) (Path, bool, error) {
 	if w.Sub != "" {
 		return Path{}, false, nil
@@ -844,14 +849,18 @@ func (s *LogdStore) replacing(ref Ref, payload Payload) Payload {
 // rootPattern folds every precondition into ONE match against the root document, which is
 // what keeps the checks atomic with the write (docd allows a single match path).
 //
-// Presence preconditions nest into a single tree, as they always have. An ABSENCE
-// precondition cannot: there is no key at its path to carry a pattern, so it becomes its own
-// negated branch — "the document does not have run.claim.<id>" — and the branches are ANDed.
+// Presence preconditions about a field nest into a single tree. The others cannot, and each
+// becomes its own branch with the branches ANDed: an ABSENCE has no key at its path to carry
+// a pattern, so it is a negated nesting — "the document does not have run.claim.<id>" — and a
+// pattern at an ELEMENT hangs off an `!at` rather than a key, which a shared tree would
+// overwrite (elemPattern).
 func rootPattern(pre []pathPattern) *ir.Node {
 	var branches []*ir.Node
 	present, any := patTree{}, false
 	for _, p := range pre {
 		switch {
+		case p.sub != "":
+			branches = append(branches, elemPattern(p))
 		case p.absent:
 			branches = append(branches, absentPath(p.at))
 		case p.object:
@@ -877,7 +886,11 @@ func rootPattern(pre []pathPattern) *ir.Node {
 // pathPattern is one precondition reduced to what the match needs: a place, and either a
 // pattern to evaluate there or the question of whether anything is there at all.
 type pathPattern struct {
-	at      Path
+	at Path
+	// sub is the place inside the entity at when it is richer than a Path can spell — an array
+	// element, and anything under it. Set, it is what the pattern is about, and at names the
+	// entity the walk to it starts from (Write.Sub).
+	sub     string
 	pattern Payload
 	absent  bool // nothing stands at at; pattern is unused
 	object  bool // nothing stands at at, or an object does; pattern is unused
@@ -901,6 +914,47 @@ func absentPath(at Path) *ir.Node {
 	noKey := patTree{}
 	nestPattern(noKey, at, ir.Null()) // negated: no key at the path at all
 	return noKey.node().WithTag("!not")
+}
+
+// elemPattern renders a precondition about an array ELEMENT: the pattern hangs off an `!at` at
+// the entity that holds it — `{demo: {pr: {1: !at(votes[0]) <pattern>}}}` — rather than nesting
+// one key deeper, since an index is not a key and there is nothing to nest under.
+//
+// IT SAYS NOTHING ABOUT THE OTHER ELEMENTS, which is why it is `!at` and not an array-shaped
+// pattern. A bare array pattern matches POSITIONALLY AND BY LENGTH, so asking about `votes[1]`
+// with `[null, {choice: approve}]` would also swear the array holds exactly two ballots — a
+// guard on one vote refusing because somebody else cast another. `!at` walks the kpath and
+// applies the pattern where it lands: one element, one question, and a ballot appended beside
+// it is nobody's business. That is the reading a nested field pattern already gives, where a
+// sibling field is not asked about either.
+//
+// ABSENCE NEGATES THE WHOLE NESTING rather than the `!at`, because a path that names nothing
+// fails whatever it says: `!not {…: !at(votes[9]) null}` holds when the element is not there,
+// and equally when the array, the entity, or anything above them is not — which is what
+// absentPath answers for a field. What follows is then refused by the substrate, which knows
+// whether an array stands there and says so with its length.
+//
+// ITS OWN BRANCH, like absentPath and descendablePath: the leaf is a tagged node rather than a
+// subtree, and patTree.child would replace it with a fresh map the moment another precondition
+// nested beneath the same entity.
+func elemPattern(p pathPattern) *ir.Node {
+	pattern := p.pattern
+	if p.absent || pattern == nil {
+		pattern = Present() // a null matches any value, so only a missing element fails it
+	}
+	// UNCOMMENTED FIRST, and cloned because composing the tag writes to the node while the
+	// pattern is the caller's. A head comment wraps the value it precedes, and a match sees
+	// under a wrapper before it reads a tag — so a tag composed onto the wrapper would be
+	// dropped, and the pattern asked about the ENTITY rather than the element. Nothing is lost
+	// with the wrapper: a comment describes a value and no question about the data sees it.
+	leaf := ir.Uncomment(pattern).Clone()
+	leaf.Tag = ir.TagCompose("!at", []string{p.sub}, leaf.Tag)
+	t := patTree{}
+	nestPattern(t, p.at, leaf)
+	if p.absent {
+		return t.node().WithTag("!not")
+	}
+	return t.node()
 }
 
 // descendablePath renders "nothing stands here, or what does can be descended through" — what

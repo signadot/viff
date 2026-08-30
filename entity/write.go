@@ -205,13 +205,11 @@ type Write struct {
 	Value Payload
 	// When are the preconditions, ALL of which must hold. Empty means unconditional.
 	//
-	// A precondition is built by NESTING the pattern under the path's segments, as an object
-	// keyed by field name (logdstore.nestPattern), so it cannot express one at an array index —
-	// there is no key to nest under. That is an implementation limit and not a principle: tony
-	// matches an array position perfectly well, and what is missing is a constructor for an
-	// array-shaped pattern beside the map walk. Until there is one, a conditional write at a
-	// Sub is refused where it is asked for rather than silently checked against the wrong
-	// place (git-issue zf1sz225h12ksm6agsn0).
+	// A precondition about a FIELD is built by nesting the pattern under the path's segments,
+	// as an object keyed by field name (logdstore.nestPattern). One about an ELEMENT cannot
+	// nest that way — an index is no key — so it is asked with `!at`, which walks the kpath
+	// from the entity and applies the pattern where it lands (logdstore.elemPattern). A
+	// require naming no place of its own is about the write's own place, element included.
 	When []Require
 }
 
@@ -282,8 +280,9 @@ func patchLands(cur, patch Payload, at []string) error {
 // Require is a precondition: whatever stands at At must match Pattern, evaluated against
 // the store state as of the commit — so there is no window between the check and the write.
 type Require struct {
-	// At is the place asked about. The zero Path means the write's own path, which is what
-	// the common questions are about: does this already exist, is it still what I read.
+	// At is the place asked about. The zero Path means the write's own place — the array
+	// element it names, where it names one — which is what the common questions are about:
+	// does this already exist, is it still what I read.
 	At Path
 	// Pattern is a tony match against whatever stands at At:
 	//
@@ -383,9 +382,18 @@ func Unchanged(cur Payload) Payload {
 // type null — which, null having one inhabitant, is whether it IS null.
 const irTypeTag = "!irtype"
 
+// atOwnPlace reports whether the require asks about the WRITE's own place rather than naming
+// one of its own. That is the zero At, and it is the difference between a guard about an array
+// ELEMENT and one about the entity that holds it: a write at `votes[0]` whose require names no
+// place is asking about `votes[0]`, while one that spells the entity out is asking about the
+// entity, and the two are answered by different shapes (logdstore.elemPattern).
+func (r Require) atOwnPlace() bool {
+	return r.At.System() == "" && r.At.Kind() == "" && r.At.ID() == "" && len(r.At.Field) == 0
+}
+
 // path resolves a Require's target: its own At, or the write's when it has none.
 func (r Require) path(of Write) Path {
-	if r.At.System() == "" && r.At.Kind() == "" && r.At.ID() == "" && len(r.At.Field) == 0 {
+	if r.atOwnPlace() {
 		return of.At
 	}
 	return r.At

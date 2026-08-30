@@ -76,8 +76,8 @@ type PutEntity struct {
 // Condition is one precondition on a write: what must be true, and where.
 //
 // At names the place asked about, in the same grammar the write's own address is in; empty
-// means the write's own place, which is what create ("nothing is there yet") and update
-// ("something is") are about.
+// means the write's own place — the array element it names, where Sub names one — which is
+// what create ("nothing is there yet") and update ("something is") are about.
 //
 //tony:schemagen=verse-condition,notag
 type Condition struct {

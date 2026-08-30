@@ -355,20 +355,30 @@ The substrate is what guards it, which is why the CLI does not:
 | `votes(scott).choice`, keyed | refuses it at the commit; nothing is harmed |
 | `votes[2]` where two stand | refuses it at the patch, naming the length |
 
-One thing a write at an element cannot carry is a guard. `--create`, `--update` and
-`--expect` nest their pattern as an object keyed by field name, and an index has no key to nest
-under, so they are refused at an access rather than checked against the entity instead. That is
-an implementation limit and not a principle — tony matches an array position perfectly well; what
-is missing is a constructor for that pattern beside the map walk.
-
 The third row is what makes the other two safe to offer. An accepted patch past the end leaves
 the log unreadable ever after — a bad write that succeeds and takes every later read of the whole
 store with it, unrepairably — so a refusal at the patch is what the CLI's own silence rests on.
+`entity/arraywrite_test.go` pins all three answers, so the reasoning is checked at each go-tony
+bump rather than inherited.
 
-What keeps the guard in the CLI is ordinary work rather than a principle: a write path is a ref
-plus a list of object field names, and offering an element means teaching that list — and the
-preconditions built from it — to carry a kpath segment. `entity/arraywrite_test.go` pins all
-three answers, so the reasoning is checked at each go-tony bump rather than inherited.
+A guard rides an element write like any other, and it is about the ELEMENT the write names —
+not about the entity that holds it:
+
+```sh
+verse data merge proposal X votes '[0]' --expect '{by: scott}' --put '{choice: approve}'
+```
+
+`--create`, `--update` and `--expect` reach it with tony's `!at`, which walks the path and
+applies the pattern where it lands. So a guard on one ballot says nothing about the others: a
+vote cast beside it neither satisfies nor refuses it, the way a pattern at a field says nothing
+about its siblings. (An array-shaped pattern would say something: tony matches an array
+positionally and by length, so asking about `votes[1]` that way would also swear the array holds
+exactly two ballots.)
+
+`--create` is the odd one, honestly so. An element cannot be created in place, so where nothing
+stands the guard holds and the write is refused by the substrate instead, naming the array's
+length — which is the answer worth hearing. Where a ballot does stand, `--create` refuses to
+commit over it, as it does anywhere else.
 
 ### What the document does not cover
 

@@ -84,20 +84,40 @@ func TestAnIndexPastTheEndIsRefused(t *testing.T) {
 	}
 }
 
-// A PRECONDITION AT AN ACCESS IS REFUSED, and says why. It nests by field name and an index has
-// no name to nest under — an implementation limit, not a principle, and refusing beats checking
-// the entity instead of the element.
-func TestAGuardAtAnArrayElementIsRefused(t *testing.T) {
+// A PRECONDITION AT AN ACCESS IS ABOUT THE ELEMENT — the place the write names, which is what
+// the person who typed it is looking at. `--update` holds where a ballot stands, `--create`
+// refuses to commit over one, and `--expect` is asked about that element and no other.
+func TestAGuardAtAnArrayElementGuardsTheElement(t *testing.T) {
 	store := serve(t)
-	seedVoted(t, store)
-	for _, flag := range []string{"--create", "--update"} {
-		_, err := runCLI(t, "data", "demo", "pr", "1", "votes", "[0]", flag, "--put", `"guard"`)
-		if err == nil {
-			t.Errorf("%s at an array element was accepted", flag)
-			continue
+	seedVoted(t, store) // votes: [{by: ana}, {by: bo}]
+
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "votes", "[0]", "by",
+		"--update", "--put", `"zed"`); err != nil {
+		t.Fatalf("--update where an element stands: %v", err)
+	}
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "votes", "[1]",
+		"--expect", `{by: bo}`, "--put", `{choice: approve}`); err != nil {
+		t.Fatalf("--expect naming what the element holds: %v", err)
+	}
+	// The entity holds a ballot by bo, and votes[0] is not it: the guard is about the element.
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "votes", "[0]",
+		"--expect", `{by: bo}`, "--put", `{choice: reject}`); err == nil {
+		t.Error("a guard at votes[0] was satisfied by what votes[1] holds")
+	}
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "votes", "[0]",
+		"--create", "--put", `"clobbered"`); err == nil {
+		t.Error("--create committed over an element that was already there")
+	}
+	out, err := runCLI(t, "data", "demo", "pr", "1", "votes")
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	for _, want := range []string{"by: zed", "by: bo", "choice: approve"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the ballots do not carry %q:\n%s", want, out)
 		}
-		if !strings.Contains(err.Error(), "precondition") {
-			t.Errorf("%s: the refusal does not name the reason: %v", flag, err)
-		}
+	}
+	if strings.Contains(out, "clobbered") || strings.Contains(out, "choice: reject") {
+		t.Errorf("a refused guard wrote anyway:\n%s", out)
 	}
 }

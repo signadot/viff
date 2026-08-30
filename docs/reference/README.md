@@ -155,9 +155,9 @@ verse
                                              which is the spelling that survives a shell
                                              variable as one argument:
                                              `r=$(data --kpaths … | head -1); data --at "$r"`
-          --put <payload>                    write it there: a write reaches object fields, not
-                                             array elements. A put MERGES — fields it does not
-                                             name are left alone, and --rm is how one goes away.
+          --put <payload>                    write it there: an object field, or an array element
+                                             addressed as a step. A put MERGES — fields it does
+                                             not name are left alone, and --rm is how one goes away.
                                              It descends only through an object: naming a field
                                              under an array or a scalar is REFUSED rather than
                                              replacing it. entities.md#what-a-write-descends-through
