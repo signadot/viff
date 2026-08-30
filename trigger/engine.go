@@ -4,6 +4,7 @@ package trigger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -451,20 +452,33 @@ func (e *Engine) consume(ctx context.Context, c entity.Commit) {
 
 // catchUp replays commits since the cursor from the store (a revision query), in
 // order — the cursor-based catch-up that makes a hold cost a cursor, not a buffer.
-// If the cursor is older than the store's retained window, it resyncs to current.
+//
+// ONLY AN EXPIRED CURSOR RESYNCS. Skipping to current is how work gets DROPPED — every commit
+// between the cursor and now goes undispatched, so a rule that should have fired never does —
+// and it is the right answer for exactly one failure: the history is gone and no amount of
+// asking will bring it back. Every other failure (the store unreachable, the replay cut off at
+// its budget, a watch ended under it) leaves the cursor where it is, so the next pass asks
+// again for the same gap. Reported as one bit, all of them resynced (git-issue
+// 3qf2z59dh12ksdazg9n0).
+//
+// A partial replay is dispatched before either decision: those commits happened, and advancing
+// over them is what makes the next attempt smaller.
 func (e *Engine) catchUp(ctx context.Context) {
-	commits, ok := e.store.Since(e.cursor)
-	if !ok {
-		e.tracef("cursor %d older than store window; resync to current", e.cursor)
-		e.cursor = e.store.Rev()
-		return
-	}
+	commits, err := e.store.Since(e.cursor)
 	for _, c := range commits {
 		if c.Rev <= e.cursor {
 			continue // Since is ordered and monotonic; skip anything not ahead
 		}
 		e.cursor = c.Rev
 		e.dispatch(ctx, c)
+	}
+	switch {
+	case err == nil:
+	case errors.Is(err, entity.ErrReplayTooOld):
+		e.tracef("cursor %d is older than the store retains; resync to current: %v", e.cursor, err)
+		e.cursor = e.store.Rev()
+	default:
+		e.tracef("catch-up from cursor %d did not complete, and the cursor stands: %v", e.cursor, err)
 	}
 }
 

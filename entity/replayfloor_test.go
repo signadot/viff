@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -67,8 +68,15 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 		t.Fatalf("replay floor = %d, want > %d — compaction did not erase the range under test", floor, from)
 	}
 
-	if commits, ok := s.Since(from); ok {
-		t.Fatalf("Since(%d) over a compacted range returned ok=true with %d commits; "+
-			"a truncated catch-up must report ok=false so the consumer resyncs", from, len(commits))
+	commits, err := s.Since(from)
+	if err == nil {
+		t.Fatalf("Since(%d) over a compacted range succeeded with %d commits; a truncated "+
+			"catch-up must report the failure so the consumer resyncs", from, len(commits))
+	}
+	// AND WHICH FAILURE IT IS, since that is what the consumer branches on: this one, and only
+	// this one, means the history is gone and resyncing is the answer.
+	if !errors.Is(err, ErrReplayTooOld) {
+		t.Fatalf("Since over a compacted range failed with %v; want ErrReplayTooOld, which is "+
+			"what tells a consumer to resync rather than ask again", err)
 	}
 }

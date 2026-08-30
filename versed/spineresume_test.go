@@ -2,6 +2,7 @@ package versed
 
 import (
 	"bufio"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,11 +33,15 @@ func waitAnyQuestion(t *testing.T, srv *Server) string {
 	return ""
 }
 
-// compacted is a store whose Since always reports "older than we've observed" — what logd does
-// for a revision it has compacted past, and the case a resolver meets after being away.
+// compacted is a store whose history is GONE at any cursor — what logd answers for a revision
+// it has compacted past, and the case a resolver meets after being away. It names that failure
+// rather than a bare no: the store has to say which of its failures this is, because a resolver
+// that missed history and a store that cannot be reached are not the same predicament.
 type compacted struct{ entity.Store }
 
-func (compacted) Since(int64) ([]entity.Commit, bool) { return nil, false }
+func (compacted) Since(from int64, _ ...string) ([]entity.Commit, error) {
+	return nil, fmt.Errorf("replaying verse from %d: %w", from, entity.ErrReplayTooOld)
+}
 
 // A resolver over a SUBJECT that resumes below the retained window must be told that it happened
 // AND what is still open.

@@ -1361,29 +1361,45 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// "commits were dropped, recover them with Since", and Since is exactly what just could not
 	// answer. So this is a refusal that says what to ask for instead — the caller wanted history
 	// and has to decide whether to take what is retained or to stream from now.
+	// AT THE SAME PATH THE LIVE HALF WATCHES. A catch-up costs what the slice it reads holds —
+	// the base document at the starting commit, and every patch in the range that touches it —
+	// so a watch on one slice that replayed the WHOLE VERSE paid for the store's size on every
+	// request. Both halves take `prefix` now, and a selector that names no path still asks at
+	// the root, because that is what it is asking about.
 	var replay []entity.Commit
-	ok := true
+	var replayErr error
 	if catchUp {
-		replay, ok = store.Since(since)
+		prefix, _, _ := entity.AtPrefix(sel.at)
+		replay, replayErr = store.Since(since, prefix...)
 	}
-	if !ok {
-		// WHY it could not answer, asked rather than assumed. `Since` reports one bit, and the
-		// handler used to read it as "your cursor is too old" and print the oldest commit the
-		// store still had — which produced `since=1 is below the retained window: the store
-		// still has commits from 1. Ask for --since 1`, advice to ask again for exactly what
-		// was just refused. A replay can fail for reasons that are not retention.
-		oldest, known := int64(0), false
-		if kept, keptOK := store.Since(0); keptOK && len(kept) > 0 {
-			oldest, known = kept[0].Rev, true
+	if replayErr != nil {
+		// WHAT ACTUALLY HAPPENED, said in the store's own words. This asked a second question
+		// to guess with — `store.Since(0)`, whose answer was one int64, the oldest commit still
+		// retained — and that probe is gone. It could not work: it is the LONGEST replay the
+		// store can be asked for, so on any verse with a history it failed exactly as the
+		// cheap one just had, and the handler then asserted "it is not the cursor's age"
+		// whatever the cause. Before it learned to say it had failed at all, its zero value
+		// went out as a measurement: `the store still has commits from 0`, which is what
+		// git-issue 3qf2z59dh12ksdazg9n0 reports seeing. It was also expensive enough to
+		// matter — on staging it materialised the whole log, and the substrate was evicted for
+		// memory four times in the fifteen minutes somebody spent retrying a refused --since.
+		//
+		// `Since` answers with its own error now, so the guess is unnecessary: the one failure
+		// that means the history is gone says so, and everything else names the store's
+		// condition rather than the caller's cursor.
+		if errors.Is(replayErr, entity.ErrReplayTooOld) {
+			codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
+				"since=%d is below what the store still retains, so that history is gone: %v. "+
+					"Ask with --ago N for the last N commits, which the store clamps to what it "+
+					"kept, or drop --since to stream from now", since, replayErr))
+			return
 		}
-		msg := fmt.Sprintf("the store could not replay from since=%d, and it is not the "+
-			"cursor's age: drop --since to stream from now", since)
-		if known && oldest > since {
-			msg = fmt.Sprintf("since=%d is below the retained window: the store still has "+
-				"commits from %d. Ask for --since %d to replay what it kept, or drop --since "+
-				"to stream from now", since, oldest, oldest)
-		}
-		codec.HTTPError(w, r, http.StatusConflict, msg)
+		// NOT A CONFLICT. The cursor is fine and the store could not answer — a 409 told a
+		// person their cursor was the problem while their verse was unreachable, and they
+		// retried the one call that made it worse.
+		codec.HTTPError(w, r, http.StatusServiceUnavailable, fmt.Sprintf(
+			"the store could not replay from since=%d: %v — the cursor stands, so the same "+
+				"request is worth repeating once the store answers again", since, replayErr))
 		return
 	}
 
@@ -2116,7 +2132,12 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 	ch, unsub := store.Observe()
 	defer unsub()
 	last := since
-	if commits, ok := store.Since(since); ok {
+	// AT THE ROOT, and it is not an oversight that this one is not narrowed. The spine is three
+	// subtrees, not one: the subject's own ref, the QUESTIONS about it (verse.gate.question) and
+	// the TASKS naming it as their flow (verse.task.instance) — see spineCarries. Narrowing it
+	// to the subject's prefix would drop the anchors, which are most of what a supervisor reads
+	// here, so it wants three replays rather than one prefix and that is its own change.
+	if commits, err := store.Since(since); err == nil {
 		for _, c := range commits {
 			for _, ev := range c.Changes {
 				if onSpine(ev) {
@@ -2128,11 +2149,14 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 			}
 		}
 	} else {
-		// BELOW THE WINDOW. `Since` refuses a revision older than the store has observed —
-		// logd may have compacted it — and this said nothing at all, so a reader could not
-		// tell "nothing happened" from "you missed everything". A resolver is a client of
-		// this call and nothing else, so it reconnected, learned nothing, and sat waiting
-		// for a question that had already been asked.
+		// NO HISTORY, FOR WHATEVER REASON — the cursor expired, or the store could not answer.
+		// Both leave this reader in the same position (it has missed something and cannot get
+		// it), and both take the same recovery, so they are handled together here rather than
+		// split into a refusal a resolver has no better answer to. What must not happen is
+		// silence: this said nothing at all, so a reader could not tell "nothing happened"
+		// from "you missed everything". A resolver is a client of this call and nothing else,
+		// so it reconnected, learned nothing, and sat waiting for a question that had already
+		// been asked.
 		//
 		// Say that it happened, and then say WHAT — which is the half that matters, and the
 		// same two moves SubscribeSince makes on the task plane for the same reason.

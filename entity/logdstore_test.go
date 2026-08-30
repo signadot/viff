@@ -359,8 +359,8 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 
 	var first []Event
 	eventually(t, "Since to replay both writes", func() bool {
-		commits, ok := s.Since(start)
-		if !ok || len(changes(commits)) < 2 {
+		commits, err := s.Since(start)
+		if err != nil || len(changes(commits)) < 2 {
 			return false
 		}
 		first = changes(commits)
@@ -372,9 +372,9 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 		}
 	}
 	// idempotent: a second identical query yields the same events, unchanged Op.
-	secondCommits, ok := s.Since(start)
+	secondCommits, err := s.Since(start)
 	second := changes(secondCommits)
-	if !ok || len(second) != len(first) {
+	if err != nil || len(second) != len(first) {
 		t.Fatalf("Since not idempotent: first=%d second=%d", len(first), len(second))
 	}
 	for i := range first {
@@ -406,8 +406,8 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 		}
 		// Let the writes land, so every concurrent replay has the same window to see.
 		eventually(t, "writes to be replayable", func() bool {
-			evs, ok := s.Since(start)
-			return ok && len(evs) >= len(refs)
+			evs, err := s.Since(start)
+			return err == nil && len(evs) >= len(refs)
 		})
 
 		const n = 8
@@ -421,8 +421,8 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				commits, ok := s.Since(start)
-				results[i] = result{changes(commits), ok}
+				commits, err := s.Since(start)
+				results[i] = result{changes(commits), err == nil}
 			}(i)
 		}
 		wg.Wait()
@@ -475,8 +475,8 @@ func TestLogdStore_SinceReadsBeforeThisStoreOpened(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s2.Close()
-	commits, ok := s2.Since(0)
-	if !ok {
+	commits, err := s2.Since(0)
+	if err != nil {
 		t.Fatal("a fresh store refused history logd still holds — this is the case that made " +
 			"every restart truncate what a cursor could read")
 	}
@@ -530,8 +530,8 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 	// Since replays the whole window from before the writes.
 	var evs []Event
 	eventually(t, "Since to replay all writes", func() bool {
-		commits, ok := s.Since(start)
-		if !ok {
+		commits, err := s.Since(start)
+		if err != nil {
 			return false
 		}
 		evs = changes(commits)

@@ -3,6 +3,7 @@ package versed
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -327,12 +328,12 @@ func sameRefs(got []string, want ...string) bool {
 
 // A cursor below the retained window is REFUSED, not answered with silence.
 //
-// `Since` reports ok=false when it cannot answer from `from`, deliberately rather than
-// returning what it happens to still have. Watch used to skip the catch-up on that answer and
-// stream live anyway, so a client asking for history got an open stream, no history and no
-// notice — indistinguishable from a verse where nothing had happened. From the outside it looks
-// like flakiness: the same `--since 700` prints three commits, then nothing, then only new ones,
-// as the window slides past the cursor between runs.
+// `Since` answers with the error it failed with, and this is the failure that means the history
+// is gone. Watch used to skip the catch-up on a failure and stream live anyway, so a client
+// asking for history got an open stream, no history and no notice — indistinguishable from a
+// verse where nothing had happened. From the outside it looks like flakiness: the same
+// `--since 700` prints three commits, then nothing, then only new ones, as the window slides
+// past the cursor between runs.
 //
 // The refusal has to name what to ask for instead, because the caller wanted history and now has
 // to choose: take what is retained, or stream from now.
@@ -359,16 +360,57 @@ func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
 		t.Errorf("the refusal went out as a stream (%s)", ct)
 	}
+	// A CONFLICT, because the cursor really is the problem here.
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("an expired cursor answered %d, want 409 — the cursor is what cannot be "+
+			"satisfied", resp.StatusCode)
+	}
 	// WHAT TO DO INSTEAD is what the refusal owes; WHY is only claimed when it can be
-	// established. This store cannot say which commit it still retains, so "below the retained
-	// window" would be a diagnosis nobody checked — the handler used to make it anyway, and
-	// then advised asking for exactly the cursor it had refused.
+	// established. The store does not send the floor — logd keeps that in its own log — so the
+	// advice names a RELATIVE cursor, which the store clamps to what it kept, rather than an
+	// absolute one nobody here can name. It used to advise asking for exactly the cursor it had
+	// just refused.
 	msg := string(body)
 	if !strings.Contains(msg, "since") {
 		t.Errorf("the refusal does not name the cursor it refused: %q", msg)
 	}
-	if !strings.Contains(msg, "retained window") && !strings.Contains(msg, "stream from now") {
+	if !strings.Contains(msg, "--ago") && !strings.Contains(msg, "stream from now") {
 		t.Errorf("the refusal does not say what to ask for instead: %q", msg)
+	}
+	if strings.Contains(msg, "Ask for --since 1") {
+		t.Errorf("the refusal advises asking for the cursor it just refused: %q", msg)
+	}
+}
+
+// A STORE THAT CANNOT BE REACHED IS NOT A CURSOR PROBLEM, and the two answers differ.
+//
+// Both arrived as one bit for a while, and the handler read that bit as "your cursor is too
+// old" — so a person whose verse was unreachable was told to change their cursor, and the
+// retry made it worse (the diagnosis cost a full-history replay). The store says which failure
+// it had now, so this one is a 503 about the store, and repeating the same request is the right
+// advice rather than the wrong one (git-issue 3qf2z59dh12ksdazg9n0).
+func TestWatchSaysTheStoreIsDownRatherThanBlamingTheCursor(t *testing.T) {
+	srv := testServer(t)
+	srv.Store = storeDown{srv.Store}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/watch?" + url.Values{"since": {"1"}}.Encode())
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	msg := string(body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("an unreachable store answered %d (%q), want 503 — the cursor is fine and the "+
+			"store is not", resp.StatusCode, msg)
+	}
+	if strings.Contains(msg, "below") || strings.Contains(msg, "retains") {
+		t.Errorf("the refusal blames the cursor for the store being unreachable: %q", msg)
+	}
+	if !strings.Contains(msg, "context deadline exceeded") {
+		t.Errorf("the refusal does not carry what actually failed: %q", msg)
 	}
 }
 
@@ -464,7 +506,20 @@ func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
 	}
 }
 
-// cannotReplay is a store whose history is gone: every other question it answers as itself.
+// cannotReplay is a store whose HISTORY IS GONE — the cursor is below what it retains, which is
+// what compaction leaves behind and what no test store can be made to do. Every other question
+// it answers as itself.
 type cannotReplay struct{ entity.Store }
 
-func (cannotReplay) Since(int64) ([]entity.Commit, bool) { return nil, false }
+func (cannotReplay) Since(from int64, _ ...string) ([]entity.Commit, error) {
+	return nil, fmt.Errorf("replaying verse from %d: %w", from, entity.ErrReplayTooOld)
+}
+
+// storeDown is a store that CANNOT BE REACHED: its history is presumably fine and nobody can
+// see it. The pair exists because these two were one bit for a while and the handler above them
+// guessed which — always wrongly, in the direction of blaming the cursor.
+type storeDown struct{ entity.Store }
+
+func (storeDown) Since(from int64, _ ...string) ([]entity.Commit, error) {
+	return nil, fmt.Errorf("replaying verse from %d: context deadline exceeded", from)
+}

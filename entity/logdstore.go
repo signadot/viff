@@ -82,6 +82,15 @@ const sessionBudget = 10 * time.Second
 // it is fewer, larger commits, or writes leaving that loop the way reads did.
 const writeBudget = 30 * time.Second
 
+// replayBudget is that number for a CATCH-UP, which is neither a read nor a write: it is a
+// watch that streams a range, so it waits for logd to fetch every patch in that range before
+// the first event arrives, and then for this process to level each one onto the document.
+//
+// Fifteen seconds is what it has always been. It is stated as a name rather than a literal
+// because it is the boundary a caller is told about — a replay cut off here answers with the
+// commits it got AND the deadline, so nobody reads a truncated catch-up as a complete one.
+const replayBudget = 15 * time.Second
+
 // MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
 // disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
 //
@@ -1664,9 +1673,22 @@ func (s *LogdStore) startRootWatchLocked() {
 	go s.runWatch(wctx, w)
 }
 
+// ErrReplayTooOld is the store saying the cursor predates what it still retains: logd refuses
+// a FromCommit watch under its own replay floor with a terminal `replay_compacted` event, and
+// there is no replay to be had at that cursor by any means. It is the ONE failure a caller
+// answers by resyncing to current state rather than by asking again.
+//
+// It does not carry the floor, because the floor does not cross the wire: logd names it in its
+// own log ("watch cursor below retained history", with the detail), and sends the client the
+// reason code alone (failWatch, go-tony v0.0.202). A caller that wants what the store still has
+// asks for a RELATIVE cursor — the last N commits, which docd resolves against the watermark and
+// CLAMPS to the floor rather than refusing.
+var ErrReplayTooOld = errors.New("the cursor is older than what the store retains")
+
 // Since replays commits with Rev > from using a native logd FromCommit watch (a
-// query by revision), in commit order. It is a pure read — it derives each event's Op from
-// the delta alone (a tombstone is Delete, any value is Set) and mutates no store state, so
+// query by revision), in commit order, over the slice at `at` — the path segments under the
+// root, or the whole verse when none are given. It is a pure read — it derives each event's Op
+// from the delta alone (a tombstone is Delete, any value is Set) and mutates no store state, so
 // repeated or concurrent calls are consistent. This is what keeps a hold costing a cursor
 // rather than a growing buffer.
 //
@@ -1674,10 +1696,26 @@ func (s *LogdStore) startRootWatchLocked() {
 // does and a consumer cannot tell which it is reading — which is the point: the two paths
 // exist to recover each other.
 //
-// ok is false when the caller must resync from current state, and the only thing that
-// decides that is the REPLAY: logd refuses a FromCommit watch under its own floor with a
-// terminal "replay_compacted" event, libctl raises it as a WatchEndedError, and the closed
-// channel reports it through w.Err(). See TestSinceBelowReplayFloorResyncs.
+// IT ANSWERS WITH THE ERROR IT FAILED WITH, and that is the whole of what it can say about
+// itself. A replay is a WATCH, so everything that can refuse a watch refuses a catch-up: the
+// cursor below the floor (ErrReplayTooOld), a consumer that cannot keep up with its own replay,
+// a mount arriving or leaving, an establish that never completes inside the budget below, a
+// store that cannot be reached at all. Reported as one bit, every one of those read as "your
+// cursor is too old" — so a store that was DOWN was described to a person as a cursor problem,
+// and the handler above it went looking for a retained window that was never the question
+// (git-issue 3qf2z59dh12ksdazg9n0).
+//
+// PARTIAL COMMITS COME BACK WITH THE ERROR rather than instead of it. A replay that stops
+// halfway has delivered real commits, and a cursor-keeping caller can advance over them and
+// resume; what it must not be told is that it caught up. So the caller gets both, and decides.
+//
+// NARROW IT WHEN THE CALLER IS NARROW. The replay reads the document as it stood at the
+// starting commit (docAt) and logd reads every patch in the range that touches the watched
+// path, so both halves cost what the PATH holds rather than what the verse holds: a whole-verse
+// catch-up on a large store is gigabytes of document and log, and it is what evicted staging's
+// substrate four times in fifteen minutes. logd narrows before it reads (its index descends by
+// path, and only the segments recorded at or under it are fetched), so the prefix is not a
+// filter applied after the cost is paid.
 //
 // There used to be a cheaper first guard: a per-instance low-watermark, refusing anything
 // below the commit at which THIS STORE first synced. It was added when logd under-delivered
@@ -1689,7 +1727,7 @@ func (s *LogdStore) startRootWatchLocked() {
 // that reads as flakiness: the same `--since 700` answering three commits, then nothing.
 //
 // Asking logd is not expensive and it is the only source with standing.
-func (s *LogdStore) Since(from int64) ([]Commit, bool) {
+func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	s.ensureSynced()
 	// No rev>=from early-out: without a standing watch rev may be stale, so the FromCommit
 	// replay is authoritative — it streams commits after `from` and signals ReplayComplete
@@ -1699,12 +1737,24 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	// Concurrent Since calls need no serialization: each replay is its own id-keyed watch,
 	// so several may be in flight on this session at once, on this same path (see
 	// LogdStore.sess). Since mutates no store state, so they stay independent.
-	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, replayBudget)
 	defer cancel()
+	// A MOUNTED SLICE HAS NO HISTORY to replay: a controller backs it with something that is
+	// not the log, and MountRoot exists so a history-bearing watch never spans one. Replaying
+	// the log-backed base at that path would answer an empty catch-up successfully, which is
+	// the shape this call is being fixed to stop producing.
+	if len(at) >= 2 && IsMountOwned(at[0], at[1]) {
+		return nil, fmt.Errorf("replaying %s: a mounted slice is backed by a controller rather "+
+			"than the log, so it has no commits to replay", JoinSegs(at))
+	}
+	path := seg(s.root)
+	for _, a := range at {
+		path += "." + seg(a)
+	}
 	fc := from
-	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{FromCommit: &fc, NoInit: true, WaitIfAbsent: true})
+	w, err := s.sess.Watch(ctx, path, &libctl.WatchOptions{FromCommit: &fc, NoInit: true, WaitIfAbsent: true})
 	if err != nil {
-		return nil, false
+		return nil, fmt.Errorf("replaying %s from %d: %w", path, from, err)
 	}
 	defer w.Close()
 
@@ -1722,19 +1772,22 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	if rf := w.ReplayingFrom(); rf != nil {
 		start = *rf
 	}
-	doc := s.docAt(ctx, start)
+	doc := s.docAt(ctx, start, at...)
 
 	var out []Commit
 	for {
 		select {
 		case <-ctx.Done():
-			return out, true // best-effort: return what replayed
+			// WHAT REPLAYED, AND THAT IT DID NOT FINISH. Answering the partial catch-up with
+			// no error said the consumer was caught up when it was cut off at the budget,
+			// which is the silent under-delivery a cursor exists to make impossible.
+			return out, fmt.Errorf("replaying %s from %d: %w", path, from, ctx.Err())
 		case ev, ok := <-w.Events():
 			if !ok {
-				return out, w.Err() == nil
+				return out, replayEnded(path, from, w.Err())
 			}
 			if ev.ReplayComplete {
-				return out, true // caught up to current
+				return out, nil // caught up to current
 			}
 			if ev.Patch != nil {
 				doc = s.applyDelta(doc, ev.Patch)
@@ -1850,12 +1903,35 @@ func graftAt(verse map[string]*ir.Node, prefix []string, node *ir.Node) {
 // has, so applying the deltas onto nothing reconstructs it exactly. (A base that fails for
 // some other reason leaves the replay levelling only what it can see, which is what it had
 // before any of this existed.)
-func (s *LogdStore) docAt(ctx context.Context, commit int64) *ir.Node {
-	node, err := s.sess.MatchAt(ctx, seg(s.root), commit)
+func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.Node {
+	// AT THE PATH THE REPLAY WATCHES, so the base costs what that slice holds rather than what
+	// the verse holds — the half of a catch-up that grows with the whole store. The document is
+	// still ROOT-ROOTED, because the deltas applied onto it name their full path from the root
+	// and everything that reads entities out of it (payloadIn, eventsFromDelta) walks from
+	// there.
+	path := seg(s.root)
+	for _, a := range at {
+		path += "." + seg(a)
+	}
+	node, err := s.sess.MatchAt(ctx, path, commit)
 	if err != nil || node == nil {
 		return ir.FromMap(map[string]*ir.Node{})
 	}
-	return ir.FromMap(map[string]*ir.Node{s.root: node})
+	return stateDoc(node, append([]string{s.root}, at...))
+}
+
+// replayEnded says what ended a replay's watch, in the vocabulary a caller can act on: the one
+// terminal reason that means the history is gone (ErrReplayTooOld) and everything else, which
+// means ask again. libctl reports both through the closed channel's Err.
+func replayEnded(path string, from int64, err error) error {
+	if err == nil {
+		return nil // a clean end: the replay delivered what it had
+	}
+	var ended *libctl.WatchEndedError
+	if errors.As(err, &ended) && ended.Reason == logdapi.ErrCodeReplayCompacted {
+		return fmt.Errorf("replaying %s from %d: %w (%v)", path, from, ErrReplayTooOld, err)
+	}
+	return fmt.Errorf("replaying %s from %d: %w", path, from, err)
 }
 
 // runWatch consumes the live root watch, re-establishing it if the connection

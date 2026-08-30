@@ -197,10 +197,10 @@ func TestEventLevelsAtItsOwnCommit(t *testing.T) {
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("deployed")})
 
-	commits, ok := s.Since(first)
+	commits, err := s.Since(first)
 	evs := changes(commits)
-	if !ok || len(evs) != 2 {
-		t.Fatalf("Since = %d events ok=%v, want 2", len(evs), ok)
+	if err != nil || len(evs) != 2 {
+		t.Fatalf("Since = %d events err=%v, want 2", len(evs), err)
 	}
 	if got := Str(evs[0].To, "stage"); got != "reviewed" {
 		t.Errorf("first replayed event = %q, want the state at ITS commit (reviewed)", got)
@@ -244,10 +244,10 @@ func TestSinceLevelsFromTheStart(t *testing.T) {
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 
-	commits, ok := s.Since(start)
+	commits, err := s.Since(start)
 	evs := changes(commits)
-	if !ok || len(evs) != 2 {
-		t.Fatalf("Since(%d) = %d events ok=%v, want 2", start, len(evs), ok)
+	if err != nil || len(evs) != 2 {
+		t.Fatalf("Since(%d) = %d events err=%v, want 2", start, len(evs), err)
 	}
 	last := ToObj(evs[len(evs)-1].To)
 	if last["stage"] != "reviewed" || last["env"] != "prod" {

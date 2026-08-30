@@ -323,16 +323,23 @@ flow, and you give up native "once, ever", which a latch recovers.
   a terminal `replay_compacted` event sent *before* any state: a state read below the floor is only
   snapshot-accurate, and handing a client an untrustworthy state and then an error is worse than
   the error alone. libctl raises that terminal event as a `WatchEndedError`, so it arrives at
-  `Since` as `w.Err() != nil` and becomes `ok=false` with no special-casing. Measured through the
+  `Since` as `w.Err() != nil` and becomes `entity.ErrReplayTooOld`. Measured through the
   production path, verse → docd → logd, and pinned by `entity.TestSinceBelowReplayFloorResyncs`:
-  floor at 5, `Since(0)` → `ok=false`, zero commits. The distinct code is the point, because
-  `replay_failed` reads as transient and a consumer told that retries the same doomed cursor
-  forever.
-- **No way to ask the floor in advance.** The floor is discoverable only by asking for a replay and
-  being refused. There is no client query for it, etcd's compaction revision having no equivalent
-  in the session protocol. That is enough for `Since`, whose only decision is ok-or-resync, and not
-  enough for a consumer that wants to know how much history it has before it needs it. The store's
-  low-watermark — `Since(from)` returns `ok=false` when `from` predates `openCommit`, the commit
-  this instance synced at — therefore stays as the cheap first guard rather than the only one, and
-  a deliberately conservative one: after a restart it refuses cursors logd would still have
-  served.
+  floor at 5, `Since(0)` fails as `ErrReplayTooOld` with zero commits. The distinct code is the
+  point, because `replay_failed` reads as transient and a consumer told that retries the same
+  doomed cursor forever.
+- **That is one failure among several, and `Since` names which.** A catch-up is a watch, so
+  everything that can refuse a watch refuses a catch-up: an expired cursor, a consumer that
+  cannot keep up with its own replay, a mount arriving or leaving, an establish that never
+  completes, a store that cannot be reached. `ErrReplayTooOld` is the only one that means the
+  history is gone and the answer is to resync; every other failure means ask again, and leaves
+  the cursor where it was. A consumer told only "no" resynced over all of them, which drops
+  every commit in the gap — and a person was told their cursor was too old while their store
+  was down (git-issue `3qf2z59dh12ksdazg9n0`).
+- **No way to ask the floor in advance, and the floor does not cross the wire.** It is
+  discoverable only by asking for a replay and being refused, and the refusal carries the reason
+  code alone — logd names the floor in its own log and sends `replay_compacted`. There is no
+  client query for it, etcd's compaction revision having no equivalent in the session protocol.
+  A consumer that wants what the store still has therefore asks with a RELATIVE cursor: the last
+  *n* commits, which the store resolves against its watermark and **clamps** to the floor rather
+  than refusing.

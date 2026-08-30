@@ -52,10 +52,23 @@ type Store interface {
 	// the next delivered commit with a Gap. Correctness comes from the revision cursor +
 	// Since.
 	Observe() (<-chan Commit, func())
-	// Since returns retained commits with Rev > from, in order. ok is false when `from` is
-	// older than the retained/durable window — the caller must resync from current state.
-	// This is the cursor-based catch-up (a docd query by revision).
-	Since(from int64) (commits []Commit, ok bool)
+	// Since returns retained commits with Rev > from, in order, over the slice at `at` — the
+	// path segments under the root, or the whole verse when none are given. This is the
+	// cursor-based catch-up (a docd query by revision).
+	//
+	// THE ERROR IS THE ONE THIS REPLAY FAILED WITH, and the commits are whatever it delivered
+	// before it did — a truncated catch-up comes back with both, so a cursor-keeping caller can
+	// advance over what arrived and resume, and nobody is told they are caught up when they are
+	// not. Only `errors.Is(err, ErrReplayTooOld)` means the history is GONE and the answer is to
+	// resync; every other failure means the store could not answer this time.
+	//
+	// It reported one bit for a while, and a bit cannot tell those apart: a store that was down,
+	// a replay its own consumer could not keep up with, and a genuinely expired cursor all
+	// arrived as "your cursor is too old" (git-issue 3qf2z59dh12ksdazg9n0).
+	//
+	// `at` NARROWS WHAT IT COSTS, not just what it returns — the base document and the log range
+	// are both read at that path — so a caller watching one slice should ask about one slice.
+	Since(from int64, at ...string) (commits []Commit, err error)
 	// Rev returns the current store revision, syncing with the store if it must.
 	Rev() int64
 	// Head is the highest commit this PROCESS has been told about, with no round trip to

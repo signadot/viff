@@ -132,10 +132,10 @@ func TestRevAndSince(t *testing.T) {
 	}
 
 	// From the start both replay, in order; from mid only the second; from current, nothing.
-	commits, ok := s.Since(start)
+	commits, err := s.Since(start)
 	evs := changes(commits)
-	if !ok || len(evs) != 2 || Str(evs[0].To, "stage") != "open" || Str(evs[1].To, "stage") != "reviewed" {
-		t.Fatalf("Since(start) = %+v ok=%v", evs, ok)
+	if err != nil || len(evs) != 2 || Str(evs[0].To, "stage") != "open" || Str(evs[1].To, "stage") != "reviewed" {
+		t.Fatalf("Since(start) = %+v err=%v", evs, err)
 	}
 	if evs[0].Rev >= evs[1].Rev {
 		t.Fatalf("replay is not ordered: %d then %d", evs[0].Rev, evs[1].Rev)
@@ -145,11 +145,11 @@ func TestRevAndSince(t *testing.T) {
 	if len(commits) != 2 {
 		t.Fatalf("Since(start) = %d commits, want 2 (one per write)", len(commits))
 	}
-	if evs, ok := s.Since(mid); !ok || len(changes(evs)) != 1 || Str(changes(evs)[0].To, "stage") != "reviewed" {
-		t.Fatalf("Since(mid) = %+v ok=%v", evs, ok)
+	if evs, err := s.Since(mid); err != nil || len(changes(evs)) != 1 || Str(changes(evs)[0].To, "stage") != "reviewed" {
+		t.Fatalf("Since(mid) = %+v err=%v", evs, err)
 	}
-	if evs, ok := s.Since(end); !ok || len(evs) != 0 {
-		t.Fatalf("Since(end) = %+v ok=%v, want empty", evs, ok)
+	if evs, err := s.Since(end); err != nil || len(evs) != 0 {
+		t.Fatalf("Since(end) = %+v err=%v, want empty", evs, err)
 	}
 }
 
@@ -175,8 +175,8 @@ func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	}
 
 	late := openStoreAt(t, addr) // opens at commit 5; commits 1..5 are before its time
-	evs, ok := late.Since(0)
-	if !ok {
+	evs, err := late.Since(0)
+	if err != nil {
 		t.Fatal("a store that opened late cannot read history logd still holds — the cursor " +
 			"is a store revision, not a mark in this process's memory")
 	}
@@ -185,8 +185,8 @@ func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	}
 	cur := late.Rev()
 	set(t, first, ref, Obj{"n": 99}.Payload())
-	if evs, ok := late.Since(cur); !ok || len(evs) != 1 || evs[0].Rev <= cur {
-		t.Fatalf("Since(%d) within window = %+v ok=%v", cur, evs, ok)
+	if evs, err := late.Since(cur); err != nil || len(evs) != 1 || evs[0].Rev <= cur {
+		t.Fatalf("Since(%d) within window = %+v err=%v", cur, evs, err)
 	}
 }
 
