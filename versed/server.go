@@ -1350,7 +1350,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 
 	// A cursor the store cannot answer from is REFUSED, before NewSSE commits the response.
 	//
-	// `Since` reports ok=false when `since` is below what the store still retains, and it does
+	// `Since` returns a non-nil error when `since` is below what the store still retains, and it does
 	// that deliberately rather than returning what it happens to still have. Skipping the
 	// catch-up on that answer — which is what this did — hands the client an open stream with no
 	// history and no notice, indistinguishable from a verse where nothing has happened. Observed

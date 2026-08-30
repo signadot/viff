@@ -86,7 +86,7 @@ type Store interface {
 	//
 	// An out-of-range or no-longer-retained revision is an ERROR here, at the point the
 	// snapshot is taken, rather than a quietly-current answer later. That is the same reason
-	// Since reports ok=false rather than returning what it happens to still have.
+	// Since reports an error rather than returning what it happens to still have.
 	//
 	// `within` narrows what the snapshot holds to the given (system, kind) subtrees — kind ""
 	// meaning a whole system, no arguments meaning the whole verse. It is not a filter for
