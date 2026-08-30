@@ -2,6 +2,8 @@ package entity
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,5 +80,11 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	if !errors.Is(err, ErrReplayTooOld) {
 		t.Fatalf("Since over a compacted range failed with %v; want ErrReplayTooOld, which is "+
 			"what tells a consumer to resync rather than ask again", err)
+	}
+	// AND FROM WHERE IT CAN STILL SERVE. A caller told only that its cursor is gone can pick
+	// another one and be refused again; the floor is the fact that ends that, and it reaches
+	// here in the ending's own message rather than as a field to read.
+	if want := fmt.Sprintf("from commit %d", store.ReplayFloor()+1); !strings.Contains(err.Error(), want) {
+		t.Errorf("the refusal does not say what the store still has (%q): %v", want, err)
 	}
 }

@@ -1388,10 +1388,14 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		// that means the history is gone says so, and everything else names the store's
 		// condition rather than the caller's cursor.
 		if errors.Is(replayErr, entity.ErrReplayTooOld) {
+			// THE STORE SAYS FROM WHICH COMMIT IT CAN STILL SERVE, in the refusal itself, so
+			// the advice names a cursor that works rather than the one just refused. That is
+			// what the deleted probe was reaching for and could not reach.
 			codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
 				"since=%d is below what the store still retains, so that history is gone: %v. "+
-					"Ask with --ago N for the last N commits, which the store clamps to what it "+
-					"kept, or drop --since to stream from now", since, replayErr))
+					"Ask from the commit it names, or with --ago N for the last N commits, "+
+					"which the store clamps to what it kept, or drop --since to stream from now",
+				since, replayErr))
 			return
 		}
 		// NOT A CONFLICT. The cursor is fine and the store could not answer — a 409 told a

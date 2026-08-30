@@ -2,6 +2,7 @@ package entity
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -71,5 +72,35 @@ func TestSinceAtAMountedSliceIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no commits to replay") {
 		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+// A LONG CATCH-UP COMPLETES, rather than being killed partway as a consumer of its own replay.
+//
+// The watch has a bounded buffer and logd fails a consumer that does not keep up. Levelling
+// each delta inside the receive — a patch applied to the whole document, then the entity walk
+// over it — is the most expensive work in the verse, and putting it between one event and the
+// next filled that buffer: this replay was cut off after about a thousand commits, and the
+// caller was handed a truncated catch-up reported as a failure it could do nothing about
+// (git-issue 3qf2z59dh12ksdazg9n0). 1500 is comfortably past where that happened.
+func TestALongCatchUpCompletes(t *testing.T) {
+	s := openStore(t)
+	start := s.Rev()
+	const n = 1500
+	for i := range n {
+		set(t, s, RefAt("demo", "pr", fmt.Sprintf("%d", i)), Obj{"stage": "open"}.Payload())
+	}
+	commits, err := s.Since(start)
+	if err != nil {
+		t.Fatalf("a %d-commit catch-up failed after %d commits: %v", n, len(commits), err)
+	}
+	if len(commits) < n {
+		t.Fatalf("the catch-up carried %d commits of %d, and said it had caught up", len(commits), n)
+	}
+	// The last one is levelled, not just delivered: the base document is read once for the
+	// whole replay and advanced per commit, which is the property draining must not lose.
+	last := commits[len(commits)-1].Changes
+	if len(last) != 1 || Str(last[0].To, "stage") != "open" {
+		t.Fatalf("the last replayed commit does not carry the entity as it stood: %+v", last)
 	}
 }

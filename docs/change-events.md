@@ -336,10 +336,11 @@ flow, and you give up native "once, ever", which a latch recovers.
   the cursor where it was. A consumer told only "no" resynced over all of them, which drops
   every commit in the gap — and a person was told their cursor was too old while their store
   was down (git-issue `3qf2z59dh12ksdazg9n0`).
-- **No way to ask the floor in advance, and the floor does not cross the wire.** It is
-  discoverable only by asking for a replay and being refused, and the refusal carries the reason
-  code alone — logd names the floor in its own log and sends `replay_compacted`. There is no
-  client query for it, etcd's compaction revision having no equivalent in the session protocol.
-  A consumer that wants what the store still has therefore asks with a RELATIVE cursor: the last
-  *n* commits, which the store resolves against its watermark and **clamps** to the floor rather
-  than refusing.
+- **No way to ask the floor in advance, but the refusal names it.** It is discoverable only by
+  asking for a replay and being refused — there is no client query for it, etcd's compaction
+  revision having no equivalent in the session protocol — and the refusal says "delta history is
+  retained only from commit *n*", which is enough to pick a cursor that works. A watch's ending
+  carries a MESSAGE beside its reason code for exactly this: the code is the fixed vocabulary a
+  consumer switches on, the message the part that does not fit in one. A consumer that would
+  rather not name a number asks with a RELATIVE cursor instead: the last *n* commits, which the
+  store resolves against its watermark and **clamps** to the floor rather than refusing.

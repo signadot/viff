@@ -1678,10 +1678,12 @@ func (s *LogdStore) startRootWatchLocked() {
 // there is no replay to be had at that cursor by any means. It is the ONE failure a caller
 // answers by resyncing to current state rather than by asking again.
 //
-// It does not carry the floor, because the floor does not cross the wire: logd names it in its
-// own log ("watch cursor below retained history", with the detail), and sends the client the
-// reason code alone (failWatch, go-tony v0.0.202). A caller that wants what the store still has
-// asks for a RELATIVE cursor — the last N commits, which docd resolves against the watermark and
+// IT CARRIES THE FLOOR, in the wrapped error's own words: the refusal says "delta history is
+// retained only from commit N", which is the one fact that lets a caller pick a cursor that
+// works or tell a person what happened. It is prose rather than a field because that is how the
+// substrate sends it — a reason code a caller switches on, and a message it reports — so verse
+// reports it and does not parse it. A caller that would rather not name a number asks for a
+// RELATIVE cursor, the last N commits, which the store resolves against its watermark and
 // CLAMPS to the floor rather than refusing.
 var ErrReplayTooOld = errors.New("the cursor is older than what the store retains")
 
@@ -1758,12 +1760,6 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	}
 	defer w.Close()
 
-	// A replay carries deltas, and an event owes its consumer the whole entity as of its
-	// commit — so replay it the way the live watch does: read the document as it stood AT the
-	// commit the replay starts from, then advance it one commit at a time. That is one read
-	// for the whole catch-up rather than one per event, and it makes a replayed event
-	// indistinguishable from the live one it may be recovering.
-	//
 	// THE SERVER'S ANSWER, not the cursor we asked with. A relative cursor (`-N`, the last N
 	// commits) is resolved by the store — against its watermark, clamped to its retained floor
 	// — and neither of those is knowable here. `docAt(-2)` is not a revision; reading the
@@ -1772,32 +1768,71 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	if rf := w.ReplayingFrom(); rf != nil {
 		start = *rf
 	}
-	doc := s.docAt(ctx, start, at...)
 
-	var out []Commit
-	for {
-		select {
-		case <-ctx.Done():
-			// WHAT REPLAYED, AND THAT IT DID NOT FINISH. Answering the partial catch-up with
-			// no error said the consumer was caught up when it was cut off at the budget,
-			// which is the silent under-delivery a cursor exists to make impossible.
-			return out, fmt.Errorf("replaying %s from %d: %w", path, from, ctx.Err())
-		case ev, ok := <-w.Events():
-			if !ok {
-				return out, replayEnded(path, from, w.Err())
-			}
-			if ev.ReplayComplete {
-				return out, nil // caught up to current
-			}
-			if ev.Patch != nil {
-				doc = s.applyDelta(doc, ev.Patch)
-				out = append(out, Commit{
-					Rev:     ev.Commit,
-					Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc),
-				}.WithDelta(childByKey(ev.Patch, s.root)))
+	// TAKE THE REPLAY FIRST, LEVEL IT AFTER — and it is not a refactor, it is what makes a
+	// long catch-up possible at all.
+	//
+	// A watch has a bounded buffer and logd FAILS a consumer that does not keep up (slow
+	// consumer, mirroring the server's own behaviour). Levelling inside the receive put the
+	// most expensive work in the verse — a patch applied to the whole document, then the
+	// entity walk over the result — between one event and the next, so the buffer filled and
+	// the store killed the replay partway. Measured on a docd-backed store, this loop with the
+	// work inline was cut off after ~1000 events; draining first carries 2000 in 297ms. What
+	// came back was a truncated catch-up reported as a failure the consumer could do nothing
+	// about, at a cursor that was perfectly good.
+	//
+	// It costs no more than it did: `out` already holds every commit in the range, so the
+	// deltas are the same order of memory, held for the length of the call rather than
+	// released one at a time. The base read moves down here too, for the same reason — it is a
+	// round trip, and doing it before the first receive spends the buffer's headroom on the
+	// network.
+	type delta struct {
+		commit int64
+		patch  *ir.Node
+	}
+	var replayed []delta
+	drain := func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				// WHAT REPLAYED, AND THAT IT DID NOT FINISH. Answering the partial catch-up
+				// with no error said the consumer was caught up when it was cut off at the
+				// budget, which is the silent under-delivery a cursor exists to make
+				// impossible.
+				return fmt.Errorf("replaying %s from %d: %w", path, from, ctx.Err())
+			case ev, ok := <-w.Events():
+				if !ok {
+					return replayEnded(path, from, w.Err())
+				}
+				if ev.ReplayComplete {
+					return nil // caught up to current
+				}
+				if ev.Patch != nil {
+					replayed = append(replayed, delta{commit: ev.Commit, patch: ev.Patch})
+				}
 			}
 		}
 	}
+	replayErr := drain()
+
+	// A replay carries deltas, and an event owes its consumer the whole entity as of its
+	// commit — so level it the way the live watch does: read the document as it stood AT the
+	// commit the replay starts from, then advance it one commit at a time. That is one read
+	// for the whole catch-up rather than one per event, and it makes a replayed event
+	// indistinguishable from the live one it may be recovering.
+	//
+	// A FAILED REPLAY IS STILL LEVELLED, because the commits it did carry happened: a
+	// cursor-keeping caller advances over them and asks again from where they end.
+	doc := s.docAt(ctx, start, at...)
+	out := make([]Commit, 0, len(replayed))
+	for _, d := range replayed {
+		doc = s.applyDelta(doc, d.patch)
+		out = append(out, Commit{
+			Rev:     d.commit,
+			Changes: s.eventsFromDelta(d.commit, d.patch, doc),
+		}.WithDelta(childByKey(d.patch, s.root)))
+	}
+	return out, replayErr
 }
 
 // AsOf returns a snapshot of the whole verse as it stood at rev — one MatchAt over the root,
@@ -1922,7 +1957,9 @@ func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.N
 
 // replayEnded says what ended a replay's watch, in the vocabulary a caller can act on: the one
 // terminal reason that means the history is gone (ErrReplayTooOld) and everything else, which
-// means ask again. libctl reports both through the closed channel's Err.
+// means ask again. libctl reports both through the closed channel's Err, and the ending's
+// MESSAGE rides along in it — the floor a compacted replay left behind, the mount whose failure
+// ended a composed one — so wrapping the error is what carries the detail to whoever reports it.
 func replayEnded(path string, from int64, err error) error {
 	if err == nil {
 		return nil // a clean end: the replay delivered what it had

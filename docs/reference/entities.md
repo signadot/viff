@@ -500,9 +500,10 @@ A watch with a cursor replays: `--since <rev>` (or `--ago <n>`) delivers what th
 still holds from that revision before it streams anything new, so a reader that was away can
 catch up rather than guess. A cursor it cannot replay from is refused rather than answered with
 a stream carrying no history, and the refusal says which of two things happened: the revision is
-below what the store still retains, so that history is gone and `--ago <n>` is the way to ask
-for what it kept; or the store could not answer, in which case the cursor stands and the same
-request is worth repeating. A catch-up costs what the path it is asked about holds, so watching
+below what the store still retains, so that history is gone — and the refusal names the commit
+it can still serve from, with `--ago <n>` as the way to ask for what it kept without naming one;
+or the store could not answer, in which case the cursor stands and the same request is worth
+repeating. A catch-up costs what the path it is asked about holds, so watching
 one slice is cheaper than watching the verse in the replay as well as in the stream. With no cursor there is nothing to catch up from and the stream starts at the
 moment it opens. The same level-triggered property is what makes an installed trigger act on
 the backlog — a rule is a statement about the world, not about what happens next — and it is
