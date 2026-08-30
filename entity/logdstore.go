@@ -1062,7 +1062,7 @@ func (s *LogdStore) ensureSynced() {
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, sessionBudget)
 	defer cancel()
-	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{})
+	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{WaitIfAbsent: true})
 	if err != nil {
 		return
 	}
@@ -1219,7 +1219,7 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 		path += "." + seg(p)
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	w, err := s.establish(ctx, path, &libctl.WatchOptions{})
+	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 	if err != nil {
 		cancel()
 		return nil, nil, err
@@ -1390,7 +1390,7 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 				// missed deltas one at a time into a stream that is already the bottleneck: a
 				// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing
 				// sends ONE State carrying net state, and the same slice completed in 32s.
-				nw, err := s.establish(ctx, path, &libctl.WatchOptions{})
+				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 				if err == nil {
 					w = nw
 					backoff = 100 * time.Millisecond
@@ -1629,7 +1629,7 @@ func (s *LogdStore) Observe() (<-chan Commit, func()) {
 // rev is seeded asynchronously by the first State event (handleEvent).
 func (s *LogdStore) startRootWatchLocked() {
 	wctx, wcancel := context.WithCancel(s.ctx)
-	w, err := s.establish(wctx, s.root, &libctl.WatchOptions{})
+	w, err := s.establish(wctx, s.root, &libctl.WatchOptions{WaitIfAbsent: true})
 	if err != nil {
 		wcancel()
 		return // no observers get events until a later Observe retries the open
@@ -1676,7 +1676,7 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
 	defer cancel()
 	fc := from
-	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{FromCommit: &fc, NoInit: true})
+	w, err := s.sess.Watch(ctx, s.root, &libctl.WatchOptions{FromCommit: &fc, NoInit: true, WaitIfAbsent: true})
 	if err != nil {
 		return nil, false
 	}
@@ -1848,7 +1848,7 @@ func (s *LogdStore) runWatch(ctx context.Context, w *libctl.Watch) {
 		if s.isClosed() || ctx.Err() != nil {
 			return
 		}
-		nw, err := s.establish(ctx, s.root, &libctl.WatchOptions{})
+		nw, err := s.establish(ctx, s.root, &libctl.WatchOptions{WaitIfAbsent: true})
 		if err != nil {
 			continue // retry after the next backoff
 		}
@@ -2074,6 +2074,17 @@ func (s *LogdStore) writeCtx() (context.Context, context.CancelFunc) {
 // attempt is not patience, it is one caller's exclusive use of the connection everybody
 // shares. libctl uses this context for the connect and the watch handshake only — the Watch
 // it returns does not retain it — so bounding the attempt costs the watch nothing.
+// EVERY WATCH VERSE OPENS WAITS. A watch on a path holding nothing is refused by default since
+// go-tony v0.0.201 — the same answer a read of it gives — and `WaitIfAbsent` is how a client says
+// it meant to wait. Verse always means to wait: the engine watches the slice a rule selects over
+// before any subject exists in it, a source watches the slice it is about to reflect into, and the
+// root watch is opened on a store that has never been written. A refusal there is not a typo
+// caught, it is the verse failing to start.
+//
+// The one place that must NOT wait is a person naming a path at a command line, where a refusal
+// is the answer they want. That surface does not exist yet: `verse watch` observes the ROOT and
+// filters, so it never asks the store about the path a person typed and never gets the refusal
+// this option is the other half of (git-issue 7e5gv3n9h12krd10jhn0).
 func (s *LogdStore) establish(ctx context.Context, path string, opts *libctl.WatchOptions) (*libctl.Watch, error) {
 	cctx, cancel := context.WithTimeout(ctx, sessionBudget)
 	defer cancel()
