@@ -283,10 +283,23 @@ assembled for the wire. So an id is a key rather than a token inside a rendered 
 is what `--paths` is for: a script that wants the addresses gets them one per line instead of
 grepping them back out of a rendering.
 
-A path naming nothing answers `{}` with 200 at collection depth (0–2 segments) and 404 below
-it. The cut is where a path stops describing a slice and starts naming a thing: "which prs does
-a system that is not there have" has `none` as a true answer; `demo.pr.nosuch` names one
-entity, and `{}` would say it is there and empty.
+**A path naming nothing answers 404, at every depth**, and the command exits non-zero. `{}` is a
+document somebody wrote; it is not what a read says about a path nobody wrote, whether that path
+would have named a slice or a thing. `demo.pr.nosuch` is not there, and neither is `nosuch.pr` —
+"which prs does a system that is not there have" is not a question with `none` as its answer, it
+is a question about a system that is not there.
+
+    verse data nosuch            nothing stands at nosuch
+    verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
+    verse data                   the verse is empty: nothing has been written yet
+
+An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `--if`
+predicate kept none of what it holds. That answer is about the filter rather than about the path,
+so it is a 200 with `{}` — which is why the two cannot be spelled the same way.
+
+This used to turn on depth — `{}` with 200 at 0–2 segments, 404 below — which was verse guessing
+where entities end. The store answers it now: since go-tony v0.0.201 a read reports null only
+where a null was written, and absence is absence at every depth.
 
 A read, a `--put` and a `--rm` all take the same address, at the same depths, because there is
 only one thing to take: `demo pr 1` typed and `demo.pr."1"` written down are the one grammar,

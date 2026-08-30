@@ -1148,6 +1148,11 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 	// confused upward: `unreadable` turns a recorded read error into a 503, so a read at a path
 	// nothing stands at reported the verse as unavailable.
 	//
+	// IT ARRIVES AS AN EMPTY ANSWER, deliberately. Listing or watching a slice before anything
+	// is written to it is what an engine, a source and an install all do, and none of them wants
+	// an error for it. The one caller that must tell "nothing stands here" from "this holds
+	// nothing" is the read a person types an address into, and it asks `Standing` — which is one
+	// match, on a listing that already came back empty.
 	if isNotFound(err) {
 		s.noteRead(nil)
 		return nil, nil

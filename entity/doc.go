@@ -474,9 +474,18 @@ func AtDepth(at *kpath.KPath) int {
 	return n
 }
 
-// AtNamesEntity reports whether a path names an ADDRESS rather than a slice of the tree, which
-// is what decides how a read that found nothing answers: an empty document where a system or a
-// kind holds nothing, "not there" where a thing is not there.
+// AtNamesEntity reports whether a path names an ADDRESS rather than a slice of the tree.
+//
+// IT NO LONGER DECIDES HOW A READ THAT FOUND NOTHING ANSWERS, which is what it was written for:
+// an empty document where a system or a kind held nothing, "not there" where a thing was not
+// there. That was verse guessing where entities end, and it made a slice nobody had written
+// answer as one that exists and is empty. The store says which since go-tony v0.0.201, so a read
+// asks `LogdStore.Standing` and absence is absence at every depth
+// (git-issue 7e5gv3n9h12krd10jhn0).
+//
+// It is kept because the question it asks is still a real one — a path either names a thing or
+// describes a slice of the tree — and the depth arithmetic below is the only place that reasons
+// about the two halves having different depths.
 //
 // AGAINST THE DEPTH OF ITS OWN HALF, because the two halves are different depths. `demo.pr` is a
 // kind holding nothing and `verse.motion.channel` is the same claim one level down, so counting

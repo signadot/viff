@@ -52,7 +52,16 @@ verse
   down                                       stop the verse on --addr (it reaps its spawned daemons)
 
   watch  [--since <rev>] [<path>]            stream store changes (cursored) — the same path
-                                             a read takes, naming the same entities
+                                             a read takes, naming the same entities, and
+                                             REFUSED the same way: a path nothing stands at
+                                             is a non-zero exit rather than a stream that
+                                             never carries anything
+         --wait-if-absent                    …watch a path that holds nothing YET, and report
+                                             when a value arrives. The case a watch exists
+                                             for — seeing what a task is about to write — and
+                                             asked for rather than assumed, because the
+                                             address came from a person and a typo held open
+                                             for ever looks exactly like a quiet verse
          --ago <n>                           …the last <n> COMMITS, resolved by the store
                                              against its watermark and clamped to the history
                                              it retains — so a deep one answers with what is
@@ -122,7 +131,12 @@ verse
                                              demo pr 1 · demo pr 1 labels urgent  (a name)
                                              demo pr 1 votes '[0]'   (array; also {0} (k))
                                              demo pr 1 '"[0]"'       (the FIELD named [0])
-                                             (none) = the whole verse
+                                             (none) = the whole verse.
+                                             A path NOTHING STANDS AT is a non-zero exit,
+                                             at every depth: `{}` is a document somebody
+                                             wrote, not what a read says about a path
+                                             nobody wrote. An empty `{}` with exit 0 means
+                                             the path stands and a --if kept none of it
           [--at <path>]                      …or whole, as a kinded path — which is how one is
                                              copied out of a document, and the one spelling
                                              that carries a SEGMENT wildcard:

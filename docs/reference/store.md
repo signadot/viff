@@ -30,7 +30,11 @@ mapping is the whole of what `verse data` publishes: the document it answers wit
 addressed by the same path ([entities.md](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking
-the key out — so a deleted ref reads back not_found, and a null is a payload like any other. The
+the key out — so a deleted ref reads back not_found, and a null is a payload like any other. Since
+go-tony v0.0.201 that holds for a path that was NEVER written too, at every depth and whether or
+not an ancestor of it resolves: a read answers null iff a null was written there. Before it, a
+path with nothing above it answered a bare null — the same answer an entity holding one gives —
+and verse asked the parent whether the key stood to tell them apart. The
 two walks say the same thing at different times: a *materialized* subtree (`walkEntityDoc`, what a
 read and a snapshot see) has no removals in it to find, while a *delta* (`walkEntityChanges`) has
 no absence to observe and spells a removal with the `!delete` tag.

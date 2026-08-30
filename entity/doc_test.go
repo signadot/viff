@@ -147,10 +147,12 @@ func TestAPathNamingNothingIsNothing(t *testing.T) {
 }
 
 // AND AGAINST ITS OWN HALF'S DEPTH. Verse's own half is one level deeper, so the same claim
-// sits one segment further along: `demo.pr` is a kind that may hold nothing and
-// `verse.motion.channel` is exactly that, one level down. Counted against the world's depth the
-// second reads as a thing that is not there — which is what an empty docket answered with,
-// under the path motions live at.
+// sits one segment further along: `demo.pr` is a kind and `verse.motion.channel` is exactly
+// that, one level down. Counted against the world's depth the second reads as a thing rather
+// than a slice, which is the arithmetic this pins.
+//
+// It no longer decides what a read of a path holding nothing ANSWERS — that is the store's, and
+// absence is absence at every depth (git-issue 7e5gv3n9h12krd10jhn0).
 func TestAPathNamesAnEntityAtItsOwnHalfsDepth(t *testing.T) {
 	for path, want := range map[string]bool{
 		"":                            false,
