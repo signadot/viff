@@ -3,6 +3,10 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // A READ OF A PATH NOTHING STANDS AT SAYS SO, at every depth, and exits non-zero.
@@ -57,5 +61,41 @@ func TestAReadOfWhatStandsStillAnswers(t *testing.T) {
 	// the question was about the filter.
 	if _, err := runCLI(t, "data", "demo", "pr", "--if", `{stage: closed}`); err != nil {
 		t.Errorf("a filter that kept nothing reported not-found: %v", err)
+	}
+}
+
+// A WATCH IS REFUSED THE SAME WAY, and says the same thing about the same address.
+//
+// It required two things. `verse watch` observed the ROOT and filtered, so it never asked the
+// store about the address a person typed — it asks at the path now, which also stops every commit
+// in the verse crossing for a watch on one slice. And the refusal had to arrive before the stream
+// was confirmed: go-tony v0.0.202 asks before confirming, where v0.0.201 failed the watch a moment
+// after, by which time an SSE endpoint has committed its status code and cannot go back and say
+// 404 (git-issue 7e5gv3n9h12krd10jhn0).
+func TestAWatchSaysWhenNothingStandsThere(t *testing.T) {
+	serve(t)
+	_, err := runCLI(t, "watch", "nope")
+	if err == nil {
+		t.Fatal("a watch on a path nothing stands at was opened")
+	}
+	if !strings.Contains(err.Error(), "nothing stands at nope") {
+		t.Fatalf("said %q, want it to name the path the way a read of it does", err)
+	}
+}
+
+// …and --wait-if-absent is how a caller says it meant to wait, which is the case a watch exists
+// for: seeing what a task is about to write.
+func TestAWatchCanAskToWait(t *testing.T) {
+	srv := serve(t)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		entitytest.Set(t, srv, entity.RefAt("later", "k", "1"), entity.Obj{"stage": "open"}.Payload())
+	}()
+	out, err := runCLI(t, "watch", "later", "--wait-if-absent", "--until", `{to: {stage: open}}`)
+	if err != nil {
+		t.Fatalf("a waiting watch was refused: %v", err)
+	}
+	if !strings.Contains(out, "stage: open") {
+		t.Fatalf("waited but did not report the arrival: %q", out)
 	}
 }

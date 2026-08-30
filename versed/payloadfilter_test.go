@@ -68,7 +68,15 @@ func watchRefs(t *testing.T, q url.Values) []string {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/watch?"+q.Encode(), nil)
+	// WAITING, and saying so. This opens the watch BEFORE writing the fixture below — which is
+	// the whole shape of the harness, since a watch that started after the writes would have
+	// nothing to report — so every path it names holds nothing at the moment it asks. A watch on
+	// such a path is refused unless the client says it meant to wait, which this one does.
+	wq := url.Values{"wait-if-absent": {"true"}}
+	for k, v := range q {
+		wq[k] = v
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/watch?"+wq.Encode(), nil)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
