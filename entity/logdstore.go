@@ -517,12 +517,11 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 // null node is the entity's payload, `payload: null`, a value like any other. Reading that as
 // absence too is how a legal tony value came to be one no entity could hold.
 //
-// One answer does not settle itself, and settling it is VERSE's job rather than the match's. A
-// read addresses a VALUE, so it has no way to say "there is no key here" — logd reports a
-// missing key as not_found only when it can resolve a proper ancestor to report it against.
-// Under a path whose ancestors do not resolve either, there is nothing to resolve through and
-// the answer is a bare null: the same answer an entity holding null gives. So on a null, ask
-// the question absence is really about — does the parent have this key — which is keyStands.
+// THE STORE SETTLES IT, since go-tony v0.0.201: a read answers null iff a null was written
+// there, and absence is not_found at every depth whether or not an ancestor resolves. Before
+// that a path with nothing above it answered a bare null — the same answer an entity holding
+// null gives — so verse asked the parent whether the key stood and read absence off that. It
+// cost a second round trip and it was verse guessing at a rule the store now states.
 func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -536,39 +535,7 @@ func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
 	if node == nil {
 		return Entity{}, false, nil
 	}
-	if node.Type == ir.NullType && node.Tag == "" {
-		stands, err := s.keyStands(ctx, ref)
-		if err != nil {
-			return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
-		}
-		if !stands {
-			return Entity{}, false, nil
-		}
-	}
 	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, nil
-}
-
-// keyStands reports whether the ref's key is present in its (system, kind) slice — the
-// question "is anything there" actually asks, and the one a value read cannot answer.
-//
-// It asks the PARENT for exactly that one key and nothing else. A null pattern is the presence
-// test, so the answer is an object carrying the key when it stands and a null when it does not
-// — one key on the wire either way, never the whole slice. That is what keeps this affordable
-// enough to be the tiebreaker rather than a second full read.
-//
-// It runs only on the ambiguous answer (see Get), which is a null: a store whose root has never
-// been written, or an entity genuinely holding null. Everything else is already settled by
-// not_found, so the ordinary read still costs one round trip.
-func (s *LogdStore) keyStands(ctx context.Context, ref Ref) (bool, error) {
-	parent := s.rootFor(ref) + "." + seg(ref.System()) + "." + seg(ref.Kind())
-	node, err := s.sess.MatchPattern(ctx, parent, ir.FromMap(map[string]*ir.Node{ref.ID(): ir.Null()}))
-	if isNotFound(err) {
-		return false, nil // no slice to hold the key
-	}
-	if err != nil {
-		return false, err
-	}
-	return childByKey(node, ref.ID()) != nil, nil
 }
 
 // isNotFound reports whether a read error is the substrate saying "nothing stands there"
@@ -782,10 +749,9 @@ func (s *LogdStore) descendRefusal(ctx context.Context, w Write, parent Path) er
 	if err != nil || node == nil {
 		return nil // cannot say; leave it as the ordinary refusal
 	}
-	// A BARE NULL IS INCONCLUSIVE, and saying so is the difference between a message and a wrong
-	// message. logd answers null both for an entity holding one and for a path whose ancestors
-	// do not resolve at all (see Get and keyStands), and the guard admits both — so a null here
-	// means the refusal was somebody else's precondition, not this one.
+	// AN OBJECT OR A NULL IS INCONCLUSIVE, and saying so is the difference between a message and
+	// a wrong message: descendablePath admits both, so a parent that is either did not cause
+	// this refusal. Somebody else's precondition did.
 	n := ir.Uncomment(node)
 	if n.Type == ir.ObjectType || n.Type == ir.NullType {
 		return nil
@@ -1106,6 +1072,13 @@ func (s *LogdStore) ListErr(pred func(Ref) bool) ([]Entity, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	node, err := s.sess.Match(ctx, seg(s.root))
+	// A VERSE NOBODY HAS WRITTEN TO answers not_found here, since go-tony v0.0.201 — the root is
+	// a key like any other and nothing has put it there yet. It is absence, not an outage, and
+	// reporting it as one told an operator on their first read that the store was unavailable.
+	if isNotFound(err) {
+		s.noteRead(nil)
+		return nil, nil
+	}
 	s.noteRead(err)
 	if err != nil || node == nil {
 		return nil, err
@@ -1130,6 +1103,34 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	return out
 }
 
+// Standing reports whether anything stands at a path — the fact a read of it would answer with,
+// asked without fetching what is there.
+//
+// It exists for ONE caller: the read route a person types an address into, which has to tell "no
+// such thing" from "such a thing, holding nothing". Every other listing wants absence to arrive
+// as an empty slice, because watching or listing a slice before anything is written to it is what
+// an engine, a source and an install all do — so ListAt and its siblings keep answering that way
+// and nothing else has to learn a new error.
+//
+// It costs one match at the path, and only on a listing that came back empty: a caller with rows
+// in hand already knows the path stands.
+func (s *LogdStore) Standing(at []string) (bool, error) {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	path := s.rootForAt(at)
+	for _, sg := range at {
+		path += "." + seg(sg)
+	}
+	_, err := s.sess.Match(ctx, path)
+	if isNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
 func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
 	if depth < len(at) {
@@ -1142,12 +1143,11 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 		path += "." + seg(sg)
 	}
 	node, err := s.sess.Match(ctx, path)
-	// NOT_FOUND IS AN ANSWER, not an outage: it says the path is empty, and a read that FAILS
-	// says the store could not be read (libctl's own distinction). They are only ever confused
-	// upward: `unreadable` turns a recorded read error into a 503, so a read at a path nothing
-	// stands at — `verse data other`, an install listing a slice no source has written yet —
-	// reported the verse as unavailable. List at the ROOT never met this, because the root
-	// always exists; asking at a path is what makes it reachable.
+	// NOT_FOUND IS AN ANSWER, not an outage: it says nothing stands at the path, and a read that
+	// FAILS says the store could not be read (libctl's own distinction). They are only ever
+	// confused upward: `unreadable` turns a recorded read error into a 503, so a read at a path
+	// nothing stands at reported the verse as unavailable.
+	//
 	if isNotFound(err) {
 		s.noteRead(nil)
 		return nil, nil
@@ -1205,6 +1205,27 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
 func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error) {
+	return s.watchSubtree(depth, true, false, prefix...)
+}
+
+// WatchSubtreeAt is WatchSubtree for a caller that did NOT choose the path — a person naming one
+// at a command line — and so wants a path holding nothing refused rather than waited on.
+//
+// The refusal is the substrate's: since go-tony v0.0.201 a watch on such a path is refused unless
+// the client asks to wait, which is the same answer a read of it gives. So this costs no extra
+// read; it is one flag on the request verse already makes, and the alternative — reading the path
+// first to decide whether to open the stream — would be verse re-implementing what the store
+// does at the point it is asked.
+// NO INIT EVENT, which is the other half of being a stream a person opened. A subtree watch
+// normally opens with the full state at the starting commit; `Observe`, which this replaces on
+// the watch route, has no such thing — a subscriber joins a running stream. Delivering the init
+// would make `verse watch` with no cursor replay everything standing at the path, which is what
+// `--since` is for and what a cursorless watch explicitly is not.
+func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...string) (<-chan Commit, func(), error) {
+	return s.watchSubtree(depth, waitIfAbsent, true, prefix...)
+}
+
+func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ...string) (<-chan Commit, func(), error) {
 	// A trailing empty segment names no level and is dropped, which is the two-argument
 	// (system, kind) shape still speaking: `WatchSubtree("demo", "")` is a whole-system watch
 	// and always was.
@@ -1219,7 +1240,7 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 		path += "." + seg(p)
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
+	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent, NoInit: noInit})
 	if err != nil {
 		cancel()
 		return nil, nil, err

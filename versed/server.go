@@ -1319,6 +1319,10 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to
 	// "drop --since" they never passed — is answering a question nobody asked. `since=0` still
 	// means from the beginning, for a caller that means it.
+	// The client's answer to what a watch on a path holding nothing means: refuse it, as a read
+	// of the same path does, or wait for a value to arrive. Refusing is the default because the
+	// client here is a person who typed the address.
+	waitIfAbsent := q.Get("wait-if-absent") == "true"
 	since, catchUp, err := watchCursor(q.Get("since"))
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
@@ -1329,7 +1333,19 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
 	// captured live rather than lost in the gap. The catch-up and the live stream
 	// overlap; dedup by revision (send only strictly-ascending revs).
-	ch, unsub := store.Observe()
+	// AT THE PATH when one was named, and at the root only when none was. A watch on a path
+	// nothing stands at is refused by the substrate unless the client asked to wait, so a person
+	// who typed an address wrong is told so instead of holding a stream that will never carry
+	// anything. It also narrows what crosses: observing the root and filtering here means every
+	// commit in the verse is delivered to a watch on one slice.
+	ch, unsub, err := watchFor(store, sel, waitIfAbsent)
+	if err != nil {
+		// The substrate refuses a watch on a path holding nothing unless the client asked to
+		// wait, which is the same answer a read of it gives — so this needs no read of its own
+		// to know, and says the same thing `verse data` would about the same address.
+		notFoundAt(w, r, sel.at)
+		return
+	}
 	defer unsub()
 
 	// A cursor the store cannot answer from is REFUSED, before NewSSE commits the response.
@@ -1470,6 +1486,23 @@ func storeUnreadable(st entity.Reader) error {
 // neighbour's failure refused a request whose read was fine. Both directions were wrong at the
 // same line (git-issue tyr7f6dhh12ksdd4gnn0), and the window is microseconds, which is why it
 // read as `--paths` disagreeing with the document form rather than as a race.
+// notFoundAt says nothing stands at the address asked for, in the address the caller wrote —
+// which is the whole point of answering it rather than an empty document: a reader learns their
+// path is wrong instead of that the verse is empty.
+func notFoundAt(w http.ResponseWriter, r *http.Request, at *kpath.KPath) {
+	spelled := r.URL.Query().Get("at")
+	if spelled == "" {
+		spelled = at.String()
+	}
+	if spelled == "" {
+		// The whole verse, on a verse nobody has written to. Naming the address would name
+		// nothing, and "the verse is empty" is the fact a reader wants on their first read.
+		codec.HTTPError(w, r, http.StatusNotFound, "the verse is empty: nothing has been written yet")
+		return
+	}
+	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf("nothing stands at %s", spelled))
+}
+
 func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 	if err == nil {
 		return false
@@ -1496,6 +1529,13 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	if unreadable(w, r, err) {
 		return
 	}
+	// NOTHING STANDS THERE is an answer, and a different one from an empty document. Asked only
+	// when the listing came back with nothing — rows in hand already prove the path stands — so
+	// an ordinary read pays for it never.
+	if len(ents) == 0 && !pathStands(store, sel) {
+		notFoundAt(w, r, sel.at)
+		return
+	}
 	kept := make([]entity.Entity, 0, len(ents))
 	for _, e := range ents {
 		if sel.matchEntity(e) {
@@ -1507,12 +1547,11 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Nothing came back from a path that DOES stand: the read reached it and the selector kept
+	// none of what it held. That is an answer about the filter rather than about the path, so
+	// it is an empty document rather than a not-found — and it no longer turns on the depth
+	// asked at, which was verse guessing where entities end.
 	if doc.Node == nil {
-		if entity.AtNamesEntity(sel.at) {
-			codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
-				"nothing stands at %s", r.URL.Query().Get("at")))
-			return
-		}
 		doc.Node = ir.FromMap(map[string]*ir.Node{})
 	}
 	writeOut(w, r, http.StatusOK, doc)
@@ -1521,6 +1560,41 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 // listAt reads the entities a selector can pick, under the narrowest prefix its path allows.
 // A path that names nothing falls back to the root read, because the whole verse spans both
 // halves and their entities sit at different depths.
+// pathStands asks whether the path a selector names stands at all, for a listing that came back
+// empty. A store that cannot answer says yes: before there was a way to ask, an empty listing was
+// the only answer, and reporting not-found on a store that merely cannot tell would be worse than
+// the ambiguity this removes.
+func pathStands(store entity.Store, sel selector) bool {
+	prefix, _, ok := entity.AtPrefix(sel.at)
+	asker, can := store.(interface{ Standing([]string) (bool, error) })
+	if !can {
+		return true
+	}
+	if !ok {
+		prefix = nil // the whole verse: does the root itself stand?
+	}
+	stands, err := asker.Standing(prefix)
+	if err != nil {
+		return true
+	}
+	return stands
+}
+
+// watchFor opens the narrowest watch the selector allows: at the prefix it names, or at the root
+// when it names none. A store without the narrowing method falls back to the root watch, which is
+// what every store did before there was one.
+func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entity.Commit, func(), error) {
+	prefix, depth, ok := entity.AtPrefix(sel.at)
+	narrow, hasNarrow := store.(interface {
+		WatchSubtreeAt(int, bool, ...string) (<-chan entity.Commit, func(), error)
+	})
+	if !ok || !hasNarrow {
+		ch, unsub := store.Observe()
+		return ch, unsub, nil
+	}
+	return narrow.WatchSubtreeAt(depth, waitIfAbsent, prefix...)
+}
+
 func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
 	prefix, depth, ok := entity.AtPrefix(sel.at)
 	if !ok {

@@ -167,6 +167,27 @@ func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 // `{system: {kind: {id: payload}}}` now, so an address is assembled from the keys rather than
 // lifted from a `ref:` field. Every assertion below is unchanged, because they are all about
 // the set and the set is the same one.
+// listStatus is listRefs for a read whose ANSWER is its status code.
+func listStatus(t *testing.T, q url.Values) int {
+	t.Helper()
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	for _, e := range fixture {
+		ref, err := entity.ParseAddr(e.ref)
+		if err != nil {
+			t.Fatalf("%s: %v", e.ref, err)
+		}
+		entitytest.Set(t, srv.Store, ref, e.payload)
+	}
+	resp, err := http.Get(ts.URL + "/state?" + q.Encode())
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
 func listRefs(t *testing.T, q url.Values) []string {
 	t.Helper()
 	srv := testServer(t)
@@ -221,8 +242,13 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	// The PATH still narrows, and it composes with the predicate rather than replacing it — the
 	// store applies the address dimensions as List's prefilter, the payload is answered at the
 	// handler, and the answer must be the conjunction either way.
-	if got := listRefs(t, url.Values{"at": {"other"}, "if": {"{stage: open}"}}); len(got) != 0 {
-		t.Errorf("?at other listed %v, want nothing — no entity of that system exists", got)
+	//
+	// A path NOTHING STANDS AT is a 404 rather than an empty list, which is the distinction
+	// git-issue 7e5gv3n9h12krd10jhn0 is about: `other` is not a system holding no matches, it is
+	// not a system. An empty list is what a path that DOES stand answers when the predicate
+	// keeps none of what it holds — the case above it.
+	if code := listStatus(t, url.Values{"at": {"other"}, "if": {"{stage: open}"}}); code != http.StatusNotFound {
+		t.Errorf("?at other -> %d, want 404: no such path", code)
 	}
 	if got := listRefs(t, url.Values{"at": {"demo.pr"}, "if": {"{sentinel: true}"}}); !sameRefs(got, sentinel.String()) {
 		t.Errorf("?at + ?if listed %v, want the one entity satisfying both", got)

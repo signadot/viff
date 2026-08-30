@@ -564,6 +564,11 @@ type watchConfig struct {
 	// --nowire trades the line for the shape: see renderFrame, which is where the default goes
 	// the other way and says why.
 	NoWire bool `cli:"name=nowire desc='print each frame as a --- separated BLOCK rather than on one line (a wide frame stops being a wide line; grep stops seeing a whole event)'"`
+	// A watch at a path nothing stands at is REFUSED, the way a read of it is, because the
+	// address came from a person and a typo held open forever looks exactly like a quiet verse.
+	// Waiting is a real thing to want — watching for what a task is about to write — so it is
+	// asked for rather than assumed, and it is the substrate's own option under its own name.
+	WaitIfAbsent bool `cli:"name=wait-if-absent desc='watch a path that holds nothing yet, and report when a value arrives (default: refuse it, as a read of the same path does)'"`
 }
 
 func watchCmd() *cli.Command {
@@ -648,6 +653,9 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	q, err := cfg.query(at)
 	if err != nil {
 		return fmt.Errorf("watch: %w", err)
+	}
+	if cfg.WaitIfAbsent {
+		q.Set("wait-if-absent", "true")
 	}
 	u, err := readUntil(cfg.Until)
 	if err != nil {
@@ -1187,6 +1195,14 @@ func stateAt(at string) ([]entity.Entity, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// A LISTING'S EMPTY, not a reader's not-found. This reads a WELL-KNOWN address on behalf of
+	// a command that named it — `verse motion`, `verse connect` — where "nothing stands there"
+	// is what an empty list means and the caller says so in its own words ("no motions"). The
+	// address a PERSON typed is `verse data`'s, and that one reports the 404, which is the whole
+	// point of the route answering one (git-issue 7e5gv3n9h12krd10jhn0).
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
 		msg := strings.TrimSpace(string(body))
