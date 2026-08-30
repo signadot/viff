@@ -57,6 +57,26 @@ build:
     docdPool: ""
     spotVersed: false
 
+    # docd memory. "" on both leaves the container with no request and no limit, which is
+    # right on a laptop profile — a request is a RESERVATION, and one sized for a cluster
+    # makes the pod unschedulable on minikube.
+    #
+    # On a cluster it is not right, and the reason is measured. `o sys up` holds logd and
+    # docd in one process, and a catch-up is read into memory before it is emitted: logd
+    # materialises every patch in the replayed range, and a whole-verse replay of a large
+    # store is the size of the log. With no request the pod is BestEffort — first in line
+    # when the kubelet needs memory back, and free to take the node with it on the way. On
+    # staging (a 7.2Gi node) it did exactly that: four evictions in fifteen minutes at
+    # 3.7–7.1Gi, each one taking the store down, while its steady footprint was 1.8Gi
+    # (git-issue 3qf2z59dh12ksdazg9n0).
+    #
+    # A limit does not prevent the read — it decides who dies of it. Over the limit the
+    # container is OOM-killed and says so in its own status; over the node the kubelet
+    # evicts whatever it can and the reason lands on the node instead. Same downtime, an
+    # attributable cause, and the neighbours survive.
+    docdMemoryRequest: ""
+    docdMemoryLimit: ""
+
     # Put the versed API and docd's mount face on the tailnet, through the Tailscale
     # Kubernetes operator — which has to be installed already; these are just annotations it
     # watches for, and nothing here notices if nobody is watching. The devices are named after
@@ -413,6 +433,33 @@ build:
             containers: !key(name)
             - name: versed
               imagePullPolicy: $[imagePullPolicy]
+
+  # docd memory (see the knobs). Each half is emitted only when it is set, so a profile may
+  # reserve without capping or cap without reserving.
+  - if: '.[ docdMemoryRequest != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              resources:
+                requests:
+                  memory: $[docdMemoryRequest]
+  - if: '.[ docdMemoryLimit != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              resources:
+                limits:
+                  memory: $[docdMemoryLimit]
 
   # docd volumeClaimTemplate — always present. Base: no storageClassName (omitting it =
   # "cluster default"; "" would disable dynamic provisioning). eks/minikube override below.
