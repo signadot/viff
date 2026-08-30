@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/tony-format/go-tony/system/libctl"
 	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 	"github.com/signadot/tony-format/go-tony/token"
@@ -163,6 +165,7 @@ type LogdStore struct {
 	sess   *libctl.LogdSession
 	ctx    context.Context
 	cancel context.CancelFunc
+	logger *slog.Logger
 
 	cfg LogdConfig // retained so Scope() can clone it for a scoped child
 
@@ -225,6 +228,9 @@ type LogdConfig struct {
 	// ConnectTimeout bounds the initial session connect; 0 uses the default. A caller that
 	// retries (waiting for logd/docd to come up) sets this short so each attempt fails fast.
 	ConnectTimeout time.Duration
+	// Logger receives what this store cannot report through a return value — a watch delta
+	// that did not apply, whose cost every event after it pays. Nil uses the default.
+	Logger *slog.Logger
 }
 
 // OpenLogdStore connects to logd and returns a ready store. It opens NO watch: reads
@@ -238,6 +244,9 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 		root = DefaultRoot
 	}
 	cfg.Root = root // retain the resolved root so scoped children inherit it
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	connectTimeout := cfg.ConnectTimeout
@@ -274,7 +283,7 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 
 	s := &LogdStore{
 		root: root, cfg: cfg, sess: sess, ctx: ctx, cancel: cancel,
-		subs: map[int]*observer{},
+		logger: cfg.Logger, subs: map[int]*observer{},
 	}
 
 	// No standing root watch. The store serves Get/List/Modify on demand (single-ref
@@ -1172,10 +1181,10 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 // It maintains the subtree as a document by APPLYING each watch event — a State
 // replaces it, a Patch is applied via tony.Patch — and emits the diff of the
 // reconstructed entity set vs the last snapshot. It never interprets the patch's
-// structure: logd owns the diff encoding (a scoped watch's first delta is a !replace,
-// later ones are merges; either applies cleanly), so verse can't and shouldn't decode
-// it by hand — doing so silently dropped the first appearance. A burst of events is
-// applied then diffed once. unsub (or closing the store) stops it.
+// structure: logd owns the delta encoding and is free to change it — a scoped watch does
+// not even deliver the patch that was committed — so verse can't and shouldn't decode it
+// by hand, and decoding it is how the first appearance came to be silently dropped. A
+// burst of events is applied then diffed once. unsub (or closing the store) stops it.
 //
 // The document is SEEDED by the watch's initial State, which is what makes an event's
 // payload the whole entity as of the commit rather than the writer's delta (see
@@ -1220,9 +1229,9 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 		defer close(out)
 		// doc is the watched subtree as a root-rooted document, maintained by APPLYING
 		// each watch event: a State (initial or reconnect) replaces it; a Patch is
-		// applied with tony.Patch. We never interpret the patch's structure — logd owns
-		// the diff encoding (merge vs !replace vs !delete/!insert, field order, …) — we
-		// apply it opaquely and read entities out of the reconstructed object.
+		// applied with tony.Patch. We never interpret the patch's structure — which
+		// operations a delta is spelled with, and in what order, is logd's to choose —
+		// we apply it opaquely and read entities out of the reconstructed object.
 		//
 		// prev is the last emitted snapshot, and it starts EMPTY — including under the
 		// opening State, so the first diff reports the whole slice and the backlog fires.
@@ -1253,11 +1262,10 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 			case ev.State != nil:
 				doc = stateDoc(ev.State, segs) // full current state of the subtree
 			case ev.Patch != nil:
-				if nd, err := tony.Patch(doc, ev.Patch); err == nil {
-					doc = nd
-				}
-				// A patch that fails to apply leaves doc unchanged; a later State (e.g.
-				// on reconnect) resyncs it. We never decode the patch to recover by hand.
+				// A patch that fails to apply leaves doc unchanged and is reported; a
+				// later State (e.g. on reconnect) resyncs it. We never decode the patch
+				// to recover by hand (applyDelta).
+				doc = s.applyDelta(doc, ev.Patch)
 			}
 		}
 		// emitDiff reconstructs the entity set from doc and emits the diff vs the last
@@ -1461,6 +1469,12 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 // walkLeaves descends exactly `depth` object levels from node, invoking fn with the
 // field-name path and value node at each leaf. It underpins both the (system,kind)
 // (depth 1) and whole-system (depth 2) subtree reads.
+//
+// A LEVEL IS AN OBJECT SOMETHING STANDS UNDER, which is why the two ways of saying something
+// about a comment are stepped over rather than descended: a wrapper by unwrapping it, and the
+// `!comment` operation by following what it says the value is (commentOperand). Both sit AT a
+// path and describe what is there; neither is a level of the namespace, and walking one as
+// though it were reads the parts of a statement as addresses.
 func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 	var rec func(n *ir.Node, segs []string)
 	rec = func(n *ir.Node, segs []string) {
@@ -1469,6 +1483,16 @@ func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 			return
 		}
 		n = ir.Uncomment(n) // a comment is not a container
+		if v, ok := commentOperand(n); ok {
+			// What stands here is what the operation says the value is. A comment stated
+			// with no value leaves everything below it as it was, so there is nothing
+			// below to report.
+			if v == nil {
+				return
+			}
+			rec(v, segs)
+			return
+		}
 		if n == nil || n.Type != ir.ObjectType {
 			return
 		}
@@ -1657,7 +1681,7 @@ func (s *LogdStore) Since(from int64) ([]Commit, bool) {
 				return out, true // caught up to current
 			}
 			if ev.Patch != nil {
-				doc = applyDelta(doc, ev.Patch)
+				doc = s.applyDelta(doc, ev.Patch)
 				out = append(out, Commit{
 					Rev:     ev.Commit,
 					Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc),
@@ -1821,7 +1845,7 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		s.mu.Unlock()
 	case ev.Patch != nil:
 		s.mu.Lock()
-		s.doc = applyDelta(s.doc, ev.Patch)
+		s.doc = s.applyDelta(s.doc, ev.Patch)
 		doc := s.doc
 		s.mu.Unlock()
 		// The delta rides along, so a consumer whose addresses are deeper than the arity
@@ -1896,17 +1920,28 @@ func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
 // leaves the document unchanged — a later State (a reconnect) resyncs it — because logd owns
 // the diff encoding and decoding it by hand is how a delta gets silently dropped.
 //
+// THE FAILURE IS SAID, not only absorbed. This document is what every event's level payload is
+// read out of (eventsFromDelta), so a delta that did not land leaves each event after it
+// reporting a state its entity has already left — and it keeps doing so until a reconnect
+// reseeds the document, which may be a long time on a healthy connection. Recovering is the
+// right behaviour and being quiet about it is not: the symptom is a consumer acting on stale
+// values, and nothing else in the process would name where they came from.
+//
 // With no document there is nothing to advance: a delta before the first State, or a base
 // read that could not be served. It stays nil, and levelling falls back to the delta.
 // (tony.Patch dereferences a nil document rather than erroring, so this is also the guard.)
-func applyDelta(doc, patch *ir.Node) *ir.Node {
+func (s *LogdStore) applyDelta(doc, patch *ir.Node) *ir.Node {
 	if doc == nil {
 		return nil
 	}
-	if nd, err := tony.Patch(doc, patch); err == nil {
-		return nd
+	nd, err := tony.Patch(doc, patch)
+	if err != nil {
+		s.logger.Warn("a watch delta did not apply; the watched document is behind, and the "+
+			"level payload of every event it answers is stale until the watch reseeds",
+			"root", s.root, "scope", s.cfg.Scope, "err", err)
+		return doc
 	}
-	return doc
+	return nd
 }
 
 // emit broadcasts one commit to observers, non-blocking with drop-and-gap accounting — the
@@ -2038,6 +2073,30 @@ func childByKey(node *ir.Node, key string) *ir.Node {
 	return nil
 }
 
+// commentValueField names the `!comment` operand's field holding a patch for the value the
+// node carries, so one node states both what its comments are and what its value is.
+const commentValueField = "value"
+
+// commentOperand reads a `!comment` node: it answers what the operation says the node's VALUE
+// is — the operand's `value:`, or nil when the operand names none — and whether the node is a
+// `!comment` at all.
+//
+// It exists because that operation is not a comment WRAPPER and ir.Uncomment does not see it. A
+// wrapper is a CommentType node standing around the value it precedes; `!comment` is an
+// ordinary tagged object, `{head: […], line: […], value: …}`, whose fields name the operand's
+// parts rather than the document's. A structural walk that treats it as a container therefore
+// descends `head`, `line` and `value` as if they were levels of the verse, and reports whatever
+// stands under them as entities that do not exist.
+//
+// A nil answer with ok is a comment stated on its own: the comments at that node changed and
+// the value did not, so nothing below it changed either.
+func commentOperand(n *ir.Node) (*ir.Node, bool) {
+	if n == nil || n.Type != ir.ObjectType || opIn(n.Tag) != mergeop.CommentTag {
+		return nil, false
+	}
+	return ir.Get(n, commentValueField), true
+}
+
 // walkEntityLeaves descends a node rooted at the verse subtree (its top-level fields are
 // systems) to the depth an address has, and calls fn at each entity leaf. It is walkLeaves at
 // the depth the entity namespace has, and the two walks below are what they do with the leaf.
@@ -2084,12 +2143,28 @@ func walkEntityDoc(node *ir.Node) []Entity {
 //
 // It is a separate walk from walkEntityDoc for exactly that reason, and the two used to be one
 // function serving both callers, which is how a materialized null came to read as a delete. The
-// tombstone is the `!delete` TAG, which is what verse writes (deleteOp) and what tony.Diff
+// tombstone is the `!delete` OPERATION, which is what verse writes (deleteOp) and what tony.Diff
 // emits for a removed key — not the null, which in a delta is a value being set like any other.
+//
+// The operation is asked for BY NAME rather than by comparing the whole tag, because a tag
+// composes: what a patch executes is the first registered label in the chain (opIn), so a
+// removal wearing anything alongside it is still a removal, and a comparison against `!delete`
+// answers no to it while the store answers yes.
 func walkEntityChanges(node *ir.Node) []entityChange {
 	var out []entityChange
 	walkEntityLeaves(node, func(ref Ref, n *ir.Node) {
-		if n == nil || n.Tag == deleteTag {
+		// A `!comment` AT the entity states its comments, and its value only when the
+		// operand names one. With no `value:` the entity holds what it held: neither a
+		// removal nor a payload this walk can read, so it is reported with none and
+		// levelled from the document (eventsFromDelta).
+		if v, ok := commentOperand(n); ok {
+			if v == nil {
+				out = append(out, entityChange{ref: ref})
+				return
+			}
+			n = v
+		}
+		if n == nil || opIn(n.Tag) == deleteName {
 			out = append(out, entityChange{ref: ref, deleted: true})
 			return
 		}

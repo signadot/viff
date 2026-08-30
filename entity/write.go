@@ -329,10 +329,19 @@ func Removed() Payload { return deleteOp() }
 // which is no operator at all and leaves an ordinary null behind.
 func deleteOp() Payload { return ir.Null().WithTag(deleteTag) }
 
-// deleteTag is the operator tag a removal wears, on the way in AND on the way back: verse
-// writes it (deleteOp) and logd forwards it on the change stream, which is how the delta walk
-// tells a removed entity from one whose payload is null (walkEntityChanges).
-const deleteTag = "!delete"
+// deleteName is the merge operation a removal names, and deleteTag is how that operation is
+// written. Both exist because the two are asked for in different places: a write SPELLS the
+// tag, and the walk that reads a delta asks for the NAME (opIn), since a tag composes and the
+// operation a patch executes is the first registered label in the chain rather than the whole
+// string.
+//
+// It is what a removal wears on the way in AND on the way back: verse writes it (deleteOp) and
+// logd forwards it on the change stream, which is how the delta walk tells a removed entity
+// from one whose payload is null (walkEntityChanges).
+const (
+	deleteName = "delete"
+	deleteTag  = "!" + deleteName
+)
 
 // Created requires that nothing stands at the write's own path — the create.
 func Created() Require { return Require{Absent: true} }
