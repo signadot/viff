@@ -65,13 +65,11 @@ const Sep = sep
 // store could write a rule, a task record or somebody else's answer.
 const VerseRoot = "verse"
 
-// RefAt builds the ref standing at these segments.
+// RefAt builds the ref standing at these segments, at whatever depth there are.
 //
-// Fewer than Depth segments names a PREFIX — a subtree rather than an entity — and it is
-// padded, which is exactly what `Ref{System: s, Kind: k}` did when it was written by hand: a
-// precondition over a whole vote log addresses `vote:<motion>` and the empty third segment is
-// what makes the store path end there. Padding is the bridge, not the destination: when the
-// representation becomes a path, a short address is short.
+// A SHORT ADDRESS IS SHORT. Two segments are two segments — a place in the tree like any
+// other, which a read answers at and a write lands at — rather than a prefix to be filled out
+// to the arity an address once had.
 func RefAt(segs ...string) Ref {
 	var r Ref
 	if len(segs) > 0 && segs[0] == VerseRoot {
@@ -401,6 +399,12 @@ func (c Commit) ChangedAt(depth int) []Ref {
 	}
 	var out []Ref
 	walkLeaves(c.delta, depth, func(segs []string, _ *ir.Node) {
+		// EXACTLY the depth asked for, which is what the other branch answers too: the walk
+		// also reports a value standing above it, and that is a different address than the
+		// one this question is about.
+		if len(segs) != depth {
+			return
+		}
 		if ref, ok := RefOfAny(segs); ok {
 			out = append(out, ref)
 		}

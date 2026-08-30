@@ -490,6 +490,10 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 		{"a.b.c", "pr", "1"},
 		{"a b", "pr", "1"},
 		{"verse", "task", "instance", "run-1"},
+		{"demo"},
+		{"demo", "pr"},
+		{"verse", "task"},
+		{"git", "ref"},
 	} {
 		got, _, err := TargetOf(segs)
 		if err != nil {
@@ -569,8 +573,56 @@ func TestAnEntitySegmentIsNotAnAccess(t *testing.T) {
 	if err != nil || sub != "" || at.Ref.ID() != "[0]" {
 		t.Errorf(`TargetOf(merge proposal "[0]") = (%+v, %q, %v), want the id [0]`, at, sub, err)
 	}
-	// Too short to name an entity is refused for its own reason.
-	for _, bad := range [][]string{{"demo", "pr"}, {"demo"}, {}} {
+	// And in a SHORT address, where every segment is the entity's own.
+	if got, _, err := TargetOf([]string{"demo", "[0]"}); err == nil {
+		t.Errorf("TargetOf(demo [0]) = %+v, want a refusal: an entity is not an element", got)
+	}
+}
+
+// AN ADDRESS IS AS DEEP AS IT IS. A write names its entity with every segment it has, and only
+// where there are more than an entity's own does the remainder become a path inside the payload.
+//
+// The short cases are what this exists for. `demo.pr` is a place in the tree like any other — a
+// read answers at it, a watch reports it, and a selection of two segments identifies entities at
+// depth two — so a write there is a write there. Refusing it was the last of the three-segment
+// arity, surviving in the one parse that turns argv into an address after the representation
+// underneath had become a path (docs/working/entity-tree.md §5, §8).
+func TestTheAddressIsAsDeepAsItIs(t *testing.T) {
+	for _, c := range []struct {
+		segs  []string
+		ref   Ref
+		field []string
+	}{
+		{[]string{"demo"}, RefAt("demo"), nil},
+		{[]string{"demo", "pr"}, RefAt("demo", "pr"), nil},
+		{[]string{"demo", "pr", "1"}, RefAt("demo", "pr", "1"), nil},
+		{[]string{"demo", "pr", "1", "stage"}, RefAt("demo", "pr", "1"), []string{"stage"}},
+		{[]string{"demo", "pr", "1", "labels", "urgent"},
+			RefAt("demo", "pr", "1"), []string{"labels", "urgent"}},
+		// Verse's own half is one segment deeper, and the same rule reads it.
+		{[]string{"verse", "task"}, RefAt("verse", "task"), nil},
+		{[]string{"verse", "task", "instance", "run-1"},
+			RefAt("verse", "task", "instance", "run-1"), nil},
+		{[]string{"verse", "task", "instance", "run-1", "stage"},
+			RefAt("verse", "task", "instance", "run-1"), []string{"stage"}},
+	} {
+		at, sub, err := TargetOf(c.segs)
+		if err != nil {
+			t.Errorf("TargetOf(%q): %v", c.segs, err)
+			continue
+		}
+		if sub != "" {
+			t.Errorf("TargetOf(%q) sub = %q, want none", c.segs, sub)
+		}
+		if at.Ref != c.ref {
+			t.Errorf("TargetOf(%q) ref = %s, want %s", c.segs, at.Ref, c.ref)
+		}
+		if strings.Join(at.Field, "\x00") != strings.Join(c.field, "\x00") {
+			t.Errorf("TargetOf(%q) field = %q, want %q", c.segs, at.Field, c.field)
+		}
+	}
+	// A nameless level addresses nothing, at every depth — which is all that is left to refuse.
+	for _, bad := range [][]string{{}, {""}, {"demo", ""}, {"", "pr"}} {
 		if got, _, err := TargetOf(bad); err == nil {
 			t.Errorf("TargetOf(%q) = %+v, want a refusal", bad, got)
 		}

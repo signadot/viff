@@ -117,6 +117,18 @@ func KPathOf(segs []string) (string, error) {
 // the object fields inside it or — when any step is an array access — the kpath fragment that
 // reaches it (Write.Sub).
 //
+// AN ADDRESS IS AS DEEP AS IT IS. Where there are Depth segments or more, those name the entity
+// and the rest is a path inside its payload; where there are fewer, all of them name the entity,
+// because there is nothing left over to be a field OF anything. A short address is not an error:
+// nothing in the document says where an entity ends (docs/working/entity-tree.md), so a write
+// naming two segments is a write at two segments, and it is the same rule the selections keep —
+// N segments identify entities at depth N.
+//
+// The split at Depth is a DEFAULT for the ambiguous half rather than a fact about the store. At
+// four segments `demo pr 1 stage` reaches a field of an entity and `a b c d` could as easily be
+// an entity, and the two produce the same document either way — entity-hood is a lens, and the
+// write records which lens it used, not a boundary anything reads back.
+//
 // The entity's own segments may not be an access: an id is a name, and an entity is not an
 // element of anything.
 func TargetOf(segs []string) (Path, string, error) {
@@ -125,8 +137,7 @@ func TargetOf(segs []string) (Path, string, error) {
 		want++
 	}
 	if len(segs) < want {
-		return Path{}, "", fmt.Errorf("an address starts with system kind id, and %q names %d of "+
-			"the %d", strings.Join(segs, " "), len(segs), want)
+		want = len(segs)
 	}
 	names := make([]string, 0, want)
 	for _, step := range segs[:want] {
@@ -136,10 +147,12 @@ func TargetOf(segs []string) (Path, string, error) {
 		}
 		names = append(names, StepName(step))
 	}
-	ref, ok := RefOf(names)
+	// RefOfAny, not RefOf: the depth is the address's own, so the only thing left to refuse is
+	// a nameless level.
+	ref, ok := RefOfAny(names)
 	if !ok {
-		return Path{}, "", fmt.Errorf("%q: its first %d segments do not name an entity",
-			strings.Join(segs, " "), want)
+		return Path{}, "", fmt.Errorf("%q does not name an entity: a segment is a name, and a "+
+			"nameless level addresses nothing", strings.Join(segs, " "))
 	}
 	rest := segs[want:]
 	access := false

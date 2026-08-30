@@ -1443,6 +1443,9 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		node = childByKey(node, p)
 	}
 	out := map[Ref]Payload{}
+	// AN OBJECT, or there is no subtree here to read entities out of. A watch seeds this
+	// document with the State it opened on, which is a null where the slice is empty, and a
+	// null at the watched path is nothing standing there rather than an entity holding null.
 	if node == nil || node.Type != ir.ObjectType || depth < len(prefix) {
 		return out
 	}
@@ -1455,6 +1458,13 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
 		// `!delete` by removing the key — so absence never reaches this as a value.
 		if v == nil {
+			return
+		}
+		// AT THE DEPTH THIS WATCH WAS ASKED FOR, exactly. The walk also reports a value
+		// standing above it, which is what a read of the store wants and what a watch does
+		// not: a rule is a statement about the nodes at its subject's depth, and one woken by
+		// an address of another depth is answering a question nobody asked it.
+		if len(segs) != depth-len(prefix) {
 			return
 		}
 		// RefOfAny, not RefOf: the depth was named by the caller, so the only thing left to
@@ -1493,7 +1503,27 @@ func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 			rec(v, segs)
 			return
 		}
-		if n == nil || n.Type != ir.ObjectType {
+		if n == nil {
+			return
+		}
+		if n.Type != ir.ObjectType {
+			// A LEAF ABOVE THE ASKED DEPTH IS STILL A LEAF, and it is reported where it
+			// stands. Only an object has anything below it, so a value met on the way down is
+			// the whole of what is at that path — dropping it loses the value entirely, which
+			// is what made a scalar written at two segments invisible to every listing while
+			// an object at the same address came back through its own fields.
+			//
+			// EXCEPT A NULL, which above the asked depth is the store saying nothing stands
+			// there: a Match at a path nothing has been written to answers null, and reading
+			// that as a value invents an entity at every prefix anyone asks about. At the
+			// asked depth a null is a payload like any other and is reported — the difference
+			// is that the caller named that path, so the answer is about it.
+			//
+			// The depth stays the caller's question: this answers with what there IS at or
+			// above it, and a caller wanting exactly N compares len(segs) itself.
+			if n.Type != ir.NullType {
+				fn(segs, n)
+			}
 			return
 		}
 		for i, f := range n.Fields {
@@ -2101,11 +2131,11 @@ func commentOperand(n *ir.Node) (*ir.Node, bool) {
 // systems) to the depth an address has, and calls fn at each entity leaf. It is walkLeaves at
 // the depth the entity namespace has, and the two walks below are what they do with the leaf.
 //
-// A leaf whose segments do not name an entity is SKIPPED rather than passed on as a Ref built
-// from whatever was there. The walk descends a fixed number of levels through whatever object
-// structure it finds, so "the thing at this depth" and "an address" are two claims, and only
-// RefOf makes the second one.
-func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
+// It answers with SEGMENTS rather than a Ref, because "the thing at this depth" and "an address"
+// are two claims and which one a caller may make differs: a listing reads what stands in the
+// store, at whatever depth it stands, while the change stream serves every consumer at once and
+// so keeps one arity (docs/working/entity-tree.md §5). RefOfAny and RefOf are those two answers.
+func walkEntityLeaves(node *ir.Node, fn func(segs []string, n *ir.Node)) {
 	// One level at a time from the top, because the two halves of the verse are different
 	// depths: what the world is about is three levels down, what verse writes about its own
 	// running is four, under the one reserved key.
@@ -2120,9 +2150,7 @@ func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
 			depth = Depth
 		}
 		walkLeaves(node.Values[i], depth, func(segs []string, v *ir.Node) {
-			if ref, ok := RefOf(append([]string{top}, segs...)); ok {
-				fn(ref, v)
-			}
+			fn(append([]string{top}, segs...), v)
 		})
 	}
 }
@@ -2132,8 +2160,13 @@ func walkEntityLeaves(node *ir.Node, fn func(ref Ref, n *ir.Node)) {
 // no key here to be read as anything.
 func walkEntityDoc(node *ir.Node) []Entity {
 	var out []Entity
-	walkEntityLeaves(node, func(ref Ref, n *ir.Node) {
-		out = append(out, Entity{Ref: ref, Payload: nodeToPayload(n)})
+	walkEntityLeaves(node, func(segs []string, n *ir.Node) {
+		// RefOfAny: this is a read of what the store HOLDS, and it holds what it holds. A
+		// value standing above the depth an address usually has is still standing there, and
+		// a listing that dropped it would answer that a written value is not there.
+		if ref, ok := RefOfAny(segs); ok {
+			out = append(out, Entity{Ref: ref, Payload: nodeToPayload(n)})
+		}
 	})
 	return out
 }
@@ -2152,7 +2185,13 @@ func walkEntityDoc(node *ir.Node) []Entity {
 // answers no to it while the store answers yes.
 func walkEntityChanges(node *ir.Node) []entityChange {
 	var out []entityChange
-	walkEntityLeaves(node, func(ref Ref, n *ir.Node) {
+	// RefOf, not RefOfAny: one stream serves every consumer, so Changes reports at the arity
+	// they share and a consumer whose addresses are another depth asks Commit.ChangedAt.
+	walkEntityLeaves(node, func(segs []string, n *ir.Node) {
+		ref, ok := RefOf(segs)
+		if !ok {
+			return
+		}
 		// A `!comment` AT the entity states its comments, and its value only when the
 		// operand names one. With no `value:` the entity holds what it held: neither a
 		// removal nor a payload this walk can read, so it is reported with none and
