@@ -26,15 +26,7 @@ llm: { apiKey: "user-key" }
 		t.Fatal(err)
 	}
 
-	old := SystemPath
-	SystemPath = etc
-	t.Cleanup(func() { SystemPath = old })
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	// Ensure env doesn't leak in from the runner for the values we assert on file merge.
-	t.Setenv("VERSE_ADDR", "")
-	t.Setenv("OPENAI_MODEL", "")
-	t.Setenv("PORTKEY_API_KEY", "")
-	t.Setenv("PORTKEY_VIRTUAL_KEY", "")
+	withLayers(t, etc, xdg)
 
 	c, err := Load()
 	if err != nil {
@@ -68,11 +60,10 @@ llm: { apiKey: "user-key" }
 	}
 }
 
-// Missing files are absent layers, not errors; env still applies.
+// Missing files are absent layers, not errors: with neither of them to read, Load answers
+// the zero config rather than failing.
 func TestNoFiles(t *testing.T) {
-	SystemPath = filepath.Join(t.TempDir(), "nope.tony")
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("VERSE_ADDR", "")
+	withLayers(t, filepath.Join(t.TempDir(), "nope.tony"), t.TempDir())
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("load with no files: %v", err)
@@ -240,7 +231,15 @@ func write(t *testing.T, path, body string) {
 }
 
 // withLayers points both config layers at test directories and clears the environment
-// verse reads, so a developer's own shell cannot change the result.
+// verse reads, so a developer's own shell cannot change the result. It also restores
+// SystemPath, which is a package variable every later test in the binary would otherwise
+// inherit.
+//
+// The list is every variable Load consults and has to stay that way, because one missing
+// from it turns a test of the loader into a question about the machine running it.
+// PORTKEY_VIRTUAL_KEY is the one that bites: anybody who has pointed a verse at a real LLM
+// has it exported, so every config they load has an LLM configured and `Available()` is true
+// with no file anywhere saying so.
 func withLayers(t *testing.T, systemBase, xdgDir string) {
 	t.Helper()
 	old := SystemPath
