@@ -77,6 +77,18 @@ build:
     docdMemoryRequest: ""
     docdMemoryLimit: ""
 
+    # docd's Go heap ceiling (GOMEMLIMIT), "" to leave the runtime unbounded. A cgroup limit
+    # is invisible to the Go runtime: with GOGC alone the collector targets twice the live
+    # heap and will happily aim past the limit, so the container is killed mid-collection
+    # rather than collecting harder. GOMEMLIMIT is the soft ceiling that makes it collect
+    # harder, and docdMemoryLimit stays the hard backstop underneath the node.
+    #
+    # Set it BELOW docdMemoryLimit with room for what is not Go heap — stacks, the runtime's
+    # own bookkeeping, and the index's encode buffer during a snapshot. Two thirds to three
+    # quarters of the cgroup limit is the range; read /proc/1/status and the heap profile in
+    # the pod before moving it rather than picking a number.
+    docdGoMemLimit: ""
+
     # Put the versed API and docd's mount face on the tailnet, through the Tailscale
     # Kubernetes operator — which has to be installed already; these are just annotations it
     # watches for, and nothing here notices if nobody is watching. The devices are named after
@@ -460,6 +472,18 @@ build:
               resources:
                 limits:
                   memory: $[docdMemoryLimit]
+  - if: '.[ docdGoMemLimit != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: docd
+              env: !key(name)
+              - name: GOMEMLIMIT
+                value: $[docdGoMemLimit]
 
   # docd volumeClaimTemplate — always present. Base: no storageClassName (omitting it =
   # "cluster default"; "" would disable dynamic provisioning). eks/minikube override below.
