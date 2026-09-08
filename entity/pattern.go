@@ -295,15 +295,28 @@ func (p Pattern) Select(r Reader) []Ref {
 		// THE PATTERN'S OWN DEPTH is what the store is asked for: a path of four segments
 		// selects entities four deep, and the literal head of it is the prefix to read under.
 		ents = r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
-	} else {
-		// AT THE ROOT, and it has to be: a Pattern names a system and a kind but not which HALF
-		// it is about, and verse's own half puts the reserved root in front as a segment of its
-		// own (`verse.task.instance` against `task.instance`). Narrowing on the system alone
-		// reads the wrong place and finds nothing there, which is a silent wrong answer rather
-		// than a slow one — it broke a completion sweep before this comment existed.
+	} else if p.System != "" {
+		// TWO READS, ONE PER HALF, because there are exactly two: a Ref is rooted at the
+		// world's half or at verse's own, and nothing else (Ref.root is "" or VerseRoot). A
+		// Pattern names a system and a kind but not WHICH half it is about, and the answer to
+		// that used to be a read of the root — every entity anything had ever reflected,
+		// filtered down to one system here. It is the two places the pattern could match
+		// instead, each read at its own depth, and their union is the same set.
 		//
-		// Narrowing this wants the half on the pattern, which is a change to the type and to
-		// everything that builds one.
+		// It matters because this is the engine's hot path: a rule condition naming a system
+		// and a kind is evaluated per commit, and a root read costs the WHOLE LOG rather than
+		// the slice — on staging that grew until `verse gate` took ten seconds and the root
+		// read timed out, while the same data read a slice at a time came back in
+		// milliseconds.
+		at := []string{p.System}
+		if p.Kind != "" {
+			at = append(at, p.Kind)
+		}
+		ents = r.ListAt(at, Depth, pick)
+		ents = append(ents, r.ListAt(append([]string{VerseRoot}, at...), Depth+1, pick)...)
+	} else {
+		// No system to narrow on: a pattern that names none is about everything, and the root
+		// is where everything is.
 		ents = r.List(pick)
 	}
 	skipVanishing := !namesVanishing(p.Predicate)
