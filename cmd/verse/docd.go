@@ -69,6 +69,11 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	}
 	fmt.Fprintf(cc.Out, "data dir: %s (kept)\n", dataDir)
 
+	logdCfg, err := resolveLogdConfig(cfg.LogdConfig, dataDir)
+	if err != nil {
+		return docd{}, err
+	}
+
 	logdAddr, err := freeAddr()
 	if err != nil {
 		return docd{}, err
@@ -100,6 +105,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		"--docd-addr", clientAddr,
 		"--docd-mount-addr", mountAddr,
 		"--admin-addr", adminAddr,
+		"--config", logdCfg,
 	)
 	child.Stdout, child.Stderr = cc.Err, cc.Err
 	// Own process group. This once read "`o sys up` runs logd and docd as children" — it
@@ -218,6 +224,58 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 	}
 	fmt.Fprintf(cc.Err, "verse up: %s\n", skewWarning(onPath, goTonyOf(onPath), pinned))
 	return onPath, nil
+}
+
+// defaultLogdConfig is what verse asks of the logd it spawns, written into the data dir on
+// every up as logd.verse.tony and passed as -config.
+//
+// COMPACTION, which logd leaves off. Off means every patch ever written is retained, and a
+// read replays the ones that reach its path — so a store's read cost grows with its whole
+// history and never comes back down. Snapshots bound what a read replays; they do not bound
+// what the disk holds. A verse is a long-lived store written to by an engine that fires on
+// every commit, so "keep everything forever" is not a default it can live on.
+//
+// ONE FIELD, and the rest is logd's. The cutoff is the only part of the policy verse has an
+// opinion about: it is how far back an EXACT replay works, and past it history degrades to
+// snapshot granularity. Every cursor verse issues is minutes old at most — the engine's own
+// catch-up, `verse watch --since`, a source resuming — and a replay that falls below the
+// floor is refused rather than answered wrong, which Since turns into a resync
+// (TestSinceBelowReplayFloorResyncs). An hour is two orders of magnitude of headroom over
+// what any of them ask for. The tiers, the multiplier and the grace period are upstream's
+// guess and stay upstream's guess, so improving them does not need a verse release.
+const defaultLogdConfig = `# Written by verse on every ` + "`verse up`" + `; edits here do not survive one.
+# To configure the logd yourself, pass verse up --logd-config <file> — the same file
+# ` + "`o system logd serve`" + ` takes — and verse passes yours through instead of this.
+compaction: {
+  cutoff: 1h
+}
+`
+
+// resolveLogdConfig answers with the config file `o sys up` is given: the operator's, if they
+// named one, and otherwise verse's own written into the data dir.
+//
+// It is written into the DATA DIR rather than a temp file so that a store being debugged
+// carries the policy it was run under beside the data that policy shaped — `ls /data` says
+// what compaction was asked for. It is rewritten every up, and says so in its own first line,
+// because it is verse's statement about the store rather than the store's own configuration:
+// an operator with something to say passes --logd-config, which replaces it entirely.
+func resolveLogdConfig(explicit, dataDir string) (string, error) {
+	if explicit != "" {
+		if !isFile(explicit) {
+			return "", fmt.Errorf("verse up: --logd-config %s: no such file", explicit)
+		}
+		return explicit, nil
+	}
+	// The data dir is verse's to name and may not exist yet — `o sys up` creates it, and
+	// this runs first.
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return "", fmt.Errorf("verse up: making the data dir: %w", err)
+	}
+	path := filepath.Join(dataDir, "logd.verse.tony")
+	if err := os.WriteFile(path, []byte(defaultLogdConfig), 0o644); err != nil {
+		return "", fmt.Errorf("verse up: writing the logd config: %w", err)
+	}
+	return path, nil
 }
 
 // pinnedGoTony is the go-tony version THIS binary was built against, read from its own

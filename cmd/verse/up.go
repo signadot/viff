@@ -43,6 +43,7 @@ type upConfig struct {
 	DocdAdvertiseAddr      string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
 	DocdMountAdvertiseAddr string `cli:"name=docd-mount-advertise-addr desc='publish this MOUNT-face address on /status instead of --docd-mount-addr'"`
 	Data                   string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
+	LogdConfig             string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
 	OBin                   string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// runner: where tasks run. Default is the in-process local supervisor.
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
@@ -76,6 +77,9 @@ func (cfg *upConfig) validate() error {
 	// "verse ignored where I told it to put my data".
 	if cfg.DocdAddr != "" && cfg.Data != "" {
 		return fmt.Errorf("%w: verse up: --data is meaningless with --docd-addr (nothing is spawned to use it)", cli.ErrUsage)
+	}
+	if cfg.DocdAddr != "" && cfg.LogdConfig != "" {
+		return fmt.Errorf("%w: verse up: --logd-config configures the logd verse spawns, and --docd-addr spawns none", cli.ErrUsage)
 	}
 	if cfg.DocdAddr == "" && cfg.DocdMountAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-mount-addr needs --docd-addr (it is the mount face of the docd being connected to)", cli.ErrUsage)
