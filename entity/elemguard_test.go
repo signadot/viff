@@ -183,8 +183,8 @@ func TestTheElementPatternIsAboutTheElementUnderAComment(t *testing.T) {
 		{"under a head comment", mustParseComment(t, "# who cast it\n{by: scott}"), true},
 		{"the ballot beside it", mustParseComment(t, "# who cast it\n{by: dee}"), false},
 	} {
-		got, err := tony.Match(doc, elemPattern(pathPattern{
-			at: RefAt("demo", "pr", "1").At(), sub: "votes[0]", pattern: tc.pattern}))
+		p := pathPattern{at: RefAt("demo", "pr", "1").At(), sub: "votes[0]", pattern: tc.pattern}
+		got, err := tony.Match(doc, elemPattern(p, p.at.segments()))
 		if err != nil {
 			t.Errorf("%s: %v", tc.name, err)
 			continue

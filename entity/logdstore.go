@@ -679,7 +679,7 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		}
 		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent})
 	}
-	res, err := s.sess.PatchIf(ctx, path, node, &logdapi.PathData{Path: seg(s.root), Data: rootPattern(pre)})
+	res, err := s.sess.PatchIf(ctx, path, node, s.preconditionAt(pre))
 	if errors.Is(err, libctl.ErrMatchFailed) {
 		// SAY WHICH REFUSAL IT WAS, when the write descended. "A condition did not hold" is the
 		// honest answer for a caller's own guard, and it is the wrong one here: the whole
@@ -846,27 +846,97 @@ func (s *LogdStore) replacing(ref Ref, payload Payload) Payload {
 	return node
 }
 
-// rootPattern folds every precondition into ONE match against the root document, which is
-// what keeps the checks atomic with the write (docd allows a single match path).
+// preconditionAt folds every precondition into ONE match, which is what keeps the checks
+// atomic with the write (docd allows a single match path), and asks it AS DEEP AS THE
+// QUESTIONS ALLOW.
+//
+// THE DEPTH IS THE COST. A precondition is evaluated by reading the value at its path and
+// matching the pattern against it, so one asked at the root reads the whole verse — and
+// nearly every write carries one, since a write that descends carries a guard about the place
+// it descends through. Measured on a 1500-entity store: 24ms a write, growing with what the
+// store holds, against 0.8ms for the same write with no precondition. Asked under the
+// branches' common prefix instead, a write reads the slice it is about.
 //
 // Presence preconditions about a field nest into a single tree. The others cannot, and each
 // becomes its own branch with the branches ANDed: an ABSENCE has no key at its path to carry
-// a pattern, so it is a negated nesting — "the document does not have run.claim.<id>" — and a
-// pattern at an ELEMENT hangs off an `!at` rather than a key, which a shared tree would
-// overwrite (elemPattern).
-func rootPattern(pre []pathPattern) *ir.Node {
+// a pattern, so it is a negated nesting — "this object does not have <id>" — and a pattern at
+// an ELEMENT hangs off an `!at` rather than a key, which a shared tree would overwrite
+// (elemPattern).
+//
+// A MOUNT-OWNED BRANCH IS ASKED AT THE ROOT, unpushed. Its own segments render under
+// MountRoot rather than this store's root, so a prefix taken from them would name a path in
+// the wrong tree; there is no such precondition today, and this keeps one from arriving as a
+// silent mis-rooting rather than as the behaviour that already stands.
+func (s *LogdStore) preconditionAt(pre []pathPattern) *logdapi.PathData {
+	prefix := commonFloor(pre)
+	for _, p := range pre {
+		if s.rootForAt(p.at.segments()) != seg(s.root) {
+			prefix = nil // a mount-owned branch is rooted elsewhere; ask at the root
+			break
+		}
+	}
+	path := seg(s.root)
+	for _, sg := range prefix {
+		path += "." + seg(sg)
+	}
+	return &logdapi.PathData{Path: path, Data: patternUnder(pre, len(prefix))}
+}
+
+// floor is how many of a branch's leading segments may become part of the precondition's
+// PATH rather than of its pattern.
+//
+// A question about a VALUE can be asked at the value: descendablePath asks what stands at the
+// parent, and reads the same answer from the parent's own path — its truth table survives the
+// collapse there, the absent column included, because an absent path is read as null.
+//
+// Every other question is about a KEY — whether one is there (absentPath), or what is under
+// one (a require's pattern, an element's `!at`) — and a key is only observable from the object
+// that holds it: at the key's own path, a key holding null and no key at all are both null. So
+// those stop one segment short of their own place.
+func (p pathPattern) floor() int {
+	n := len(p.at.segments())
+	if p.object {
+		return n
+	}
+	return max(n-1, 0)
+}
+
+// commonFloor is the deepest segment prefix EVERY branch can be asked below — the longest
+// common prefix of the branches, bounded by the shallowest floor among them.
+func commonFloor(pre []pathPattern) []string {
+	if len(pre) == 0 {
+		return nil
+	}
+	prefix := pre[0].at.segments()[:pre[0].floor()]
+	for _, p := range pre[1:] {
+		segs := p.at.segments()[:p.floor()]
+		if len(segs) < len(prefix) {
+			prefix = prefix[:len(segs)]
+		}
+		for i := range prefix {
+			if segs[i] != prefix[i] {
+				prefix = prefix[:i]
+				break
+			}
+		}
+	}
+	return prefix
+}
+
+func patternUnder(pre []pathPattern, depth int) *ir.Node {
 	var branches []*ir.Node
 	present, any := patTree{}, false
 	for _, p := range pre {
+		segs := p.at.segments()[depth:]
 		switch {
 		case p.sub != "":
-			branches = append(branches, elemPattern(p))
+			branches = append(branches, elemPattern(p, segs))
 		case p.absent:
-			branches = append(branches, absentPath(p.at))
+			branches = append(branches, absentPath(segs))
 		case p.object:
-			branches = append(branches, descendablePath(p.at))
+			branches = append(branches, descendablePath(segs))
 		default:
-			nestPattern(present, p.at, p.pattern)
+			nestPattern(present, segs, p.pattern)
 			any = true
 		}
 	}
@@ -910,9 +980,9 @@ type pathPattern struct {
 // `!irtype null`, which asks whether the value here has type null — true of an entity that
 // stands there holding one. A create precondition would have passed straight over a live
 // entity and clobbered it. (Require.Absent is the other half of the same correction.)
-func absentPath(at Path) *ir.Node {
+func absentPath(segs []string) *ir.Node {
 	noKey := patTree{}
-	nestPattern(noKey, at, ir.Null()) // negated: no key at the path at all
+	nestPattern(noKey, segs, ir.Null()) // negated: no key at the path at all
 	return noKey.node().WithTag("!not")
 }
 
@@ -937,7 +1007,7 @@ func absentPath(at Path) *ir.Node {
 // ITS OWN BRANCH, like absentPath and descendablePath: the leaf is a tagged node rather than a
 // subtree, and patTree.child would replace it with a fresh map the moment another precondition
 // nested beneath the same entity.
-func elemPattern(p pathPattern) *ir.Node {
+func elemPattern(p pathPattern, segs []string) *ir.Node {
 	pattern := p.pattern
 	if p.absent || pattern == nil {
 		pattern = Present() // a null matches any value, so only a missing element fails it
@@ -950,7 +1020,7 @@ func elemPattern(p pathPattern) *ir.Node {
 	leaf := ir.Uncomment(pattern).Clone()
 	leaf.Tag = ir.TagCompose("!at", []string{p.sub}, leaf.Tag)
 	t := patTree{}
-	nestPattern(t, p.at, leaf)
+	nestPattern(t, segs, leaf)
 	if p.absent {
 		return t.node().WithTag("!not")
 	}
@@ -982,24 +1052,29 @@ func elemPattern(p pathPattern) *ir.Node {
 // ITS OWN BRANCH, like absentPath and for the same reason: nestPattern merges into a shared
 // tree and patTree.child replaces a leaf with a fresh subtree, so this guard and a caller's own
 // pattern beneath it would silently overwrite one another.
-func descendablePath(at Path) *ir.Node {
-	replaceable := ir.FromSlice([]*ir.Node{
+func descendablePath(segs []string) *ir.Node {
+	admissible := []*ir.Node{
 		ir.FromMap(map[string]*ir.Node{}), // an object: descend into it
 		ir.Null().WithTag("!irtype"),      // a null: nothing readable to lose
-	}).WithTag("!not.or")
+	}
+	// ASKED AT THE PARENT ITSELF, where the two negations cancel: `!not {p: !not.or […]}` says
+	// "p is not one of the values a descent would replace", and read at p's own path that is
+	// `!or […]` — p IS one of the values a descent may pass through. The absent column comes
+	// out the same, because an absent path is read as null and a null is admissible.
+	if len(segs) == 0 {
+		return ir.FromSlice(admissible).WithTag("!or")
+	}
 	t := patTree{}
-	nestPattern(t, at, replaceable)
+	nestPattern(t, segs, ir.FromSlice(admissible).WithTag("!not.or"))
 	return t.node().WithTag("!not")
 }
 
-// nestPattern places pattern at m[system][kind][id][field...], building intermediate maps —
-// the nested shape docd's root document has (<root>.<system>.<kind>.<id>.<field>…). Raw
-// segment names are used because those are the field names docd stores; seg-quoting is only
-// for kpath request strings, not for stored fields. A trailing segment left empty ends the
-// nesting there, so a precondition can be about a whole kind subtree (a motion's vote log)
-// or about one field inside one entity.
-func nestPattern(root patTree, at Path, pattern Payload) {
-	segs := at.segments()
+// nestPattern places pattern at m[segs[0]][segs[1]]…, building intermediate maps — the
+// nested shape a document has below the path the match is asked at. Raw segment names are
+// used because those are the field names docd stores; seg-quoting is only for kpath request
+// strings, not for stored fields. The segments are what is left of a branch's address once
+// the precondition's own path has taken its prefix, so an empty tail nests nothing.
+func nestPattern(root patTree, segs []string, pattern Payload) {
 	if len(segs) == 0 {
 		return
 	}
