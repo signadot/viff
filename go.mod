@@ -7,7 +7,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/gops v0.3.28
 	github.com/scott-cotton/cli v0.3.1
-	github.com/signadot/tony-format/go-tony v0.0.203
+	github.com/signadot/tony-format/go-tony v0.0.205
 )
 
 require (
@@ -46,5 +46,3 @@ tool (
 	github.com/signadot/tony-format/go-tony/cmd/o
 	github.com/signadot/tony-format/go-tony/cmd/tony-codegen
 )
-
-replace github.com/signadot/tony-format/go-tony => /Users/scott/Dev/github.com/signadot/tony-format/go-tony
