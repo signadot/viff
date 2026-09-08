@@ -1300,8 +1300,9 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 	for len(prefix) > 0 && prefix[len(prefix)-1] == "" {
 		prefix = prefix[:len(prefix)-1]
 	}
-	// The path as segments as well as a kpath: the two watch event shapes are rooted
-	// differently and the document has to hold one of them (see stateDoc).
+	// The path as segments as well as a kpath: every event is rooted at the watched path
+	// and the document is rooted at the store root, so the segments are what bridges the two
+	// (see nestAt).
 	segs := append([]string{s.root}, prefix...)
 	path := seg(s.root)
 	for _, p := range prefix {
@@ -1348,13 +1349,15 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 				rev = ev.Commit
 			}
 			switch {
-			case ev.State != nil:
-				doc = stateDoc(ev.State, segs) // full current state of the subtree
 			case ev.Patch != nil:
 				// A patch that fails to apply leaves doc unchanged and is reported; a
 				// later State (e.g. on reconnect) resyncs it. We never decode the patch
-				// to recover by hand (applyDelta).
-				doc = s.applyDelta(doc, ev.Patch)
+				// to recover by hand (applyDelta). A patch that TOOK THE PATH AWAY is
+				// applied like any other — that is how this copy comes to hold nothing —
+				// so the Absent riding on it needs no branch of its own.
+				doc = s.applyDelta(doc, nestAt(ev.Patch, segs))
+			case ev.State != nil || ev.Absent:
+				doc = nestAt(stateOf(ev), segs) // full current state of the subtree
 			}
 		}
 		// emitDiff reconstructs the entity set from doc and emits the diff vs the last
@@ -1497,22 +1500,18 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 	return out, cancel, nil
 }
 
-// stateDoc re-roots a State event's node under the watched path's segments
-// (root[, system[, kind]]), which is what makes it the same document a Patch event
-// applies to.
+// nestAt puts a watch event's node under the segments of the path it is rooted at, which is
+// what makes it part of a document rooted further up.
 //
-// THE TWO EVENT SHAPES DIFFER, and nothing in either one says so. A Patch is the commit's
-// delta rooted at the store root (verse.demo.pr.1: {…}) — logd forwards the writer's patch
-// verbatim, and a scoped watch's computed diff is re-rooted to match. A State carries the
-// value AT the watched path (the logd session extracts it; docd's composed read builds it
-// relative to the path), so its top-level fields are ids, not the root. Taking the State
-// verbatim leaves a document whose root segment is missing: every read of it navigates
-// root → system → kind and finds nothing, so the seed contributes no entities and the
-// level state degenerates to whatever has been patched since the watch opened — a deep
-// write of one field then surfaces as an entity of one field, and a trigger binds $note
-// from a payload with no note in it.
-func stateDoc(at *ir.Node, segs []string) *ir.Node {
-	node := at
+// ONE ROOTING (session protocol 2). Every event of a watch — the State it opens on and each
+// Patch after it — is rooted AT THE WATCHED PATH, with that path's own segments stripped: a
+// watch on verse.demo.pr sees top-level fields that are ids. The documents this store reads
+// entities out of are rooted at the store root, because a Ref is addressed from there and
+// nothing below the root is fixed for the store as a whole. Nesting is the difference
+// between the two rootings, and it is the same for both event shapes.
+//
+// A nil node is a path holding nothing and nests as a null, which reads out as no entities.
+func nestAt(node *ir.Node, segs []string) *ir.Node {
 	if node == nil {
 		node = ir.Null()
 	}
@@ -1520,6 +1519,17 @@ func stateDoc(at *ir.Node, segs []string) *ir.Node {
 		node = ir.FromMap(map[string]*ir.Node{segs[i]: node})
 	}
 	return node
+}
+
+// stateOf is the value a state event opens on: what it carries, or — when the path holds
+// nothing — an empty object. ABSENCE IS SAID BY THE WIRE, not spelled as a null: null is a
+// value a path can hold, so a document seeded with one where nothing stands could not tell
+// an entity holding null from a slice that is empty.
+func stateOf(ev *logdapi.WatchEvent) *ir.Node {
+	if ev.Absent {
+		return ir.FromMap(map[string]*ir.Node{})
+	}
+	return ev.State
 }
 
 // entitiesFromDoc reads the entity set out of a root-rooted subtree document (the doc
@@ -1532,9 +1542,9 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		node = childByKey(node, p)
 	}
 	out := map[Ref]Payload{}
-	// AN OBJECT, or there is no subtree here to read entities out of. A watch seeds this
-	// document with the State it opened on, which is a null where the slice is empty, and a
-	// null at the watched path is nothing standing there rather than an entity holding null.
+	// AN OBJECT, or there is no subtree here to read entities out of — an empty slice, the
+	// watch having opened on a path that holds nothing, or a null somebody wrote at the path
+	// itself. Neither holds entities, and the wire is what says which of them it is (stateOf).
 	if node == nil || node.Type != ir.ObjectType || depth < len(prefix) {
 		return out
 	}
@@ -1880,11 +1890,15 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	doc := s.docAt(ctx, start, at...)
 	out := make([]Commit, 0, len(replayed))
 	for _, d := range replayed {
-		doc = s.applyDelta(doc, d.patch)
+		// The replay watches AT the path, so its deltas are rooted there while a Ref is
+		// addressed from the store root. They are nested back to it once, and everything
+		// below reads them from there.
+		patch := nestAt(d.patch, at)
+		doc = s.applyDelta(doc, nestAt(patch, []string{s.root}))
 		out = append(out, Commit{
 			Rev:     d.commit,
-			Changes: s.eventsFromDelta(d.commit, d.patch, doc),
-		}.WithDelta(childByKey(d.patch, s.root)))
+			Changes: s.eventsFromDelta(d.commit, patch, doc),
+		}.WithDelta(patch))
 	}
 	return out, replayErr
 }
@@ -1995,9 +2009,8 @@ func graftAt(verse map[string]*ir.Node, prefix []string, node *ir.Node) {
 func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.Node {
 	// AT THE PATH THE REPLAY WATCHES, so the base costs what that slice holds rather than what
 	// the verse holds — the half of a catch-up that grows with the whole store. The document is
-	// still ROOT-ROOTED, because the deltas applied onto it name their full path from the root
-	// and everything that reads entities out of it (payloadIn, eventsFromDelta) walks from
-	// there.
+	// still ROOT-ROOTED, because everything that reads entities out of it (payloadIn,
+	// eventsFromDelta) addresses them from the root; the replay's deltas are nested onto it.
 	path := seg(s.root)
 	for _, a := range at {
 		path += "." + seg(a)
@@ -2006,7 +2019,7 @@ func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.N
 	if err != nil || node == nil {
 		return ir.FromMap(map[string]*ir.Node{})
 	}
-	return stateDoc(node, append([]string{s.root}, at...))
+	return nestAt(node, append([]string{s.root}, at...))
 }
 
 // replayEnded says what ended a replay's watch, in the vocabulary a caller can act on: the one
@@ -2056,29 +2069,27 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 	switch {
 	case ev.ReplayComplete:
 		return
-	case ev.State != nil:
+	case ev.Patch != nil:
+		s.mu.Lock()
+		s.doc = s.applyDelta(s.doc, nestAt(ev.Patch, []string{s.root}))
+		doc := s.doc
+		s.mu.Unlock()
+		// The delta rides along, so a consumer whose addresses are deeper than the arity
+		// Changes was built at can ask ChangedAt for an exact answer. This watch is ON the
+		// root, so what arrives is already rooted where both of those read from.
+		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
+			WithDelta(ev.Patch))
+	case ev.State != nil || ev.Absent:
 		s.mu.Lock()
 		if ev.Commit > s.rev {
 			s.rev = ev.Commit
 		}
-		// A State is rooted AT the watched path while a delta is rooted at the DOCUMENT, so
-		// re-root it (stateDoc, which the subtree watch shares) — otherwise the first delta
-		// grafts a second tree beside the first and every level read misses.
-		s.doc = stateDoc(ev.State, []string{s.root})
+		s.doc = nestAt(stateOf(ev), []string{s.root})
 		s.mu.Unlock()
-	case ev.Patch != nil:
-		s.mu.Lock()
-		s.doc = s.applyDelta(s.doc, ev.Patch)
-		doc := s.doc
-		s.mu.Unlock()
-		// The delta rides along, so a consumer whose addresses are deeper than the arity
-		// Changes was built at can ask ChangedAt for an exact answer.
-		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
-			WithDelta(childByKey(ev.Patch, s.root)))
 	}
 }
 
-// eventsFromDelta turns a document-root-rooted delta into change events: a tombstone
+// eventsFromDelta turns a delta rooted at the store root into change events: a tombstone
 // (null leaf) is Delete, any value is Set. Create-vs-update is not distinguished.
 //
 // To is the entity AS OF THIS COMMIT, not the delta — and that difference is the whole
@@ -2099,7 +2110,7 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 // bvm163tyh12krwcqcsn0). A nil doc falls back to the delta, which for a whole-entity write
 // is the same value.
 func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
-	changes := walkEntityChanges(childByKey(patch, s.root)) // strip the document root
+	changes := walkEntityChanges(patch)
 	s.mu.Lock()
 	if commit > s.rev {
 		s.rev = commit

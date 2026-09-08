@@ -46,3 +46,5 @@ tool (
 	github.com/signadot/tony-format/go-tony/cmd/o
 	github.com/signadot/tony-format/go-tony/cmd/tony-codegen
 )
+
+replace github.com/signadot/tony-format/go-tony => /Users/scott/Dev/github.com/signadot/tony-format/go-tony
