@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
@@ -194,7 +195,7 @@ func TestLastErrorIsWrittenOnTransition(t *testing.T) {
 	fail := source.Pass{Err: errFor("unreachable")}
 	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	reg, _, _ := srv.Store.Get(ref)
-	if entity.Str(reg.Payload, "lastError") == "" {
+	if failureText(reg.Payload) == "" {
 		t.Fatal("a failing pass should record why")
 	}
 
@@ -608,7 +609,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 	// A failure, recorded.
 	srv.recordPass(t.Context(), fs, ref, run, source.Pass{Err: errFor("unreachable")})
 	reg, _, _ := srv.Store.Get(ref)
-	if entity.Str(reg.Payload, "lastError") == "" {
+	if failureText(reg.Payload) == "" {
 		t.Fatal("a failing pass should record why")
 	}
 
@@ -616,7 +617,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 	fs.fail = true
 	srv.recordPass(t.Context(), fs, ref, run, source.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
-	if entity.Str(reg.Payload, "lastError") == "" {
+	if failureText(reg.Payload) == "" {
 		t.Fatal("the clearing write was supposed to fail; the fixture is not testing anything")
 	}
 
@@ -627,5 +628,136 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
 		t.Fatalf("lastError stuck after the store recovered: %v — a source reporting an error "+
 			"it is not having is the one an operator acts on", entity.ToObj(reg.Payload))
+	}
+}
+
+// failureText reads the message out of the lastError RECORD — {error, when} since it became a
+// source.Failure, so that the timestamp can say when the failure began and a reader can tell an
+// error that is happening from one the source recovered from long ago.
+func failureText(p entity.Payload) string {
+	n, ok := entity.Fields(p)["lastError"]
+	if !ok || n == nil {
+		return ""
+	}
+	return entity.Str(entity.Payload(n), "error")
+}
+
+// failureWhen is failureText's other half.
+func failureWhen(p entity.Payload) string {
+	n, ok := entity.Fields(p)["lastError"]
+	if !ok || n == nil {
+		return ""
+	}
+	return entity.Str(entity.Payload(n), "when")
+}
+
+// WHEN IS THE ONSET, not the last repetition. A source failing the same way every minute keeps
+// the timestamp it started with, so the gap between it and lastPass says how long this has been
+// going on. Refreshing it per pass would make every failure look like it just started, which is
+// the reading that let a hours-old error pass for a live one.
+func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "onset")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "onset", "system": "git", "url": "http://127.0.0.1:1",
+	}.Payload())
+	run := &sourceRun{}
+	fail := source.Pass{Err: errFor("unreachable")}
+
+	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
+	reg, _, _ := srv.Store.Get(ref)
+	first := failureWhen(reg.Payload)
+	if first == "" {
+		t.Fatal("a new failure should carry when it began")
+	}
+
+	// The same failure again, a second later. No write at all, so the onset cannot move.
+	time.Sleep(1100 * time.Millisecond)
+	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
+	reg, _, _ = srv.Store.Get(ref)
+	if got := failureWhen(reg.Payload); got != first {
+		t.Fatalf("when moved on a repeat: %s → %s; it marks the onset, not the latest pass", first, got)
+	}
+
+	// A DIFFERENT failure is a new failure, and takes a new onset.
+	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Err: errFor("refused")})
+	reg, _, _ = srv.Store.Get(ref)
+	if got := failureWhen(reg.Payload); got == first {
+		t.Fatalf("a different error kept the old onset %s — it is a new failure", first)
+	}
+	if got := failureText(reg.Payload); got == "" || got == "unreachable" {
+		t.Fatalf("the new failure's text did not land: %q", got)
+	}
+}
+
+// A RESTART MUST NOT STRAND AN ERROR. run.lastErr is a belief about what the store holds, and
+// it used to start empty on every restart — so a registration carrying an error met a healthy
+// pass, both sides read "no error", nothing was written, and the stored error became permanent.
+// Staging reported a context-deadline error for hours that way about a source that was fine.
+func TestARestartClearsAnErrorTheSourceHasRecoveredFrom(t *testing.T) {
+	srv := testServer(t)
+	ref := source.Ref("git", "restarted")
+	entitytest.Set(t, srv.Store, ref, entity.Obj{
+		"name": "restarted", "system": "git", "url": "http://127.0.0.1:1",
+	}.Payload())
+
+	// It failed before the restart, and the registration still says so.
+	srv.recordPass(t.Context(), srv.Store, ref, &sourceRun{}, source.Pass{Err: errFor("unreachable")})
+	reg, _, _ := srv.Store.Get(ref)
+	if failureText(reg.Payload) == "" {
+		t.Fatal("the fixture needs a stored error to strand")
+	}
+
+	// The restart: a fresh run, seeded from the registration the way startSource seeds it.
+	var e source.Entity
+	if err := codec.FromNode(reg.Payload, &e); err != nil {
+		t.Fatalf("decode registration: %v", err)
+	}
+	var seeded string
+	if e.LastError != nil {
+		seeded = e.LastError.Error
+	}
+	if seeded == "" {
+		t.Fatal("the registration did not decode its stored failure — nothing would be seeded")
+	}
+	fresh := &sourceRun{lastErr: seeded}
+
+	// A healthy pass now clears it, because memory and store agree about what stands.
+	srv.recordPass(t.Context(), srv.Store, ref, fresh, source.Pass{})
+	reg, _, _ = srv.Store.Get(ref)
+	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
+		t.Fatalf("a recovered source came back still carrying its old error: %v", entity.ToObj(reg.Payload))
+	}
+}
+
+// A REGISTRATION WRITTEN BEFORE THE RECORD STILL DECODES, and keeps its message. It carries
+// lastError as a bare STRING, which gomap will not coerce into a record — it fails the whole
+// entity ("expected object, got String"), and source.ListErr SKIPS what it cannot decode, so
+// every source carrying an error at the moment of an upgrade would have dropped out of the
+// listing and not been restored. Failure.FromTonyIR reads both spellings, which is what makes
+// the field name reusable and the migration unnecessary.
+func TestALegacyStringLastErrorDecodesWithNoWhen(t *testing.T) {
+	p := entity.Obj{
+		"name": "old", "system": "git", "url": "http://x",
+		"lastError": "unreachable",
+	}.Payload()
+	var e source.Entity
+	if err := codec.FromNode(p, &e); err != nil {
+		t.Fatalf("a registration written by an older verse no longer decodes: %v", err)
+	}
+	if e.Name != "old" || e.URL != "http://x" {
+		t.Fatalf("decoded the wrong thing: %+v", e)
+	}
+	// The custom decoder READS it rather than ignoring it: the message survives, and When is
+	// nil because the old spelling never recorded one. A zero timestamp here would claim the
+	// failure began at midnight in 1970.
+	if e.LastError == nil {
+		t.Fatal("a legacy string lastError should still be read, not dropped")
+	}
+	if e.LastError.Error != "unreachable" {
+		t.Fatalf("the legacy message did not survive: %+v", e.LastError)
+	}
+	if e.LastError.When != nil {
+		t.Fatalf("when should be nil for a spelling that never carried one, got %v", *e.LastError.When)
 	}
 }

@@ -66,8 +66,72 @@ type Entity struct {
 	// here so that `verse source show` piped back into `verse source add` is not refused for
 	// carrying fields it was just handed, and so a listing can read them without a second
 	// decode. Check ignores them.
-	LastReflect string `tony:"field=lastReflect,omitzero"`
-	LastError   string `tony:"field=lastError,omitzero"`
+	LastReflect string   `tony:"field=lastReflect,omitzero"`
+	LastError   *Failure `tony:"field=lastError,omitzero"`
+}
+
+// Failure is a source's last error together with WHEN IT STARTED, and the pair is the point:
+// an error on its own cannot be told from one the source recovered from long ago, which is
+// exactly the confusion it caused — a registration carried a context-deadline error for hours
+// while the source was demonstrably healthy, and nothing in the record said the error was old.
+//
+// When is the instant the source ENTERED this failure, not the last time it repeated. A source
+// failing the same way every minute keeps the When it started with, so the distance between it
+// and lastPass is how long this has been going on, and a `verse source` listing can say "since
+// 20:39" rather than "now" about something that has been broken since breakfast. A NEW error —
+// different text — is a new failure and takes a new When.
+//
+// A string rather than a time.Time because every timestamp verse stores is an RFC3339 string
+// and nothing in the tree tony-encodes a time.Time; one that did would be the odd one out in
+// the very record an operator reads.
+//
+// When is a POINTER because "unknown" is one of its answers. A registration written before
+// this carries lastError as a bare string: the error is known, the moment it began is not, and
+// a zero timestamp would say midnight in 1970 rather than "nobody recorded it". FromTonyIR
+// reads that shape and leaves When nil.
+type Failure struct {
+	Error string  `tony:"field=error"`
+	When  *string `tony:"field=when,omitzero"`
+}
+
+// FromTonyIR decodes both spellings of a failure: the record, and the bare string every
+// registration written before this one carries.
+//
+// It exists because the alternative was a migration. Decoding a string into a record is not a
+// mismatch gomap forgives — it fails the whole entity ("expected object, got String") — and
+// source.ListErr SKIPS an entity it cannot decode, so every source carrying an error at the
+// moment of an upgrade would have dropped out of the listing and not been restored. That is
+// precisely the population an error field is for. gomap calls this hook with the raw node
+// before it dispatches on type, which is the one place that can see both shapes.
+//
+// A null is nothing recorded, and is not an error to read.
+func (f *Failure) FromTonyIR(node *ir.Node) error {
+	if node == nil {
+		return nil
+	}
+	node = ir.Uncomment(node)
+	switch node.Type {
+	case ir.NullType:
+		return nil
+	case ir.StringType: // the legacy spelling: what went wrong, but not when
+		f.Error, f.When = node.String, nil
+		return nil
+	case ir.ObjectType:
+		str := func(name string) (string, bool) {
+			v := ir.Uncomment(ir.ToMap(node)[name])
+			if v == nil || v.Type != ir.StringType {
+				return "", false
+			}
+			return v.String, true
+		}
+		f.Error, _ = str("error")
+		if w, ok := str("when"); ok {
+			f.When = &w
+		}
+		return nil
+	default:
+		return fmt.Errorf("lastError: expected a record or a string, got %s", node.Type)
+	}
 }
 
 // Check validates a source before it is installed.

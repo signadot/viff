@@ -262,12 +262,16 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 			"at": source.Ref(e.System, e.Name).String(), "name": e.Name, "system": e.System,
 		}
 		for k, v := range map[string]string{
-			"url": e.URL, "dir": e.Dir, "scope": e.Scope,
-			"lastReflect": e.LastReflect, "lastError": e.LastError,
+			"url": e.URL, "dir": e.Dir, "scope": e.Scope, "lastReflect": e.LastReflect,
 		} {
 			if v != "" {
 				rec[k] = v
 			}
+		}
+		// The error and WHEN IT STARTED travel together or the reader is misled — see
+		// source.Failure. Rendered as the stored pair rather than flattened to its text.
+		if e.LastError != nil {
+			rec["lastError"] = e.LastError
 		}
 		if len(e.Owns) > 0 {
 			rec["owns"] = e.Owns
@@ -551,7 +555,17 @@ func (s *Server) startSource(e source.Entity) error {
 		store = s.Store.Scope(e.Scope)
 	}
 	rf := source.NewReflector(src, store, ResyncEvery)
-	run := &sourceRun{rf: rf, scope: e.Scope}
+	// SEEDED FROM THE REGISTRATION, not from empty. run.lastErr is the comparison recordPass
+	// makes to decide whether anything changed, and it is a belief about what the STORE holds.
+	// Starting it empty made that belief false on every restart: a registration carrying an
+	// error met a healthy pass, both sides read "no error", nothing was written, and the stored
+	// error became permanent. It survived a wipe-and-repopulate on staging that way, reported
+	// for hours about a source that was fine.
+	var lastErr string
+	if e.LastError != nil {
+		lastErr = e.LastError.Error
+	}
+	run := &sourceRun{rf: rf, scope: e.Scope, lastErr: lastErr}
 
 	// The context is built BEFORE the pass sink, so the sink can be fenced by it: a status
 	// write is a write like any other, and one landing after its scope was dropped re-creates
@@ -684,9 +698,19 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 	if changed {
 		// A nil value REMOVES the field, which is how a recovery is recorded: the registration
 		// stops carrying an error rather than carrying an empty one.
+		//
+		// `changed` is what makes When mean what it says. It is true only on a TRANSITION — into
+		// a failure, out of one, or from one failure to a different one — so the timestamp
+		// written here is the instant this failure began and is never refreshed by the same
+		// failure repeating. See source.Failure.
 		w := entity.Write{At: ref.At("lastError"), When: []entity.Require{stillInstalled(ref)}}
 		if errText != "" {
-			w.Value = entity.Val(errText)
+			node, err := codec.ToNode(source.Failure{Error: errText, When: &now})
+			if err != nil { // a two-string struct cannot fail to encode; say so rather than write nothing
+				fmt.Fprintf(os.Stderr, "verse: source %s: encoding error record: %v\n", ref, err)
+				return
+			}
+			w.Value = entity.Raw(node)
 		}
 		// THE MEMORY FOLLOWS THE STORE, and only if the store took it. `changed` is a
 		// comparison against what this run believes is RECORDED, so advancing it before the
@@ -699,11 +723,18 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 		// is this very line). Two passes later `verse source` still reported the source in
 		// error while the entity it had failed on was present and correct — the one field an
 		// operator reads to decide whether a source is healthy, stuck on a transient.
-		if _, _, err := store.Write(w); err != nil {
+		// A REFUSED WRITE IS NOT A WRITE. Store.Write answers (committed, rev, err) and a
+		// precondition that does not hold is `false, 0, nil` — not an error. Taking the else
+		// branch on it would advance the memory to a value the store never took, and every
+		// later pass would compare equal and write nothing: the same permanence the err case
+		// above is guarded against, reached by the door nobody was watching.
+		if ok, _, err := store.Write(w); err != nil || !ok {
 			// Leave lastErr alone — the store still says what it said, so the next pass sees a
 			// change again and retries. Everything below still runs: a failed status write is
 			// no reason to skip the rest of the report.
-			fmt.Fprintf(os.Stderr, "verse: source %s: recording error: %v\n", ref, err)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "verse: source %s: recording error: %v\n", ref, err)
+			}
 		} else {
 			run.mu.Lock()
 			run.lastErr = errText
