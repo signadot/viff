@@ -1,0 +1,284 @@
+# THE SIGNADOT PULL REQUEST: what the comment-drift review's fixes become.
+#
+# The second half of the program comment-drift.tony begins. The review delivers each fix as a
+# branch under `verse/auto/<sha>/<task>`; this file turns the branches that can still land into
+# ONE pull request against master, keeps that pull request current as master moves, and closes
+# it when nothing is left to propose. Install it after comment-drift.tony:
+#
+#     verse charter -a -f docs/working/signadot/pr.tony
+#
+# ── WHY A PULL REQUEST, and what it changes ──────────────────────────────────────
+#
+# example/app's master is protected: a review is required, status checks are required, a
+# merge queue sits in front, and nobody force-pushes or deletes it. So nothing verse runs can put
+# a commit on master, and the merge gate verse-dev runs — a docket question whose yes IS the
+# merge — has no act to release here. What a person decides is decided on the pull request, in
+# the forge's own review, and the merge is the queue's.
+#
+# That moves the decision out of verse, and two things follow:
+#
+#   - NO GATE. verse-dev's gate is `!until [!quorum 1, !deadline "24h"]`, denying on the clock,
+#     because a merge is the one act nobody can quietly undo. Pushing a branch and opening a pull
+#     request undoes with a click, so the push runs `vector: auto` and asks nobody. The docket
+#     stays empty by design; the pull request is where the question is.
+#   - NO `decided`. verse-dev's train latches a per-tip decision so a denied batch is not asked
+#     again. Here a declined pull request is a closed one, and it is not re-opened until master
+#     moves and the review at the new tip proposes again — which is the same latch, held by the
+#     forge rather than by a field.
+#
+# ── THE TRAIN IS STILL PER TIP, and the pull request outlives it ─────────────────
+#
+# One train per tip of master, as before, because a task's id is (rule, subject) and a spawn on
+# an id that already completed returns the old answer: a singleton train would push once and
+# never again. What is new is that every tip's train pushes the SAME ref, `verse/train`, forced,
+# and the runner keeps one open pull request from that ref. So:
+#
+#   - master moves; the review at the new tip re-proposes whatever is still wrong (the ledger
+#     hands it every open finding, and a fix that has not landed is still wrong); the new tip's
+#     train is loaded with those fresh cars, rebuilt from the tip, and force-pushed. The open pull
+#     request is UPDATED — that is what a push to its head is.
+#   - the pull request merges; master moves; the review resolves what landed and re-proposes the
+#     rest; if there is a rest, the next train's push opens a fresh pull request, since a merged
+#     one is not open. If there is not, nothing is pushed and nothing is open.
+#   - somebody closes the pull request unmerged; nothing here notices, deliberately: the branch
+#     stands, the next tip's train force-pushes it, and the runner opens a new pull request. A
+#     decline is a decision about THAT master.
+#
+# WHAT THIS FILE NEVER DOES IS CLOSE ONE. A pull request whose fixes became moot without merging
+# — somebody corrected the comments by hand, or resolved the findings in the ledger — stays open
+# until a person closes it, and the next master that the review proposes against overwrites it.
+# Closing it would mean deleting `verse/train`, and the runner refuses a retiring destination
+# over one fixed ref (config.go: a switch somebody pulls once by accident), which is the right
+# rule and not one to make an exception to for tidiness.
+#
+# A train is rebuilt from the tip every time rather than rebased forward, because the review is
+# idempotent by construction: anything the old train carried and master still lacks is proposed
+# again at the new tip, so carrying the old cars forward would only put the same edit in twice.
+# The cost is that a reviewer's comments on the forge go "outdated" when the branch is rebuilt
+# under them, which is what a force-push to a pull request costs anywhere.
+#
+# THE STALENESS TEST IS UNCHANGED: a proposal records `base`, and `base != tip` retires it, with
+# no ancestry walk and nothing asked. A car that does not rebase is skipped inside the task, and
+# the charter does not learn which — git issue sxz4wejmh12kshy5g9n0 is that gap, and the pull
+# request body is where it shows for now: the runner writes the train's address into it, and a
+# branch listed on the train with no commit in the pull request is a car that was skipped.
+#
+# ── THE RUNNER ───────────────────────────────────────────────────────────────────
+#
+# `verse.runners.pool.code` needs an environment named `signadot-pr`, the `verse-merge` shape
+# pointed at `https://github.com/example/app`, checkout `signadot`, base `master`, with:
+#
+#   - `train`, ref `refs/heads/verse/train`, and ONE NEW OPTION: `pull: {base: master, title: …,
+#     body: …}`. After the push lands, the runner makes sure an OPEN pull request from that ref
+#     to the base exists, and opens one if none does — the pull-request half of the github
+#     source already reads them; this is the one write. The token that pushes needs
+#     `pull_requests: write` on the repository as well as `contents: write`.
+#   - `retire`, ref `refs/heads/verse/auto/*/*`, `delete: true`, as verse-merge has.
+#
+# Both stand in deploy/coderunner/coderunner.yaml.
+at: signadot.pr
+reads: [git, signadot.comment-drift]
+---
+# A git ref IS a subject here: a delivered branch, and the tip.
+- name: reflected
+  level: 0
+  match:
+    system: git
+
+- name: proposal
+  level: 30
+  match:
+    path: [signadot, pr, proposal]
+
+- name: train
+  level: 40
+  match:
+    path: [signadot, pr, train]
+---
+# 1. A delivered branch becomes a proposal, and nothing else.
+#
+# `repo: signadot`, because the git source mirrors more than one repository and a ref named
+# `verse/auto/…` in any of them reflects under the same kind. Without it this file would claim
+# verse's deliveries too, and try to retire them through an environment that cannot reach them.
+#
+# TWO segments after `verse/auto/`, since `!glob` is filepath.Match and `*` does not cross `/`.
+#
+# FACTS ONLY: a derive restates its literal fields on every re-derive, so nothing here may be a
+# state. `base` is pinned by the next rule, once.
+- name: proposal-appeared
+  stratum: reflected
+  condition:
+    subject:
+      system: git
+      kind: ref
+      value:
+        repo: signadot
+        name: !glob "verse/auto/*/*"
+  action:
+    derive:
+    # The branch is the id, so every reader below selects `[signadot, pr, proposal, "*"]` and
+    # lands on one proposal rather than on the rule's subtree.
+    - path: [signadot, pr, proposal]
+      id: $subject.value.name
+      value:
+        repo: $subject.value.repo
+        branch: $subject.value.name
+        sha: $subject.value.sha
+---
+# 1b. …and the commit it was cut from is pinned, once: writing `base` takes the proposal out of
+# this rule's own selection.
+- name: proposal-based
+  stratum: proposal
+  condition:
+    subject:
+      path: [signadot, pr, proposal, "*"]
+      value: !not.has-path base
+  action:
+    patch:
+      base: !get-path {at: [git, head, signadot], path: sha}
+---
+# 1c. …and the proposal says what it is about: the review's report for the range that ends at
+# its base, which is the review that proposed it unless master moved between the answer and the
+# push landing.
+- name: proposal-says
+  stratum: proposal
+  condition:
+    subject:
+      path: [signadot, pr, proposal, "*"]
+      value: !not.has-path state
+  action:
+    patch:
+      says: !get-path
+        at: [signadot, comment-drift, range, $subject.value.base]
+        path: report
+---
+# 2. THE TRAIN: one per tip, so a new master is a new question. The ref every train pushes to
+# is the environment's to say, so it is not restated here.
+- name: train-cut
+  stratum: reflected
+  condition:
+    subject: git.head.signadot
+  action:
+    derive:
+    - path: [signadot, pr, train]
+      id: $subject.value.sha
+      value:
+        sha: $subject.value.sha
+---
+# 2b. …loaded with whatever is deliverable, and reloaded as that changes, while nothing has been
+# pushed and only for the tip that is actually there.
+#
+# THE READS ARE IN THE CONDITION BECAUSE THAT IS WHAT WAKES IT. `reviewed` puts the review's
+# report in the read set: the review pushes its branch and THEN answers, so the report always
+# lands last, and a train that loaded on the proposal alone would load before the review had
+# said anything — and the review at this tip is what settles which cars exist.
+- name: train-load
+  stratum: train
+  condition:
+    subject:
+      path: [signadot, pr, train, "*"]
+      value: !and
+      - !not.has-path stage
+      - !let
+        let:
+        - tip: !get-path {at: [git, head, signadot], path: sha}
+        - fresh: !list-paths
+            at: [signadot, pr, proposal, "*"]
+            value: !not.has-path state
+            path: branch
+        - reviewed: !list-paths
+            at: [signadot, comment-drift, range, "*"]
+            value:
+              status: done
+            path: to
+        in: !and
+        - {sha: .[tip]}
+        - {sha: !or .[reviewed]}
+        - !not {branches: .[fresh]}
+  action:
+    patch:
+      branches: !list-paths
+        at: [signadot, pr, proposal, "*"]
+        value: !not.has-path state
+        path: branch
+      says: !get-path
+        at: [signadot, comment-drift, range, $subject.value.sha]
+        path: report
+---
+# 2c. …and a loaded train is pushed, once, ungated. `stage` is the latch: the hooks write it and
+# rule 2b stops reloading the moment it is there.
+#
+# THE CARS ARE FOUND IN THE CLONE, not interpolated: a charter has no list-to-text, and the task
+# branch was cut from master at this tip, so what it fast-forwards is exactly a train rebuilt
+# from the tip. Each car is rebased onto the task branch first — without that the first
+# `--ff-only` moves the branch and every sibling is then neither ancestor nor descendant. A
+# rebase that cannot apply is aborted and that car is skipped, which is safe because a comment
+# fix is a textual edit localized to one symbol and there is no judgment for a conflict to need.
+- name: train-push
+  stratum: train
+  condition:
+    subject:
+      path: [signadot, pr, train, "*"]
+      value: !and
+      - !has-path branches
+      - !not {branches: []}
+      - !not.has-path stage
+      - !let
+        let: [{tip: !get-path {at: [git, head, signadot], path: sha}}]
+        in: {sha: .[tip]}
+  action:
+    patch:
+      stage: pushing
+    spawn:
+      runner: verse.runners.pool.code
+      environment: signadot-pr
+      grant: no-delegate
+      vector: auto
+      calls:
+      - tool: run_bash
+        input:
+          command: "tb=$(git -C signadot rev-parse --abbrev-ref HEAD); for b in $(git -C signadot for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*/*'); do git -C signadot checkout -B _car \"$b\" || continue; if git -C signadot -c user.name='verse coderunner' -c user.email=coderunner@invalid rebase \"$tb\"; then git -C signadot checkout \"$tb\" && git -C signadot merge --ff-only _car; else git -C signadot rebase --abort || true; git -C signadot checkout \"$tb\"; fi; done"
+      - tool: push
+        input: {destination: train}
+    onDone:
+      patch:
+        stage: pushed
+        err: !delete null
+    onFailed:
+      patch:
+        stage: failed
+        err: $err
+    # A cancel decided nothing, so the latch comes off and the train is pushed again.
+    onCancelled:
+      patch:
+        stage: !delete null
+        err: !delete null
+---
+# 3. master moved, so the proposals cut from where it used to be can no longer land, and each
+# one's branch is retired. Ungated: deleting a `verse/auto/*` branch destroys nothing that the
+# next review does not remake, and a docket full of questions whose only answer is yes is a
+# docket nobody reads.
+- name: proposal-outrun
+  stratum: proposal
+  condition:
+    subject:
+      path: [signadot, pr, proposal, "*"]
+      value: !and
+      - !not.has-path state
+      - !let
+        let: [{tip: !get-path {at: [git, head, signadot], path: sha}}]
+        in: {base: !not .[tip]}
+  action:
+    patch:
+      state: stale
+    spawn:
+      runner: verse.runners.pool.code
+      environment: signadot-pr
+      grant: no-delegate
+      vector: auto
+      calls:
+      - tool: push
+        input: {destination: retire, ref: $branch}
+    onFailed:
+      patch:
+        err: $err

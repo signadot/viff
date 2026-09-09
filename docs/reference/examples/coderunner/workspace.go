@@ -504,7 +504,13 @@ func (t *Tree) DestRef(name, branch string) string {
 	if !ok {
 		return ""
 	}
-	out := strings.ReplaceAll(d.Ref, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
+	return t.expand(d.Ref, branch)
+}
+
+// expand is the one substitution the environment's text gets: $task is the task id and $sha the
+// commit the work started from. A ref, a pull request's title and its body all take it.
+func (t *Tree) expand(s, branch string) string {
+	out := strings.ReplaceAll(s, "$task", strings.TrimPrefix(branch, autoBranchPrefix))
 	return strings.ReplaceAll(out, "$sha", shortSha(t.Head))
 }
 

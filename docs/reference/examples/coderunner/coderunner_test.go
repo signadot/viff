@@ -536,6 +536,39 @@ func TestTheDeployedConfigLoads(t *testing.T) {
 				"a consequence is a different environment", d.Name)
 		}
 	}
+
+	// The same split for the product repository, whose master takes nothing but a pull request:
+	// the consequential destination there keeps one open (pull.go), and the fixing environment
+	// again cannot ask for anything.
+	pr, err := c.Environment("signadot-pr")
+	if err != nil {
+		t.Fatalf("signadot-pr: %v", err)
+	}
+	train, ok := pr.Repos[0].Dest("train")
+	switch {
+	case !ok:
+		t.Error("signadot-pr declares no `train` destination, so docs/working/signadot/pr.tony cannot push")
+	case train.Pull == nil:
+		t.Error("signadot-pr's `train` opens no pull request, and master takes nothing else")
+	}
+	if _, ok := pr.Repos[0].Dest("retire"); !ok {
+		t.Error("signadot-pr declares no `retire` destination, so stale proposals are never removed")
+	}
+	if !slices.Contains(pr.Tools, pushToolName) {
+		t.Errorf("signadot-pr does not offer %q, so its destinations are inert", pushToolName)
+	}
+	sfix, err := c.Environment("signadot-fix")
+	if err != nil {
+		t.Fatalf("signadot-fix: %v", err)
+	}
+	if slices.Contains(sfix.Tools, pushToolName) {
+		t.Errorf("signadot-fix offers %q — the split is what stops a fix reaching the train", pushToolName)
+	}
+	for _, d := range sfix.Repos[0].Dests() {
+		if d.Name != autoDestination {
+			t.Errorf("signadot-fix declares destination %q — a fix is a PROPOSAL", d.Name)
+		}
+	}
 }
 
 // An environment that can be approved to push somewhere it has no route to is refused when the

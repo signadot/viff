@@ -242,6 +242,77 @@ data:
       egress:
       - api.portkey.ai
       - github.com
+
+    # ── example/app ──────────────────────────────────────────────────────────
+    #
+    # The same pair for the product repository, and one thing about it decides their shape:
+    # master is PROTECTED — a review, status checks and a merge queue, and nobody pushes to it.
+    # So the consequential destination here is not `main` but a pull request (pull.go): the
+    # push proposes, the forge asks, and the merge is the queue's. The charters are
+    # docs/working/signadot/{comment-drift,pr}.tony.
+    #
+    # The token this runner holds (-token-env) pushes to this repository too, so it needs
+    # contents: write AND pull_requests: write on example/app — the second is what opening
+    # a pull request costs, and a token without it pushes the branch and then fails to ask.
+    #
+    # THE FIXING ENVIRONMENT, and it is verse-fix with the repository swapped. A monorepo of
+    # several Go modules, so `go` runs inside whichever module the task cds into; the prompt
+    # says so, and the module proxy is here for `go doc` the same as it is for verse.
+    - name: signadot-fix
+      repos:
+      - name: signadot
+        repo: "https://github.com/example/app"
+        base: master
+        destinations:
+        - name: auto
+          ref: "refs/heads/verse/auto/$sha/$task"
+      driver: llm
+      tools: [read_file, list_dir, write_file, run_bash, call_agent]
+      commands: [git, go, gofmt]
+      env: [PATH, HOME, USER, LANG]
+      egress:
+      - api.portkey.ai
+      - proxy.golang.org
+      - sum.golang.org
+      - github.com
+
+    # THE PULL REQUEST ENVIRONMENT: verse-merge with `main` replaced by `train`.
+    #
+    # `train` is one fixed ref, pushed FORCED by every tip's train — the runner forces every
+    # delivery, and here the overwrite is the point: the pull request's head is this ref, so a
+    # push to it is the update, and one open pull request follows master rather than one per
+    # tip. `pull:` is what keeps it open: after the push the task asks the forge for the open
+    # pull request from this ref and opens one if there is none, which after a merge there is
+    # not.
+    #
+    # The body is the reader's map back to verse: git issue sxz4wejmh12kshy5g9n0 is that the
+    # charter cannot say which car it left behind, and until it can, the train entity's
+    # `branches` beside the pull request's commits is where a person sees it.
+    - name: signadot-pr
+      repos:
+      - name: signadot
+        repo: "https://github.com/example/app"
+        base: master
+        destinations:
+        - name: train
+          ref: "refs/heads/verse/train"
+          pull:
+            base: master
+            title: "verse: comment drift, from master at $sha"
+            body: "Assembled by verse from the comment-drift review of master at $sha: each commit is one fix the review proposed, rebased onto master. The train is the entity under signadot.pr.train whose sha begins $sha; its `branches` field lists every proposal loaded, and one listed there with no commit here did not rebase and was skipped. Force-pushed whenever master moves, so review comments go outdated rather than stale."
+        - name: retire
+          ref: "refs/heads/verse/auto/*/*"
+          delete: true
+      driver: llm
+      tools: [read_file, list_dir, run_bash, push]
+      commands: [git]
+      env: [PATH, HOME, USER, LANG]
+      # api.github.com beside github.com: the push goes to one and the pull request to the
+      # other, and the runner refuses to start with the second missing (checkReachable).
+      egress:
+      - api.portkey.ai
+      - github.com
+      - api.github.com
 ---
 apiVersion: apps/v1
 kind: Deployment
