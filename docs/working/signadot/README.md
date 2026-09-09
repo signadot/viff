@@ -64,10 +64,11 @@ and that is the right rule.
 ## The branch is one string
 
 The tip both charters read is `git.ref."signadot/<branch>"`, and the two environments' `base`
-is the same branch. While the drive is being driven that is `verse/drive`, cut from master:
-commits land there freely, the review and the proposals follow it, and the pull request goes
-into it, where anybody merges with a click. Moving to master is changing that string in both
-charters and both environments and re-seeding the cursor.
+is the same branch. It is `master`. The loop was driven first on `verse/drive`, cut from
+master, where commits landed freely and the pull request merged with a click; every path ran
+there — open, update, merge, a stale proposal retired, a twenty-commit range — before the
+string was changed. Driving it somewhere else again is that string in both charters and both
+environments, and a re-seeded cursor.
 
 ## What it takes to run
 
@@ -77,7 +78,7 @@ charters and both environments and re-seeding the cursor.
 2. **The runner's `pull:` option** on a destination (`docs/reference/examples/coderunner/pull.go`):
    after the push, the task makes sure an open pull request from the ref to the base exists.
 3. **The sources.** Staging already mirrors example/app in both the git and github
-   sources, so `git.ref."signadot/verse/drive"` is there to read once the branch exists.
+   sources, so `git.ref."signadot/master"` is there to read.
 4. **Install** comment-drift.tony first, since pr.tony reads it, then seed the cursor at
    the branch's tip so the first range is empty:
    ```sh

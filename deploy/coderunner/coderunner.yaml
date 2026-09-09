@@ -262,10 +262,10 @@ data:
       repos:
       - name: signadot
         repo: "https://github.com/example/app"
-        # THE BRANCH, and the charters read the same one: `verse/drive` while the drive is
-        # driven on a branch cut from master, then `master`. Change it here, in signadot-pr
-        # below (base and pull.base), and in docs/working/signadot/*.tony together.
-        base: verse/drive
+        # THE BRANCH, and the charters read the same one. Change it here, in signadot-pr
+        # below (base and pull.base), and in docs/working/signadot/*.tony together — the way
+        # it was driven on `verse/drive` before master.
+        base: master
         destinations:
         - name: auto
           ref: "refs/heads/verse/auto/$sha/$task"
@@ -295,12 +295,12 @@ data:
       repos:
       - name: signadot
         repo: "https://github.com/example/app"
-        base: verse/drive
+        base: master
         destinations:
         - name: train
           ref: "refs/heads/verse/train"
           pull:
-            base: verse/drive
+            base: master
             title: "verse: comment drift at $sha"
             body: "Assembled by verse from the comment-drift review of the base branch at $sha: each commit is one fix the review proposed, rebased onto that branch. The train is the entity under signadot.pr.train whose sha begins $sha; its `branches` field lists every proposal loaded, and one listed there with no commit here did not rebase and was skipped. Force-pushed whenever the base branch moves, so review comments go outdated rather than stale."
         - name: retire

@@ -8,10 +8,9 @@
 #     verse charter -a -f docs/working/signadot/pr.tony
 #
 # THE BRANCH IS ONE STRING, and it is the same one comment-drift.tony reads: the tip is
-# `git.ref."signadot/<branch>"`. While the drive is being driven it is `verse/drive`, a branch
-# cut from master that anybody may commit to freely and merge a pull request into with a click,
-# so the whole loop can be watched without waiting on master's protections; it becomes `master`
-# by changing that string in both files and the two environments' `base`, and nothing below
+# `git.ref."signadot/<branch>"`. It is `master`. The loop was driven first on `verse/drive`, a
+# branch cut from master where commits were free and a pull request merged with a click, and
+# moving it was that string in both files and the two environments' `base`; nothing below
 # changes with it.
 #
 # ── WHY A PULL REQUEST, and what it changes ──────────────────────────────────────
@@ -142,7 +141,7 @@ reads: [git, signadot.comment-drift]
       value: !not.has-path base
   action:
     patch:
-      base: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}
+      base: !get-path {at: [git, ref, "signadot/master"], path: sha}
 ---
 # 1c. …and the proposal says what it is about: the review's report for the range that ends at
 # its base, which is the review that proposed it unless master moved between the answer and the
@@ -165,7 +164,7 @@ reads: [git, signadot.comment-drift]
   stratum: reflected
   condition:
     subject:
-      path: [git, ref, "signadot/verse/drive"]
+      path: [git, ref, "signadot/master"]
   action:
     derive:
     - path: [signadot, pr, train]
@@ -189,7 +188,7 @@ reads: [git, signadot.comment-drift]
       - !not.has-path stage
       - !let
         let:
-        - tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}
+        - tip: !get-path {at: [git, ref, "signadot/master"], path: sha}
         - fresh: !list-paths
             at: [signadot, pr, proposal, "*"]
             value: !not.has-path state
@@ -232,7 +231,7 @@ reads: [git, signadot.comment-drift]
       - !not {branches: []}
       - !not.has-path stage
       - !let
-        let: [{tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}}]
+        let: [{tip: !get-path {at: [git, ref, "signadot/master"], path: sha}}]
         in: {sha: .[tip]}
   action:
     patch:
@@ -274,7 +273,7 @@ reads: [git, signadot.comment-drift]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}}]
+        let: [{tip: !get-path {at: [git, ref, "signadot/master"], path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:
