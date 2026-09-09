@@ -160,7 +160,8 @@ func (m *Mirrors) ensure(ctx context.Context, remote string) (string, error) {
 	defer lock.Unlock()
 
 	r, err := git.PlainOpen(dir)
-	if errors.Is(err, git.ErrRepositoryNotExists) {
+	fresh := errors.Is(err, git.ErrRepositoryNotExists)
+	if fresh {
 		if err = os.MkdirAll(dir, 0o755); err != nil {
 			return "", err
 		}
@@ -186,7 +187,25 @@ func (m *Mirrors) ensure(ctx context.Context, remote string) (string, error) {
 		return "", fmt.Errorf("mirror %s: %w", remote, err)
 	}
 
-	err = r.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", Prune: true, Auth: m.auth(remote)})
+	// A FIRST clone outlives the caller. The spawn that asks for it is bounded by versed's
+	// control deadline (runner.ControlTimeout, 30s), and a clone of anything real is longer than
+	// that, so under the request's context the clone was cancelled with it: no mirror, and the
+	// next spawn started the same race from nothing. Made under the runner's own context, the
+	// clone finishes whatever the caller did — and the caller is then told, below, that it ran
+	// out of time rather than being handed a workspace nobody is waiting for.
+	fetchCtx := ctx
+	if fresh {
+		fetchCtx = context.WithoutCancel(ctx)
+	}
+	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", Prune: true, Auth: m.auth(remote)})
+	if fresh && err == nil && ctx.Err() != nil {
+		// The mirror is complete and the spawn is not: a workspace made now would start a task
+		// against a spawn its caller already recorded as failed. Refused with what happened,
+		// so the retry — which is the same spawn again, and now fast — is the obvious next act.
+		// No dir with it: a dir beside an error reads as "fetch failed, use what the mirror
+		// has" one level up, and this is the one refusal that must not be used past.
+		return "", fmt.Errorf("the mirror of %s was made, and this spawn ran out of time waiting for it (%w) — spawn again, and the mirror is there", remote, ctx.Err())
+	}
 	switch {
 	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
 		// A fresh bare repository's HEAD points at `refs/heads/master`, which is a branch most
