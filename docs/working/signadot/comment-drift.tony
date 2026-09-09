@@ -268,9 +268,18 @@ reads: [ !verse-path [git] ]
         err: !delete null
 ---
 # 5. …and the cursor steps, onto the range it claimed, once that range is done. A failed review
-# leaves `status: failed`, so it is not in the set: the chain stops where it broke, visibly, and
-# `verse data signadot.comment-drift.at --put '{stage: idle}'` is the retry, which by then covers
-# everything since.
+# leaves `status: failed`, so it is not in the set: the chain stops where it broke, visibly.
+#
+# THE RETRY IS ON THE RANGE, not the cursor. The range is addressed by its far end, so a cursor
+# put back to idle would claim the same tip and derive the same range — which keeps the `stage`
+# and `status` it has, and rule 3 selects only a range with no stage. Remove the latch and the
+# chain resumes from rule 3, against the same span:
+#
+#     verse data signadot comment-drift range <to> stage --rm
+#     verse data signadot comment-drift range <to> status --rm
+#     verse data signadot comment-drift range <to> err --rm
+#
+# Putting the cursor back to idle is for a range that never opened.
 - name: advance
   stratum: cursor
   condition:
