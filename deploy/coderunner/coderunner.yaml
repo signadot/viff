@@ -302,7 +302,7 @@ data:
           pull:
             base: verse/drive
             title: "verse: comment drift at $sha"
-            body: "Assembled by verse from the comment-drift review of the branch at $sha: each commit is one fix the review proposed, rebased onto master. The train is the entity under signadot.pr.train whose sha begins $sha; its `branches` field lists every proposal loaded, and one listed there with no commit here did not rebase and was skipped. Force-pushed whenever master moves, so review comments go outdated rather than stale."
+            body: "Assembled by verse from the comment-drift review of the base branch at $sha: each commit is one fix the review proposed, rebased onto that branch. The train is the entity under signadot.pr.train whose sha begins $sha; its `branches` field lists every proposal loaded, and one listed there with no commit here did not rebase and was skipped. Force-pushed whenever the base branch moves, so review comments go outdated rather than stale."
         - name: retire
           ref: "refs/heads/verse/auto/*/*"
           delete: true

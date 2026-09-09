@@ -227,8 +227,9 @@ reads: [ !verse-path [git] ]
 
         YOUR FINAL MESSAGE IS THE ANSWER — a JSON document, nothing before it and nothing after
         it. Every key and every string is quoted. Report an entry ONLY for a symbol that has
-        something to say: a symbol you judged and found ACCURATE is not an entry, and an empty
-        `findings` list is a real answer.
+        something to say: a symbol you judged and found accurate AS YOU FOUND IT is not an
+        entry, and an empty `findings` list is a real answer — but only from a run that wrote
+        no file. Every symbol you fixed with write_file is an entry, in exactly this shape:
 
             {
               "files": 2,
@@ -240,6 +241,11 @@ reads: [ !verse-path [git] ]
                  "proposedAt": "$to"}
               ]
             }
+
+        That entry is a symbol this run FIXED. It is `"open"`, not resolved, because the tree at
+        $to still has the wrong comment — your edit is a proposal that has not landed — and
+        `proposedAt` is where the fix is. An answer that wrote a file and lists no findings is
+        wrong, and if you are asked to repair the SHAPE of your answer, the findings in it stay.
     onDone:
       derive:
       - path: [signadot, comment-drift, finding]
