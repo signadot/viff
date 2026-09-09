@@ -86,6 +86,10 @@ environments, and a re-seeded cursor.
    verse -addr <addr> charter -a -f docs/working/signadot/pr.tony
    verse -addr <addr> data signadot comment-drift at --put '{sha: <branch tip>, stage: idle}'
    ```
+   When RE-POINTING an installed pair at another branch, seed FIRST and install second: an
+   installed charter reads the new branch the moment it lands, and a cursor still standing
+   on the old one is a claim across two histories — a range from the old tip to the new
+   one, which nothing should review.
 5. **verse-dev's merge gate filters on `repo: verse`** — without that it would claim these
    deliveries too, since both repositories' refs reflect under one kind. That is in
    `docs/working/comment-drift.tony` and wants re-installing on a verse that runs both.
