@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -301,14 +303,37 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 	}
 
 	dir := filepath.Join(root, r.Name)
-	// Cloned from the LOCAL mirror, so this costs no network. NoCheckout because the checkout
-	// below is the one that creates the task branch, and doing it twice would write the tree
-	// twice.
-	repo, err := git.PlainCloneContext(ctx, dir, false, &git.CloneOptions{
-		URL: mirror, RemoteName: "mirror", NoCheckout: true,
-	})
+	// The checkout's objects ARE the mirror's, linked rather than cloned, and the reason is
+	// what a spawn costs against a repository of any size. A clone from the local mirror is no
+	// network, but it is go-git re-packing every object into the workspace: 6s for a 217MB
+	// monorepo on a laptop, and past versed's 30s control deadline on the node that runs this,
+	// so the spawn was cancelled before the task began. A hardlink per object file is the
+	// clone git itself makes of a local repository, costs a directory walk, and can never go
+	// stale: a pack is immutable, and a fetch that brings more objects writes a new one beside
+	// it rather than into it. (Not `objects/info/alternates`, which go-git honours by
+	// re-opening the shared store on every object it does not have: 41s to check out the same
+	// tree, and 12s to commit one file.)
+	//
+	// The refs a clone would have made are copied by hand, because they are the other half of
+	// what a clone is: every head of the mirror as `refs/remotes/mirror/<name>`, which is what
+	// a task's shell reads a sibling's delivery through.
+	repo, err := git.PlainInit(dir, false)
 	if err != nil {
-		return nil, fmt.Errorf("repo %s: clone: %w", r.Name, err)
+		return nil, fmt.Errorf("repo %s: init: %w", r.Name, err)
+	}
+	if err := linkObjects(mirror, dir); err != nil {
+		return nil, fmt.Errorf("repo %s: sharing the mirror's objects: %w", r.Name, err)
+	}
+	// Reopened so the storage sees the objects it now has.
+	if repo, err = git.PlainOpen(dir); err != nil {
+		return nil, fmt.Errorf("repo %s: %w", r.Name, err)
+	}
+	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "mirror", URLs: []string{mirror},
+		Fetch: []config.RefSpec{"+refs/heads/*:refs/remotes/mirror/*"}}); err != nil {
+		return nil, fmt.Errorf("repo %s: %w", r.Name, err)
+	}
+	if err := mirrorRefs(mr, repo); err != nil {
+		return nil, fmt.Errorf("repo %s: %w", r.Name, err)
 	}
 	// `origin` is the REAL remote, and it is added here rather than being what we cloned from
 	// so that a push goes upstream rather than into this runner's cache.
@@ -325,6 +350,58 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string) (*Tree,
 		return nil, fmt.Errorf("repo %s at %s: %w", r.Name, r.Base, err)
 	}
 	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo}, nil
+}
+
+// linkObjects hardlinks every file under the mirror's object store into the checkout's, and
+// copies the one it cannot link — a workspace root on a different filesystem from the mirrors,
+// which no deployment here has but a test's temp dirs might.
+func linkObjects(mirror, dir string) error {
+	src, dst := filepath.Join(mirror, "objects"), filepath.Join(dir, ".git", "objects")
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if err := os.Link(p, target); err == nil || errors.Is(err, fs.ErrExist) {
+			return nil
+		}
+		in, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
+	})
+}
+
+// mirrorRefs writes the mirror's heads into the checkout as `refs/remotes/mirror/<name>`.
+func mirrorRefs(mirror, repo *git.Repository) error {
+	refs, err := mirror.References()
+	if err != nil {
+		return err
+	}
+	return refs.ForEach(func(ref *plumbing.Reference) error {
+		if !ref.Name().IsBranch() {
+			return nil
+		}
+		name := plumbing.NewRemoteReferenceName("mirror", strings.TrimPrefix(ref.Name().String(), "refs/heads/"))
+		return repo.Storer.SetReference(plumbing.NewHashReference(name, ref.Hash()))
+	})
 }
 
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
