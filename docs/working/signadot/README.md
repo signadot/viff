@@ -61,6 +61,14 @@ fixes became moot without merging stays open until a person closes it; the chart
 deletes `verse/train`, because the runner refuses a retiring destination over one fixed ref,
 and that is the right rule.
 
+## The branch is one string
+
+The tip both charters read is `git.ref."signadot/<branch>"`, and the two environments' `base`
+is the same branch. While the drive is being driven that is `verse/drive`, cut from master:
+commits land there freely, the review and the proposals follow it, and the pull request goes
+into it, where anybody merges with a click. Moving to master is changing that string in both
+charters and both environments and re-seeding the cursor.
+
 ## What it takes to run
 
 1. **The runner's environments**, `signadot-fix` and `signadot-pr`, are in
@@ -69,13 +77,13 @@ and that is the right rule.
 2. **The runner's `pull:` option** on a destination (`docs/reference/examples/coderunner/pull.go`):
    after the push, the task makes sure an open pull request from the ref to the base exists.
 3. **The sources.** Staging already mirrors example/app in both the git and github
-   sources, so `git.head.signadot` is there to read.
+   sources, so `git.ref."signadot/verse/drive"` is there to read once the branch exists.
 4. **Install** comment-drift.tony first, since pr.tony reads it, then seed the cursor at
-   master's tip so the first range is empty:
+   the branch's tip so the first range is empty:
    ```sh
    verse -addr <addr> charter -a -f docs/working/signadot/comment-drift.tony
    verse -addr <addr> charter -a -f docs/working/signadot/pr.tony
-   verse -addr <addr> data signadot.comment-drift.at --put '{sha: <master tip>, stage: idle}'
+   verse -addr <addr> data signadot comment-drift at --put '{sha: <branch tip>, stage: idle}'
    ```
 5. **verse-dev's merge gate filters on `repo: verse`** — without that it would claim these
    deliveries too, since both repositories' refs reflect under one kind. That is in

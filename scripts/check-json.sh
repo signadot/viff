@@ -24,11 +24,15 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #                              shape: the JSON stops at that file, and what leaves it is a
 #                              task.StepResult. (Was claude.go, before that driver became one
 #                              configured command among others.)
+#   docs/reference/examples/coderunner/pull.go
+#                            — GitHub's pull-request endpoints, the one forge write the runner
+#                              makes that is not a ref. Same exception as source/github: the
+#                              JSON stops at that file, and what leaves it is a tool result.
 #
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='task/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go|source/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go'
+allow='task/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go|source/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

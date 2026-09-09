@@ -17,8 +17,12 @@
 # it lands reads master and finds the comment true. What differs is the repository, and three
 # things follow from that:
 #
-#   - THE DEFAULT BRANCH IS `master`. Every read of "the tip" is `git.head.signadot`, and the
-#     environment's base is master.
+#   - THE BRANCH IS ONE STRING, read as a ref rather than as the mirror's head: the tip is
+#     `git.ref."signadot/<branch>"`, which the source reflects for master and for any other
+#     branch alike. It is `verse/drive` while the drive is being driven — a branch cut from
+#     master that anybody may commit to freely, with the review, the proposals and the pull
+#     request all landing there — and it becomes `master` by changing that string here, in
+#     pr.tony, and in the two environments' `base`. Nothing else knows which branch it is.
 #   - IT IS SEVERAL GO MODULES, not one. `common`, `sandboxes`, `playground/app` and the ones under
 #     `infra` are each their own module, so a symbol is named from the REPOSITORY root
 #     (`common/controllers.Reconcile`, not `controllers.Reconcile`) and `go doc` runs inside the
@@ -29,15 +33,15 @@
 #
 # ── SEEDING ──────────────────────────────────────────────────────────────────────
 #
-# The cursor stands where the first range starts, so seed it at master's tip and the first range
-# is empty — no backlog, whatever the mirror's window holds:
+# The cursor stands where the first range starts, so seed it at the branch's tip and the first
+# range is empty — no backlog, whatever the mirror's window holds:
 #
-#     verse data signadot.comment-drift.at --put '{sha: <master tip>, stage: idle}'
+#     verse data signadot comment-drift at --put '{sha: <branch tip>, stage: idle}'
 #
 # ── THE RUNNER ───────────────────────────────────────────────────────────────────
 #
 # `verse.runners.pool.code` needs an environment named `signadot-fix`: the `verse-fix` shape with
-# the repository `https://github.com/example/app`, checkout name `signadot`, base `master`,
+# the repository `https://github.com/example/app`, checkout name `signadot`, base the branch,
 # and the one destination `auto: refs/heads/verse/auto/$sha/$task`. No `push` tool, for the reason
 # verse-fix has none — a fix proposes and never lands, as a property of the environment.
 at: signadot.comment-drift
@@ -63,7 +67,7 @@ reads: [ !verse-path [git] ]
 ---
 # 1. THE CLAIM. The tip is read here and written down as `covering`, so a commit landing while
 # the review runs is neither covered nor skipped: rule 5 advances to what was CLAIMED. The read
-# joins this trigger's reads, so master moving is what wakes it.
+# joins this trigger's reads, so the branch moving is what wakes it.
 - name: claim
   stratum: cursor
   condition:
@@ -72,7 +76,7 @@ reads: [ !verse-path [git] ]
       value: !let
         let:
         - tip: !get-path
-            at: [git, head, signadot]
+            at: [git, ref, "signadot/verse/drive"]
             path: sha
         in:
           stage: idle
@@ -81,7 +85,7 @@ reads: [ !verse-path [git] ]
     patch:
       stage: claimed
       covering: !get-path
-        at: [git, head, signadot]
+        at: [git, ref, "signadot/verse/drive"]
         path: sha
 ---
 # 2. …and the range it claimed becomes an entity, so the review has a subject of its own — and
@@ -146,10 +150,10 @@ reads: [ !verse-path [git] ]
       prompt: |
         The signadot repository is checked out at ./signadot with its full history, at $to.
 
-        Review the RANGE $from..$to — everything that has landed on master since the last
-        review — and answer with `at: $to`. The range is what you review; $to is the commit the
-        tree stands at, and it is what your answer is a claim about. master can move while you
-        work, so a reader must not have to assume which commit you meant.
+        Review the RANGE $from..$to — everything that has landed on the branch since the
+        last review — and answer with `at: $to`. The range is what you review; $to is the commit the
+        tree stands at, and it is what your answer is a claim about. The branch can move while
+        you work, so a reader must not have to assume which commit you meant.
 
         THE REPOSITORY IS SEVERAL GO MODULES: `common`, `sandboxes`, `playground/app`, and the
         ones under `infra` each have their own go.mod. A Go command runs inside the module that
@@ -206,11 +210,12 @@ reads: [ !verse-path [git] ]
 
         A FIX YOU JUST WROTE RESOLVES NOTHING. Your edits are in a working tree that becomes a
         branch, and a branch is a PROPOSAL — it is gathered into a pull request that somebody
-        approves, and it can be declined, or superseded, or retired unmerged while master moves
-        on. So a symbol you fixed is still `status: open`, because it is still wrong in the tree
+        approves, and it can be declined, or superseded, or retired unmerged while the branch
+        moves on. So a symbol you fixed is still `status: open`, because it is still wrong in the tree
         you reviewed, and you say where you proposed the fix: `proposedAt: $to`. The review that
-        comes after the fix LANDS reads master, finds the comment accurate, and resolves it. That
-        is what makes the ledger a record of MASTER rather than of what agents believe they did.
+        comes after the fix LANDS reads the branch, finds the comment accurate, and resolves it.
+        That is what makes the ledger a record of THE BRANCH rather than of what agents believe
+        they did.
 
         A finding you are handed that already carries `proposedAt` and is STILL WRONG means that
         fix did not land. Fix it again and say `proposedAt: $to` for this attempt: the work is

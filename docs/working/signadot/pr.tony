@@ -7,6 +7,13 @@
 #
 #     verse charter -a -f docs/working/signadot/pr.tony
 #
+# THE BRANCH IS ONE STRING, and it is the same one comment-drift.tony reads: the tip is
+# `git.ref."signadot/<branch>"`. While the drive is being driven it is `verse/drive`, a branch
+# cut from master that anybody may commit to freely and merge a pull request into with a click,
+# so the whole loop can be watched without waiting on master's protections; it becomes `master`
+# by changing that string in both files and the two environments' `base`, and nothing below
+# changes with it.
+#
 # ── WHY A PULL REQUEST, and what it changes ──────────────────────────────────────
 #
 # example/app's master is protected: a review is required, status checks are required, a
@@ -66,9 +73,9 @@
 # ── THE RUNNER ───────────────────────────────────────────────────────────────────
 #
 # `verse.runners.pool.code` needs an environment named `signadot-pr`, the `verse-merge` shape
-# pointed at `https://github.com/example/app`, checkout `signadot`, base `master`, with:
+# pointed at `https://github.com/example/app`, checkout `signadot`, base the branch, with:
 #
-#   - `train`, ref `refs/heads/verse/train`, and ONE NEW OPTION: `pull: {base: master, title: …,
+#   - `train`, ref `refs/heads/verse/train`, and ONE OPTION: `pull: {base: <branch>, title: …,
 #     body: …}`. After the push lands, the runner makes sure an OPEN pull request from that ref
 #     to the base exists, and opens one if none does — the pull-request half of the github
 #     source already reads them; this is the one write. The token that pushes needs
@@ -135,7 +142,7 @@ reads: [git, signadot.comment-drift]
       value: !not.has-path base
   action:
     patch:
-      base: !get-path {at: [git, head, signadot], path: sha}
+      base: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}
 ---
 # 1c. …and the proposal says what it is about: the review's report for the range that ends at
 # its base, which is the review that proposed it unless master moved between the answer and the
@@ -157,7 +164,8 @@ reads: [git, signadot.comment-drift]
 - name: train-cut
   stratum: reflected
   condition:
-    subject: git.head.signadot
+    subject:
+      path: [git, ref, "signadot/verse/drive"]
   action:
     derive:
     - path: [signadot, pr, train]
@@ -181,7 +189,7 @@ reads: [git, signadot.comment-drift]
       - !not.has-path stage
       - !let
         let:
-        - tip: !get-path {at: [git, head, signadot], path: sha}
+        - tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}
         - fresh: !list-paths
             at: [signadot, pr, proposal, "*"]
             value: !not.has-path state
@@ -224,7 +232,7 @@ reads: [git, signadot.comment-drift]
       - !not {branches: []}
       - !not.has-path stage
       - !let
-        let: [{tip: !get-path {at: [git, head, signadot], path: sha}}]
+        let: [{tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}}]
         in: {sha: .[tip]}
   action:
     patch:
@@ -266,7 +274,7 @@ reads: [git, signadot.comment-drift]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, head, signadot], path: sha}}]
+        let: [{tip: !get-path {at: [git, ref, "signadot/verse/drive"], path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:
