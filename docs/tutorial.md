@@ -626,14 +626,17 @@ verse gates
 
 ```tony
 - gate: approvals
-  id: verse.trigger.shape-vote.approvals~8f306077
+  id: verse.trigger.shape-vote.approvals~e23d0b21
   mode: ASK
   options:
-  - {id: proceed, need: 2}
-  - {id: deny, need: 1}
+  - id: proceed
+    need: 2
+  - id: deny
+    need: 1
   origin: shape-vote
-  reason: trigger shape-vote gate approvals on demo.vote.1
-  subject: demo.vote.1
+  reason: 'trigger shape-vote gate approvals on demo.vote."1"'
+  subject: 'demo.vote."1"'
+  tool: verse:trigger:shape-vote
   where: engine
 ```
 
@@ -645,8 +648,10 @@ The rule fired and the action is waiting, not on a person but on a tally. Answer
 naming its answerer, since a question is settled attributably:
 
 ```sh
-verse gate approve verse.trigger.shape-vote.approvals~8f306077 --as alice   # recorded: 1 of 2 for proceed
-verse gate approve verse.trigger.shape-vote.approvals~8f306077 --as bob     # 2 of 2 → carries
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as alice
+# verse.trigger.shape-vote.approvals~e23d0b21: recorded: 1 of 2 for proceed
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as bob
+# approved verse.trigger.shape-vote.approvals~e23d0b21
 verse data demo vote 1              # stage: merged
 ```
 

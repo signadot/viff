@@ -230,9 +230,9 @@ up_or_die() {
 # also brings an ordering, and the ordering goes LAST because a stratum still holding rules
 # refuses to be removed.
 remove_shape() {
-	v charter remove "shape-$1" >/dev/null 2>&1 || true
+	v charter -r rules "shape-$1" >/dev/null 2>&1 || true
 	if [ "$1" = derive ]; then
-		for st in "${DERIVE_STRATA[@]}"; do v charter remove "$st" >/dev/null 2>&1 || true; done
+		for st in "${DERIVE_STRATA[@]}"; do v charter -r strata "$st" >/dev/null 2>&1 || true; done
 	fi
 }
 
