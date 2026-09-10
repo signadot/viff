@@ -1632,6 +1632,20 @@ func (s *Option) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["need"] = ir.FromInt(int64(s.Need))
 	}
 
+	// Field: Grant
+	if s.Grant != "" {
+		irMap["grant"] = ir.FromString(string(s.Grant))
+	}
+
+	// Field: Tools
+	if len(s.Tools) > 0 {
+		slice := make([]*ir.Node, len(s.Tools))
+		for i, v := range s.Tools {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["tools"] = ir.FromSlice(slice)
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -1677,6 +1691,29 @@ func (s *Option) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "need", fieldNodeUnwrapped.Type)
 			}
 			s.Need = int(*fieldNodeUnwrapped.Int64)
+		case "grant":
+			// Field: Grant
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "grant", fieldNodeUnwrapped.Type)
+			}
+			s.Grant = string(fieldNodeUnwrapped.String)
+		case "tools":
+			// Field: Tools
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Tools = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Option", fieldName.String)
