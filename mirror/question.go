@@ -81,9 +81,12 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 		"reason":  q.Reason,
 		// The charter the asking rule is in. Absent for baseline and for a task's own gate,
 		// where there is no charter to name rather than an unknown one.
-		"at":   q.At,
-		"tool": p.Tool,
-		"task": taskID,
+		"at": q.At,
+		// The action a selection is holding up; absent for a gate, whose firing comes back on
+		// its own. What a restart navigates by (trigger.Engine.ResumeSelections).
+		"chain": q.Chain,
+		"tool":  p.Tool,
+		"task":  taskID,
 		// resolver is the BINDING that owns this question. Absent means UNBOUND — nobody was
 		// declared, so it belongs to whoever reads the docket — which is a different fact
 		// from an owner nobody can name, and a later reader depends on the distinction.
@@ -149,7 +152,16 @@ func StampDeadline(store entity.Store, id string, at time.Time) (string, error) 
 func optionList(opts []task.Option) []any {
 	out := make([]any, 0, len(opts))
 	for _, o := range opts {
-		out = append(out, entity.Obj{"id": o.ID, "need": o.Need})
+		om := entity.Obj{"id": o.ID, "need": o.Need}
+		// Written only when the option says something, so a ballot between interchangeable
+		// doers stays as terse as a yes-or-no one.
+		if o.Grant != "" {
+			om["grant"] = o.Grant
+		}
+		if len(o.Tools) > 0 {
+			om["tools"] = anyStrings(o.Tools)
+		}
+		out = append(out, om)
 	}
 	return out
 }

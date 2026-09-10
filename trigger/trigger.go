@@ -913,7 +913,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 // the task under its deterministic id.
 //
 // It is its own function rather than the tail of applyOne because a who-motion outlives the
-// firing that opened it: ResumeMotions re-enters HERE after a restart, and a second copy of
+// firing that opened it: ResumeSelections re-enters HERE after a restart, and a second copy of
 // these lines is how a resumed selection would come to launch something subtly different from
 // the run it is finishing.
 //

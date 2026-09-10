@@ -29,7 +29,7 @@ import (
 // tony match instead of a string — `id: !glob "hotfix-*"`, or `{"id": {"glob": "hotfix-*"}}`
 // in a JSON-shaped charter — and are then evaluated by tony.Match. `system` and `kind`
 // cannot, and that is structural rather than unfinished: those two become a docd WATCH PATH
-// (Formula.Subtrees, engine.witnessPreconditions) and the store's List prefilter (Select), and
+// (Formula.Subtrees) and the store's List prefilter (Select), and
 // an operator has no path. `id` is only ever a filter, which is exactly why it goes first.
 //
 // `value` IS A TONY MATCH TOO, evaluated at the payload ROOT. A payload is an ir.Node

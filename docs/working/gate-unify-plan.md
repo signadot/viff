@@ -182,14 +182,20 @@ and joins. `resumeSelection` and `stillSelects` stay; `ownsMotion` reads the que
 `exclusive` on a record with any `need >= 2` is refused where the binding is applied, for the
 reason the residual gives: it would turn a quorum into a threshold of one silently.
 
-**Proves:** `provider_test`, `providerceiling_test`, `motion_seed_test` and both
-`motionresume_test`s pass over the question record. A `select: vote, need: 2` over three doers
-settles on the second ballot for one of them. A `within` that passes with no ballot records
-`no-pick` and spawns nothing. An exclusive binding over a `need: 2` selection is refused at
-install.
+**Proves:** the selection tests pass over the question record: a vote poses every eligible
+doer at the threshold and launches the one the answer names; an answer not on the ballot seats
+nobody; `within` is the question's deadline with no default, and a restart with the stamp in the
+past settles it on `none` and spawns nothing; a restart re-poses an open selection and the pick
+cast afterwards runs the doer; a package's selection is not baseline's to settle. A vote under
+an exclusive binding is refused at install, and an ask is not.
 
-`Tier: change`. The channel record goes away, but nothing outside the engine read it except
-`verse motion`, which step 5 removes.
+Two things came forward from step 5, because without them a selection cannot be answered
+from the CLI: `verse gate <id> --answer <option> --as <who>` and `verse gate <id>` showing one
+record. `verse motion` went with the channel it listed; the provider registry listing it
+shared a file with stays.
+
+`Tier: contract`. The charter spelling is unchanged, but `verse motion` and `--vote` are gone
+and the selection's record moved from `motion.channel` to `gate.question`.
 
 ### 5. One surface
 

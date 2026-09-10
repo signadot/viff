@@ -252,8 +252,8 @@ verse c -R demo                          # …and every charter under that addre
 
 **Two more things it does not confine**, stated because the boundary is easy to overstate. A spawn:
 a task acts in the world under its `grant`, and store confinement is not world confinement (see
-[provider selection](provider-selection.md)). And verse's own records — a task's mirror, a motion,
-a posed question — which the engine writes into
+[provider selection](provider-selection.md)). And verse's own records — a task's mirror, a posed
+question — which the engine writes into
 [verse's half of the tree](reference/entities.md#two-halves-one-tree), where no charter may be
 installed and no charter may write.
 
@@ -822,10 +822,11 @@ Startup gives the awaiter back, by the route the axis makes available:
   still selects the subject re-poses the same question, joins the record already standing, and
   the ballots already cast still count. Re-evaluated, not resumed, which is the distinction the
   next paragraph turns on.
-- A **who-select** motion (a `spawn` with a `provider`) opens *after* the action has written
-  its latch, so nothing re-fires it. It records the `chain` of the action it is blocking, and
-  startup navigates that chain back into the charter and re-enters the selection — the same
-  lookup key a resumed task's hooks are rehydrated from.
+- A **selection's** question (a `spawn` with a `provider`) opens *after* the action has
+  written its latch, so nothing re-fires it. It records the `chain` of the action it is
+  blocking, and startup navigates that chain back into the charter and re-enters the
+  selection, which re-poses the same question — the same lookup key a resumed task's hooks
+  are rehydrated from.
 
 A question nothing can answer any more is *settled* rather than left standing: its rule left the
 charter, its action moved, its subject is gone — or, the case that is easy to miss, **the

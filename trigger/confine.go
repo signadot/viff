@@ -66,7 +66,7 @@ func (e *Engine) Confinement() Subtree { return e.confine }
 // A rule's name is unique within a charter and not across them: two packages may each hold a
 // `review`, which is most of what packages are for. So a name alone does not identify a rule,
 // and everything that stored one — a motion's `trigger`, a gate's `origin` — stored half an
-// identity. What that cost is in ResumeMotions.
+// identity. What that cost is in ResumeSelections.
 func (e *Engine) At() string { return e.confine.KPath() }
 
 // KnowsElsewhere tells this engine how to ask whether a rule by some name is installed in

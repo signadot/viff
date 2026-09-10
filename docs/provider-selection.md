@@ -5,7 +5,7 @@ Every `spawn` answers two questions. *What* is the work: the prompt, the frame, 
 
 A spawn can answer it outright by naming a `driver`, or it can leave the answer to the verse.
 Declare a **provider selection** and the engine picks a doer at fire time from a registry of
-entities, through the same votable machinery a gate uses. The doer that wins contributes what it
+entities, through the same question a gate poses. The doer that wins contributes what it
 *is* — its driver, its standing instructions, the tools it works with, the authority it runs
 under — overlaid onto the spawn that selected it.
 
@@ -52,22 +52,24 @@ is derived at fire time, so doers are added and retired by writing and deleting 
 no charter change. An inline `eligible: [gpt, claude]` is the simpler form: a list of names,
 where the name is the driver and contributes nothing else, because a name has no attributes.
 
-`select` is the who-dial, and it is the same dial a whether-gate has:
+`select` is the who-dial, and it is the same dial a gate has:
 
 | `select` | who decides | surface |
 |---|---|---|
 | `auto` (default) | a rule — the first eligible, by id | none |
-| `ask` | one party | a motion, threshold 1 |
-| `vote` | the group, at `need` | a motion |
+| `ask` | one party | a question on the docket, every option at one |
+| `vote` | the group, at `need` | a question on the docket, every option at `need` |
 
-`within` arms a deadline on `ask`/`vote`: no pick by then closes the motion with no outcome
-and nothing spawns.
+`within` is the question's deadline on `ask`/`vote`, with no default: no pick by then settles it
+on `none` and nothing spawns.
 
-`auto` raises no motion at all, which is deliberate rather than an optimisation. The docket is the
-votable, attributable surface. An auto pick has no voter and casts no ballot, so opening a channel
-for it would put `outcome=gpt tally=0` on the docket: a decision reported as the group's that
-nobody made. A gate is the same rule from the other side: a question is posed for `ask`, never for
-`mode: auto`.
+`auto` poses no question at all, which is deliberate rather than an optimisation. The docket is
+the answerable, attributable surface. An auto pick has no answerer and casts no ballot, so a
+record for it would put a decision on the docket reported as the group's that nobody made. A
+gate is the same rule from the other side: a question is posed for `ask`, never for `mode: auto`.
+
+A vote under an `exclusive` resolver is refused at install: an exclusive binding answers alone,
+and a vote is a room. `ask` composes with it.
 
 Nor is an auto pick latched. Re-deriving per firing is deterministic given the same registry, since
 the eligible set sorts, and it follows the registry when that changes, where a committed pick would
@@ -180,7 +182,7 @@ keeps.
 Because a selection changes what a task may do, three surfaces say what it did.
 
 **The task entity** carries `doer`, `grant` and `tools` for every spawn, including `auto`, which
-raises no motion and therefore has no other surface. `doer` is separate from `driver` because a
+poses no question and therefore has no other surface. `doer` is separate from `driver` because a
 driver does not identify a doer: two doers on one driver is the case this feature serves, so a task
 showing only `llm` would report quite different work as the same agent.
 
@@ -189,18 +191,18 @@ verse data verse task instance <id>
 # doer: provider.treat.fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 
-**The docket** carries each option's envelope, so what a ballot would authorise is beside the
+**The docket** carries each option's envelope, so what an answer would authorise is beside the
 name it is cast for:
 
 ```sh
-verse motion
+verse gate
 ```
 
 ```tony
-- axis: select
-  capability: treat
-  chain: treat.onDone
-  id: aa92f8cc
+- chain: treat.onDone
+  gate: provider
+  id: verse.trigger.treat.provider~aa92f8cc
+  mode: ASK
   options:
   - grant: no-delegate
     id: fixer
@@ -210,8 +212,13 @@ verse motion
     id: memo
     need: 2
     tools: [read_file, list_dir]
-  status: open
+  origin: treat
   subject: demo.finding.7
+  where: engine
+```
+
+```sh
+verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as alice   # 1 of 2 for fixer
 ```
 
 A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary by
@@ -225,23 +232,24 @@ an operator answers "what would this doer be allowed to do" before voting.
 
 ## Across a restart
 
-A `vote` or `ask` selection is a question with no deadline of its own: the spawn waits until
-somebody picks. So it has to survive verse going down, and the who-axis is the harder of the
-two motions to bring back — it opens from *inside* the action, after that action has written
-its latch, so the subject no longer matches its rule and nothing re-fires it.
+A `vote` or `ask` selection without `within` is a question with no deadline: the spawn waits
+until somebody picks. So it has to survive verse going down, and it is the harder of the two
+kinds of question to bring back — it opens from *inside* the action, after that action has
+written its latch, so the subject no longer matches its rule and nothing re-fires it.
 
-What makes it resumable is the `chain` a who-motion carries: the address of the action the ballot
-is holding up (`review`, `review.onDone`, `review.seq[2]`). A start navigates that chain back into
-the charter and re-enters the selection, so the pick made afterwards decides who runs, exactly as it
-would have. It is on the docket entry too, because a who-motion names a subject and a capability,
-and neither of those answers "which rule is waiting on this ballot".
+What makes it resumable is the `chain` its question carries: the address of the action the
+answer is holding up (`review`, `review.onDone`, `review.seq[2]`). A start navigates that chain
+back into the charter and re-enters the selection, which re-poses the same question over the
+ballots already cast and against the deadline already stamped, so the pick made afterwards
+decides who runs, exactly as it would have. It is on the docket entry too, because a selection
+names a subject and a capability, and neither of those answers "which rule is waiting on this".
 
 Two things the resumed spawn cannot recover, both deliberate. `$references` resolve against the
 subject as it stands *now*, a re-read rather than a guess, and the run names no `occurrence`,
 because a restart is the world coming back rather than a commit causing something. A selection
 whose rule or action has left the charter, or whose subject is gone, is settled `orphaned` with a
 `why` instead: a ballot nobody reads is worse than an empty docket. See
-[a motion outlives the verse](trigger-model.md#a-motion-outlives-the-verse-that-opened-it).
+[a question outlives the verse](trigger-model.md#a-question-outlives-the-verse-that-asked-it).
 
 ## Corners
 

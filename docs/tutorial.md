@@ -687,8 +687,9 @@ which is what a condition is for.
 ### The same machinery answers *who*
 
 The second question hides in every `spawn`: who does the work. Replace a fixed `driver` with a
-`provider` selection and the eligible doers become the options on the same kind of motion, answered
-the same three ways: `auto` picks by rule, `ask` lets one person pick, `vote` lets the group. Doers
+`provider` selection and the eligible doers become the options on the same question a gate poses,
+answered by option (`verse gate <id> --answer <doer> --as <who>`) the same three ways: `auto` picks
+by rule, `ask` lets one person pick, `vote` lets the group. Doers
 are ordinary entities, so you add or retire them by writing entities rather than by editing the
 charter, and a doer may only ever *narrow* the authority the spawn granted. That is its own
 subject: [provider selection](provider-selection.md).

@@ -805,10 +805,102 @@ func renderFrame(s string, in, out codec.Format, color, wire bool) string {
 
 // ── gate ─────────────────────────────────────────────────────────────────────
 
+// gateConfig is the docket command: bare lists it, `<id>` shows one record, and `<id>
+// --answer <option> --as <who>` answers it by option. approve and deny remain as subcommands
+// for the two options every question has unless it names its own.
+type gateConfig struct {
+	*cli.Command
+	Answer   string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
+	As       string `cli:"name=as desc='identity answering (REQUIRED with --answer — a decision names who made it)'"`
+	Say      string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
+	Override bool   `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
+}
+
 func gateCmd() *cli.Command {
-	return collection("gate", "gates", "/gates",
-		"gate — pending human-in-the-loop decisions; answer one with approve|deny",
-		gateAnswerCmd(true), gateAnswerCmd(false))
+	cfg := &gateConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "gate").
+		WithAliases("gates").
+		WithSynopsis("gate — the docket: bare lists it, <id> shows one, <id> --answer <option> --as <who> answers it (approve|deny are the two default options)").
+		WithOpts(append(opts, filterOpts()...)...).
+		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false)).
+		WithRun(func(cc *cli.Context, args []string) error {
+			args, err := cfg.Parse(cc, args)
+			if err != nil {
+				return err
+			}
+			if handled, err := dispatch(cfg.Command, cc, args); handled {
+				return err
+			}
+			switch len(args) {
+			case 0:
+				if cfg.Answer != "" {
+					return fmt.Errorf("%w: --answer answers one question, so it wants an id: "+
+						"`verse gate <id> --answer %s --as <who>`", cli.ErrUsage, cfg.Answer)
+				}
+				resp, err := httpGet("/gates", nil)
+				if err != nil {
+					return fmt.Errorf("gate: %w", err)
+				}
+				return printBody(cc, resp)
+			case 1:
+				// `list` is THE mistake a bare-listing collection invites, and an id it is not:
+				// refused by name, before anything is dialled, as every collection refuses it.
+				if args[0] == "list" {
+					return noArgs(cfg.Command, "gate", args)
+				}
+				if cfg.Answer == "" {
+					// One record, as it stands: the options, the ballots, the deadline, the
+					// outcome — what the listing compacts.
+					resp, err := httpGet("/entity", url.Values{"at": {questionPath(args[0])}})
+					if err != nil {
+						return fmt.Errorf("gate: %w", err)
+					}
+					return printBody(cc, resp)
+				}
+				if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+					return err
+				}
+				return answerGate(cc, args[0], cfg.Answer, cfg.As, cfg.Say, cfg.Override, "answered")
+			default:
+				return fmt.Errorf("%w: gate takes one id", cli.ErrUsage)
+			}
+		})
+}
+
+// questionPath is where a question's record stands in the store.
+func questionPath(id string) string {
+	return entity.VerseRef("gate", "question", id).KPath()
+}
+
+// answerGate posts one answer and says what became of it: settled, or recorded on a question
+// that takes more than one voice, with where the tally stands.
+func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done string) error {
+	body := api.Resolve{ID: id, Choice: choice, By: as, Override: override}
+	if say != "" {
+		body.Say = []string{say}
+	}
+	resp, err := httpPost("/gate/resolve", body)
+	if err != nil {
+		return fmt.Errorf("gate %s: %w", choice, err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		fmt.Fprintln(cc.Out, done, id)
+	case http.StatusAccepted:
+		// Recorded and not yet settled: the question takes more than one voice, and the
+		// server says where the tally stands. Not an error, and not settled either.
+		msg, _ := io.ReadAll(resp.Body)
+		fmt.Fprintln(cc.Out, id+":", strings.TrimSpace(string(msg)))
+	default:
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gate %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
+	}
+	return nil
 }
 
 // The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
@@ -870,28 +962,7 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
 		return err
 	}
-	body := api.Resolve{ID: args[0], Choice: choiceOf(approve), By: cfg.As, Override: cfg.Override}
-	if cfg.Say != "" {
-		body.Say = []string{cfg.Say}
-	}
-	resp, err := httpPost("/gate/resolve", body)
-	if err != nil {
-		return fmt.Errorf("gate %s: %w", verb, err)
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusNoContent:
-		fmt.Fprintln(cc.Out, done, args[0])
-	case http.StatusAccepted:
-		// Recorded and not yet settled: the question takes more than one voice, and the
-		// server says where the tally stands. Not an error, and not "approved" either.
-		msg, _ := io.ReadAll(resp.Body)
-		fmt.Fprintln(cc.Out, args[0]+":", strings.TrimSpace(string(msg)))
-	default:
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("gate %s: %s: %s", verb, resp.Status, strings.TrimSpace(string(msg)))
-	}
-	return nil
+	return answerGate(cc, args[0], choiceOf(approve), cfg.As, cfg.Say, cfg.Override, done)
 }
 
 // choiceOf spells a yes-or-no answer as the option it chooses. approve and deny are the two

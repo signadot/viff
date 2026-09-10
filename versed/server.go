@@ -985,14 +985,14 @@ func (s *Server) Start(ctx context.Context) {
 	// same listing between them — baseline takes the unstamped records, a package its own.
 	phase("restored packages", s.restorePackages)
 
-	// And the docket. A motion is durable and the goroutine awaiting it is not, so an open
-	// motion left by the previous verse has nobody reading its ballots: this gives each one
+	// And the docket. A selection's question is durable and the goroutine awaiting it is
+	// not, so one left by the previous verse has nobody reading its ballots: this gives each
 	// its awaiter back, and settles the ones no charter can answer any more.
 	//
 	// AFTER the charter, which is what it navigates back into to find what a ballot is
 	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
 	// rather than starting a second run beside work that outlived us.
-	phase("resumed motions", s.resumeMotions) // baseline AND every package's own engine
+	phase("resumed selections", s.resumeSelections) // baseline AND every package's own engine
 	// And the clocks. A question's deadline is durable and the timer that fires it is not.
 	phase("armed deadlines", s.armDeadlines)
 	// And the sources, last: each one's first pass is a write the restored charter should be

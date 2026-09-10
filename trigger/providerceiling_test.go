@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/task"
 )
 
 // A spawn that selects its doer must state the authority that selection happens within. The
@@ -160,15 +161,22 @@ func TestBallotOffersOnlySeatableDoers(t *testing.T) {
 		t.Fatalf("ballot options = %v, want [careful] — greedy exceeds the ceiling", options)
 	}
 
-	// And a ballot cast for the refused doer cannot seat it: the motion's options are the
-	// eligible set, so a vote for `greedy` is a vote for something not on the ballot.
-	did := motionChannelID(providerSpecSeed(subj, spawn.Provider))
-	entitytest.Set(t, store, entity.RefAt("vote", did, "x"), entity.Obj{"choice": "greedy"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("vote", did, "y"), entity.Obj{"choice": "careful"}.Payload())
-
-	frag, ok := eng.selectProvider(spawn, subj)
-	if !ok || frag.Grant != "read-only" {
-		t.Fatalf("select = (%+v, %v), want the seatable doer", frag, ok)
+	// And an answer naming the refused doer cannot seat it: the question's options are the
+	// eligible set, so a choice of `greedy` is a choice of something not on the ballot.
+	reg := task.NewRegistry()
+	eng = New(store, reg)
+	frag, ok, q := selecting(t, eng, reg, spawn, subj)
+	if ids := task.OptionIDs(q.Options); len(ids) != 1 || ids[0] != "careful" {
+		t.Fatalf("the ballot offers %v, want only the seatable doer", ids)
+	}
+	reg.Answer(q.ID, task.Choose("greedy", "x"))
+	if f, o := <-frag, <-ok; o || !f.IsZero() {
+		t.Fatalf("select = (%+v, %v), want nobody seated by a choice not on the ballot", f, o)
+	}
+	frag, ok, q = selecting(t, eng, reg, spawn, subj)
+	reg.Answer(q.ID, task.Choose("careful", "y"))
+	if f, o := <-frag, <-ok; !o || f.Grant != "read-only" {
+		t.Fatalf("select = (%+v, %v), want the seatable doer", f, o)
 	}
 }
 

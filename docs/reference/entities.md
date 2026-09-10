@@ -227,12 +227,12 @@ record of a run that happened) and `task.claim.*` (a sequence's run claim); `gat
 for who is watching one run — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
 installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
 `trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
-`motion.channel.*` (the docket); `runners.*` (where work can run) and `sources.*` (what
-reflects an external system in).
+`runners.*` (where work can run) and `sources.*` (what reflects an external system in). A
+question's ballots live on its record (`gate.question.<id>.ballots.<who>`), written by the
+answer path that tallies them.
 
-Two things are deliberately not in verse's half. `vote.*` — a ballot is an act somebody takes,
-not a record verse keeps, which is why casting one is an ordinary write. And `provider.*` — the
-registry of doers is written by whoever runs the verse.
+One thing is deliberately not in verse's half: `provider.*` — the registry of doers is written
+by whoever runs the verse.
 
 The reserved half is read like anything else and written only through the verbs that own it.
 `verse data verse trigger rule review` reads a rule; `verse data --put` at any address under

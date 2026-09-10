@@ -100,7 +100,7 @@ verse
   is an answer rather than an error (exit 0).
 
     verse ps --if '{status: running}' --trim '{id status}'
-    verse motion --if '{axis: whether}'
+    verse gate --if '{gate: provider}'
     verse data demo pr --trim '{stage}'            # …per ENTITY, not per top-level key
     verse watch demo --trim '{at to}'
 
@@ -174,9 +174,18 @@ verse
           same as separate words — and whichever comes FIRST is the one in use, so an id may
           hold the others. entities.md#addressing is the whole of it, including which
           commands take which spelling.
-  gate (gates)                               pending decisions across the fleet
+  gate (gates)                               the docket: every question waiting on somebody —
+                                             a gate's, one of a task's actions, a provider
+                                             selection's — with its options and ballots
+          <id>                               …just that one record, as it stands: options,
+                                             ballots, deadline, outcome. ONE TOKEN, its id
+          <id> --answer <option> --as <who>  answer it by option. A yes-or-no question's
+                                             options are proceed and deny; a selection's are
+                                             its doers. A question that takes more than one
+                                             voice records the ballot and says where the
+                                             tally stands (`1 of 2 for proceed`)
           approve <id> [--say <text>] · deny <id> [--say <text>]
-          approve: y, yes · deny: n, no · --say: -s
+          approve: y, yes · deny: n, no · --say: -s — the two default options, as verbs
   charter (charters, c) [<path>]             THE INSTALLED CHARTER, at a path: what may
                                              be written there, what it reads, its rules
                                              and strata in full, and the same at every
@@ -258,26 +267,6 @@ verse
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
           the shell would expand — so quote it. A second positional is refused rather
           than read as a step
-  motion (motions)                           the motions on the docket (votes + provider
-                                             selections), open and settled — a settled one
-                                             carries its outcome, or `orphaned` and a `why`
-          <id>                               …just that one, as one document rather than a
-                                             list of one. A motion is ONE TOKEN, its id — an
-                                             id that is not there is refused, not answered
-                                             with nothing
-          <id> --vote <choice> --as <who>    cast a ballot into it (approve|reject, or a
-                                             select-option). The CHOICE IS A FLAG's value
-                                             because it is data — a select's options are
-                                             provider names, an open set — where a gate's
-                                             approve|deny is a closed binary and so a verb.
-                                             The id and the choice are both bare words, so a
-                                             ballot with them the wrong way round is refused
-                                             and the refusal says which way it goes
-          --watch                            …the same motions as they change instead of as
-                                             they stand, one frame per line, narrowed to the
-                                             one named. It streams from now; for history,
-                                             `verse watch verse motion channel --ago <n>` is
-                                             the same stream where the cursor lives
   provider (providers)                       the provider registry (provider:<capability>:<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

@@ -88,6 +88,12 @@ type GateQuestion struct {
 	// settles on NoOption: the clock decided, and it decided nothing, which a caller reads
 	// as a refusal that nobody made (a provider selection reads it as no pick).
 	Deadline *Deadline
+	// Chain is the kpath of the ACTION this question is holding up, for a question a spawn
+	// asks on its own behalf — which doer runs it. A gate's question is the firing's and
+	// carries none: the firing comes back by the rule being evaluated again, where a
+	// selection opens after the action has written its latch, so nothing re-fires it, and the
+	// chain is what a restart navigates back through to re-enter it.
+	Chain string
 }
 
 // Deadline is how long a question stands, and what it settles on when the clock passes.
@@ -124,6 +130,13 @@ const NoOption = "none"
 type Option struct {
 	ID   string `tony:"field=id"`
 	Need int    `tony:"field=need,omitzero"`
+	// Grant and Tools are the ENVELOPE this option would run under, for a question whose
+	// options are doers. Once options differ in what they may do, choosing between two names
+	// is choosing between two authorities, and a ballot that showed only names would have the
+	// room authorise a capability nobody put in front of them. Empty for an option that is
+	// not a doer, or a doer that adds nothing to the spawn.
+	Grant string   `tony:"field=grant,omitzero"`
+	Tools []string `tony:"field=tools,omitzero"`
 }
 
 // The two options every question has unless it says otherwise.

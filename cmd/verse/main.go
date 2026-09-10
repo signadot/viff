@@ -200,7 +200,6 @@ func rootCmd() *cli.Command {
 			resolverCmd(),
 			runnerCmd(),
 			sourceCmd(),
-			motionCmd(),
 			providerCmd(),
 			connectCmd(),
 			disconnectCmd(),

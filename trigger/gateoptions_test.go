@@ -66,9 +66,12 @@ func TestAThresholdGatePosesItsOptions(t *testing.T) {
 	if q.Mode != task.Ask {
 		t.Errorf("mode = %v, want ask implied by the threshold", q.Mode)
 	}
-	want := []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 1}}
-	if len(q.Options) != 2 || q.Options[0] != want[0] || q.Options[1] != want[1] {
-		t.Fatalf("options = %+v, want %+v", q.Options, want)
+	ids, needs := task.OptionIDs(q.Options), []int{}
+	for _, o := range q.Options {
+		needs = append(needs, o.Need)
+	}
+	if strings.Join(ids, ",") != "proceed,deny" || len(needs) != 2 || needs[0] != 2 || needs[1] != 1 {
+		t.Fatalf("options = %+v, want proceed at two and deny at one", q.Options)
 	}
 	if q.Deadline != nil {
 		t.Errorf("a gate with no deadline posed one: %+v", q.Deadline)

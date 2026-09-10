@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"fmt"
+	"github.com/signadot/verse/launch"
 	"strconv"
 	"strings"
 
@@ -131,6 +132,32 @@ func navigate(t Trigger, chain string) (*Action, bool) {
 		}
 	}
 	return cur, true
+}
+
+// EachSpawn visits every spawn under an action with the chain that names it — the action's
+// own, each completion hook's, each `seq` element's — in the same spellings navigate reads
+// back. It is the walk a check over what a charter would launch needs, and it lives beside
+// navigate so the two cannot disagree about what a chain is.
+func (a *Action) EachSpawn(fn func(chain string, spec *launch.Spec)) {
+	a.eachSpawn("", fn)
+}
+
+func (a *Action) eachSpawn(chain string, fn func(string, *launch.Spec)) {
+	if a == nil {
+		return
+	}
+	if a.Spawn != nil {
+		fn(chain, a.Spawn)
+	}
+	for _, h := range []struct {
+		name string
+		act  *Action
+	}{{"onDone", a.OnDone}, {"onFailed", a.OnFailed}, {"onCancelled", a.OnCancelled}, {"onOrphaned", a.OnOrphaned}} {
+		h.act.eachSpawn(chain+"."+h.name, fn)
+	}
+	for i := range a.Seq {
+		a.Seq[i].eachSpawn(fmt.Sprintf("%s.%s[%d]", chain, seqField, i), fn)
+	}
 }
 
 // hookNamed resolves a completion hook by its FIELD name — the inverse of hookField, and the

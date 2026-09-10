@@ -48,8 +48,8 @@ are carried anyway so the entity says the same thing about every driver.
 The deadline is a **duration**, because a binding cannot know when a question will be posed. The
 question stamps `escalatesAt = now + within` when it is posed, absolute, so a restart cannot slide
 it and no arithmetic happens on a wall clock later. It is spelled `{within, then}` rather than
-`escalatesAfter` because a provider selection and a motion already call a duration `within`, and
-because a motion's deadline picks a winning *option* while this one picks a new *answerer*, so the
+`escalatesAfter` because a provider selection and a gate's deadline already call a duration
+`within`, and because that deadline picks a winning *option* while this one picks a new *answerer*, so the
 outcome is a value rather than a fact about the field's name.
 
 `verse resolver` manages it: bare it lists, and `add`, `show` and `remove` act on one. A verb

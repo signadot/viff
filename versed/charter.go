@@ -11,6 +11,8 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -458,7 +460,7 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGrou
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
-	tx := &charterTx{s: s}
+	tx := &charterTx{s: s, store: s.scopedStore(r)}
 	for _, g := range groups {
 		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
 		// refused must leave the address as it found it, and a package engine standing where
@@ -622,9 +624,10 @@ func (s *Server) charterEngineAt(r *http.Request, at string) (*trigger.Engine, e
 // is as much as an engine holding live watches can offer and is what "the file is either the
 // charter or it is not" needs.
 type charterTx struct {
-	s   *Server
-	at  string
-	eng *trigger.Engine
+	s     *Server
+	store entity.Store
+	at    string
+	eng   *trigger.Engine
 	// fresh is every address this REQUEST brought into being. A refusal drops each one's
 	// engine: an engine left running at an address with nothing installed observes on behalf
 	// of no charter, and a later install there would find it rather than make one.
@@ -692,6 +695,9 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if t.Name == "" {
 		return http.StatusBadRequest, errors.New("a rule needs a name")
 	}
+	if err := exclusiveVote(tx.store, t); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("rule %q: %w", t.Name, err)
+	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Rule(t.Name)
 	if err := eng.InstallTrigger(t); err != nil {
@@ -705,6 +711,32 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 		return nil
 	})
 	return http.StatusCreated, nil
+}
+
+// exclusiveVote refuses a spawn whose selection is a vote and whose resolver answers
+// exclusively. An exclusive binding's answer is the only one that counts, and a vote is a room:
+// under one, a threshold of three would either never be reached — one answerer, one ballot —
+// or be reached by a binding casting as three, and neither is what the author wrote.
+// `select: ask` is one party choosing and composes with it; a vote does not.
+func exclusiveVote(store entity.Store, t trigger.Trigger) error {
+	var err error
+	t.Action.EachSpawn(func(chain string, spec *launch.Spec) {
+		if err != nil || spec.Provider == nil || spec.Provider.Select != "vote" || spec.Provider.Need < 2 {
+			return
+		}
+		if spec.Resolver == "" {
+			return
+		}
+		res, ok := resolver.Find(store, spec.Resolver)
+		if !ok || !res.Exclusive {
+			return
+		}
+		err = fmt.Errorf("%s: `select: vote` at `need: %d` under resolver %q, which is exclusive — "+
+			"an exclusive binding answers alone, and a vote is a room. Use `select: ask`, drop "+
+			"`exclusive` on the binding, or name a binding that is not exclusive",
+			chain, spec.Provider.Need, spec.Resolver)
+	})
+	return err
 }
 
 // refuse unwinds what this request installed and dresses the refusal that caused it.

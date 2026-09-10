@@ -156,10 +156,16 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-â
 the record settles in the same write as the ballot that reaches a threshold. A gate with a
 `deadline` lists it, and settles on its default when the clock passes.
 
-**A provider selection is not here yet.** A `spawn` with a `provider` opens a *motion* instead â€”
-a different entity (`verse.motion.channel`), a different list (`verse motion`), a different answer
-(`--vote <choice>` rather than approve|deny). That is the last of a split that used to divide gates
-too, and it moves onto this docket next (git-issue `sp27m3g1h12krdgve1n0`).
+**A provider selection is here too.** A `spawn` with a `provider` and `select: ask|vote` poses
+a question whose options are the eligible doers, each carrying the envelope it would run under,
+and `chain` naming the action it holds up. It is answered by option:
+
+```sh
+verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as human:you
+```
+
+`within` is its deadline with no default: the clock passing with no pick settles it on `none`,
+and nothing spawns.
 
 The `~` that separates the gate from its task needs no quoting and no escaping, in a shell
 or in a URL. On a terminal, `run --attach` prompts inline instead

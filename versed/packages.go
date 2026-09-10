@@ -101,7 +101,7 @@ func (s *Server) packageEngines() []*trigger.Engine {
 	return out
 }
 
-// resumeMotions gives every open motion its awaiter back — across ALL the engines this verse
+// resumeSelections gives every open selection its awaiter back — across ALL the engines this verse
 // runs, which is the part that was missing.
 //
 // A motion is opened by a rule, a rule lives in a charter, and a charter runs in an engine of
@@ -114,7 +114,7 @@ func (s *Server) packageEngines() []*trigger.Engine {
 // which is what makes the answer right for motions written from here on (they carry `at`). And
 // baseline — which sweeps everything older than that field — is told how to ask the others
 // before it settles anything, because "not in my charter" was never the question.
-func (s *Server) resumeMotions() {
+func (s *Server) resumeSelections() {
 	pkgs := s.packageEngines()
 	s.Eng.KnowsElsewhere(func(name string) bool {
 		for _, e := range pkgs {
@@ -124,9 +124,9 @@ func (s *Server) resumeMotions() {
 		}
 		return false
 	})
-	s.Eng.ResumeMotions()
+	s.Eng.ResumeSelections()
 	for _, e := range pkgs {
-		e.ResumeMotions()
+		e.ResumeSelections()
 	}
 }
 
