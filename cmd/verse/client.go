@@ -870,7 +870,7 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
 		return err
 	}
-	body := api.Resolve{ID: args[0], Approve: approve, By: cfg.As, Override: cfg.Override}
+	body := api.Resolve{ID: args[0], Choice: choiceOf(approve), By: cfg.As, Override: cfg.Override}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}
@@ -885,6 +885,15 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	}
 	fmt.Fprintln(cc.Out, done, args[0])
 	return nil
+}
+
+// choiceOf spells a yes-or-no answer as the option it chooses. approve and deny are the two
+// options every question has unless it names its own, and these commands answer only those.
+func choiceOf(approve bool) string {
+	if approve {
+		return "proceed"
+	}
+	return "deny"
 }
 
 // ── entity ───────────────────────────────────────────────────────────────────

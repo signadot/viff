@@ -115,7 +115,7 @@ distinction is carried in the status, and across the Go seam as `task.ErrUnreach
 ```
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
-POST   /tasks/{id}/resolve  {id, approve, by, say?, key}     answer a gate
+POST   /tasks/{id}/resolve  {id, choice, by, say?, key}      answer a gate: choice is proceed | deny, or an option the record names
        204 applied · 404 no such decision · 409 already answered · 502 runner unreachable
 POST   /tasks/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /tasks/{id}/cancel   {by, key}

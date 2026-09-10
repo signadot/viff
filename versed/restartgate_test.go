@@ -108,7 +108,7 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	// docket. The answer has to reach the worker that is actually blocked.
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering after a restart = %s, want 204", resp.Status)
@@ -249,7 +249,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: posed, Approve: true, By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: posed, Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the re-posed question = %s, want 204 — it is listed but nothing is waiting", resp.Status)

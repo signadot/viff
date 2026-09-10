@@ -1959,9 +1959,32 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
 		return
 	}
-	res := task.Resolution{Proceed: body.Approve, By: body.By, Steer: body.Say}
+	if body.Choice == "" {
+		http.Error(w, "choice is required: an answer names the option it chooses", http.StatusBadRequest)
+		return
+	}
+	res := task.Choose(body.Choice, body.By)
+	res.Steer = body.Say
 
 	store := s.scopedStore(r)
+	// The options are the RECORD's, and a choice that is not one of them is refused before
+	// anything is delivered or recorded: a ballot for an option nobody offered is not dissent,
+	// it is a typo, and the refusal lists what could have been chosen. A question with no
+	// record yet (the registry posted it a moment ago) has the default two.
+	q, found, err := store.Get(mirror.QuestionRef(body.ID))
+	if unreadable(w, r, err) {
+		return
+	}
+	opts := task.DefaultOptions()
+	if found {
+		opts = mirror.OptionsOf(q.Payload)
+	}
+	need, isOption := task.Need(opts, body.Choice)
+	if !isOption {
+		http.Error(w, fmt.Sprintf("%q is not an option here; the options are %s",
+			body.Choice, strings.Join(task.OptionIDs(opts), ", ")), http.StatusBadRequest)
+		return
+	}
 	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
 	// unchanged, and a person may read — and argue about — what an exclusive binding owns.
 	// And not a security boundary: it decides who answers an ask, never what an answer may
@@ -1983,6 +2006,30 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	owner := taskID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
+	}
+
+	// A threshold above one is a TALLY. The ballot is recorded and the question stays open
+	// until the choice has as many as it needs; only the ballot that reaches the threshold
+	// goes on to settle, and that one is written by the settle itself, so the record never
+	// shows a threshold reached without saying so. Counted forward from the read for the
+	// common case, then read back after the write for the race two ballots landing at once
+	// would otherwise lose (see mirror.CastBallot).
+	if need > 1 && found && entity.Str(q.Payload, "status") == mirror.QuestionPending {
+		count := mirror.Tally(q.Payload)[body.Choice]
+		if entity.Str(entity.Get(entity.Get(q.Payload, "ballots"), body.By), "choice") != body.Choice {
+			count++ // this ballot is new, or changes its answerer's mind
+		}
+		if count < need {
+			count, err = mirror.CastBallot(store, body.ID, res)
+			if unreadable(w, r, err) {
+				return
+			}
+			if count < need {
+				w.WriteHeader(http.StatusAccepted)
+				fmt.Fprintf(w, "recorded: %d of %d for %s\n", count, need, body.Choice)
+				return
+			}
+		}
 	}
 
 	err = nil
@@ -2033,6 +2080,14 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		return
 	}
 	if settled || errors.Is(err, task.ErrAlreadyAnswered) {
+		// Not stale if it COUNTED: two ballots that reached a threshold together both tried
+		// to settle, one did, and the other's ballot is on the record under the outcome it
+		// chose. That answerer decided the same thing the question settled on, and telling
+		// them they lost a race would report a decision they were part of as one they missed.
+		if mirror.Counted(store, body.ID, res) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if won == "" {
 			won = "an earlier answer"
 		}
@@ -2249,16 +2304,11 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id is required: a verdict names the question it answers", http.StatusBadRequest)
 		return
 	}
-	var proceed bool
-	switch v.Verdict {
-	case "proceed":
-		proceed = true
-	case "deny":
-	case "escalate":
+	// `escalate` is the one verdict that is not a choice: it hands the question up rather
+	// than settling it. Everything else names an option, and whether the record carries that
+	// option is answerQuestion's to say, with the options listed.
+	if v.Verdict == "escalate" {
 		s.escalate(w, r, v.ID, binding, origin)
-		return
-	default:
-		http.Error(w, "verdict must be proceed or deny", http.StatusBadRequest)
 		return
 	}
 	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
@@ -2287,7 +2337,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		taskID = origin.ID()
 	}
 	s.answerQuestion(w, r, api.Resolve{
-		ID: v.ID, Approve: proceed, By: binding, Say: v.Say,
+		ID: v.ID, Choice: v.Verdict, By: binding, Say: v.Say,
 	}, taskID)
 }
 

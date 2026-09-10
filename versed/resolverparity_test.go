@@ -108,7 +108,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 
 	askingRun(t, srv, ts, "byhand", "")
 	byHand := planeOf(t, ts, "byhand", func(qid string) {
-		r := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Approve: true, By: "human:scott"})
+		r := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
 		r.Body.Close()
 	})
 

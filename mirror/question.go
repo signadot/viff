@@ -1,8 +1,11 @@
 package mirror
 
 import (
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
@@ -93,8 +96,121 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 	if eff := effectLists(p.Effects); len(eff) > 0 {
 		rec["effects"] = eff
 	}
+	// Always written, default included, so the record says what can be chosen without a
+	// reader having to know what a question with no options means. The tally reads it back.
+	rec["options"] = optionList(q.OptionsOrDefault())
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
+}
+
+// optionList renders options as the record carries them: `[{id, need}]`, in order.
+func optionList(opts []task.Option) []any {
+	out := make([]any, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, entity.Obj{"id": o.ID, "need": o.Need})
+	}
+	return out
+}
+
+// OptionsOf reads a record's options, the default two for a record that names none — which
+// is every record posted before options existed, and a brokered record whose only writer was
+// a frame.
+func OptionsOf(p entity.Payload) []task.Option {
+	f := ir.Uncomment(entity.Get(p, "options"))
+	if f == nil || f.Type != ir.ArrayType {
+		return task.DefaultOptions()
+	}
+	var out []task.Option
+	for _, el := range f.Values {
+		id := entity.Str(el, "id")
+		if id == "" {
+			continue
+		}
+		out = append(out, task.Option{ID: id, Need: intField(el, "need")})
+	}
+	if len(out) == 0 {
+		return task.DefaultOptions()
+	}
+	return out
+}
+
+// Tally counts the ballots on a record by the option they chose.
+func Tally(p entity.Payload) map[string]int {
+	out := map[string]int{}
+	for _, b := range entity.Fields(entity.Get(p, "ballots")) {
+		if c := entity.Str(b, "choice"); c != "" {
+			out[c]++
+		}
+	}
+	return out
+}
+
+// intField reads an integer field, 0 when absent or not a number. The record is written by
+// this package with an int, and read back through the store as a number node.
+func intField(p entity.Payload, field string) int {
+	f := ir.Uncomment(entity.Get(p, field))
+	if f == nil || f.Type != ir.NumberType {
+		return 0
+	}
+	if f.Int64 != nil {
+		return int(*f.Int64)
+	}
+	if f.Float64 != nil {
+		return int(*f.Float64)
+	}
+	n, _ := strconv.Atoi(f.Number)
+	return n
+}
+
+// CastBallot records one ballot that does NOT settle the question, and reports the tally for
+// its choice as read back after the write. The settling ballot is not written here: it rides
+// the settle itself (AnswerQuestion), so that the ballot which reaches a threshold and the
+// record saying so are one write.
+//
+// Read back rather than counted forward, because two ballots can land at once, each read the
+// record before the other wrote, and each count one short. The write merges both; the read
+// after it sees both; and whichever caller reads the threshold reached goes on to settle. A
+// caller that read it too may find the settle already taken, which is the ordinary race two
+// answerers have always had, and it is told so.
+func CastBallot(store entity.Store, id string, res task.Resolution) (count int, err error) {
+	ref := QuestionRef(id)
+	_, _, err = store.Write(entity.Write{
+		At:    ref.At("ballots"),
+		Value: entity.Obj{res.By: ballot(res)}.Payload(),
+	})
+	if err != nil {
+		return 0, err
+	}
+	e, ok, err := store.Get(ref)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, nil
+	}
+	return Tally(e.Payload)[res.Chosen()], nil
+}
+
+// ballot is one answerer's entry under `ballots`: what they chose, when, and what they said.
+// Keyed by who, so an answerer who changes their mind replaces their own ballot rather than
+// casting two, and two answerers cannot lose each other's.
+func ballot(res task.Resolution) entity.Obj {
+	rec := entity.Obj{
+		"choice": res.Chosen(),
+		"at":     time.Now().UTC().Format(time.RFC3339),
+	}
+	if len(res.Steer) > 0 {
+		rec["say"] = anyStrings(res.Steer)
+	}
+	return rec
+}
+
+func anyStrings(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
 }
 
 // PostFrameQuestion publishes a question reported as a FRAME — the brokered path, where the
@@ -232,17 +348,17 @@ func Overrode(store entity.Store, id, owner string) {
 }
 
 func answerRecord(res task.Resolution) entity.Obj {
-	verdict := "deny"
-	if res.Proceed {
-		verdict = "proceed"
-	}
 	rec := entity.Obj{
 		"status":     QuestionAnswered,
-		"verdict":    verdict,
+		"verdict":    res.Chosen(),
 		"answeredAt": time.Now().UTC().Format(time.RFC3339),
 	}
 	if res.By != "" {
 		rec["by"] = res.By
+		// The settling ballot rides the settle. One write says both that this answerer chose
+		// this and that the choice reached its threshold, so no reader can see the one
+		// without the other. A settle nobody cast (auto, cancelled) is not a ballot.
+		rec["ballots"] = entity.Obj{res.By: ballot(res)}
 	}
 	if res.Note != "" {
 		rec["why"] = res.Note
@@ -252,11 +368,7 @@ func answerRecord(res task.Resolution) entity.Obj {
 	// is an instruction to the task, and the record of a decision that omitted it would
 	// keep the yes and lose the condition on it.
 	if len(res.Steer) > 0 {
-		say := make([]any, len(res.Steer))
-		for i, s := range res.Steer {
-			say[i] = s
-		}
-		rec["say"] = say
+		rec["say"] = anyStrings(res.Steer)
 	}
 	return rec
 }
@@ -345,6 +457,21 @@ func SettledBy(store entity.Store, id string) (string, bool, error) {
 	return by, true, nil
 }
 
+// Counted reports whether an answer is on a settled record as one of the ballots behind its
+// outcome: the record settled on what this answerer chose, and their ballot is there. It is
+// the difference between losing a race and being part of the decision that won it.
+func Counted(store entity.Store, id string, res task.Resolution) bool {
+	e, ok, err := store.Get(QuestionRef(id))
+	if err != nil || !ok {
+		return false
+	}
+	p := e.Payload
+	if entity.Str(p, "status") != QuestionAnswered || entity.Str(p, "verdict") != res.Chosen() {
+		return false
+	}
+	return entity.Str(entity.Get(entity.Get(p, "ballots"), res.By), "choice") == res.Chosen()
+}
+
 // StaleAnswer records an answer that arrived after the question was settled. Losing a race is
 // an outcome, not an error: the answerer decided something, and a docket that keeps only the
 // winner cannot show that a question was contested.
@@ -354,24 +481,16 @@ func SettledBy(store entity.Store, id string) (string, bool, error) {
 // there is nothing here to serialize. One answerer who answers late twice overwrites their own
 // entry, which is right: it is their answer, and the later one is what they think.
 func StaleAnswer(store entity.Store, id string, res task.Resolution) {
-	verdict := "deny"
-	if res.Proceed {
-		verdict = "proceed"
-	}
 	by := res.By
 	if by == "" {
 		by = "unattributed"
 	}
 	rec := entity.Obj{
-		"verdict": verdict,
+		"verdict": res.Chosen(),
 		"at":      time.Now().UTC().Format(time.RFC3339),
 	}
 	if len(res.Steer) > 0 {
-		say := make([]any, len(res.Steer))
-		for i, s := range res.Steer {
-			say[i] = s
-		}
-		rec["say"] = say
+		rec["say"] = anyStrings(res.Steer)
 	}
 	// WRITTEN AT `stale`, NOT AT `stale.<by>`, because a write does not create the path it
 	// descends through: nothing else writes this field, so the first stale answer to a question
@@ -441,7 +560,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 		return
 	}
 	for _, k := range []string{"verdict", "by", "why", "say", "answeredAt", "delivered",
-		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt"} {
+		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt", "ballots"} {
 		rec[k] = entity.Removed()
 	}
 	rec["askedAgain"] = true

@@ -277,8 +277,8 @@ func (s *Resolve) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: ID
 	irMap["id"] = ir.FromString(string(s.ID))
 
-	// Field: Approve
-	irMap["approve"] = ir.FromBool(bool(s.Approve))
+	// Field: Choice
+	irMap["choice"] = ir.FromString(string(s.Choice))
 
 	// Field: By
 	irMap["by"] = ir.FromString(string(s.By))
@@ -336,12 +336,12 @@ func (s *Resolve) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
 			}
 			s.ID = string(fieldNodeUnwrapped.String)
-		case "approve":
-			// Field: Approve
-			if fieldNodeUnwrapped.Type != ir.BoolType {
-				return fmt.Errorf("field %q: expected bool, got %v", "approve", fieldNodeUnwrapped.Type)
+		case "choice":
+			// Field: Choice
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "choice", fieldNodeUnwrapped.Type)
 			}
-			s.Approve = bool(fieldNodeUnwrapped.Bool)
+			s.Choice = string(fieldNodeUnwrapped.String)
 		case "by":
 			// Field: By
 			if fieldNodeUnwrapped.Type != ir.StringType {

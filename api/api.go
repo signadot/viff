@@ -100,8 +100,12 @@ type Condition struct {
 //
 //tony:schemagen=verse-resolve,notag
 type Resolve struct {
-	ID      string `tony:"field=id"`
-	Approve bool   `tony:"field=approve"`
+	ID string `tony:"field=id"`
+	// Choice is the option chosen, by id: `proceed` or `deny` on the question every gate
+	// poses unless it says otherwise, or one of the record's own options where it names
+	// them. A ballot naming an option the record does not carry is refused, with the
+	// options listed. It was a boolean, `approve`, which could not name a third option.
+	Choice string `tony:"field=choice"`
 	// By is who answered. It rides the wire the same way FlowSteer.By and a say's By do,
 	// and for the same reason: a resolution is an act, and an act has an actor.
 	//

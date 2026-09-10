@@ -73,6 +73,67 @@ type GateQuestion struct {
 	// Not written into the record — the store it lands in already says which federation it
 	// belongs to, the way a task's instance record does.
 	Scope string
+	// Options are the outcomes this question can settle on, each with the number of ballots
+	// that settles it. Empty means the two every gate has always had, `proceed` and `deny`,
+	// each settled by one ballot — so a producer that says nothing poses exactly the
+	// question it posed before options existed.
+	//
+	// Ordered: the first option to reach its threshold settles the question, and a record
+	// whose options are not the default two is answered by option id rather than by yes or
+	// no. See DefaultOptions and Need.
+	Options []Option
+}
+
+// Option is one outcome a question can settle on, and how many ballots settle it.
+type Option struct {
+	ID   string `tony:"field=id"`
+	Need int    `tony:"field=need,omitzero"`
+}
+
+// The two options every question has unless it says otherwise.
+const (
+	Proceed = "proceed"
+	Deny    = "deny"
+)
+
+// DefaultOptions is the question a gate poses when it names no options: yes or no, each
+// settled by one ballot.
+func DefaultOptions() []Option {
+	return []Option{{ID: Proceed, Need: 1}, {ID: Deny, Need: 1}}
+}
+
+// OptionsOrDefault is the question's options, or the default two when it names none.
+func (d GateQuestion) OptionsOrDefault() []Option {
+	if len(d.Options) == 0 {
+		return DefaultOptions()
+	}
+	return d.Options
+}
+
+// Need reports how many ballots settle `choice` among opts, and whether the choice is one of
+// them at all. A threshold below one reads as one: an option nobody has to choose is not an
+// option, and a zero here is a producer that left the field empty rather than one that asked
+// for nothing.
+func Need(opts []Option, choice string) (int, bool) {
+	for _, o := range opts {
+		if o.ID == choice {
+			if o.Need < 1 {
+				return 1, true
+			}
+			return o.Need, true
+		}
+	}
+	return 0, false
+}
+
+// OptionIDs lists the option ids in order, for a refusal that names what could have been
+// chosen.
+func OptionIDs(opts []Option) []string {
+	out := make([]string, len(opts))
+	for i, o := range opts {
+		out[i] = o.ID
+	}
+	return out
 }
 
 // Evaluate returns the most restrictive matching gate's mode (Park > Ask >
@@ -163,7 +224,7 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d.BoundTo = s.boundTo
 	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
 	if !d.Mode.Blocks() {
-		return Resolution{Proceed: true, By: "auto", Question: d}, nil
+		return Resolution{Choice: Proceed, Proceed: true, By: "auto", Question: d}, nil
 	}
 	return s.resolver.Load().r.Resolve(ctx, d, tu)
 }

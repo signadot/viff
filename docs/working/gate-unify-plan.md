@@ -54,9 +54,17 @@ what proves nothing still reads a formula.
 Empty means `[{proceed, 1}, {deny, 1}]`, and every producer today leaves it empty, which is why
 this step changes no behaviour. `mirror.PostQuestion` writes `options` on the record;
 `mirror.AnswerQuestion` appends a ballot at `ballots.<by>` (`{choice, say, at}`) and, when the
-chosen option's tally reaches its `need`, writes `outcome: <option>` and `status: answered` in
-the same write, preconditioned on `status: pending` and on the tally as read. A ballot for an
-option that is not on the record is refused at the API, not recorded.
+chosen option's tally reaches its `need`, writes `verdict: <option>` and `status: answered` in
+the same write. `verdict` is the record's word already, and on a two-option record it reads
+exactly as it did. A ballot for an option that is not on the record is refused at the API,
+not recorded.
+
+The registry stays the arbiter of who settles, as it is today: the settling ballot is
+delivered to the waiter first and recorded with the settle after, so two ballots that reach a
+threshold together resolve the way two answers always have, with one winner and the other
+told so. What the record adds is the tally the winner counted; the ballot that reaches the
+threshold and the settle are one write, and a non-settling ballot is recorded and answered
+202 with where the tally stands.
 
 The wire loses a boolean. `api.Resolve.Approve` becomes `Choice string`; `task.Resolution`
 gains `Choice` and keeps `Proceed` as `Choice == "proceed"` for every reader that asks a
@@ -70,8 +78,8 @@ the stale-answer path are unchanged, since "already answered" means the same thi
 
 **Proves:** every existing gate test passes with `choice: proceed|deny` in place of `approve`.
 A record with `need: 2` on `proceed` is still pending after one ballot, settled after the
-second, and the settle and the second ballot are one commit (assert on the commit stream, not
-on state before and after). A second ballot by the same `by` replaces the first rather than
+second, and the settle and the second ballot are one commit (asserted on the commit stream,
+not on state before and after). A second ballot by the same `by` replaces the first rather than
 counting twice. A ballot names an option the record does not carry and is refused with the
 options listed.
 

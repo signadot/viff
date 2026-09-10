@@ -40,7 +40,7 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 }
 
 // An engine gate posted to the registry is answered through POST /gate/resolve carrying
-// api.Resolve — the id names the gate, approve carries the answer, and say rides along
+// api.Resolve — the id names the gate, choice carries the answer, and say rides along
 // as steering.
 func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	srv := testServer(t)
@@ -58,7 +58,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, By: "human:scott", Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:scott", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)
@@ -67,7 +67,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	select {
 	case res := <-answered:
 		if !res.Proceed {
-			t.Error("gate resolved to deny; the approve field did not arrive")
+			t.Error("gate resolved to deny; the choice did not arrive")
 		}
 		if len(res.Steer) != 1 || res.Steer[0] != "ship it" {
 			t.Errorf("steer = %v, want [ship it] — the say field did not arrive", res.Steer)
@@ -78,7 +78,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 }
 
 // The unification regression, on a REAL pending decision: a body naming its gate `id`
-// and its answer `approve` must resolve it on the task route too.
+// and its answer `choice` must resolve it on the task route too.
 //
 // It has to be a real one. Against the old handler this same body decoded to an empty
 // decision id, and an empty id looks up nothing — so every cheaper assertion (400? 404?
@@ -113,7 +113,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 	rep.Body.Close()
 
 	// Now answer it the way `verse task resolve` does.
-	resp := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:scott"})
+	resp := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("task resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
@@ -122,7 +122,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 	// And it is gone: a second answer finds nothing open, which is what proves the first
 	// one landed on the named decision rather than on an empty id. It is a CONFLICT, not a
 	// 404 — the question exists and somebody else settled it.
-	again := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
+	again := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:alice"})
 	defer again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Errorf("re-resolve = %s, want 409 (already answered)", again.Status)
@@ -169,7 +169,7 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 
 	// Answer it the way an operator reading `verse gate` does — by id alone, with no
 	// task id to help, through the same route `verse gate approve` posts to.
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Approve: true, By: "human:alice"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:alice"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve = %s, want 204 — an ownerless task gate must still route", resp.Status)

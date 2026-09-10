@@ -455,6 +455,7 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 	// each other on purpose.
 	var body struct {
 		ID      string `tony:"field=id"`
+		Choice  string `tony:"field=choice"`
 		Approve bool   `tony:"field=approve"`
 
 		DecisionID string   `tony:"field=decisionId"`
@@ -471,13 +472,13 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 	if decision == "" {
 		decision = body.DecisionID
 	}
-	proceed := body.Approve || body.Proceed
+	proceed := body.Approve || body.Proceed || body.Choice == task.Proceed
 	by := body.By
 	if by == "" {
 		by = "human:daemon"
 	}
 	res := task.Resolution{
-		Proceed: proceed, By: by,
+		Choice: body.Choice, Proceed: proceed, By: by,
 		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
 	}
 	if !h.reg.Answer(decision, res) {

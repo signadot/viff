@@ -84,8 +84,8 @@ signature:
 context:
 - tony-format/context
 define:
-  approve: .[bool]
   by: .[string]
+  choice: .[string]
   id: .[string]
   override: .[bool]
   say: .[array(string)]

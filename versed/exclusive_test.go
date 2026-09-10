@@ -52,7 +52,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatal("an exclusive binding hid its question from the docket")
 	}
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
 	raw, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	body := string(raw)
@@ -93,7 +93,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 
 	resp := postTony(t, ts.URL+"/gate/resolve",
-		api.Resolve{ID: qid, Approve: true, By: "human:scott", Override: true})
+		api.Resolve{ID: qid, Choice: "proceed", By: "human:scott", Override: true})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the override was refused: %s", resp.Status)
@@ -117,7 +117,7 @@ func TestAdvisoryTakesTheFirstAnswer(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("a person could not answer an advisory question: %s", resp.Status)

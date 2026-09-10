@@ -13,6 +13,13 @@ type Resolver interface {
 // Resolution records how a blocking gate was answered — for attribution (every
 // resolution is attributable) and to drive proceed/deny at the boundary.
 type Resolution struct {
+	// Choice is the option chosen, by id. Proceed is the same fact asked as a yes-or-no
+	// question, which is what the task loop asks of every gate it raises: every question a
+	// runtime poses has the two default options, so `proceed` and `deny` are the only
+	// choices it will see, and Proceed is Choice == "proceed". A question with options of
+	// its own is settled by Choice, and Proceed there says only whether the chosen option
+	// happened to be named proceed. Chosen reads whichever was set.
+	Choice   string
 	Proceed  bool
 	By       string // who resolved: "auto", "human:scott", "verse:task:ci", ...
 	Note     string
@@ -28,13 +35,31 @@ type Resolution struct {
 	Steer []string
 }
 
+// Chosen is the option this resolution settled on: Choice when it was set, and the default
+// option Proceed spells otherwise — so a resolution built by a caller that only knows yes or
+// no reads the same as one that named its option.
+func (r Resolution) Chosen() string {
+	if r.Choice != "" {
+		return r.Choice
+	}
+	if r.Proceed {
+		return Proceed
+	}
+	return Deny
+}
+
+// Choose builds the resolution for one chosen option, with Proceed set to agree with it.
+func Choose(choice, by string) Resolution {
+	return Resolution{Choice: choice, Proceed: choice == Proceed, By: by}
+}
+
 // AutoResolver promotes every blocking gate to proceed. A vector of Ask gates
 // resolved by an AutoResolver is a fully autonomous loop (all questions routed
 // to proceed).
 type AutoResolver struct{ Who string }
 
 func (a AutoResolver) Resolve(_ context.Context, q GateQuestion, _ ToolUse) (Resolution, error) {
-	return Resolution{Proceed: true, By: nonEmpty(a.Who, "auto"), Question: q}, nil
+	return Resolution{Choice: Proceed, Proceed: true, By: nonEmpty(a.Who, "auto"), Question: q}, nil
 }
 
 // ChannelResolver poses each blocking question on Out and waits for the answer on

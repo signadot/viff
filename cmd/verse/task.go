@@ -310,7 +310,7 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
 	// flag was missing here alone, so "yes, but do it this way" was unsayable to the one
 	// executor that is a person reading their inbox.
-	body := api.Resolve{ID: did, Approve: approve, By: cfg.As, Override: cfg.Override}
+	body := api.Resolve{ID: did, Choice: choiceOf(approve), By: cfg.As, Override: cfg.Override}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}
@@ -716,7 +716,7 @@ func promptGate(cc *cli.Context, in *bufio.Reader, gate, tool string) bool {
 // resolveTaskGate answers a task's pending decision by id.
 func resolveTaskGate(pid, decisionID string, approve bool, by string) error {
 	resp, err := httpPost("/tasks/"+pid+"/resolve",
-		api.Resolve{ID: decisionID, Approve: approve, By: by})
+		api.Resolve{ID: decisionID, Choice: choiceOf(approve), By: by})
 	if err != nil {
 		return err
 	}

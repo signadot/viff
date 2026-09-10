@@ -1,0 +1,210 @@
+package versed
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
+)
+
+// A question with a threshold above one is settled by a TALLY: a ballot is recorded and the
+// question stays open until the chosen option has as many as it needs. These tests pin what
+// the record and the waiter see on the way there.
+
+// raise poses a question with options, blocking on it the way a firing does, and returns the
+// channel its resolution comes back on.
+func raise(t *testing.T, srv *Server, id string, opts []task.Option) chan task.Resolution {
+	t.Helper()
+	answered := make(chan task.Resolution, 1)
+	go func() {
+		res, _ := srv.Reg.Resolve(context.Background(),
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask, Options: opts},
+			task.ToolUse{Name: "verse.trigger.review"})
+		answered <- res
+	}()
+	waitPending(t, srv, id)
+	return answered
+}
+
+// ballotsOf reads the record's ballots as who → choice.
+func ballotsOf(q map[string]any) map[string]string {
+	out := map[string]string{}
+	b, _ := q["ballots"].(map[string]any)
+	for who, v := range b {
+		if m, ok := v.(map[string]any); ok {
+			out[who], _ = m["choice"].(string)
+		}
+	}
+	return out
+}
+
+func stillWaiting(t *testing.T, answered chan task.Resolution) {
+	t.Helper()
+	select {
+	case res := <-answered:
+		t.Fatalf("the waiter was released by %+v; the threshold was not reached", res)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// Two ballots settle a question whose proceed needs two. The first is recorded and releases
+// nothing; the second releases the waiter — and the second ballot and the settle are ONE
+// commit, so no reader can see the threshold reached without the record saying so.
+func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const id = "verse.trigger.review.review~1"
+	answered := raise(t, srv, id, []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 1}})
+
+	// The record lives in verse's own half of the tree, one segment deeper than the world's.
+	commits, unsub, err := srv.Store.WatchSubtree(entity.Depth+1, entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer unsub()
+
+	first := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:alice"})
+	body, _ := io.ReadAll(first.Body)
+	first.Body.Close()
+	if first.StatusCode != http.StatusAccepted {
+		t.Fatalf("first ballot = %s, want 202 recorded: %s", first.Status, body)
+	}
+	if !strings.Contains(string(body), "1 of 2") {
+		t.Errorf("the answerer is not told where the tally stands: %q", body)
+	}
+	stillWaiting(t, answered)
+	q := question(t, srv, id)
+	if q["status"] != mirror.QuestionPending || ballotsOf(q)["human:alice"] != "proceed" {
+		t.Fatalf("after one ballot the record should be pending with alice's ballot on it: %+v", q)
+	}
+
+	second := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:bob"})
+	second.Body.Close()
+	if second.StatusCode != http.StatusNoContent {
+		t.Fatalf("second ballot = %s, want 204 settled", second.Status)
+	}
+	select {
+	case res := <-answered:
+		if !res.Proceed || res.Chosen() != "proceed" || res.By != "human:bob" {
+			t.Fatalf("the waiter got %+v, want proceed by the ballot that reached the threshold", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the question never resolved")
+	}
+	q = settledQuestion(t, srv, id)
+	if q["verdict"] != "proceed" || q["by"] != "human:bob" {
+		t.Fatalf("the record does not say what settled it: %+v", q)
+	}
+	if b := ballotsOf(q); b["human:alice"] != "proceed" || b["human:bob"] != "proceed" {
+		t.Fatalf("both ballots should stand on the settled record: %+v", b)
+	}
+
+	// The commit that settled is the commit that carried bob's ballot: no earlier commit
+	// had it. Read the stream up to the settle.
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case c := <-commits:
+			for _, ev := range c.Changes {
+				if ev.Ref != mirror.QuestionRef(id) {
+					continue
+				}
+				bob := entity.Str(entity.Get(entity.Get(ev.To, "ballots"), "human:bob"), "choice")
+				settled := entity.Str(ev.To, "status") == mirror.QuestionAnswered
+				switch {
+				case bob != "" && !settled:
+					t.Fatalf("rev %d carries bob's ballot and is not the settle: the two are separate writes", ev.Rev)
+				case settled && bob == "":
+					t.Fatalf("rev %d settles without the ballot that reached the threshold", ev.Rev)
+				case settled:
+					return
+				}
+			}
+		case <-deadline:
+			t.Fatal("never saw the settling commit")
+		}
+	}
+}
+
+// One answerer, one ballot. Casting again replaces it — a changed mind is the later ballot,
+// not a second one — so nobody reaches a threshold alone.
+func TestASecondBallotByTheSameAnswererReplacesTheFirst(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const id = "verse.trigger.review.review~2"
+	answered := raise(t, srv, id, []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 2}})
+
+	cast := func(by, choice string) string {
+		t.Helper()
+		resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: choice, By: by})
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted {
+			t.Fatalf("%s voting %s = %s, want 202: %s", by, choice, resp.Status, body)
+		}
+		return strings.TrimSpace(string(body))
+	}
+	cast("human:alice", "proceed")
+	if got := cast("human:alice", "proceed"); !strings.Contains(got, "1 of 2") {
+		t.Errorf("alice twice is one ballot, got %q", got)
+	}
+	if got := cast("human:alice", "deny"); !strings.Contains(got, "1 of 2 for deny") {
+		t.Errorf("alice changing her mind moves her one ballot, got %q", got)
+	}
+	if got := cast("human:bob", "proceed"); !strings.Contains(got, "1 of 2 for proceed") {
+		t.Errorf("alice no longer counts for proceed, got %q", got)
+	}
+	stillWaiting(t, answered)
+	q := question(t, srv, id)
+	if b := ballotsOf(q); len(b) != 2 || b["human:alice"] != "deny" || b["human:bob"] != "proceed" {
+		t.Fatalf("ballots = %+v, want alice's latest and bob's", b)
+	}
+	if q["status"] != mirror.QuestionPending {
+		t.Fatalf("nothing reached two: %+v", q)
+	}
+}
+
+// A ballot for an option the question does not carry is refused, with the options listed,
+// and neither the record nor the waiter is touched.
+func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	const id = "verse.trigger.review.review~3"
+	answered := answerable(t, srv, id)
+
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "maybe", By: "human:scott"})
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("answer = %s, want 400", resp.Status)
+	}
+	if !strings.Contains(string(body), "proceed, deny") {
+		t.Errorf("the refusal should list the options: %q", body)
+	}
+	stillWaiting(t, answered)
+	q := question(t, srv, id)
+	if q["status"] != mirror.QuestionPending || len(ballotsOf(q)) != 0 {
+		t.Fatalf("a refused ballot left a trace: %+v", q)
+	}
+
+	ok := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:scott"})
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusNoContent {
+		t.Fatalf("a real answer afterwards = %s, want 204", ok.Status)
+	}
+	<-answered
+}

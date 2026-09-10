@@ -85,13 +85,13 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := answerable(t, srv, id)
 
-	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true, By: "human:scott"})
+	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:scott"})
 	win.Body.Close()
 	if win.StatusCode != http.StatusNoContent {
 		t.Fatalf("first answer = %s, want 204", win.Status)
 	}
 	lose := postTony(t, ts.URL+"/gate/resolve", api.Resolve{
-		ID: id, Approve: false, By: "human:alice", Say: []string{"not this week"},
+		ID: id, Choice: "deny", By: "human:alice", Say: []string{"not this week"},
 	})
 	lose.Body.Close()
 	if lose.StatusCode != http.StatusConflict {
@@ -135,7 +135,7 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("answering an unknown id = %s, want 404", resp.Status)
@@ -158,7 +158,7 @@ func TestAnAnswerMustNameItsAnswerer(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answerable(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Approve: true})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an unattributed answer = %s, want 400", resp.Status)
@@ -178,7 +178,7 @@ func TestAnAnswerMustNameItsQuestion(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an answer naming no question = %s, want 400", resp.Status)
@@ -205,7 +205,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Approve: true, By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "human:scott"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("answering an open question on an unreachable runner = %s, want 502", resp.Status)
@@ -336,7 +336,7 @@ func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Approve: true, By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "human:scott"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolve = %s", resp.Status)

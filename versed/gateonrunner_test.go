@@ -52,7 +52,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		}
 		if q := pendingOn(t, face.URL, spawned); q != "" {
 			postTony(t, face.URL+"/tasks/"+spawned+"/resolve", map[string]any{
-				"id": q, "approve": true, "by": "cleanup",
+				"id": q, "choice": "proceed", "by": "cleanup",
 			}).Body.Close()
 		}
 	})
@@ -95,7 +95,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	}
 
 	ans := postTony(t, ts.URL+"/gate/resolve", map[string]any{
-		"id": qid, "approve": true, "by": "tester",
+		"id": qid, "choice": "proceed", "by": "tester",
 	})
 	defer ans.Body.Close()
 	if ans.StatusCode == http.StatusNotFound {

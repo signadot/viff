@@ -88,7 +88,9 @@ POST /resolvers/instance/{id}/verdicts                  { id, verdict, why?, say
 POST /resolvers/instance/{id}/position                  { position, notes? }
 ```
 
-`verdict` is `proceed`, `deny` or `escalate`. `events` is the run's own stream with the
+`verdict` is one of the question's options, `proceed` or `deny` unless the record names its
+own, or `escalate`. A verdict naming an option the record does not carry is refused with the
+options listed. `events` is the run's own stream with the
 capability check in front of it, not a projection of it — the moment it were a different stream
 there would be two orders to reconcile.
 

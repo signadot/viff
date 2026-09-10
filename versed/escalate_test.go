@@ -72,7 +72,7 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 		t.Fatalf("the question changed as it moved: %+v", got)
 	}
 	// And a person can now answer it, which is what ⊤ means.
-	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Approve: true, By: "human:scott"})
+	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
 	ans.Body.Close()
 	if ans.StatusCode != http.StatusNoContent {
 		t.Fatalf("a person answering an escalated question = %s", ans.Status)
@@ -98,7 +98,7 @@ func TestEscalatingWhatIsNotYours(t *testing.T) {
 		t.Fatalf("escalating another instance's question = %s, want 403", resp.Status)
 	}
 
-	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: mine, Approve: true, By: "human:scott"})
+	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: mine, Choice: "proceed", By: "human:scott"})
 	ans.Body.Close()
 	resp = escalateAs(t, ts, inst, mine)
 	resp.Body.Close()
