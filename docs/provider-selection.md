@@ -66,8 +66,8 @@ and nothing spawns.
 `auto` raises no motion at all, which is deliberate rather than an optimisation. The docket is the
 votable, attributable surface. An auto pick has no voter and casts no ballot, so opening a channel
 for it would put `outcome=gpt tally=0` on the docket: a decision reported as the group's that
-nobody made. The whether-axis works the same way, opening a channel for a gate carrying a formula
-and never for `mode: auto`.
+nobody made. A gate is the same rule from the other side: a question is posed for `ask`, never for
+`mode: auto`.
 
 Nor is an auto pick latched. Re-deriving per firing is deterministic given the same registry, since
 the eligible set sorts, and it follows the registry when that changes, where a committed pick would

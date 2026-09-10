@@ -58,9 +58,6 @@ func adviseTagKeyedInValue(t Trigger) []string {
 	var out []string
 	mats := append([]Match{t.Condition.Subject}, formulaMatches(t.Condition.When)...)
 	mats = append(mats, formulaMatches(t.Condition.On)...)
-	for _, g := range t.AllGates() {
-		mats = append(mats, formulaMatches(g.Formula)...)
-	}
 	for _, m := range mats {
 		for _, name := range operatorShapedKeys(m.Predicate()) {
 			if seen[name] {

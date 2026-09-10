@@ -1,7 +1,6 @@
 package trigger
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/signadot/verse/entity"
@@ -88,8 +87,7 @@ func (e *Engine) ResumeMotions() int {
 			continue // another engine's charter opened it, and that engine resumes it
 		}
 		if entity.Str(p, "axis") != "select" {
-			e.reviewWhether(ent.Ref, p, said)
-			continue
+			continue // a whether-motion from before gates were questions; nothing awaits it
 		}
 		chain := entity.Str(p, "chain")
 		if chain == "" {
@@ -149,48 +147,6 @@ func (e *Engine) ResumeMotions() int {
 		e.logger.Info("resumed open motions from the docket", "count", resumed)
 	}
 	return resumed
-}
-
-// reviewWhether decides what a whether-motion left open by the previous verse is: something the
-// rule will monitor again, or something nothing will ever read.
-//
-// Its awaiter is the firing, and the firing comes back only if the rule still SELECTS the
-// subject — the replay is a re-evaluation, not a resumption. Two ways that fails, and only the
-// first was obvious: the rule left the charter, and the SUBJECT MOVED OUT of what the rule
-// picks. The second is the one seen in the wild: a merge proposal was marked `state: stale` by
-// a sweep while its gate stood open, which is exactly what its rule's `!not.has-path state`
-// excludes. The motion stayed `open` on the docket, somebody voted approve, and the tally never
-// moved, because nothing was left to move it.
-//
-// Only the whether axis is asked this. A who-motion's subject is EXPECTED to have moved on —
-// the action wrote its latch before opening the selection — so the same question there would
-// orphan every one of them.
-func (e *Engine) reviewWhether(ref entity.Ref, p entity.Payload, said bool) {
-	name := entity.Str(p, "trigger")
-	if name == "" {
-		return // it does not say whose it is; leave it standing rather than guess
-	}
-	t, ok := e.triggerNamed(name)
-	if !ok {
-		// A rule HELD for a stratum that has not arrived installs the moment the stratum does,
-		// so it is not a rule that is gone.
-		if !e.knowsTrigger(name) {
-			if !said && e.knownElsewhere(name) { // another charter's — see ownsMotion
-				e.tracef("motion %s is another charter's rule %q: left standing", ref.ID(), name)
-				return
-			}
-			e.orphanMotion(ref, "the rule that opened it is no longer in the charter")
-		}
-		return
-	}
-	subj, err := entity.ParseAddr(entity.Str(p, "subject"))
-	if err != nil {
-		return
-	}
-	if !e.stillSelects(t, subj) {
-		e.orphanMotion(ref, fmt.Sprintf("%s no longer selects %s, so nothing will read the answer",
-			name, subj))
-	}
 }
 
 // stillSelects reports whether a trigger's subject predicate still picks this entity out of the

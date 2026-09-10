@@ -551,9 +551,9 @@ reads: [git, verse-dev.drift]
 # 2c. …and somebody decides the batch, once per tip.
 #
 # THE ADDRESS IS THE LATCH between tips and `decided` is the latch within one. The gate carries a
-# formula rather than waiting on a person indefinitely: `!until [!quorum 1, !deadline "24h"]`
-# defaults to DENY when the clock runs out, which is the safe direction for the one action here
-# with a consequence nobody can quietly undo.
+# deadline rather than waiting on a person indefinitely: `deadline: {within: "24h", default:
+# deny}` settles on DENY when the clock runs out, which is the safe direction for the one action
+# here with a consequence nobody can quietly undo.
 #
 # AN EMPTY TRAIN ASKS NOTHING. `onDenied` writes `decided` too, because a deny IS a decision
 # about this main: without it the refused firing writes nothing and the next commit asks the same
@@ -573,7 +573,7 @@ reads: [git, verse-dev.drift]
   gates:
   - name: merge-to-main
     mode: ask
-    formula: !until [ !quorum 1, !deadline "24h" ]
+    deadline: {within: "24h", default: deny}
     onDenied:
       patch:
         decided: declined

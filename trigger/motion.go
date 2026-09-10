@@ -14,13 +14,15 @@ import (
 	"github.com/signadot/verse/launch"
 )
 
-// A governed motion is ONE primitive with two faces. A whether-gate is a motion over
-// the options {proceed, deny}; a who-select is a motion over {doerA, doerB, …}. In both,
-// each option is "satisfied" by a tally over the shared vote log (or by a fact, or — for a
-// default — by a deadline), the FIRST option to reach its threshold wins (earlier options
-// win ties), and the winner is committed terminal-once with a revoke guard. This file holds
-// that unified representation and the two compilers (Formula → motion, Provider →
-// motion); the engine resolves it via openChannel / awaitMotion / commitMotion.
+// A governed motion is a who-select: a motion over {doerA, doerB, …}, where each option is
+// satisfied by a tally over the shared vote log (or, for a default, by a deadline), the FIRST
+// option to reach its threshold wins (earlier options win ties), and the winner is committed
+// terminal-once with a revoke guard. This file holds that representation and its compiler
+// (Provider → motion); the engine resolves it via openChannel / awaitMotion / commitMotion.
+//
+// A whether-gate is not a motion any more: it is a question on the docket every gate shares,
+// with a threshold and a deadline of its own (Gate.options, Gate.Deadline), settled by
+// whoever answers it. The select axis follows it there next.
 
 // Where a motion stands: motion:channel:<id>. Named once because a channel is written by
 // two compilers, read by the docket, and walked by the resume — and an address spelled out
@@ -45,16 +47,6 @@ type motion struct {
 	// continuation a who-motion is blocking — see ResumeMotions. Empty on a whether-motion,
 	// whose continuation is the firing itself and comes back with the rule's own replay.
 	chain string
-	// moot answers whether the question this motion asks has stopped being about anything —
-	// the rule no longer selects the subject. It is a closure rather than a field of data
-	// because the answer is a read of the verse as it stands, and it is nil for a motion whose
-	// staleness nobody can decide (no subject, or no rule to ask).
-	//
-	// It is what makes the withdrawal PROMPT. The same question is asked at the commit and at a
-	// restart; without a wake on the subject's own subtree, a motion whose subject left the
-	// selection sat open offering a decision about work that will never be taken, until
-	// somebody voted or the verse came back (git-issue 1my63vm6h12ks6bng9n0).
-	moot func() bool
 }
 
 // motionOption is one choosable outcome. It is satisfied when its formula holds (a vote quorum
@@ -155,43 +147,6 @@ func stringsNode(ss []string) *ir.Node {
 	return ir.FromSlice(vals)
 }
 
-// compileFormula builds a whether-axis motion from a gate's Formula. The formula is bound
-// to THIS channel's vote log (a quorum atom tallies vote:<mid>:*). A bare atom is a single
-// `proceed` option (waits until it holds). An `until[left, right]` is `proceed` (left) plus
-// `deny` (right) — where right is either a store condition (deny when it holds) or a deadline
-// (deny defaults when the clock strikes). Left/proceed wins a tie.
-// The subject is the FIRING's subject, not the ref of the change that dispatched it — the
-// same distinction the channel id already makes one line up in monitorGate. A motion is a
-// decision about the work, and the work is the subject; keying the id on one and displaying
-// the other let `verse motion` name the doorbell (and name nothing at all on a replay, where
-// a level-triggered firing has no dispatching event to speak of).
-func (e *Engine) compileFormula(f *Formula, channel entity.Ref, t Trigger, gname string, subject entity.Ref) *motion {
-	f = f.bind(channel.ID())
-	m := &motion{
-		channel: channel, subject: subject.String(), axis: "whether",
-		trigger: t.Name, gate: gname,
-	}
-	// Whether the question is still about anything. Only a whether-motion gets one: it is the
-	// rule's own selection that decides, and a who-motion is a question about a spawn that has
-	// already been decided to happen.
-	if subject != (entity.Ref{}) {
-		m.moot = func() bool { return !e.stillSelects(t, subject) }
-	}
-	if f != nil && f.Op == OpUntil && len(f.Args) == 2 {
-		m.options = append(m.options, optionFromFormula("proceed", f.Args[0]))
-		if dur, isDeadline := deadlineDuration(f.Args[1]); isDeadline {
-			m.deadline = &motionDeadline{within: dur.String(), defaultOption: "deny"}
-			m.options = append(m.options, motionOption{id: "deny"}) // default: only the clock satisfies it
-		} else {
-			m.options = append(m.options, optionFromFormula("deny", f.Args[1]))
-		}
-		return m
-	}
-	// A bare atom: proceed when it holds, no deny side (waits like the old Monitor.Await).
-	m.options = append(m.options, optionFromFormula("proceed", f))
-	return m
-}
-
 // compileProvider builds a select-axis motion from a launch.Provider over its resolved
 // eligible options: each doer is an option satisfied by a vote quorum on its own id. `ask`
 // is a vote with threshold 1; `within` arms a no-pick deadline. (`auto` short-circuits in
@@ -221,19 +176,6 @@ func (e *Engine) compileProvider(p *launch.Provider, subject, channel entity.Ref
 		m.deadline = &motionDeadline{within: p.Within, defaultOption: ""} // "" = no pick
 	}
 	return m
-}
-
-// optionFromFormula wraps a satisfy-formula (a bound quorum or fact atom) as a motion
-// option, extracting its threshold/choice for the channel display.
-func optionFromFormula(id string, f *Formula) motionOption {
-	o := motionOption{id: id, formula: f, need: f.quorumNeed()}
-	if o.need == 0 {
-		o.need = 1 // a fact/presence atom is a quorum of one
-	}
-	if f != nil && f.Op == OpAtom && f.Req != nil {
-		o.choice = f.Req.Facts.FieldString("choice")
-	}
-	return o
 }
 
 // quorumFormula builds a bound quorum atom that tallies vote:<mid>:* where choice==opt,
@@ -363,15 +305,6 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 		context.AfterFunc(sub, unsub)
 		go drain(sub, ch, events)
 	}
-	// THE SUBJECT'S OWN SUBTREE, beside the vote log. The options say when the question is
-	// ANSWERED; this says when it stops being a question — see motion.moot. Nothing here
-	// decides on it, which is deliberate: the moot check runs on the event, and the withdrawal
-	// itself is the caller's, where the reason can be written in the rule's own terms.
-	if m.moot != nil && m.subject != "" {
-		if ref, err := entity.ParseAddr(m.subject); err == nil {
-			watch(SubtreeAt(ref.Segs()...))
-		}
-	}
 	for _, o := range m.options {
 		if o.formula == nil {
 			continue
@@ -392,11 +325,6 @@ func (e *Engine) awaitMotion(ctx context.Context, m *motion) (winner string, wit
 		case <-events:
 			if id, w, decided := check(); decided {
 				return id, w, true
-			}
-			// Nothing is decided. Ask whether there is still anything to decide: a subject that
-			// left the rule's selection makes the question moot, and the caller withdraws it.
-			if m.moot != nil && m.moot() {
-				return "", nil, false
 			}
 		}
 	}

@@ -879,11 +879,18 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 		return fmt.Errorf("gate %s: %w", verb, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		fmt.Fprintln(cc.Out, done, args[0])
+	case http.StatusAccepted:
+		// Recorded and not yet settled: the question takes more than one voice, and the
+		// server says where the tally stands. Not an error, and not "approved" either.
+		msg, _ := io.ReadAll(resp.Body)
+		fmt.Fprintln(cc.Out, args[0]+":", strings.TrimSpace(string(msg)))
+	default:
 		msg, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("gate %s: %s: %s", verb, resp.Status, strings.TrimSpace(string(msg)))
 	}
-	fmt.Fprintln(cc.Out, done, args[0])
 	return nil
 }
 

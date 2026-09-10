@@ -88,6 +88,9 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 			"is also where a resolver for them is named", t.Name)
 	}
 	for _, g := range t.AllGates() {
+		if err := g.validate(); err != nil {
+			return fmt.Errorf("trigger %q: gate %q: %w", t.Name, g.Name, err)
+		}
 		if _, err := g.mode(); err != nil {
 			return err
 		}

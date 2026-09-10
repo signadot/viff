@@ -2,9 +2,12 @@ package versed
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
@@ -107,24 +110,18 @@ func TestARestartResumesAWhoMotion(t *testing.T) {
 	})
 }
 
-// A WHETHER-motion comes back a different way, and this pins that it comes back at all: its
+// A THRESHOLD GATE comes back a different way, and this pins that it comes back at all: its
 // awaiter is the firing, the firing never ran its action (that is what the gate is holding),
-// so the subject still matches and the rule's own replay re-monitors the same channel over the
+// so the subject still matches and the rule's own replay re-poses the same question over the
 // ballots already cast. A quorum half-reached before the restart is a quorum half-reached
 // after it.
-func TestARestartRemonitorsAWhetherMotion(t *testing.T) {
+func TestARestartKeepsTheBallotsOnAThresholdGate(t *testing.T) {
 	addr := entitytest.Addr(t)
 	rule := trigger.Trigger{
 		Name:      "merge",
 		Condition: trigger.Condition{Subject: trigger.Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
-		Gates: []trigger.Gate{{
-			Name: "approvals",
-			Mode: "ask",
-			Formula: &trigger.Formula{Op: trigger.OpAtom, Req: &trigger.Requirement{
-				Kind: trigger.ReqQuorum, Facts: trigger.Match{"system": "motion", "kind": "vote"}, N: 2,
-			}},
-		}},
-		Action: trigger.Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
+		Gates:     []trigger.Gate{{Name: "approvals", Need: 2}},
+		Action:    trigger.Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
 	}
 
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
@@ -135,26 +132,39 @@ func TestARestartRemonitorsAWhetherMotion(t *testing.T) {
 	}
 	pr := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, first.Store, pr, entity.Obj{"stage": "open"}.Payload())
-	waitUntil(t, "the whether-motion to reach the docket", func() bool { return len(motions(t, first)) == 1 })
-	var mid string
-	for id := range motions(t, first) {
-		mid = id
-	}
+	var qid string
+	waitUntil(t, "the question to reach the docket", func() bool {
+		g := docket(t, first)
+		if len(g) == 1 {
+			qid, _ = g[0]["id"].(string)
+		}
+		return qid != ""
+	})
+	one := httptest.NewServer(first.Handler())
 	// One of the two approvals, before the lights go out.
-	entitytest.Set(t, first.Store, entity.RefAt("vote", mid, "alice"),
-		entity.Obj{"choice": "approve", "by": "alice"}.Payload())
+	resp := postTony(t, one.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:alice"})
+	resp.Body.Close()
+	one.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("the first ballot = %s, want 202 recorded", resp.Status)
+	}
 	stop()
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
-	// The motion is still open and still counting: it must not have been settled by the
-	// restart, and the ballot cast before it still counts toward the quorum.
-	if got := motions(t, second)[mid]; got["outcome"] != nil {
-		t.Fatalf("the restart decided a motion nobody finished voting on: %+v", got)
+	// The question is back under its own id, still open and still counting: the restart
+	// must not have settled it, and the ballot cast before it still counts.
+	waitDocket(t, second, qid)
+	if q := question(t, second, qid); q["verdict"] != nil || ballotsOf(q)["human:alice"] != "proceed" {
+		t.Fatalf("the restart lost the ballot or decided the question: %+v", q)
 	}
-	entitytest.Set(t, second.Store, entity.RefAt("vote", mid, "bob"),
-		entity.Obj{"choice": "approve", "by": "bob"}.Payload())
-
+	two := httptest.NewServer(second.Handler())
+	defer two.Close()
+	resp = postTony(t, two.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:bob"})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("the second ballot = %s, want 204 settled", resp.Status)
+	}
 	waitUntil(t, "the quorum to carry across the restart", func() bool {
 		e, ok, _ := second.Store.Get(pr)
 		return ok && entity.Str(e.Payload, "stage") == "merged"

@@ -92,7 +92,7 @@ does not survive:
 
 - through a **spawned task**, whose writes arrive later through the API as external;
 - through the **world**, where an effector's write returns via the mirror as external;
-- through a **blocking gate** — an ask, a park, a temporal formula. A person answering an approval
+- through a **blocking gate** — an ask, a park, a threshold, a deadline. A person answering an approval
   paces a cycle exactly as a clock would. A firing that will wait begins a fresh chain, for the
   check and for its writes alike, decided in one place so the two cannot disagree;
 - through a **ticker**, when one exists: a tick is a machinery write with no chain.

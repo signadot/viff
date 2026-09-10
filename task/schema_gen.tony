@@ -11,6 +11,14 @@ signature:
 context:
 - tony-format/context
 define:
+  default: .[string]
+  within: .[string]
+signature:
+  name: verse-deadline
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   cursor: .[int]
   dropped: .[int]
@@ -102,6 +110,14 @@ define:
   status: .[string]
 signature:
   name: verse-instance
+---
+context:
+- tony-format/context
+define:
+  id: .[string]
+  need: .[int]
+signature:
+  name: verse-option
 ---
 context:
 - tony-format/context

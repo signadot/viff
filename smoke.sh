@@ -384,32 +384,37 @@ ok "gate y + -s released it: demo:release:1 open → shipped"
 has "$(v gate)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
-# ── the motions: a gate the verse tallies rather than a person answering ──
-# The OTHER list, and it reads the store where motions are stored — which is verse's own half,
-# so a docket that answers "nothing" however many motions stand open is the failure this
-# checks for: it got as far as a drive before anybody noticed.
-step "motion: a quorum gate posts a motion, and a ballot carries it"
-v charter -a --file - >/dev/null <<'TONY' || die "quorum charter -a failed"
+# ── the tally: a gate that takes two approvals, settled on the second ────────
+# The same docket as the ask gate above and the same verb. What differs is that one approval is
+# recorded and does not release, the answerer is told where the tally stands, and the record
+# settles in the same write as the ballot that reaches the threshold.
+step "gate: a threshold gate holds until enough approve"
+v charter -a --file - >/dev/null <<'TONY' || die "threshold charter -a failed"
 - name: smoke-quorum
   condition:
     subject: {path: [demo, motion, *], value: {stage: open}}
   gates:
-  - {name: approvals, mode: ask, formula: !quorum 1}
+  - {name: approvals, need: 2}
   action:
     patch: {stage: shipped}
 TONY
 v data demo motion 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-MID=
+QID=
 for _ in $(seq 1 100); do
-	MID=$(v motion --if '{axis: whether}' -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
-	[ -n "$MID" ] && break
+	QID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep smoke-quorum | head -1)
+	[ -n "$QID" ] && break
 	sleep 0.2
 done
-[ -n "$MID" ] || die "the quorum gate never reached the docket"
-has "$(v motion)" 'demo.motion."1"' || die "the docket does not say what is being decided"
-ok "the motion is on the docket as $MID, about demo:motion:1"
-haskv "$(v data demo motion 1)" stage open || die "the motion did not hold the action"
-v motion "$MID" --vote approve --as human:smoke >/dev/null || die "the ballot was refused"
+[ -n "$QID" ] || die "the threshold gate never reached the docket"
+has "$(v gate)" 'demo.motion."1"' || die "the docket does not say what is being decided"
+ok "the question is on the docket as $QID, about demo:motion:1"
+out=$(v gate y "$QID" --as human:alice) || die "the first ballot was refused"
+has "$out" "1 of 2" || die "the answerer was not told where the tally stands: $out"
+sleep 0.5
+haskv "$(v data demo motion 1)" stage open || die "one approval released a gate that needs two"
+has "$(v gate)" "$QID" || die "a question one short of its threshold left the docket"
+ok "one of two: recorded, and the action is still held"
+v gate y "$QID" --as human:bob >/dev/null || die "the second ballot was refused"
 carried=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo motion 1 2>/dev/null || true)" stage shipped; then
@@ -418,10 +423,12 @@ for _ in $(seq 1 100); do
 	fi
 	sleep 0.2
 done
-[ -n "$carried" ] || die "the tallied motion did not release the action"
-ok "one approve met the quorum: demo:motion:1 open → shipped"
-has "$(v motion --if '{status: closed}')" "$MID" || die "the settled motion does not carry its outcome"
-ok "the motion is settled on the docket, with its tally and its witness"
+[ -n "$carried" ] || die "the second approval did not release the action"
+ok "two of two: demo:motion:1 open → shipped"
+rec=$(v data verse gate question "$QID")
+has "$rec" "human:alice" && has "$rec" "human:bob" || die "the settled record does not carry both ballots: $rec"
+haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
+ok "the question is settled with both ballots on the record"
 
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely

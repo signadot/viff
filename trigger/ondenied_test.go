@@ -51,22 +51,18 @@ func TestOnDeniedLatchesTheSubject(t *testing.T) {
 	}
 }
 
-// The same on the OTHER arm. A gate carrying a formula is resolved by a motion rather than
-// posed as a question — one construct, two implementations — and a refusal there is the same
-// refusal: enough rejects deny, and the charter says what that means.
-func TestOnDeniedOnAFormulaGate(t *testing.T) {
+// The same for a gate that takes more than one voice. The tally is the answerer's; what
+// reaches the engine is one refusal, and the charter says what that means.
+func TestOnDeniedOnAThresholdGate(t *testing.T) {
 	store := entitytest.Store(t)
-	eng := New(store, denyResolver{}) // never consulted: a formula gate is monitored, not posed
+	reg := task.NewRegistry()
+	eng := New(store, reg)
 	merged := entity.RefAt("result", "merged", "f")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "merge",
 		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
 		Gating: &Gating{Gates: []Gate{{
-			Name: "approvals", Mode: "ask",
-			Formula: &Formula{Op: OpUntil, Args: []*Formula{
-				{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}},
-				{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, Choice: "reject", N: 2}},
-			}},
+			Name: "approvals", Need: 2,
 			OnDenied: &Action{Patch: entity.Obj{"outcome": "rejected"}.Payload()},
 		}}},
 		Action: Action{Patch: entity.Obj{"outcome": "merged"}.Payload()},
@@ -78,8 +74,10 @@ func TestOnDeniedOnAFormulaGate(t *testing.T) {
 	eng.Start(ctx)
 
 	entitytest.Set(t, store, entity.RefAt("change", "pr", "f"), entity.Obj{}.Payload())
-	castBallot(t, store, "merge", "approvals", merged, "alice", "reject")
-	castBallot(t, store, "merge", "approvals", merged, "bob", "reject")
+	id := waitQuestionID(t, reg)
+	if !reg.Answer(id, task.Choose("deny", "human:alice")) {
+		t.Fatalf("Answer(%q) found nothing", id)
+	}
 
 	for range 100 {
 		if e, ok, _ := store.Get(merged); ok {
@@ -92,7 +90,7 @@ func TestOnDeniedOnAFormulaGate(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("a rejected motion wrote nothing: onDenied never ran on the formula arm")
+	t.Fatal("a refused threshold gate wrote nothing: onDenied never ran")
 }
 
 // A monitor that ENDS is not an answer. Only a committed refusal carries a consequence — a

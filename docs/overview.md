@@ -22,7 +22,7 @@ from it.
 ```mermaid
 flowchart LR
   change["an entity changes"] --> match["a trigger matches<br/>condition holds at that commit"]
-  match --> gate["its gates resolve<br/>auto · ask · park · a formula"]
+  match --> gate["its gates resolve<br/>auto · ask · park · a threshold · a deadline"]
   gate --> act["the action fires<br/>patch · derive · spawn"]
   act -->|"writes entities"| change
 ```

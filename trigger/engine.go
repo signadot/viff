@@ -660,49 +660,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// made.
 	var denied []Gate
 
-	// DESIGN BUG, unfixed: this fork splits one construct on a field that does not mean what
-	// the split needs.
-	//
-	// One `gating.gates` list produces two surfaces. A formula gate becomes a MOTION
-	// (motion:channel, `verse motion`, answered with `--vote`, settled by tally); everything else
-	// becomes a QUESTION (gate:question, `verse gate`, `verse gate approve`, settled by an
-	// answer). Different entity, different verb, different docket — and a resolver can own
-	// only the second, so whether a rule can be supervised depends on which of the two an
-	// author wrote under the same key.
-	//
-	// `Formula != nil` is not that distinction. Gate.mode() resolves a formula gate with no
-	// explicit mode to "ask", so a thing literally called ASK goes down the motion arm. And
-	// openChannel is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks
-	// nobody anything — opens a channel and lands on the docket with no ballot anyone can
-	// cast. The result is a docket listing decisions nobody can make, and a `verse gate`
-	// omitting decisions people are being asked for.
-	//
-	// The distinction the split needs is ASKS SOMEBODY versus WAITS FOR SOMETHING, and it is
-	// a property of the formula's contents — a quorum asks, a fact and a clock do not — not
-	// of whether a formula is present. Fixing it is the prerequisite for a resolver over a
-	// motion: git-issue sp27m3g1h12krdgve1n0, docs/working/attached-resolvers-residual.md §1.
 	for _, gate := range t.AllGates() {
-		if gate.Formula != nil { // → a motion, not a posed question
-			gname := gate.Name
-			if gname == "" {
-				gname = t.Name
-			}
-			wg.Add(1)
-			go func(g Gate, gname string) {
-				defer wg.Done()
-				proceed, decided := e.monitorGate(ctx, t, g, gname, subjects)
-				if proceed {
-					return
-				}
-				mu.Lock()
-				allProceed = false
-				if decided { // committed a deny, rather than the monitor ending
-					denied = append(denied, g)
-				}
-				mu.Unlock()
-			}(gate, gname)
-			continue
-		}
 		m, _ := gate.mode() // validated at AddTrigger
 		if !m.Blocks() {    // auto: passes without a resolver
 			continue
@@ -730,13 +688,38 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// unique in a charter and not across them, so a docket that printed it alone
 			// left the reader to guess which `review` this was.
 			At: e.At(),
+			// How the question settles: the gate's own options and threshold, and the clock
+			// it stands under. Empty is the question every gate has always asked, yes or no
+			// from one person; the tally and the clock are whoever answers' to keep.
+			Options:  gate.options(),
+			Deadline: gate.Deadline,
 		}
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {
 			defer wg.Done()
-			res, err := e.resolver.Resolve(ctx, d, task.ToolUse{Name: "verse:trigger:" + t.Name})
+			// A gate asks its question of a WORLD, and the answer applies to that world.
+			// While the question stands, the subject's own subtree is watched beside it: the
+			// moment the rule would no longer select the subject, the wait is cancelled with
+			// that as its cause, the question leaves the docket saying so, and nothing was
+			// decided — a moot question is not a refusal, so no onDenied runs.
+			//
+			// Not hypothetical: a merge proposal was swept to `state: stale` while its gate
+			// stood open, the ballot already cast carried, and a branch the sweep had retired
+			// was merged (docs/working/merge-gate-residual.md).
+			wctx, stop := e.untilMoot(ctx, t, subj)
+			defer stop()
+			res, err := e.resolver.Resolve(wctx, d, task.ToolUse{Name: "verse:trigger:" + t.Name})
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
 			if err == nil && res.Proceed {
+				// Answered yes — about a subject the rule may have stopped selecting between
+				// the asking and the answer. Then the yes is about work that will not be
+				// taken, and the firing withdraws rather than acts.
+				if subj != (entity.Ref{}) && !e.stillSelects(t, subj) {
+					e.tracef("gate %s/%s: %s left the selection after it was answered → withdrawn", t.Name, gname, subj)
+					mu.Lock()
+					allProceed = false
+					mu.Unlock()
+				}
 				return
 			}
 			mu.Lock()
@@ -788,80 +771,43 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	t.Action.apply(t.Name, oc, subjects, e, fromSubject)
 }
 
-// monitorGate blocks until a trigger gate's temporal formula resolves, monitored on the
-// store's watch stream, then latches the verdict via a CAS predicated on the witness
-// (revocable-until-commit + terminal-once). It returns whether the action should proceed
-// It returns (proceed, decided): `decided` separates a committed refusal from a monitor that
-// ended before its motion committed, because only the first is an answer — and only an answer
-// carries an onDenied. If a revoke lands between satisfaction and the commit, the CAS fails and
-// it re-monitors.
-func (e *Engine) monitorGate(ctx context.Context, t Trigger, g Gate, gname string, subjects []entity.Ref) (bool, bool) {
-	// The channel is keyed by WHAT THE FIRING IS ABOUT, not by the entity whose change
-	// happened to dispatch it. Those differ whenever cause and subject come apart — a
-	// completion advancing the PR it carried, a broadcast over a selected set — and keying on
-	// the cause put two firings about the same subjects behind two separate votes while
-	// putting one firing's several subjects behind one. Both are wrong in the same way: a
-	// motion is a decision about the work, and the work is the subjects.
-	//
-	// Deterministic, like the gate id beside it, so a re-firing re-monitors the SAME channel
-	// and re-uses the ballots already cast there instead of asking the room again.
-	channelRef := entity.VerseRef(motionSystem, motionChannelKind,
-		motionChannelID(gateID(t.Name, gname, subjects)))
-
-	// Compile the gate's Formula into a motion over {proceed, deny}, bound to THIS
-	// channel's vote log, and open a discoverable channel entity voters can find/observe.
-	// It is displayed under the same subject the channel is keyed by, for the same reason.
-	var subject entity.Ref
-	if len(subjects) > 0 {
-		subject = subjects[0]
+// untilMoot derives the context a firing waits on: cancelled, with the reason as its cause,
+// the moment the rule would no longer select the subject. The subject's own subtree is
+// watched, and stillSelects is asked on each change — it answers TRUE when it cannot tell,
+// so a shutdown mid-read does not settle a live question on a guess.
+//
+// The cause is what the docket says: the registry renders it as the question's `why` when
+// the last waiter leaves (task.Registry, dropReason), so a reader sees that the question
+// stopped being about anything, in the rule's own terms, at the change that made it so.
+func (e *Engine) untilMoot(ctx context.Context, t Trigger, subj entity.Ref) (context.Context, func()) {
+	wctx, cancel := context.WithCancelCause(ctx)
+	stop := func() { cancel(nil) }
+	if subj == (entity.Ref{}) {
+		return wctx, stop
 	}
-	m := e.compileFormula(g.Formula, channelRef, t, gname, subject)
-	e.openChannel(m)
-	for {
-		winner, witness, ok := e.awaitMotion(ctx, m)
-		if !ok {
-			// The monitor ended before anything was decided, for one of two reasons — the
-			// engine is going down, or the question stopped being about anything. The second
-			// is a withdrawal and is worth saying; asking here rather than inside the monitor
-			// keeps the reason in the rule's own terms, and `stillSelects` answers TRUE when it
-			// cannot tell, so a shutdown mid-read does not settle a live question on a guess.
-			if len(subjects) > 0 && !e.stillSelects(t, subject) {
-				e.orphanMotion(channelRef, fmt.Sprintf(
-					"%s no longer selects %s, so nothing will read the answer", t.Name, subject))
-				e.tracef("temporal gate %s/%s: %s left the selection → withdrawn", t.Name, gname, subject)
-				return false, false
+	st := SubtreeAt(subj.Segs()...)
+	ch, unsub, err := e.store.WatchSubtree(st.Depth(), st.Path()...)
+	if err != nil {
+		return wctx, stop
+	}
+	go func() {
+		defer unsub()
+		for {
+			select {
+			case <-wctx.Done():
+				return
+			case _, ok := <-ch:
+				if !ok {
+					return
+				}
+				if !e.stillSelects(t, subj) {
+					cancel(fmt.Errorf("%s no longer selects %s, so the question it asked is moot", t.Name, subj))
+					return
+				}
 			}
-			e.tracef("temporal gate %s/%s: monitor ended before commit", t.Name, gname)
-			return false, false
 		}
-		// THE WORLD, alongside the ballots. The revoke guard below rechecks the facts the
-		// verdict rests on and says nothing about the state that raised the question — so a
-		// motion whose subject left the rule's selection while it stood open still reached
-		// quorum, still committed, and still ran the action. That is not hypothetical: a merge
-		// proposal was swept to `state: stale`, the gate carried on the ballot already cast,
-		// and the branch was merged out from under the sweep that had retired it
-		// (docs/working/merge-gate-residual.md).
-		//
-		// So a gate asks its question of a world, and the answer applies to that world. When
-		// the rule would no longer select the subject, the question is moot: the motion is
-		// withdrawn rather than committed, and this returns "not decided" — a moot question is
-		// not a refusal, so no `onDenied` runs. Nothing is latched, so a rule that selects the
-		// subject again reopens the same channel over the same ballots.
-		if len(subjects) > 0 && !e.stillSelects(t, subject) {
-			e.orphanMotion(channelRef, fmt.Sprintf(
-				"%s no longer selects %s, so the question it asked is moot", t.Name, subject))
-			e.tracef("temporal gate %s/%s: %s left the selection → withdrawn", t.Name, gname, subject)
-			return false, false
-		}
-		// The winning option's formula is the revoke guard (nil for a deadline-default deny).
-		eff, revoked := e.commitMotion(channelRef, m.guardFor(winner, witness), winner, witness)
-		if revoked {
-			e.tracef("temporal gate %s/%s: revoked before commit → re-monitoring", t.Name, gname)
-			continue
-		}
-		e.tracef("temporal gate %s/%s committed %q (witness %d facts)", t.Name, gname, eff, len(witness))
-		return eff == "proceed", true
-	}
+	}()
+	return wctx, stop
 }
 
 // now is the engine's clock (injectable for tests; defaults to the wall clock).
@@ -875,19 +821,6 @@ func (e *Engine) now() time.Time {
 // SetClock overrides the engine's clock — for tests that need a deadline to arrive
 // deterministically rather than in wall-clock time.
 func (e *Engine) SetClock(fn func() time.Time) { e.clock = fn }
-
-// deadlineDuration reports a formula's deadline duration, if its right side is a deadline
-// requirement (`{"deadline":"4h"}`).
-func deadlineDuration(f *Formula) (time.Duration, bool) {
-	if f == nil || f.Op != OpAtom || f.Req == nil || f.Req.Kind != ReqDeadline {
-		return 0, false
-	}
-	d, err := time.ParseDuration(f.Req.Within)
-	if err != nil {
-		return 0, false
-	}
-	return d, true
-}
 
 // deadlineAt returns the absolute instant a motion closes on timeout, stamping it on the
 // channel the first time (so `verse motion` shows when it closes, and a restart re-arms

@@ -612,79 +612,77 @@ A gate is the autonomy dial, per action. Three settings answer immediately: `aut
 asks one person ([§4](#ask--a-human-decides)), `park` holds. A rule's gates are conjunctive, so a
 deploy needing both a security and a release-manager sign-off is two `ask` gates.
 
-Some questions are not one person's to answer in one click. A gate can instead carry a **formula**,
-which the verse resolves itself by putting the open question to the group as a *motion* and watching
-ballots accumulate:
+Some questions are not one person's to answer in one click. A gate can say how many it takes:
 
 ```tony
   gates:
-  - { name: approvals, formula: !quorum 2 }
+  - { name: approvals, need: 2 }
 ```
 
 ```sh
 ./scripts/charter-shapes.sh run vote
-verse motion
+verse gates
 ```
 
 ```tony
-- axis: whether
-  gate: approvals
-  id: 8f306077
+- gate: approvals
+  id: verse.trigger.shape-vote.approvals~8f306077
+  mode: ASK
   options:
-  - choice: approve
-    id: proceed
-    need: 2
-  status: open
+  - {id: proceed, need: 2}
+  - {id: deny, need: 1}
+  origin: shape-vote
+  reason: trigger shape-vote gate approvals on demo.vote.1
   subject: demo.vote.1
+  where: engine
 ```
 
-The listing is a document like every other, so `verse motion -o yaml`, a read into one entry, and a
-diff against the docket a minute ago all work. `choice` is the word a ballot must carry — `approve`
-here, not the option's own name — and it is what `--vote` checks before writing one.
+It is the same question every gate poses, with a threshold on one option: `proceed` takes two
+ballots, and one `deny` still refuses. The listing is a document like every other, so `verse
+gates -o yaml`, a read into one entry, and a diff against the docket a minute ago all work.
 
-The rule fired and the action is waiting, not on a person but on a tally. Cast ballots, each naming
-its voter, since a motion must be settled attributably:
+The rule fired and the action is waiting, not on a person but on a tally. Answer it, each answer
+naming its answerer, since a question is settled attributably:
 
 ```sh
-verse motion 8f306077 --vote approve --as alice    # 1 of 2 — still open
-verse motion 8f306077 --vote approve --as bob      # 2 of 2 → carries
+verse gate approve verse.trigger.shape-vote.approvals~8f306077 --as alice   # recorded: 1 of 2 for proceed
+verse gate approve verse.trigger.shape-vote.approvals~8f306077 --as bob     # 2 of 2 → carries
 verse data demo vote 1              # stage: merged
 ```
 
-The motion then reads `status: closed`, `outcome: proceed`, `tally: 2`, and a `witness` naming the
-ballots that carried it: the audit trail on the entity rather than a line that scrolled past.
+The record then reads `status: answered`, `verdict: proceed`, and `ballots` naming who chose what
+and when: the audit trail on the entity rather than a line that scrolled past. An answerer who
+changes their mind replaces their own ballot rather than casting a second.
 
-A motion is an ordinary entity (`verse.motion.channel.<id>`), so the docket is a view of the store.
-`verse motion 8f306077` is that one, `verse motion --watch` is the docket as it changes, and a rule
-can react to a motion like anything else. It stays live until it commits, so if alice retracts first
-the tally drops and the gate re-blocks, and it is checked against the world on the way out: if the
-subject has moved out of what the rule selects, the question is moot and the motion is withdrawn
-rather than carried.
+A question is an ordinary entity (`verse.gate.question.<id>`), so the docket is a view of the
+store, and a rule can react to a question like anything else. It is checked against the world
+while it stands: if the subject moves out of what the rule selects, the question is moot and is
+withdrawn, with the reason on the record, rather than carried.
 
-It also survives verse going down. The channel and the ballots are entities. What dies is the
-goroutine watching the tally, and a start gives it back, so a vote cast a day and a restart later
-lands on the same motion and carries it. A motion nothing can answer any more — its rule left the
-charter, its subject is gone — is settled `orphaned`, with a `why`, rather than left on the docket
-looking answerable. See
-[a motion outlives the verse](trigger-model.md#a-motion-outlives-the-verse-that-opened-it).
+It also survives verse going down. The record and its ballots are entities. What dies is the
+firing waiting on them, and a start gives it back: the rule is re-evaluated, re-poses the same
+question, and finds the ballots already cast. A question nothing can answer any more — its rule
+left the charter, its subject is gone — is settled `orphaned`, with a `why`, rather than left on
+the docket looking answerable. See
+[a question outlives the verse](trigger-model.md#a-question-outlives-the-verse-that-asked-it).
 
 ### "No" is a real outcome
 
-A vote you can only win is not a vote. `!until` reads as *this, unless that gets there first*:
+A vote you can only win is not a vote. A gate names its options when yes and no at one each is
+not the question, and a deadline says what silence means:
 
 ```tony
-formula: !until [ !quorum 2, !quorum { choice: reject, n: 2 } ]   # two rejects → deny
-formula: !until [ !quorum 2, !deadline "4h" ]                     # the clock defaults it to deny
-formula: !until [ !quorum 2, !fact ci.status.green ]              # an external fact settles it
+options: [{id: proceed, need: 2}, {id: deny, need: 2}]    # two rejects → deny
+deadline: {within: "4h", default: deny}                    # the clock defaults it to deny
+options: [{id: ship, need: 1}, {id: hold, need: 1}, {id: drop, need: 2}]   # not yes or no at all
 ```
 
 Quote the duration. A tony literal may not start with a digit and commas are optional, so
-`!deadline 4h` reads as the number `4` beside a separate literal `h`: well-formed, and not what you
-wrote. Verse rejects a numeric deadline and says so.
+`within: 4h` reads as the number `4` beside a separate literal `h`: well-formed, and not what you
+wrote. Verse refuses it at install and says so.
 
-That is the whole formula language. Leaves are requirements (`!quorum`, `!fact`, `!deadline`) and
-`!until` composes them. It is not the `!and` and `!or` inside a *match*, which compose predicates
-about the verse right now rather than requirements over time.
+Waiting for a *fact* is not a gate. A rule that should act once CI is green says so in `when:`,
+which is what a condition is for.
 
 ### The same machinery answers *who*
 

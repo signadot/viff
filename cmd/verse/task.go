@@ -890,7 +890,14 @@ func noContent(cc *cli.Context, what, path string, body any, id string) error {
 		return fmt.Errorf("%s: %w", what, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+	case http.StatusAccepted:
+		// Recorded, not settled: an answer to a question that takes more than one voice.
+		msg, _ := io.ReadAll(resp.Body)
+		fmt.Fprintln(cc.Out, what, id+":", strings.TrimSpace(string(msg)))
+		return nil
+	default:
 		msg, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("%s: %s: %s", what, resp.Status, strings.TrimSpace(string(msg)))
 	}

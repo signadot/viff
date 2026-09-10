@@ -91,6 +91,8 @@ type GateQuestion struct {
 }
 
 // Deadline is how long a question stands, and what it settles on when the clock passes.
+//
+//tony:schemagen=verse-deadline,notag
 type Deadline struct {
 	Within  string `tony:"field=within"`
 	Default string `tony:"field=default,omitzero"`
@@ -117,6 +119,8 @@ const (
 const NoOption = "none"
 
 // Option is one outcome a question can settle on, and how many ballots settle it.
+//
+//tony:schemagen=verse-option,notag
 type Option struct {
 	ID   string `tony:"field=id"`
 	Need int    `tony:"field=need,omitzero"`

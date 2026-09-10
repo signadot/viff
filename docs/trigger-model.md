@@ -29,15 +29,16 @@ matches.
 | flow | match — point-in-time | which live tasks to steer, by their subject |
 | `on` | formula — temporal | the **cause**: fire at the commit where this first holds, having not held before |
 | `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
-| gate | formula — temporal | proceed at a threshold — `quorum`/`fact`/`until`/`deadline` |
+| gate | neither — a question posed to somebody | proceed when whoever answers settles it: one yes, a threshold of them, or a clock's default |
 
 The cut is simple. Name entities at an instant and you want a match; relate the verse over time and
 you want a formula. `subject` and flow-addressing are point-in-time, since a subject is selected at
 the commit a firing happens at and never accumulated, so they are plain matches, and giving them a
 `deadline` or an `until` would be a category error.
 
-`on`, `when` and gates all relate the verse's evolution, so they are formulas. `on` and `when` are
-the same predicate asked at different moments — `on` at C-1 and C, firing on ¬P → P, and `when` at
+`on` and `when` relate the verse's evolution, so they are formulas. A gate is neither: it asks
+somebody, and what it says is how the answer settles ([gates](#gates--whether-it-proceeds)).
+`on` and `when` are the same predicate asked at different moments — `on` at C-1 and C, firing on ¬P → P, and `when` at
 C, gating — which is why they share a grammar and a type. Cause and condition, told apart by edge
 and level.
 
@@ -270,8 +271,9 @@ deletes that entity, and a start reads them back before anything observes. So th
 comes back up running is the one it went down with.
 
 Everything else a restart needs is durable in the same way. A task is mirrored, a sequence's
-position is a fact on its subject, a claim is a lease in the store, an open motion is a channel
-with its ballots beside it, and resume rehydrates a chain's hooks and a motion's awaiter from them.
+position is a fact on its subject, a claim is a lease in the store, an open question is a record
+with its ballots on it and an open selection a channel with its beside it, and resume re-poses the
+one and rehydrates a chain's hooks and the other's awaiter from them.
 The program has to be durable too, or a verse comes back with its work in progress intact and
 nothing left to react to it.
 
@@ -309,7 +311,7 @@ sits inside. Between them they cover a charter:
 |---|---|
 | the rule, `action:`, `gating:`, `spawn:`, a gate entry | the value's own type |
 | a `patch:` or `derive:` body | nothing needed — the value is stored as-is |
-| `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:`/`formula:` | the *field* holding it — which is how a value whose own type cannot carry one still keeps it |
+| `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:` | the *field* holding it — which is how a value whose own type cannot carry one still keeps it |
 | `subject:`, `on:`, `when:` | Condition's own codec, which is hand-written and so carries them by hand |
 
 The two positions are one question asked twice, and both are carried: `name: review # the short
@@ -409,8 +411,8 @@ the engine selects and spawns for. A pattern that selects nothing is a no-op —
 conjures an entity called `*`.
 
 The engine starts one firing per selected entity, each about exactly one subject, and that identity
-is what every part of a firing keys on: its spawn id, its gate question, its motion channel, its
-place in a causal chain. A re-evaluation about a subject already firing, or already running work it
+is what every part of a firing keys on: its spawn id, its gate question, its selection channel,
+its place in a causal chain. A re-evaluation about a subject already firing, or already running work it
 started, is not a second firing, which is what keeps a rule waiting on a human from asking again at
 every commit.
 
@@ -569,9 +571,9 @@ already holds has no rising edge. The same property means the latch above is wha
 re-running when the engine restarts over a verse still in the matching state. See
 [change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
 
-`on` and `when` may also grow *temporal* operators (`until`, `deadline`, … — the same language
-a gate formula uses), at which point they relate the verse's evolution rather than being asked
-at a revision. That is not evaluated yet; see [Limits today](#limits-today).
+`on` and `when` may also grow *temporal* operators (`until`, `deadline`, …), at which point
+they relate the verse's evolution rather than being asked at a revision. That is not evaluated
+yet; see [Limits today](#limits-today).
 
 ## What a match can say
 
@@ -728,8 +730,31 @@ copy, and one answer releases everyone waiting. A rule waiting on a human is the
 filling the docket.
 
 Multiple gates model multi-approval: a deploy needing both a security and a release-manager sign-off
-is two `ask` gates. A gate can also carry a `formula` the verse resolves itself — a vote, a
-deadline, a threshold — which is the temporal layer of this document at work on the guard.
+is two `ask` gates. One gate that takes more than one voice says so on the question it poses:
+
+```tony
+  gates:
+  - name: approvals
+    need: 2                                    # proceed takes two ballots; one deny refuses
+    deadline: {within: "24h", default: deny}   # and the clock decides silence
+  - name: route
+    options: [{id: ship, need: 1}, {id: hold, need: 2}, {id: drop, need: 1}]
+```
+
+Every gate poses the same record: the options it can settle on, each with the number of ballots
+that settles it, and a deadline with the option it falls to. A gate that says nothing poses
+`proceed` and `deny` at one each, which is the question a gate has always asked. `need` is the
+short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and the two are not
+written together. `options` are ordered: the first to reach its threshold settles the question.
+A gate that carries any of these and no `mode` is `ask`; with `mode: auto` it is refused, since
+auto asks nobody.
+
+The tally is whoever answers' to keep, not the engine's: an answer is a ballot on the record,
+the question settles in the same write as the ballot that reaches a threshold, and one answerer
+casting twice replaces their own ballot rather than counting twice. What the engine owes is to
+ask exactly what was written, and to act on the one answer that comes back.
+
+Waiting for a fact is not a gate. A rule that acts once CI is green says so in `when:`.
 
 ### `onDenied` — what a no means
 
@@ -753,10 +778,10 @@ same subjects the firing was about. It hangs off the *gate* rather than the acti
 the gate's outcome: two gates refuse for different reasons, and each says what its own refusal
 means. It is not a completion hook and needs no spawn of its own.
 
-Only a committed refusal runs it. A resolver that could not be reached, or a monitor that ended
-before its motion committed, said nothing at all, and writing a rejection on their behalf would put
-a decision in the store that nobody made. It applies on both arms: a posed `ask` that is answered
-no, and a `formula` whose motion commits a deny.
+Only a committed refusal runs it. A resolver that could not be reached, or a question withdrawn
+because its subject left the selection, said nothing at all, and writing a rejection on their
+behalf would put a decision in the store that nobody made. It applies to a no however it arrives:
+one person's, a threshold of them, or the clock's default.
 
 Omitting it is legitimate — "ask again next time somebody touches it" is a real policy — so a
 gate without one earns an advisory at install rather than a refusal. To say a no is final
@@ -771,95 +796,85 @@ without changing the subject's own state, the vanishing-marker shape works:
 
 Removing the marker is then what re-opens the question.
 
-### A deadline's default option decides nothing on its own
+### A deadline settles
 
-`!until [!quorum 2, !deadline "24h"]` closes on the quorum **or** on the clock. The `deny` side
-is the deadline's default: it has no threshold, so no number of ballots for it settles the
-motion. Two people can deny and the motion stays open, with the subject untouched, until the
-deadline passes.
+`deadline: {within: "24h", default: deny}` settles the question on `deny` when the clock passes
+with no option at its threshold, as `by: deadline`, and the firing sees it as a refusal. The
+instant is stamped on the record once, when the question is first posed, and honoured by every
+later posing: a restart arms against the instant the question was given, not against a fresh
+duration, so a deadline that passed while the verse was down fires on the way back up.
 
-The ballot says so — that option renders `reachedBy: deadline`, and `--vote` tells the voter
-their ballot is dissent on the record rather than a decision:
+The default is an ordinary option. A ballot for it counts toward its own threshold like any
+other, so a `deny` that needs one settles on one deny, before the clock. A default left empty
+settles on nothing (`verdict: none`), which the firing reads as a refusal nobody made.
 
-```tony
-options:
-- {choice: approve, id: proceed, need: 2}
-- {id: deny, reachedBy: deadline}
-```
+### A question outlives the verse that asked it
 
-It is marked rather than refused, because a denial is worth recording even when it cannot close
-anything, which is what a vote log is for. A gate that wants a *quorum to deny* wants a formula
-with a threshold on both sides, which `!until` has no place for.
-
-### A motion outlives the verse that opened it
-
-The channel, its options and every ballot cast into it are entities, so a restart finds the motion
-exactly where it stood. What does not survive is the *awaiter*, the goroutine watching the tally,
-which lives inside the firing. A motion with no awaiter is the worst kind of docket entry: it lists
-a decision, somebody makes it, and nothing moves.
+The record, its options and every ballot cast into it are entities, so a restart finds the
+question exactly where it stood. What does not survive is the *awaiter*, which lives inside the
+firing. A question with no awaiter is the worst kind of docket entry: it lists a decision,
+somebody makes it, and nothing moves.
 
 Startup gives the awaiter back, by the route the axis makes available:
 
-- A **whether-gate** motion blocks the firing itself, and the firing comes back by being
+- A **gate's** question blocks the firing itself, and the firing comes back by being
   *evaluated again*: its action never ran — that is what the gate is holding — so a rule that
-  still selects the subject re-monitors the same channel, and the ballots already cast still
-  count. Re-evaluated, not resumed, which is the distinction the next paragraph turns on.
+  still selects the subject re-poses the same question, joins the record already standing, and
+  the ballots already cast still count. Re-evaluated, not resumed, which is the distinction the
+  next paragraph turns on.
 - A **who-select** motion (a `spawn` with a `provider`) opens *after* the action has written
   its latch, so nothing re-fires it. It records the `chain` of the action it is blocking, and
   startup navigates that chain back into the charter and re-enters the selection — the same
   lookup key a resumed task's hooks are rehydrated from.
 
-A motion nothing can answer any more is *settled* rather than left standing: its rule left the
+A question nothing can answer any more is *settled* rather than left standing: its rule left the
 charter, its action moved, its subject is gone — or, the case that is easy to miss, **the
 subject moved out of what the rule selects**. A merge proposal swept to `state: stale` is no
 longer picked by a rule that reads `!not.has-path state`, so that rule will never look at its
-gate again however healthy the rule is. The motion is stamped `status: orphaned` with a `why`
-and a `when`, keeping the trail while taking it off the list of things a person can act on.
-That is not a verdict — the channel carries no `outcome`, because nobody decided anything — so
-a rule that selects the subject again reopens the same channel over the same ballots.
+gate again however healthy the rule is. The record is stamped `status: orphaned` with a `why`,
+keeping the trail while taking it off the list of things a person can act on. That is not a
+verdict — nobody decided anything — so a rule that selects the subject again re-poses the same
+question over the same ballots.
 
-The resume is idempotent by construction, which is what lets it run beside a rule that also
-re-fires: the channel id is derived from the subject and the spec, the commit is terminal-once
-under a revoke guard, and the spawn id is deterministic per (chain, subject). One motion, one
-task, however many paths reach it.
+The re-pose is idempotent by construction, which is what lets it run beside a rule that also
+re-fires: the question id is derived from the rule, the gate and the subject, the settle is
+terminal-once, and the spawn id is deterministic per (chain, subject). One question, one task,
+however many paths reach it.
 
-**A scoped verse (`verse connect`) is not covered.** Its motions live in the scope's own store,
+**A scoped verse (`verse connect`) is not covered.** Its questions live in the scope's own store,
 which nothing enumerates at startup — the same gap scoped charters and scoped claims have.
 
-**A verse that dies between committing a motion and starting the work it decided loses that
-spawn.** The channel is closed, so nothing resumes it. The resume does not introduce this: it
+**A verse that dies between settling a question and starting the work it decided loses that
+spawn.** The record is answered, so nothing re-poses it. The resume does not introduce this: it
 is the window `patch` then `spawn` already has inside one action. An action is not atomic, and
 a crash in the middle of one leaves the half that landed.
 
 ### A gate's answer applies to the world it was asked in
 
-A motion is not settled the moment it is satisfied. Between reaching its threshold and committing,
-the verdict is rechecked, and two things are rechecked rather than one.
-
-The **revoke guard** covers the ballots. The witness that carried a `proceed` must still stand at
-the commit, so a retracted approval aborts it and the motion goes back to monitoring. That is the
-right rule for the answer, and it says nothing about the *question*.
-
-So the commit also asks whether the rule would still select the subject. If it would not, the
-question is moot: the motion is **withdrawn** — `status: orphaned` with a `why`, no `outcome`,
-no action, and no `onDenied`, because a moot question is not a refusal. The ballots stay in the
-log, and a rule that selects that subject again reopens the same channel over them.
+A question is not answered in a vacuum. While it stands, the firing watches the subject's own
+subtree beside it, and asks at every change whether the rule would still select the subject. When
+it would not, the question is moot: it is **withdrawn** — `status: orphaned` with a `why`, no
+verdict, no action, and no `onDenied`, because a moot question is not a refusal. The ballots stay
+on the record, and a rule that selects that subject again re-poses the same question over them.
+An answer that arrives after the subject left the selection is the same case from the other
+side: the firing withdraws rather than acts.
 
 This is not hypothetical tidiness. Without it, a merge proposal swept to `state: stale` while its
-gate stands open leaves a motion that watches only its vote log: it reaches quorum on the approval
-already cast, commits `proceed`, and merges a branch the sweep retired, losing the work on it (see
-[merge-gate-residual](working/merge-gate-residual.md)). A gate that can only be answered about a
-world that has moved on is a gate answered by reflex, which is the failure gates exist to prevent.
+gate stands open leaves a question that watches only its ballots: it reaches its threshold on the
+approval already cast, settles `proceed`, and merges a branch the sweep retired, losing the work
+on it (see [merge-gate-residual](working/merge-gate-residual.md)). A gate that can only be
+answered about a world that has moved on is a gate answered by reflex, which is the failure gates
+exist to prevent.
 
-**The withdrawal is prompt.** The monitor watches the subject's own subtree beside the vote log, so
-a motion goes moot at the change that made it moot, with nobody having to vote and nothing having
-to restart.
+**The withdrawal is prompt.** The firing watches the subject's own subtree while it waits, so a
+question goes moot at the change that made it moot, with nobody having to answer and nothing
+having to restart.
 
 One limit is worth knowing. It asks only about the *subject*, not the cause: a rule fired by an
-`on` edge may still select its subject and never see that edge again, so a motion that stands is
+`on` edge may still select its subject and never see that edge again, so a question that stands is
 not a promise the rule will re-fire. And when it cannot tell — an unreadable store, a predicate
-whose read fails — it lets the motion stand, because a stale docket entry costs a reader a moment
-while a wrongly withdrawn one takes a live question away from the people it is in front of.
+whose read fails — it lets the question stand, because a stale docket entry costs a reader a
+moment while a wrongly withdrawn one takes a live question away from the people it is in front of.
 
 ### An install re-fires, so a derive must own what it writes
 
@@ -1656,8 +1671,8 @@ reap. A charter says when, and what grace period, and whether anything should ha
 
 A temporal `on` or `when` is not evaluated yet, and is rejected at install with an error that
 says so: both are asked of the store at a revision, so they have to be answerable at one. Use a
-point-in-time match; temporal composition works today in a gate's `formula`, which the motion
-compiler reads (`quorum`, `fact`, `until`, `deadline`).
+point-in-time match. Nothing composes over time yet: a gate's threshold and deadline are the
+question's, not a formula's.
 
 A rule may declare the stratum it lives in, and then its subject must fall inside that stratum's
 pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer: a

@@ -889,15 +889,17 @@ func TestSubjectPartsResolveInAPatch(t *testing.T) {
 	}
 }
 
-// $subject.value reads the subject AS OF THE COMMIT THAT CAUSED THE FIRING, not as of the
-// moment the action runs.
+// A FIRING HELD AT A GATE WITHDRAWS when its subject moves out of the rule's selection before
+// the answer comes.
 //
-// The difference is a gate. A firing held for an approval acts whenever the answer comes, and
-// the subject may have moved on meanwhile — so a late read would write from a state nobody
-// evaluated, and the model's rule is that a firing is settled at one snapshot. Here the gate is
-// answered only after the subject has been changed underneath it, and the patch must still
-// carry what was true when the rule fired.
-func TestSubjectValueReadsAtTheCausingCommit(t *testing.T) {
+// $subject.value reads the subject as of the commit that caused the firing (the case above),
+// so a late answer could act from that snapshot. It does not: a gate asks its question of a
+// world, and the answer applies to that world. A subject that the rule would no longer select
+// is one the charter has moved on from, and acting on the old snapshot anyway is how a merge
+// landed on a branch a sweep had retired (docs/working/merge-gate-residual.md). The question
+// leaves the docket with the reason (see gatemoot_test.go), nothing is decided, and the
+// patch never lands.
+func TestAFiringWithdrawsWhenItsSubjectMovesOnUnderTheGate(t *testing.T) {
 	store := entitytest.Store(t)
 	release := make(chan struct{})
 	eng := New(store, blockingResolver{release: release})
@@ -921,25 +923,14 @@ func TestSubjectValueReadsAtTheCausingCommit(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	close(release)
 
-	deadline := time.After(3 * time.Second)
-	for {
-		e, ok, _ := store.Get(ref)
-		if ok {
-			if saw := entity.ToObj(e.Payload)["sawStage"]; saw != nil {
-				if saw != "open" {
-					t.Fatalf("$subject.value.stage = %v, want \"open\" — it was read at the "+
-						"moment the gate was answered rather than at the commit that caused "+
-						"the firing", saw)
-				}
-				return
-			}
-		}
-		select {
-		case <-deadline:
-			e, _, _ := store.Get(ref)
-			t.Fatalf("the gated firing never landed its patch; have %+v", entity.ToObj(e.Payload))
-		case <-time.After(10 * time.Millisecond):
-		}
+	time.Sleep(500 * time.Millisecond)
+	e, _, _ := store.Get(ref)
+	got := entity.ToObj(e.Payload)
+	if got["sawStage"] != nil {
+		t.Fatalf("the firing acted on a subject the rule no longer selects: %+v", got)
+	}
+	if got["stage"] != "moved-on" {
+		t.Fatalf("the subject = %+v, want it left where the world put it", got)
 	}
 }
 

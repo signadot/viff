@@ -75,11 +75,15 @@ signature:
 ---
 context:
 - tony-format/context
+- task: github.com/signadot/verse/task
 define:
+  deadline: .[nullable(task:verse-deadline)]
   formula: .[nullable(verse-formula)]
   mode: .[string]
   name: .[string]
+  need: .[int]
   onDenied: .[nullable(verse-action)]
+  options: .[array(task:verse-option)]
 signature:
   name: verse-trigger-gate
 ---

@@ -151,17 +151,15 @@ verse gate                                  # task gates, and engine gates that 
 verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-… run-…~d1
 ```
 
-**A charter gate carrying a `formula:` is not here.** It becomes a *motion* instead — a different
-entity (`verse.motion.channel`), a different list (`verse motion`), a different answer (`--vote
-<choice>` rather than approve|deny), settled by a tally rather than by one person. So `verse gate`
-is not the whole of what is waiting on a person, and asking for one and looking in the other
-answers *404: no such question*.
+**A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
+`options` and, as answers arrive, its `ballots`; `verse gate approve <id> --as <who>` casts one, and
+the record settles in the same write as the ballot that reaches a threshold. A gate with a
+`deadline` lists it, and settles on its default when the clock passes.
 
-That split is a known defect rather than a design: the fork is on whether a formula is *present*,
-when the distinction it needs is whether the gate asks somebody or waits for something — so
-`!until [!fact green, !deadline "4h"]`, which asks nobody anything, lands on the docket with no
-ballot anyone can cast. See [attached-resolvers-residual.md §1](../working/attached-resolvers-residual.md),
-which is also why a resolver can own only the second kind.
+**A provider selection is not here yet.** A `spawn` with a `provider` opens a *motion* instead —
+a different entity (`verse.motion.channel`), a different list (`verse motion`), a different answer
+(`--vote <choice>` rather than approve|deny). That is the last of a split that used to divide gates
+too, and it moves onto this docket next (git-issue `sp27m3g1h12krdgve1n0`).
 
 The `~` that separates the gate from its task needs no quoting and no escaping, in a shell
 or in a URL. On a terminal, `run --attach` prompts inline instead

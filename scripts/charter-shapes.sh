@@ -39,7 +39,7 @@ describe() {
 	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
 	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
 	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;
-	vote) echo "a gate formula the verse resolves itself: a quorum, on the docket." ;;
+	vote) echo "a gate that takes two approvals: one question, on the docket, settled by a tally." ;;
 	derive) echo "an action that writes an entity which is NOT its subject, and a declared ordering saying where that may land." ;;
 	esac
 }
@@ -151,7 +151,7 @@ shape_tony() {
 			  condition:
 			    subject: {path: [demo, vote, *], value: { stage: shipped }}
 			  gates:
-			  - { name: approvals, formula: !quorum 2 }
+			  - { name: approvals, need: 2 }
 			  action:
 			    patch: { stage: merged }
 		TONY
@@ -279,7 +279,7 @@ next_steps() {
 	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub_at"
 	case "$1" in
 	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as you\n' "$c" "$c" ;;
-	vote) printf '  %s motion                 ← it is waiting for a tally\n  %s motion <id> --vote approve --as alice\n  %s motion <id> --vote approve --as bob\n' "$c" "$c" "$c" ;;
+	vote) printf '  %s gates                  ← it is waiting for a tally\n  %s gate approve <id> --as alice\n  %s gate approve <id> --as bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)

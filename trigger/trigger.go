@@ -17,6 +17,7 @@ package trigger
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/signadot/verse/entity"
@@ -298,11 +299,12 @@ func (c Condition) validateOn() error {
 	return nil
 }
 
-// Gate is one decision point on a trigger firing: a named mode, or a temporal Formula. A
-// trigger's gates are conjunctive — every one must resolve positively for the action to
-// fire (e.g. a deploy needing both a security and a release-manager approval). When Formula
-// is set the gate is monitored on the store's watch stream (see Monitor) rather than posed
-// to a resolver; Mode is then optional (defaults to a blocking gate).
+// Gate is one decision point on a trigger firing. A trigger's gates are conjunctive — every
+// one must resolve positively for the action to fire (e.g. a deploy needing both a security
+// and a release-manager approval). Each poses a QUESTION with two options unless it says
+// otherwise: `need` is how many ballots `proceed` takes, `options` names outcomes of the
+// gate's own, and `deadline` says how long the question stands and what it settles on when
+// the clock passes. A gate that says none of these is answered by one person, yes or no.
 //
 //tony:schemagen=verse-trigger-gate,notag,comment=Doc,lineComment=Note
 type Gate struct {
@@ -321,8 +323,23 @@ type Gate struct {
 	FormulaDoc  []string `tony:"-"`
 	FormulaNote []string `tony:"-"`
 	Name        string   `tony:"field=name,omitzero,comment=NameDoc,lineComment=NameNote"`
-	// auto | ask | park
-	Mode    string   `tony:"field=mode,omitzero,comment=ModeDoc,lineComment=ModeNote"`
+	// auto | ask | park. Empty is auto, unless the gate carries a threshold, options or a
+	// deadline, which only make sense for a question somebody is asked; then it is ask.
+	Mode string `tony:"field=mode,omitzero,comment=ModeDoc,lineComment=ModeNote"`
+	// Need is how many ballots settle `proceed`; one `deny` still refuses. It is the short
+	// spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and the two
+	// are not written together.
+	Need int `tony:"field=need,omitzero"`
+	// Options are the gate's own outcomes, each with its threshold, for a question that is
+	// not yes or no — or one where a refusal takes more than one voice. Ordered: the first
+	// to reach its threshold settles the question.
+	Options []task.Option `tony:"field=options,omitzero"`
+	// Deadline is how long the question stands, and the option it settles on when the clock
+	// passes with none at its threshold. An empty default settles on nothing, which the
+	// firing reads as a refusal nobody made.
+	Deadline *task.Deadline `tony:"field=deadline,omitzero"`
+	// Formula is read so a charter that still writes one is refused at install with the
+	// spelling that replaced it, rather than failing as an unknown field. Nothing runs it.
 	Formula *Formula `tony:"field=formula,omitzero,comment=FormulaDoc,lineComment=FormulaNote"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
@@ -342,14 +359,89 @@ type Gate struct {
 	OnDenied *Action `tony:"field=onDenied,omitzero"`
 }
 
-// mode resolves the gate's autonomy mode. A temporal gate (Formula set) with no explicit
-// mode blocks — it is monitored until its formula holds; an empty mode is otherwise auto.
+// validate refuses a gate whose question cannot be posed as written. Every refusal names
+// the spelling that would work, because each of these is a plausible thing to write.
+func (g Gate) validate() error {
+	if g.Formula != nil {
+		return fmt.Errorf("carries a `formula`, which is no longer a kind of gate. A gate is a " +
+			"question with options: write `need: N` for a threshold on proceed, `options: " +
+			"[{id, need}]` for outcomes of its own, and `deadline: {within: \"24h\", default: " +
+			"deny}` for a clock. Waiting for a fact is `when:`, not a gate")
+	}
+	if g.Need < 0 {
+		return fmt.Errorf("need %d: a threshold is at least one", g.Need)
+	}
+	if g.Need > 0 && len(g.Options) > 0 {
+		return fmt.Errorf("`need` and `options` are written together; a threshold per " +
+			"option is spelled on the option")
+	}
+	seen := map[string]bool{}
+	for _, o := range g.Options {
+		if o.ID == "" {
+			return fmt.Errorf("an option has no id")
+		}
+		if seen[o.ID] {
+			return fmt.Errorf("option %q is written twice", o.ID)
+		}
+		seen[o.ID] = true
+		if o.Need < 0 {
+			return fmt.Errorf("option %q: need %d: a threshold is at least one", o.ID, o.Need)
+		}
+	}
+	if g.Deadline != nil {
+		d, err := g.Deadline.After()
+		if err != nil {
+			return fmt.Errorf("deadline: %w (quote the duration: within: \"24h\")", err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("deadline: within %q: a deadline is in the future", g.Deadline.Within)
+		}
+		if dflt := g.Deadline.Default; dflt != "" {
+			opts := g.options()
+			if opts == nil {
+				opts = task.DefaultOptions()
+			}
+			if _, ok := task.Need(opts, dflt); !ok {
+				return fmt.Errorf("deadline default %q is not one of this gate's options (%s)",
+					dflt, strings.Join(task.OptionIDs(opts), ", "))
+			}
+		}
+	}
+	if g.asks() && strings.EqualFold(g.Mode, "auto") {
+		return fmt.Errorf("mode auto asks nobody, so a threshold, options or a deadline have " +
+			"nothing to settle; drop them or drop the mode")
+	}
+	return nil
+}
+
+// mode resolves the gate's autonomy mode. Empty is auto, unless the gate carries a
+// threshold, options or a deadline — a question shaped for somebody to answer — and then it
+// is ask.
 func (g Gate) mode() (task.Mode, error) {
 	m := g.Mode
-	if m == "" && g.Formula != nil {
+	if m == "" && g.asks() {
 		m = "ask"
 	}
 	return ParseMode(m)
+}
+
+// asks reports whether the gate says anything about how its question settles, which only a
+// posed question can honour.
+func (g Gate) asks() bool {
+	return g.Need > 0 || len(g.Options) > 0 || g.Deadline != nil
+}
+
+// options is what the gate's question offers: its own options when it names them, the two
+// default ones with `proceed` at the threshold `need` asks for, or nothing — the default
+// two, one ballot each — when it says neither.
+func (g Gate) options() []task.Option {
+	if len(g.Options) > 0 {
+		return g.Options
+	}
+	if g.Need > 1 {
+		return []task.Option{{ID: task.Proceed, Need: g.Need}, {ID: task.Deny, Need: 1}}
+	}
+	return nil
 }
 
 // occasion is what an action needs to know about the firing it is running for. It exists

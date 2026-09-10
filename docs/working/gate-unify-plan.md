@@ -138,10 +138,19 @@ is what `orphanMotion` wrote. On a re-fire the firing re-poses the same id; if t
 already settled it reads the outcome and proceeds or refuses without waiting, which is the
 restart case `ResumeMotions` handled for a whether-motion.
 
-Deleted in this step: `monitorGate`, `compileFormula`, `optionFromFormula`, `quorumFormula`,
-`openChannel`, `awaitMotion`, `drain`, `commitMotion`, `commitMotionAtomic`, `closedMotion`,
-`deadlineAt`, `witnessPreconditions`, and the whether-motion half of `ResumeMotions`
-(`reviewWhether`). The `motion` struct survives only as long as step 4 needs it.
+Deleted in this step: `monitorGate`, `compileFormula`, `optionFromFormula`, `deadlineDuration`,
+the whether-motion half of `ResumeMotions` (`reviewWhether`), and the subject watch inside
+`awaitMotion`. What the select axis still runs on — `openChannel`, `awaitMotion`, `drain`,
+`commitMotion`, `commitMotionAtomic`, `closedMotion`, `deadlineAt`, `witnessPreconditions`,
+`quorumFormula`, the `motion` struct — goes with step 4.
+
+One behaviour changes for a plain `ask` gate, and it is the unification's consequence rather
+than a side effect: a firing whose subject leaves the rule's selection while its question stands
+is withdrawn, and an answer arriving after that finds nothing. The question arm acted on its
+snapshot whenever the answer came; the motion arm withdrew; the trigger-model doc argued for
+withdrawal and staging paid for the other reading twice. The test that pinned the old reading
+(`TestSubjectValueReadsAtTheCausingCommit`) becomes the withdrawal it now is; the
+read-at-causing-commit claim keeps its unit test.
 
 Migrate the two charters that write a formula: `docs/working/comment-drift.tony` (a working
 note, but it is the drive, and a drive that does not install is not a record of anything) and
