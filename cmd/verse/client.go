@@ -835,8 +835,7 @@ func gateCmd() *cli.Command {
 			if handled, err := dispatch(cfg.Command, cc, args); handled {
 				return err
 			}
-			switch len(args) {
-			case 0:
+			if len(args) == 0 {
 				if cfg.Answer != "" {
 					return fmt.Errorf("%w: --answer answers one question, so it wants an id: "+
 						"`verse gate <id> --answer %s --as <who>`", cli.ErrUsage, cfg.Answer)
@@ -846,27 +845,37 @@ func gateCmd() *cli.Command {
 					return fmt.Errorf("gate: %w", err)
 				}
 				return printBody(cc, resp)
-			case 1:
+			}
+			// A command with subcommands stops parsing flags at its first positional, so a
+			// verb can be dispatched — which leaves `--answer canary --as lead` unread after
+			// the id. The id is the one positional; what follows it is flags, parsed here.
+			rest, err := cfg.Parse(cc, args[1:])
+			if err != nil {
+				return err
+			}
+			if len(rest) > 0 {
+				return fmt.Errorf("%w: gate takes one id — and this takes ONE token, so %q is "+
+					"after it", cli.ErrUsage, rest[0])
+			}
+			id := args[0]
+			switch {
+			case id == "list":
 				// `list` is THE mistake a bare-listing collection invites, and an id it is not:
 				// refused by name, before anything is dialled, as every collection refuses it.
-				if args[0] == "list" {
-					return noArgs(cfg.Command, "gate", args)
+				return noArgs(cfg.Command, "gate", args)
+			case cfg.Answer == "":
+				// One record, as it stands: the options, the ballots, the deadline, the
+				// outcome — what the listing compacts.
+				resp, err := httpGet("/entity", url.Values{"at": {questionPath(id)}})
+				if err != nil {
+					return fmt.Errorf("gate: %w", err)
 				}
-				if cfg.Answer == "" {
-					// One record, as it stands: the options, the ballots, the deadline, the
-					// outcome — what the listing compacts.
-					resp, err := httpGet("/entity", url.Values{"at": {questionPath(args[0])}})
-					if err != nil {
-						return fmt.Errorf("gate: %w", err)
-					}
-					return printBody(cc, resp)
-				}
+				return printBody(cc, resp)
+			default:
 				if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
 					return err
 				}
-				return answerGate(cc, args[0], cfg.Answer, cfg.As, cfg.Say, cfg.Override, "answered")
-			default:
-				return fmt.Errorf("%w: gate takes one id", cli.ErrUsage)
+				return answerGate(cc, id, cfg.Answer, cfg.As, cfg.Say, cfg.Override, "answered")
 			}
 		})
 }
