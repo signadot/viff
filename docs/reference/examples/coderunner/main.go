@@ -242,6 +242,10 @@ type Runner struct {
 
 	mu       sync.Mutex
 	children map[string]*child
+
+	// prepareHook, when set, runs at the start of every preparation. Tests use it to hold a
+	// spawn in the state the design is about — answered, and not yet hosted.
+	prepareHook func(id string)
 }
 
 func (r *Runner) running() int {
