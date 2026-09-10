@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -90,7 +91,11 @@ type pushReply struct {
 	// output is published: `coderunner -task` already holds the model key on exactly these terms.
 	Ref   string `tony:"field=ref,omitzero"`
 	Token string `tony:"field=token,omitzero"`
-	Error string `tony:"field=error,omitzero"`
+	// Pull is the pull request to keep open from Ref once the push lands, resolved by the
+	// environment and performed by the task with the same credential (pull.go). Absent for a
+	// destination that declares none.
+	Pull  *pullSpec `tony:"field=pull,omitzero"`
+	Error string    `tony:"field=error,omitzero"`
 }
 
 // ── the child's side ────────────────────────────────────────────────────────────────────────
@@ -194,7 +199,9 @@ func pushTool(p *taskProc, conn net.Conn) (harness.Tool, bool) {
 			"where work GOES: name a destination and the runner resolves that. The runner holds " +
 			"the credential and writes the provenance trailers; you never see either. It may be " +
 			"refused — by a supervisor, or by the remote's own rules about its history — and a " +
-			"refusal is an answer, not an error to retry. Available destinations: " +
+			"refusal is an answer, not an error to retry. A destination may keep a pull request " +
+			"open from where it sends work; the runner opens or updates it after the push, and " +
+			"the result says which. Available destinations: " +
 			strings.Join(names, ", ") + ". `ref` applies ONLY to a destination that retires: give " +
 			"the ref to delete, and the environment decides which refs that destination may " +
 			"touch at all.",
@@ -319,7 +326,18 @@ func push(ctx context.Context, conn net.Conn, t *Tree, branch, dest, ref string,
 		}
 		return "", false, err
 	}
-	return "pushed " + t.Repo.Name + " -> " + rep.Ref, false, nil
+	out := "pushed " + t.Repo.Name + " -> " + rep.Ref
+	if rep.Pull == nil {
+		return out, false, nil
+	}
+	// The push landed whatever happens next, and the error says so: a pull request that could
+	// not be opened is a branch on the forge with nobody asked about it, which is the failure a
+	// charter wants to hear about rather than a success it has to check.
+	pr, err := ensurePull(ctx, http.DefaultClient, rep.Token, *rep.Pull)
+	if err != nil {
+		return "", false, fmt.Errorf("%s, but %w", out, err)
+	}
+	return out + "; " + pr, false, nil
 }
 
 func ask(conn net.Conn, req pushRequest) (pushReply, error) {
@@ -453,7 +471,15 @@ func (r *Runner) release(c *child, req pushRequest) pushReply {
 	if err != nil {
 		return pushReply{Error: err.Error()}
 	}
-	return pushReply{OK: true, Ref: ref, Token: tok}
+	rep := pushReply{OK: true, Ref: ref, Token: tok}
+	if d, ok := t.Repo.Dest(req.Destination); ok && d.Pull != nil {
+		spec, err := t.pullSpec(d, c.ws.Branch)
+		if err != nil {
+			return pushReply{Error: err.Error()}
+		}
+		rep.Pull = &spec
+	}
+	return rep
 }
 
 // credentialFor is the mapping the whole design turns on: a granted capability → the secret it

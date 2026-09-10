@@ -425,6 +425,11 @@ reads: [git, verse-dev.drift]
       system: git
       kind: ref
       value:
+        # THIS repository's, because the git source mirrors more than one and every mirror's
+        # refs reflect under the one kind: example/app's deliveries are named the same
+        # way and belong to docs/working/signadot/pr.tony, which reaches them through an
+        # environment this file's cannot.
+        repo: verse
         name: !glob "verse/auto/*/*"
   action:
     derive:

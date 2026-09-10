@@ -365,7 +365,7 @@ func Updated() Require { return Require{Pattern: Present()} }
 // of a read-modify-write, over the payload the caller read.
 //
 // A null needs its own spelling, and that is the whole reason this is a function rather than a
-// call to AsData at each site. AsData leaves a bare null alone, and a bare null PATTERN is
+// call to AsPattern at each site. AsPattern leaves a bare null alone, and a bare null PATTERN is
 // Present(): it matches any value. So expecting a null payload to be unchanged would have asked
 // only that something still be there, and a concurrent write of anything at all would have
 // satisfied it — a lost update, silently, on exactly the entities the store had just started
@@ -375,7 +375,7 @@ func Unchanged(cur Payload) Payload {
 	if cur != nil && cur.Type == ir.NullType && cur.Tag == "" {
 		return ir.Null().WithTag(irTypeTag)
 	}
-	return AsData(cur)
+	return AsPattern(cur)
 }
 
 // irTypeTag is tony's type-match operator. `!irtype null` asks whether what stands here has

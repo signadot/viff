@@ -228,6 +228,10 @@ type Destination struct {
 	// separately from delivering. That is not tidiness: a push to an auto branch is recoverable
 	// and a delete is the one act here that destroys something.
 	Delete bool `tony:"field=delete,omitzero"`
+	// Pull keeps an open pull request from this destination's ref (pull.go). It is what a
+	// destination on a protected branch's repository means by "land": the push is the proposal
+	// and the pull request is where somebody decides it.
+	Pull *Pull `tony:"field=pull,omitzero"`
 }
 
 // Credential is a secret this environment can release to a task, named by the ENVIRONMENT
@@ -437,6 +441,23 @@ func checkDests(env string, creds []Credential, r Repo) error {
 				"single fixed ref %q — a retirement names a set, and a destination that can "+
 				"only ever delete one ref is a switch somebody will pull once by accident",
 				env, r.Name, d.Name, d.Ref)
+		case d.Pull != nil && d.Delete:
+			// A pull request is FROM a ref work went to, and a retirement sends no work anywhere.
+			return fmt.Errorf("coderunner: environment %q, repo %q, destination %q both deletes and "+
+				"opens a pull request — a pull request is from a ref this task's work went to, and "+
+				"a retirement is the one destination nothing goes to", env, r.Name, d.Name)
+		case d.Pull != nil:
+			// Resolved once here rather than at the first push, where the refusal would arrive
+			// after the work was staged and the credential released.
+			if _, _, _, err := pullAPI(r.Repo); err != nil {
+				return fmt.Errorf("coderunner: environment %q, repo %q, destination %q opens a pull "+
+					"request, and %v", env, r.Name, d.Name, err)
+			}
+			if d.Credential != "" && !hasCredential(creds, d.Credential) {
+				return fmt.Errorf("coderunner: environment %q, repo %q, destination %q wants "+
+					"credential %q, which this environment does not declare (it has: %s)",
+					env, r.Name, d.Name, d.Credential, strings.Join(credentialNames(creds), ", "))
+			}
 		case d.Credential != "" && !hasCredential(creds, d.Credential):
 			// The gate approving a push is what releases the secret, so a destination naming a
 			// credential nobody declared is one whose approval releases nothing — a task told
@@ -573,6 +594,20 @@ func checkReachable(e Environment) error {
 				"allowlist has no route there (%w) — a task would be approved and then fail to "+
 				"reach the forge, at the end of a run",
 				e.Name, r.Name, u.Host, err)
+		}
+		// The API is a different host from the push, and a pull request is opened after the
+		// push landed: refused here, or it fails with the work already on the forge.
+		for _, d := range r.Dests() {
+			if d.Pull == nil {
+				continue
+			}
+			api, _ := url.Parse(githubAPI)
+			if err := eg.permits(net.JoinHostPort(api.Hostname(), "443")); err != nil {
+				return fmt.Errorf("coderunner: environment %q opens pull requests on %s through "+
+					"destination %q, and its egress allowlist has no route to %s (%w)",
+					e.Name, r.Name, d.Name, api.Host, err)
+			}
+			break
 		}
 	}
 	return nil

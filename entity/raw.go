@@ -10,14 +10,20 @@ package entity
 // whose own patch log no longer applies ("glob patching null gave cannot patch with glob
 // operation"), which is why a charter used to be stored as its TEXT.
 //
-// `!raw` is the escape (go-tony v0.0.100). As a patch it returns its subtree verbatim:
-// nothing beneath it is interpreted, at any depth, and the `!raw` tag itself is consumed, so
-// the data lands carrying its own tags. As a match it compares its subtree to the document
-// literally — tags compared rather than evaluated. One escape with both faces, which is what
-// lets the same wrap serve a write's value and a precondition built from what was read.
+// `!raw` is the escape (go-tony v0.0.100): nothing beneath it is interpreted, at any depth,
+// and the `!raw` tag itself is consumed, so the data lands carrying its own tags. It ESCAPES
+// and does nothing else — as a patch it merges, the way a patch of the same shape without it
+// would (tony-format mgg9nvt6h12krn6dksn0; the go-tony releases before that change replaced
+// instead, and nothing here depends on which). A record that carries a document wants the
+// document REPLACED, not merged into, and that is a second operation said in the same chain:
+// `!insert` applies its child against absence and answers the result whatever was there, so
+// `!insert.raw` is "exactly this, as data". That is the escape a WRITE gets here. A match
+// cannot hold `!insert` and does not need to: `!raw` in a pattern compares its subtree to the
+// document literally, tags compared rather than evaluated, which is what a precondition built
+// from what was read wants (AsPattern).
 //
 // The escape belongs to the WRITE, never to what is stored. A payload read back is ordinary
-// data with no `!raw` anywhere in it, so putting it back means escaping it again — see
+// data with no escape anywhere in it, so putting it back means escaping it again — see
 // AsData, which is what Modify does for its callers.
 
 import (
@@ -29,11 +35,15 @@ import (
 	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 )
 
-// rawName is the escape operation's tag label.
-const rawName = "raw"
+// rawName is the escape operation's tag label, and insertName the one that makes it replace.
+const (
+	rawName    = "raw"
+	insertName = "insert"
+)
 
 // Raw marks a whole value as data: it is stored exactly as it stands, operator tags and all,
-// and it REPLACES what stands at its path instead of merging into it.
+// and it REPLACES what stands at its path instead of merging into it — `!insert.raw`, the
+// insert for the replacing and the raw for the data.
 //
 // That is the shape a record carrying a DOCUMENT wants — a rule, a goal definition — where a
 // merge would leave fields of the version before it standing in the version after. It is also
@@ -60,7 +70,7 @@ func Raw(p Payload) Payload {
 	for value.Type == ir.CommentType && len(value.Values) == 1 {
 		value = value.Values[0]
 	}
-	value.Tag = rawTag(value.Tag)
+	value.Tag = writeEscape(value.Tag)
 	return out
 }
 
@@ -72,8 +82,9 @@ func Raw(p Payload) Payload {
 // either: patching a tagged value onto a tagged value COMPOSES the two, so a goal record
 // rewritten six times came back holding `doneWhen: !fact.fact.fact.fact.fact.fact`. A tag in a
 // payload is data whatever it names — the write must not interpret it, and the merge must not
-// accumulate it — and `!raw` says both at once, since it installs its subtree verbatim rather
-// than merging into what stands there. Layout tags are exempt: `!bracket` records how a value
+// accumulate it — and `!insert.raw` says both at once: the raw makes the tags data, and the
+// insert installs the value whole rather than merging into what stands there. Layout tags are
+// exempt: `!bracket` records how a value
 // was written, and escaping on it would put half of every JSON-shaped payload out of reach of
 // a merge for no reason.
 //
@@ -84,33 +95,70 @@ func Raw(p Payload) Payload {
 // It escapes EVERY tag, verse's own removal marker included, and the callers add that marker
 // afterwards for exactly that reason (write.go's withRemovals). Exempting it here would be the
 // obvious alternative and is wrong twice: a charter legitimately STORES `patch: {tmp: !delete
-// null}` as data, so the exemption would make a stored operator executable — and AsData also
-// builds the compare-and-swap PRECONDITION, where a delete is not something a match can be
-// evaluated with at all ("cannot match with delete operation").
+// null}` as data, so the exemption would make a stored operator executable — and AsPattern,
+// the same walk for the compare-and-swap PRECONDITION, would otherwise carry a delete into a
+// match, where it cannot be evaluated at all ("cannot match with delete operation").
 func AsData(p Payload) Payload {
 	if p == nil {
 		return nil
 	}
 	out := clone(p)
-	escapeTags(out)
+	escapeTags(out, writeEscape)
 	return out
 }
 
-// escapeTags wraps every subtree a patch would interpret or a merge would compose, in place.
-func escapeTags(n *ir.Node) {
+// AsPattern is AsData for a PRECONDITION: the same values escaped, with the bare `!raw` a
+// match understands — its subtree compared to the document literally, tags compared rather
+// than evaluated. A pattern cannot hold `!insert`, so the write's escape is not this one.
+func AsPattern(p Payload) Payload {
+	if p == nil {
+		return nil
+	}
+	out := clone(p)
+	escapeTags(out, patternEscape)
+	return out
+}
+
+// escapeTags wraps every subtree a patch would interpret or a merge would compose, in place,
+// with the escape the caller's use wants: writeEscape for a value being stored, patternEscape
+// for one being matched.
+func escapeTags(n *ir.Node, esc func(string) string) {
 	if n == nil {
 		return
 	}
-	if opIn(n.Tag) == rawName {
+	if escaped(n.Tag) {
 		return // already escaped: everything beneath it is data, this one included
 	}
 	if dataTag(n.Tag) != "" {
-		n.Tag = rawTag(n.Tag) // and stop: what it holds is data by that very fact
+		n.Tag = esc(n.Tag) // and stop: what it holds is data by that very fact
 		return
 	}
 	for _, v := range n.Values {
-		escapeTags(v)
+		escapeTags(v, esc)
 	}
+}
+
+// escaped says a tag chain is already one of the two escapes: the first operation it names is
+// `raw`, or it is `insert` with `raw` directly behind it. Everything beneath such a node is
+// data, this one included.
+func escaped(tag string) bool {
+	for tag != "" {
+		head, _, rest := ir.TagArgs(tag)
+		name := strings.TrimPrefix(head, "!")
+		if mergeop.Lookup(name) == nil {
+			tag = rest
+			continue
+		}
+		if name == rawName {
+			return true
+		}
+		if name == insertName {
+			next, _, _ := ir.TagArgs(rest)
+			return strings.TrimPrefix(next, "!") == rawName
+		}
+		return false
+	}
+	return false
 }
 
 // dataTag is a node's tag less the labels that record how it was WRITTEN rather than what it
@@ -136,14 +184,19 @@ func opIn(tag string) string {
 	return ""
 }
 
-// rawTag composes !raw over whatever tag the node already carries. Only a tag's FIRST label
-// is written with the "!", so the rest follow it bare — and they stay on the node, which is
-// what "the escape is consumed and the data keeps its tags" leaves behind.
-func rawTag(tag string) string {
+// patternEscape composes !raw over whatever tag the node already carries, and writeEscape
+// composes !insert.raw. Only a tag's FIRST label is written with the "!", so the rest follow
+// it bare — and they stay on the node, which is what "the escape is consumed and the data
+// keeps its tags" leaves behind.
+func patternEscape(tag string) string { return compose("!"+rawName, tag) }
+
+func writeEscape(tag string) string { return compose("!"+insertName+"."+rawName, tag) }
+
+func compose(head, tag string) string {
 	if tag == "" {
-		return "!" + rawName
+		return head
 	}
-	return "!" + rawName + "." + strings.TrimPrefix(tag, "!")
+	return head + "." + strings.TrimPrefix(tag, "!")
 }
 
 // CheckPatchable refuses a value the store could accept and then never read back.
@@ -165,9 +218,9 @@ func rawTag(tag string) string {
 //
 // It is exact rather than a guess: mergeop.Symbol embeds Name, which answers IsPatch for the
 // operation the tag actually names — the same lookup a patch does, asked before rather than
-// after. `!raw` is patchable and stops the walk by construction, so escaped data is untouched
-// however many operators it holds, which is what makes AsData and Raw still the right thing at
-// the writers.
+// after. An escape — `!raw`, or the `!insert.raw` a write gets, both patchable — stops the walk
+// by construction, so escaped data is untouched however many operators it holds, which is what
+// makes AsData and Raw still the right thing at the writers.
 //
 // IsPatch IS NOT THE WHOLE QUESTION, and asking only it is how this got narrower without anyone
 // editing it. "Can this operation appear in a patch" and "can this value be STORED" are two
@@ -192,6 +245,9 @@ func checkPatchable(n *ir.Node, at string) error {
 	if n == nil {
 		return nil
 	}
+	if escaped(n.Tag) {
+		return nil // escaped: everything beneath it is data, however it is tagged
+	}
 	if name := opIn(n.Tag); name != "" {
 		sym := mergeop.Lookup(name)
 		if sym != nil && !sym.IsPatch() {
@@ -204,9 +260,6 @@ func checkPatchable(n *ir.Node, at string) error {
 				"and leave the store unreadable. Escape it as data (entity.AsData / entity.Raw) "+
 				"if it is a pattern being stored rather than an operation being performed",
 				where, name)
-		}
-		if name == rawName {
-			return nil // escaped: everything beneath it is data, however it is tagged
 		}
 	}
 	for i, v := range n.Values {

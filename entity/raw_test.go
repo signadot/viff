@@ -190,8 +190,11 @@ func TestAsDataLeavesAnExplicitRawAlone(t *testing.T) {
 // a glob and `!bracket.raw` is already data. Reading only the head would escape the first
 // twice and the second not at all.
 func TestAsDataReadsAComposedTag(t *testing.T) {
-	if got := AsData(ir.FromString("hotfix-*").WithTag("!bracket.glob")).Tag; got != "!raw.bracket.glob" {
-		t.Fatalf("escaped tag = %q, want !raw.bracket.glob", got)
+	if got := AsData(ir.FromString("hotfix-*").WithTag("!bracket.glob")).Tag; got != "!insert.raw.bracket.glob" {
+		t.Fatalf("escaped tag = %q, want !insert.raw.bracket.glob", got)
+	}
+	if got := AsData(ir.FromString("x").WithTag("!insert.raw")).Tag; got != "!insert.raw" {
+		t.Fatalf("escaped tag = %q; a value already escaped for a write was escaped again", got)
 	}
 	if got := AsData(ir.FromString("x").WithTag("!bracket.raw")).Tag; got != "!bracket.raw" {
 		t.Fatalf("escaped tag = %q; an already-escaped value was escaped again", got)
@@ -199,6 +202,17 @@ func TestAsDataReadsAComposedTag(t *testing.T) {
 	// A layout tag on its own is not data, and does not put the value out of a merge's reach.
 	if got := AsData(ir.FromKeyVals(nil).WithTag("!bracket")).Tag; got != "!bracket" {
 		t.Fatalf("escaped tag = %q, want !bracket left alone", got)
+	}
+}
+
+// A precondition's escape is the bare `!raw`: a match cannot hold `!insert`, and `!raw` in a
+// pattern is the literal comparison a compare-and-swap wants. The write's escape is not this one.
+func TestAsPatternEscapesWithRawAlone(t *testing.T) {
+	if got := AsPattern(ir.FromString("hotfix-*").WithTag("!bracket.glob")).Tag; got != "!raw.bracket.glob" {
+		t.Fatalf("pattern tag = %q, want !raw.bracket.glob", got)
+	}
+	if got := Unchanged(doc(t, `{id: !glob "a-*"}`)); !same(got, doc(t, `{id: !raw.glob "a-*"}`)) {
+		t.Fatalf("Unchanged = %v, want the glob escaped with a bare !raw", got)
 	}
 }
 

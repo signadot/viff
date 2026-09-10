@@ -1,0 +1,308 @@
+# THE SIGNADOT COMMENT-DRIFT REVIEW: verse-dev's review half, pointed at example/app.
+#
+# One half of a two-file program. This file reads what has landed on signadot's master since it
+# last looked, judges the Go comments against the tree as it stands, fixes what disagrees and
+# delivers each fix as a branch; pr.tony beside it is what turns those branches into a pull
+# request. Install both —
+#
+#     verse charter -a -f docs/working/signadot/comment-drift.tony
+#     verse charter -a -f docs/working/signadot/pr.tony
+#
+# — this one first, because pr.tony reads it and a charter that reads an address nobody writes is
+# refused.
+#
+# It is docs/working/comment-drift.tony's review, and the reasons in that file are not restated
+# here: the unit of review is a RANGE reviewed against its far end, the cursor is patched and not
+# derived, a finding is addressed by its symbol, and a fix resolves nothing until the review after
+# it lands reads master and finds the comment true. What differs is the repository, and three
+# things follow from that:
+#
+#   - THE BRANCH IS ONE STRING, read as a ref rather than as the mirror's head: the tip is
+#     `git.ref."signadot/<branch>"`, which the source reflects for master and for any other
+#     branch alike. It is `verse/drive` while the drive is being driven — a branch cut from
+#     master that anybody may commit to freely, with the review, the proposals and the pull
+#     request all landing there — and it becomes `master` by changing that string here, in
+#     pr.tony, and in the two environments' `base`. Nothing else knows which branch it is.
+#   - IT IS SEVERAL GO MODULES, not one. `common`, `sandboxes`, `playground/app` and the ones under
+#     `infra` are each their own module, so a symbol is named from the REPOSITORY root
+#     (`common/controllers.Reconcile`, not `controllers.Reconcile`) and `go doc` runs inside the
+#     module that holds it. The prompt says so.
+#   - `third_party` IS NOT THEIRS TO FIX. Vendored code drifts on somebody else's schedule, and a
+#     comment fix there is overwritten on the next vendoring. Generated files (`*.pb.go`) likewise.
+#     Both are excluded from the diff the reviewer is pointed at.
+#
+# ── SEEDING ──────────────────────────────────────────────────────────────────────
+#
+# The cursor stands where the first range starts, so seed it at the branch's tip and the first
+# range is empty — no backlog, whatever the mirror's window holds:
+#
+#     verse data signadot comment-drift at --put '{sha: <branch tip>, stage: idle}'
+#
+# ── THE RUNNER ───────────────────────────────────────────────────────────────────
+#
+# `verse.runners.pool.code` needs an environment named `signadot-fix`: the `verse-fix` shape with
+# the repository `https://github.com/example/app`, checkout name `signadot`, base the branch,
+# and the one destination `auto: refs/heads/verse/auto/$sha/$task`. No `push` tool, for the reason
+# verse-fix has none — a fix proposes and never lands, as a property of the environment.
+at: signadot.comment-drift
+reads: [ !verse-path [git] ]
+---
+# The cursor: one entity, patched by rules whose subject it is. It bounces idle → claimed → idle.
+- name: cursor
+  level: 10
+  match:
+    path: [signadot, comment-drift, at]
+
+# One entity per range, keyed by its FAR end, which is what every downstream reader names.
+- name: range
+  level: 20
+  match:
+    path: [signadot, comment-drift, range]
+
+# The ledger: one row per symbol, open or resolved.
+- name: ledger
+  level: 30
+  match:
+    path: [signadot, comment-drift, finding]
+---
+# 1. THE CLAIM. The tip is read here and written down as `covering`, so a commit landing while
+# the review runs is neither covered nor skipped: rule 5 advances to what was CLAIMED. The read
+# joins this trigger's reads, so the branch moving is what wakes it.
+- name: claim
+  stratum: cursor
+  condition:
+    subject:
+      path: [signadot, comment-drift, at]
+      value: !let
+        let:
+        - tip: !get-path
+            at: [git, ref, "signadot/master"]
+            path: sha
+        in:
+          stage: idle
+          sha: !not .[tip]
+  action:
+    patch:
+      stage: claimed
+      covering: !get-path
+        at: [git, ref, "signadot/master"]
+        path: sha
+---
+# 2. …and the range it claimed becomes an entity, so the review has a subject of its own — and
+# therefore a task id of its own. A task's id is (rule, subject); spawned on the cursor every
+# review would share one id, and a spawn on an id that already completed returns the old answer.
+- name: open-range
+  stratum: cursor
+  condition:
+    subject:
+      path: [signadot, comment-drift, at]
+      value:
+        stage: claimed
+  action:
+    derive:
+    - path: [signadot, comment-drift, range]
+      id: $subject.value.covering
+      value:
+        from: $subject.value.sha
+        to: $subject.value.covering
+---
+# 3. The STANDING SET is read onto the range before the review, in its own firing: a spawn's
+# strings bind against the payload that fired the action, so a rule that patched `outstanding`
+# and spawned in one action would hand the task the payload from before its own write.
+#
+# `status: open` is also the human override — set a finding's status to anything else and it
+# stops being handed to the reviewer.
+- name: gather
+  stratum: range
+  condition:
+    subject:
+      path: [signadot, comment-drift, range, "*"]
+      value: !not.has-path stage
+  action:
+    patch:
+      stage: gathered
+      outstanding: !list-paths
+        at: [signadot, comment-drift, finding, "*"]
+        value:
+          status: open
+---
+# 4. …and the range is reviewed, once. `stage: gathered` is the latch, and all three terminal
+# hooks write past it.
+- name: review-range
+  stratum: range
+  condition:
+    subject:
+      path: [signadot, comment-drift, range, "*"]
+      value:
+        stage: gathered
+  action:
+    spawn:
+      runner: verse.runners.pool.code
+      environment: signadot-fix
+      driver: llm
+      grant: all
+      vector: auto
+      # The answer is a contract, not a request in the prose: an unparseable answer is no answer,
+      # and no answer leaves the range in no state at all.
+      answer:
+        files: !irtype 0
+        findings: !irtype []
+      prompt: |
+        The signadot repository is checked out at ./signadot with its full history, at $to.
+
+        Review the RANGE $from..$to — everything that has landed on the branch since the
+        last review — and answer with `at: $to`. The range is what you review; $to is the commit the
+        tree stands at, and it is what your answer is a claim about. The branch can move while
+        you work, so a reader must not have to assume which commit you meant.
+
+        THE REPOSITORY IS SEVERAL GO MODULES: `common`, `sandboxes`, `playground/app`, and the
+        ones under `infra` each have their own go.mod. A Go command runs inside the module that
+        holds the package (`cd example/common && go doc ./controllers Reconcile`), and a symbol
+        is named from the REPOSITORY root so that two modules cannot name the same thing:
+        `common/controllers.Reconcile`, `sandboxes/pkg/router.(*Router).Route`. That identity
+        survives the comment being rewritten and the declaration moving between files, which a
+        line number does not.
+
+        WHAT STILL STANDS. These are the findings the last review left open — claims that some
+        Go symbol's comments disagree with its code:
+
+        $outstanding
+
+        A finding you do not mention stays open on its own and will be handed to you again, so
+        leaving it out is correct and re-listing it unchanged costs tokens for no fact. What you
+        answer with is what CHANGED: `status: resolved` for one that is right in the tree you are
+        reading, and whatever this range broke.
+
+        Check each carried finding against the TREE, not against your memory of the diff: a
+        comment can be fixed by a commit that never touched the file it names, and the range is
+        only the reason to look.
+
+        WHAT CHANGED. The Go files the range touched, leaving out vendored and generated code,
+        which are not this repository's to correct:
+
+            git -C signadot diff --name-only $from..$to -- '*.go' ':(exclude)third_party' ':(exclude)*.pb.go'
+
+        For each of those files, read what changed in it:
+
+            git -C signadot diff $from..$to -- <path>
+
+        and judge the comments on the declarations that changed, plus any comment the change
+        made wrong elsewhere in the same file. A comment is STALE when it DISAGREES with the
+        code it is attached to: a parameter that is gone, a rationale for a branch that was
+        deleted, a "returns X" that returns Y, an algorithm described that was replaced under
+        it. Terse, unfashionable and MISSING are not stale — staleness is a disagreement, not a
+        gap.
+
+        A range is not a commit, and that changes one thing: a comment broken by one commit and
+        corrected by a later one in the SAME range is not a finding. What you are judging is the
+        tree at $to, and the intermediate states are somebody else's history.
+
+        FIX each stale one in place with write_file: rewrite the comment to say what the code now
+        does, in the voice of the comments around it. Change nothing else — not the code, not the
+        formatting, not a comment that is merely unlovely. Run no git command that writes: the
+        working tree is the handoff, and delivery is the runner's.
+
+        WHAT YOU DO NOT DO, because the working tree IS the deliverable and every file you leave
+        behind is committed: do not write a test, do not run one, do not build, and do not add a
+        file. You are judging whether a comment disagrees with the code beside it — never whether
+        the code is right. A test you write to satisfy yourself lands in somebody's pull request
+        as though a reviewer had asked for it.
+
+        A FIX YOU JUST WROTE RESOLVES NOTHING. Your edits are in a working tree that becomes a
+        branch, and a branch is a PROPOSAL — it is gathered into a pull request that somebody
+        approves, and it can be declined, or superseded, or retired unmerged while the branch
+        moves on. So a symbol you fixed is still `status: open`, because it is still wrong in the tree
+        you reviewed, and you say where you proposed the fix: `proposedAt: $to`. The review that
+        comes after the fix LANDS reads the branch, finds the comment accurate, and resolves it.
+        That is what makes the ledger a record of THE BRANCH rather than of what agents believe
+        they did.
+
+        A finding you are handed that already carries `proposedAt` and is STILL WRONG means that
+        fix did not land. Fix it again and say `proposedAt: $to` for this attempt: the work is
+        cheap and idempotent, where a comment nobody corrects is permanent.
+
+        READ EACH THING ONCE. Re-reading a file you have read does not make a verdict truer, and
+        the second read costs a turn the first one already bought. When every changed declaration
+        and every carried finding has a verdict, answer.
+
+        YOUR FINAL MESSAGE IS THE ANSWER — a JSON document, nothing before it and nothing after
+        it. Every key and every string is quoted. Report an entry ONLY for a symbol that has
+        something to say: a symbol you judged and found accurate AS YOU FOUND IT is not an
+        entry, and an empty `findings` list is a real answer — but only from a run that wrote
+        no file. Every symbol you fixed with write_file is an entry, in exactly this shape:
+
+            {
+              "files": 2,
+              "findings": [
+                {"symbol": "common/controllers.Reconcile",
+                 "status": "open",
+                 "says": "the comment says it requeues on conflict; it returns the error",
+                 "at": "$to",
+                 "proposedAt": "$to"}
+              ]
+            }
+
+        That entry is a symbol this run FIXED. It is `"open"`, not resolved, because the tree at
+        $to still has the wrong comment — your edit is a proposal that has not landed — and
+        `proposedAt` is where the fix is. An answer that wrote a file and lists no findings is
+        wrong, and if you are asked to repair the SHAPE of your answer, the findings in it stay.
+    onDone:
+      derive:
+      - path: [signadot, comment-drift, finding]
+        value: !each
+          over: $data.findings
+          id: $item.symbol
+          value:
+            symbol: $item.symbol
+            status: $item.status
+            says: $item.says
+            at: $item.at
+            proposedAt: $item.proposedAt
+      patch:
+        stage: reviewed
+        status: done
+        report: $data
+        err: !delete null
+    onFailed:
+      patch:
+        stage: failed
+        status: failed
+        err: $err
+    onCancelled:
+      patch:
+        stage: !delete null
+        err: !delete null
+---
+# 5. …and the cursor steps, onto the range it claimed, once that range is done. A failed review
+# leaves `status: failed`, so it is not in the set: the chain stops where it broke, visibly.
+#
+# THE RETRY IS ON THE RANGE, not the cursor. The range is addressed by its far end, so a cursor
+# put back to idle would claim the same tip and derive the same range — which keeps the `stage`
+# and `status` it has, and rule 3 selects only a range with no stage. Remove the latch and the
+# chain resumes from rule 3, against the same span:
+#
+#     verse data signadot comment-drift range <to> stage --rm
+#     verse data signadot comment-drift range <to> status --rm
+#     verse data signadot comment-drift range <to> err --rm
+#
+# Putting the cursor back to idle is for a range that never opened.
+- name: advance
+  stratum: cursor
+  condition:
+    subject:
+      path: [signadot, comment-drift, at]
+      value: !let
+        let:
+        - done: !list-paths
+            at: [signadot, comment-drift, range, "*"]
+            value:
+              status: done
+            path: to
+        in:
+          stage: claimed
+          covering: !or .[done]
+  action:
+    patch:
+      sha: $subject.value.covering
+      covering: !delete null
+      stage: idle

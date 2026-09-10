@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -38,6 +39,19 @@ import (
 // its stream going quiet would leave verse waiting on a task nobody is running. So each child is
 // supervised, its terminal status is REMEMBERED here, and a process that exits without one
 // becomes a `failed` this side reports with the exit status in it.
+//
+// A SPAWN IS ANSWERED BEFORE THE TASK EXISTS, and the same memory is what makes that honest. The
+// caller bounds a control request at thirty seconds, which is its patience for an ANSWER and
+// not for the work — and the work before a task can start is a mirror to fetch, a checkout to
+// make and a process to bring up, of which the first is a clone the first time a repository is
+// seen and takes what it takes. Done inside the request, that clone raced the deadline and lost
+// on every repository of any size. So the child is registered the moment the spawn is
+// validated, the request is answered `202` with the task as it stands, and preparation runs
+// behind it: the task's endpoints are served by this side until the process hosts the task —
+// a snapshot says `running`, a subscriber waits for the process and is then handed its stream,
+// a cancel aborts the preparation — and a preparation that fails is remembered as a terminal
+// status the way an exited child is, with the reason, on the plane the caller is already
+// reading.
 
 // Timings. Variables rather than constants only so the tests can run the whole lifecycle without
 // waiting out a linger designed for a human reader.
@@ -114,6 +128,16 @@ type child struct {
 	svc    net.Conn // the delivery channel's parent end (deliver.go)
 	rt     task.Runner
 	prox   *httputil.ReverseProxy
+	tr     http.RoundTripper // to the child's socket: the proxy's and the supervisor's, and the spawn's
+	base   string            // the child's url, for the one request this side makes to it by hand
+
+	// ready is closed once the process HOSTS the task. Everything before that — the workspace,
+	// the process, the spawn forwarded to it — is preparation this side answers for: `pending`
+	// is the task as it stands until then, and `abort` is what a cancel does to it.
+	ready   chan struct{}
+	pending task.Instance
+	abort   context.CancelFunc
+	ended   sync.Once // gone is closed by whichever ends the child first: its exit, or a preparation that did not reach one
 	// gone is closed by the one goroutine that calls cmd.Wait, so any number of readers can
 	// wait for the process and exactly one reaps it.
 	gone chan struct{}
@@ -162,6 +186,20 @@ func (c *child) running() bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// end says the child is gone, once, whichever side says it first.
+func (c *child) end() { c.ended.Do(func() { close(c.gone) }) }
+
+// hosting is whether the task process is up and hosting the task — the moment from which every
+// request is the child's to answer.
+func (c *child) hosting() bool {
+	select {
+	case <-c.ready:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -224,6 +262,14 @@ func (c *child) stop() {
 	c.dead = true
 	c.mu.Unlock()
 
+	if c.cmd == nil {
+		// Never started: there is no process to ask, only a preparation to abort.
+		if c.abort != nil {
+			c.abort()
+		}
+		c.end()
+		return
+	}
 	if c.life != nil {
 		_ = c.life.Close() // EOF on fd 4: the graceful ask
 	}
@@ -245,14 +291,15 @@ func (c *child) stop() {
 }
 
 // startChild prepares and starts one task process, and returns once it is answering.
-func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspace, driver string) (*child, error) {
+func (r *Runner) startChild(c *child, env Environment, point Point, driver string) error {
+	id, ws := c.id, c.ws
 	// The socket lives in the runner's own control directory, which is not under the workspace
 	// and is not bind-mounted into any sandbox. The child never sees this path — it inherits the
 	// listener as a descriptor — so this is the parent's handle and nobody else's.
 	sock := filepath.Join(r.control, fmt.Sprintf("c%d.sock", r.seq.Add(1)))
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		return nil, fmt.Errorf("control socket: %w", err)
+		return fmt.Errorf("control socket: %w", err)
 	}
 	ul := ln.(*net.UnixListener)
 	// Closing a unix listener UNLINKS its path by default, and the path is the half the parent
@@ -264,14 +311,14 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	ln.Close()
 	if err != nil {
 		_ = os.Remove(sock)
-		return nil, fmt.Errorf("control socket: %w", err)
+		return fmt.Errorf("control socket: %w", err)
 	}
 	defer lf.Close()
 
 	lifeR, lifeW, err := os.Pipe()
 	if err != nil {
 		_ = os.Remove(sock)
-		return nil, err
+		return err
 	}
 	defer lifeR.Close()
 
@@ -283,7 +330,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 	if err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
-		return nil, err
+		return err
 	}
 	defer svcChild.Close()
 
@@ -297,7 +344,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		if err != nil {
 			_ = os.Remove(sock)
 			lifeW.Close()
-			return nil, err
+			return err
 		}
 		box.Egress = eg.sock
 	}
@@ -320,7 +367,7 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		_ = os.Remove(sock)
 		lifeW.Close()
 		eg.stop()
-		return nil, err
+		return err
 	}
 
 	cmd := exec.Command(r.self, "-task")
@@ -347,46 +394,43 @@ func (r *Runner) startChild(id string, env Environment, point Point, ws *Workspa
 		lifeW.Close()
 		svcParent.Close()
 		eg.stop()
-		return nil, err
+		return err
 	}
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(sock)
 		lifeW.Close()
 		svcParent.Close()
 		eg.stop()
-		return nil, fmt.Errorf("starting the task process: %w", err)
+		return fmt.Errorf("starting the task process: %w", err)
 	}
 
 	// One transport, so the supervisor and the proxy share a connection pool to this child.
 	tr := unixTransport(sock)
-	c := &child{
-		id: id, sock: sock, ws: ws, cmd: cmd, life: lifeW, egress: eg, svc: svcParent,
-		gone: make(chan struct{}),
-		// The contract, over a transport that ignores the host and dials the socket. The URL is
-		// what Ref reports and what the request line carries, so it names the peer rather than an
-		// address anything could reach.
-		//
-		// Through hostSafe, because a task id is not a hostname. Every id a TRIGGER spawns is
-		// `<chain>@<subject>` — `comment-drift@drift.head.head-moved@git.head.verse` — and an @
-		// makes the rest of it userinfo, after which the colons read as a port and the url does
-		// not parse. So no charter-spawned task could start here at all, while every
-		// hand-launched `run-<hex>` one could.
-		rt:   runner.HTTPOver("http://task."+hostSafe(id), tr),
-		prox: unixProxy(tr, id),
-	}
+	c.sock, c.cmd, c.life, c.egress, c.svc = sock, cmd, lifeW, eg, svcParent
+	// The contract, over a transport that ignores the host and dials the socket. The URL is
+	// what Ref reports and what the request line carries, so it names the peer rather than an
+	// address anything could reach.
+	//
+	// Through hostSafe, because a task id is not a hostname. Every id a TRIGGER spawns is
+	// `<chain>@<subject>` — `comment-drift@drift.head.head-moved@git.head.verse` — and an @
+	// makes the rest of it userinfo, after which the colons read as a port and the url does
+	// not parse. So no charter-spawned task could start here at all, while every
+	// hand-launched `run-<hex>` one could.
+	c.tr, c.base = tr, "http://task."+hostSafe(id)
+	c.rt, c.prox = runner.HTTPOver(c.base, tr), unixProxy(tr, id)
 	go func() {
 		err := cmd.Wait()
 		c.mu.Lock()
 		c.exit = err
 		c.mu.Unlock()
-		close(c.gone)
+		c.end()
 	}()
 
 	if err := c.awaitReady(); err != nil {
 		c.stop()
-		return nil, err
+		return err
 	}
-	return c, nil
+	return nil
 }
 
 // awaitReady blocks until the child answers the cheapest question in the contract, or dies
@@ -464,6 +508,11 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// gone, removed at reap unless it held work nothing could stage.
 	if c := r.childOf(id); c != nil && c.running() {
 		if _, done := c.snapshot(); !done {
+			if !c.hosting() {
+				// Asked again while still being prepared: the same answer as the first time.
+				codec.Write(w, req, http.StatusAccepted, c.pending)
+				return
+			}
 			c.prox.ServeHTTP(w, requestWithBody(req, raw))
 			return
 		}
@@ -509,49 +558,11 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ws, err := r.mirrors.Open(req.Context(), id, env, r.workspaces)
-	// The mirrors this spawn just fetched are the mirrors anything undelivered is waiting in, so
-	// this is the cheapest place to retry: the fetch has already taken the lock and paid the
-	// round trip. In the background, because a backlog against a remote that is down must not
-	// hold up a task that has nothing to do with it.
-	go func() {
-		for _, repo := range env.Repos {
-			r.reflect(context.Background(), env, repo)
-		}
-	}()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("environment %q: %v", env.Name, err), http.StatusInternalServerError)
-		return
-	}
-	c, err := r.startChild(id, env, point, ws, driver)
-	if err != nil {
-		_ = ws.Remove(context.Background())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	fwd, err := codec.Marshal(&body, codec.Tony)
 	if err != nil {
-		c.stop()
-		_ = ws.Remove(context.Background())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	r.mu.Lock()
-	r.children[id] = c
-	r.mu.Unlock()
-
-	req2 := requestWithBody(req, fwd)
-	req2.Header.Set("Content-Type", codec.MediaType(codec.Tony))
-	c.prox.ServeHTTP(w, req2)
-
-	// Supervision starts only once the child HOSTS the task, and the order is not cosmetic.
-	// Subscribing first means subscribing to a task that does not exist yet, which the contract
-	// answers 404 — and a refused subscribe is reported on the plane the caller is reading, as a
-	// FAILED status frame. So every task was declared dead the instant it was started, by the
-	// one thing watching it. Cost an afternoon; the symptom was a task killed mid-run with no
-	// failure anyone could point at.
-	//
 	// The launch this side keeps is what delivery writes into the commit trailers: the only
 	// externally checkable link back into the verse from a push made under a shared credential.
 	// See docs/working/attribution.md.
@@ -564,10 +575,117 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 			Chain:     field(prov, "chain"),
 		},
 	}
-	// The delivery channel is served for as long as the task process lives: it is how the task's
-	// own closing action reaches the credential this side holds.
+
+	// ACCEPTED, and answered now. What is validated above is everything this side can refuse
+	// without doing any work — the environment, the containment, the driver, the credentials —
+	// and everything after it is work: see the header. The child is registered first, so a
+	// request for this task that arrives before the process exists finds something to answer it.
+	ctx, abort := context.WithCancel(context.Background())
+	c := &child{
+		id: id, gone: make(chan struct{}), ready: make(chan struct{}), abort: abort,
+		pending: task.Instance{ID: id, Prompt: l.Prompt, Driver: driver, Status: task.Running},
+	}
+	r.mu.Lock()
+	r.children[id] = c
+	r.mu.Unlock()
+	codec.Write(w, req, http.StatusAccepted, c.pending)
+	go r.prepare(ctx, c, l, env, point, driver, fwd)
+}
+
+// prepare is the work a spawn used to wait for: the workspace, the process, and the spawn
+// forwarded to it. Under the runner's own context rather than the request's, which is gone by
+// the time this matters; a cancel is what ends it early, checked between the steps, since the
+// steps themselves are not the kind that stop halfway.
+//
+// A preparation that does not reach a hosted task is remembered as that task's terminal status,
+// with the reason, exactly as a child that exits without one is (supervise). Nothing else on
+// this side tells them apart, and nothing should: to the caller, both are a task that did not
+// finish and a reason why.
+func (r *Runner) prepare(ctx context.Context, c *child, l task.Launch, env Environment, point Point, driver string, fwd []byte) {
+	if r.prepareHook != nil {
+		r.prepareHook(c.id)
+	}
+	// Ended before it started: remembered and gone, with no process to wait for.
+	before := func(status task.Status, err error) {
+		fmt.Fprintf(r.log, "coderunner: %s: %s before it started: %v\n", c.id, status, err)
+		c.remember(task.Instance{Prompt: l.Prompt, Driver: driver, Status: status, Err: err.Error()})
+		c.end()
+	}
+	cancelled := errors.New("cancelled while the task was being prepared")
+
+	ws, err := r.mirrors.Open(ctx, c.id, env, r.workspaces)
+	// The mirrors this spawn just fetched are the mirrors anything undelivered is waiting in, so
+	// this is the cheapest place to retry: the fetch has already taken the lock and paid the
+	// round trip. In the background, because a backlog against a remote that is down must not
+	// hold up a task that has nothing to do with it.
+	go func() {
+		for _, repo := range env.Repos {
+			r.reflect(context.Background(), env, repo)
+		}
+	}()
+	switch {
+	case err != nil && ctx.Err() != nil:
+		before(task.Cancelled, cancelled)
+		return
+	case err != nil:
+		before(task.Failed, fmt.Errorf("environment %q: %w", env.Name, err))
+		return
+	case ctx.Err() != nil:
+		_ = ws.Remove(context.Background())
+		before(task.Cancelled, cancelled)
+		return
+	}
+	c.ws = ws
+	if err := r.startChild(c, env, point, driver); err != nil {
+		_ = ws.Remove(context.Background())
+		before(task.Failed, err)
+		return
+	}
+	// The one request this side makes to the child by hand: the spawn it was started for. A
+	// refusal here is the child's and is reported as the task's failure, then the process is
+	// stopped — it hosts nothing.
+	if err := c.post(ctx, "/tasks", fwd); err != nil {
+		if ctx.Err() != nil {
+			err = cancelled
+		}
+		fmt.Fprintf(r.log, "coderunner: %s: the task process would not take the spawn: %v\n", c.id, err)
+		c.remember(task.Instance{Prompt: l.Prompt, Driver: driver, Status: task.Failed, Err: err.Error()})
+		c.stop()
+		return
+	}
+	close(c.ready)
+
+	// Supervision starts only once the child HOSTS the task, and the order is not cosmetic.
+	// Subscribing first means subscribing to a task that does not exist yet, which the contract
+	// answers 404 — and a refused subscribe is reported on the plane the caller is reading, as a
+	// FAILED status frame. So every task was declared dead the instant it was started, by the
+	// one thing watching it. Cost an afternoon; the symptom was a task killed mid-run with no
+	// failure anyone could point at.
 	go r.servePush(c, c.svc)
 	go r.supervise(c, l, env)
+}
+
+// post sends one control request to the child and reads its answer as yes or a reason.
+func (c *child) post(ctx context.Context, path string, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
+	resp, err := (&http.Client{Transport: c.tr}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		detail := strings.TrimSpace(string(msg))
+		if detail == "" {
+			detail = resp.Status
+		}
+		return errors.New(detail)
+	}
+	return nil
 }
 
 // supervise watches one child to its end, records the last word about it, delivers what it
@@ -685,6 +803,28 @@ func (r *Runner) forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	final, done := c.snapshot()
+	if !done && !c.hosting() {
+		// Still being prepared. A snapshot and a cancel are answered here — the first is what
+		// the caller polls, and must not wait; the second is what ends the preparation. Anything
+		// else is the child's, and waits for it: a subscriber that arrives now is handed the
+		// process's stream from its start, which is what it would have been handed anyway.
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/tasks/"+id:
+			codec.Write(w, req, http.StatusOK, c.pending)
+			return
+		case req.URL.Path == "/tasks/"+id+"/cancel":
+			c.abort()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		select {
+		case <-c.ready:
+		case <-c.gone:
+			final, done = c.snapshot() // a preparation that ended, and said how
+		case <-req.Context().Done():
+			return
+		}
+	}
 	if !done {
 		c.prox.ServeHTTP(w, req)
 		return
@@ -727,6 +867,10 @@ func (r *Runner) list(w http.ResponseWriter, req *http.Request) {
 	for _, c := range kids {
 		if final, done := c.snapshot(); done {
 			out = append(out, final)
+			continue
+		}
+		if !c.hosting() {
+			out = append(out, c.pending)
 			continue
 		}
 		lister, ok := c.rt.(task.Lister)
