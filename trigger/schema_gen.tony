@@ -24,18 +24,14 @@ signature:
 context:
 - tony-format/context
 define:
-  choice: .[string]
-  facts: .[object(object)]
-  kind: .[string]
-  n: .[int]
-  within: .[string]
+  Facts: .[object(object)]
+  Kind: .[string]
 signature:
   name: verse-requirement
 ---
 context:
 - tony-format/context
 define:
-  args: .[array(object)]
   op: .[string]
   req: .[nullable(verse-requirement)]
 signature:
@@ -78,7 +74,6 @@ context:
 - task: github.com/signadot/verse/task
 define:
   deadline: .[nullable(task:verse-deadline)]
-  formula: .[nullable(verse-formula)]
   mode: .[string]
   name: .[string]
   need: .[int]

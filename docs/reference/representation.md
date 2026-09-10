@@ -4,8 +4,8 @@ A charter is written in [tony](https://signadot.github.io/tony-format/), the doc
 language verse reads and writes. Tony is JSON's document model made easier to write —
 unquoted keys and strings, optional commas, comments — since a charter is a rulebook and
 rulebooks want annotating. It adds one thing the charter grammar leans on, which is *tags*: a
-tag names what a value is, right where the value sits (`!glob "hotfix-*"`, `!quorum 2`,
-`!until [ … ]`), and that is what keeps a charter a structure the engine walks rather than a
+tag names what a value is, right where the value sits (`!glob "hotfix-*"`, `!or [ … ]`,
+`!not { … }`), and that is what keeps a charter a structure the engine walks rather than a
 string it re-parses.
 
 verse reads tony, JSON and YAML, and writes tony and YAML. The asymmetry is deliberate, and
@@ -25,18 +25,18 @@ payload typed on the command line: all fine, all unchanged. Valid JSON is valid
 conversion step and nothing to configure.
 
 What verse will not do is hand JSON back. `-o json`, `VERSE_FORMAT=json` and
-`Accept: application/json` are refused, the last with a 406. The reason is tags. A formula
-is built from them — `!quorum 2`, `!until [...]` — and JSON has no tag syntax, so
-rendering one means rewriting it as a single-key object: `{"quorum": 2}`. That is
+`Accept: application/json` are refused, the last with a 406. The reason is tags. A match's
+operators are built from them — `!glob "hotfix-*"`, `!or [...]` — and JSON has no tag syntax,
+so rendering one means rewriting it as a single-key object: `{"glob": "hotfix-*"}`. That is
 unambiguous where the surrounding keys are a closed set, and not unambiguous inside a
 match's `value`, where a payload key may itself be named `or`. A rendering that is
 faithful for most of the model and quietly wrong for the rest is worse than one honestly
 not offered.
 
 Reading is unaffected by all of this, including the single-key spelling: a charter that
-writes `{"quorum": 2}` loads exactly like one that writes `!quorum 2`. That is how you
-reach an operator from JSON, and it is why JSON is a first-class way to write a charter
-even though it is not a way to read one back.
+writes `{"glob": "hotfix-*"}` in a dimension loads exactly like one that writes
+`!glob "hotfix-*"`. That is how you reach an operator from JSON, and it is why JSON is a
+first-class way to write a charter even though it is not a way to read one back.
 
 With one exception, for the same reason the rendering is refused: the single-key spelling
 is only unambiguous where the keyspace is closed, so it is *not* applied inside a payload

@@ -340,343 +340,48 @@ func desugar(n *ir.Node) *ir.Node {
 
 // ── Formula ──────────────────────────────────────────────────────────────────
 
-// ToTonyIR emits the tagged form: an operator tags its operand list, a requirement tags its
-// compact value, and a match atom is emitted UNWRAPPED so a `when` reads back the way it was
-// written.
+// ToTonyIR emits the match UNWRAPPED, so a `when` reads back the way it was written.
 func (f Formula) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
-	if f.Op == OpAtom {
-		if f.Req == nil {
-			return ir.Null(), nil
-		}
-		if f.Req.Kind == ReqMatch {
-			return f.Req.Facts.ToTonyIR(opts...)
-		}
-		val, err := f.Req.valueNode(opts...)
-		if err != nil {
-			return nil, err
-		}
-		return val.WithTag("!" + string(f.Req.Kind)), nil
+	if f.Req == nil {
+		return ir.Null(), nil
 	}
-	args := make([]*ir.Node, 0, len(f.Args))
-	for i, a := range f.Args {
-		n, err := a.ToTonyIR(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("formula %q arg %d: %w", f.Op, i, err)
-		}
-		args = append(args, n)
-	}
-	return ir.FromSlice(args).WithTag("!" + string(f.Op)), nil
+	return f.Req.Facts.ToTonyIR(opts...)
 }
 
-// valueNode renders a requirement's compact value — the thing the kind tag is attached to.
-// It mirrors compactValue (the JSON side) so the two spellings stay one grammar.
-func (r *Requirement) valueNode(opts ...gomap.MapOption) (*ir.Node, error) {
-	switch {
-	case r.Kind == ReqDeadline:
-		return ir.FromString(r.Within), nil
-	case r.Kind == ReqMatch:
-		return r.Facts.ToTonyIR(opts...)
-	}
-	factsSet := r.Facts.System() != "" || r.Facts.Kind() != "" || r.Facts.HasPredicate()
-	switch {
-	case r.Choice == "" && !factsSet:
-		return ir.FromInt(int64(r.N)), nil
-	case r.N == 0 && r.Choice == "" && !r.Facts.HasPredicate():
-		// The address, in the one grammar — through Match.address, so a `!fact` renders the way a
-		// subject does and re-reads through the same ParseExpr. Joining the segments here would be
-		// a second renderer for one spelling, and it drifts the moment the spelling moves:
-		// `!fact ci.status` comes back out as `!fact ci:status`.
-		if addr, ok := r.Facts.address(); ok {
-			return ir.FromString(addr), nil
-		}
-		return ir.FromString(r.Facts.System()), nil
-	}
-	var kvs []ir.KeyVal
-	if r.N != 0 {
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("n"), Val: ir.FromInt(int64(r.N))})
-	}
-	if r.Choice != "" {
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("choice"), Val: ir.FromString(r.Choice)})
-	}
-	if factsSet {
-		n, err := r.Facts.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString("facts"), Val: n})
-	}
-	return ir.FromKeyVals(kvs), nil
-}
-
-// FromTonyIR reads the tagged form, and also the two untagged shapes a JSON-shaped charter
-// writes: the single-key tag-as-key object, and the verbose {op, req, args} parse node.
-//
-// The tagged path needs no keyspace analysis at all — a tag lives in a different namespace
-// from a field name, so `!quorum` cannot be confused with a match dimension. The untagged
-// shapes have no such separation and are classified by their KEYS instead (fromVerbose,
-// then fromTagKeyed, then a match), which is why the disjointness asserted by
-// TestMatchKeysDisjointFromFormulaTags is load-bearing rather than tidy.
+// FromTonyIR reads a formula: a match, in any spelling a match takes — an address string, a
+// steps list, an object of dimensions, a tagged operator such as `!and [...]` — and the
+// explicit `!match` tag. The temporal grammar that used to stand here (`!until [...]`,
+// `!quorum 2`, and the JSON spelling `{"quorum": 2}`) is refused by name: a gate's threshold
+// and deadline are `need:` and `deadline:` on the gate, and waiting for a fact is a
+// condition's own match.
 func (f *Formula) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	node = unwrap(node)
 	if node == nil || node.Type == ir.NullType {
 		*f = Formula{}
 		return nil
 	}
-
-	if tag := tagName(node); tag != "" {
-		return f.fromTagged(tag, node)
+	if tag := tagName(node); retiredFormulaTags[tag] {
+		return retiredFormula("!" + tag)
 	}
-
-	switch node.Type {
-	case ir.StringType: // address sugar: when: demo:pr:*
-		m, err := ParseExpr(node.String)
-		if err != nil {
-			return err
-		}
-		*f = *matchFormula(m)
-		return nil
-	case ir.ObjectType:
-		if verbose, err := f.fromVerbose(node); verbose {
-			return err
-		}
-		if keyed, err := f.fromTagKeyed(node); keyed {
-			return err
-		}
-		var m Match
-		if err := m.FromTonyIR(node); err != nil {
-			return err
-		}
-		*f = *matchFormula(m)
-		return nil
+	// The JSON spelling of the same: a single-key object whose key is the tag. A match
+	// dimension is never one of these (TestMatchKeysDisjointFromFormulaTags), so a
+	// single-key match object is left to the match.
+	if node.Type == ir.ObjectType && len(node.Fields) == 1 && retiredFormulaTags[node.Fields[0].String] && !matchKeys[node.Fields[0].String] {
+		return retiredFormula(node.Fields[0].String)
 	}
-	return fmt.Errorf("formula: want a tagged value, a match object, or a ref string, got %v", node.Type)
-}
-
-// fromTagged reads `!until [...]` / `!quorum 2` — the native form.
-func (f *Formula) fromTagged(tag string, node *ir.Node) error {
-	switch op := FormulaOp(tag); op {
-	case OpUntil, OpEventually, OpAlways, OpSequence:
-		args, err := formulaList(node)
-		if err != nil {
-			return fmt.Errorf("formula %q: %w", tag, err)
-		}
-		*f = Formula{Op: op, Args: args}
-		return nil
-	case OpAtom: // an explicitly tagged atom carries the verbose node
-		if verbose, err := f.fromVerbose(node); verbose {
-			return err
-		}
-	}
-	if tag == string(ReqMatch) {
-		var m Match
-		if err := m.FromTonyIR(node); err != nil {
-			return err
-		}
-		*f = *matchFormula(m)
-		return nil
-	}
-	if !isRequirementKind(tag) {
-		return fmt.Errorf("formula: unknown tag %q (want an operator "+
-			"(until/eventually/always/sequence) or a requirement "+
-			"(match/quorum/fact/deadline/judgment/ask/default))", "!"+tag)
-	}
-	req, err := requirementFromNode(RequirementKind(tag), node)
-	if err != nil {
+	var m Match
+	if err := m.FromTonyIR(node); err != nil {
 		return err
 	}
-	*f = Formula{Op: OpAtom, Req: req}
+	*f = *matchFormula(m)
 	return nil
 }
 
-// fromTagKeyed reads the JSON spelling — a single-key object whose key is the tag. It is
-// what makes a .json charter and a .tony charter the same grammar rather than two.
-func (f *Formula) fromTagKeyed(node *ir.Node) (bool, error) {
-	if len(node.Fields) != 1 || len(node.Values) != 1 {
-		return false, nil
-	}
-	key := node.Fields[0].String
-	if !isRequirementKind(key) {
-		switch FormulaOp(key) {
-		case OpUntil, OpEventually, OpAlways, OpSequence:
-		default:
-			return false, nil
-		}
-	}
-	// A match dimension is never a formula tag — the disjointness the JSON grammar rests
-	// on, asserted by TestMatchKeysDisjointFromFormulaTags.
-	if matchKeys[key] {
-		return false, nil
-	}
-	return true, f.fromTagged(key, unwrap(node.Values[0]))
-}
-
-// fromVerbose reads the internal {op, req, args} parse node, kept for compatibility.
-func (f *Formula) fromVerbose(node *ir.Node) (bool, error) {
-	opNode := unwrap(ir.Get(node, "op"))
-	if opNode == nil || opNode.Type != ir.StringType {
-		return false, nil
-	}
-	switch FormulaOp(opNode.String) {
-	case OpAtom, OpUntil, OpEventually, OpAlways, OpSequence:
-	default:
-		return false, nil
-	}
-	for _, k := range node.Fields {
-		if k.String != "op" && k.String != "req" && k.String != "args" {
-			return false, nil
-		}
-	}
-	out := Formula{Op: FormulaOp(opNode.String)}
-	if reqNode := unwrap(ir.Get(node, "req")); reqNode != nil && reqNode.Type == ir.ObjectType {
-		var r Requirement
-		if err := r.fromNode(reqNode); err != nil {
-			return true, err
-		}
-		out.Req = &r
-	}
-	if argsNode := unwrap(ir.Get(node, "args")); argsNode != nil && argsNode.Type == ir.ArrayType {
-		args, err := formulaList(argsNode)
-		if err != nil {
-			return true, err
-		}
-		out.Args = args
-	}
-	*f = out
-	return true, nil
-}
-
-// formulaList reads an operator's operands: a list, or a single sub-formula accepted as a
-// one-element list.
-func formulaList(node *ir.Node) ([]*Formula, error) {
-	if node.Type == ir.ArrayType {
-		out := make([]*Formula, 0, len(node.Values))
-		for i, v := range node.Values {
-			var sub Formula
-			if err := sub.FromTonyIR(v); err != nil {
-				return nil, fmt.Errorf("arg %d: %w", i, err)
-			}
-			out = append(out, &sub)
-		}
-		return out, nil
-	}
-	var one Formula
-	if err := one.FromTonyIR(node); err != nil {
-		return nil, err
-	}
-	return []*Formula{&one}, nil
-}
-
-// requirementFromNode reads the compact value after a kind tag: a number is a threshold, a
-// string is a "system:kind" selector (or a duration for a deadline), an object carries the
-// full fields. It switches on the node's TYPE rather than trying decodes in turn, which is
-// what the JSON side has to do — and so it cannot swallow a decode error by accident.
-func requirementFromNode(kind RequirementKind, node *ir.Node) (*Requirement, error) {
-	node = unwrap(node)
-	if node == nil {
-		return &Requirement{Kind: kind}, nil
-	}
-	switch node.Type {
-	case ir.NumberType:
-		// A deadline has no threshold, so a number here is always a mistake — and almost
-		// always the same one: an unquoted duration. A tony literal may not start with a
-		// digit and commas are optional, so `!deadline 4h` reads as the number 4 followed
-		// by a separate literal "h" — correctly, but not at all as meant, and the 4 lands
-		// right here. Left to fall through it would set N and leave Within empty, which
-		// is a deadline that silently isn't one. This is the only place it can be caught:
-		// the document is well-formed, so nothing upstream of us has anything to report.
-		if kind == ReqDeadline {
-			return nil, fmt.Errorf("requirement %q: a deadline takes a duration, not a number "+
-				"(quote it: !deadline \"4h\")", kind)
-		}
-		n, err := nodeInt(node)
-		if err != nil {
-			return nil, fmt.Errorf("requirement %q: %w", kind, err)
-		}
-		return quorumChecked(&Requirement{Kind: kind, N: n})
-	case ir.StringType:
-		if kind == ReqDeadline {
-			return &Requirement{Kind: kind, Within: node.String}, nil
-		}
-		// AND THE MIRROR OF THE DEADLINE CHECK ABOVE. A quorum's argument is a threshold, so a
-		// string here is the same class of mistake in the other direction — and the habit that
-		// produces it is one this grammar teaches, since a deadline must be quoted. It arrived
-		// by machine too: `?format=yaml` on a write parsed `!quorum 3` as `!quorum "3"`.
-		//
-		// Falling through cost more than a deadline's does. The string became a FACTS selector
-		// and left N at 0, and a quorum's eval is `len(refs) >= r.N` — so the gate carried on
-		// zero votes, with `outcome: proceed` and `tally: 0` on the motion while the docket
-		// displayed `need: 1`. A gate that can only pass, reading as one that asked.
-		if kind == ReqQuorum {
-			// The advice depends on what they wrote, because the two mistakes want opposite
-			// fixes: a quoted NUMBER wants its quotes off, and a ref wants a different
-			// requirement. Suggesting `!fact 2` for the first would be nonsense in the one
-			// place a reader is looking for the answer.
-			if strings.Contains(node.String, ":") {
-				return nil, fmt.Errorf("requirement %q: a quorum takes a threshold, not a "+
-					"reference — %s names facts rather than counting ballots. For \"one of "+
-					"these exists\" the requirement is !fact %s; for \"this many\", !quorum 2",
-					kind, node.String, node.String)
-			}
-			return nil, fmt.Errorf("requirement %q: a quorum takes a threshold, not a string "+
-				"— unquote it: !quorum %s", kind, node.String)
-		}
-		return &Requirement{Kind: kind, Facts: factSelFromRef(node.String)}, nil
-	case ir.ObjectType:
-		r := Requirement{Kind: kind}
-		if err := r.fromNode(node); err != nil {
-			return nil, err
-		}
-		r.Kind = kind // the tag names the kind; a `kind` field cannot override it
-		return quorumChecked(&r)
-	}
-	return nil, fmt.Errorf("requirement %q: want a threshold, a \"system:kind\", or an object, got %v",
-		kind, node.Type)
-}
-
-// quorumChecked refuses a quorum that asks for nothing.
-//
-// `len(refs) >= r.N` is how a quorum evaluates, so N below 1 is satisfied by the empty set: the
-// motion opens, carries immediately with `tally: 0`, and the action it was guarding runs
-// unasked. Every way to reach it is a plausible thing to write — `!quorum {choice: reject}`
-// with the `n:` forgotten is the object form of it — and none of them are a quorum anybody
-// means, since a vote that needs no votes is not a gate.
-//
-// Refused where the requirement is BUILT rather than at install, so it covers both grammars
-// and the restore path with it: a rule already stored this way comes back refused and named,
-// instead of coming back and passing.
-func quorumChecked(r *Requirement) (*Requirement, error) {
-	if r.Kind == ReqQuorum && r.N < 1 {
-		return nil, fmt.Errorf("requirement %q: a quorum needs a threshold of at least 1, and "+
-			"this one asks for %d — which no ballot is needed to meet, so the gate would "+
-			"carry the moment it opened. Say how many: !quorum 2, or "+
-			"!quorum {choice: reject, n: 2}", r.Kind, r.N)
-	}
-	return r, nil
-}
-
-// fromNode fills a Requirement from its object form, in either spelling: `facts` is the
-// wire name, and a bare match object is accepted for the verbose {op,req,args} node.
-func (r *Requirement) fromNode(node *ir.Node) error {
-	if k := unwrap(ir.Get(node, "kind")); k != nil && k.Type == ir.StringType {
-		r.Kind = RequirementKind(k.String)
-	}
-	if n := unwrap(ir.Get(node, "n")); n != nil && n.Type == ir.NumberType {
-		v, err := nodeInt(n)
-		if err != nil {
-			return err
-		}
-		r.N = v
-	}
-	if c := unwrap(ir.Get(node, "choice")); c != nil && c.Type == ir.StringType {
-		r.Choice = c.String
-	}
-	if w := unwrap(ir.Get(node, "within")); w != nil && w.Type == ir.StringType {
-		r.Within = w.String
-	}
-	if fnode := unwrap(ir.Get(node, "facts")); fnode != nil {
-		return r.Facts.FromTonyIR(fnode)
-	}
-	return nil
+// retiredFormula is the refusal for the temporal grammar, naming what replaced it.
+func retiredFormula(what string) error {
+	return fmt.Errorf("%s is no longer a formula: nothing composes a condition over time. A "+
+		"gate's threshold is `need: N` and its clock is `deadline: {within: \"24h\", default: "+
+		"deny}` on the gate; waiting for a fact is the condition's own match", what)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

@@ -78,17 +78,10 @@ func adviseTagKeyedInValue(t Trigger) []string {
 // formulaMatches is every point-in-time Match a formula reads — a `when`, an `on`, a gate's
 // requirement. They are match positions like the subject's and take the same `value`.
 func formulaMatches(f *Formula) []Match {
-	if f == nil {
+	if f == nil || f.Req == nil || f.Req.Facts == nil {
 		return nil
 	}
-	var out []Match
-	if f.Req != nil && f.Req.Facts != nil {
-		out = append(out, f.Req.Facts)
-	}
-	for _, a := range f.Args {
-		out = append(out, formulaMatches(a)...)
-	}
-	return out
+	return []Match{f.Req.Facts}
 }
 
 // operatorShapedKeys is every single-key object under a predicate whose key names a known

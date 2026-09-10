@@ -49,21 +49,18 @@ define:
 signature:
   name: verse-match
 ---
-# trigger.Formula — the temporal layer. It emits a TAG, not an object: `!quorum 2`,
-# `!until [...]`, `!and [...]`, `!or [...]`, `!not ...`, or a bare match atom when the formula
-# is a single point-in-time match. codegen published it as `{args, op, req}` — the Go struct
-# behind the codec, a shape that never appears on the wire. Empty is the honest `define` here:
-# the form is a tagged union over the operator vocabulary, and the operators are tony's own
-# (docs/trigger-model.md), not a set this signature can usefully restate.
+# trigger.Formula — a match asked of the verse as it moves: `on` at two revisions, `when`
+# at one. It emits the MATCH, unwrapped, so a condition reads back the way it was written;
+# codegen published it as `{op, req}`, the Go struct behind the codec, a shape that never
+# appears on the wire. The match signature is what a reader of the schema should follow.
 context:
 - tony-format/context
-define: {}
+define: !verse-match null
 signature:
   name: verse-formula
 ---
-# trigger.Requirement — the payload of a formula's tag, e.g. the `2` in `!quorum 2` together
-# with the facts it counts. Same correction as Formula: codegen described its Go fields
-# (kind, n, choice, within, facts) and the codec emits none of them under those names.
+# trigger.Requirement — a formula's leaf, a match. It never appears on the wire of its own:
+# Formula's codec renders the match it holds, so there is nothing here to describe.
 context:
 - tony-format/context
 define: {}

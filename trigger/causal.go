@@ -197,12 +197,9 @@ func changedIn(c entity.Commit, ref entity.Ref) bool {
 }
 
 // blocks reports whether a firing of this trigger will wait on a decision — an ask or a park
-// posed to a resolver, or a temporal formula monitored on the store.
+// posed to whoever answers.
 func (t Trigger) blocks() bool {
 	for _, g := range t.AllGates() {
-		if g.Formula != nil {
-			return true
-		}
 		if m, err := g.mode(); err == nil && m.Blocks() {
 			return true
 		}

@@ -181,13 +181,6 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 		"empty subject": {
 			Condition{Subject: Match{}}, "condition.subject required",
 		},
-		"temporal when": {
-			Condition{Subject: mm("demo.pr.*"), When: &Formula{Op: OpUntil, Args: []*Formula{
-				matchFormula(Match{"system": "demo"}),
-				{Op: OpAtom, Req: &Requirement{Kind: ReqDeadline, Within: "4h"}},
-			}}},
-			"temporal",
-		},
 		"bad when match": {
 			Condition{Subject: mm("demo.pr.*"), When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
 		},
@@ -310,18 +303,6 @@ func TestOpIsNoLongerAMatchDimension(t *testing.T) {
 		t.Fatalf("unmarshal failed for the wrong reason: %v", err)
 	} else {
 		t.Log(err)
-	}
-}
-
-// The verbose {op,req,args} node stays accepted (compatibility), and is NOT mistaken for a
-// match just because it carries an `op` key.
-func TestVerboseFormulaNodeStillParses(t *testing.T) {
-	var f Formula
-	if err := codec.Unmarshal([]byte(`{"op":"atom","req":{"kind":"quorum","n":2}}`), &f, codec.JSON); err != nil {
-		t.Fatalf("verbose node: %v", err)
-	}
-	if f.Op != OpAtom || f.Req == nil || f.Req.Kind != ReqQuorum || f.Req.N != 2 {
-		t.Fatalf("verbose node parsed wrong: %+v", f)
 	}
 }
 

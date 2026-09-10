@@ -7,11 +7,10 @@
 //
 //	Match   — POINT-IN-TIME: which entities satisfy this right now. The atom, and the
 //	          leaf of every Formula. A Subject and a flow address are bare Matches.
-//	Formula — TEMPORAL: matches composed with operators (quorum/fact/until/deadline)
-//	          over the verse's evolution. A Condition's When and a Gate's Formula are
-//	          Formulas, differing only in consequence.
+//	Formula — a Match asked of the verse's evolution: at two revisions for a cause (`on`),
+//	          at one for a condition (`when`). Nothing composes it over time.
 //
-// Name entities at an instant → a Match; relate the verse over time → a Formula. See
+// Name entities at an instant → a Match; ask one of the store as it moves → a Formula. See
 // docs/trigger-model.md.
 package trigger
 
@@ -313,16 +312,12 @@ type Gate struct {
 	// and they exist so a charter read back is the one its author wrote.
 	Doc  []string `tony:"-"`
 	Note []string `tony:"-"`
-	// The per-field carriers, as on Trigger. FormulaDoc/FormulaNote are the Condition case
-	// again: Formula's codec is hand-written, so the field is the only place a comment about
-	// it can be held.
-	NameDoc     []string `tony:"-"`
-	NameNote    []string `tony:"-"`
-	ModeDoc     []string `tony:"-"`
-	ModeNote    []string `tony:"-"`
-	FormulaDoc  []string `tony:"-"`
-	FormulaNote []string `tony:"-"`
-	Name        string   `tony:"field=name,omitzero,comment=NameDoc,lineComment=NameNote"`
+	// The per-field carriers, as on Trigger.
+	NameDoc  []string `tony:"-"`
+	NameNote []string `tony:"-"`
+	ModeDoc  []string `tony:"-"`
+	ModeNote []string `tony:"-"`
+	Name     string   `tony:"field=name,omitzero,comment=NameDoc,lineComment=NameNote"`
 	// auto | ask | park. Empty is auto, unless the gate carries a threshold, options or a
 	// deadline, which only make sense for a question somebody is asked; then it is ask.
 	Mode string `tony:"field=mode,omitzero,comment=ModeDoc,lineComment=ModeNote"`
@@ -338,9 +333,6 @@ type Gate struct {
 	// passes with none at its threshold. An empty default settles on nothing, which the
 	// firing reads as a refusal nobody made.
 	Deadline *task.Deadline `tony:"field=deadline,omitzero"`
-	// Formula is read so a charter that still writes one is refused at install with the
-	// spelling that replaced it, rather than failing as an unknown field. Nothing runs it.
-	Formula *Formula `tony:"field=formula,omitzero,comment=FormulaDoc,lineComment=FormulaNote"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
 	//
@@ -362,12 +354,6 @@ type Gate struct {
 // validate refuses a gate whose question cannot be posed as written. Every refusal names
 // the spelling that would work, because each of these is a plausible thing to write.
 func (g Gate) validate() error {
-	if g.Formula != nil {
-		return fmt.Errorf("carries a `formula`, which is no longer a kind of gate. A gate is a " +
-			"question with options: write `need: N` for a threshold on proceed, `options: " +
-			"[{id, need}]` for outcomes of its own, and `deadline: {within: \"24h\", default: " +
-			"deny}` for a clock. Waiting for a fact is `when:`, not a gate")
-	}
 	if g.Need < 0 {
 		return fmt.Errorf("need %d: a threshold is at least one", g.Need)
 	}

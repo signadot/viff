@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
@@ -120,21 +121,32 @@ func TestAThresholdGateFiresWhenAnswered(t *testing.T) {
 	waitStage(t, store, pr, "merged")
 }
 
-// A charter that still writes a formula is refused at install, and told the spelling.
-func TestAFormulaGateIsRefusedAtInstall(t *testing.T) {
-	eng := New(entitytest.Store(t), denyResolver{})
-	err := eng.AddTrigger(Trigger{
-		Name:      "merge",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
-		Gates:     []Gate{{Name: "approvals", Mode: "ask", Formula: &Formula{Op: OpAtom, Req: &Requirement{Kind: ReqQuorum, N: 2}}}},
-		Action:    Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
-	})
-	if err == nil {
-		t.Fatal("a formula gate installed")
-	}
-	for _, want := range []string{"need", "deadline", "when:"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not name %q: %v", want, err)
+// A charter that still writes a formula is refused where it is read, and told the spelling —
+// by name, ahead of the decoder's "unknown field", under either spelling of the gates.
+func TestAFormulaGateIsRefusedByName(t *testing.T) {
+	for _, doc := range []string{`
+name: merge
+condition: {subject: {system: demo, kind: pr}}
+gates: [{name: approvals, mode: ask, formula: !quorum 2}]
+action: {patch: {ok: yes}}
+`, `
+name: merge
+condition: {subject: {system: demo, kind: pr}}
+gating: {gates: [{name: approvals, formula: !until [!quorum 1, !deadline "24h"]}]}
+action: {patch: {ok: yes}}
+`} {
+		node, err := codec.ParseNode([]byte(doc), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = CheckFields(node)
+		if err == nil {
+			t.Fatal("a formula gate passed the field check")
+		}
+		for _, want := range []string{"need", "deadline", "when:"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal does not name %q: %v", want, err)
+			}
 		}
 	}
 }

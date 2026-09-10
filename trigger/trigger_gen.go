@@ -740,18 +740,6 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["deadline"] = node
 	}
 
-	// Field: Formula (optional)
-	if s.Formula != nil {
-		node, err = s.Formula.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["formula"] = node
-		if n, ok := irMap["formula"]; ok {
-			irMap["formula"] = gomap.ApplyComments(n, s.FormulaDoc, s.FormulaNote)
-		}
-	}
-
 	// Field: OnDenied (optional)
 	if s.OnDenied != nil {
 		node, err = s.OnDenied.ToTonyIR(opts...)
@@ -859,18 +847,6 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Deadline = &task.Deadline{}
 			if err := s.Deadline.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
-			}
-		case "formula":
-			// Field: Formula
-			s.Formula = &Formula{}
-			if err := s.Formula.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-			if fieldNode.Type == ir.CommentType {
-				s.FormulaDoc = fieldNode.Lines
-			}
-			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
-				s.FormulaNote = v.Comment.Lines
 			}
 		case "onDenied":
 			// Field: OnDenied

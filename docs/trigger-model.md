@@ -4,8 +4,9 @@ One noun and two grammars carry the whole model. An entity is a node at an addre
 the tree, at whatever depth the thing writing it uses: three segments where a source reflects one
 (`git.commit.acme/9fe1`), four in verse's own half and inside a package's tree
 (`verse-dev.drift.finding.abc`) — carrying a small payload. A match names entities at an instant;
-a formula relates the verse over time. Every trigger concept, `when` and `subject` and gates and
-flows, lands on exactly one of those two, and knowing which is the thing to be unambiguous about.
+a formula is a match asked of the verse as it moves. Every trigger concept, `when` and `subject`
+and flows, lands on one of those two, and a gate on neither: it asks somebody. Knowing which is
+the thing to be unambiguous about.
 
 This is also the field-by-field reference for a charter rule. The [tutorial](tutorial.md) installs
 one and drives it; here is what each field means.
@@ -14,30 +15,30 @@ The match vocabulary is [tony](https://signadot.github.io/tony-format/)'s rather
 same operators serve matching, patching and diffing there, which is the argument made in
 [Structured matching, patching and diffing done right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci).
 
-## Two layers: point-in-time matches, temporal formulas
+## Two layers: point-in-time matches, and matches asked over time
 
 A *match* is a point-in-time tony selector over the entity-verse: which entities satisfy this
-right now. There is no time in it — no `until`, no `deadline`.
+right now. There is no time in it.
 
-A *formula* is a temporal composition of matches with operators (`quorum`, `fact`, `until`,
-`deadline`, `eventually`, …), evaluated over the verse's evolution. A formula's leaves are
-matches.
+A *formula* is a match asked of the verse as it moves: at two revisions for a cause, at one for a
+condition. Nothing composes it — there is no `until`, no `quorum`, no `deadline` in a condition.
+A formula's whole content is its match.
 
 | concept | grammar | what it expresses |
 |---|---|---|
 | `subject` | match — point-in-time | the entities a firing is *about*, selected at the commit. Required |
 | flow | match — point-in-time | which live tasks to steer, by their subject |
-| `on` | formula — temporal | the **cause**: fire at the commit where this first holds, having not held before |
-| `when` | formula — temporal | the **condition**: this must hold at that commit for the firing to proceed |
+| `on` | formula — a match at two revisions | the **cause**: fire at the commit where this first holds, having not held before |
+| `when` | formula — a match at one revision | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | neither — a question posed to somebody | proceed when whoever answers settles it: one yes, a threshold of them, or a clock's default |
 
-The cut is simple. Name entities at an instant and you want a match; relate the verse over time and
-you want a formula. `subject` and flow-addressing are point-in-time, since a subject is selected at
-the commit a firing happens at and never accumulated, so they are plain matches, and giving them a
-`deadline` or an `until` would be a category error.
+The cut is simple. Name entities at an instant and you want a match; ask whether one holds as
+the verse moves and you want a formula. `subject` and flow-addressing are point-in-time, since a
+subject is selected at the commit a firing happens at and never accumulated, so they are plain
+matches.
 
-`on` and `when` relate the verse's evolution, so they are formulas. A gate is neither: it asks
-somebody, and what it says is how the answer settles ([gates](#gates--whether-it-proceeds)).
+`on` and `when` are asked of the verse's evolution, so they are formulas. A gate is neither: it
+asks somebody, and what it says is how the answer settles ([gates](#gates--whether-it-proceeds)).
 `on` and `when` are the same predicate asked at different moments — `on` at C-1 and C, firing on ¬P → P, and `when` at
 C, gating — which is why they share a grammar and a type. Cause and condition, told apart by edge
 and level.
@@ -525,7 +526,7 @@ engine warns at install when a narrow `on` leaves part of what the rule reads un
 ## `on` and `when` — the cause and the condition
 
 They are one predicate asked at two moments. `on` is asked at C-1 and at C and fires on the
-rising edge — ¬P → P. `when` is asked at C and gates. Both are optional; both are formulas over
+rising edge — ¬P → P. `when` is asked at C and gates. Both are optional; both are matches over
 the store, with the same grammar.
 
 **`when` is the condition.** With no `on`, the trigger is considered at every commit touching
@@ -571,9 +572,9 @@ already holds has no rising edge. The same property means the latch above is wha
 re-running when the engine restarts over a verse still in the matching state. See
 [change events](change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
 
-`on` and `when` may also grow *temporal* operators (`until`, `deadline`, …), at which point
-they relate the verse's evolution rather than being asked at a revision. That is not evaluated
-yet; see [Limits today](#limits-today).
+Neither composes over time: a condition is a match asked at a revision, and the temporal
+operators a gate once carried (`!until`, `!quorum`, `!deadline`) are refused by name wherever
+a charter is read. See [Limits today](#limits-today).
 
 ## What a match can say
 
@@ -1670,10 +1671,11 @@ reap. A charter says when, and what grace period, and whether anything should ha
 
 ## Limits today
 
-A temporal `on` or `when` is not evaluated yet, and is rejected at install with an error that
-says so: both are asked of the store at a revision, so they have to be answerable at one. Use a
-point-in-time match. Nothing composes over time yet: a gate's threshold and deadline are the
-question's, not a formula's.
+A condition does not compose over time. `on` and `when` are asked of the store at a revision,
+so they have to be answerable at one: a match. The temporal grammar that once lived on gates
+(`!until`, `!quorum`, `!fact`, `!deadline`) is refused by name wherever a charter is read; a
+gate's threshold and deadline are the question's (`need:`, `deadline:`), and waiting for a
+fact is the condition's own match.
 
 A rule may declare the stratum it lives in, and then its subject must fall inside that stratum's
 pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer: a

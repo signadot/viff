@@ -323,102 +323,19 @@ func TestMatchSelect(t *testing.T) {
 	}
 }
 
-// The match-key namespace and the formula tag namespace must stay disjoint apart from `op`.
-// Step 2 classifies a `when` object as a match or as a formula tag BY ITS KEYS, so an overlap
-// would silently reclassify charters. `op` is the known collision (a match dimension and the
-// verbose formula node's discriminator), resolved by testing match keys first; anything else
-// overlapping is a bug in naming, and this test is what catches it.
+// The match-key namespace and the retired formula tags must stay disjoint. A single-key
+// object whose key is a retired tag is refused by name (Formula.FromTonyIR), so a match
+// dimension that shared a name with one would be refused as a formula instead of read.
 func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
-	tags := map[string]bool{}
-	for _, op := range []FormulaOp{OpAtom, OpUntil, OpEventually, OpAlways, OpSequence} {
-		tags[string(op)] = true
-	}
-	for _, k := range []RequirementKind{ReqQuorum, ReqFact, ReqDeadline, ReqJudgment, ReqAsk, ReqDefault} {
-		tags[string(k)] = true
-	}
-	// The verbose formula node's own keys count as tags too — that is where `op` collides.
-	for _, k := range []string{"op", "req", "args"} {
-		tags[k] = true
-	}
-
 	var overlap []string
 	for k := range matchKeys {
-		if tags[k] {
+		if retiredFormulaTags[k] {
 			overlap = append(overlap, k)
 		}
 	}
-	// None, now that `op` is gone: a match dimension and a formula tag are disjoint
-	// namespaces, and an object is classified as one or the other by its keys.
 	if len(overlap) != 0 {
-		t.Fatalf("match keys overlap formula tags at %v; want none.\n"+
-			"Either rename the new tag/dimension, or extend the ordered classification in "+
-			"Formula.UnmarshalJSON to disambiguate it (see docs/trigger-model.md).", overlap)
-	}
-}
-
-// Requirement.Facts is now a Match, so a formula's leaf and a trigger's subject share one
-// grammar. The COMPACT form must be unchanged by that retype — `verse motion` output and
-// `goals add --done-when` inputs are user-visible.
-//
-// Each case is written twice: the tag-keyed spelling a JSON-shaped charter must use, and
-// the tagged spelling verse renders. Both have to read as the same formula, and rendering
-// has to give back the tagged one — which is the whole of "one grammar, two syntaxes" now
-// that only one of them is also a rendering.
-func TestRequirementFactsWireUnchanged(t *testing.T) {
-	cases := []struct{ keyed, tagged string }{
-		{`{"quorum":2}`, `!quorum 2`},
-		{`{"fact":"ci.status"}`, `!fact "ci.status"`},
-		{`{"quorum":{"choice":"reject","n":2}}`, `!quorum {choice: reject, n: 2}`},
-		{`{"deadline":"4h"}`, `!deadline "4h"`},
-		{`{"until":[{"quorum":2},{"deadline":"4h"}]}`, `!until [!quorum 2, !deadline "4h"]`},
-	}
-	for _, c := range cases {
-		var fromKeyed, fromTagged Formula
-		if err := codec.Unmarshal([]byte(c.keyed), &fromKeyed, codec.JSON); err != nil {
-			t.Fatalf("unmarshal %s: %v", c.keyed, err)
-		}
-		if err := codec.Unmarshal([]byte(c.tagged), &fromTagged, codec.Tony); err != nil {
-			t.Fatalf("unmarshal %s: %v", c.tagged, err)
-		}
-
-		out, err := codec.MarshalWire(&fromKeyed, codec.Tony)
-		if err != nil {
-			t.Fatalf("marshal %s: %v", c.keyed, err)
-		}
-		// Compared as DOCUMENTS, not bytes. What must not drift is the compact SHAPE —
-		// `!quorum 2`, never the internal {op: …, req: …} parse node. Object key order is
-		// not part of that contract and asserting it byte-for-byte would pin an encoder
-		// detail as if it were the wire format.
-		want, err := codec.ParseNode([]byte(c.tagged), codec.Tony)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := codec.ParseNode(out, codec.Tony)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !sameDoc(want, got) {
-			t.Errorf("compact form drifted: %s → %s, want %s", c.keyed, out, c.tagged)
-		}
-	}
-}
-
-// A fact selector parsed from "system:kind" must read back through the Match accessors, which
-// is what Subtrees()/eval() now use to find what to watch and read.
-func TestFactSelFromRefIsAMatch(t *testing.T) {
-	m := factSelFromRef("ci.status")
-	if m.System() != "ci" || m.Kind() != "status" {
-		t.Fatalf("factSelFromRef(\"ci:status\") = %#v", m)
-	}
-	if m := factSelFromRef("ci"); m.System() != "ci" || m.Kind() != "" {
-		t.Fatalf("factSelFromRef(\"ci\") = %#v", m)
-	}
-	// A THIRD segment is an id, as it is everywhere else a ref is written. Folding it into
-	// the kind gave a requirement selecting kind "status:green", which nothing can be — so
-	// `!fact ci.status.green` installed, read back verbatim, and waited forever.
-	m = factSelFromRef("ci.status.green")
-	if m.System() != "ci" || m.Kind() != "status" || m.ID() != "green" {
-		t.Fatalf("factSelFromRef(\"ci.status.green\") = %#v", m)
+		t.Fatalf("match keys overlap the retired formula tags at %v; want none — a dimension "+
+			"by that name would be refused as a formula", overlap)
 	}
 }
 

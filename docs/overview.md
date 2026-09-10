@@ -40,7 +40,7 @@ entity store is the shared, observable, cursored log of these.
 A *trigger* is one charter rule: when the condition holds and the gates resolve, an action
 fires. The `condition` names the required `subject` the firing is about, plus an optional `when`
 for the case where the cause is not the subject itself: a point-in-time match over an address
-and a payload predicate, or a temporal formula. `gates` is a conjunctive list. See
+and a payload predicate. `gates` is a conjunctive list. See
 [the trigger model](trigger-model.md).
 
 A *gate* is `auto` (fire), `ask` (a human or agent must approve), or `park` (hold). This is the

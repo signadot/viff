@@ -345,15 +345,52 @@ func CheckFields(node *ir.Node) error {
 			return checkFields(val, "condition", map[string]bool{
 				"subject": true, "on": true, "when": true,
 			}, nil)
+		case "gates":
+			return checkGates(val)
 		case "gating":
 			return checkFields(val, "gating", map[string]bool{
 				"resolver": true, "gates": true,
-			}, nil)
+			}, func(field string, val *ir.Node) error {
+				if field == "gates" {
+					return checkGates(val)
+				}
+				return nil
+			})
 		case "action":
 			return checkAction(val)
 		}
 		return nil
 	})
+}
+
+// checkGates is CheckFields for a rule's gates. `formula` is called out by name: it was a kind
+// of gate, and a charter that still writes one is told what replaced it rather than that
+// the field is unknown.
+func checkGates(node *ir.Node) error {
+	node = unwrap(node)
+	if node == nil || node.Type != ir.ArrayType {
+		return nil
+	}
+	for i, el := range node.Values {
+		el = unwrap(el)
+		if el != nil && el.Type == ir.ObjectType && ir.Get(el, "formula") != nil {
+			return fmt.Errorf("gates[%d] carries a `formula`, which is no longer a kind of gate. A "+
+				"gate is a question with options: write `need: N` for a threshold on proceed, "+
+				"`options: [{id, need}]` for outcomes of its own, and `deadline: {within: \"24h\", "+
+				"default: deny}` for a clock. Waiting for a fact is `when:`, not a gate", i)
+		}
+		if err := checkFields(el, "gate", map[string]bool{
+			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
+		}, func(field string, val *ir.Node) error {
+			if field == "onDenied" {
+				return checkAction(val)
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("gates[%d]: %w", i, err)
+		}
+	}
+	return nil
 }
 
 // checkAction is CheckFields for an action, recursing where an action nests one: a sequence's
