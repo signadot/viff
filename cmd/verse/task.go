@@ -711,8 +711,13 @@ func streamEvents(cc *cli.Context, id, as string) error {
 		// A gate is worth naming even when this attach cannot answer it: the run is stopped,
 		// and a reader watching a stream go quiet should be told why and what would move it.
 		if !interactive && ev.Kind == "pending" && ev.ID != "" {
-			fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate approve %s --as <who>\n",
-				ev.Gate, ev.Tool, ev.ID)
+			if opts := (task.GateQuestion{Options: ev.Options}).OptionsOrDefault(); yesOrNo(opts) {
+				fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate approve %s --as <who>\n",
+					ev.Gate, ev.Tool, ev.ID)
+			} else {
+				fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate %s --answer <%s> --as <who>\n",
+					ev.Gate, ev.Tool, ev.ID, strings.Join(task.OptionIDs(opts), "|"))
+			}
 		}
 		// A pending gate blocks the task HERE until answered — prompt and resolve inline.
 		if interactive && ev.Kind == "pending" {
@@ -721,6 +726,10 @@ func streamEvents(cc *cli.Context, id, as string) error {
 				pid, _, _ = strings.Cut(ev.ID, task.GateSep)
 			}
 			choice := promptGate(cc, stdin, ev)
+			if choice == "" {
+				fmt.Fprintf(cc.Out, "  left standing — answer it: verse gate %s --answer <option> --as %s\n", ev.ID, as)
+				continue
+			}
 			if err := resolveTaskGate(pid, ev.ID, choice, as); err != nil {
 				fmt.Fprintf(cc.Err, "  resolve %s: %v\n", ev.ID, err)
 			} else if choice != task.Proceed && choice != task.Deny {
@@ -775,10 +784,11 @@ func isTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// promptGate asks how to answer a blocked gate and returns the option chosen. A two-option
-// question is the yes-or-no it has always been, default deny; one with options of its own
-// lists them, and a number or an id picks one. An empty line on a listed question chooses
-// nothing, which is left as the default option's problem — deny where there is one.
+// promptGate asks how to answer a blocked gate and returns the option chosen, or "" for
+// none. A two-option question is the yes-or-no it has always been, default deny; one with
+// options of its own lists them, and a number or an id picks one. An empty or unknown line
+// on a listed question chooses nothing: the question stands, and the caller says how to
+// answer it later, rather than posting a deny the record may not even carry.
 func promptGate(cc *cli.Context, in *bufio.Reader, ev task.Frame) string {
 	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
 	if yesOrNo(opts) {
@@ -809,7 +819,7 @@ func promptGate(cc *cli.Context, in *bufio.Reader, ev task.Frame) string {
 			return o.ID
 		}
 	}
-	return task.Deny
+	return ""
 }
 
 // yesOrNo reports whether a question's options are the default two, in which case the
