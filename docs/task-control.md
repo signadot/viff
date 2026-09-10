@@ -146,8 +146,8 @@ Verse persists its high-water cursor on the entity, so on restart it knows where
 | `boundary` | `seq` | a safe point where control lands |
 | `say` | `text, by` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only |
 | `exec` | `tool, text, err` | `lastAction`, `lastOutput` + journal |
-| `pending` | `id, gate, mode, tool, reason` | `pending {id, gate}` — verse routes it to a Resolver |
-| `decision` | `id, gate, mode, proceed, by, reason` | clears `pending`; records the resolution |
+| `pending` | `id, gate, mode, tool, reason, options?, deadline?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within, default}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
+| `decision` | `id, gate, mode, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `vector` | `by` | records an autonomy slide (the new vector is observable) |
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (CAS-once) |
@@ -342,7 +342,7 @@ POST /tasks/{id}/report  {events:[…], key?, epoch}        → {rCursor, applie
 ```
 
 `inbox` is the dual of verse's `/events`: a resumable stream of control directed at the worker —
-`spec` once, `say {text, by}`, `resolve {gateId, proceed, say?}`, `cancel|pause|resume`, `vector`.
+`spec` once, `say {text, by}`, `resolve {decision, choice, proceed, say?, by}`, `cancel|pause|resume`, `vector`.
 Each item carries a control cursor, and the worker resumes with `?since=cCursor`.
 
 An answer is a decision when the worker has taken it, not when it was queued. `resolve` closes the

@@ -19,14 +19,27 @@ signature:
 context:
 - tony-format/context
 define:
+  grant: .[string]
+  id: .[string]
+  need: .[int]
+  tools: .[array(string)]
+signature:
+  name: verse-option
+---
+context:
+- tony-format/context
+define:
   by: .[string]
+  choice: .[string]
   cursor: .[int]
+  deadline: .[nullable(verse-deadline)]
   dropped: .[int]
   err: .[string]
   gate: .[string]
   id: .[string]
   kind: .[string]
   mode: .[string]
+  options: .[array(verse-option)]
   proceed: .[bool]
   seq: .[int]
   task: .[string]
@@ -110,16 +123,6 @@ define:
   status: .[string]
 signature:
   name: verse-instance
----
-context:
-- tony-format/context
-define:
-  grant: .[string]
-  id: .[string]
-  need: .[int]
-  tools: .[array(string)]
-signature:
-  name: verse-option
 ---
 context:
 - tony-format/context

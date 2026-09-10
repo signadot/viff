@@ -13,7 +13,7 @@ import (
 )
 
 type resolver interface {
-	Resolve(decision string, proceed bool, say, by string) error
+	Resolve(decision, choice, say, by string) error
 }
 
 // A control call against a remote that is GONE says so, and says which kind of gone.
@@ -36,7 +36,7 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 		{"resume", h.Resume()},
 		{"steer", h.Steer("do it differently", "human:scott")},
 		{"set-vector", h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")},
-		{"resolve", h.(resolver).Resolve("d1", true, "", "human:scott")},
+		{"resolve", h.(resolver).Resolve("d1", "proceed", "", "human:scott")},
 	} {
 		if !errors.Is(c.err, task.ErrUnreachable) {
 			t.Errorf("%s against a dead remote = %v, want ErrUnreachable", c.what, c.err)
@@ -79,7 +79,7 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no", c.status)
 		}))
-		err := runner.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", true, "", "human:scott")
+		err := runner.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", "proceed", "", "human:scott")
 		if !errors.Is(err, c.want) {
 			t.Errorf("a %d answer = %v, want %v", c.status, err, c.want)
 		}

@@ -268,17 +268,17 @@ func TestGateLoop(t *testing.T) {
 	// resolution stops working with no compile error. Asserting it here is what turns that
 	// into a build failure.
 	rh := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 
 	// An unknown decision id (typo, wrong task) matches no open gate and says so as
 	// ErrNoSuchDecision — so verse can 404 rather than silently enqueue a phantom resolve.
-	if err := rh.Resolve("deploy-nope", true, "oops", "human:ops"); !errors.Is(err, task.ErrNoSuchDecision) {
+	if err := rh.Resolve("deploy-nope", "proceed", "oops", "human:ops"); !errors.Is(err, task.ErrNoSuchDecision) {
 		t.Fatalf("Resolve of an unknown decision = %v, want ErrNoSuchDecision", err)
 	}
 
 	// governance resolves the real gate (verse-side); the worker's inbox gets a resolve item.
-	if err := rh.Resolve("deploy-1", true, "ship it", "human:ops"); err != nil {
+	if err := rh.Resolve("deploy-1", "proceed", "ship it", "human:ops"); err != nil {
 		t.Fatalf("Resolve of the open gate = %v, want nil", err)
 	}
 	// The worker takes it, and THAT is when verse observes a decision. Queuing an answer is
@@ -300,7 +300,7 @@ func TestGateLoop(t *testing.T) {
 	// Resolving it a second time is a DIFFERENT refusal from the first one above, and the
 	// two must not collapse: one means look for your typo, the other means somebody was
 	// here first. That distinction is what lets versed answer 404 and 409 respectively.
-	if err := rh.Resolve("deploy-1", true, "again", "human:ops"); !errors.Is(err, task.ErrAlreadyAnswered) {
+	if err := rh.Resolve("deploy-1", "proceed", "again", "human:ops"); !errors.Is(err, task.ErrAlreadyAnswered) {
 		t.Fatalf("second Resolve of an answered decision = %v, want ErrAlreadyAnswered", err)
 	}
 
@@ -569,11 +569,11 @@ func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 	}
 
 	rh := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 	// And the refusal says WHICH refusal it is. "No such decision" would send the answerer
 	// looking for a typo; the gate was real and the task ended underneath them.
-	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); !errors.Is(err, task.ErrTaskEnded) {
+	if err := rh.Resolve("p~d1", "proceed", "ship it", "human:scott"); !errors.Is(err, task.ErrTaskEnded) {
 		t.Fatalf("answering a gate on an ended task = %v, want ErrTaskEnded", err)
 	}
 }
@@ -665,9 +665,9 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 
 	// While it is away, the gate is answered.
 	rh := b.Attach("p").(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
-	if err := rh.Resolve("p~d1", true, "ship it", "human:scott"); err != nil {
+	if err := rh.Resolve("p~d1", "proceed", "ship it", "human:scott"); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
@@ -785,9 +785,9 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	drainFor(t, ch, "pending")
 
 	rh := b.Attach("p").(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
-	if err := rh.Resolve("d1", true, "ship it", "human:ops"); err != nil {
+	if err := rh.Resolve("d1", "proceed", "ship it", "human:ops"); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 
@@ -801,7 +801,7 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	}
 
 	// But the gate is closed to a second answerer straight away.
-	if err := rh.Resolve("d1", false, "no", "human:other"); !errors.Is(err, task.ErrAlreadyAnswered) {
+	if err := rh.Resolve("d1", "deny", "no", "human:other"); !errors.Is(err, task.ErrAlreadyAnswered) {
 		t.Fatalf("a second answer = %v, want ErrAlreadyAnswered", err)
 	}
 

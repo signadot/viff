@@ -379,8 +379,11 @@ type InboxItem struct {
 	Driver string `tony:"field=driver,omitzero"`
 	Text   string `tony:"field=text,omitzero"`
 	By     string `tony:"field=by,omitzero"`
-	// Decision and Proceed answer a gate the worker raised: which one, and yes or no.
+	// Decision and Choice answer a gate the worker raised: which one, and which option.
+	// Proceed is the same answer as yes or no, for a worker that raised a two-option gate
+	// and reads only that.
 	Decision string `tony:"field=decision,omitzero"`
+	Choice   string `tony:"field=choice,omitzero"`
 	Proceed  bool   `tony:"field=proceed,omitzero"`
 	// Vector slides the worker's autonomy dial mid-run.
 	Vector *task.Vector `tony:"field=vector,omitzero"`

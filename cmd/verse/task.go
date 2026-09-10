@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,7 +90,48 @@ type taskDoGateConfig struct {
 	*cli.Command
 	As     string `cli:"name=as desc='identity executing the task (REQUIRED — a claim must be attributable)'"`
 	Reason string `cli:"name=reason desc='what is being decided (shown to resolvers)'"`
-	Wait   bool   `cli:"name=wait desc='block until the gate is resolved, then print the outcome'"`
+	// The question's shape, as a charter gate would write it: outcomes of its own with a
+	// threshold each, and a clock. Empty poses proceed or deny, one ballot each.
+	Options  string `cli:"name=options desc='the outcomes, comma-separated, each id[:need] (default: proceed,deny at one each)'"`
+	Deadline string `cli:"name=deadline desc='how long the question stands, within[:default] (e.g. 4h:deny)'"`
+	Wait     bool   `cli:"name=wait desc='block until the gate is resolved, then print the outcome'"`
+}
+
+// parseOptions reads `id[:need],id[:need]` into options. A threshold left out is one.
+func parseOptions(spec string) ([]task.Option, error) {
+	if strings.TrimSpace(spec) == "" {
+		return nil, nil
+	}
+	var out []task.Option
+	for _, part := range strings.Split(spec, ",") {
+		id, need, hasNeed := strings.Cut(strings.TrimSpace(part), ":")
+		if id == "" {
+			return nil, fmt.Errorf("%w: --options: an option has no id in %q", cli.ErrUsage, spec)
+		}
+		o := task.Option{ID: id, Need: 1}
+		if hasNeed {
+			n, err := strconv.Atoi(need)
+			if err != nil || n < 1 {
+				return nil, fmt.Errorf("%w: --options: %q wants a threshold of at least one, got %q", cli.ErrUsage, id, need)
+			}
+			o.Need = n
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
+// parseDeadline reads `within[:default]`.
+func parseDeadline(spec string) (*task.Deadline, error) {
+	if strings.TrimSpace(spec) == "" {
+		return nil, nil
+	}
+	within, dflt, _ := strings.Cut(strings.TrimSpace(spec), ":")
+	d := &task.Deadline{Within: within, Default: dflt}
+	if _, err := d.After(); err != nil {
+		return nil, fmt.Errorf("%w: --deadline: %v", cli.ErrUsage, err)
+	}
+	return d, nil
 }
 
 func taskDoGateCmd() *cli.Command {
@@ -132,10 +174,24 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("task do gate: claim %s: %w", id, err)
 	}
+	options, err := parseOptions(cfg.Options)
+	if err != nil {
+		return err
+	}
+	clock, err := parseDeadline(cfg.Deadline)
+	if err != nil {
+		return err
+	}
 	decision := name + "-" + shortID()
 	ev := map[string]any{"kind": "pending", "id": decision, "gate": name}
 	if cfg.Reason != "" {
 		ev["text"] = cfg.Reason
+	}
+	if len(options) > 0 {
+		ev["options"] = options
+	}
+	if clock != nil {
+		ev["deadline"] = clock
 	}
 	resp, err := httpPostURL(base+"/tasks/"+id+"/report",
 		map[string]any{"epoch": epoch, "events": []any{ev}})
@@ -162,10 +218,17 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 		since = max
 		for _, it := range items {
 			if it.Kind == "resolve" && it.Decision == decision {
-				if it.Proceed {
-					fmt.Fprintln(cc.Out, decision, "approved")
-				} else {
+				switch it.Choice {
+				case task.Proceed, "":
+					if it.Proceed {
+						fmt.Fprintln(cc.Out, decision, "approved")
+					} else {
+						fmt.Fprintln(cc.Out, decision, "denied")
+					}
+				case task.Deny:
 					fmt.Fprintln(cc.Out, decision, "denied")
+				default:
+					fmt.Fprintln(cc.Out, decision, "settled on", it.Choice)
 				}
 				return nil
 			}
@@ -652,10 +715,12 @@ func streamEvents(cc *cli.Context, id, as string) error {
 			if pid == "" {
 				pid, _, _ = strings.Cut(ev.ID, task.GateSep)
 			}
-			approve := promptGate(cc, stdin, ev.Gate, ev.Tool)
-			if err := resolveTaskGate(pid, ev.ID, approve, as); err != nil {
+			choice := promptGate(cc, stdin, ev)
+			if err := resolveTaskGate(pid, ev.ID, choice, as); err != nil {
 				fmt.Fprintf(cc.Err, "  resolve %s: %v\n", ev.ID, err)
-			} else if approve {
+			} else if choice != task.Proceed && choice != task.Deny {
+				fmt.Fprintf(cc.Out, "  → %s: %s\n", ev.ID, choice)
+			} else if choice == task.Proceed {
 				fmt.Fprintf(cc.Out, "  → approved %s\n", ev.ID)
 			} else {
 				fmt.Fprintf(cc.Out, "  → denied %s\n", ev.ID)
@@ -705,18 +770,53 @@ func isTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// promptGate asks whether to allow a blocked gate; default (empty/anything-but-yes) is deny.
-func promptGate(cc *cli.Context, in *bufio.Reader, gate, tool string) bool {
-	fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — approve? [y/N] ", gate, tool)
+// promptGate asks how to answer a blocked gate and returns the option chosen. A two-option
+// question is the yes-or-no it has always been, default deny; one with options of its own
+// lists them, and a number or an id picks one. An empty line on a listed question chooses
+// nothing, which is left as the default option's problem — deny where there is one.
+func promptGate(cc *cli.Context, in *bufio.Reader, ev task.Frame) string {
+	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
+	if yesOrNo(opts) {
+		fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — approve? [y/N] ", ev.Gate, ev.Tool)
+		line, _ := in.ReadString('\n')
+		line = strings.TrimSpace(strings.ToLower(line))
+		if line == "y" || line == "yes" {
+			return task.Proceed
+		}
+		return task.Deny
+	}
+	fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — choose:\n", ev.Gate, ev.Tool)
+	for i, o := range opts {
+		need := ""
+		if o.Need > 1 {
+			need = fmt.Sprintf(" (needs %d)", o.Need)
+		}
+		fmt.Fprintf(cc.Out, "    %d. %s%s\n", i+1, o.ID, need)
+	}
+	fmt.Fprint(cc.Out, "  > ")
 	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(strings.ToLower(line))
-	return line == "y" || line == "yes"
+	line = strings.TrimSpace(line)
+	if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(opts) {
+		return opts[n-1].ID
+	}
+	for _, o := range opts {
+		if o.ID == line {
+			return o.ID
+		}
+	}
+	return task.Deny
 }
 
-// resolveTaskGate answers a task's pending decision by id.
-func resolveTaskGate(pid, decisionID string, approve bool, by string) error {
+// yesOrNo reports whether a question's options are the default two, in which case the
+// prompt is the one an operator already knows.
+func yesOrNo(opts []task.Option) bool {
+	return len(opts) == 2 && opts[0].ID == task.Proceed && opts[1].ID == task.Deny
+}
+
+// resolveTaskGate answers a task's pending decision by option.
+func resolveTaskGate(pid, decisionID, choice, by string) error {
 	resp, err := httpPost("/tasks/"+pid+"/resolve",
-		api.Resolve{ID: decisionID, Choice: choiceOf(approve), By: by})
+		api.Resolve{ID: decisionID, Choice: choice, By: by})
 	if err != nil {
 		return err
 	}

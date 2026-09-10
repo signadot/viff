@@ -1619,6 +1619,11 @@ func (s *InboxItem) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["decision"] = ir.FromString(string(s.Decision))
 	}
 
+	// Field: Choice
+	if s.Choice != "" {
+		irMap["choice"] = ir.FromString(string(s.Choice))
+	}
+
 	// Field: Proceed
 	if s.Proceed {
 		irMap["proceed"] = ir.FromBool(bool(s.Proceed))
@@ -1708,6 +1713,12 @@ func (s *InboxItem) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "decision", fieldNodeUnwrapped.Type)
 			}
 			s.Decision = string(fieldNodeUnwrapped.String)
+		case "choice":
+			// Field: Choice
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "choice", fieldNodeUnwrapped.Type)
+			}
+			s.Choice = string(fieldNodeUnwrapped.String)
 		case "proceed":
 			// Field: Proceed
 			if fieldNodeUnwrapped.Type != ir.BoolType {

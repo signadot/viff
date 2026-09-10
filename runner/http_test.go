@@ -280,7 +280,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 	defer unsub()
 
 	rh, ok := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 	if !ok {
 		t.Fatal("a remote handle cannot answer a gate, so a remote task can block forever")
@@ -302,7 +302,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		}
 	}
 
-	if err := rh.Resolve(decision, true, "go ahead", "human:scott"); err != nil {
+	if err := rh.Resolve(decision, "proceed", "go ahead", "human:scott"); err != nil {
 		t.Fatalf("answering the remote gate %s = %v", decision, err)
 	}
 	// Reported success is not delivery. The task has to actually go on, and the answer has

@@ -215,11 +215,19 @@ and the selection's record moved from `motion.channel` to `gate.question`.
 - The attach prompt (`⏸ gate … — approve? [y/N]`) stays for a two-option record and lists the
   options for any other.
 
-**Proves:** an agent raises a gate with three options and a person answers it by option from
-the CLI; a resolver answers the same record with a choice through its verdict route; the
-attach prompt on a three-option record shows three and accepts one.
+**Proves:** a worker raises a gate with three options and a deadline through the broker, the
+record carries them with the clock armed, a yes is refused as not an option, the answer by
+option settles it, and the option chosen reaches the worker's inbox as a choice rather than a
+boolean. `--options id[:need],…` and `--deadline within[:default]` parse as a charter gate's
+fields do. The attach prompt lists a question's options and reads a number or an id.
 
-`Tier: contract`. Commands are removed and `task gate` gains flags.
+What landed here beyond the plan's list: the relay from versed to a worker (`gateResolver`,
+the broker's inbox item, the remote runner's resolve) carries the choice, since a boolean
+could not say which of three a person picked.
+
+`Tier: contract`. `verse motion` and `--vote` went with step 4; here `task do gate` gains
+flags, the pending and decision frames gain fields, and the inbox's resolve item carries
+`choice`.
 
 ### 6. The formula shrinks to what `when` uses
 

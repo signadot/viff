@@ -340,6 +340,17 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 			rec[k] = v
 		}
 	}
+	// What the question offers, as a posed one carries it: the frame's options, or the
+	// default two when the worker named none, and its deadline when it named one.
+	q := task.GateQuestion{Options: ev.Options}
+	rec["options"] = optionList(q.OptionsOrDefault())
+	if ev.Deadline != nil && ev.Deadline.Within != "" {
+		d := entity.Obj{"within": ev.Deadline.Within}
+		if ev.Deadline.Default != "" {
+			d["default"] = ev.Deadline.Default
+		}
+		rec["deadline"] = d
+	}
 	writeAt(store, ref, rec)
 	// Still pending, or not there at all — a brokered question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this

@@ -108,7 +108,7 @@ func TestAGateInsideTheChildIsAnsweredFromOutside(t *testing.T) {
 	defer cancel()
 
 	res, ok := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 	if !ok {
 		t.Fatal("the remote handle cannot answer a gate, so nothing can")
@@ -119,7 +119,7 @@ func TestAGateInsideTheChildIsAnsweredFromOutside(t *testing.T) {
 		switch {
 		case f.Kind == task.EvPending:
 			asked = true
-			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
+			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("answering the gate across the hop: %v", err)
 			}
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
@@ -492,7 +492,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 
 	var gate, exec, terminal string
@@ -500,7 +500,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 		switch {
 		case f.Kind == task.EvPending && f.Tool == pushToolName:
 			gate = f.Gate
-			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
+			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("approving the delivery: %v", err)
 			}
 		case f.Kind == task.EvExec && f.Tool == pushToolName:
@@ -554,12 +554,12 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 	var terminal string
 	for f := range frames {
 		if f.Kind == task.EvPending && f.Tool == pushToolName {
-			if err := res.Resolve(f.ID, false, "not this branch", "human:test"); err != nil {
+			if err := res.Resolve(f.ID, "deny", "not this branch", "human:test"); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -788,7 +788,7 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 
 	var asked []string
@@ -797,7 +797,7 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 		switch {
 		case f.Kind == task.EvPending:
 			asked = append(asked, f.Tool)
-			if err := res.Resolve(f.ID, true, "", "human:test"); err != nil {
+			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("approving %s: %v", f.Tool, err)
 			}
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
@@ -868,7 +868,7 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 
 	// The closing delivery to `auto` IS a push and is gated by this vector, so counting
@@ -881,7 +881,7 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 		switch {
 		case f.Kind == task.EvPending:
 			asked++
-			_ = res.Resolve(f.ID, true, "", "human:test")
+			_ = res.Resolve(f.ID, "proceed", "", "human:test")
 		case f.Kind == task.EvExec && f.Tool == pushToolName && refused == "":
 			refused, askedFirst = f.Text, asked > 0
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
@@ -990,14 +990,14 @@ func TestApprovalIsWhatReleasesTheCredential(t *testing.T) {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
-		Resolve(decision string, proceed bool, say, by string) error
+		Resolve(decision, choice, say, by string) error
 	})
 
 	var terminal string
 	for f := range frames {
 		switch {
 		case f.Kind == task.EvPending && f.Tool == pushToolName:
-			if err := res.Resolve(f.ID, false, "not main, not today", "human:test"); err != nil {
+			if err := res.Resolve(f.ID, "deny", "not main, not today", "human:test"); err != nil {
 				t.Fatal(err)
 			}
 		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():

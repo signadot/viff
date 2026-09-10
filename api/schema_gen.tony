@@ -31,6 +31,7 @@ context:
 - task: github.com/signadot/verse/task
 define:
   by: .[string]
+  choice: .[string]
   cursor: .[int]
   decision: .[string]
   driver: .[string]

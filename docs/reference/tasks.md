@@ -416,6 +416,15 @@ verse task approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from so
 verse task do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
 
+A gate raised this way is the same record a charter gate poses, so it can take outcomes of its
+own, a threshold per outcome, and a clock:
+
+```sh
+verse task do gate "$ID" rollout --as human:scott --options canary,full:2,abort --deadline 4h:abort --wait
+verse gate <id> --answer canary --as human:lead
+# rollout-… settled on canary
+```
+
 The task is now `done`, with your result on its `verse.task.instance` entity, so a completion
 hook or a rule reacts to it exactly as if an agent had finished. A *human* did the work; the
 flow moves on.

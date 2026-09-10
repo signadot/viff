@@ -160,6 +160,9 @@ type Meta struct {
 	// out is the change that is right on its own merits, and it makes mirror → resolver
 	// legal as a side effect.
 	Owner func(subject string) string
+	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
+	// is written here; the timer that settles it is the server's, so the server hands one in.
+	Arm func(questionID, within string)
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -388,6 +391,11 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					owner = m.Owner(subject)
 				}
 				PostFrameQuestion(store, ev, id, subject, owner)
+				// The clock, if the frame set one: the question is the worker's, but the
+				// timer that settles it runs where the record is kept.
+				if ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
+					m.Arm(ev.ID, ev.Deadline.Within)
+				}
 			case task.EvDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole
@@ -398,7 +406,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
 				if st["pending"] != nil {
-					AnswerQuestion(store, ev.ID, task.Resolution{Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+					AnswerQuestion(store, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
 				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool

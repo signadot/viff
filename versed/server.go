@@ -2641,6 +2641,7 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 // rebuilt its own Meta and a resumed task's questions lost their layer in silence.
 func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
 	m.Owner = s.standingOwner
+	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
 	mirror.Reflect(store, id, h, m)
 }
 
@@ -3275,7 +3276,7 @@ func (s *Server) registries() []task.Runner {
 // asserting the three-argument shape and started answering 501. One declaration means one
 // thing to change, and every implementer breaks loudly when it does.
 type gateResolver interface {
-	Resolve(decision string, proceed bool, say, by string) error
+	Resolve(decision, choice, say, by string) error
 }
 
 // spawnTask is the ad-hoc `task run` path. Unlike a trigger spawn it has no
@@ -3701,7 +3702,7 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 		// Resolution, so a brokered gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
 		if rh, ok := h.(gateResolver); ok {
-			return rh.Resolve(decisionID, res.Proceed, strings.Join(res.Steer, " "), res.By)
+			return rh.Resolve(decisionID, res.Chosen(), strings.Join(res.Steer, " "), res.By)
 		}
 		return task.ErrUnsupported
 	}

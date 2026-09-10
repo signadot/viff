@@ -248,6 +248,8 @@ verse
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
           do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
           do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
+                  [--options id[:need],…] [--deadline within[:default]]  …with outcomes
+                                             of its own and a clock, as a charter gate has
   runner (runners) [--probe]                 where work can run
           add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now

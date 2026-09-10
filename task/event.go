@@ -17,9 +17,16 @@ type Frame struct {
 	Mode    string `tony:"field=mode,omitzero"`
 	By      string `tony:"field=by,omitzero"`
 	Proceed bool   `tony:"field=proceed,omitzero"`
-	Text    string `tony:"field=text,omitzero"` // reason / detail / result
-	Err     string `tony:"field=err,omitzero"`
-	Dropped int    `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
+	// Choice is the option a decision settled on; Proceed is the same fact as yes or no, kept
+	// for every reader of a two-option question. A pending frame offers Options and a
+	// Deadline the way a posed question does, so a worker that raises a gate with outcomes
+	// of its own reports the same record a charter's gate would.
+	Choice   string    `tony:"field=choice,omitzero"`
+	Options  []Option  `tony:"field=options,omitzero"`
+	Deadline *Deadline `tony:"field=deadline,omitzero"`
+	Text     string    `tony:"field=text,omitzero"` // reason / detail / result
+	Err      string    `tony:"field=err,omitzero"`
+	Dropped  int       `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // Event kinds.

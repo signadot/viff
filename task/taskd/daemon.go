@@ -216,6 +216,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 		tk.Emit(task.Frame{
 			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+			Options: p.Question.Options, Deadline: p.Question.Deadline,
 		})
 	})
 	// And the counterpart, on the SAME registry. This is the one that was missing: the
@@ -407,6 +408,7 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 			_ = sse.Send(task.Frame{
 				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+				Options: p.Question.Options, Deadline: p.Question.Deadline,
 			})
 		}
 	}

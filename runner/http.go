@@ -373,13 +373,11 @@ func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
 // runtime's older {decisionId, proceed}. taskd accepts both, so an old runner on the other
 // end still understands this.
 //
-// The bool is the point, and it is why this cannot go through post(): an answer that did not
-// land must not read as one that did, or the operator is told a blocked worker was released.
-func (h *remoteHandle) Resolve(decision string, proceed bool, say, by string) error {
-	body := api.Resolve{ID: decision, Choice: task.Deny, By: by}
-	if proceed {
-		body.Choice = task.Proceed
-	}
+// The status is the point, and it is why this cannot go through post(): an answer that did
+// not land must not read as one that did, or the operator is told a blocked worker was
+// released.
+func (h *remoteHandle) Resolve(decision, choice, say, by string) error {
+	body := api.Resolve{ID: decision, Choice: choice, By: by}
 	if say != "" {
 		body.Say = []string{say}
 	}

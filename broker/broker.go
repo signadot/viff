@@ -656,7 +656,7 @@ func (h *handle) SetVector(v *task.Vector, by string) error {
 // ErrAlreadyAnswered (ErrTaskEnded if the task went terminal with gates still open), so
 // verse can surface a 404 rather than silently enqueueing a resolve for a decision the
 // worker will never recognize.
-func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
+func (h *handle) Resolve(decision, choice, say, by string) error {
 	ps := h.b.get(h.id)
 	if ps == nil {
 		return task.ErrNoSuchTask
@@ -687,7 +687,7 @@ func (h *handle) Resolve(decision string, proceed bool, say, by string) error {
 	//
 	// It is emitted when the worker's inbox poll passes this item — its acknowledgement,
 	// which the lease already reads for liveness and the cursor already reads for position.
-	it := api.InboxItem{Kind: "resolve", Decision: decision, Proceed: proceed, Text: say, By: by}
+	it := api.InboxItem{Kind: "resolve", Decision: decision, Choice: choice, Proceed: choice == task.Proceed, Text: say, By: by}
 	at := ps.enqueue(it)
 	ps.mu.Lock()
 	// Two different moments, and conflating them is what this separates. The RIGHT TO ANSWER
@@ -876,7 +876,7 @@ func (b *Broker) inbox(w http.ResponseWriter, r *http.Request) {
 	status, terminal := ps.status, ps.terminal
 	ps.mu.Unlock()
 	for _, it := range landed {
-		ps.emit(task.Frame{Kind: task.EvDecision, ID: it.Decision, Proceed: it.Proceed, By: it.By})
+		ps.emit(task.Frame{Kind: task.EvDecision, ID: it.Decision, Choice: it.Choice, Proceed: it.Proceed, By: it.By})
 	}
 	writeOut(w, r, map[string]any{"items": out, "status": status, "terminal": terminal})
 }
