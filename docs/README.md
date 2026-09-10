@@ -71,7 +71,8 @@ drive a local agent, a remote one, and a human.
 | | [reference/examples/coderunner](reference/examples/coderunner/main.go) — a runner that codes: a workspace of git checkouts per task, a contained process per task, and a push as a capability the gate releases a credential for rather than one canned act |
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External tasks](external-tasks.md) — how the seam was chosen |
-| ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, the motion fork, and a `by` nobody verifies |
+| ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, and a `by` nobody verifies |
+| ahead | [One gate record: what is left](working/gate-unify-residual.md) — the runtime vector gate, where the record lives, two clocks on one record |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
 | | [comment-drift, and the merge gate](working/comment-drift-drive.md) — what the drive built, what it took, and what it found |

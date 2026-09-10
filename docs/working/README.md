@@ -41,12 +41,13 @@ against something that runs, and three rules follow from that:
   was *not built*; a corner of what was built belongs in the doc that describes it, and appears
   here only when the fix is a design rather than a patch.
 
-The nine, and what each is a residual of:
+The ten, and what each is a residual of:
 
 | | of | what is in it |
 |---|---|---|
 | [firing-residual.md](firing-residual.md) | [trigger-model.md](../trigger-model.md), [convergence.md](../convergence.md) | time as a cause, the read per commit, what `verse entity rm` should mean |
-| [attached-resolvers-residual.md](attached-resolvers-residual.md) | [attached-resolvers.md](../attached-resolvers.md) | the gate fork, the two unbuilt drivers, a `by` nobody verifies |
+| [attached-resolvers-residual.md](attached-resolvers-residual.md) | [attached-resolvers.md](../attached-resolvers.md) | the two unbuilt drivers, a `by` nobody verifies |
+| [gate-unify-residual.md](gate-unify-residual.md) | [trigger-model.md §gates](../trigger-model.md#gates--whether-it-proceeds), [reference/tasks.md](../reference/tasks.md) | the runtime vector gate, where the record lives, two clocks on one record, what an exclusive binding does not refuse |
 | [runners-residual.md](runners-residual.md) | [runners.md](../runners.md) | how control is applied is convention, and whether `local` should be nameable |
 | [sources-residual.md](sources-residual.md) | [sources.md](../sources.md) | dial-in, and the levers a resync has not spent |
 | [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |

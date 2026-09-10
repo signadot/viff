@@ -8,68 +8,18 @@ bindings by name and by condition, ownership by layer, an instance per origin, t
 What is here is what those two name as missing, gathered so the next person does not have to
 reconstruct why each was left. Nothing here is a design owed to anything else here.
 
-## 1. A resolver over a motion, and the fork underneath it
+## 1. A resolver over a motion, and the fork underneath it — landed
 
-A gate carrying a `formula` is resolved by a **motion** — `motion:channel:<id>`, listed by
-`verse docket`, answered by `verse vote <id> <choice> --as <who>`, settled by tally. A gate with
-`mode: ask` is posed as a **question** — `gate:question:<id>`, listed by `verse gate`, answered
-by `verse gate approve`. Resolvers attached to the second only.
-
-The first framing of this residual said the two dockets were a modelling tension to be resolved.
-They are not. They are one construct forked at `trigger/engine.go`:
-
-```go
-for _, gate := range t.AllGates() {
-    if gate.Formula != nil {   // → monitorGate → openChannel → motion:channel
-        ...
-        continue
-    }
-    m, _ := gate.mode()        // → GateQuestion → PostQuestion → gate:question
-```
-
-Both arms come out of one `gating.gates` list, and `Formula != nil` is not the distinction the
-split needs. `Gate.mode()` resolves a formula gate with no explicit mode to **`"ask"`** — so a
-thing literally called *ask* goes down the motion arm, and a charter author gets supervision or
-does not depending on which they wrote under the same key, which nobody could predict from the
-name. And `openChannel` is unconditional, so `!until [!fact green, !deadline "4h"]` — which asks
-nobody anything — opens a channel and lands on `verse docket` with no ballot anyone can cast. The
-result is a docket listing decisions nobody can make, and a `verse gate` omitting decisions
-people are being asked for.
-
-The fork is git-issue `sp27m3g1h12krdgve1n0`, and is marked in the code as an unfixed design
-bug pointing back here.
-
-So the line that wants drawing is **asks somebody** versus **waits for something**, and it lives
-inside the formula rather than at `gate.Formula != nil`. A gate whose formula contains a quorum
-is posed and belongs on the docket a person or a resolver reads; a gate whose formula is facts
-and clocks is monitored and belongs on no docket at all.
-
-Settle that before designing a resolver over a motion, because most of the difficulty is the
-fork rather than the motion. What remains after it, for a genuine `select:` motion:
-
-- the verdict carries a **chosen option** rather than proceed/deny
-- the question record carries **the options**
-- what `exclusive` means when the options are **doers**
-
-That last one looked like the hard part and mostly is not. A doer may only ever *narrow*:
-`provider:` without `grant:` is refused at install, `ceiling.Subset(g)` refuses a widening grant
-at fire time, and `intersectTools` is a genuine intersection. So picking a doer cannot hand out
-authority the charter did not already state, and `exclusive` there can keep meaning exactly what
-it means everywhere else — whose answer counts. The authority question already has its own
-mechanism, and the visibility question already has its own answer (`optionLabels` shows each
-option's envelope on the ballot, adding only what differs from a plain name).
-
-One rule does fall out, with the same shape as "exclusive requires a deadline": `exclusive` on a
-motion with `need ≥ 2` is incoherent — it turns a quorum of three into a threshold of one,
-silently — so it applies to `select: ask` and not to `select: vote`. The `need ≥ 2` case is a
-resolver as one voter among several, which is a different mechanism sharing a word rather than
-an extension of this one.
-
-**Two clocks**, which survives every version of this and is not addressed anywhere: a provider
-selection's `within` means *no pick, no spawn*, and a resolver's `deadline.within` means
-*somebody else decides*. Both would be armed on one decision, disagreeing about what silence
-means. It is latent on the whether-axis too, since a formula gate can carry `!deadline "4h"`
-with a `deny` default.
+The fork this section described is gone: a gate with a formula is no longer a different thing
+from a gate without one. Every decision somebody is asked — a charter gate's, a task action's, a
+worker's raised gate, a provider selection's — is one question record with options, a
+threshold each and a deadline, settled by the answer path that also serves a resolver, so a
+resolver owns a selection exactly as it owns a gate, answers it by option through its verdict
+route, and escalates it the same way. What this section listed as remaining for a genuine
+`select:` — the verdict carrying a chosen option, the record carrying the options,
+`exclusive` refused at `need >= 2` — landed with it (git-issue `sp27m3g1h12krdgve1n0`). What
+did not is in [gate-unify-residual.md](gate-unify-residual.md): the two clocks, and the
+`exclusive` refusal reaching only a spawn's vote and not a gate's threshold.
 
 ## 2. The `llm` and `script` drivers
 
