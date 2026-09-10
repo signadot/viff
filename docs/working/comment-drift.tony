@@ -296,6 +296,15 @@ reads: [ !verse-path [git] ]
         before. Report an entry ONLY for a symbol that has something to say: a symbol you judged
         and found ACCURATE is not an entry, and an empty `findings` list is a real answer.
 
+        EVERY FINDING CARRIES ALL FIVE KEYS — symbol, status, says, at, proposedAt — and
+        `proposedAt` is `null` when you proposed no fix, which is every `resolved` one. Write the
+        key with a null rather than leaving it out. An absent reference is an error where a null
+        one is a value, so a finding missing the key fails the whole filing: not that finding —
+        the WHOLE list, including the ones that were complete, and the review is lost with the
+        range marked reviewed and the cursor advanced past it. That is not hypothetical; it is
+        what the first run of this charter did (18:09Z 2026-09-10, `$item.proposedAt is not
+        present in the payload that fired this action`).
+
             {
               "files": 2,
               "findings": [
@@ -303,7 +312,12 @@ reads: [ !verse-path [git] ]
                  "status": "open",
                  "says": "the comment says it returns nil for an empty map; it returns an empty payload",
                  "at": "$to",
-                 "proposedAt": "$to"}
+                 "proposedAt": "$to"},
+                {"symbol": "trigger.predicateNode",
+                 "status": "resolved",
+                 "says": "named a function deleted in this range; the comment is accurate now",
+                 "at": "$to",
+                 "proposedAt": null}
               ]
             }
     onDone:
