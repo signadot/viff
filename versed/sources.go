@@ -284,11 +284,8 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 		run := s.srcRuns[source.Ref(e.System, e.Name).String()]
 		s.srcMu.Unlock()
 		if run != nil {
-			if pass, why := run.status(); pass != "" {
+			if pass := run.lastPassAt(); pass != "" {
 				rec["lastPass"] = pass
-				if why != "" {
-					rec["failing"] = why
-				}
 			}
 		} else {
 			rec["running"] = false
@@ -534,10 +531,14 @@ func (r *sourceRun) stop() {
 	}
 }
 
-func (r *sourceRun) status() (lastPass, lastErr string) {
+// lastPassAt is when this run's last pass completed, failed or not. The run's belief about
+// the error is not reported beside it: `lastError` on the registration is that belief, kept
+// in step with the store by recordPass, and a second copy of it that was as-of-now would only
+// ever differ from the stored one in the moment between a pass ending and its write landing.
+func (r *sourceRun) lastPassAt() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.lastPass, r.lastErr
+	return r.lastPass
 }
 
 // startSource runs a reflector for a registration, replacing one already running under that
