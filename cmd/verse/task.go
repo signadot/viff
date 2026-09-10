@@ -230,6 +230,11 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 				default:
 					fmt.Fprintln(cc.Out, decision, "settled on", it.Choice)
 				}
+				// TAKEN, said so. An answer is delivered when a poll asks for what comes AFTER
+				// it — that is the broker's acknowledgement, and the poll that first showed the
+				// item is not it. Without this the record read `delivered: false` for an answer
+				// the worker had just printed. Best effort: the outcome is known either way.
+				_, _, _ = brokerInbox(base, id, max, epoch)
 				return nil
 			}
 		}
