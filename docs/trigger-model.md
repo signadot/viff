@@ -620,6 +620,13 @@ subtree verse watches and the set it lists, becoming a docd watch path (`Formula
 store's `List` prefilter, and a watch path cannot be a predicate. Write the whole segment as `*`
 for "any", and put the operator on `id`.
 
+**`path` segments do take operators**, and without breaking that rule. A segment is matched by
+`entity.SegMatches`, which sends a tagged one through the payload matcher, so
+`path: [demo, !glob "pr-*", "*"]` says what it looks like it says. The watch is unaffected because
+the read narrows to the LITERAL PREFIX — `entity.Pattern.literalPrefix` stops at the first
+wildcard or operator — and the operator filters below it. A watch path is still not a predicate;
+the predicate simply lives under the watch rather than in it.
+
 `at` is the whole address prefix as one covering path, which is the same three dimensions written
 once:
 
@@ -1693,13 +1700,6 @@ is no open blocker* — is not. The model is existence-positive throughout, whic
 [a departure is written down](#lifecycle-how-an-entity-leaves) rather than inferred. The same
 discipline answers a `when` about absence, by making the absence a positive fact somebody writes: a
 count, or a summary entity. That is a discipline rather than a grammar.
-
-An operator on `system` or `kind` is refused for the structural reason given above, and recovering
-it needs either a full scan or expansion into N literal subtrees, which is a design question rather
-than a port. Keyed sequence steps — `review.seq(lint)`, addressing an element by name so it survives
-an insertion — are the better form on their own terms, but
-[kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)'s `!key` segment has no
-defined semantics upstream yet.
 
 The substrate all of this leans on is [change events](change-events.md). Whether a charter written
 on it settles, and what per-commit evaluation costs, is [convergence](convergence.md).
