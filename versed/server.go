@@ -240,6 +240,11 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
 	// arrive, so it says a duration and the question says an instant.
 	arm := func(st entity.Store, q task.GateQuestion) {
+		// The question's own clock first: it settles, where the binding's below only hands
+		// the question up, and it exists whether or not anybody is bound.
+		if q.Deadline != nil {
+			s.armDeadline(st, q.ID, q.Deadline.Within)
+		}
 		if q.BoundTo == "" {
 			return
 		}
@@ -988,6 +993,8 @@ func (s *Server) Start(ctx context.Context) {
 	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
 	// rather than starting a second run beside work that outlived us.
 	phase("resumed motions", s.resumeMotions) // baseline AND every package's own engine
+	// And the clocks. A question's deadline is durable and the timer that fires it is not.
+	phase("armed deadlines", s.armDeadlines)
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
@@ -1817,6 +1824,9 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// docket as of now, and `⊤` is a person reading.
 	out := make([]map[string]any, 0)
 	ents, readErr := pendingQuestionsErr(s.scopedStore(r))
+	if s.settleOverdueIn(s.scopedStore(r), ents) {
+		ents, readErr = pendingQuestionsErr(s.scopedStore(r))
+	}
 	s.escalateOverdueIn(s.scopedStore(r), ents)
 	for _, ent := range ents {
 		p := entity.ToObj(ent.Payload)
@@ -2032,22 +2042,8 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		}
 	}
 
-	err = nil
-	if owner != "" {
-		err = s.resolveTaskDecision(owner, body.ID, res)
-	} else if !s.Reg.Answer(body.ID, res) {
-		err = task.ErrNoSuchDecision
-	}
+	err = s.settle(store, body.ID, res, owner)
 	if err == nil {
-		// Accepted is not the same as delivered. A broker takes an answer for a worker that
-		// must dial in and pull it, so the record says so — `delivered: false` — until the
-		// worker's acknowledgement clears it. Everywhere else the answer has already landed
-		// on the party that must act, and the record is simply settled.
-		if s.relaysControl(owner) {
-			mirror.QueuedAnswer(store, body.ID, res)
-		} else {
-			mirror.AnswerQuestion(store, body.ID, res)
-		}
 		if overriding {
 			mirror.Overrode(store, body.ID, holder)
 		}
@@ -2096,6 +2092,116 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		return
 	}
 	http.Error(w, "no such question", http.StatusNotFound)
+}
+
+// settle delivers a resolution to whatever is waiting on a question and records it. It is the
+// one place a question SETTLES, whoever decided: a person or a resolver through
+// answerQuestion, or the clock through settleByDeadline. owner is the task holding the
+// question, empty for a firing's gate, which the engine's registry answers here.
+//
+// Delivery first, the record after: the waiter is the arbiter of who settled a question, and
+// a record written ahead of a delivery that then failed would say a decision reached a party
+// it never reached. The error is the delivery's, for the caller to say in its own terms.
+func (s *Server) settle(store entity.Store, id string, res task.Resolution, owner string) error {
+	var err error
+	if owner != "" {
+		err = s.resolveTaskDecision(owner, id, res)
+	} else if !s.Reg.Answer(id, res) {
+		err = task.ErrNoSuchDecision
+	}
+	if err != nil {
+		return err
+	}
+	// Accepted is not the same as delivered. A broker takes an answer for a worker that
+	// must dial in and pull it, so the record says so — `delivered: false` — until the
+	// worker's acknowledgement clears it. Everywhere else the answer has already landed
+	// on the party that must act, and the record is simply settled.
+	if s.relaysControl(owner) {
+		mirror.QueuedAnswer(store, id, res)
+	} else {
+		mirror.AnswerQuestion(store, id, res)
+	}
+	return nil
+}
+
+// armDeadline starts the clock on a question posed with a deadline: the instant is stamped on
+// the record once (a stamp already standing wins, so a re-pose after a restart arms against
+// the original instant rather than a fresh one), and a timer fires the settle at it.
+//
+// A timer rather than a sweep, because a deadline SETTLES: it releases a firing or a task
+// loop that is blocked, and those do not read the docket. The binding's escalation beside
+// it can afford to wait for a reader, since a reader is the only party it is for. The
+// docket read still settles an overdue question it finds (settleOverdueIn), for the daemon
+// whose timer died with it.
+func (s *Server) armDeadline(store entity.Store, id, within string) {
+	d, err := time.ParseDuration(within)
+	if err != nil || d < 0 {
+		return // refused where the question was written; nothing to arm here
+	}
+	at, err := mirror.StampDeadline(store, id, time.Now().Add(d))
+	if err != nil {
+		return
+	}
+	fires, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return
+	}
+	time.AfterFunc(time.Until(fires), func() { s.settleByDeadline(store, id) })
+}
+
+// armDeadlines re-arms, at startup, every pending question that carries a stamped deadline.
+// A firing's question is orphaned by the reconcile and re-posed by the charter's replay,
+// which arms it again through the ordinary path; a surviving task's question is re-posed by
+// nobody, so it is armed from the record here.
+func (s *Server) armDeadlines() {
+	for _, ent := range pendingQuestions(s.Store) {
+		if within, _, _ := mirror.DeadlineOf(ent.Payload); within != "" {
+			s.armDeadline(s.Store, ent.Ref.ID(), within)
+		}
+	}
+}
+
+// settleByDeadline settles one question whose deadline has passed, on its default option, as
+// `deadline`. A question already settled, or whose stamped instant is still ahead, is left
+// alone — the timer that fired may be one an earlier arming set, and the record is what says
+// whether the clock has run out.
+func (s *Server) settleByDeadline(store entity.Store, id string) {
+	e, ok, err := store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok || entity.Str(e.Payload, "status") != mirror.QuestionPending {
+		return
+	}
+	_, dflt, at := mirror.DeadlineOf(e.Payload)
+	fires, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil || time.Now().Before(fires) {
+		return
+	}
+	if dflt == "" {
+		dflt = task.NoOption
+	}
+	res := task.Choose(dflt, task.ByDeadline)
+	res.Note = "the deadline passed with no decision"
+	// A settle nobody can take — the waiter is gone, the runner is down — is left for the
+	// next timer or the next reader; the record still says pending, which is the truth.
+	_ = s.settle(store, id, res, s.ownerOf(store, id))
+}
+
+// settleOverdueIn settles the questions in a docket read whose deadline has passed, and
+// reports whether it settled any, so the reader can list what is true now rather than what
+// was true a moment ago.
+func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bool {
+	now := time.Now()
+	var any bool
+	for _, ent := range pending {
+		_, _, at := mirror.DeadlineOf(ent.Payload)
+		if at == "" {
+			continue
+		}
+		if fires, err := time.Parse(time.RFC3339Nano, at); err == nil && !now.Before(fires) {
+			s.settleByDeadline(store, ent.Ref.ID())
+			any = true
+		}
+	}
+	return any
 }
 
 // instanceOf reads one resolver instance: the binding it is, and the task it watches.

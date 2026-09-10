@@ -53,13 +53,23 @@ func Choose(choice, by string) Resolution {
 	return Resolution{Choice: choice, Proceed: choice == Proceed, By: by}
 }
 
+// Cast reports whether this resolution is somebody's ballot: an answerer under a name of
+// their own, rather than the runtime settling a question nobody answered.
+func (r Resolution) Cast() bool {
+	switch r.By {
+	case "", ByAuto, ByCancelled, ByDeadline:
+		return false
+	}
+	return true
+}
+
 // AutoResolver promotes every blocking gate to proceed. A vector of Ask gates
 // resolved by an AutoResolver is a fully autonomous loop (all questions routed
 // to proceed).
 type AutoResolver struct{ Who string }
 
 func (a AutoResolver) Resolve(_ context.Context, q GateQuestion, _ ToolUse) (Resolution, error) {
-	return Resolution{Choice: Proceed, Proceed: true, By: nonEmpty(a.Who, "auto"), Question: q}, nil
+	return Resolution{Choice: Proceed, Proceed: true, By: nonEmpty(a.Who, ByAuto), Question: q}, nil
 }
 
 // ChannelResolver poses each blocking question on Out and waits for the answer on

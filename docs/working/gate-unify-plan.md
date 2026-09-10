@@ -92,21 +92,26 @@ carries `deadline: {within, default, at}` where `at` is the absolute instant, st
 honoured across a restart, which is what `deadlineAt` (`trigger/engine.go`) does for a channel
 today and moves here unchanged in spirit.
 
-Arming rides the timer `arm` (`versed/server.go`) already sets for escalation: one timer per
-pending question, firing at whichever of `escalatesAt` and `deadline.at` comes first. When the
-deadline fires with no outcome, the record is settled through `mirror.AnswerQuestion` with
-`by: deadline` and the default option, and delivered to the waiter as any answer is. On
-`verse gate` the docket evaluates overdue deadlines on read as `escalateOverdueIn` does, so a
-person opening the list sees a settled question even if the timer is on a daemon that is down.
+Escalation has no timer: `arm` stamps `escalatesAt` and `escalateOverdueIn` evaluates it when
+a reader arrives, which is enough for a transfer only a reader is for. A deadline settles, and
+what it releases (a firing, a task loop) reads no docket, so it gets a timer of its own:
+`armDeadline` stamps `deadline.at` once and fires `settleByDeadline` at it, which settles
+through the same `settle` an answer takes, with `by: deadline` and the default option. A
+default left empty settles on `none`, which a waiter reads as a refusal nobody made and a
+provider selection (step 4) reads as no pick. Startup re-arms every pending record with a
+stamp, and the docket read settles an overdue one it finds, for the daemon whose timer died.
 
-A ballot for the default option is recorded and does not settle, since the default has no
-threshold, and the API answer says so: the note `verse motion --vote` prints today
-(`deadlineOnly`) comes back as text on the 202.
+The default is an ordinary option: a ballot for it counts toward its own threshold like any
+other, so a `deny` that needs one settles on one deny. The old behaviour, where a deadline's
+default could not be reached by voting, was `!until` having no place for a threshold on the
+deny side, and it goes with the formula.
 
-**Proves:** a `need: 1` question with `deadline: {within: 1h, default: deny}` and no ballot is
-delivered as deny when the injected clock passes the hour. A restart re-arms against the
-stamped `at`, not against a fresh hour (the case `TestResumeHonorsADeadlineThatPassedWhileDown`
-covers for a channel). Two ballots for `deny` leave the record pending with both on it.
+**Proves:** a question with `deadline: {within: 50ms, default: deny}` and no ballot is
+delivered as deny by the clock, with the record naming the deadline. A deadline with no default
+settles on `none`. A restart re-arms against the stamped `at`, not against a fresh duration:
+a stamp backdated while the verse was down fires on the way back up (the case
+`TestResumeHonorsADeadlineThatPassedWhileDown` covers for a channel). An overdue question
+settles when the docket is read.
 
 `Tier: change`.
 

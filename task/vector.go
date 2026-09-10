@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 )
 
 // Vector is the ordered gate vector evaluated at each boundary. It is data, not
@@ -82,7 +83,38 @@ type GateQuestion struct {
 	// whose options are not the default two is answered by option id rather than by yes or
 	// no. See DefaultOptions and Need.
 	Options []Option
+	// Deadline bounds how long the question stands. When Within passes with no option at
+	// its threshold, the question settles on Default with `by: deadline`. An empty Default
+	// settles on NoOption: the clock decided, and it decided nothing, which a caller reads
+	// as a refusal that nobody made (a provider selection reads it as no pick).
+	Deadline *Deadline
 }
+
+// Deadline is how long a question stands, and what it settles on when the clock passes.
+type Deadline struct {
+	Within  string `tony:"field=within"`
+	Default string `tony:"field=default,omitzero"`
+}
+
+// After is the deadline's duration.
+func (d *Deadline) After() (time.Duration, error) {
+	if d == nil {
+		return 0, nil
+	}
+	return time.ParseDuration(d.Within)
+}
+
+// The `by` of a settle that nobody made. A person or a resolver answers under a name of
+// their own; these are the runtime's, and none of them casts a ballot.
+const (
+	ByAuto      = "auto"      // the vector let the action through without asking
+	ByCancelled = "cancelled" // the wait ended before anyone answered
+	ByDeadline  = "deadline"  // the clock passed with no decision
+)
+
+// NoOption is what a deadline settles on when it was given no default: the question closed
+// with nothing chosen. It is never an option a ballot can name.
+const NoOption = "none"
 
 // Option is one outcome a question can settle on, and how many ballots settle it.
 type Option struct {
@@ -224,7 +256,7 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d.BoundTo = s.boundTo
 	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
 	if !d.Mode.Blocks() {
-		return Resolution{Choice: Proceed, Proceed: true, By: "auto", Question: d}, nil
+		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: d}, nil
 	}
 	return s.resolver.Load().r.Resolve(ctx, d, tu)
 }

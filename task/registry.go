@@ -124,7 +124,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 		if dropped && onDrop != nil {
 			onDrop(q, dropReason(ctx))
 		}
-		return Resolution{Proceed: false, By: "cancelled", Question: q}, ctx.Err()
+		return Resolution{Proceed: false, By: ByCancelled, Question: q}, ctx.Err()
 	}
 }
 

@@ -99,8 +99,50 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 	// Always written, default included, so the record says what can be chosen without a
 	// reader having to know what a question with no options means. The tally reads it back.
 	rec["options"] = optionList(q.OptionsOrDefault())
+	if q.Deadline != nil && q.Deadline.Within != "" {
+		// `within` and `default` are the question's; `at`, the instant, is stamped by
+		// whoever arms the clock (StampDeadline), once, so a re-pose finds it rather than
+		// sliding it. It is not written here, and a merge leaves a standing one alone.
+		d := entity.Obj{"within": q.Deadline.Within}
+		if q.Deadline.Default != "" {
+			d["default"] = q.Deadline.Default
+		}
+		rec["deadline"] = d
+	}
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
+}
+
+// DeadlineOf reads a record's deadline: the duration it was posed with, the option it settles
+// on, and the instant it was armed against, empty until StampDeadline has run.
+func DeadlineOf(p entity.Payload) (within, dflt, at string) {
+	d := entity.Get(p, "deadline")
+	return entity.Str(d, "within"), entity.Str(d, "default"), entity.Str(d, "at")
+}
+
+// StampDeadline fixes the instant a question's deadline fires, once. A stamp already standing
+// is honoured and returned, so a re-pose after a restart arms against the instant the question
+// was first given rather than a fresh one — elapsed wall time counts. The effective stamp is
+// read back after the write, which is what makes two armings of one question agree.
+func StampDeadline(store entity.Store, id string, at time.Time) (string, error) {
+	ref := QuestionRef(id)
+	want := at.UTC().Format(time.RFC3339Nano)
+	_, _, err := store.Write(entity.Write{
+		At:    ref.At("deadline"),
+		Value: entity.Obj{"at": want}.Payload(),
+		When:  []entity.Require{{At: ref.At("deadline", "at"), Absent: true}},
+	})
+	if err != nil {
+		return "", err
+	}
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		return want, err
+	}
+	if _, _, got := DeadlineOf(e.Payload); got != "" {
+		return got, nil
+	}
+	return want, nil
 }
 
 // optionList renders options as the record carries them: `[{id, need}]`, in order.
@@ -355,9 +397,11 @@ func answerRecord(res task.Resolution) entity.Obj {
 	}
 	if res.By != "" {
 		rec["by"] = res.By
-		// The settling ballot rides the settle. One write says both that this answerer chose
-		// this and that the choice reached its threshold, so no reader can see the one
-		// without the other. A settle nobody cast (auto, cancelled) is not a ballot.
+	}
+	// The settling ballot rides the settle. One write says both that this answerer chose
+	// this and that the choice reached its threshold, so no reader can see the one without
+	// the other. A settle nobody cast — auto, cancelled, the clock — is not a ballot.
+	if res.Cast() {
 		rec["ballots"] = entity.Obj{res.By: ballot(res)}
 	}
 	if res.Note != "" {
@@ -554,14 +598,24 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	if err != nil || !ok {
 		return
 	}
-	switch entity.Str(e.Payload, "status") {
+	status := entity.Str(e.Payload, "status")
+	switch status {
 	case QuestionAnswered, QuestionOrphaned:
 	default:
 		return
 	}
 	for _, k := range []string{"verdict", "by", "why", "say", "answeredAt", "delivered",
-		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt", "ballots"} {
+		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt"} {
 		rec[k] = entity.Removed()
+	}
+	// The ballots clear only when a ROUND ended: a question that settled and is asked again
+	// is a new question under an old id, and the earlier ballots answered the earlier one. An
+	// orphaned record is the same question with its waiter gone — a restart, a withdrawal —
+	// and whoever re-poses it joins what was already cast. The deadline's stamp stands for
+	// the same reason: the clock started when the question was first asked.
+	if status == QuestionAnswered {
+		rec["ballots"] = entity.Removed()
+		rec["deadline"] = entity.Removed()
 	}
 	rec["askedAgain"] = true
 }
