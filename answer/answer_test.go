@@ -2,10 +2,14 @@ package answer
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/codec"
 )
 
 const contractSrc = `class: !or [bug, nit, risk]
@@ -60,6 +64,113 @@ accept:
 			t.Fatal("bad answer accepted")
 		}
 	}
+}
+
+// A definition reference is refused where it is written, in either form. Nothing resolves one
+// here, and a match compares `.[string]` as the nine characters it is spelled with — so a clause
+// that says "a string" accepts a number, accepts a list, accepts anything, and no error anywhere
+// says so (avsp4c4jh12krzqzmdn0). The refusal names the reference, since the author's next move
+// is to write the operator that means it.
+func TestADefinitionReferenceIsRefused(t *testing.T) {
+	for _, pattern := range []string{
+		`{why: .[string]}`,
+		`{ids: .[array(string)]}`,
+		`{review: {of: {pr: .[int]}}}`,
+		`{class: !or [bug, .[string]]}`,
+	} {
+		for _, src := range []string{pattern, "accept: " + pattern} {
+			c, err := ParseSource(src)
+			if err == nil {
+				t.Errorf("%s: parsed, and accepts %s", src, c.Example())
+				continue
+			}
+			if !strings.Contains(err.Error(), ".[") {
+				t.Errorf("%s: the error does not name the reference: %v", src, err)
+			}
+		}
+	}
+}
+
+// And a `define:` clause, for the same reason: a contract that carries definitions is a contract
+// whose author expects them to be resolved, and nothing here resolves them. Refused whole rather
+// than read halfway — the schema form is a spelling of a pattern, not a schema verse evaluates.
+func TestADefineClauseIsRefused(t *testing.T) {
+	_, err := ParseSource("define:\n  sev: !or [low, high]\naccept:\n  s: !irtype string\n")
+	if err == nil {
+		t.Fatal("a contract carrying definitions was accepted")
+	}
+	if !strings.Contains(err.Error(), "define") {
+		t.Errorf("the error does not name the clause: %v", err)
+	}
+}
+
+// A contract may use every operator the match vocabulary has, in both forms, because it is
+// matched by the same tony.Match as a `when`. Nothing narrows it to a subset some other reader
+// of the pattern — a schema's satisfiability check, say — happens to know.
+func TestAContractKeepsEveryOperator(t *testing.T) {
+	for _, src := range []string{`{name: !glob "head*"}`, `accept: {name: !glob "head*"}`} {
+		c, err := ParseSource(src)
+		if err != nil {
+			t.Errorf("%s: %v", src, err)
+			continue
+		}
+		if _, err := c.Check(`{name: header}`); err != nil {
+			t.Errorf("%s: a good answer was rejected: %v", src, err)
+		}
+		if _, err := c.Check(`{name: footer}`); err == nil {
+			t.Errorf("%s: bad answer accepted", src)
+		}
+	}
+}
+
+// Parse leaves the document it is given as it found it, and shows the agent the contract its
+// author wrote. The document is the charter's own — versed holds it and `verse data` prints it —
+// and a contract that resolved anything would be building its pattern out of those nodes: the
+// expansion that once stood here took the clause's leaves into itself and rewrote a string
+// holding $[...] with its value, so the document came back changed and the agent was shown text
+// its author never wrote (kyt2we4jh12krzqzmdn0).
+func TestParseLeavesTheContractAsWritten(t *testing.T) {
+	for _, src := range []string{
+		`accept: {why: !irtype string, note: "x $[1+1]"}`,
+		`{why: !irtype string, note: "x $[1+1]"}`,
+	} {
+		doc, err := codec.ParseNode([]byte(src), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		was := doc.Clone()
+		c, err := Parse(doc)
+		if err != nil {
+			t.Errorf("%s: %v", src, err)
+			continue
+		}
+		if !doc.DeepEqual(was) {
+			t.Errorf("%s: Parse changed the document it was given", src)
+		}
+		for _, at := range unlinked(doc, "") {
+			t.Errorf("%s: after Parse, %s names a parent that does not hold it", src, at)
+		}
+		if !strings.Contains(c.Source(), "$[1+1]") {
+			t.Errorf("%s: the source shown is not what the author wrote: %s", src, c.Source())
+		}
+	}
+}
+
+// unlinked lists the nodes under n whose parent link does not lead back to where they are held.
+func unlinked(n *ir.Node, at string) []string {
+	var out []string
+	for i, v := range n.Values {
+		if v.Parent != n || v.ParentIndex != i {
+			out = append(out, fmt.Sprintf("value %d of %q", i, at))
+		}
+		out = append(out, unlinked(v, fmt.Sprintf("%s[%d]", at, i))...)
+	}
+	for i, f := range n.Fields {
+		if f.Parent != n || f.ParentIndex != i {
+			out = append(out, fmt.Sprintf("field %q of %q", f.String, at))
+		}
+	}
+	return out
 }
 
 // The point of the whole exercise: every failure names its path, what was expected there,
@@ -286,10 +397,11 @@ func TestRepairMessageCarriesTheDiagnosis(t *testing.T) {
 	}
 }
 
-// A schema with a real defect must fail as a schema. The reading "not a schema, so the whole
-// document is the pattern" would take an author's broken `accept:` clause and silently
-// reinterpret it as a demand that the ANSWER contain fields called `signature` and `define`
-// — turning a diagnosed error into a mismatch about the contract's own keywords.
+// A schema-shaped contract fails as what it is. The reading "not a pattern I can use, so the
+// whole document is the pattern" would take an author's schema and silently reinterpret it as a
+// demand that the ANSWER contain fields called `signature` and `define` — a mismatch about the
+// contract's own keywords, reported to a model that cannot act on it, instead of an error at the
+// charter that wrote it.
 func TestBrokenSchemaDoesNotDegradeIntoAPattern(t *testing.T) {
 	_, err := ParseSource(`signature: {name: c}
 define:
@@ -297,12 +409,11 @@ define:
 accept: .[node]
 `)
 	if err == nil {
-		t.Fatal("a schema with an impossible definition cycle was accepted")
+		t.Fatal("a schema carrying definitions was accepted")
 	}
-	if !strings.Contains(err.Error(), "cycle") {
+	if !strings.Contains(err.Error(), "define") {
 		t.Errorf("error lost the diagnosis: %v", err)
 	}
-
 }
 
 // `accept: null` is tony's own "present, whatever the value", and it is kept meaning that

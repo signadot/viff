@@ -15,9 +15,13 @@
 // task cannot succeed without satisfying its contract, the deref downstream of it
 // cannot fail — the failure mode is deleted rather than made rarer.
 //
-// The contract is written as a tony schema's `accept` clause, which is the vocabulary
-// verse already publishes for describing documents (see package schema, whose own comment
-// holds a place for the first deliberately authored validating schema — this is it).
+// The contract is a tony MATCH PATTERN, and it is matched as written by the same tony.Match
+// that decides a `when`, an address segment and a `verse data` filter (entity.SafeMatch,
+// cmd/verse/filter.go). One vocabulary across every place verse asks a question of a document
+// is the whole of what a charter author has to learn, and it is what keeps a contract from
+// growing a second grammar with its own rules about what resolves before the match. A schema
+// document's `accept:` clause is accepted as a spelling of one, because a pattern written for a
+// reader is often written that way; nothing else in such a document is read (Parse).
 //
 // WHAT GOES BACK TO THE MODEL is the load-bearing part, and it is not something a bare
 // match could give: `accept` is a match, and a match answers yes or no. tony.Explaining
@@ -32,9 +36,8 @@ import (
 	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/tony-format/go-tony/mergeop"
-	tschema "github.com/signadot/tony-format/go-tony/schema"
 
 	"github.com/signadot/verse/codec"
 )
@@ -42,8 +45,7 @@ import (
 // Contract is a parsed, ready-to-check answer contract.
 type Contract struct {
 	src      string
-	accept   *ir.Node // the accept pattern, definition references already expanded
-	ctx      *mergeop.OpContext
+	accept   *ir.Node // the match pattern, as its author wrote it
 	maxTries int
 }
 
@@ -64,8 +66,13 @@ func ParseSource(src string) (*Contract, error) {
 }
 
 // Parse reads a contract from the document a spawn declared. Two forms are accepted, and
-// the difference is only ceremony: a whole schema document carrying an `accept:` clause
-// (plus any `define:` it needs), or a bare pattern, which is taken AS the accept clause.
+// the difference is only ceremony: a whole schema document carrying an `accept:` clause, or a
+// bare pattern, which is taken AS the accept clause.
+//
+// The pattern is kept as the author wrote it and matched that way, so there is no step between
+// what a charter says and what an answer is held to: nothing to expand, nothing to resolve,
+// nothing that can rewrite the charter's own document on its way past. What a match cannot ask
+// is refused here rather than accepted and ignored — see matchable.
 //
 // A malformed contract is an error here rather than a surprise at check time. This runs on
 // the engine side before a spawn is issued (versed.launchOf) as well as in the driver, so
@@ -75,46 +82,76 @@ func Parse(doc *ir.Node) (*Contract, error) {
 	if doc == nil || doc.Type == ir.NullType {
 		return nil, fmt.Errorf("empty answer contract")
 	}
-	// Which of the two forms this is has to be decided on what the author WROTE, not on
-	// whether the schema parser liked it. Falling back to the bare-pattern reading whenever
-	// ParseSchema errors would take a schema with a real defect — an impossible definition
-	// cycle, say, which ParseSchema does diagnose — and quietly reinterpret it as a demand
-	// that the answer contain fields called `signature` and `define`. The author would get a
-	// mismatch about their own schema keywords instead of the error they were handed.
-	s := &tschema.Schema{Accept: doc}
+	// Which of the two forms this is, is decided on what the author WROTE: a document carrying
+	// an `accept:` field is the schema spelling, and that clause is the contract. Reading it any
+	// other way — by whether the whole document parses as a schema, say — would take one with a
+	// real defect in it and quietly reinterpret it as a demand that the ANSWER contain fields
+	// called `signature` and `accept`.
+	accept := doc
 	if hasField(doc, "accept") {
-		parsed, err := tschema.ParseSchema(doc)
-		if err != nil {
-			return nil, fmt.Errorf("parse answer contract: %w", err)
-		}
-		if parsed.Accept == nil {
-			return nil, fmt.Errorf("answer contract has no accept clause")
-		}
-		s = parsed
+		accept = ir.Get(doc, "accept")
 	}
-	env := tschema.BuildDefEnv(s)
-	opts := tschema.BuildEvalOptions(s)
-	expanded, err := tschema.ExpandDefBody(s.Accept, env, opts)
-	if err != nil {
-		return nil, fmt.Errorf("expand answer contract: %w", err)
+	if err := matchable(doc, accept); err != nil {
+		return nil, err
 	}
 	// The source is rendered once, here, and it is what the agent is shown — in the frame
 	// up front and in a repair afterwards. Rendered rather than carried as the author's own
 	// keystrokes because the author no longer writes text: a contract arrives as the
 	// document it is, so this is the only text there is, and it is the same text `verse
 	// data` prints for the rule.
-	src, err := render(s.Accept)
+	src, err := render(accept)
 	if err != nil {
 		return nil, fmt.Errorf("render answer contract: %w", err)
 	}
-	return &Contract{
-		src:    src,
-		accept: expanded,
-		// The context is what lets `.[ref]` expand lazily inside operators during the
-		// match, the same way schema.Validate does it.
-		ctx:      &mergeop.OpContext{DefEnv: env, EvalOpts: opts},
-		maxTries: DefaultRepairs,
-	}, nil
+	return &Contract{src: src, accept: accept, maxTries: DefaultRepairs}, nil
+}
+
+// matchable refuses the two things a contract can be written with that a match cannot ask: a
+// `define:` clause, and a definition reference such as `.[string]` or `.[myshape]`. Both are
+// borrowed from the schema document the `accept:` spelling comes from, and both are SILENT when
+// nothing resolves them — a `define:` sits unread, and `.[string]` is compared as the nine
+// characters it is spelled with, so a clause that says "a string" accepts anything and says
+// nothing about it. That is the failure this package exists to delete, one level up: something
+// written that quietly means nothing (kyt2we4jh12krzqzmdn0, avsp4c4jh12krzqzmdn0).
+//
+// Refused rather than resolved, because resolving them is a second grammar: definitions to
+// expand, a base vocabulary to merge in, and an expansion standing between the charter's
+// document and what the answer is held to. A match is what every other pattern in verse is, and
+// `!irtype`, `!or` and `!all` say what a contract has ever needed to say.
+func matchable(doc, accept *ir.Node) error {
+	if hasField(doc, "define") {
+		return fmt.Errorf("answer contract: `define:` is not read here — a contract is a match " +
+			"pattern, matched as it is written")
+	}
+	if ref := firstRef(accept); ref != "" {
+		return fmt.Errorf("answer contract: %s names a definition, and a contract has none — it is "+
+			"a match pattern, matched as it is written: a type is `!irtype`, a choice `!or`, every "+
+			"element `!all`", ref)
+	}
+	return nil
+}
+
+// firstRef is the first definition reference under n, or "" when there is none. The spelling is
+// go-tony's own (eval.GetRaw), so that what is refused here is exactly what would have been
+// resolved somewhere that resolves them.
+func firstRef(n *ir.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.Type == ir.StringType && eval.GetRaw(n.String) != "" {
+		return n.String
+	}
+	for _, v := range n.Values {
+		if ref := firstRef(v); ref != "" {
+			return ref
+		}
+	}
+	for _, f := range n.Fields {
+		if ref := firstRef(f); ref != "" {
+			return ref
+		}
+	}
+	return ""
 }
 
 // Source is the contract rendered as tony, for the prompt that asks a model to satisfy it.
@@ -139,7 +176,7 @@ func (c *Contract) Check(final string) (*ir.Node, error) {
 		return nil, &Failure{Kind: NoDocument, ParseErr: parseErr}
 	}
 	var why tony.Explanation
-	ok, err := tony.MatchWith(doc, c.accept, c.ctx, tony.Explaining(&why))
+	ok, err := tony.Match(doc, c.accept, tony.Explaining(&why))
 	if err != nil {
 		// A malformed PATTERN, not a bad answer — an unknown operator tag, say. Nothing
 		// the model can repair, so it is not a Failure: it is the spawn's own error.
