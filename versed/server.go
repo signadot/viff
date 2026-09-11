@@ -291,7 +291,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	taskd.OnDrop(func(_, scope, questionID, why string) {
 		mirror.DropQuestion(s.storeForScope(scope), questionID, why)
 	})
-	taskd.OnQuestion(func(taskID, scope string, p task.Pending) {
+	taskd.OnQuestion(func(l task.Launch, p task.Pending) {
 		// WHERE this question goes is the task's to say, not this closure's. taskd is one
 		// runtime under baseline and every scoped engine, so a publisher registered once
 		// closed over the baseline store and posted every scope's questions there — while
@@ -302,20 +302,24 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		// The scope rides on the launch, so it is known before the task is, and every
 		// record this callback writes goes to the same store as the instance record: the
 		// docket a reader sees is the tasks a reader sees.
-		store := s.storeForScope(scope)
+		store := s.storeForScope(l.Scope)
 		// A task gate's question knows what it would DO but not what it is about: the
-		// flow belongs to the task, not to the action. Fill it in from the mirror, so a
+		// flow belongs to the task, not to the action. Fill it in from the launch, so a
 		// rule can select "the questions about demo:pr:1" by matching one record rather
-		// than joining two. The docket read it off the engine before; the engine forgets
-		// when it restarts, and the record does not.
+		// than joining two, and so the layer rule below has a subject to find an owner by.
+		//
+		// FROM THE LAUNCH, not from the task's record, for the reason the scope is: both
+		// spawn paths start the task and then write its record, and a task that asks straight
+		// away asks before the record lands. Read off the record, a question posed in that
+		// window has no subject and so no owner — no instance for the binding covering it, no
+		// deadline armed, and an exclusive binding's question answerable by anybody until the
+		// frame's post names the owner a moment later (git-issue nkptp9b3h12ksx3kg9n0).
 		if p.Question.Subject == "" {
-			if e, ok, _ := store.Get(mirror.Ref(taskID)); ok {
-				p.Question.Subject = entity.Str(e.Payload, "flow")
-			}
+			p.Question.Subject = l.Provenance.Subject
 		}
 		owner(store, &p.Question)
-		watch(store, p.Question, taskID)
-		mirror.PostQuestion(store, p, taskID)
+		watch(store, p.Question, l.ID)
+		mirror.PostQuestion(store, p, l.ID)
 		arm(store, p.Question)
 	})
 

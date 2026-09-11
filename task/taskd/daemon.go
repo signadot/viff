@@ -46,12 +46,16 @@ type Daemon struct {
 	// attached — the read plane's own EvPending frame carries only what an attached client
 	// needs to see, which is less than a record needs to be matchable.
 	//
-	// SCOPE is passed with the id because this daemon is one runtime shared by baseline and
-	// every scoped engine, and a publisher that closed over a single store sent every
-	// scope's questions to that one (git-issue kwxxm8cth12ksn99fhn0). The daemon still holds
-	// no store and makes no decision about where anything goes — it repeats what the launch
-	// said, and the publisher decides what that means.
-	onQuestion func(taskID, scope string, p task.Pending)
+	// THE LAUNCH is passed with it, because what a record needs beyond the question — where it
+	// goes, and what it is about — is the launch's to say, and the launch is the one thing that
+	// exists before the task does. The SCOPE because this daemon is one runtime shared by
+	// baseline and every scoped engine, and a publisher that closed over a single store sent
+	// every scope's questions to that one (git-issue kwxxm8cth12ksn99fhn0). The SUBJECT because
+	// the only other place it is written is the task's own record, which lands after the task
+	// is started, and a task can ask before it does (git-issue nkptp9b3h12ksx3kg9n0). The
+	// daemon still holds no store and makes no decision about where anything goes — it
+	// repeats what the launch said, and the publisher decides what that means.
+	onQuestion func(l task.Launch, p task.Pending)
 	// onDrop is the counterpart, and is not optional in the way it looks. A question is
 	// WITHDRAWN when its last waiter stops waiting — an intervention that redirects the run,
 	// a pause, a deadline — and without a publisher for that half the record posted by
@@ -68,7 +72,7 @@ type Daemon struct {
 
 // OnQuestion registers the publisher. Optional: taskd runs standalone in tests and under
 // `verse task run` with nothing behind it.
-func (d *Daemon) OnQuestion(f func(taskID, scope string, p task.Pending)) { d.onQuestion = f }
+func (d *Daemon) OnQuestion(f func(l task.Launch, p task.Pending)) { d.onQuestion = f }
 
 // OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
 // caller that registers one without the other publishes questions it never retires.
@@ -211,7 +215,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	// attached client sees what a gate is blocked on and can resolve it by id.
 	reg.OnPost(func(p task.Pending) {
 		if d.onQuestion != nil {
-			d.onQuestion(l.ID, l.Scope, p)
+			d.onQuestion(l, p)
 		}
 		tk.Emit(task.Frame{
 			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
