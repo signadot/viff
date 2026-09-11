@@ -477,6 +477,15 @@ func TestExampleIsAnInstanceOfTheContract(t *testing.T) {
 		{`{files: !irtype 0, report: !irtype "text"}`, `{"files":0,"report":"text"}`},
 		{`{class: !or [bug, nit, risk]}`, `{"class":"bug"}`},
 		{`{stage: reviewed}`, `{"stage":"reviewed"}`},
+		// Every conjunct of an `!and` holds of its example, rather than each getting one of
+		// its own in a list. It is how base.tony writes a container of something: `array(t)`
+		// is `!and [.[array], !all t]`.
+		{`{ids: !and [!irtype [], !all.irtype "a"]}`, `{"ids": ["a"]}`},
+		{`{m: !and [!irtype {}, !all.irtype "a"]}`, `{"m": {}}`},
+		// `!ir` asks how a node is kept, which is how base.tony tells an int from a float: the
+		// example is a number of that kind, not the representation's own shape.
+		{`{n: !ir {int: !irtype 1}}`, `{"n":1}`},
+		{`{x: !ir {float: !irtype 1}}`, `{"x":0.5}`},
 	} {
 		c, err := ParseSource(tc.src)
 		if err != nil {
@@ -512,5 +521,34 @@ func TestExampleOfAllIsAList(t *testing.T) {
 	}
 	if _, err := c.Check(c.Example()); err != nil {
 		t.Errorf("the example does not satisfy its own contract: %v", err)
+	}
+}
+
+// An example the heuristic gets wrong is not shown. A repair presents it as an answer that
+// satisfies the contract, so a wrong one teaches the model the mistake it is being asked to
+// fix: `!not bug` peels to `bug`, the one value it rules out.
+func TestAnExampleThatFailsIsNotShown(t *testing.T) {
+	c := mustParse(t, `{class: !not bug}`)
+	if ex := c.Example(); ex != "" {
+		t.Errorf("an example that does not satisfy its contract was rendered: %s", ex)
+	}
+	_, err := c.Check(`{class: bug}`)
+	var f *Failure
+	if !errors.As(err, &f) {
+		t.Fatalf("check failed with %v, want a *Failure", err)
+	}
+	if msg := f.Repair(c, ""); strings.Contains(msg, "An answer of this shape") {
+		t.Errorf("the repair offers an example:\n%s", msg)
+	}
+}
+
+// An example is built beside the pattern, not out of it. Check matches against the pattern
+// after a repair has rendered one, and a literal of the pattern put into the example would
+// name the example as its parent.
+func TestExampleLeavesThePatternLinked(t *testing.T) {
+	c := mustParse(t, `{stage: reviewed, class: !or [bug, nit], n: !irtype 0}`)
+	c.Example()
+	for _, at := range unlinked(c.accept, "") {
+		t.Errorf("after Example, %s names a parent that does not hold it", at)
 	}
 }

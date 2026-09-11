@@ -3,6 +3,7 @@ package answer
 import (
 	"strings"
 
+	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/encode"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
@@ -29,8 +30,10 @@ import (
 // safe to suggest: valid json is valid tony, so an answer copied from this parses.
 //
 // The values are a HEURISTIC and the contract remains the authority: `!irtype 0` exemplifies as
-// `0`, `!or [bug, nit]` as `bug`, anything else as whatever it wraps. A contract whose leaves are
-// exotic gets an example that is merely suggestive, which is still more than a pattern is.
+// `0`, `!or [bug, nit]` as `bug`, anything else as whatever it wraps. So the example is held to
+// the contract the way an answer is, and one that fails is not shown: a repair presents it as an
+// answer that satisfies the contract, and a wrong one teaches the model the mistake it is being
+// asked to fix. No example is a repair with less in it.
 func (c *Contract) Example() string {
 	if c == nil || c.accept == nil {
 		return ""
@@ -40,7 +43,11 @@ func (c *Contract) Example() string {
 		encode.EncodeFormat(codec.JSON), encode.EncodeWire(true)); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(b.String())
+	ex := strings.TrimSpace(b.String())
+	if _, err := c.Check(ex); err != nil {
+		return ""
+	}
+	return ex
 }
 
 // exampleOf turns one pattern node into a value that would match it.
@@ -70,6 +77,32 @@ func exampleOf(n *ir.Node) *ir.Node {
 			// the field holds. One element, because one is enough to show the shape and two
 			// would imply the count matters.
 			return ir.FromSlice([]*ir.Node{exampleOf(child)})
+		case "and":
+			// Every conjunct has to hold, so the example is one that holds for all of them.
+			// base.tony writes a container of something as a type and an `!all` over its
+			// members — `array(t)` is `!and [.[array], !all t]` — and the last conjunct says
+			// the most there, so they are tried from the last.
+			if child != nil && child.Type == ir.ArrayType {
+				for i := len(child.Values) - 1; i >= 0; i-- {
+					ex := exampleOf(child.Values[i])
+					if ok, err := tony.Match(ex, n); err == nil && ok {
+						return ex
+					}
+				}
+			}
+			return ir.FromString("…")
+		case "ir":
+			// `!ir` asks how a node is KEPT, so what it wraps describes a representation, not a
+			// value: peeled, `!ir {int: .[number]}` would exemplify as an object holding an
+			// `int`. base.tony's int and float are the two readings worth making, a number kept
+			// as one or as the other.
+			if child != nil && ir.Get(child, "int") != nil {
+				return ir.FromInt(1)
+			}
+			if child != nil && ir.Get(child, "float") != nil {
+				return ir.FromFloat(0.5)
+			}
+			return ir.FromString("…")
 		}
 		if child != nil {
 			return exampleOf(child)
@@ -92,6 +125,7 @@ func exampleOf(n *ir.Node) *ir.Node {
 		}
 		return ir.FromSlice(out)
 	}
-	// A literal in a pattern matches itself, so it exemplifies itself.
-	return n
+	// A literal in a pattern matches itself, so it exemplifies itself — as a copy, since the
+	// example takes it as a child, and the pattern is what Check matches against.
+	return n.Clone()
 }
