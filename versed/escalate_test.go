@@ -126,14 +126,14 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 	spawnFor(t, ts, "run-1", subject.String(), "verse.resolvers.security.security-review")
 	qid := waitQuestion(t, srv, "run-1")
 	escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid).Body.Close()
-	time.Sleep(50 * time.Millisecond)
 
 	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).ID()
+	transfer := func(ev entity.Event) bool {
+		return ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.security.payments-review"
+	}
 	var arrived bool
-	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+spine+"/events?since=0") {
-		if ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.security.payments-review" {
-			arrived = true
-		}
+	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+spine+"/events?since=0", carries(1, transfer)) {
+		arrived = arrived || transfer(ev)
 	}
 	if !arrived {
 		t.Fatal("the escalated question never appeared on the spine of the layer that now owns it")
@@ -192,10 +192,21 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	// Armed, and absolute: a duration on the binding becomes an instant on the question,
 	// so a restart cannot slide it.
 	got := waitArmed(t, srv, qid)
-	// Inside it, nothing moves however much anyone reads.
+	due, err := time.Parse(time.RFC3339Nano, got["escalatesAt"].(string))
+	if err != nil {
+		t.Fatalf("escalatesAt is not an instant: %v", err)
+	}
+	// Inside it, nothing moves however much anyone reads — asserted of a read KNOWN to have
+	// finished inside it. The deadline is wall clock, and a loaded machine can spend all of it
+	// between arming and reading; a read that arrives after it is supposed to move the
+	// question, so failing that read would be failing the machine.
 	docket(t, srv)
-	if q := waitOwned(t, srv, qid); q["resolver"] != "verse.resolvers.security.security-review" {
-		t.Fatalf("a question inside its deadline moved to %v", q["resolver"])
+	if time.Now().Before(due) {
+		if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.security.security-review" {
+			t.Fatalf("a question inside its deadline moved to %v", q["resolver"])
+		}
+	} else {
+		t.Log("the read finished after the deadline, so there was no inside of it to observe")
 	}
 
 	time.Sleep(350 * time.Millisecond)

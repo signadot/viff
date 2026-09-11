@@ -16,8 +16,16 @@ import (
 	"github.com/signadot/verse/resolver"
 )
 
-// commitsOf reads a spine and returns the events it carried, stopping when it goes quiet.
-func commitsOf(t *testing.T, url string) []entity.Event {
+// commitsOf reads a spine and returns the events it carried: until `until` holds of what has
+// arrived, and then until it goes quiet.
+//
+// UNTIL A CONDITION, NOT UNTIL A SILENCE. The catch-up is flushed only once the whole of it has
+// been read, and a loaded machine can take longer over that than any silence a test would think
+// to allow — so a positive assertion made over "whatever came before it went quiet" fails on an
+// empty read, for a reason that has nothing to do with the spine (git-issue
+// nkptp9b3h12ksx3kg9n0). The quiet tail after it is for the negatives, which can only ever ask
+// what arrived by then; a nil `until` is one of those, and reads until quiet from the start.
+func commitsOf(t *testing.T, url string, until func([]entity.Event) bool) []entity.Event {
 	t.Helper()
 	resp, err := http.Get(url)
 	if err != nil {
@@ -35,7 +43,15 @@ func commitsOf(t *testing.T, url string) []entity.Event {
 		close(lines)
 	}()
 	var out []entity.Event
+	met := until == nil
+	// A hang guard, not a budget: it is reached only when what is waited for never comes,
+	// and the caller's assertion then says what was missing.
+	giveUp := time.After(30 * time.Second)
 	for {
+		var quiet <-chan time.Time
+		if met {
+			quiet = time.After(400 * time.Millisecond)
+		}
 		select {
 		case d, ok := <-lines:
 			if !ok {
@@ -45,9 +61,25 @@ func commitsOf(t *testing.T, url string) []entity.Event {
 			if codec.Unmarshal([]byte(d), &ev, codec.Tony) == nil {
 				out = append(out, ev)
 			}
-		case <-time.After(400 * time.Millisecond):
+			met = met || until(out)
+		case <-quiet:
+			return out
+		case <-giveUp:
 			return out
 		}
+	}
+}
+
+// carries is the `until` for a spine that must carry at least n events matching want.
+func carries(n int, want func(entity.Event) bool) func([]entity.Event) bool {
+	return func(evs []entity.Event) bool {
+		var got int
+		for _, ev := range evs {
+			if want(ev) {
+				got++
+			}
+		}
+		return got >= n
 	}
 }
 
@@ -76,7 +108,8 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	waitOwner(t, srv, "guard")
 
 	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0",
+		carries(2, func(ev entity.Event) bool { return ev.Ref == subject }))
 	if len(got) < 2 {
 		t.Fatalf("the spine carried %d commits, want the subject's history: %+v", len(got), got)
 	}
@@ -149,7 +182,8 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	}
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
 
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0",
+		carries(4, func(ev entity.Event) bool { return ev.Ref == subject }))
 	if len(got) != 4 {
 		t.Fatalf("a whole life came through as %d commits, want 4: %+v", len(got), got)
 	}
@@ -206,7 +240,8 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	waitQuestion(t, srv, "run-1")
 
 	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0")
+	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0",
+		carries(1, func(ev entity.Event) bool { return ev.Ref == mirror.Ref("run-1") }))
 
 	var anchor entity.Event
 	for _, ev := range got {
@@ -227,7 +262,7 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	entitytest.Set(t, srv.Store, other, entity.Obj{"area": "payments"}.Payload())
 	spawnFor(t, ts, "run-2", other.String(), "")
 	waitQuestion(t, srv, "run-2")
-	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0") {
+	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/events?since=0", nil) {
 		if ev.Ref == mirror.Ref("run-2") {
 			t.Fatalf("another subject's run is on this spine: %+v", ev)
 		}
