@@ -159,6 +159,11 @@ type Spawn struct {
 	// sends `auto` on the caller's behalf, because a prompt somebody typed IS the command
 	// they authorized — nothing else gets that, a charter least of all.
 	Vector string `tony:"field=vector,omitzero"`
+	// Gates are this run's own gates over that default — the ad-hoc face of a spawn's
+	// `gates:`, each carrying the question it poses (a threshold, options, a deadline). A
+	// named vector is a bare default, and this is how a run says more: `verse task run
+	// --gates gates.tony`.
+	Gates []task.Gate `tony:"field=gates,omitzero"`
 	// Calls is a call list posted directly, for `verse task run --driver calls`: the actions
 	// themselves rather than a prompt for something to work them out. The CLI parses the tony
 	// document a person typed (task.ParseCalls) and sends this, so a list that will not read

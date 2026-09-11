@@ -36,6 +36,41 @@ func (m ChildMode) String() string {
 	}
 }
 
+// ChildModeNamed reads a child mode off an option id, and reports whether the id names one.
+// `proceed` is the default mode — the yes every gate has always taken — so a delegation
+// answered yes-or-no is supervised the way it was before the modes were choosable.
+func ChildModeNamed(id string) (ChildMode, bool) {
+	switch id {
+	case Proceed, ChildInheritGates.String():
+		return ChildInheritGates, true
+	case ChildAutonomous.String():
+		return ChildAutonomous, true
+	case ChildCareful.String():
+		return ChildCareful, true
+	}
+	return ChildInheritGates, false
+}
+
+// DelegateOptions is the question a delegation poses: each child mode is an outcome, with
+// `proceed` standing for the default one, and `deny` refuses. `need` is the threshold every
+// mode takes — a delegation that wants two voices wants them whichever mode they choose —
+// and a refusal takes one, as it does on every gate.
+//
+// The modes are options rather than a field beside the answer because a field beside the
+// answer is one a docket cannot show and a resolver cannot choose: Resolution.ChildMode was
+// exactly that, settable from one HTTP body and spelled nowhere on the question.
+func DelegateOptions(need int) []Option {
+	if need < 1 {
+		need = 1
+	}
+	return []Option{
+		{ID: Proceed, Need: need},
+		{ID: ChildCareful.String(), Need: need},
+		{ID: ChildAutonomous.String(), Need: need},
+		{ID: Deny, Need: 1},
+	}
+}
+
 // supervisorFor builds a child Supervisor for a mode — the supervision axis only
 // (resolver + vector). Scope is handled separately and is not this function's
 // concern.

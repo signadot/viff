@@ -583,7 +583,7 @@ func launchOf(id string, spec launch.Spec) (task.Launch, error) {
 				"a spawn carrying calls: cannot also be driver %q — the calls ARE the driver", spec.Driver)
 		}
 	}
-	vec, err := task.NamedVector(spec.Vector)
+	vec, err := task.SpawnVector(spec.Vector, spec.Gates)
 	if err != nil {
 		return task.Launch{}, err
 	}
@@ -3366,7 +3366,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, why, http.StatusBadRequest)
 		return
 	}
-	vec, err := task.NamedVector(body.Vector)
+	vec, err := task.SpawnVector(body.Vector, body.Gates)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -3953,6 +3953,10 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		}
 		if body.Vector == nil {
 			http.Error(w, "vector required", http.StatusBadRequest)
+			return
+		}
+		if err := body.Vector.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		h.SetVector(body.Vector, body.By)

@@ -23,6 +23,7 @@ signature:
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
+- task: github.com/signadot/verse/task
 define:
   answer: .[tony-base:ir]
   calls: .[array(verse-launch-call)]
@@ -31,6 +32,7 @@ define:
   driver: .[string]
   environment: .[string]
   frame: .[string]
+  gates: .[array(task:verse-gate)]
   grant: .[string]
   occurrence: .[int]
   prompt: .[string]

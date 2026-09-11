@@ -24,13 +24,42 @@ import (
 // can be pinned to the authored template and its author, a trigger spawn takes a DECLARED
 // grant only. This is that declaration, and nothing more.
 
+// SpawnVector resolves what a spawn says about autonomy to a gate vector: `vector:` names
+// the default mode, and `gates:` are the rules over it, spelled as `task vector --file`
+// spells them. A spawn that writes neither says nothing, and the runtime's default stands.
+//
+// Gates with no name are over `auto`: the gates are what asks, and a document whose default
+// is left blank reads the same way (Vector.Default's zero is Auto). A named vector alone is
+// what it always was — a bare default with no gates, see NamedVector.
+//
+// Validated here, where the charter or the caller can be told, rather than at the first
+// boundary the task reaches: a gate whose question cannot be posed as written should refuse
+// the spawn, not hold a running task on a question nobody can answer.
+func SpawnVector(name string, gates []Gate) (*Vector, error) {
+	vec, err := NamedVector(name)
+	if err != nil {
+		return nil, err
+	}
+	if len(gates) == 0 {
+		return vec, nil
+	}
+	if vec == nil {
+		vec = &Vector{Default: Auto}
+	}
+	vec.Gates = append([]Gate(nil), gates...)
+	if err := vec.Validate(); err != nil {
+		return nil, err
+	}
+	return vec, nil
+}
+
 // NamedVector resolves a spawn's `vector:` to a gate vector.
 //
 // The vocabulary is the three modes, and deliberately only the three: it is exactly what
 // `verse task vector <id> <auto|ask|park>` already accepts, so the name a charter writes
 // and the name an operator types mean the same thing. A richer named vector (a stored,
 // reusable set of gates) wants a registry of vector entities, which is a different feature;
-// until then a full vector reaches a running task through `task vector --file`.
+// a spawn that wants gates of its own writes them beside the name (SpawnVector).
 //
 // An empty name is not an error and not a vector: it means the spawn said nothing about
 // autonomy, so the runtime's own default stands. That is what nil signals.

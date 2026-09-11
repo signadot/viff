@@ -79,9 +79,12 @@ signature:
 context:
 - tony-format/context
 define:
+  deadline: .[nullable(verse-deadline)]
   match: !verse-gate-match null
   mode: .[string]
   name: .[string]
+  need: .[int]
+  options: .[array(verse-option)]
 signature:
   name: verse-gate
 ---

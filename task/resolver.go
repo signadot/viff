@@ -25,7 +25,10 @@ type Resolution struct {
 	Note     string
 	Question GateQuestion
 	// ChildMode: for a CallAgent ASK, how the child is supervised (default
-	// ChildInheritGates). Ignored for non-CallAgent questions.
+	// ChildInheritGates). Ignored for non-CallAgent questions. A delegation's question offers
+	// the modes as its options (DelegateOptions), and the loop reads a chosen one off Choice
+	// — as a yes — before this field, so an answer given from the docket by option id and one
+	// a client sent here agree.
 	ChildMode ChildMode
 	// Steer: context/instructions the resolver folds into the task's conversation
 	// at its next turn — a gate that *informs*, not just gates (e.g. an SCM

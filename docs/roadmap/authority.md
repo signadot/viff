@@ -277,7 +277,9 @@ elsewhere. The derivation is the part that is ours to design.
 - Envelope from `say` — a mid-run instruction is a new authorization from outside. Does it
   widen the envelope (matching the call-boundary principle), or is widening a distinct,
   explicitly-attributed act? The `--as` attribution on `task vector` suggests the latter.
-- Who answers when nobody is attached. An unattended run that hits a gate parks. With
+- Who answers when nobody is attached. An unattended run that hits a gate parks, unless the
+  gate carries a `deadline` with a default — then the clock answers, and `default: deny` is
+  the fail-fast ([a gate's question](../reference/tasks.md#a-gates-question)). With
   envelopes, the interesting case inverts: an action outside the envelope with no one to ask
   should probably fail fast rather than park indefinitely.
 - Escalation vocabulary — what counts as "beyond" needs to be predicate-level, and

@@ -15,22 +15,12 @@ unknown one.
 
 ## 1. The runtime vector gate
 
-A task's own action gates (`write`, `shell`, `delegate`) pose two-option questions and say
-nothing about a threshold, a deadline or options, though the record can carry all three now.
-Two things want it, both named elsewhere: an unattended run that hits an `ask` parks until
-somebody finds it ([authority.md](../roadmap/authority.md), open questions), where a deadline
-with `default: deny` would fail the action back to the agent; and a `delegate` gate's answer
-decides how the child is supervised (`Resolution.ChildMode`) through a field no docket shows
-and no resolver can choose, which is an option set with two members.
-
-The work is small and its one design question is the runtime's: `task.Gate` gains `Need`,
-`Deadline` and `Options` and `Vector.Evaluate` copies them onto the question; the brokered
-worker's frame carries them so the record agrees with what the worker is blocked on;
-`delegate` gains the child modes as its options; and a spawn learns to carry a vector document
-inline, since a named vector is deliberately a bare default with no gates. The question to
-settle first: whether a runtime deadline that says nothing defaults to `deny` or to escalation
-when a resolver is bound — both instants sit on the record, and only one can be what silence
-means. It has an issue of its own.
+Landed (git-issue `m7trkg0th12krpyvm9n0`): a task's own gate carries `need`, `options` and
+`deadline`, a spawn writes its gates beside `vector:`, and a delegation's question offers the
+child modes. Described in [reference/tasks.md](../reference/tasks.md#a-gates-question). The
+question it left to settle is settled the way every other record is: a gate's deadline is the
+question's own and settles on its default, a bound resolver's clock hands the question up, and
+the earlier fires first — which leaves §3 exactly where it was.
 
 ## 2. Where the record lives
 

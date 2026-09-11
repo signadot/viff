@@ -404,6 +404,10 @@ type taskRunConfig struct {
 	// Without this a scripted run is `auto` and asks nothing (see scriptedVector), so a
 	// --resolver bound to it would have no question to answer.
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
+	// The run's own gates over that default, from a file — the ad-hoc face of a spawn's
+	// `gates:`. A gate carries the question it poses (need, options, deadline), which a name
+	// cannot, and this is how a run gets one: `--gates gates.tony`.
+	Gates string `cli:"name=gates desc='file holding the gates for this run, over --vector (a list of gates; .tony/.json/.yaml)'"`
 	// Who is running this — used twice, because it is one fact. A gate that arrives while
 	// attached is answered as this (watching needs no identity; answering has needed one
 	// since a decision became a durable record), and it rides the spawn as the run's
@@ -429,7 +433,7 @@ func taskRunCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
 		WithSynopsis("run a task: run <prompt…> [--name <label>] [--subject <ref>] " +
-			"[--resolver <ref>] [--vector auto|ask|park] [--attach] [--wait] " +
+			"[--resolver <ref>] [--vector auto|ask|park] [--gates <file>] [--attach] [--wait] " +
 			"[--driver scripted|calls|llm]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
@@ -473,6 +477,14 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if vector == "" {
 		vector = scriptedVector(cfg.Driver)
 	}
+	// Read here, so a gate that will not parse is a message on the terminal of whoever wrote
+	// it; what goes over the wire is the field, the same one a charter's spawn carries.
+	var gates []task.Gate
+	if cfg.Gates != "" {
+		if err := codec.ReadFile(cfg.Gates, &gates); err != nil {
+			return fmt.Errorf("task run: %s is not a list of gates: %w", cfg.Gates, err)
+		}
+	}
 	// `--driver calls` takes the actions themselves, as a tony document. It is parsed HERE, so
 	// a list that will not read is a message on the terminal of whoever typed it rather than a
 	// task that failed somewhere else — and what goes over the wire is the field, which is the
@@ -487,7 +499,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Calls: calls,
+		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
 		Runner: cfg.Runner, Environment: cfg.Environment, Principal: cfg.As,
 		Answer: contract,
 	})

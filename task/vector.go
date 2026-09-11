@@ -188,6 +188,10 @@ func OptionIDs(opts []Option) []string {
 // Evaluate returns the most restrictive matching gate's mode (Park > Ask >
 // Auto). Because gates only raise restrictiveness, tightening any gate toward
 // Ask/Park is exactly "sliding autonomy down."
+//
+// The deciding gate's question rides with its mode: the options it settles on and the
+// clock it stands under are the gate's to say, and a question that lost them here would be
+// posed as yes-or-no however the vector was written.
 func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 	d := GateQuestion{Mode: v.Default, Gate: "", Reason: "no gate matched"}
 	for _, g := range v.Gates {
@@ -196,7 +200,8 @@ func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 			continue
 		}
 		if g.Mode >= d.Mode {
-			d = GateQuestion{Mode: g.Mode, Gate: g.Name, Reason: reason}
+			d = GateQuestion{Mode: g.Mode, Gate: g.Name, Reason: reason,
+				Options: g.options(), Deadline: g.Deadline}
 		}
 	}
 	return d
@@ -275,5 +280,24 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	if !d.Mode.Blocks() {
 		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: d}, nil
 	}
+	// A delegation's question offers the child modes, unless the gate wrote outcomes of its
+	// own. Here rather than on the gate because it follows from the ACTION: a gate matching
+	// `verbs: [call_agent]` under any name is asking how the child is supervised, and that
+	// is a choice the answerer has to be able to see.
+	if tu.CallAgent != nil && !named(d.Options) {
+		need, _ := Need(d.OptionsOrDefault(), Proceed)
+		d.Options = DelegateOptions(need)
+	}
 	return s.resolver.Load().r.Resolve(ctx, d, tu)
+}
+
+// named reports whether a question's options are outcomes the gate wrote, as opposed to
+// none or the default two at some threshold.
+func named(opts []Option) bool {
+	for _, o := range opts {
+		if o.ID != Proceed && o.ID != Deny {
+			return true
+		}
+	}
+	return false
 }

@@ -146,6 +146,7 @@ define:
   calls: .[array(task:verse-call)]
   driver: .[string]
   environment: .[string]
+  gates: .[array(task:verse-gate)]
   id: .[string]
   name: .[string]
   principal: .[string]

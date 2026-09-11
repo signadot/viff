@@ -32,6 +32,8 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/task"
 )
 
 // Spec is the declarative launch descriptor. It is a *template*: string fields may
@@ -128,11 +130,22 @@ type Spec struct {
 	// when the trigger fires, shown by `verse charter`, and expanded per value — so a `$ref`
 	// with a quote in it is an argument rather than something that has to survive being
 	// spliced into text and parsed back out.
-	Calls       []Call `tony:"field=calls,omitzero"`
-	Vector      string `tony:"field=vector,omitzero"`
-	Resolver    string `tony:"field=resolver,omitzero"`
-	Grant       string `tony:"field=grant,omitzero"`
-	Environment string `tony:"field=environment,omitzero"`
+	Calls  []Call `tony:"field=calls,omitzero"`
+	Vector string `tony:"field=vector,omitzero"`
+	// Gates are the task's own gates, over the default `vector:` names — one rule per action
+	// shape, each with the question it poses (task.Gate: a threshold, options, a deadline).
+	// The trigger's `gates:` are the FIRING's and run once before the action; these run at
+	// every boundary of the task it starts. Written out rather than named because a named
+	// vector is deliberately a bare default (task.NamedVector), and a threshold or a clock on
+	// a name would want a name per combination.
+	//
+	// Not expanded: a gate is a predicate over an action, and a $var in one could only name a
+	// tool or a path chosen by whoever last wrote the entity being matched — the widening-by-
+	// binding risk Tools is not expanded for either.
+	Gates       []task.Gate `tony:"field=gates,omitzero"`
+	Resolver    string      `tony:"field=resolver,omitzero"`
+	Grant       string      `tony:"field=grant,omitzero"`
+	Environment string      `tony:"field=environment,omitzero"`
 	// Runner is WHERE this launch runs: `runners:<kind>:<name>`, an entity installed with
 	// `verse runner add`. Empty means the verse's own default runner.
 	//
@@ -288,6 +301,7 @@ func (s Spec) Bind(b Binding) Spec {
 	// which tools an agent is handed is the widening-by-binding risk authority.md names.
 	// Copied rather than shared so a bound spec cannot alias the charter's slice.
 	out.Tools = append([]string(nil), s.Tools...)
+	out.Gates = append([]task.Gate(nil), s.Gates...)
 	out.Calls = bindCalls(s.Calls, b)
 	return out
 }

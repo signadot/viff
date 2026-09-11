@@ -1028,7 +1028,10 @@ is not advice: it is checked. See [the answer contract](#the-answer-contract) be
 
 *The envelope* is `vector`, `grant` and `tools`. These name things rather than spelling them out.
 `vector: auto|ask|park` sets how much the task must confirm; a firing that already
-answered its own `gates` can say `vector: auto` rather than re-ask per action.
+answered its own `gates` can say `vector: auto` rather than re-ask per action. A spawn that
+wants the task gated per action writes the task's own `gates:` beside it — the same shape as
+the trigger's, each with the question it poses, run at every boundary of the task rather than
+once for the firing; see [a gate's question](reference/tasks.md#a-gates-question).
 `grant: read-only|no-delegate|none|all` is the hard authority: an action outside it is
 *refused*, not asked about, because nobody at a console was delegated the authority to widen
 what the charter granted. `tools` narrows what the driver offers at all — `tools: [read_file,

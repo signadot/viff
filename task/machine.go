@@ -674,6 +674,15 @@ func deniedNote(res Resolution) string {
 
 // resolved folds a gate's answer.
 func (s *state) resolved(v inGate) []effect {
+	// A delegation answered by a child mode is a yes with the mode on it. The answer path
+	// settles a question by option id and knows nothing about what the option means here, so
+	// `careful` arrives as a choice that is not `proceed`; it is read before anything records
+	// or acts on it, and a `childMode` a client sent beside a plain yes still counts.
+	if s.action.CallAgent != nil {
+		if mode, ok := ChildModeNamed(v.res.Choice); ok {
+			v.res.ChildMode, v.res.Proceed = mode, true
+		}
+	}
 	effs := record(s.action, v.res)
 	if v.err != nil { // e.g. the context ended while blocked at the gate
 		s.setCause(v.err)

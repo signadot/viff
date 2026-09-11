@@ -550,19 +550,19 @@ func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Refused here rather than at the next boundary: a gate whose question cannot be posed
+	// as written would hold the task on a question nobody can answer.
+	if err := body.Vector.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	h.task.SetVector(&body.Vector, body.By)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func parseChildMode(s string) task.ChildMode {
-	switch s {
-	case "autonomous":
-		return task.ChildAutonomous
-	case "careful":
-		return task.ChildCareful
-	default:
-		return task.ChildInheritGates
-	}
+	mode, _ := task.ChildModeNamed(s)
+	return mode
 }
 
 func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {

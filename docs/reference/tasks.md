@@ -13,6 +13,7 @@ verse task run --attach 'Write a file hello.txt containing "hi".'   # …and str
 verse task run --driver scripted "go test ./..."
 verse task run --driver calls "$(cat merge.tony)"   # the actions themselves, no model
 verse task run --answer shape.tony "…"   # …and declare the shape its answer must have
+verse task run --gates gates.tony "…"    # …under gates of its own, each with its question
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"
@@ -173,6 +174,51 @@ or in a URL. On a terminal, `run --attach` prompts inline instead
 and a denied gate comes back to the agent as an error it re-plans around. Piped (non-tty),
 `attach` just streams. The gate is the same question either way — it stays in `verse gate`
 and stays resolvable by id from anywhere.
+
+### A gate's question
+
+A task's own gate poses the same record a charter gate does, and says the same things about
+it: how many ballots settle it, what it settles on, and how long it stands. A named vector is
+a bare default — `auto`, `ask`, `park` — so a run that wants gates of its own writes them,
+as a spawn's `gates:` or a file handed to `--gates`, in the shape `task vector --file` reads:
+
+```tony
+- name: shell
+  mode: ask
+  match: {verbs: [exec]}
+  need: 2                                    # proceed takes two ballots; one deny refuses
+  deadline: {within: "4h", default: deny}    # and the clock decides silence
+- name: delegate
+  mode: ask
+  match: {verbs: [call_agent]}
+```
+
+`need`, `options` and `deadline` mean what they mean on a
+[charter gate](../trigger-model.md#gates--whether-it-proceeds), and are refused the same way
+when they cannot be posed as written — at the spawn, or at `task vector`, never at the boundary
+a running task reaches. The gates ride over `--vector`'s default; gates with no default are
+over `auto`, since the gates are what asks.
+
+**The deadline is the question's own clock, and it settles.** `default: deny` is how an
+unattended run stops parking on a question nobody will find: when the clock passes, the action
+is refused as `by: deadline` and comes back to the agent as a refusal it re-plans around, the
+same one a person's no would be. `default: proceed` lets the action through; no default settles
+on `none`, which the loop also reads as a refusal — nobody made it, and the record says so. A
+bound resolver's own `deadline` is a different clock: it hands the question up to the layer
+above rather than settling it. Both instants sit on the record, and the earlier fires first.
+
+**A delegation's question offers the child modes.** A gate over `call_agent` asks how the
+child is supervised, so its options are the modes rather than a yes and a no: `proceed` runs
+the child under the parent's gates and resolver, `careful` re-asks every action the child
+takes, `autonomous` lets the child and its subtree answer their own gates within the granted
+scope, and `deny` spawns nothing. Answer by option, as any question with options is answered:
+
+```sh
+verse gate run-f3e31ed0390f~d2 --answer careful --as human:you
+```
+
+A gate that wrote `options` of its own over a delegation keeps them; `need` on one is the
+threshold every mode takes.
 
 <a id="who-you-addressed"></a>
 ### The rough edge: who you addressed
