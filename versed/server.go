@@ -3567,8 +3567,8 @@ func (s *Server) installSystemCharter() {
 //
 // EVERY ENGINE, because a rule fires in the engine that holds it and a package's charter runs
 // in one of its own. Baseline's counter alone is therefore the count of a charter installed at
-// the root, and says nothing about one installed at an address — staging's sixteen rules live
-// under `verse-dev.{drift,greet,merge,triage}`, so `fired` read 0 beside a census listing them
+// the root, and says nothing about one installed at an address — staging's rules live
+// under `verse-dev.{drift,merge,triage}`, so `fired` read 0 beside a census listing them
 // and a docket of 73 tasks they had spawned. This is the scoping the census is a tree for,
 // applied to the number next to it.
 //
