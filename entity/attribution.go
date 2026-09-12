@@ -36,10 +36,16 @@ func PermsRef(of Ref) Ref { return VerseRef(PermsSystem, PermsKind, of.String())
 // one refused write per node and never a second owner.
 type Attribution struct {
 	mu sync.Mutex
-	// recorded is every node whose owner record this process has written or found standing.
-	recorded map[Ref]struct{}
-	// owners memoises resolve: an address-shaped principal to the principal that owns it.
+	// decided is every node this process has settled the owner record of: written it, found
+	// it standing, or found nothing to write because the node above owns it already.
+	decided map[Ref]struct{}
+	// owners memoises resolve: an address-shaped principal to the principal that owns it. A
+	// miss is not kept, since the record it would have found can appear at any install.
 	owners map[string]string
+	// above memoises the owner on record at an address, for the walk up a node's prefixes.
+	// "" is a known absence; the walk stops at the first present one, and the root is the
+	// system's.
+	above map[string]string
 }
 
 // As is a view of s that acts as principal: every write made through it that names no
@@ -107,21 +113,29 @@ func (a *attributed) Scope(name string) Store {
 	return &attributed{Store: a.Store.Scope(name), attr: a.attr, principal: a.principal}
 }
 
-// record writes the owner of ref, once. The requester holds `owner` everywhere under the
+// record settles the owner of ref, once. The requester holds `owner` everywhere under the
 // wide-open default, so the requester is the owner — resolved through the perms mirror when
 // the principal is itself an address, since a charter or a source acts as whoever owns it.
 //
-// Under an absence precondition: the first writer of a node is its owner and a later write
-// by anybody cannot move that, which is the "fixed when the node is created" half of the
-// model with no read ahead of the write.
+// A RECORD IS WRITTEN ONLY WHERE OWNERSHIP CHANGES. The owner of any node is the nearest record
+// up its address, and the root is the system's, so a node whose owner is the one already on
+// record above it needs no record of its own: the mirror records exactly the changes of
+// ownership down a subtree, and a source reflecting ten thousand refs under a slice the
+// system owns writes none. What it does write goes under an absence precondition: the first
+// writer of a node is its owner and a later write by anybody cannot move that, which is the
+// "fixed when the node is created" half of the model with no read ahead of the write.
 func (a *attributed) record(ref Ref, principal string) {
 	a.attr.mu.Lock()
-	_, seen := a.attr.recorded[ref]
+	_, seen := a.attr.decided[ref]
 	a.attr.mu.Unlock()
 	if seen {
 		return
 	}
 	owner := a.resolve(principal)
+	if owner == a.ownerAbove(ref) {
+		a.decide(ref, "")
+		return
+	}
 	// A REFUSED WRITE IS THE RECORD STANDING ALREADY, and an error is the store not answering;
 	// only the second leaves the node unknown, so only the second is not remembered. Nothing
 	// is returned to the caller either way: the entity write landed, and an owner record that
@@ -135,20 +149,81 @@ func (a *attributed) record(ref Ref, principal string) {
 	if err != nil {
 		return
 	}
-	_ = committed
-	a.attr.mu.Lock()
-	if a.attr.recorded == nil {
-		a.attr.recorded = map[Ref]struct{}{}
+	if !committed {
+		owner = a.ownerAt(ref.String(), true) // whoever got there first
 	}
-	a.attr.recorded[ref] = struct{}{}
+	a.decide(ref, owner)
+}
+
+// decide remembers that ref's owner record is settled, and what the mirror now says at that
+// address for the walks and resolutions that read it — including that it says nothing.
+func (a *attributed) decide(ref Ref, owner string) {
+	key := ref.String()
+	a.attr.mu.Lock()
+	if a.attr.decided == nil {
+		a.attr.decided = map[Ref]struct{}{}
+	}
+	a.attr.decided[ref] = struct{}{}
+	if a.attr.above == nil {
+		a.attr.above = map[string]string{}
+	}
+	a.attr.above[key] = owner
+	if owner != "" {
+		if a.attr.owners == nil {
+			a.attr.owners = map[string]string{}
+		}
+		a.attr.owners[key] = owner
+	}
 	a.attr.mu.Unlock()
+}
+
+// ownerAbove is the owner on record nearest above ref: its longest prefix with a record,
+// and the system where none has one, since the system owns the root.
+func (a *attributed) ownerAbove(ref Ref) string {
+	segs := ref.Segs()
+	for i := len(segs) - 1; i >= 1; i-- {
+		if o := a.ownerAt(RefAt(segs[:i]...).String(), false); o != "" {
+			return o
+		}
+	}
+	return SystemPrincipal
+}
+
+// ownerAt reads the owner the mirror records at an address, "" when it records none, through
+// the cache unless told to look again.
+func (a *attributed) ownerAt(key string, fresh bool) string {
+	if !fresh {
+		a.attr.mu.Lock()
+		o, ok := a.attr.above[key]
+		a.attr.mu.Unlock()
+		if ok {
+			return o
+		}
+	}
+	rec, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, key))
+	if err != nil {
+		return "" // the store did not answer; do not remember a guess
+	}
+	o := ""
+	if ok {
+		o = Str(rec.Payload, OwnerField)
+	}
+	a.attr.mu.Lock()
+	if a.attr.above == nil {
+		a.attr.above = map[string]string{}
+	}
+	a.attr.above[key] = o
+	a.attr.mu.Unlock()
+	return o
 }
 
 // forget drops the owner record of a deleted entity, so a later creation at the address gets
 // an owner of its own rather than inheriting whoever had it before.
 func (a *attributed) forget(ref Ref) {
 	a.attr.mu.Lock()
-	delete(a.attr.recorded, ref)
+	delete(a.attr.decided, ref)
+	delete(a.attr.above, ref.String())
+	delete(a.attr.owners, ref.String())
 	a.attr.mu.Unlock()
 	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
 }
@@ -157,6 +232,11 @@ func (a *attributed) forget(ref Ref) {
 // an owner on record — a rule, a source — in which case the owner of that node, and so on up,
 // bounded so that a mirror written in a loop cannot spin this. A user's email looks up
 // nothing and resolves to itself, which is what makes one string serve both.
+//
+// Only a resolution that FOUND a record is kept. A rule installed before its record had an
+// owner resolves to itself until the record is written, and that record can arrive at any
+// install; a miss remembered would leave every entity the rule creates owned by an address
+// for the life of the process.
 func (a *attributed) resolve(principal string) string {
 	a.attr.mu.Lock()
 	if o, ok := a.attr.owners[principal]; ok {
@@ -164,27 +244,22 @@ func (a *attributed) resolve(principal string) string {
 		return o
 	}
 	a.attr.mu.Unlock()
-	p := principal
+	p, found := principal, false
 	for hop := 0; hop < 4; hop++ {
-		rec, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, p))
-		if err != nil {
-			return principal // the store did not answer; do not remember a guess
-		}
-		if !ok {
+		o := a.ownerAt(p, false)
+		if o == "" || o == p {
 			break
 		}
-		owner := Str(rec.Payload, OwnerField)
-		if owner == "" || owner == p {
-			break
+		p, found = o, true
+	}
+	if found {
+		a.attr.mu.Lock()
+		if a.attr.owners == nil {
+			a.attr.owners = map[string]string{}
 		}
-		p = owner
+		a.attr.owners[principal] = p
+		a.attr.mu.Unlock()
 	}
-	a.attr.mu.Lock()
-	if a.attr.owners == nil {
-		a.attr.owners = map[string]string{}
-	}
-	a.attr.owners[principal] = p
-	a.attr.mu.Unlock()
 	return p
 }
 

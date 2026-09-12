@@ -183,3 +183,73 @@ func TestTheAuthorRidesTheCommit(t *testing.T) {
 		t.Fatalf("an unattributed write replays as written by %q", by[anon])
 	}
 }
+
+// A record is written only where ownership changes. The system owns the root, so what the
+// system creates under it records nothing; a record standing above a node covers every node
+// beneath it with the same owner, and only a different owner below it earns one of its own.
+func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
+	inner := &stamped{Store: entitytest.Store(t)}
+	system := entity.As(inner, entity.SystemPrincipal)
+	ref := entity.RefAt("git", "ref", "main")
+	if _, _, err := system.Write(entity.Write{At: ref.At(), Value: entity.Obj{"sha": "abc"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ownerOf(t, inner, ref); ok {
+		t.Fatal("a system-created node under the system's root got a record of its own")
+	}
+	if inner.last.At.Ref != ref {
+		t.Fatalf("something was written after the entity: %s", inner.last.At)
+	}
+
+	// A slice alice owns: the record stands at the prefix, so what alice creates beneath it
+	// records nothing, and what bob creates there does.
+	slice := entity.RefAt("spaces", "alice")
+	if _, _, err := system.Write(entity.Write{
+		At: entity.PermsRef(slice).At(), Value: entity.Obj{entity.OwnerField: "alice@example.com"}.Payload(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	alice := entity.As(system, "alice@example.com")
+	mine := entity.RefAt("spaces", "alice", "notes")
+	if _, _, err := alice.Write(entity.Write{At: mine.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ownerOf(t, inner, mine); ok {
+		t.Fatal("alice's node under alice's slice got a record of its own")
+	}
+	bob := entity.As(system, "bob@example.com")
+	theirs := entity.RefAt("spaces", "alice", "guest")
+	if _, _, err := bob.Write(entity.Write{At: theirs.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if o, ok := ownerOf(t, inner, theirs); !ok || o != "bob@example.com" {
+		t.Fatalf("bob's node under alice's slice: owner %q, %v; want bob on record", o, ok)
+	}
+}
+
+// A rule that had no owner on record resolves to itself, and starts resolving to its owner
+// the moment the record is written — a miss is not remembered.
+func TestAResolutionMissIsNotRemembered(t *testing.T) {
+	inner := &stamped{Store: entitytest.Store(t)}
+	rule := entity.VerseRef("trigger", "rule", "late")
+	system := entity.As(inner, entity.SystemPrincipal)
+	firing := entity.As(system, rule.String())
+	first := entity.RefAt("demo", "pr", "1")
+	if _, _, err := firing.Write(entity.Write{At: first.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if o, _ := ownerOf(t, inner, first); o != rule.String() {
+		t.Fatalf("before the rule has an owner, its creation is owned by %q, want the rule itself", o)
+	}
+	scott := entity.As(system, "scott@example.com")
+	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "late"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	second := entity.RefAt("demo", "pr", "2")
+	if _, _, err := firing.Write(entity.Write{At: second.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if o, _ := ownerOf(t, inner, second); o != "scott@example.com" {
+		t.Fatalf("after the rule has an owner, its creation is owned by %q, want the installer", o)
+	}
+}

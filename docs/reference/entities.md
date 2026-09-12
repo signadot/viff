@@ -233,8 +233,11 @@ answer path that tallies them.
 
 Two more are about who: `principal.user.<email>` lists every user that has presented itself
 over the api (a runner is the other kind a principal can be), and `perms.node.<address>` is the
-perms mirror — one record per entity whose owner is on record, keyed by the entity's own
-address spelled as one segment, holding `owner`. Every
+perms mirror — a record wherever ownership changes down the tree, keyed by the node's own
+address spelled as one segment, holding `owner`. The owner of any node is the nearest record
+up its address, and the root is the system's, so a node owned by whoever owns the node above
+it has no record of its own: a source reflecting ten thousand refs under a slice the system
+owns writes none, and a user's first entity under it writes one. Every
 write carries a principal (the request's, from the CLI's `user:`; the rule's own address for a
 firing; the system for what verse writes unasked), and an entity's owner is whoever first
 wrote it, fixed until the entity is deleted. A principal that is itself an address — a rule's

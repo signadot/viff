@@ -30,6 +30,24 @@ func raiseWithDeadline(t *testing.T, srv *Server, id, within, dflt string) chan 
 	return answered
 }
 
+// armedQuestion waits for the question's deadline to be stamped, and answers the record. The
+// pose and the stamp are two writes — the instant is stamped once, by the Arm hook, after the
+// question is posed — so a read the moment the question is pending can land between them, and
+// "posed and not armed" is that window rather than a deadline that never armed.
+func armedQuestion(t *testing.T, srv *Server, id string) map[string]any {
+	t.Helper()
+	var q map[string]any
+	for range 200 {
+		q = question(t, srv, id)
+		if _, _, at := mirror.DeadlineOf(entity.Obj(q).Payload()); at != "" {
+			return q
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("the deadline was posed and never armed: %+v", q)
+	return nil
+}
+
 func byDeadline(t *testing.T, answered chan task.Resolution, want string) task.Resolution {
 	t.Helper()
 	select {
@@ -62,10 +80,7 @@ func TestADeadlineSettlesOnItsDefault(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := raiseWithDeadline(t, srv, id, "50ms", "deny")
 
-	q := question(t, srv, id)
-	if _, _, at := mirror.DeadlineOf(entity.Obj(q).Payload()); at == "" {
-		t.Fatalf("the deadline was posed and not armed: %+v", q)
-	}
+	q := armedQuestion(t, srv, id)
 	byDeadline(t, answered, "deny")
 	q = settledQuestion(t, srv, id)
 	if q["verdict"] != "deny" || q["by"] != task.ByDeadline || q["why"] == nil {
@@ -99,10 +114,7 @@ func TestARestartHonoursTheStampedDeadline(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	raiseWithDeadline(t, first, id, "10m", "deny")
-	_, _, stamped := mirror.DeadlineOf(entity.Obj(question(t, first, id)).Payload())
-	if stamped == "" {
-		t.Fatal("no stamp on the first posing")
-	}
+	_, _, stamped := mirror.DeadlineOf(entity.Obj(armedQuestion(t, first, id)).Payload())
 	backdate(t, first.Store, id) // the verse is down for longer than the deadline
 	stop()
 
