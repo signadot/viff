@@ -153,3 +153,33 @@ func TestAttributedPassesEveryOptionalMethodThrough(t *testing.T) {
 		}
 	}
 }
+
+// The writer reaches the log and comes back on the commit: a replay of what alice wrote says
+// alice wrote it, and a write that named nobody says so by saying nothing.
+func TestTheAuthorRidesTheCommit(t *testing.T) {
+	store := entitytest.Store(t)
+	alice := entity.As(store, "alice@example.com")
+	pr := entity.RefAt("demo", "pr", "9")
+	_, rev, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, anon, err := store.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("draft")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits, err := store.Since(rev - 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[int64]string{}
+	for _, c := range commits {
+		by[c.Rev] = c.Author
+	}
+	if by[rev] != "alice@example.com" {
+		t.Fatalf("commit %d replays as written by %q, want alice", rev, by[rev])
+	}
+	if by[anon] != "" {
+		t.Fatalf("an unattributed write replays as written by %q", by[anon])
+	}
+}

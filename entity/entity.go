@@ -361,6 +361,11 @@ type Event struct {
 type Commit struct {
 	// Rev is the revision this commit landed at — the cursor a consumer tracks.
 	Rev int64
+	// Author is who the write that made this commit was made by, as the write named it
+	// (Write.Principal): a user, a runner, the address of the rule or source that acted. Empty
+	// when the write named nobody, and for a subtree watch, which diffs documents rather than
+	// reading commits.
+	Author string
 	// Changes are the per-entity changes of this commit, each carrying Rev.
 	Changes []Event
 	// Gap is >0 when commits were dropped before this one (a slow observer). The consumer

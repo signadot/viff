@@ -621,11 +621,6 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.writeCtx()
 	defer cancel()
 	path := s.writePath(w.At, w.Sub)
-	// w.Principal DOES NOT REACH THE LOG YET. The patch request has no author field and a
-	// commit stores none (tony-format cn1n32yph12ks5wrmhn0), so what the log keeps of a write
-	// is still what changed and when. When the field lands, it is set here from w.Principal
-	// and nothing above this line changes; until then the principal is what the store's own
-	// check and the owner record at creation read, and a reader of the log has neither.
 	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
 	// that stops being readable — see entity.CheckPatchable, and the two staging deployments
 	// that were lost to it. This is the one place every write passes through, which is the only
@@ -653,7 +648,10 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 	}
 	if len(w.When) == 0 && !descends {
-		res, err := s.sess.Patch(ctx, path, node)
+		// THE WRITER RIDES THE WRITE: logd records w.Principal as the commit's author and every
+		// delta event carries it back (WatchEvent.Author), so a reader of the log learns who
+		// without a second record. Empty names nobody, and logd keeps it so.
+		res, err := s.sess.PatchWith(ctx, path, node, libctl.PatchOpts{Author: w.Principal})
 		if err != nil {
 			return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 		}
@@ -684,7 +682,7 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		}
 		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent})
 	}
-	res, err := s.sess.PatchIf(ctx, path, node, s.preconditionAt(pre))
+	res, err := s.sess.PatchWith(ctx, path, node, libctl.PatchOpts{Match: s.preconditionAt(pre), Author: w.Principal})
 	if errors.Is(err, libctl.ErrMatchFailed) {
 		// SAY WHICH REFUSAL IT WAS, when the write descended. "A condition did not hold" is the
 		// honest answer for a caller's own guard, and it is the wrong one here: the whole
@@ -1933,6 +1931,7 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	type delta struct {
 		commit int64
 		patch  *ir.Node
+		author string
 	}
 	var replayed []delta
 	drain := func() error {
@@ -1952,7 +1951,7 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 					return nil // caught up to current
 				}
 				if ev.Patch != nil {
-					replayed = append(replayed, delta{commit: ev.Commit, patch: ev.Patch})
+					replayed = append(replayed, delta{commit: ev.Commit, patch: ev.Patch, author: ev.Author})
 				}
 			}
 		}
@@ -1977,6 +1976,7 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 		doc = s.applyDelta(doc, nestAt(patch, []string{s.root}))
 		out = append(out, Commit{
 			Rev:     d.commit,
+			Author:  d.author,
 			Changes: s.eventsFromDelta(d.commit, patch, doc),
 		}.WithDelta(patch))
 	}
@@ -2157,7 +2157,7 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		// The delta rides along, so a consumer whose addresses are deeper than the arity
 		// Changes was built at can ask ChangedAt for an exact answer. This watch is ON the
 		// root, so what arrives is already rooted where both of those read from.
-		s.emit(Commit{Rev: ev.Commit, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
+		s.emit(Commit{Rev: ev.Commit, Author: ev.Author, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
 			WithDelta(ev.Patch))
 	case ev.State != nil || ev.Absent:
 		s.mu.Lock()
