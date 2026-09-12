@@ -810,8 +810,11 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 	ps.mu.Unlock()
 	// An executor picked it up: leave the pre-running `unclaimed` state. emit takes ps.mu,
 	// so it must run off-lock. A re-claim by the same worker (resume) does not re-announce.
+	// The frame names who claimed: the worker acts as itself from here on, and the mirror
+	// projecting its reports writes them as the worker, which is what the grant a spawn makes
+	// to its runner is checked against.
 	if firstClaim {
-		ps.emit(task.Frame{Kind: task.EvStatus, Text: string(task.Running)})
+		ps.emit(task.Frame{Kind: task.EvStatus, Text: string(task.Running), By: body.Identity})
 	}
 	writeOut(w, r, resp)
 }

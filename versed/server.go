@@ -1171,12 +1171,7 @@ func (s *Server) noteUser(p string) {
 	if _, seen := s.users.Load(p); seen {
 		return
 	}
-	_, _, err := s.Store.Write(entity.Write{
-		At:    entity.UserRef(p).At(),
-		Value: entity.Obj{"first": entity.Val(time.Now().UTC().Format(time.RFC3339))}.Payload(),
-		When:  []entity.Require{entity.Created()},
-	})
-	if err != nil {
+	if err := entity.Note(s.Store, entity.UserKind, p); err != nil {
 		return // the store did not answer; the next request asks again
 	}
 	s.users.Store(p, struct{}{})

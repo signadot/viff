@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
+
+func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // SystemPrincipal is versed itself: the principal of a write nothing outside verse asked for
 // — a mirror's projection, a question posed, the charter restored at start. It owns the root
@@ -570,6 +573,60 @@ func (a *attributed) resolve(principal string) string {
 	a.attr.owners[principal] = p
 	a.attr.mu.Unlock()
 	return p
+}
+
+// AddGrant appends a grant to the perms record of ref, as the system. The mirror is versed's
+// to write, and a grant is an owner's act that versed carries out for them — a spawn assigning
+// a task to a runner creates the runner's grant on it — so it bypasses the check the way an
+// owner record does, and what this process cached about the node is dropped with it.
+//
+// A read-modify-write under a precondition, since the grants are one list and a merge would
+// replace it: two grants landing at once would otherwise keep one.
+func AddGrant(s Store, ref Ref, g Grant) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return fmt.Errorf("granting at %s: not an attributed store", ref)
+	}
+	rec := PermsRef(ref)
+	for {
+		cur, exists, err := a.Store.Get(rec)
+		if err != nil {
+			return fmt.Errorf("granting at %s: %w", ref, err)
+		}
+		var grants []Grant
+		when := Created()
+		if exists {
+			grants, _ = ParseGrants(cur.Payload)
+			when = Require{Pattern: Unchanged(cur.Payload)}
+		}
+		grants = append(grants, g)
+		committed, _, err := a.Store.Write(Write{
+			At:        rec.At(),
+			Value:     Obj{GrantsField: GrantsPayload(grants)}.Payload(),
+			When:      []Require{when},
+			Principal: SystemPrincipal,
+		})
+		if err != nil {
+			return fmt.Errorf("granting at %s: %w", ref, err)
+		}
+		if committed {
+			a.attr.invalidate(ref.String())
+			return nil
+		}
+	}
+}
+
+// Note lists a principal under a kind, the first time: `verse.principal.<kind>.<principal>`,
+// written as the system under an absence precondition, which is what lets a grant to the kind
+// name them.
+func Note(s Store, kind, principal string) error {
+	_, _, err := s.Write(Write{
+		At:        PrincipalRef(kind, principal).At(),
+		Value:     Obj{"first": Val(nowStamp())}.Payload(),
+		When:      []Require{Created()},
+		Principal: SystemPrincipal,
+	})
+	return err
 }
 
 // PrincipalSystem is the system under verse's root that lists the principals this verse has

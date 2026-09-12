@@ -313,8 +313,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		// for a reason of its own, and the answer is to resume from the cursor this loop has
 		// been keeping all along.
 		attempt := 0
+		claimant := ""
 		for {
-			ended, heard := drainInto(store, id, st, m, h, ch)
+			ended, heard := drainInto(store, id, st, m, h, ch, &claimant)
 			unsub()
 			if ended {
 				return
@@ -339,6 +340,38 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}()
 }
 
+// asPrincipal is the store's view acting as principal, and the store itself where it
+// attributes nothing — a test's raw store, which stamps and checks nothing and should not
+// begin to because the mirror asked.
+func asPrincipal(store entity.Store, principal string) entity.Store {
+	if entity.PolicyOf(store) == nil {
+		return store
+	}
+	return entity.As(store, principal)
+}
+
+// claimed records that a worker took the task: the worker is listed as a runner principal,
+// and holds `read-write` and `control` on the task's record and on this run's — the two
+// records its reports are projected onto — and on nothing else. The grant is the task
+// owner's act, carried out by versed on their behalf (entity.AddGrant); a question the task
+// raises carries its own record, and the grant does not reach it.
+func claimed(system entity.Store, id string, st entity.Obj, by string) {
+	if entity.PolicyOf(system) == nil {
+		return
+	}
+	_ = entity.Note(system, entity.RunnerKind, by)
+	refs := []entity.Ref{Ref(id)}
+	if occ := occurrenceOf(st); occ > 0 {
+		refs = append(refs, RunRef(id, occ))
+	}
+	for _, ref := range refs {
+		_ = entity.AddGrant(system, ref, entity.Grant{
+			At: ref.Segs(),
+			To: map[entity.Level][]string{entity.ReadWrite: {by}, entity.Control: {by}},
+		})
+	}
+}
+
 // reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
 // dying. With the backoff below it is a few minutes — long enough to outlast a runner
 // restart, short enough that a task on a runner that is never coming back does not hold a
@@ -354,7 +387,19 @@ func backoff(attempt int) time.Duration {
 
 // drainInto projects one subscription's frames, reporting whether the TASK ended (true) or
 // merely the stream did (false).
-func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame) (ended, heard bool) {
+//
+// WHO WRITES. The task's record is written as the party working the task: the spawn's
+// principal until a worker claims it, and the worker from then on — the claimant, named by the
+// broker on the claim's running frame, and remembered across a reconnect in claimant. A
+// question is posed and settled as the SYSTEM whoever is working the task, since versed poses
+// it and the decision that settles it travelled by the answer path, where the answerer was
+// checked; the worker's grant is on its task and must reach no question, and a projection
+// written as the worker would pass exactly the check that grant is meant to fail.
+func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame, claimant *string) (ended, heard bool) {
+	system := asPrincipal(store, entity.SystemPrincipal)
+	if *claimant != "" {
+		store = asPrincipal(store, *claimant)
+	}
 	{
 		for ev := range ch {
 			if !heard {
@@ -390,7 +435,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if owner == "" && subject != "" && m.Owner != nil {
 					owner = m.Owner(subject)
 				}
-				PostFrameQuestion(store, ev, id, subject, owner)
+				PostFrameQuestion(system, ev, id, subject, owner)
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
@@ -406,7 +451,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
 				if st["pending"] != nil {
-					AnswerQuestion(store, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+					AnswerQuestion(system, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
 				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool
@@ -429,6 +474,14 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				case "resumed":
 					st["paused"] = false
 				default:
+					// A CLAIM: a worker took the task and named itself. The grant a spawn makes
+					// to its runner is written now, naming the party that actually turned up,
+					// and every report from here on is written as them.
+					if ev.Text == string(task.Running) && ev.By != "" && *claimant == "" {
+						claimed(system, id, st, ev.By)
+						*claimant = ev.By
+						store = asPrincipal(store, ev.By)
+					}
 					st["status"] = ev.Text
 					if task.Status(ev.Text).Terminal() {
 						st["ended"] = nowStamp()
@@ -448,7 +501,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// A brokered task ends with an EvStatus and no EvDecision, so
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
-						OrphanQuestions(store, id)
+						OrphanQuestions(system, id)
 						return true, heard // the TASK ended; the entity remains, terminal
 					}
 				}

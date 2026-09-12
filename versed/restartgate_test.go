@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
@@ -98,6 +99,23 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.SetRunner(b)
 	second.reconcileTasks()
+	// The resume REPLAYS the worker's frames into the mirror, and the answer below must not
+	// race that replay: a replayed pending frame landing after the answer can re-pose the
+	// question against a precondition view that has not seen the answer yet, which is
+	// git-issue nkptp9b3h12ksx3kg9n0 and not what this test is about. The replay's last
+	// write is the pending frame's projection onto the task record, after the first write
+	// of the resume replaced it, so that is what says the replay is done.
+	replayed := func() bool {
+		e, ok, _ := second.Store.Get(mirror.Ref("p1"))
+		return ok && entity.Str(e.Payload, "status") == string(task.Running) &&
+			entity.Str(e.Payload, "pending") == mirror.QuestionRef(decision).String()
+	}
+	for i := 0; !replayed(); i++ {
+		if i > 400 {
+			t.Fatal("the resumed task's frames were never replayed into the mirror")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	gates := docket(t, second)
 	if len(gates) != 1 || gates[0]["id"] != decision {
