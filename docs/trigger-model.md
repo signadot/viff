@@ -748,6 +748,7 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
   - name: approvals
     need: 2                                    # proceed takes two ballots; one deny refuses
     deadline: {within: "24h", default: deny}   # and the clock decides silence
+    answerers: [oscar@example.com, verse.principal.group.payments]   # and whose ballots
   - name: route
     options: [{id: ship, need: 1}, {id: hold, need: 2}, {id: drop, need: 1}]
 ```
@@ -759,6 +760,14 @@ short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and 
 written together. `options` are ordered: the first to reach its threshold settles the question.
 A gate that carries any of these and no `mode` is `ask`; with `mode: auto` it is refused, since
 auto asks nobody.
+
+`answerers` is who the question is held out to: grantees, the way a grant names them — a person,
+a kind (`user`, `agent`), `*`, a group's address, a binding's. It is written as the question's
+`read-write` grant when the question is posed, in place of the docket's default, and `need` over
+it is what one-or-many means: one ballot per answerer, `need: 1` a race, `need` equal to their
+number all of them. The charter's owner co-owns what their rule asked and answers it without
+being named. A gate nobody could settle is refused at install: a threshold above the answerers
+named, or an answerer that names nobody. [perms.md](perms.md) has the record it becomes.
 
 The tally is whoever answers' to keep, not the engine's: an answer is a ballot on the record,
 the question settles in the same write as the ballot that reaches a threshold, and one answerer

@@ -76,12 +76,21 @@ creates the node too, and it is the node's owner's: a file a grantee writes into
 slice belongs to whoever shares it. Holding neither, the write is refused.
 
 **Questions stand at their own address and are co-owned through what posed them.** A question
-lives at `verse.gate.question.<id>` and its record carries `under`, the address of the task or
-the rule that asked; the check follows that link for ownership and for nothing else. So the
-task's owner, or the charter's, answers what their own work asked, exactly as if the question
-stood beneath them, and a runner's grant on its task — which does not reach through the
-task's record — reaches no question the task raised. The executor may not resolve its own gate,
-and nothing special-cases it.
+lives at `verse.gate.question.<id>` and its record — the system's, an owner record of its own —
+carries `under`, the address of the task or the rule that asked; the check follows that link
+for ownership and for nothing else. So the task's owner, or the charter's, answers what their
+own work asked, exactly as if the question stood beneath them, and a runner's grant on its task
+— which does not reach through the task's record — reaches no question the task raised. The
+executor may not resolve its own gate, and nothing special-cases it.
+
+**Who else may answer is the question's own `read-write` line.** It is written when the
+question is posed: the gate's `answerers` when it named them, else the default on
+`verse.gate.question` — the docket's openness, `read-write: [user, agent]` in the seed. Binding
+the question to a resolver replaces that line with whoever answers as the binding (its address
+for a service, the person or the group behind it otherwise), unbinding gives it back to the
+default, and `read` stays as the default gave it. `need` over the answerers is one-or-many:
+one ballot each. Whoever may answer may hand the question on, `verse gate escalate`, to the
+next binding covering its subject by name, and to the docket when there is none.
 
 ## Grants and levels
 
@@ -101,8 +110,15 @@ grants:
 reason a claim refuses it. Without the star the grant covers the node and everything beneath;
 with it, the children and beneath, which is what a grant about *creating* needs. A grantee is a
 principal by the name it acts under or the owner it resolves to, `*` for everyone (the
-unattributed request included), or a kind — `user`, `runner`, `agent` — meaning whoever is
-listed under it.
+unattributed request included), a kind — `user`, `runner`, `agent` — meaning whoever is listed
+under it, or a **group's address**, meaning its members.
+
+**A group** is a named set with an owner: `verse group add payments oscar@example.com
+ana@example.com` writes `verse.principal.group.payments`, its maker's to change. A member is a
+principal, a kind, `*`, another group's address or a binding's, walked to a bounded depth so a
+group of groups is walked and a cycle admits nobody. Membership is read when it is checked,
+since a group is for changing who is in it without touching every place it is granted — the one
+grantee whose meaning moves after the fact, on purpose.
 
 The levels nest: `read` < `read-write` < `owner`. `control` stands beside them — run, cancel,
 pause, resume, say — and is held by an owner (by record or by an `owner` grant) and by
@@ -210,6 +226,11 @@ nothing and an operator's edit stands:
 | `verse.gate.question.*` | read-write | `user`, `agent` |
 | `verse.gate.question.*` | read | everyone |
 | `verse.principal.*` | read | everyone |
+| `verse.principal.group.*` | owner | everyone |
+
+And one **default** beside them, on `verse.gate.question`, copied onto every question's own
+record at pose: `{read: ["*"], read-write: [user, agent]}`. A private verse narrows that one
+default to close the docket.
 
 A question is the one row that is not everyone's: it is posed by versed and answered by
 whoever may, and "whoever" is a person — the runner working the task holds its grant on the
@@ -225,9 +246,10 @@ binding a question is held out to answers it.
   and on this run's, and the mirror writes every report from then on **as the claimant**. A
   question the task raises is posed and settled as the system whoever is working the task.
 - **A binding** is a grant: when a question is bound to a resolver, the question's record holds
-  out `read-write` to the binding's address, replaced when the question changes hands and
-  removed when it is unbound. A verdict through an instance, an escalation and a position are
-  made as the binding.
+  out `read-write` to whoever answers as the binding — its address for a service, the person or
+  the group behind it otherwise — replaced when the question changes hands and given back to
+  the default when it is unbound. A verdict through an instance, an escalation and a position
+  are made as the binding; a person answers and escalates from the docket.
 - **A person answering** holds it by co-owning the question — their task, their charter — or
   by the seed's row. An `exclusive` binding still decides whose answer *counts*; it is not a
   security boundary and never was.

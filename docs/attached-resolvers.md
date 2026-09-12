@@ -113,11 +113,14 @@ to be conservative and would block legitimate pairs. Ordering keeps exactly one 
 without deciding anything at install, and it covers the runtime case a refusal could not see.
 Installing an overlapping binding is a **notice**, naming what it overlaps.
 
-Three properties follow. Escalation reaches ⊤ in at most **two hops**, so no depth counter is
-needed, and none is stored: a binding cannot hand a question to itself, so the second hop always
-lands at ⊤. Every hop is to a layer answering a smaller class of questions, so there is no sideways
-move. And ⊤ matches everything while escalating to nothing, so "a resolver's own doubt ends with a
-person" falls out rather than being a rule.
+Three properties follow. Escalation needs no depth counter, and none is stored: the ladder is the
+named binding, then the standing bindings covering the subject **in name order**, then ⊤, and a
+binding cannot hand a question to itself or to anything before it, so every hop climbs and the
+last lands at ⊤. Every hop is to a layer answering a smaller class of questions, so there is no
+sideways move. And ⊤ matches everything while escalating to nothing, so "a resolver's own doubt
+ends with a person" falls out rather than being a rule. A rung may be a service, a person or a
+group ([reference/resolvers.md](reference/resolvers.md#the-binding)); a person climbs it with
+`verse gate escalate`.
 
 ## What a resolver reads and writes
 

@@ -11,8 +11,8 @@ issue's literal spelling, so a known gap does not become an unknown one.
 
 ## 1. Policy edits as gated changes
 
-`verse c -a` writes a rule directly, and a grant is written by the verbs that make one — a
-claim, a binding — with no verb for a person to hold something out at all. The issue's shape
+`verse c -a` writes a rule directly, and a grant is written by `verse perms` and by the verbs
+that make one — a claim, a binding, a gate's answerers — with nothing gating the edit. The issue's shape
 is that a policy edit lands as a proposal under the installer's own node and a system charter
 promotes it, posing an ask when a grant widens or a gate's mode moves from ask to auto. A
 system charter can already *watch* `verse.perms` and `verse.trigger.rule` (the mirror is
@@ -67,7 +67,26 @@ record when the default above it changes, which is the model's stance and also m
 made private after the fact has to be walked — `verse perms` takes one node. And there is no
 listing of what a person holds anywhere: the verb reads one node's record.
 
-## 6. Where the question stands
+## 6. Directed gates: what is left
+
+Built from the directed-gates note, which landed here: the question's owner record and the docket's default, a gate's
+`answerers`, a person and a group as a binding's resolver, `verse gate escalate`, the ladder
+walking every standing binding in name order, and groups. Not built:
+
+- **A worker-raised gate's answerers.** A gate a worker raises through the broker carries no
+  `answerers`; it is held out to the docket's default or to the binding covering the run.
+- **A hook's spawn gates are not checked at install.** The action's own spawn gates are; a
+  spawn beneath `onDone` and the rest is not walked by the answerers check.
+- **A person's silence.** A person on a rung escalates past their binding's `deadline` as a
+  service does, when a reader arrives; nothing wakes them first.
+- **Carrying gating through derivations**, the issue's second paragraph: a derived entity
+  inheriting the answerers of what it was derived from. A question about `derive`.
+- **A group's cost.** Membership is a read per check, bounded by depth three; a group of
+  service bindings mints an instance per service per question — which nothing does yet, since a
+  service member of a group is admitted by the grant but is minted no instance to read the run
+  through. A service that must read the run is bound directly.
+
+## 7. Where the question stands
 
 The issue says a question lives under its origin so that its co-owners fall out of the tree.
 It stays at `verse.gate.question.<id>`, and the edge is computed: the record carries `under`,
@@ -76,7 +95,7 @@ or six, inside the task or the rule entity for every depth-four reader, and make
 cross-depth query nothing spells. If the address ever moves, `under` goes and the walk is the
 plain one; the computed edge is the cheaper spelling of the same fact.
 
-## 7. Smaller things
+## 8. Smaller things
 
 - A whole delete lists the mirror to forget the records beneath it, which costs the mirror's
   size per delete; the reaper deletes tasks routinely. Unmeasured on staging's mirror.

@@ -28,12 +28,19 @@ exclusive: true
 | `kind` | required | the middle segment of the ref; groups bindings by what they are for |
 | `condition.subject` | optional | a [tony match](https://signadot.github.io/tony-format/) over entities, the same vocabulary a trigger's `subject` uses |
 | `byRef` | optional | may be named by a spawn's `resolver:` or a rule's `gating.resolver` |
-| `method.driver` | required | `url` today |
-| `method.url` | | where the service is. Verse never posts to it — the service dials in |
+| `method.driver` | required | who answers: `url`, a service; `person`, one principal, from the docket; `group`, a group's members, each as themselves |
+| `method.url` | | for `url`: where the service is. Verse never posts to it — the service dials in |
+| `method.who` | | for `person`: the principal the question is held out to |
+| `method.group` | | for `group`: the group's address, `verse.principal.group.<name>` |
 | `method.vector` `.tools` `.grant` | optional | bound whatever the driver runs; inert for `url` |
 | `deadline.within` | optional | a **quoted** duration (`"4h"`, `"30m"`). Unquoted `4h` is the number `4` beside a key `h`, and is refused |
 | `deadline.then` | optional | `escalate` (the default and the only value today) |
 | `exclusive` | optional | only this binding's answer counts. **Requires a deadline** |
+
+A question bound to a binding is held out to whoever answers as it (`read-write` on the
+question's record, [perms.md](../perms.md)): the binding's address for a service, the person or
+the group's members otherwise. A person or a group is minted no instance — they answer from the
+docket — and a person hands a question on with `verse gate escalate <id>`.
 
 Refused at install: a binding with neither `byRef` nor `condition` (nothing could reach it);
 `exclusive` without a deadline (a binding that is down would turn every question it owns into

@@ -187,6 +187,8 @@ verse
                                              tally stands (`1 of 2 for proceed`)
           approve <id> [--say <text>] · deny <id> [--say <text>]
           approve: y, yes · deny: n, no · --say: -s — the two default options, as verbs
+          escalate <id> [--as <who>] [--say <why>]   hand it on to the next binding covering
+                                             its subject, or to the docket
   charter (charters, c) [<path>]             THE INSTALLED CHARTER, at a path: what may
                                              be written there, what it reads, its rules
                                              and strata in full, and the same at every
@@ -255,6 +257,8 @@ verse
           add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
+  group (groups)                             named sets of principals, granted by address
+          add <name> <member>… · show <name> · remove <name>
   perms <step>… [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']
                                              a node's permissions, as its owner: read with
                                              no flags; take the place and set what it and

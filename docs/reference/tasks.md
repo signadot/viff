@@ -153,10 +153,12 @@ verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-�
 ```
 
 **Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
-answers what their own work asked; the binding a question is held out to answers it as itself;
-and a person answers an unbound question by the seed's grant. The runner working the task holds
-nothing on the question it raised, and is refused. A refusal is a 403 naming who holds what and
-which record decided ([perms.md](../perms.md)).
+answers what their own work asked; a gate's `answerers`, or the binding a question is held out
+to, answer it; and a person answers an unbound question by the docket's default. The runner
+working the task holds nothing on the question it raised, and is refused. A refusal is a 403
+naming who holds what and which record decided ([perms.md](../perms.md)). Whoever may answer
+may also hand the question on — `verse gate escalate <id> --as <who> [--say <why>]` — to the
+next binding covering its subject, and to the docket when there is none.
 
 **A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
 `options` and, as answers arrive, its `ballots`; `verse gate approve <id> --as <who>` casts one, and
