@@ -80,6 +80,7 @@ func holds(t *testing.T, s entity.Store, who string, level entity.Level, ref ent
 func TestWhoHoldsWhatWhere(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
+	entity.PolicyOf(system).OpenReads(false) // the granted model, with the open verse's reading rule off
 	alice, bob, bot := "alice@example.com", "bob@example.com", "bot"
 	rw := func(to ...string) map[entity.Level][]string { return map[entity.Level][]string{entity.ReadWrite: to} }
 
@@ -213,7 +214,7 @@ func TestARefusalRefusesOnlyWhenEnforced(t *testing.T) {
 	if inner.last.At.String() != before || entity.Str(inner.last.Value, "") == "merged" {
 		t.Fatalf("a refused write reached the store: %s", inner.last.At)
 	}
-	if !strings.Contains(err.Error(), "bob@example.com holds nothing at "+pr.String()) ||
+	if !strings.Contains(err.Error(), "bob@example.com holds read at "+pr.String()) || // read, under the open verse
 		!strings.Contains(err.Error(), "alice@example.com at "+pr.String()) {
 		t.Fatalf("the refusal does not say who, where, or what decided: %v", err)
 	}

@@ -472,6 +472,9 @@ type Perms struct {
 	Enforced   bool           `tony:"field=enforced"`
 	Refused    map[string]int `tony:"field=refused,omitzero"`
 	Unreadable int            `tony:"field=unreadable,omitzero"`
+	// Hidden is what listings, replays and watches left out for a reader who may not see it —
+	// apart from refused, since a listing that leaves something out is answered.
+	Hidden int `tony:"field=hidden,omitzero"`
 }
 
 // RunnerStatus is how this verse runs tasks: local (in-process), broker (a dial-in

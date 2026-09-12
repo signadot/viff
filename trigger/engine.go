@@ -355,7 +355,7 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 					// so arriving here IS the skip's answer. The per-commit watermark inside
 					// evaluate is what keeps several watched subtrees from evaluating one
 					// commit several times.
-					e.evaluate(e.bgctx, t, c)
+					e.evaluate(e.bgctx, t, e.visibleTo(t, c))
 				}
 			}
 		}()
@@ -540,11 +540,37 @@ func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 		e.subjectMoved(ev.Ref) // a paced firing about this entity is now stale; let it go
 	}
 	for i := range trigs {
-		if !trigs[i].touches(c) {
+		// AS THE RULE'S OWNER SEES IT: a change to what the owner may not read is not a
+		// change this rule is woken by, and the skip is asked of the narrowed commit so a
+		// rule whose only visible change was withheld does not evaluate on it either.
+		seen := e.visibleTo(trigs[i], c)
+		if !trigs[i].touches(seen) {
 			continue // nothing it reads changed; the verdict cannot have (see touches)
 		}
-		e.evaluate(ctx, trigs[i], c)
+		e.evaluate(ctx, trigs[i], seen)
 	}
+}
+
+// reader is the store a rule READS through: the engine's store acting as the rule, so that a
+// charter reads as its owner and matches only what its owner can read. A store that
+// attributes nothing — a test's raw store — is read as it is.
+func (e *Engine) reader(name string) entity.Store {
+	if entity.PolicyOf(e.store) == nil {
+		return e.store
+	}
+	return entity.As(e.store, e.Principal(name))
+}
+
+// visibleTo is a commit as the rule's owner may see it.
+func (e *Engine) visibleTo(t Trigger, c entity.Commit) entity.Commit {
+	r := e.reader(t.Name)
+	if r == e.store {
+		return c
+	}
+	return c.Only(func(ref entity.Ref) bool {
+		ok, err := entity.Holds(r, entity.PrincipalOf(r), entity.Read, ref)
+		return err == nil && ok
+	})
 }
 
 // countFire records that one entity was acted on. It is a counter and nothing more: what
@@ -604,7 +630,7 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 		// The causing commit rides ALONGSIDE the causal parent rather than replacing it: parent
 		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
 		// either way. See occasion.
-		oc := occasion{commit: c, parent: parent, snap: &snapCache{}}
+		oc := occasion{commit: c, parent: parent, snap: &snapCache{}, reader: e.reader(t.Name)}
 		if e.throttled(t, subj, parent) {
 			if e.tripPace <= 0 {
 				continue // no pace configured: refuse outright, and the chain ends here
@@ -1225,7 +1251,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// This is the read only. The causal PARENT stays 0 — a hook does begin a fresh chain for
 	// the cycle throttle, which is causal.go's argument and a different question from which
 	// world the references see.
-	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)}}
+	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)}, reader: e.reader(mirror.TriggerOf(fp.chain))}
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so

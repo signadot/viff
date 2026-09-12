@@ -65,7 +65,7 @@ func TestARefusedWriteIsCountedInShadowAndA403Enforced(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("enforced, bob's put: %s %s", resp.Status, body)
 	}
-	if !strings.Contains(string(body), "bob@example.com holds nothing at") ||
+	if !strings.Contains(string(body), "bob@example.com holds read at") || // read: the open verse's
 		!strings.Contains(string(body), "alice@example.com at") {
 		t.Fatalf("the refusal does not say who or what decided: %s", body)
 	}

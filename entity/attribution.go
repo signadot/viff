@@ -67,11 +67,20 @@ type Attribution struct {
 	// counted and logged and the write proceeds, which is how a deployment finds the flow the
 	// seed missed before anything is refused.
 	enforce bool
-	refused map[Level]int
+	// openReads is the open verse's reading rule: everyone reads everything but the perms
+	// mirror, whatever the records say. It is the read side of the world half's base case —
+	// the one grant that is not data — and the first thing a private verse turns off, at
+	// which point a read is admitted by co-ownership or a `read` grant and by nothing else.
+	// Off is what the tests of the granted path set.
+	openReads bool
+	refused   map[Level]int
 	// unreadable counts checks the mirror could not answer, which in shadow proceed and are
 	// counted apart: a store that is down is not a policy that refused.
 	unreadable int
-	logf       func(format string, args ...any)
+	// hidden counts what listings, replays and watches left out for a reader — or would have,
+	// in shadow. Apart from refused, since a listing that leaves something out is answered.
+	hidden int
+	logf   func(format string, args ...any)
 }
 
 // permsRecord is one perms record as the check reads it.
@@ -101,7 +110,7 @@ func As(s Store, principal string) Store {
 	if a, ok := s.(*attributed); ok {
 		return &attributed{Store: a.Store, attr: a.attr, principal: principal}
 	}
-	return &attributed{Store: s, attr: &Attribution{}, principal: principal}
+	return &attributed{Store: s, attr: &Attribution{openReads: true}, principal: principal}
 }
 
 // PrincipalOf reports the principal a store acts as, and "" for one that is not attributed.
@@ -135,6 +144,14 @@ func (a *Attribution) Enforcing() bool {
 	return a.enforce
 }
 
+// OpenReads sets whether everyone may read everything but the mirror (the open verse), or
+// only what they co-own or hold `read` on.
+func (a *Attribution) OpenReads(on bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.openReads = on
+}
+
 // Log sets where a shadow refusal is reported, one line each.
 func (a *Attribution) Log(logf func(format string, args ...any)) {
 	a.mu.Lock()
@@ -153,6 +170,14 @@ func (a *Attribution) Refusals() (byLevel map[string]int, unreadable int) {
 		byLevel[string(l)] = n
 	}
 	return byLevel, a.unreadable
+}
+
+// Hidden is how many entities listings, replays and watches have left out for a reader who
+// may not see them — or would have left out, in shadow.
+func (a *Attribution) Hidden() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.hidden
 }
 
 // attributed is the store a principal writes through. Everything but Write and Scope
@@ -355,7 +380,184 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	if !crossed && !ref.Reserved() {
 		acc.level, acc.control = OwnerLevel, true
 	}
+	if acc.level == NoAccess && a.attr.readsOpen() && !(ref.Reserved() && ref.System() == PermsSystem) {
+		acc.level = Read
+	}
 	return acc, nil
+}
+
+func (a *Attribution) readsOpen() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.openReads
+}
+
+// The read side of the view: a read answers only what the principal may read. Get refuses, as
+// a write does; a listing, a replay and a watch leave out what may not be seen, so the same
+// principal sees the same set whichever way they ask. The system reads everything and pays
+// for none of this; in shadow a read that would be refused is counted and answered.
+
+// keep reports whether the view's principal may read ref, for a listing: false and no error
+// for what they may not, an error for a mirror that did not answer.
+//
+// LEAVING SOMETHING OUT OF A LISTING IS NOT A REFUSAL. The listing is answered, with what the
+// reader may see in it, and counting every record withheld from every `verse data` as a
+// refused request would bury the count that matters — a request turned away — under the
+// mirror's own records, which no listing of verse's half may show a person. What is withheld
+// is counted apart (Refusals' hidden), and in shadow it is counted and shown.
+func (a *attributed) keep(ref Ref) (bool, error) {
+	if a.principal == SystemPrincipal {
+		return true, nil
+	}
+	acc, err := a.accessOf(a.principal, ref)
+	if err != nil {
+		if a.attr.noteUnreadable() {
+			return false, err
+		}
+		return true, nil
+	}
+	if acc.level.Admits(Read) {
+		return true, nil
+	}
+	return !a.attr.noteHidden(), nil
+}
+
+// noteHidden counts an entity a listing withheld, and reports whether it is withheld.
+func (a *Attribution) noteHidden() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.hidden++
+	return a.enforce
+}
+
+func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
+	if a.principal == SystemPrincipal {
+		return ents, nil
+	}
+	out := ents[:0:0]
+	for _, e := range ents {
+		ok, err := a.keep(e.Ref)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// narrow is a commit as this view's principal sees it (Commit.Only). A mirror that did not
+// answer hides nothing here: a watch has no error to return, and a commit withheld would read
+// as a gap, so the check's own count is what says a read went unchecked.
+//
+// A CREATION IS SEEN ONCE by everyone the open base case admits: the owner record follows the
+// write it records, so the commit that creates a node reaches a live watch before the record
+// that would hide it lands, and is judged by what stands then. Every commit after it is judged
+// by the record. Writing the record first would close that window and open a worse one — a
+// record standing for a node whose write then failed makes the next creator there not its
+// owner — so the window stays, and is one commit wide.
+func (a *attributed) narrow(c Commit) Commit {
+	if a.principal == SystemPrincipal {
+		return c
+	}
+	return c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
+}
+
+func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
+	if a.principal == SystemPrincipal {
+		return in
+	}
+	out := make(chan Commit)
+	go func() {
+		defer close(out)
+		for c := range in {
+			out <- a.narrow(c)
+		}
+	}()
+	return out
+}
+
+func (a *attributed) Get(ref Ref) (Entity, bool, error) {
+	if a.principal != SystemPrincipal {
+		if _, err := a.check(a.principal, Read, ref); err != nil {
+			return Entity{}, false, err
+		}
+	}
+	return a.Store.Get(ref)
+}
+
+func (a *attributed) List(pred func(Ref) bool) []Entity {
+	out, _ := a.keepAll(a.Store.List(pred))
+	return out
+}
+
+func (a *attributed) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
+	out, _ := a.keepAll(a.Store.ListAt(at, depth, pred))
+	return out
+}
+
+func (a *attributed) Since(from int64, at ...string) ([]Commit, error) {
+	commits, err := a.Store.Since(from, at...)
+	if a.principal == SystemPrincipal {
+		return commits, err
+	}
+	for i := range commits {
+		commits[i] = a.narrow(commits[i])
+	}
+	return commits, err
+}
+
+func (a *attributed) Observe() (<-chan Commit, func()) {
+	ch, unsub := a.Store.Observe()
+	return a.narrowing(ch), unsub
+}
+
+func (a *attributed) WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error) {
+	ch, unsub, err := a.Store.WatchSubtree(depth, prefix...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a.narrowing(ch), unsub, nil
+}
+
+func (a *attributed) AsOf(rev int64, within ...[]string) (Snapshot, error) {
+	snap, err := a.Store.AsOf(rev, within...)
+	if err != nil || a.principal == SystemPrincipal {
+		return snap, err
+	}
+	return narrowed{Snapshot: snap, a: a}, nil
+}
+
+// narrowed is a snapshot read through a view: what the principal may not read is not in it.
+type narrowed struct {
+	Snapshot
+	a *attributed
+}
+
+func (n narrowed) Get(ref Ref) (Entity, bool, error) {
+	if _, err := n.a.check(n.a.principal, Read, ref); err != nil {
+		return Entity{}, false, err
+	}
+	return n.Snapshot.Get(ref)
+}
+
+func (n narrowed) List(pred func(Ref) bool) []Entity {
+	out, _ := n.a.keepAll(n.Snapshot.List(pred))
+	return out
+}
+
+func (n narrowed) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
+	out, _ := n.a.keepAll(n.Snapshot.ListAt(at, depth, pred))
+	return out
+}
+
+// Head is what a docSnapshot answers beside Rev, kept for a caller that asks the snapshot.
+func (n narrowed) Head() int64 {
+	if h, ok := n.Snapshot.(interface{ Head() int64 }); ok {
+		return h.Head()
+	}
+	return n.Snapshot.Rev()
 }
 
 // coOwns reports whether who owns a record at or above addr — the node a record said it was
@@ -779,20 +981,34 @@ func PrincipalRef(kind, principal string) Ref { return VerseRef(PrincipalSystem,
 
 func (a *attributed) ReadError() error { return ReadFailed(a.Store) }
 
-func (a *attributed) ListErr(pred func(Ref) bool) ([]Entity, error) { return ListErr(a.Store, pred) }
+func (a *attributed) ListErr(pred func(Ref) bool) ([]Entity, error) {
+	ents, err := ListErr(a.Store, pred)
+	if err != nil {
+		return nil, err
+	}
+	return a.keepAll(ents)
+}
 
 func (a *attributed) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
-	return ListAtErr(a.Store, at, depth, pred)
+	ents, err := ListAtErr(a.Store, at, depth, pred)
+	if err != nil {
+		return nil, err
+	}
+	return a.keepAll(ents)
 }
 
 func (a *attributed) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...string) (<-chan Commit, func(), error) {
 	if n, ok := a.Store.(interface {
 		WatchSubtreeAt(int, bool, ...string) (<-chan Commit, func(), error)
 	}); ok {
-		return n.WatchSubtreeAt(depth, waitIfAbsent, prefix...)
+		ch, unsub, err := n.WatchSubtreeAt(depth, waitIfAbsent, prefix...)
+		if err != nil {
+			return nil, nil, err
+		}
+		return a.narrowing(ch), unsub, nil
 	}
 	ch, unsub := a.Store.Observe()
-	return ch, unsub, nil
+	return a.narrowing(ch), unsub, nil
 }
 
 func (a *attributed) Standing(prefix []string) (bool, error) {

@@ -304,7 +304,7 @@ func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
 	// one), so it costs nothing and is the store's head rather than the last CHANGED commit —
 	// which is what "as of now" means here. It can lag an idle store by a heartbeat; a resume
 	// is not that, and this function already errs toward keeping a motion when it cannot tell.
-	now, err := e.store.AsOf(e.store.Head(), paths(t.reads())...)
+	now, err := e.reader(t.Name).AsOf(e.store.Head(), paths(t.reads())...)
 	if err != nil {
 		return true
 	}

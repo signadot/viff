@@ -154,6 +154,7 @@ func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/vector",
 		strings.NewReader(`{vector: {default: auto, gates: [{name: shell, mode: auto, need: 2}]}, by: "human:scott"}`))
 	req.Header.Set("Content-Type", "application/tony")
+	req.Header.Set(api.PrincipalHeader, tester)
 	slid, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("vector: %v", err)

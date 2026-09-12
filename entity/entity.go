@@ -379,6 +379,27 @@ type Commit struct {
 	// commit that carries none (a subtree watch's, which diffs a reconstructed document rather
 	// than reading the delta) answers from Changes instead.
 	delta *ir.Node
+	// hidden, when set, is what this commit's reader may not see: ChangedAt leaves those
+	// addresses out, as Only left them out of Changes, so a consumer asking either question
+	// gets the same view. See Only.
+	hidden func(Ref) bool
+}
+
+// Only is the commit as seen by a reader that may not see everything: Changes holds only the
+// events keep admits, and ChangedAt answers only with addresses keep admits. The delta is kept,
+// since a consumer reading through the commit at a depth Changes was not built for still needs
+// it, and hidden is what stops that walk from answering with what Changes withheld.
+func (c Commit) Only(keep func(Ref) bool) Commit {
+	kept := make([]Event, 0, len(c.Changes))
+	for _, ev := range c.Changes {
+		if keep(ev.Ref) {
+			kept = append(kept, ev)
+		}
+	}
+	c.Changes = kept
+	prior := c.hidden
+	c.hidden = func(r Ref) bool { return !keep(r) || (prior != nil && prior(r)) }
+	return c
 }
 
 // ChangedAt lists the addresses this commit changed, AT A DEPTH THE CALLER NAMES.
@@ -397,7 +418,7 @@ func (c Commit) ChangedAt(depth int) []Ref {
 		out := make([]Ref, 0, len(c.Changes))
 		for _, ev := range c.Changes {
 			if ev.Ref.Len() == depth {
-				out = append(out, ev.Ref)
+				out = append(out, ev.Ref) // Changes already holds only what the reader may see
 			}
 		}
 		return out
@@ -410,7 +431,7 @@ func (c Commit) ChangedAt(depth int) []Ref {
 		if len(segs) != depth {
 			return
 		}
-		if ref, ok := RefOfAny(segs); ok {
+		if ref, ok := RefOfAny(segs); ok && (c.hidden == nil || !c.hidden(ref)) {
 			out = append(out, ref)
 		}
 	})

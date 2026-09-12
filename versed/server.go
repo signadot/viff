@@ -1759,6 +1759,9 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e, ok, err := s.scopedStore(r).Get(ref)
+	if refused(w, err) {
+		return // may not be read, which is neither "absent" nor "the store is down"
+	}
 	if err != nil {
 		// A read that could not be performed is NOT a 404. Reporting it as one tells the
 		// caller the entity does not exist, which is a different — and actionable —
@@ -3208,7 +3211,7 @@ func (s *Server) permsStatus() *api.Perms {
 	if len(refused) == 0 {
 		refused = nil
 	}
-	return &api.Perms{Enforced: pol.Enforcing(), Refused: refused, Unreadable: unreadable}
+	return &api.Perms{Enforced: pol.Enforcing(), Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden()}
 }
 
 // installSystemCharter applies the charter file named by SystemCharter as the system: its rules

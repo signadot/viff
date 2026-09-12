@@ -251,7 +251,8 @@ func (e *Engine) seqConcluded(chain string, subj entity.Ref, shape string) bool 
 
 // seqFacts reads verse.<trigger-of-chain> off the subject, or nil.
 func (e *Engine) seqFacts(chain string, subj entity.Ref) entity.Payload {
-	ent, ok, err := e.store.Get(subj)
+	store := e.reader(mirror.TriggerOf(chain))
+	ent, ok, err := store.Get(subj)
 	if err != nil {
 		// SAID, not folded into "no facts". These facts decide where a sequence has got to, so
 		// a read that did not happen looks exactly like a step that has not run.

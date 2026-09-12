@@ -62,6 +62,22 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	// opNode does for a Match's operators). Done once, at install, so the firing path sees
 	// only the canonical tagged form.
 	desugarPatches(&t.Action)
+	// A RULE THAT COULD NEVER MATCH IS REFUSED, not installed silent. The perms mirror is the
+	// system's, with no read held out on it, so a rule reading it matches nothing unless it is
+	// the system's own — and the one that should read it is exactly that one: a system charter
+	// watching policy change. Anybody else's is told so here rather than left to wonder.
+	if entity.PolicyOf(e.store) != nil {
+		for _, st := range t.reads() {
+			if p := st.Path(); len(p) >= 2 && p[0] == entity.VerseRoot && p[1] == entity.PermsSystem {
+				if ok, _ := entity.Holds(e.store, as, entity.Read, entity.VerseRef(entity.PermsSystem)); !ok {
+					return fmt.Errorf("trigger %q reads %s, which is the perms mirror: it is the "+
+						"system's and held out to nobody, so a rule of anyone else's reading it "+
+						"would never match. Policy is watched by the system's own charter", t.Name,
+						entity.JoinSegs(p))
+				}
+			}
+		}
+	}
 	if err := t.Condition.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}

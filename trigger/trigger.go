@@ -464,6 +464,18 @@ type occasion struct {
 	// the replays were not pinned to the same revision. They are, so this is about cost; but
 	// the cost is the kind that is discovered in production rather than in a test.
 	snap *snapCache
+	// reader is the store this firing reads through: the engine's, as the rule that is
+	// firing, so what a reference resolves to is what the rule's owner may read. nil reads as
+	// the engine itself.
+	reader entity.Store
+}
+
+// reads is the store the occasion's reads go through.
+func (oc occasion) reads(e *Engine) entity.Store {
+	if oc.reader != nil {
+		return oc.reader
+	}
+	return e.store
 }
 
 // snapCache is a snapshot taken lazily and at most once. A charter that never reads at a
@@ -482,9 +494,9 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 			"belongs to, off its task's record; a task nothing in the charter started has none")
 	}
 	if oc.snap == nil {
-		return e.store.AsOf(oc.commit.Rev) // no cache wired: correct, just unshared
+		return oc.reads(e).AsOf(oc.commit.Rev) // no cache wired: correct, just unshared
 	}
-	oc.snap.once.Do(func() { oc.snap.snap, oc.snap.err = e.store.AsOf(oc.commit.Rev) })
+	oc.snap.once.Do(func() { oc.snap.snap, oc.snap.err = oc.reads(e).AsOf(oc.commit.Rev) })
 	return oc.snap.snap, oc.snap.err
 }
 

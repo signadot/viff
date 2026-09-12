@@ -67,6 +67,7 @@ context:
 - tony-format/context
 define:
   enforced: .[bool]
+  hidden: .[int]
   refused: .[object(int)]
   unreadable: .[int]
 signature:
