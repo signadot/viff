@@ -17,6 +17,16 @@ import (
 // look like ordinary emptiness. This is the one place the two builds can say who they are.
 const VersionHeader = "Verse-Version"
 
+// PrincipalHeader carries who is asking: the principal every request from the api is made as,
+// which the server stamps on every write the request makes (entity.Write.Principal). The CLI
+// fills it from its config's `user:` and `--as` overrides it where a command takes one. It is
+// self-asserted, exactly as `--as` is, and the server trusts it no harder — what it buys is
+// that a write names a party, on the write, rather than in a field only some verbs carry.
+//
+// A request without it is unattributed: nothing is refused, and what it creates reads as its
+// parent's, which is what an api used by hand from curl gets.
+const PrincipalHeader = "Verse-Principal"
+
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
 // build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and

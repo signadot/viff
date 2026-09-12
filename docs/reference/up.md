@@ -151,6 +151,7 @@ A missing file is simply an absent layer. Example `~/.config/verse.tony`:
 ```tony
 addr:  "localhost:9797"
 scope: "me"
+user:  "walter@example.com"
 llm: {
   model:      "gpt-4o"
   apiKey:     "pk-…"
@@ -158,7 +159,12 @@ llm: {
 }
 ```
 
-`addr` and `scope` are read by every command (they say which verse to talk to). The `llm`
+`addr` and `scope` are read by every command (they say which verse to talk to). `user` is who
+every command acts as: it rides each request (`Verse-Principal`), the server stamps it on every
+write the request makes, and what the request creates is owned by them. It is self-asserted —
+there is no login — and `--as` overrides it on the commands that take one, which is also why
+those commands no longer insist on the flag when the config names a user. A runner sets it to
+its own name. Env: `VERSE_USER`. The `llm`
 block, however, is read by the server (`verse up`) — it hosts the task runtime, so
 that is whose config and environment the agent driver reads for its model + creds; setting it for
 a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,

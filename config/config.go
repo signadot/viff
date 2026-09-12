@@ -51,8 +51,13 @@ const EnvConfigPath = "VERSE_CONFIG"
 //
 //tony:schemagen=verse-config,notag
 type Config struct {
-	Addr   string       `tony:"field=addr,omitzero"`
-	Scope  string       `tony:"field=scope,omitzero"`
+	Addr  string `tony:"field=addr,omitzero"`
+	Scope string `tony:"field=scope,omitzero"`
+	// User is the principal this CLI acts as: who every request is made by, and so who every
+	// write it causes is attributed to and who owns what it creates. An email for a person;
+	// a runner runs under its own name. Self-asserted — there is no login here — and `--as`
+	// overrides it on the commands that take one. Env: VERSE_USER.
+	User   string       `tony:"field=user,omitzero"`
 	Format FormatConfig `tony:"field=format,omitzero"`
 	LLM    LLMConfig    `tony:"field=llm,omitzero"`
 	// TripDuration is D for the cycle throttle: how long a firing waits when its causal chain
@@ -336,6 +341,7 @@ func readNode(path string) (*ir.Node, error) {
 func (c *Config) applyEnv() error {
 	c.Addr = envOr("VERSE_ADDR", c.Addr)
 	c.Scope = envOr("VERSE_SCOPE", c.Scope)
+	c.User = envOr("VERSE_USER", c.User)
 	c.LLM.BaseURL = envOr("PORTKEY_BASE_URL", c.LLM.BaseURL)
 	c.LLM.APIKey = envOr("PORTKEY_API_KEY", c.LLM.APIKey)
 	c.LLM.VirtualKey = envOr("PORTKEY_VIRTUAL_KEY", c.LLM.VirtualKey)

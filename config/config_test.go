@@ -247,10 +247,35 @@ func withLayers(t *testing.T, systemBase, xdgDir string) {
 	t.Cleanup(func() { SystemPath = old })
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 	for _, k := range []string{
-		EnvConfigPath, "VERSE_ADDR", "VERSE_SCOPE",
+		EnvConfigPath, "VERSE_ADDR", "VERSE_SCOPE", "VERSE_USER",
 		"VERSE_FORMAT", "VERSE_OUTPUT_FORMAT", "VERSE_WIRE_FORMAT",
 		"OPENAI_MODEL", "PORTKEY_API_KEY", "PORTKEY_VIRTUAL_KEY", "PORTKEY_BASE_URL",
 	} {
 		t.Setenv(k, "")
+	}
+}
+
+// `user:` is who the CLI acts as, and VERSE_USER overrides the file the way the other env
+// knobs do.
+func TestUserFromFileAndEnv(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "verse.tony")
+	write(t, p, "user: scott@example.com\n")
+	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	t.Setenv(EnvConfigPath, p)
+
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.User != "scott@example.com" {
+		t.Errorf("user = %q, want the file's", c.User)
+	}
+	t.Setenv("VERSE_USER", "coderunner-bot")
+	c, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.User != "coderunner-bot" {
+		t.Errorf("user = %q, want VERSE_USER over the file", c.User)
 	}
 }

@@ -621,6 +621,11 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.writeCtx()
 	defer cancel()
 	path := s.writePath(w.At, w.Sub)
+	// w.Principal DOES NOT REACH THE LOG YET. The patch request has no author field and a
+	// commit stores none (tony-format cn1n32yph12ks5wrmhn0), so what the log keeps of a write
+	// is still what changed and when. When the field lands, it is set here from w.Principal
+	// and nothing above this line changes; until then the principal is what the store's own
+	// check and the owner record at creation read, and a reader of the log has neither.
 	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
 	// that stops being readable — see entity.CheckPatchable, and the two staging deployments
 	// that were lost to it. This is the one place every write passes through, which is the only

@@ -388,7 +388,7 @@ func (e *Engine) stratum(name string) (Stratum, bool) {
 }
 
 // AddStratum installs a stratum — durably, as its trigger:strata:<name> entity.
-func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true) }
+func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true, "") }
 
 // InstallStratum is AddStratum for a CHARTER FILE: a level already installed EXACTLY as declared
 // is a no-op, and one that DIFFERS is REPLACED — the same answer InstallTrigger gives a rule,
@@ -407,15 +407,18 @@ func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true) }
 // CHANGE, naming itself. Nothing is left standing unchecked — the property the refusal bought —
 // and nothing has to be taken down to get it. It is RecheckReads one axis over, which is what an
 // operator NARROWING an `reads:` declaration already gets.
-func (e *Engine) InstallStratum(s Stratum) error {
+func (e *Engine) InstallStratum(s Stratum) error { return e.InstallStratumAs("", s) }
+
+// InstallStratumAs is InstallStratum on behalf of a principal, the way InstallTriggerAs is.
+func (e *Engine) InstallStratumAs(as string, s Stratum) error {
 	old, ok := e.stratum(s.Name)
 	if !ok {
-		return e.addStratum(s, true)
+		return e.addStratum(s, true, as)
 	}
 	if old.Level == s.Level && matchesText(old.Match) == matchesText(s.Match) {
 		return nil // the same level, declared again: the file has been applied twice
 	}
-	return e.replaceStratum(old, s)
+	return e.replaceStratum(old, s, as)
 }
 
 // replaceStratum swaps an installed level for an edited one, and puts the old one back if the
@@ -430,7 +433,7 @@ func (e *Engine) InstallStratum(s Stratum) error {
 // that puts it back has finished. checkLevels takes the lock itself and holding it across them
 // would deadlock, and the window is the one addStratum already has between appending a level and
 // promoting the rules held for it — install-time, and bounded by a syntactic check.
-func (e *Engine) replaceStratum(old, s Stratum) error {
+func (e *Engine) replaceStratum(old, s Stratum, as string) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -451,9 +454,9 @@ func (e *Engine) replaceStratum(old, s Stratum) error {
 	// in the store would not be the level the engine is running. It is what RemoveTrigger does for
 	// the rule InstallTrigger replaces, one layer down.
 	e.write(StrataRefAt(e.confine.stamp(), s.Name).At(), nil)
-	if err := e.persistStratum(s); err != nil {
+	if err := e.persistStratum(s, as); err != nil {
 		e.swapStratum(old)
-		if back := e.persistStratum(old); back != nil {
+		if back := e.persistStratum(old, as); back != nil {
 			e.logger.Error("the level that stood could not be written back",
 				"stratum", old.Name, "err", back,
 				"note", "the engine is running the old one; the store has none, so a restart would lose it")
@@ -536,7 +539,7 @@ func (e *Engine) swapStratumLocked(s Stratum) {
 //
 // The two set-properties live here rather than in validate because neither is a property of the
 // stratum being installed: both are about the ordering it is joining.
-func (e *Engine) addStratum(s Stratum, durable bool) error {
+func (e *Engine) addStratum(s Stratum, durable bool, as string) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -548,7 +551,7 @@ func (e *Engine) addStratum(s Stratum, durable bool) error {
 	e.strata = append(e.strata, s)
 	e.trigMu.Unlock()
 	if durable {
-		if err := e.persistStratum(s); err != nil {
+		if err := e.persistStratum(s, as); err != nil {
 			e.removeStratum(s.Name)
 			return err
 		}
@@ -681,7 +684,7 @@ func (e *Engine) promote(stratum string) {
 		// its subject is outside the stratum that just arrived — is reported and dropped from
 		// memory; its entity stays, so the next restart says the same thing rather than
 		// quietly forgetting a rule someone wrote.
-		if err := e.addTrigger(t, false); err != nil {
+		if err := e.addTrigger(t, false, ""); err != nil {
 			e.logger.Warn("held rule does not fit the stratum it named",
 				"trigger", t.Name, "stratum", stratum, "err", err)
 			continue
@@ -693,15 +696,16 @@ func (e *Engine) promote(stratum string) {
 // persistStratum writes s into the verse as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them
 // rather than store them (see charter.go's specField).
-func (e *Engine) persistStratum(s Stratum) error {
+func (e *Engine) persistStratum(s Stratum, as string) error {
 	doc, err := s.ToTonyIR()
 	if err != nil {
 		return fmt.Errorf("stratum %q: encoding it: %w", s.Name, err)
 	}
 	ref := StrataRefAt(e.confine.stamp(), s.Name)
 	if _, _, err := e.store.Write(entity.Write{
-		At:    ref.At(),
-		Value: e.record(doc),
+		At:        ref.At(),
+		Value:     e.record(doc),
+		Principal: as,
 	}); err != nil {
 		return fmt.Errorf("%w: stratum %q: writing %s: %w", ErrCharter, s.Name, ref, err)
 	}
@@ -732,7 +736,7 @@ func (e *Engine) LoadStrata() error {
 			errs = append(errs, err)
 			continue
 		}
-		if err := e.addStratum(s, false); err != nil {
+		if err := e.addStratum(s, false, ""); err != nil {
 			errs = append(errs, fmt.Errorf("stratum %s: %w", ent.Ref, err))
 		}
 	}

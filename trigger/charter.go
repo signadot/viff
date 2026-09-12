@@ -157,15 +157,16 @@ var ErrCharter = errors.New("the charter could not be written")
 // is on a request path (`verse c -a`), and a trigger that did not persist is one the
 // next restart silently drops. The installer is entitled to hear that at install time
 // rather than discover it after a restart, by its absence.
-func (e *Engine) persist(t Trigger) error {
+func (e *Engine) persist(t Trigger, as string) error {
 	doc, err := t.ToTonyIR()
 	if err != nil {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
 	ref := CharterRefAt(e.confine.stamp(), t.Name)
 	if _, _, err := e.store.Write(entity.Write{
-		At:    ref.At(),
-		Value: e.record(doc),
+		At:        ref.At(),
+		Value:     e.record(doc),
+		Principal: as,
 	}); err != nil {
 		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
 	}
@@ -221,7 +222,7 @@ func (e *Engine) LoadCharter() error {
 		// durable=false: it is already durable — that is where it came from. Re-writing it
 		// would be a no-op with a revision attached, and a charter subtree watch would see
 		// every restart as a charter change.
-		if err := e.addTrigger(t, false); err != nil {
+		if err := e.addTrigger(t, false, ""); err != nil {
 			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
 		}
 	}

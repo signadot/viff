@@ -93,7 +93,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			// there is held rather than refused, which would make a stratified example pass
 			// this test by not being checked.
 			for _, s := range strata {
-				if err := eng.addStratum(s, false); err != nil {
+				if err := eng.addStratum(s, false, ""); err != nil {
 					t.Errorf("%s:%d: stratum %q does not install:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, s.Name, err, indent(blk.text))
 				}
@@ -112,7 +112,7 @@ func TestDocCharartersInstall(t *testing.T) {
 				name := tr.Name
 				n++
 				tr.Name = fmt.Sprintf("doc%d", n) // unique: one engine holds them all
-				if err := eng.addTrigger(tr, false); err != nil {
+				if err := eng.addTrigger(tr, false, ""); err != nil {
 					t.Errorf("%s:%d: charter %q does not install:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, name, err, indent(blk.text))
 				}

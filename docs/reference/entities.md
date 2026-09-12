@@ -231,6 +231,16 @@ installed charter — `trigger.rule.<package>:<name>` for a rule installed at an
 question's ballots live on its record (`gate.question.<id>.ballots.<who>`), written by the
 answer path that tallies them.
 
+Two more are about who: `principal.user.<email>` lists every user that has presented itself
+over the api (a runner is the other kind a principal can be), and `perms.node.<address>` is the
+perms mirror — one record per entity whose owner is on record, keyed by the entity's own
+address spelled as one segment, holding `owner`. Every
+write carries a principal (the request's, from the CLI's `user:`; the rule's own address for a
+firing; the system for what verse writes unasked), and an entity's owner is whoever first
+wrote it, fixed until the entity is deleted. A principal that is itself an address — a rule's
+record — confers the owner of that record, so what a charter creates belongs to whoever
+installed the charter. The mirror is written only by versed; nothing is refused by it yet.
+
 One thing is deliberately not in verse's half: `provider.*` — the registry of doers is written
 by whoever runs the verse.
 

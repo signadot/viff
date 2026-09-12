@@ -203,6 +203,22 @@ type Write struct {
 	// because the ref spelling cannot carry a fourth segment.
 	Sub   string
 	Value Payload
+	// Principal is who acts: the party this write is attributed to. A user by email, a runner
+	// by name, or the address of the rule or source that acted — one string, because the
+	// perms mirror is what tells them apart, by looking each up (see Attribution). It is
+	// SELF-ASSERTED at the api, and the store trusts it no harder than `--as`: what it buys
+	// is that every write names a party the store can later check against what its place
+	// permits, and that the check reads the write itself rather than a side record only some
+	// paths keep.
+	//
+	// Empty is unattributed. A store wrapped by As fills it, which is how a request's or a
+	// firing's principal reaches every write made on its behalf — the compare-and-swap ones
+	// through Modify included — without each call site carrying it.
+	//
+	// It rides the write to the log once the log can hold it (tony-format
+	// cn1n32yph12ks5wrmhn0); until then it reaches the store's own check and the owner record
+	// an entity gets at creation, and no further.
+	Principal string
 	// When are the preconditions, ALL of which must hold. Empty means unconditional.
 	//
 	// A precondition about a FIELD is built by nesting the pattern under the path's segments,

@@ -14,7 +14,7 @@ import (
 func TestLaunchOfResolvesTheNamedAxes(t *testing.T) {
 	l, err := launchOf("rev-1", launch.Spec{
 		Prompt: "review it", Driver: "llm", Vector: "auto", Grant: "read-only",
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestLaunchOfResolvesTheNamedAxes(t *testing.T) {
 // keeps exactly the behaviour it had: the runtime's own vector, and an unbounded scope.
 // Resolving "unstated" to a value — any value — would change every existing charter.
 func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
-	l, err := launchOf("p1", launch.Spec{Prompt: "go"})
+	l, err := launchOf("p1", launch.Spec{Prompt: "go"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +50,10 @@ func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
 // defaulting it to the wildcard would be the same bug with an error message attached, and
 // strictly worse than the original because it reads as though it was honored.
 func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
-	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Grant: "reed-only"}); err == nil {
+	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Grant: "reed-only"}, ""); err == nil {
 		t.Fatal("an unknown grant name must fail the spawn, not resolve to unbounded")
 	}
-	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Vector: "sometimes"}); err == nil {
+	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Vector: "sometimes"}, ""); err == nil {
 		t.Fatal("an unknown vector name must fail the spawn")
 	}
 }
@@ -63,7 +63,7 @@ func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
 func TestLaunchOfCarriesFrameAndTools(t *testing.T) {
 	l, err := launchOf("p1", launch.Spec{
 		Prompt: "go", Frame: "answer with a severity", Tools: []string{"read_file"},
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

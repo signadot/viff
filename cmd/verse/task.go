@@ -70,7 +70,7 @@ func (cfg *taskInboxConfig) run(cc *cli.Context, args []string) error {
 
 type taskDoConfig struct {
 	*cli.Command
-	As string `cli:"name=as desc='identity executing the task (REQUIRED — a claim must be attributable)'"`
+	As string `cli:"name=as desc='identity executing the task; the configured user when left off (a claim must be attributable)'"`
 }
 
 func taskDoCmd() *cli.Command {
@@ -88,7 +88,7 @@ func taskDoCmd() *cli.Command {
 
 type taskDoGateConfig struct {
 	*cli.Command
-	As     string `cli:"name=as desc='identity executing the task (REQUIRED — a claim must be attributable)'"`
+	As     string `cli:"name=as desc='identity executing the task; the configured user when left off (a claim must be attributable)'"`
 	Reason string `cli:"name=reason desc='what is being decided (shown to resolvers)'"`
 	// The question's shape, as a charter gate would write it: outcomes of its own with a
 	// threshold each, and a clock. Empty poses proceed or deny, one ballot each.
@@ -153,9 +153,11 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: task do gate wants a task id and a gate name", cli.ErrUsage)
 	}
-	if err := requireAs(cfg.As, "identity", "a claim must be attributable"); err != nil {
+	as, err := requireAs(cfg.As, "identity", "a claim must be attributable")
+	if err != nil {
 		return err
 	}
+	cfg.As = as
 	id, name := args[0], args[1]
 	r, err := httpGet("/tasks/"+id, nil)
 	if err != nil {
@@ -291,7 +293,8 @@ func taskDoVerb(verb string) *cli.Command {
 // execReport is the executor's report action: resolve the task's broker (its dialURL),
 // claim it as `as`, and report events onto the merged log verse observes.
 func execReport(cc *cli.Context, as, id string, events []map[string]any, result string) error {
-	if err := requireAs(as, "identity", "a claim must be attributable"); err != nil {
+	as, err := requireAs(as, "identity", "a claim must be attributable")
+	if err != nil {
 		return err
 	}
 	r, err := httpGet("/tasks/"+id, nil)
@@ -335,7 +338,7 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 type taskAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
+	As  string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
 	// Not a bypass so much as an admission: a resolver that answers exclusively can always
 	// be answered over by whoever holds this API, so the flag makes that an act with a name
 	// on it rather than a silent one.
@@ -370,9 +373,11 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	if len(args) < 2 {
 		return fmt.Errorf("%w: task %s wants a task id and a decision id", cli.ErrUsage, verb)
 	}
-	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+	as, err := requireAs(cfg.As, "identity", "a decision names who made it")
+	if err != nil {
 		return err
 	}
+	cfg.As = as
 	pid, did := args[0], args[1]
 	// Same body as `gate approve`, --say included: this route relays the answer to a remote
 	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
@@ -500,7 +505,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
-		Runner: cfg.Runner, Environment: cfg.Environment, Principal: cfg.As,
+		Runner: cfg.Runner, Environment: cfg.Environment, Principal: principal(cfg.As),
 		Answer: contract,
 	})
 	if err != nil {
@@ -525,7 +530,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
 		// stream continues to completion. Ctrl-c to detach; the task keeps running.
-		if err := streamEvents(cc, sp.ID, cfg.As); err != nil {
+		if err := streamEvents(cc, sp.ID, principal(cfg.As)); err != nil {
 			return err
 		}
 	}
@@ -652,7 +657,7 @@ func (cfg *taskAttachConfig) run(cc *cli.Context, args []string) error {
 	if pid, _, ok := strings.Cut(id, task.GateSep); ok {
 		return fmt.Errorf("task attach takes a task id, but %q is a gate id — did you mean %q?", id, pid)
 	}
-	return streamEvents(cc, id, cfg.As)
+	return streamEvents(cc, id, principal(cfg.As))
 }
 
 // streamEvents streams a task's read plane (SSE) to stdout — the agent's words, each
@@ -942,7 +947,7 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("%w: task vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
 	}
-	resp, err := httpPut("/tasks/"+id+"/vector", api.SetVector{Vector: &vec, By: cfg.As})
+	resp, err := httpPut("/tasks/"+id+"/vector", api.SetVector{Vector: &vec, By: principal(cfg.As)})
 	if err != nil {
 		return fmt.Errorf("task vector: %w", err)
 	}
@@ -957,14 +962,36 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+// asOverride is the principal a command's --as named, once it has: from then on every request
+// this invocation makes is made as them, and not as the config's user. One command runs per
+// process, so a variable is the whole of the plumbing a per-request field would need.
+var asOverride string
+
+// principal resolves who a command acts as: its --as where it took one, else the config's
+// `user:`. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
+// `--as bob` is also a request MADE by bob, and the two cannot disagree.
+func principal(as string) string {
+	if as != "" {
+		asOverride = as
+	}
+	if asOverride != "" {
+		return asOverride
+	}
+	if appCfg != nil {
+		return appCfg.User
+	}
+	return ""
+}
+
 // requireAs refuses an unattributed action. A claim, a ballot and a report all name who
 // made them, and the refusal is a USAGE error in each — so the command whose --as is most
-// obviously load-bearing prints the usage rather than a bare line.
-func requireAs(as, noun, why string) error {
-	if as == "" {
-		return fmt.Errorf("%w: --as <%s> is required (%s)", cli.ErrUsage, noun, why)
+// obviously load-bearing prints the usage rather than a bare line. What it answers is the
+// principal to act as: --as, or the config's user when the flag was left off.
+func requireAs(as, noun, why string) (string, error) {
+	if p := principal(as); p != "" {
+		return p, nil
 	}
-	return nil
+	return "", fmt.Errorf("%w: --as <%s> is required (%s): pass it, or set `user:` in the verse config", cli.ErrUsage, noun, why)
 }
 
 // oneArg parses flags (anywhere) and returns the single required positional.

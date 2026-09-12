@@ -27,5 +27,6 @@ define:
   llm: !verse-llm null
   scope: .[string]
   tripDuration: .[string]
+  user: .[string]
 signature:
   name: verse-config

@@ -637,6 +637,10 @@ type charterTx struct {
 
 func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
 
+// as is who this install is by: the request's principal, which the rule and level records are
+// written as, so that the charter acts as its installer from then on.
+func (tx *charterTx) as() string { return entity.PrincipalOf(tx.store) }
+
 // imports installs a package's declaration of what it reads, remembering the one it replaced.
 func (tx *charterTx) imports(def *ir.Node) (int, error) {
 	subs, err := trigger.ReadsFromNode(def)
@@ -652,12 +656,12 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := tx.s.setPackageImports(at, subs); err != nil {
+	if err := tx.s.setPackageImports(tx.store, at, subs); err != nil {
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
 		eng.SetReads(before)
-		return tx.s.putPackageDecl(at, prev, had)
+		return tx.s.putPackageDecl(tx.store, at, prev, had)
 	})
 	return http.StatusCreated, nil
 }
@@ -670,7 +674,7 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Stratum(st.Name)
-	if err := eng.InstallStratum(st); err != nil {
+	if err := eng.InstallStratumAs(tx.as(), st); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
@@ -700,7 +704,7 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Rule(t.Name)
-	if err := eng.InstallTrigger(t); err != nil {
+	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
@@ -805,7 +809,7 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := s.removePackage(at, r.URL.Query().Get("recurse") == "true"); err != nil {
+	if err := s.removePackage(s.scopedStore(r), at, r.URL.Query().Get("recurse") == "true"); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

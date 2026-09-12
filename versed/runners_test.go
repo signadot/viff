@@ -492,7 +492,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 
 	// The charter path, where the refusal has to travel as a failed spawn rather than as an
 	// HTTP status, because there is nobody to answer.
-	h := srv.spawnerFor(srv.Store, "", nil)("fired", launch.Spec{
+	h := srv.spawnerFor(srv.Store, "", nil, srv.Eng.Principal)("fired", launch.Spec{
 		Prompt: "t", Driver: "scripted", Runner: "verse.runners.pool.typo",
 	})
 	if h == nil {

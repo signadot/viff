@@ -139,6 +139,9 @@ func rootCmd() *cli.Command {
 	// filtering by what the first was asked for, which reads as a listing that lost its
 	// contents.
 	flt = &filterFlags{}
+	// The same for who the tree acts as: a --as recorded by one command must not ride the
+	// requests of the next, which only a process building the tree twice can see.
+	asOverride = ""
 	// Config precedence: /etc ← ~/.config ← env ← CLI. Load the file+env layers, use
 	// them as the flag defaults, and let an explicit flag win.
 	c, err := config.Load()

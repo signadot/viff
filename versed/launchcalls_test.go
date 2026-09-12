@@ -14,7 +14,7 @@ func TestLaunchOfTypesACallList(t *testing.T) {
 	l, err := launchOf("merge-1", launch.Spec{Calls: []launch.Call{
 		{Tool: "run_bash", Input: map[string]any{"command": "git merge --ff-only x"}},
 		{Tool: "push", Input: map[string]any{"destination": "main"}, Fatal: &[]string{"err"}},
-	}})
+	}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestLaunchOfRefusals(t *testing.T) {
 			Calls: []launch.Call{{Input: map[string]any{"command": "x"}}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := launchOf("x", tc.spec)
+			_, err := launchOf("x", tc.spec, "")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want it to mention %q", err, tc.want)
 			}
@@ -62,7 +62,7 @@ func TestLaunchOfRefusals(t *testing.T) {
 func TestLaunchOfAcceptsTheDriverWrittenOut(t *testing.T) {
 	l, err := launchOf("x", launch.Spec{
 		Driver: task.DriverCalls, Calls: []launch.Call{{Tool: "run_bash"}},
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

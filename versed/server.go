@@ -46,7 +46,9 @@ import (
 // Server is the monolith's in-process assembly: one store, one engine, one gate
 // registry, and the task runtime, behind one HTTP surface.
 type Server struct {
-	Store  entity.Store
+	Store entity.Store
+	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
+	users  sync.Map
 	Reg    *task.Registry
 	Eng    *trigger.Engine
 	Taskd  *taskd.Daemon
@@ -172,6 +174,12 @@ type scopeEngine struct {
 // so a human answers them out-of-band via POST /gate/resolve; a trigger's spawn action
 // goes through the task runtime (hosted, mirrored into the verse).
 func NewWithStore(build taskd.Builder, store entity.Store) *Server {
+	// THE STORE ACTS AS THE SYSTEM unless a request or a firing says otherwise. A mirror's
+	// projection, a question posed, the charter restored at start: none of these was asked for
+	// by anybody outside verse, and a write that names nobody would leave what it creates
+	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
+	// its rule, so this default is what remains when neither applies.
+	store = entity.As(store, entity.SystemPrincipal)
 	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
 	taskd := taskd.New(build)
@@ -325,7 +333,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
-	eng.SetSpawner(s.spawnerFor(store, "", nil))
+	eng.SetSpawner(s.spawnerFor(store, "", nil, eng.Principal))
 	return s
 }
 
@@ -444,8 +452,13 @@ func mintNonce() string {
 // derived from st because a task must be able to say where it lives before it exists —
 // see task.Launch.Scope, and git-issue kwxxm8cth12ksn99fhn0 for what publishing without
 // it cost.
-func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader) trigger.Spawner {
+func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader, principal func(chain string) string) trigger.Spawner {
 	return func(id string, spec launch.Spec) task.Handle {
+		// WHO THIS SPAWN IS BY: the rule that fired, as the engine spells it. Every record of
+		// the task is written as the rule, so the task is owned by whoever owns the rule, and
+		// the runner is told the same name as the caller it is working for.
+		by := principal(spec.Chain)
+		st := entity.As(st, by)
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
 		place, placeName, err := s.runnerFor(st, spec.Runner)
@@ -473,7 +486,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			s.reflect(st, id, h, meta)
 			return h
 		}
-		l, err := launchOf(id, spec)
+		l, err := launchOf(id, spec, by)
 		if err != nil {
 			// A charter that names an envelope this build does not have must not run
 			// UNBOUNDED. Dropping the field is how `grant: read-only` came to mean nothing
@@ -543,12 +556,14 @@ func callsOf(cs []launch.Call) ([]task.Call, error) {
 	return out, nil
 }
 
-func launchOf(id string, spec launch.Spec) (task.Launch, error) {
+func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
 		Resolver: spec.Resolver, Environment: spec.Environment,
-		Provenance: task.Provenance{Subject: spec.Subject, Chain: spec.Chain},
+		// A firing has no launcher, so its principal is the rule that fired — the address of
+		// its record, which the runner can read back. See trigger.Engine.Principal.
+		Provenance: task.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
 	}
 	// The contract travels as source, but it is PARSED here as well, and the parse is the
 	// point: a charter that wrote a contract it cannot mean fails its firing now, instead of
@@ -881,7 +896,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		// Scoped agents read file content through the verse (the connect content
 		// controller), so a validator isn't tied to the machine holding the files.
 		content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
-		eng.SetSpawner(s.spawnerFor(scoped, scope, content))
+		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng.Principal))
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
@@ -1120,7 +1135,39 @@ func (s *Server) Handler() http.Handler {
 	s.routes = rt.routes
 	// Every answer says which verse gave it, and a client that cannot be talking to this one
 	// is turned away before any of the above runs. See versioned.
-	return versioned(rt.mux)
+	return versioned(s.principals(rt.mux))
+}
+
+// principals notes every principal that presents itself, once: `verse.principal.user.<p>` is
+// the record that a party has acted here, which is what `verse d verse principal` lists. Written
+// under an absence precondition so the first sighting is the one on record, and remembered
+// per process so that a listing costs one write per party rather than one per request.
+//
+// It is a middleware rather than a line in scopedStore because reads present a principal too,
+// and a party that only ever looked is still a party the verse has met.
+func (s *Server) principals(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := principalOf(r); p != "" {
+			s.noteUser(p)
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// noteUser records p as a user of this verse, the first time this process sees them.
+func (s *Server) noteUser(p string) {
+	if _, seen := s.users.Load(p); seen {
+		return
+	}
+	_, _, err := s.Store.Write(entity.Write{
+		At:    entity.UserRef(p).At(),
+		Value: entity.Obj{"first": entity.Val(time.Now().UTC().Format(time.RFC3339))}.Payload(),
+		When:  []entity.Require{entity.Created()},
+	})
+	if err != nil {
+		return // the store did not answer; the next request asks again
+	}
+	s.users.Store(p, struct{}{})
 }
 
 // ── scripted driver: the default task runtime driver ─────────────────────
@@ -1248,12 +1295,21 @@ func (s *Server) storeForScope(scope string) entity.Store {
 	return s.Store.Scope(scope)
 }
 
+// scopedStore is the store a request writes through: the scope it named, or baseline, acting as
+// the principal the request carried. Every write a handler makes through it is attributed to
+// that principal, and every entity one creates is owned by them — which is what makes a raw
+// `verse d -put` the same kind of write as a `task run`, with no exception to remember.
 func (s *Server) scopedStore(r *http.Request) entity.Store {
+	store := s.Store
 	if sc := r.URL.Query().Get("scope"); sc != "" {
-		return s.Store.Scope(sc)
+		store = s.Store.Scope(sc)
 	}
-	return s.Store
+	return entity.As(store, principalOf(r))
 }
+
+// principalOf is who a request says it is made by (api.PrincipalHeader), and "" for a request
+// that did not say. Self-asserted, and read as such: it is recorded, never verified.
+func principalOf(r *http.Request) string { return r.Header.Get(api.PrincipalHeader) }
 
 // queryPattern reads the PAYLOAD half of the selector a read-plane route was given: ?if is a
 // tony match over the payload, rooted at the field path in ?if-at (one parameter per segment,
@@ -3357,11 +3413,9 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// Honor --scope: mirror the task:instance into that scope's copy-on-write view, not
 	// baseline — else a scoped run leaks into baseline (a baseline watch would see it). On the
 	// memory store Scope is a passthrough, so isolation only applies to the docd/logd store.
+	// And whose it is: the record of a task somebody typed is owned by whoever typed it.
 	scope := r.URL.Query().Get("scope")
-	store := s.Store
-	if scope != "" {
-		store = s.Store.Scope(scope)
-	}
+	store := s.scopedStore(r)
 	if why := ghostResolver(store, body.Resolver); why != "" {
 		http.Error(w, why, http.StatusBadRequest)
 		return
@@ -3396,9 +3450,8 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// And the same scope the record above goes to, so this run's gates reach the
 		// docket of whoever asked for it rather than everybody's.
 		Scope: scope,
-		// The ad-hoc path is the one place a principal exists today: somebody typed this.
-		// A firing has no equivalent until an install can record an author, so it sends
-		// Subject and Chain instead — see launchOf.
+		// Somebody typed this, and the principal is theirs; a firing's is the rule that
+		// fired — see launchOf.
 		Provenance: task.Provenance{Principal: body.Principal, Subject: body.Subject},
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{

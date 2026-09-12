@@ -116,7 +116,7 @@ func watchRefs(t *testing.T, q url.Values) []string {
 			t.Fatalf("decoding a frame: %v\n%s", err, data)
 		}
 		if frame.Ref == sentinel.String() {
-			return refs
+			return worldsHalf(refs)
 		}
 		refs = append(refs, frame.Ref)
 	}
@@ -225,9 +225,22 @@ func listRefs(t *testing.T, q url.Values) []string {
 	if err != nil {
 		t.Fatalf("?at %q: %v", q.Get("at"), err)
 	}
-	refs := doc.EntityPaths(at)
+	refs := worldsHalf(doc.EntityPaths(at))
 	sort.Strings(refs)
 	return refs
+}
+
+// worldsHalf drops verse's own records from a listing. The fixture is written as the system,
+// so every entity in it earns an owner record under `verse.perms`, and these tests are about
+// the payload filter over the world's entities and not about what verse keeps beside them.
+func worldsHalf(refs []string) []string {
+	out := refs[:0]
+	for _, r := range refs {
+		if !strings.HasPrefix(r, entity.VerseRoot+".") {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // The read takes the same filter the stream does, and picks the same entities by it. What

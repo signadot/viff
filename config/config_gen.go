@@ -36,6 +36,11 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["scope"] = ir.FromString(string(s.Scope))
 	}
 
+	// Field: User
+	if s.User != "" {
+		irMap["user"] = ir.FromString(string(s.User))
+	}
+
 	// Field: Format (optional)
 	if !isZeroValue_Config_Format(s.Format) {
 		node, err = s.Format.ToTonyIR(opts...)
@@ -104,6 +109,12 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "scope", fieldNodeUnwrapped.Type)
 			}
 			s.Scope = string(fieldNodeUnwrapped.String)
+		case "user":
+			// Field: User
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "user", fieldNodeUnwrapped.Type)
+			}
+			s.User = string(fieldNodeUnwrapped.String)
 		case "format":
 			// Field: Format
 			if err := s.Format.FromTonyIR(fieldNode, opts...); err != nil {

@@ -56,7 +56,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	if s.tripPaceSet {
 		eng.SetTripPace(s.tripPace)
 	}
-	eng.SetSpawner(s.spawnerFor(s.Store, "", nil))
+	eng.SetSpawner(s.spawnerFor(s.Store, "", nil, eng.Principal))
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
@@ -257,7 +257,7 @@ func logPackage(format string, a ...any) {
 //
 // Then the engine is told, and the record is written — in that order, so a declaration the
 // engine refuses is not one a restart brings back.
-func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
+func (s *Server) setPackageImports(store entity.Store, at string, subs []trigger.Subtree) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
@@ -288,7 +288,7 @@ func (s *Server) setPackageImports(at string, subs []trigger.Subtree) error {
 	if len(subs) > 0 {
 		p[trigger.ReadsField] = trigger.StampReads(subs)
 	}
-	if _, _, err := s.Store.Write(entity.Write{
+	if _, _, err := store.Write(entity.Write{
 		At:    entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
 		Value: p.Payload(),
 	}); err != nil {
@@ -322,19 +322,19 @@ func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
 // back a declaration that had fewer reads than the one it replaces would leave the wider list
 // standing, and the next restart would restore a package reading where its charter says it does
 // not (restorePackageImports).
-func (s *Server) putPackageDecl(at string, was entity.Payload, had bool) error {
+func (s *Server) putPackageDecl(store entity.Store, at string, was entity.Payload, had bool) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
 	}
 	ref := trigger.PackageRef(confine.Stamp())
-	if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ref}}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: entity.Path{Ref: ref}}); err != nil {
 		return fmt.Errorf("removing the declaration at %s: %w", at, err)
 	}
 	if !had {
 		return nil
 	}
-	if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ref}, Value: was}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: entity.Path{Ref: ref}, Value: was}); err != nil {
 		return fmt.Errorf("putting the declaration at %s back: %w", at, err)
 	}
 	return nil
@@ -418,7 +418,7 @@ func (s *Server) restorePackageImports() {
 // A CHARTER UNDER IT is refused rather than swept up, because `demo` and `demo.pr` are two
 // packages and somebody removing the first did not necessarily mean the second. The refusal
 // names them; `recurse` is the operator saying they did mean it.
-func (s *Server) removePackage(at string, recurse bool) error {
+func (s *Server) removePackage(store entity.Store, at string, recurse bool) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
@@ -446,7 +446,7 @@ func (s *Server) removePackage(at string, recurse bool) error {
 	// Deepest first, so a package is gone before the address above it is.
 	sort.Sort(sort.Reverse(sort.StringSlice(targets)))
 	for _, target := range targets {
-		if err := s.uninstallOne(target); err != nil {
+		if err := s.uninstallOne(store, target); err != nil {
 			return err
 		}
 	}
@@ -478,7 +478,7 @@ func (s *Server) packagesUnder(at string) []string {
 
 // uninstallOne takes down one package: its rules, then its levels, then its declaration, then
 // the engine that was running them.
-func (s *Server) uninstallOne(at string) error {
+func (s *Server) uninstallOne(store entity.Store, at string) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
@@ -495,7 +495,7 @@ func (s *Server) uninstallOne(at string) error {
 			return fmt.Errorf("%s: stratum %q: %w", at, st.Name, err)
 		}
 	}
-	if _, _, err := s.Store.Write(entity.Write{
+	if _, _, err := store.Write(entity.Write{
 		At: entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
 	}); err != nil {
 		return fmt.Errorf("%s: removing the declaration: %w", at, err)
@@ -516,7 +516,7 @@ func (s *Server) uninstallOne(at string) error {
 		if entity.Str(ent.Payload, trigger.AtField) != at {
 			continue
 		}
-		if _, _, err := s.Store.Write(entity.Write{At: entity.Path{Ref: ent.Ref}}); err != nil {
+		if _, _, err := store.Write(entity.Write{At: entity.Path{Ref: ent.Ref}}); err != nil {
 			return fmt.Errorf("%s: removing %s: %w", at, ent.Ref, err)
 		}
 		left++

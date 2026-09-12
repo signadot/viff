@@ -51,6 +51,11 @@ func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	// A RoundTripper must not modify the request it is given.
 	r = r.Clone(r.Context())
 	r.Header.Set(api.VersionHeader, s.mine)
+	// AND WHO IS ASKING, on every request for the same reason the version is: a principal
+	// that reaches three of the four call sites is one the fourth writes as nobody.
+	if p := principal(""); p != "" {
+		r.Header.Set(api.PrincipalHeader, p)
+	}
 
 	base := s.base
 	if base == nil {

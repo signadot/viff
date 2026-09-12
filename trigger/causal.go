@@ -49,16 +49,30 @@ type link struct {
 // same lookup — an absent parent has depth 0, so its children stamp 1, which is exactly "an
 // external write starts a fresh chain".
 func (e *Engine) caused(chain string, parent int64) entity.Store {
-	return causal{Store: e.store, e: e, chain: chain, parent: parent}
+	return causal{Store: e.store, e: e, chain: chain, parent: parent, principal: e.Principal(chain)}
+}
+
+// Principal is who a firing acts as: the address of the rule's own record, `verse.trigger.rule.
+// <name>` (`<package>:<name>` in a package). The rule and not its owner, because a firing has
+// no launcher — nobody typed it — and a write carrying the installer's name would say they
+// acted when they did not. The perms mirror resolves the address to whoever owns the record,
+// which is how the charter acts as its owner without the write saying so.
+//
+// A chain is the trigger name at its root, then the hooks beneath it (review.onDone), and a
+// name cannot carry a dot (validTriggerName), so the root is everything before the first one.
+func (e *Engine) Principal(chain string) string {
+	name, _, _ := strings.Cut(chain, ".")
+	return CharterRefAt(e.confine.stamp(), name).String()
 }
 
 // causal is the store a firing writes through. Everything but Write and Scope delegates to the
 // engine's own store, so it is a stamp and not a second store implementation.
 type causal struct {
 	entity.Store
-	e      *Engine
-	chain  string
-	parent int64
+	e         *Engine
+	chain     string
+	parent    int64
+	principal string // the rule's record address; see Engine.Principal
 }
 
 // Write commits through the underlying store and records what the commit descends from.
@@ -67,7 +81,14 @@ type causal struct {
 // precondition wrote nothing, and entity.Modify retries, so one patch may issue several writes
 // of which at most one lands. An unrecorded commit reads as external later, which under-throttles
 // rather than over-throttles — the direction to fail in.
+//
+// The write is stamped with the rule's address before it goes down, where it names no
+// principal of its own, so an entity a rule brings into being is owned by whoever owns the
+// rule, and not by the system the engine's own store writes as.
 func (c causal) Write(w entity.Write) (bool, int64, error) {
+	if w.Principal == "" {
+		w.Principal = c.principal
+	}
 	committed, rev, err := c.Store.Write(w)
 	if committed && rev != 0 {
 		c.e.recordCause(rev, c.chain, c.parent)
@@ -80,7 +101,7 @@ func (c causal) Write(w entity.Write) (bool, int64, error) {
 // would silently lose the stamp and read as external — a hole that would open the first time
 // anything scoped inside a firing, and would look like the throttle simply not noticing.
 func (c causal) Scope(name string) entity.Store {
-	return causal{Store: c.Store.Scope(name), e: c.e, chain: c.chain, parent: c.parent}
+	return causal{Store: c.Store.Scope(name), e: c.e, chain: c.chain, parent: c.parent, principal: c.principal}
 }
 
 // recordCause places a commit in its chain: one hop further from the external write than the

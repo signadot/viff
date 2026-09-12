@@ -811,7 +811,7 @@ func renderFrame(s string, in, out codec.Format, color, wire bool) string {
 type gateConfig struct {
 	*cli.Command
 	Answer   string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
-	As       string `cli:"name=as desc='identity answering (REQUIRED with --answer — a decision names who made it)'"`
+	As       string `cli:"name=as desc='identity answering; the configured user when left off (a decision names who made it)'"`
 	Say      string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
 	Override bool   `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
 }
@@ -872,10 +872,11 @@ func gateCmd() *cli.Command {
 				}
 				return printBody(cc, resp)
 			default:
-				if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+				as, err := requireAs(cfg.As, "identity", "a decision names who made it")
+				if err != nil {
 					return err
 				}
-				return answerGate(cc, id, cfg.Answer, cfg.As, cfg.Say, cfg.Override, "answered")
+				return answerGate(cc, id, cfg.Answer, as, cfg.Say, cfg.Override, "answered")
 			}
 		})
 }
@@ -931,7 +932,7 @@ func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done
 type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate (REQUIRED — a decision names who made it)'"`
+	As  string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
 	// The refusal an exclusive resolver produces names the binding and says to use this, so
 	// the flag is the answer to a question the operator has just been asked. It is a named
 	// act rather than a bypass: `exclusive` was never real against whoever holds this API,
@@ -968,10 +969,11 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 	if len(args) < 1 {
 		return fmt.Errorf("%w: gate %s wants a decision id", cli.ErrUsage, verb)
 	}
-	if err := requireAs(cfg.As, "identity", "a decision names who made it"); err != nil {
+	as, err := requireAs(cfg.As, "identity", "a decision names who made it")
+	if err != nil {
 		return err
 	}
-	return answerGate(cc, args[0], choiceOf(approve), cfg.As, cfg.Say, cfg.Override, done)
+	return answerGate(cc, args[0], choiceOf(approve), as, cfg.Say, cfg.Override, done)
 }
 
 // choiceOf spells a yes-or-no answer as the option it chooses. approve and deny are the two

@@ -70,12 +70,12 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 		}
 		eng := New(entitytest.Store(t), task.AutoResolver{})
 		for _, s := range strata {
-			if err := eng.addStratum(s, false); err != nil {
+			if err := eng.addStratum(s, false, ""); err != nil {
 				t.Fatalf("stratum %q: %v", s.Name, err)
 			}
 		}
 		for _, tr := range trigs {
-			if err := eng.addTrigger(tr, false); err != nil {
+			if err := eng.addTrigger(tr, false, ""); err != nil {
 				t.Fatalf("rule %q does not install: %v", tr.Name, err)
 			}
 			// …and the target was READ as a fan-out rather than as a payload.
@@ -130,9 +130,9 @@ func TestEachRefusals(t *testing.T) {
 			}
 			eng := New(entitytest.Store(t), task.AutoResolver{})
 			for _, s := range strata {
-				_ = eng.addStratum(s, false)
+				_ = eng.addStratum(s, false, "")
 			}
-			err := eng.addTrigger(trigs[0], false)
+			err := eng.addTrigger(trigs[0], false, "")
 			if err == nil {
 				t.Fatal("installed, and should not have")
 			}
@@ -168,11 +168,11 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
 	}
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false); err != nil {
+	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 	ds := trigs[0].Action.allDerives()
@@ -209,11 +209,11 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 	}
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	err := eng.addTrigger(trigs[0], false)
+	err := eng.addTrigger(trigs[0], false, "")
 	if err == nil {
 		t.Fatal("a fan-out into its own stratum installed; a derive must land strictly above")
 	}
@@ -248,11 +248,11 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false); err != nil {
+	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 
@@ -374,11 +374,11 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false); err != nil {
+	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 	subj := entity.RefAt("git", "commit", "verse/abc")
@@ -473,11 +473,11 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false); err != nil {
+	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 
@@ -570,11 +570,11 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		t.Fatal("did not parse as a charter")
 	}
 	for _, s := range strata {
-		if err := eng.addStratum(s, false); err != nil {
+		if err := eng.addStratum(s, false, ""); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false); err != nil {
+	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
 		t.Fatalf("gather does not install: %v", err)
 	}
 

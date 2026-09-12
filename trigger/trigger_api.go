@@ -18,7 +18,7 @@ import (
 // verse as its trigger:rule:<name> entity, so it is still there after a restart (see
 // charter.go). It validates each gate's mode and rejects a duplicate name. The engine
 // interprets the trigger directly — there is no separate compiled form.
-func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
+func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true, "") }
 
 // InstallTrigger is AddTrigger for a CHARTER FILE: a rule of the same name is REPLACED rather
 // than refused, because the file is what the operator means and re-applying one is the ordinary
@@ -32,9 +32,14 @@ func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true) }
 // stratum is still a rule of this name, and asking only Trigger left it standing — so re-applying
 // an edited file met nameTaken's "is already held" and was refused, which is the one act this
 // function exists to allow.
-func (e *Engine) InstallTrigger(t Trigger) error {
+func (e *Engine) InstallTrigger(t Trigger) error { return e.InstallTriggerAs("", t) }
+
+// InstallTriggerAs is InstallTrigger on behalf of a principal: the rule's record is written as
+// theirs, so the charter acts as its installer from then on. The empty principal is the
+// store's own — the system, for a restore — and is what InstallTrigger passes.
+func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 	e.RemoveTrigger(t.Name)
-	return e.addTrigger(t, true)
+	return e.addTrigger(t, true, as)
 }
 
 // addTrigger installs a trigger, writing it to the durable charter when durable.
@@ -46,7 +51,7 @@ func (e *Engine) InstallTrigger(t Trigger) error {
 // entity's definition and reinstalled with it. Writing it out again would give one rule two
 // owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
 // Goals were the case that motivated the flag; see docs/working/goals-residual.md.
-func (e *Engine) addTrigger(t Trigger, durable bool) error {
+func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err
 	}
@@ -157,7 +162,7 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 		e.pending = append(e.pending, t)
 		e.trigMu.Unlock()
 		if durable {
-			if err := e.persist(t); err != nil {
+			if err := e.persist(t, as); err != nil {
 				e.unhold(t.Name)
 				return err
 			}
@@ -190,7 +195,7 @@ func (e *Engine) addTrigger(t Trigger, durable bool) error {
 	// back after it — the same way removing a trigger stops FURTHER firings rather than
 	// cancelling one in flight.)
 	if durable {
-		if err := e.persist(t); err != nil {
+		if err := e.persist(t, as); err != nil {
 			e.RemoveTrigger(t.Name) // an installed rule the next restart would lose is worse than none
 			return err
 		}
