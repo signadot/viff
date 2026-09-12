@@ -1,0 +1,325 @@
+# Permissions, walked: from a write of your own to a gate somebody else answers
+
+[perms.md](perms.md) is the model: one owner per node, grants on the records, one check on
+every write and read. This is the same thing walked, in the order a person meets it. Most of
+what you own in a verse you never wrote by hand — a task record the runtime mirrored, a
+question a rule posed, a branch a source reflected — and the permissions on those follow from
+who asked for the work rather than from who typed. That is the part that surprises, so this
+walks it in five steps: your own entities; a task you run and its gates; a charter and what it
+owns; a gate with no resolver behind it; and a gate with one.
+
+Three things to know before the first step, because each is a reasonable guess that is wrong:
+
+- **A group is not a principal.** `verse.principal.group.<name>` is an address that may stand
+  where a grantee stands — on a grant line, in a gate's `answerers`, behind a binding — and it
+  admits the group's members, each acting as themselves. Nothing ever acts *as* a group, no
+  request can present one, and a group owns nothing.
+- **The `agent` principal exists and nothing motivates it yet.** A harness driving verse from
+  outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
+  own kind, and today it is granted exactly what a person is. It is a name that grants can
+  narrow against later; until they do, read `[user, agent]` as "people".
+- **Identity is self-asserted.** A request is whoever `user:` in the config or `--as` or
+  `VERSE_USER` says, and the server trusts it as far as that. The check holds every write to
+  what its place permits *for that name*; who is behind the name is a different question, not
+  yet asked.
+
+## Step 1: your own entities, and who wrote them
+
+Everything you type carries a principal. Set `user: you@example.com` in the CLI's config
+([reference/up.md](reference/up.md#configuration)) and every request is yours; `VERSE_USER` or `--as`
+overrides it for one command. The seeded entities from [the tutorial](tutorial.md#2-entities)
+are a fine place to start, and so is an address of your own:
+
+```sh
+verse data spaces scott notes --put '{todo: [buy milk]}'
+verse perms spaces scott notes
+```
+
+```tony
+at: spaces.scott.notes
+grants:
+- at: [spaces, scott, notes]
+  read: ["*"]
+owner: walter@example.com
+```
+
+Two rules made that record. The world's half is open to *create* until a record says
+otherwise, so a write where nothing stood makes the writer the owner: `spaces.scott.notes` is
+scott's because scott wrote it first. And a new node holds out what the nearest `default:` above
+it says, which at the root is `read: ["*"]` — readable by everyone, writable by its owner
+alone. Another user is refused the write and told why:
+
+```
+VERSE_USER=ana@example.com verse data spaces scott notes --put '{todo: []}'
+→ 403 refused: ana@example.com holds read at spaces.scott.notes and writing it needs read-write;
+  the nearest owner on record is walter@example.com at spaces.scott.notes
+```
+
+The refusal is the check's own words, and it always says three things: what the requester
+holds there, what the act needed, and which record decided. When something is refused that you
+expected to pass, that last part is where to look.
+
+**Take a place.** `verse perms` on a node you may create under gives it a record of its own,
+and what you set there governs what is made beneath it:
+
+```sh
+verse perms spaces scott --default '{}' --grants '[]'   # nothing held out beneath, nothing on it
+verse data spaces scott private --put '{…}'             # scott's alone: no read for anyone
+verse perms spaces scott --grant '{read: [ana@example.com]}'
+verse perms spaces scott --revoke '{read: [ana@example.com]}'
+```
+
+`--default` is what a node created *beneath* holds out, copied onto each new record at
+creation; `--grants` replaces what the node itself holds out; `--grant` adds a line and
+`--revoke` takes one off. A grant withdrawn stops future acts and touches nothing that exists.
+Ownership changes only by create and delete: there is no transfer, and the way to hand
+something over is to make it under a place the other party owns.
+
+**The store knows who wrote every commit.** The principal on a write rides it into the
+substrate as the commit's author, so the log itself says who, without a second record — a
+delta replayed or watched from the store carries the author back. The CLI does not print it
+yet; what it prints is the record that decided, which is the same fact from the other side.
+
+**What is not yours to write.** `verse data --put` under `verse.` is refused whatever you hold:
+the reserved half is written through the verbs that own it (`verse c -a`, `verse task run`,
+`verse gate approve`, `verse perms`), and beneath each verb the store checks the write against
+its place, so nothing reaching the store can stamp a task or answer a question on your behalf.
+`verse data verse perms` is refused too: a person reads their own records with `verse perms
+<path>`, never the mirror.
+
+## Step 2: a task you run, and what it may do for its gates
+
+A task is an entity the runtime mirrors, and the mirror writes it *as whoever asked for it*:
+
+```sh
+verse task run 'check the migration' --subject demo.pr.1 --vector ask
+verse perms verse task instance <id>
+```
+
+The task is yours: the record beneath `verse.task.instance` names you as owner, because the
+seed holds `owner` there out to everyone and the spawn wrote as you. Its `run` and `claim`
+records follow it. Reads of the task go by the default it was created with — everyone — and
+writes to it are yours and the runtime's.
+
+**The runner working it holds the task and nothing else.** When a worker claims the task —
+a brokered claim naming its identity, or a runner reached by url acting as the `identity` on
+its entity — versed grants it `read-write` and `control` on the task and on this run, and every
+report from then on is written as it. That grant stops at the task's record. A question the
+task raises stands at its own address, `verse.gate.question.<id>`, and a grant on the task does
+not reach through the task's record to it, so the executor may not answer its own gate. Nothing
+special-cases this; it is what "a grant does not reach through an owner record" means.
+
+**What you may say about its gates.** Four things, and they answer different questions:
+
+- `--vector auto|ask|park` is *whether* the run stops to ask at all. `auto` asks nobody.
+- `--gates <file>` is *which* actions ask, and what each question takes to settle: a list in
+  the shape a charter's `gates:` uses — `match` over verbs and tools, `need`, `options`,
+  `deadline`, and `answerers`:
+
+  ```tony
+  - name: shell
+    mode: ask
+    match: {verbs: [exec]}
+    need: 1
+    deadline: {within: "4h", default: deny}
+    answerers: [ana@example.com]
+  ```
+
+  `answerers` is *who* may answer: it becomes the question's `read-write` line when the
+  question is posed, in place of the docket's default. Left off, the default stands — `[user,
+  agent]` in the seed, which is any person.
+- `--resolver <binding>` hands the run's questions to a binding instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
+- `--as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
+
+What the task may *do* in the world — write files, push, delegate — is a different axis: the
+`grant` on a spawn (`all`, `read-only`, `no-delegate`, `none`, [trigger-model.md](trigger-model.md#action--what-fires))
+is a hard envelope the runtime refuses outside of, not a line on a record. A manual run takes
+the runtime's default; a charter's spawn names one. The two do not meet: a permissions grant
+says who may touch an entity, a spawn's grant says what a task may attempt.
+
+**Answering.** You answer your own task's questions by co-owning them, whether or not you are
+named; whoever is named on the line answers too; the runner is refused. Try it as somebody else
+and read the refusal:
+
+```
+VERSE_USER=x verse gate <id> --answer proceed
+→ 403 refused: x holds read at verse.gate.question."<id>" and answering it needs read-write;
+  the nearest owner on record is system at verse.gate.question."<id>"
+```
+
+`x` holds `read` because the docket's default gave every question `read: ["*"]`; it does not
+hold `read-write` because it is not on the line. A worker that hits something the task cannot
+decide raises a gate up itself, and may say to whom: `verse task do gate <id> <name> --as
+<identity> --to ana@example.com`. The spawn's own gate of that name, when it names answerers,
+stands over what the worker says.
+
+## Step 3: a charter, and what it owns
+
+A rule has no identity of its own. It acts **as the address of its record**,
+`verse.trigger.rule.<package>:<name>`, and the check resolves that to the record's owner — the
+person who installed the charter. Everything follows from that one resolution:
+
+- **Its writes are the installer's.** A `patch` or `derive` a firing makes is written as the
+  rule, admitted or refused as the installer would be. Install a charter that patches a place
+  you may not write and the firing is refused with your name in the 403, on the same terms a
+  `verse data --put` would be.
+- **What it spawns is the installer's.** A task a firing starts is owned by whoever owns the
+  rule, exactly as a task you ran by hand is yours — and its questions are co-owned by you.
+- **It reads as the installer.** A rule's condition is evaluated over what its owner may read,
+  and a rule is neither woken by nor latches on a change it may not see. Two people with
+  different grants installing the same rule get two rules that fire on different worlds.
+- **It co-owns every question its rules pose.** A gate's question carries `under`, the rule's
+  address, and the check follows that link for ownership. The installer answers what their own
+  charter asked without being named on any line.
+
+Installing is open in the seed — `verse.trigger.rule.*` holds `owner` out to everyone — so
+anybody may install, and a rule's record holds out `read: ["*"]` by the root's default, so
+anybody may read what is installed. The one place a rule may not read is the perms mirror:
+`verse.perms` is the system's with nothing held out on it, and a rule watching it is refused at
+install and told why; the charter the system stands behind, from `systemCharter:` in the
+deployment's config, is the one that may. A package's `reads:` declaration is a separate
+question — what its rules may reference *outside their own address* — and is checked at install
+beside all of this.
+
+On staging, `verse-dev.merge` was installed by walter@example.com, and so:
+
+```sh
+verse perms verse trigger rule 'verse-dev.merge:train-run'
+```
+
+```tony
+owner: walter@example.com
+grants:
+- at: [verse, trigger, rule, "verse-dev.merge:train-run"]
+  read: ["*"]
+```
+
+Every train the rule cuts, every task it runs and every `merge-to-main` question it poses is
+scott's to control and to answer, and nobody else's unless a line says so.
+
+## Step 4: a gate with nobody behind it
+
+A charter gate poses the same record a task's gate does, and the record says everything about
+who may settle it. Take the gate from the previous step, as it was posed on staging:
+
+```sh
+verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
+```
+
+```tony
+owner: system
+grants:
+- at: [verse, gate, question, verse.trigger.train-run.merge-to-main~adaa5e99]
+  read: ["*"]
+  read-write: [user, agent]
+```
+
+Read it as three questions:
+
+- **Who may see it?** `read: ["*"]` — everyone, runners included. That is the docket's
+  default, copied onto the record at pose.
+- **Who may answer it?** The `read-write` line. This gate named no `answerers:`, so it took
+  the default too: any person, any agent. A runner is not on it and is refused.
+- **Who owns it?** The system, and — through `under`, which `verse perms` does not print but
+  the check follows — the `train-run` rule's owner. Owners answer, and owners alone hold
+  `control`: cancelling, or escalating as the owner rather than as an answerer.
+
+**To narrow the next ones,** name the answerers on the gate in the charter and re-install the
+file; the questions posed from then on carry that line instead of the default:
+
+```tony
+  gates:
+  - name: merge-to-main
+    mode: ask
+    answerers: [walter@example.com, verse.principal.group.release]
+    need: 2
+    deadline: {within: "24h", default: deny}
+```
+
+`need` over the answerers is what one-or-many means: one ballot per answerer, `need: 1` a
+race, `need` equal to their number all of them. The install refuses a gate nobody could settle
+— a threshold above the answerers named, an address that names nobody — so a misspelling is
+caught there rather than by a question standing unanswerable for a day. A re-install re-poses
+nothing: a question already on the docket keeps the record it was posed with.
+
+**To narrow the one that stands,** write its record. You are a co-owner through the rule, and
+`verse perms` is the owner's verb:
+
+```sh
+verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
+  --grants '[{at: [verse, gate, question, "verse.trigger.train-run.merge-to-main~adaa5e99"], read: ["*"], read-write: [walter@example.com]}]'
+```
+
+**To close the docket for a whole verse,** narrow the default on `verse.gate.question` — it is
+the one default in the seed, and a private verse sets it to `{read: ["*"]}` or less, after
+which only co-owners, named answerers and bindings answer anything.
+
+**Handing it on.** `verse gate escalate <id> --as <who> [--say <why>]` is open to whoever may
+answer, and it takes no `--to`: the question goes to the next rung of the ladder covering its
+subject, and the ladder is the standing bindings. On a verse with none, an escalation lands
+the question back on the open docket, where it already was. Giving the ladder a rung is
+[step 5](#step-5-a-gate-with-a-resolver-behind-it).
+
+## Step 5: a gate with a resolver behind it
+
+A binding ([reference/resolvers.md](reference/resolvers.md)) is who answers questions about a
+subject: a service that dials in, a person, or a group. It is a grant with a door in front of
+it. The door is `condition.subject`, a match over the entities whose questions it covers, or
+`byRef`, so a spawn's `--resolver` or a rule's `gating.resolver` can name it. The grant is
+what binding a question does to the record:
+
+```sh
+verse resolver add - <<'EOF'
+name: ani
+kind: merge
+condition:
+  subject: {path: [verse-dev, merge, train, "*"]}
+method: {driver: person, who: peggy@example.com}
+deadline: {within: "4h", then: escalate}
+EOF
+verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 --as walter@example.com
+```
+
+Binding **replaces the `read-write` line** with whoever answers as the binding: the binding's
+address for a `url` service, whose instance answers as it; the person for `person`; the
+group's members for `group`, each as themselves. The default `[user, agent]` line goes with it,
+so nobody outside the binding answers any more — except the co-owners, who hold it by
+ownership and not by the line. `read` stays as the default gave it. Unbinding, when the
+binding is removed or the ladder runs out, gives the default line back.
+
+**The ladder.** Escalation walks the standing bindings that cover the subject **by name**, from
+the one the question is on to the next, and past the last one to the open docket. A binding's
+`deadline: {within, then: escalate}` walks the same rung on its own when the question stands
+unanswered that long, so a person who is away does not hold a question forever. A question's
+own `deadline`, from the gate, is a different clock: it *settles* the question on its default.
+Both are on the record, and the earlier fires first.
+
+**What a service holds.** A `url` binding is answered through an instance,
+`verse.resolvers.instance.<name>@<origin>`, and the instance acts as the binding: its verdict,
+its escalation and its position are written as `verse.resolvers.<kind>.<name>`, and that address
+is what the question's line holds. The service says what it decided and never who it is —
+`by` on the decision frame is the binding, stamped by verse. `exclusive` on a binding decides
+whose answer *counts* when several may answer, and is not a security boundary: the line is.
+
+**Groups, here and on a gate.** `verse group add release walter@example.com ana@example.com`
+writes `verse.principal.group.release`, its maker's to change. Membership is read when it is
+checked, never copied, which is the one grantee whose meaning moves after the fact — on
+purpose: change who is in the group and every line that names it follows. A member may be a
+principal, a kind, `*`, another group or a binding's address, walked to a bounded depth; a
+cycle admits nobody. A group binding, `method: {driver: group, group:
+verse.principal.group.release}`, and a gate's `answerers: [verse.principal.group.release]` hold
+a question out to the same people; the difference is that the binding is a rung on the ladder
+and the gate's line is not.
+
+## What to check when something surprises you
+
+- **A refusal names the record that decided.** Read that record with `verse perms <path>`; if
+  you may not read it, you are outside the node's `read`, which is the first fact.
+- **A question is not under the task.** Look at `verse.gate.question.<id>`, not at the task, and
+  remember the runner is refused there by design.
+- **A rule acts as its installer.** A firing refused, or a rule that never wakes, is usually the
+  installer's own grants seen through the rule.
+- **`verse status` counts.** `perms: {refused, unreadable, hidden}` is the check's census since
+  the process started: refusals, checks the mirror could not answer, and what listings withheld.
+- **`[user, agent]` means people.** Until the agent principal is given a life of its own, a
+  line holding both is the docket's openness, no more.

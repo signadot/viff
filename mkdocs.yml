@@ -23,6 +23,7 @@ nav:
 - Entities and the store:
   - change-events.md
   - perms.md
+  - perms-guide.md
 - Tasks and autonomy:
   - task-control.md
   - attached-resolvers.md

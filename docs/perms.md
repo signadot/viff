@@ -10,7 +10,9 @@ The surface is small. A request names who makes it (`user:` in the CLI's config,
 refused write or read is a 403 that says who wanted what and which record decided; `verse
 status` counts the refusals; `verse perms <path>` is how an owner reads and sets their own
 record; and the records live at `verse.perms.node.<address>`, written by versed alone. [reference/entities.md](reference/entities.md#two-halves-one-tree) has the
-spellings; [reference/up.md](reference/up.md#config) the config.
+spellings; [reference/up.md](reference/up.md#config) the config. [perms-guide.md](perms-guide.md)
+walks the same model in the order a person meets it, from an entity of their own to a gate a
+resolver answers.
 
 ## Principals
 
