@@ -338,9 +338,10 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 					if !a.named(names, principal, who) {
 						continue
 					}
-					if l == Control {
-						acc.control = true
-					} else if l.rank() > acc.level.rank() {
+					if l == Control || l == OwnerLevel {
+						acc.control = true // an owner holds control, by grant as by record
+					}
+					if l != Control && l.rank() > acc.level.rank() {
 						acc.level = l
 					}
 				}

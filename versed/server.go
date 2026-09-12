@@ -47,7 +47,10 @@ import (
 // Server is the monolith's in-process assembly: one store, one engine, one gate
 // registry, and the task runtime, behind one HTTP surface.
 type Server struct {
-	Store entity.Store
+	// SystemCharter is the path of the charter file installed at start as the system, when the
+	// deployment names one (config.Config.SystemCharter).
+	SystemCharter string
+	Store         entity.Store
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
 	users  sync.Map
 	Reg    *task.Registry
@@ -1015,6 +1018,13 @@ func (s *Server) Start(ctx context.Context) {
 	// waiting for somebody to reconnect. It follows the baseline load because the two split the
 	// same listing between them — baseline takes the unstamped records, a package its own.
 	phase("restored packages", s.restorePackages)
+	// And the charter the deployment itself stands behind, as the system. After the restore,
+	// so that it is installed over what stood rather than under it, and every time, since an
+	// install of what already stands is a no-op with a revision attached and the file is the
+	// truth about what the system's charter is.
+	if s.SystemCharter != "" {
+		phase("installed the system charter", s.installSystemCharter)
+	}
 
 	// And the docket. A selection's question is durable and the goroutine awaiting it is
 	// not, so one left by the previous verse has nobody reading its ballots: this gives each
@@ -1157,31 +1167,53 @@ func (s *Server) Handler() http.Handler {
 //
 // It is a middleware rather than a line in scopedStore because reads present a principal too,
 // and a party that only ever looked is still a party the verse has met.
+//
+// THE SYSTEM IS NOT SELF-ASSERTABLE. A request saying it is the system is refused here, since
+// a header saying "system" is precisely the assertion that was fine while nothing was refused
+// and is a way to hold everything once something is. What installs a system-owned charter is
+// versed itself, from the file its deployment names (Server.SystemCharter).
 func (s *Server) principals(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if p := principalOf(r); p != "" {
-			s.noteUser(p)
+		p := principalOf(r)
+		if p == entity.SystemPrincipal {
+			http.Error(w, "the system is versed itself, and a request cannot be made as it: a "+
+				"charter the system stands behind is installed from the file the deployment "+
+				"names (systemCharter in its config)", http.StatusForbidden)
+			return
+		}
+		kind := entity.UserKind
+		switch r.Header.Get(api.PrincipalKindHeader) {
+		case "":
+		case entity.AgentKind:
+			kind = entity.AgentKind
+		default:
+			http.Error(w, "principal kind: `agent`, or none for a person", http.StatusBadRequest)
+			return
+		}
+		if p != "" {
+			s.notePrincipal(kind, p)
 		}
 		h.ServeHTTP(w, r)
 	})
 }
 
-// noteUser records p as a user of this verse, the first time this process sees them — unless
-// the name is a RUNNER's. A worker that claimed work is listed under verse.principal.runner
-// by the claim, and a name that then turns up on the api is the runner, not a person: listing
-// it as a user too would hand it what a question holds out to people, which is the one grant
-// the model keeps from an executor.
-func (s *Server) noteUser(p string) {
-	if _, seen := s.users.Load(p); seen {
+// notePrincipal records p as a principal of the given kind, the first time this process sees
+// them — unless the name is a RUNNER's. A worker that claimed work is listed under
+// verse.principal.runner by the claim, and a name that then turns up on the api is the runner,
+// not a person: listing it as a user too would hand it what a question holds out to people,
+// which is the one grant the model keeps from an executor.
+func (s *Server) notePrincipal(kind, p string) {
+	key := kind + "/" + p
+	if _, seen := s.users.Load(key); seen {
 		return
 	}
 	if _, isRunner, err := s.Store.Get(entity.PrincipalRef(entity.RunnerKind, p)); err != nil || isRunner {
 		return
 	}
-	if err := entity.Note(s.Store, entity.UserKind, p); err != nil {
+	if err := entity.Note(s.Store, kind, p); err != nil {
 		return // the store did not answer; the next request asks again
 	}
-	s.users.Store(p, struct{}{})
+	s.users.Store(key, struct{}{})
 }
 
 // ── scripted driver: the default task runtime driver ─────────────────────
@@ -3179,6 +3211,37 @@ func (s *Server) permsStatus() *api.Perms {
 	return &api.Perms{Enforced: pol.Enforcing(), Refused: refused, Unreadable: unreadable}
 }
 
+// installSystemCharter applies the charter file named by SystemCharter as the system: its rules
+// are the system's, its firings act as the system, and a question one of them poses is co-owned
+// by the system alone. A file that cannot be read or installed is reported and the rest of the
+// start goes on; a verse whose system charter is missing is a verse with fewer rules, not one
+// that will not start.
+func (s *Server) installSystemCharter() {
+	data, err := os.ReadFile(s.SystemCharter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
+		return
+	}
+	docs, err := codec.ParseNodes(data, codec.Tony)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "verse: system charter %s: %v\n", s.SystemCharter, err)
+		return
+	}
+	defs := charterDocs(docs)
+	if len(defs) == 0 {
+		return
+	}
+	release, err := s.lockCharter(s.ctxOrBackground())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
+		return
+	}
+	defer release()
+	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemPrincipal), "", "", defs); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: system charter %s: %v\n", s.SystemCharter, err)
+	}
+}
+
 // firedTotal is how many entities this verse's triggers have acted on: every engine running a
 // charter here, baseline's and each package's, added up.
 //
@@ -4044,8 +4107,16 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 // taskControl routes cancel/say: a task the local runtime hosts is served by it (live
 // detail); otherwise the request goes to the runner's handle (a brokered/remote task),
 // so the same command works wherever a task runs.
+//
+// CONTROL IS HELD, not assumed: the task's owner holds it by owning the task, and the runner
+// working it by the grant its claim made. Asked of the store before anything is relayed, the
+// way an answer is, since what a control call does happens elsewhere and leaves no record here
+// to refuse.
 func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
+	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id))) {
+		return
+	}
 	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return

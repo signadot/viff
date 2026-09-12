@@ -55,6 +55,9 @@ func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	// that reaches three of the four call sites is one the fourth writes as nobody.
 	if p := principal(""); p != "" {
 		r.Header.Set(api.PrincipalHeader, p)
+		if k := principalKind(); k != "" {
+			r.Header.Set(api.PrincipalKindHeader, k)
+		}
 	}
 
 	base := s.base

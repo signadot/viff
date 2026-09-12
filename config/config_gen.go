@@ -41,6 +41,16 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["user"] = ir.FromString(string(s.User))
 	}
 
+	// Field: Agent
+	if s.Agent != "" {
+		irMap["agent"] = ir.FromString(string(s.Agent))
+	}
+
+	// Field: SystemCharter
+	if s.SystemCharter != "" {
+		irMap["systemCharter"] = ir.FromString(string(s.SystemCharter))
+	}
+
 	// Field: Format (optional)
 	if !isZeroValue_Config_Format(s.Format) {
 		node, err = s.Format.ToTonyIR(opts...)
@@ -115,6 +125,18 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "user", fieldNodeUnwrapped.Type)
 			}
 			s.User = string(fieldNodeUnwrapped.String)
+		case "agent":
+			// Field: Agent
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "agent", fieldNodeUnwrapped.Type)
+			}
+			s.Agent = string(fieldNodeUnwrapped.String)
+		case "systemCharter":
+			// Field: SystemCharter
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "systemCharter", fieldNodeUnwrapped.Type)
+			}
+			s.SystemCharter = string(fieldNodeUnwrapped.String)
 		case "format":
 			// Field: Format
 			if err := s.Format.FromTonyIR(fieldNode, opts...); err != nil {

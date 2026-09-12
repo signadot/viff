@@ -27,6 +27,13 @@ const VersionHeader = "Verse-Version"
 // parent's, which is what an api used by hand from curl gets.
 const PrincipalHeader = "Verse-Principal"
 
+// PrincipalKindHeader says what KIND of principal is asking, when it is not a person: `agent`
+// for an operator agent — a harness driving verse from outside through the api, which is a
+// principal of its own and not the person whose terminal it runs in. Absent means a user. The
+// server lists the principal under that kind (verse.principal.<kind>.<name>), which is what a
+// grant to the kind reaches. `system` is not a kind anybody may claim: the system is versed.
+const PrincipalKindHeader = "Verse-Principal-Kind"
+
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
 // build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and

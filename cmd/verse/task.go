@@ -978,7 +978,19 @@ func principal(as string) string {
 		return asOverride
 	}
 	if appCfg != nil {
+		if appCfg.Agent != "" {
+			return appCfg.Agent
+		}
 		return appCfg.User
+	}
+	return ""
+}
+
+// principalKind is the kind the principal acts under: `agent` when the CLI is configured as an
+// operator agent and no --as named a person instead, and "" — a user — otherwise.
+func principalKind() string {
+	if asOverride == "" && appCfg != nil && appCfg.Agent != "" {
+		return "agent"
 	}
 	return ""
 }

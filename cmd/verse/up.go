@@ -284,6 +284,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	srv.AdminAddr = adm.Addr()    // published on /status: a derived port is knowable, not guessed
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
+	srv.SystemCharter = appCfg.SystemCharter
 	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
 	// running at a rate nobody asked for is exactly what the setting exists to prevent.
 	if d, set, err := appCfg.TripPace(); err != nil {

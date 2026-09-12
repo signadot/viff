@@ -57,9 +57,20 @@ type Config struct {
 	// write it causes is attributed to and who owns what it creates. An email for a person;
 	// a runner runs under its own name. Self-asserted — there is no login here — and `--as`
 	// overrides it on the commands that take one. Env: VERSE_USER.
-	User   string       `tony:"field=user,omitzero"`
-	Format FormatConfig `tony:"field=format,omitzero"`
-	LLM    LLMConfig    `tony:"field=llm,omitzero"`
+	User string `tony:"field=user,omitzero"`
+	// Agent is the operator agent this CLI acts as, when it is one: a harness driving verse
+	// through the api is a principal of its own, and not the person whose terminal it runs in.
+	// When set, every request is made as the agent (under its own kind, api.PrincipalKindHeader)
+	// rather than as User; `--as` still overrides it where a command takes one. Env: VERSE_AGENT.
+	Agent string `tony:"field=agent,omitzero"`
+	// SystemCharter is the path of a charter file versed installs at start AS THE SYSTEM — the
+	// rules the deployment itself stands behind, such as the one that watches policy change.
+	// A system-owned charter has to be installed by something, and `--as system` over the api
+	// is exactly the self-assertion that stops being fine once writes are refused; so the file
+	// the deployment ships is the way. Server-side, read by `verse up`. Env: VERSE_SYSTEM_CHARTER.
+	SystemCharter string       `tony:"field=systemCharter,omitzero"`
+	Format        FormatConfig `tony:"field=format,omitzero"`
+	LLM           LLMConfig    `tony:"field=llm,omitzero"`
 	// TripDuration is D for the cycle throttle: how long a firing waits when its causal chain
 	// has run past the point where some rule must have fired twice about one subject. Empty
 	// means the default; "0" REFUSES the firing instead of pacing it, which stops a runaway
@@ -342,6 +353,8 @@ func (c *Config) applyEnv() error {
 	c.Addr = envOr("VERSE_ADDR", c.Addr)
 	c.Scope = envOr("VERSE_SCOPE", c.Scope)
 	c.User = envOr("VERSE_USER", c.User)
+	c.Agent = envOr("VERSE_AGENT", c.Agent)
+	c.SystemCharter = envOr("VERSE_SYSTEM_CHARTER", c.SystemCharter)
 	c.LLM.BaseURL = envOr("PORTKEY_BASE_URL", c.LLM.BaseURL)
 	c.LLM.APIKey = envOr("PORTKEY_API_KEY", c.LLM.APIKey)
 	c.LLM.VirtualKey = envOr("PORTKEY_VIRTUAL_KEY", c.LLM.VirtualKey)

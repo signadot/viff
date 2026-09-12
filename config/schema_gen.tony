@@ -23,9 +23,11 @@ context:
 - tony-format/context
 define:
   addr: .[string]
+  agent: .[string]
   format: !verse-format null
   llm: !verse-llm null
   scope: .[string]
+  systemCharter: .[string]
   tripDuration: .[string]
   user: .[string]
 signature:

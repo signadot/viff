@@ -456,11 +456,19 @@ func charterDocs(docs []*ir.Node) []*ir.Node {
 // rather than refused, and a file whose author wrote both should not leave half its rules
 // dormant because of how it was laid out; then the rules.
 func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGroup, int, error) {
-	groups, err := charterGroups(defs, r.URL.Query().Get("at"))
+	q := r.URL.Query()
+	return s.installCharterAs(s.scopedStore(r), q.Get("scope"), q.Get("at"), defs)
+}
+
+// installCharterAs is the install with the request already read off: the store the installer
+// acts through, the scope and the address the file is being applied at. The system's own
+// charter comes through here from a file rather than a request (installSystemCharter).
+func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*ir.Node) ([]charterGroup, int, error) {
+	groups, err := charterGroups(defs, at)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
-	tx := &charterTx{s: s, store: s.scopedStore(r)}
+	tx := &charterTx{s: s, store: store}
 	for _, g := range groups {
 		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
 		// refused must leave the address as it found it, and a package engine standing where
@@ -468,7 +476,7 @@ func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGrou
 		if g.at != "" && !s.packagesSeenAt(g.at) {
 			tx.fresh = append(tx.fresh, g.at)
 		}
-		eng, err := s.charterEngineAt(r, g.at)
+		eng, err := s.charterEngineFor(scope, g.at)
 		if err != nil {
 			code, err := tx.refuse(http.StatusBadRequest, err)
 			return nil, code, err
@@ -604,7 +612,13 @@ func declaredAt(def *ir.Node) (string, error) {
 // charterEngineAt is the engine a group installs into: a scope's when one is asked for, else
 // the package's at this address, else baseline's.
 func (s *Server) charterEngineAt(r *http.Request, at string) (*trigger.Engine, error) {
-	if scope := r.URL.Query().Get("scope"); scope != "" {
+	return s.charterEngineFor(r.URL.Query().Get("scope"), at)
+}
+
+// charterEngineFor is charterEngineAt with the request read off: a scope's engine, baseline's,
+// or a package's.
+func (s *Server) charterEngineFor(scope, at string) (*trigger.Engine, error) {
+	if scope != "" {
 		if s.ctx == nil {
 			return nil, errors.New("engine not started")
 		}
