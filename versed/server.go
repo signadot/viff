@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -180,6 +181,17 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
 	store = entity.As(store, entity.SystemPrincipal)
+	// A refusal the check would make is reported here, one line each, while it is counted
+	// rather than refused; once it refuses, the caller hears it and nothing is logged twice.
+	entity.PolicyOf(store).Log(func(format string, args ...any) {
+		slog.Warn(fmt.Sprintf(format, args...))
+	})
+	// And what the system holds out, written before anything is asked of the store on
+	// anybody's behalf: a request that arrived before the seed would be checked against a
+	// policy admitting nobody.
+	if err := seedPerms(store); err != nil {
+		slog.Warn("perms: " + err.Error())
+	}
 	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
 	taskd := taskd.New(build)
@@ -1754,7 +1766,9 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
 		At: ref.At(), Sub: q.Get("sub"),
-	}); err != nil {
+	}); refused(w, err) {
+		return
+	} else if err != nil {
 		http.Error(w, "entity remove failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -1799,6 +1813,9 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	if refused(w, err) {
+		return
+	}
 	if err != nil {
 		http.Error(w, "entity write failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -1817,6 +1834,18 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
+}
+
+// refused answers a write the permission check turned away: 403, with the check's own words,
+// which name who wanted what and the record that decided. It is the caller's answer and not
+// the store's — nothing failed downstream and a retry changes nothing — so it is not the 502
+// a store that could not be reached gets.
+func refused(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, entity.ErrForbidden) {
+		return false
+	}
+	http.Error(w, err.Error(), http.StatusForbidden)
+	return true
 }
 
 // addressAt reads an address off the wire: one kinded path, at whatever depth, as the segments
@@ -3090,6 +3119,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Charter:  s.charterTop(),
 		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
+		Perms:    s.permsStatus(),
 	}
 	// When docd-backed, publish its addresses so a controller task (verse connect)
 	// can reach the mount face; the client face is where store clients connect.
@@ -3101,6 +3131,21 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr, Admin: s.AdminAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// permsStatus is the permission check's census: what it has refused, and whether refusing is
+// what it does yet. Every store verse writes through is a view over the one attribution, so
+// one count covers a request's write, a firing's and a source's alike.
+func (s *Server) permsStatus() *api.Perms {
+	pol := entity.PolicyOf(s.Store)
+	if pol == nil {
+		return nil
+	}
+	refused, unreadable := pol.Refusals()
+	if len(refused) == 0 {
+		refused = nil
+	}
+	return &api.Perms{Enforced: pol.Enforcing(), Refused: refused, Unreadable: unreadable}
 }
 
 // firedTotal is how many entities this verse's triggers have acted on: every engine running a

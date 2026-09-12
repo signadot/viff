@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -27,31 +29,58 @@ const PermsKind = "node"
 // `verse` walks to that depth, and a record one shorter reads as an entity per field.
 func PermsRef(of Ref) Ref { return VerseRef(PermsSystem, PermsKind, of.String()) }
 
-// Attribution is what an attributed store shares across the views derived from it: which
-// nodes this process has already seen an owner recorded for, and what each address-shaped
-// principal resolves to. One per underlying store; As derives a per-principal view over it.
+// ErrForbidden is a write or a read refused by policy: the principal holds nothing at the
+// path that admits it. It is the CALLER's answer and not the store's: nothing failed, nothing
+// is retried, and the message names the level it wanted and the record that decided. Distinct
+// from a precondition that did not hold — the world saying no is a normal answer, and this is
+// not the world.
+var ErrForbidden = errors.New("refused")
+
+// Attribution is what an attributed store shares across the views derived from it: the perms
+// records this process has read, which nodes it has settled the owner of, what each address-
+// shaped principal resolves to, and whether a refusal refuses. One per underlying store; As
+// derives a per-principal view over it.
 //
 // The cache is an optimisation and not the truth. The owner record is written under an
 // absence precondition, so a process that has forgotten (a restart, a second replica) costs
-// one refused write per node and never a second owner.
+// one refused write per node and never a second owner. A grant is different: a revoked grant
+// cached for the life of the process is a check that admits what policy withdrew, so every
+// write this process makes to the mirror drops what it cached about that node.
 type Attribution struct {
 	mu sync.Mutex
+	// records memoises the perms record at an address, nil for a known absence. It is what the
+	// walk up a node's prefixes reads, and the check consults nothing else.
+	records map[string]*permsRecord
 	// decided is every node this process has settled the owner record of: written it, found
 	// it standing, or found nothing to write because the node above owns it already.
 	decided map[Ref]struct{}
 	// owners memoises resolve: an address-shaped principal to the principal that owns it. A
 	// miss is not kept, since the record it would have found can appear at any install.
 	owners map[string]string
-	// above memoises the owner on record at an address, for the walk up a node's prefixes.
-	// "" is a known absence; the walk stops at the first present one, and the root is the
-	// system's.
-	above map[string]string
+	// kinds memoises a principal being listed under a kind; only a listing is kept, since a
+	// principal noted stays noted.
+	kinds map[string]bool
+	// enforce says a refusal refuses. Until it is set the check runs in SHADOW: a refusal is
+	// counted and logged and the write proceeds, which is how a deployment finds the flow the
+	// seed missed before anything is refused.
+	enforce bool
+	refused map[Level]int
+	// unreadable counts checks the mirror could not answer, which in shadow proceed and are
+	// counted apart: a store that is down is not a policy that refused.
+	unreadable int
+	logf       func(format string, args ...any)
+}
+
+// permsRecord is one perms record as the check reads it.
+type permsRecord struct {
+	owner  string
+	grants []Grant
 }
 
 // As is a view of s that acts as principal: every write made through it that names no
-// principal of its own is stamped with this one, and every entity a write brings into being
-// gets its owner recorded. A store already attributed is re-derived rather than wrapped
-// twice, sharing what the first knows.
+// principal of its own is stamped with this one, every write is checked against what its
+// place permits, and every entity a write brings into being gets its owner recorded. A store
+// already attributed is re-derived rather than wrapped twice, sharing what the first knows.
 //
 // The empty principal is a view that stamps nothing — an api request that named nobody —
 // and records no owner, so the node reads as its parent's, which is the answer a
@@ -71,6 +100,49 @@ func PrincipalOf(s Store) string {
 	return ""
 }
 
+// PolicyOf is the attribution an attributed store shares — where enforcement is switched and
+// the shadow counters read — and nil for a store that is not attributed.
+func PolicyOf(s Store) *Attribution {
+	if a, ok := s.(*attributed); ok {
+		return a.attr
+	}
+	return nil
+}
+
+// Enforce switches a refusal from counted to refused.
+func (a *Attribution) Enforce(on bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.enforce = on
+}
+
+// Enforcing reports whether a refusal refuses.
+func (a *Attribution) Enforcing() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.enforce
+}
+
+// Log sets where a shadow refusal is reported, one line each.
+func (a *Attribution) Log(logf func(format string, args ...any)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.logf = logf
+}
+
+// Refusals is what the check has refused since this process started, by the level the write
+// wanted, and how many checks the mirror could not answer. In shadow the writes proceeded;
+// enforced, they did not.
+func (a *Attribution) Refusals() (byLevel map[string]int, unreadable int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	byLevel = map[string]int{}
+	for l, n := range a.refused {
+		byLevel[string(l)] = n
+	}
+	return byLevel, a.unreadable
+}
+
 // attributed is the store a principal writes through. Everything but Write and Scope
 // delegates, so it is a stamp and not a second store, the same shape as the engine's causal
 // store — and for the same reason: Modify takes a Store, so the compare-and-swap path is
@@ -81,28 +153,56 @@ type attributed struct {
 	principal string
 }
 
-// Write stamps the principal where the write names none, commits through the underlying
-// store, and keeps the perms mirror in step: an entity's owner is recorded when it is first
-// written, and forgotten when the whole entity is deleted. Ownership changes only by create
-// and delete, so those are the only two writes that touch the mirror.
+// Write stamps the principal where the write names none, checks it against what its place
+// permits, commits through the underlying store, and keeps the perms mirror in step: an
+// entity's owner is recorded when it is first written by a principal holding `owner` there,
+// and forgotten when the whole entity is deleted. Ownership changes only by create and delete,
+// so those are the only two writes that touch the mirror.
+//
+// THE CHECK IS HERE AND NOWHERE ELSE. A request's store, a firing's causal store and a
+// source's reflector are all views derived from this one, so every write verse makes on
+// anybody's behalf passes through it — the compare-and-swap ones through Modify included —
+// and a write path that does not is a write nothing checks.
 func (a *attributed) Write(w Write) (bool, int64, error) {
 	if w.Principal == "" {
 		w.Principal = a.principal
+	}
+	ref := w.At.Ref
+	wholeDelete := w.Value == nil && w.At.IsEntity() && w.Sub == ""
+	// A whole-entity delete is a co-owner's act — eviction — and not a write into the node;
+	// everything else is.
+	need := ReadWrite
+	if wholeDelete {
+		need = OwnerLevel
+	}
+	acc, err := a.accessOf(w.Principal, ref)
+	if err != nil {
+		if a.attr.noteUnreadable() {
+			return false, 0, fmt.Errorf("checking %s at %s: %w", w.Principal, ref, err)
+		}
+	} else if !acc.level.Admits(need) {
+		if a.attr.noteRefusal(need, w.Principal, ref, acc) {
+			return false, 0, refusal(need, w.Principal, ref, acc)
+		}
 	}
 	committed, rev, err := a.Store.Write(w)
 	if !committed || err != nil {
 		return committed, rev, err
 	}
-	ref := w.At.Ref
 	if ref.Reserved() && ref.System() == PermsSystem {
-		return committed, rev, nil // the mirror keeps no records about itself
+		// The mirror keeps no records about itself, and what this process cached about the
+		// node the record is about is stale the moment the record moves.
+		if ref.Kind() == PermsKind {
+			a.attr.invalidate(ref.ID())
+		}
+		return committed, rev, nil
 	}
-	if w.Value == nil && w.At.IsEntity() && w.Sub == "" {
+	if wholeDelete {
 		a.forget(ref)
 		return committed, rev, nil
 	}
-	if w.Principal != "" {
-		a.record(ref, w.Principal)
+	if w.Principal != "" && acc.level == OwnerLevel {
+		a.record(ref, acc.who)
 	}
 	return committed, rev, nil
 }
@@ -113,9 +213,187 @@ func (a *attributed) Scope(name string) Store {
 	return &attributed{Store: a.Store.Scope(name), attr: a.attr, principal: a.principal}
 }
 
-// record settles the owner of ref, once. The requester holds `owner` everywhere under the
-// wide-open default, so the requester is the owner — resolved through the perms mirror when
-// the principal is itself an address, since a charter or a source acts as whoever owns it.
+// access is what the check found: the principal a write acts as once an address is resolved
+// to its owner, the level held at the node, whether control is held there, and the nearest
+// owner record consulted, for the refusal to name.
+type access struct {
+	who     string
+	level   Level
+	control bool
+	nearest string
+}
+
+// Holds reports whether principal holds level at ref through s, which must be an attributed
+// store. The error is a mirror that did not answer, which is not a false: a check that fails
+// closed on an unreadable mirror refuses everything while the store is down, and one that
+// fails open admits everything, and neither is an answer this function gives.
+func Holds(s Store, principal string, level Level, ref Ref) (bool, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return false, fmt.Errorf("%s is not an attributed store", ref)
+	}
+	acc, err := a.accessOf(principal, ref)
+	if err != nil {
+		return false, err
+	}
+	if level == Control {
+		return acc.control, nil
+	}
+	return acc.level.Admits(level), nil
+}
+
+// accessOf is the check: what principal holds at ref.
+//
+// The principal is first resolved to the owner it confers — a rule or a source acts as whoever
+// owns its record — and the system holds everything, since it owns the root and co-owns every
+// node beneath. Otherwise the node's prefixes are walked from the node up:
+//
+//   - a record whose owner is the principal makes them a CO-OWNER, whatever stands between:
+//     ownership descends all the way down.
+//   - a record's GRANTS reach the node only until an owner record has been passed on the way
+//     up — a grant does not cross a node carrying its own owner. The grants on that owner
+//     record itself do reach it, since they hang there; the grants above do not.
+//
+// And the base case at the top, where no record was found: the root is the system's, and the
+// world's half of the tree is open — everyone holds `owner` there until a record says
+// otherwise, which is the open verse the model describes, and the one grant that is not data.
+func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
+	who := a.resolve(principal)
+	acc := access{who: who, nearest: SystemPrincipal + " (the root)"}
+	if who == SystemPrincipal {
+		acc.level, acc.control = OwnerLevel, true
+		return acc, nil
+	}
+	segs := ref.Segs()
+	crossed := false
+	for i := len(segs); i >= 1; i-- {
+		key := RefAt(segs[:i]...).String()
+		rec, err := a.recordAt(key, false)
+		if err != nil {
+			return access{}, err
+		}
+		if rec == nil {
+			continue
+		}
+		if rec.owner != "" && rec.owner == who {
+			acc.level, acc.control = OwnerLevel, true
+			return acc, nil
+		}
+		if !crossed {
+			for _, g := range rec.grants {
+				if !g.Covers(segs) {
+					continue
+				}
+				for l, names := range g.To {
+					if !a.named(names, who) {
+						continue
+					}
+					if l == Control {
+						acc.control = true
+					} else if l.rank() > acc.level.rank() {
+						acc.level = l
+					}
+				}
+			}
+		}
+		if rec.owner != "" && !crossed {
+			crossed = true
+			acc.nearest = rec.owner + " at " + key
+		}
+	}
+	if !crossed && !ref.Reserved() {
+		acc.level, acc.control = OwnerLevel, true
+	}
+	return acc, nil
+}
+
+// named reports whether a grantee list names the principal: by name, as everyone, or as a kind
+// the principal is listed under.
+func (a *attributed) named(names []string, who string) bool {
+	for _, n := range names {
+		switch n {
+		case who, Everyone:
+			return true
+		case UserKind, RunnerKind, AgentKind:
+			if who != "" && a.listedAs(n, who) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// listedAs reports whether who is listed under `verse.principal.<kind>`.
+func (a *attributed) listedAs(kind, who string) bool {
+	key := kind + "/" + who
+	a.attr.mu.Lock()
+	yes := a.attr.kinds[key]
+	a.attr.mu.Unlock()
+	if yes {
+		return true
+	}
+	_, ok, err := a.Store.Get(PrincipalRef(kind, who))
+	if err != nil || !ok {
+		return false
+	}
+	a.attr.mu.Lock()
+	if a.attr.kinds == nil {
+		a.attr.kinds = map[string]bool{}
+	}
+	a.attr.kinds[key] = true
+	a.attr.mu.Unlock()
+	return true
+}
+
+// refusal spells a refused write: who wanted what, where, and what decided it.
+func refusal(need Level, principal string, ref Ref, acc access) error {
+	who := principal
+	if who == "" {
+		who = "an unattributed request"
+	} else if acc.who != principal {
+		who = principal + " (acting as " + acc.who + ")"
+	}
+	held := "nothing"
+	if acc.level != NoAccess {
+		held = string(acc.level)
+	}
+	return fmt.Errorf("%w: %s holds %s at %s and %s needs %s; the nearest owner on record is %s",
+		ErrForbidden, who, held, ref, verb(need), need, acc.nearest)
+}
+
+func verb(need Level) string {
+	if need == OwnerLevel {
+		return "deleting it"
+	}
+	return "writing it"
+}
+
+// noteRefusal counts a refusal and reports whether it refuses.
+func (a *Attribution) noteRefusal(need Level, principal string, ref Ref, acc access) bool {
+	a.mu.Lock()
+	if a.refused == nil {
+		a.refused = map[Level]int{}
+	}
+	a.refused[need]++
+	enforce, logf := a.enforce, a.logf
+	a.mu.Unlock()
+	if !enforce && logf != nil {
+		logf("perms: %v", refusal(need, principal, ref, acc))
+	}
+	return enforce
+}
+
+// noteUnreadable counts a check the mirror could not answer and reports whether that refuses.
+func (a *Attribution) noteUnreadable() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.unreadable++
+	return a.enforce
+}
+
+// record settles the owner of ref, once: the principal that held `owner` there when it was
+// first written — resolved through the perms mirror already, since a charter or a source acts
+// as whoever owns it.
 //
 // A RECORD IS WRITTEN ONLY WHERE OWNERSHIP CHANGES. The owner of any node is the nearest record
 // up its address, and the root is the system's, so a node whose owner is the one already on
@@ -124,16 +402,15 @@ func (a *attributed) Scope(name string) Store {
 // system owns writes none. What it does write goes under an absence precondition: the first
 // writer of a node is its owner and a later write by anybody cannot move that, which is the
 // "fixed when the node is created" half of the model with no read ahead of the write.
-func (a *attributed) record(ref Ref, principal string) {
+func (a *attributed) record(ref Ref, owner string) {
 	a.attr.mu.Lock()
 	_, seen := a.attr.decided[ref]
 	a.attr.mu.Unlock()
 	if seen {
 		return
 	}
-	owner := a.resolve(principal)
 	if owner == a.ownerAbove(ref) {
-		a.decide(ref, "")
+		a.decide(ref, nil)
 		return
 	}
 	// A REFUSED WRITE IS THE RECORD STANDING ALREADY, and an error is the store not answering;
@@ -149,30 +426,34 @@ func (a *attributed) record(ref Ref, principal string) {
 	if err != nil {
 		return
 	}
+	rec := &permsRecord{owner: owner}
 	if !committed {
-		owner = a.ownerAt(ref.String(), true) // whoever got there first
+		rec, err = a.recordAt(ref.String(), true) // whoever got there first
+		if err != nil {
+			return
+		}
 	}
-	a.decide(ref, owner)
+	a.decide(ref, rec)
 }
 
 // decide remembers that ref's owner record is settled, and what the mirror now says at that
 // address for the walks and resolutions that read it — including that it says nothing.
-func (a *attributed) decide(ref Ref, owner string) {
+func (a *attributed) decide(ref Ref, rec *permsRecord) {
 	key := ref.String()
 	a.attr.mu.Lock()
 	if a.attr.decided == nil {
 		a.attr.decided = map[Ref]struct{}{}
 	}
 	a.attr.decided[ref] = struct{}{}
-	if a.attr.above == nil {
-		a.attr.above = map[string]string{}
+	if a.attr.records == nil {
+		a.attr.records = map[string]*permsRecord{}
 	}
-	a.attr.above[key] = owner
-	if owner != "" {
+	a.attr.records[key] = rec
+	if rec != nil && rec.owner != "" {
 		if a.attr.owners == nil {
 			a.attr.owners = map[string]string{}
 		}
-		a.attr.owners[key] = owner
+		a.attr.owners[key] = rec.owner
 	}
 	a.attr.mu.Unlock()
 }
@@ -182,49 +463,70 @@ func (a *attributed) decide(ref Ref, owner string) {
 func (a *attributed) ownerAbove(ref Ref) string {
 	segs := ref.Segs()
 	for i := len(segs) - 1; i >= 1; i-- {
-		if o := a.ownerAt(RefAt(segs[:i]...).String(), false); o != "" {
-			return o
+		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
+		if err == nil && rec != nil && rec.owner != "" {
+			return rec.owner
 		}
 	}
 	return SystemPrincipal
 }
 
-// ownerAt reads the owner the mirror records at an address, "" when it records none, through
-// the cache unless told to look again.
-func (a *attributed) ownerAt(key string, fresh bool) string {
+// recordAt reads the perms record at an address, nil when the mirror holds none, through the
+// cache unless told to look again. The error is the store not answering, and nothing is
+// remembered from one.
+func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	if !fresh {
 		a.attr.mu.Lock()
-		o, ok := a.attr.above[key]
+		rec, ok := a.attr.records[key]
 		a.attr.mu.Unlock()
 		if ok {
-			return o
+			return rec, nil
 		}
 	}
-	rec, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, key))
+	e, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, key))
 	if err != nil {
-		return "" // the store did not answer; do not remember a guess
+		return nil, err
 	}
-	o := ""
+	var rec *permsRecord
 	if ok {
-		o = Str(rec.Payload, OwnerField)
+		grants, gerr := ParseGrants(e.Payload)
+		if gerr != nil {
+			// A line that cannot be read grants nothing, and says so once where the record
+			// is read rather than silently at every check.
+			a.attr.mu.Lock()
+			logf := a.attr.logf
+			a.attr.mu.Unlock()
+			if logf != nil {
+				logf("perms: record at %s: %v", key, gerr)
+			}
+		}
+		rec = &permsRecord{owner: Str(e.Payload, OwnerField), grants: grants}
 	}
 	a.attr.mu.Lock()
-	if a.attr.above == nil {
-		a.attr.above = map[string]string{}
+	if a.attr.records == nil {
+		a.attr.records = map[string]*permsRecord{}
 	}
-	a.attr.above[key] = o
+	a.attr.records[key] = rec
 	a.attr.mu.Unlock()
-	return o
+	return rec, nil
+}
+
+// invalidate drops what this process cached about a node's record — and every resolution,
+// since any of them may have read it — so the next check reads the mirror as it now stands.
+func (a *Attribution) invalidate(key string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.records, key)
+	a.owners = nil
+	if ref, err := ParseAddr(key); err == nil {
+		delete(a.decided, ref)
+	}
 }
 
 // forget drops the owner record of a deleted entity, so a later creation at the address gets
 // an owner of its own rather than inheriting whoever had it before.
 func (a *attributed) forget(ref Ref) {
-	a.attr.mu.Lock()
-	delete(a.attr.decided, ref)
-	delete(a.attr.above, ref.String())
-	delete(a.attr.owners, ref.String())
-	a.attr.mu.Unlock()
+	a.attr.invalidate(ref.String())
 	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
 }
 
@@ -252,11 +554,11 @@ func (a *attributed) resolve(principal string) string {
 	}
 	p, found := principal, false
 	for hop := 0; hop < 4; hop++ {
-		o := a.ownerAt(p, false)
-		if o == "" || o == p {
+		rec, err := a.recordAt(p, false)
+		if err != nil || rec == nil || rec.owner == "" || rec.owner == p {
 			break
 		}
-		p, found = o, true
+		p, found = rec.owner, true
 	}
 	if !found {
 		return a.ownerAbove(ref)
@@ -280,7 +582,10 @@ const PrincipalSystem = "principal"
 const UserKind = "user"
 
 // UserRef addresses the record of one user having acted here.
-func UserRef(principal string) Ref { return VerseRef(PrincipalSystem, UserKind, principal) }
+func UserRef(principal string) Ref { return PrincipalRef(UserKind, principal) }
+
+// PrincipalRef addresses the record of one principal of a kind having acted here.
+func PrincipalRef(kind, principal string) Ref { return VerseRef(PrincipalSystem, kind, principal) }
 
 // The optional read-side methods a store may have pass through, or a wrapped store would look
 // like one that cannot say a read failed, and a restore over an unreadable store would read as

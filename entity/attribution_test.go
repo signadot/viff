@@ -21,6 +21,37 @@ func (s *stamped) Write(w entity.Write) (bool, int64, error) {
 	return s.Store.Write(w)
 }
 
+// seedRecord writes a perms record by hand: the owner of ref and what they hold out. The
+// mirror is versed's to write, and a test standing in for versed writes it the same way —
+// through an attributed view, so the view learns the record moved.
+func seedRecord(t *testing.T, store entity.Store, ref entity.Ref, owner string, grants ...entity.Grant) {
+	t.Helper()
+	rec := entity.Obj{}
+	if owner != "" {
+		rec[entity.OwnerField] = owner
+	}
+	// A write merges, so a record re-written without grants says so, or the old ones stand.
+	rec[entity.GrantsField] = entity.Removed()
+	if len(grants) > 0 {
+		rec[entity.GrantsField] = entity.GrantsPayload(grants)
+	}
+	if _, _, err := store.Write(entity.Write{
+		At: entity.PermsRef(ref).At(), Value: rec.Payload(), Principal: entity.SystemPrincipal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// grantInstalls holds out `owner` under the rule slice to everyone, which is the grant versed
+// seeds so that anyone may install a charter.
+func grantInstalls(t *testing.T, store entity.Store) {
+	t.Helper()
+	seedRecord(t, store, entity.VerseRef("trigger", "rule"), "", entity.Grant{
+		At: []string{entity.VerseRoot, "trigger", "rule"}, Below: true,
+		To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
+	})
+}
+
 func ownerOf(t *testing.T, store entity.Store, ref entity.Ref) (string, bool) {
 	t.Helper()
 	rec, ok, err := store.Get(entity.PermsRef(ref))
@@ -99,6 +130,7 @@ func TestAnAddressPrincipalResolvesToItsOwner(t *testing.T) {
 	inner := &stamped{Store: entitytest.Store(t)}
 	rule := entity.VerseRef("trigger", "rule", "review")
 	scott := entity.As(inner, "scott@example.com")
+	grantInstalls(t, scott)
 	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "review"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -201,14 +233,13 @@ func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
 		t.Fatalf("something was written after the entity: %s", inner.last.At)
 	}
 
-	// A slice alice owns: the record stands at the prefix, so what alice creates beneath it
-	// records nothing, and what bob creates there does.
+	// A slice alice owns, holding out `owner` beneath it: the record stands at the prefix, so
+	// what alice creates beneath it records nothing, and what bob creates there does.
 	slice := entity.RefAt("spaces", "alice")
-	if _, _, err := system.Write(entity.Write{
-		At: entity.PermsRef(slice).At(), Value: entity.Obj{entity.OwnerField: "alice@example.com"}.Payload(),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	seedRecord(t, system, slice, "alice@example.com", entity.Grant{
+		At: []string{"spaces", "alice"}, Below: true,
+		To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
+	})
 	alice := entity.As(system, "alice@example.com")
 	mine := entity.RefAt("spaces", "alice", "notes")
 	if _, _, err := alice.Write(entity.Write{At: mine.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
@@ -224,6 +255,21 @@ func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
 	}
 	if o, ok := ownerOf(t, inner, theirs); !ok || o != "bob@example.com" {
 		t.Fatalf("bob's node under alice's slice: owner %q, %v; want bob on record", o, ok)
+	}
+
+	// A slice alice SHARES — read-write held out, not owner: what bob creates there is
+	// alice's, and records nothing.
+	shared := entity.RefAt("spaces", "alice", "shared")
+	seedRecord(t, system, shared, "alice@example.com", entity.Grant{
+		At: []string{"spaces", "alice", "shared"}, Below: true,
+		To: map[entity.Level][]string{entity.ReadWrite: {entity.Everyone}},
+	})
+	file := entity.RefAt("spaces", "alice", "shared", "file")
+	if _, _, err := bob.Write(entity.Write{At: file.At(), Value: entity.Obj{"n": 3}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if o, ok := ownerOf(t, inner, file); ok {
+		t.Fatalf("a read-write grantee's creation got a record of its own, owned by %q", o)
 	}
 }
 
@@ -243,6 +289,7 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 		t.Fatalf("before the rule has an owner it acts as the system, and a system node under the "+
 			"system's root records nothing; got a record owned by %q", o)
 	}
+	grantInstalls(t, system)
 	scott := entity.As(system, "scott@example.com")
 	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "late"}.Payload()}); err != nil {
 		t.Fatal(err)

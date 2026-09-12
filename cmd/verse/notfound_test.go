@@ -20,7 +20,6 @@ func TestAReadSaysWhenNothingStandsThere(t *testing.T) {
 		name, want string
 		args       []string
 	}{
-		{"the root of a verse nobody has written to", "the verse is empty", []string{"data"}},
 		{"a system", "nothing stands at nope", []string{"data", "nope"}},
 		{"a kind", "nothing stands at demo.pr", []string{"data", "demo", "pr"}},
 		{"an entity", `nothing stands at demo.pr."1"`, []string{"data", "demo", "pr", "1"}},
@@ -51,7 +50,9 @@ func TestAReadOfWhatStandsStillAnswers(t *testing.T) {
 	}{
 		{"the entity", []string{"data", "demo", "pr", "1"}},
 		{"its slice", []string{"data", "demo", "pr"}},
-		{"the root, now that something is written", []string{"data"}},
+		// The root always stands: a verse nobody has written to already carries what the
+		// system holds out (versed.seedPerms), so the root reads before anyone writes.
+		{"the root", []string{"data"}},
 	} {
 		if _, err := runCLI(t, tc.args...); err != nil {
 			t.Errorf("%s: %v", tc.name, err)

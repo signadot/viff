@@ -66,6 +66,15 @@ signature:
 context:
 - tony-format/context
 define:
+  enforced: .[bool]
+  refused: .[object(int)]
+  unreadable: .[int]
+signature:
+  name: verse-perms
+---
+context:
+- tony-format/context
+define:
   notes: .[string]
   position: .[int]
 signature:
@@ -177,6 +186,7 @@ define:
   gates: .[int]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
+  perms: .[nullable(verse-perms)]
   runner: .[nullable(verse-runner-status)]
   runners: .[array(string)]
   sources: .[array(string)]

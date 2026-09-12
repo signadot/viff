@@ -1878,6 +1878,15 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["listen"] = node
 	}
 
+	// Field: Perms (optional)
+	if s.Perms != nil {
+		node, err = s.Perms.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["perms"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2005,6 +2014,12 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Listen.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		case "perms":
+			// Field: Perms
+			s.Perms = &Perms{}
+			if err := s.Perms.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Status", fieldName.String)
@@ -2030,6 +2045,126 @@ func (s *Status) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates Status.
 func (s *Status) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts Perms to a Tony IR node.
+func (s *Perms) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Enforced
+	irMap["enforced"] = ir.FromBool(bool(s.Enforced))
+
+	// Field: Refused
+	if len(s.Refused) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Refused {
+			mapNodes[k] = ir.FromInt(int64(v))
+		}
+		irMap["refused"] = ir.FromMap(mapNodes)
+	}
+
+	// Field: Unreadable
+	if s.Unreadable != 0 {
+		irMap["unreadable"] = ir.FromInt(int64(s.Unreadable))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Perms from a Tony IR node.
+func (s *Perms) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Perms, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "enforced":
+			// Field: Enforced
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "enforced", fieldNodeUnwrapped.Type)
+			}
+			s.Enforced = bool(fieldNodeUnwrapped.Bool)
+		case "refused":
+			// Field: Refused
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]int)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					ctx := fmt.Sprintf("map value at key %q", k)
+					var val int
+					if v.Int64 == nil {
+						return fmt.Errorf("%s: expected number, got %v", ctx, v.Type)
+					}
+					val = int(*v.Int64)
+					m[k] = val
+				}
+				s.Refused = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"refused\"", fieldNodeUnwrapped.Type)
+			}
+		case "unreadable":
+			// Field: Unreadable
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "unreadable", fieldNodeUnwrapped.Type)
+			}
+			s.Unreadable = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Perms", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Perms to Tony format bytes.
+func (s *Perms) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Perms.
+func (s *Perms) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

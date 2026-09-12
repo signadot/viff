@@ -456,6 +456,22 @@ type Status struct {
 	Docd   *Docd         `tony:"field=docd,omitzero"`
 	LLM    *LLM          `tony:"field=llm,omitzero"`
 	Listen *Listen       `tony:"field=listen,omitzero"`
+	// Perms is what the permission check has refused since this process started. It is
+	// reported whether or not a refusal refuses, because the count is what says whether the
+	// policy a verse carries admits the flows it runs: a count that stays at zero in shadow is
+	// the evidence for turning enforcement on, and a count that climbs afterwards is a flow
+	// somebody is being refused.
+	Perms *Perms `tony:"field=perms,omitzero"`
+}
+
+// Perms is the permission check's census: refusals by the level a write wanted, checks the
+// mirror could not answer, and whether a refusal refuses or is only counted.
+//
+//tony:schemagen=verse-perms,notag
+type Perms struct {
+	Enforced   bool           `tony:"field=enforced"`
+	Refused    map[string]int `tony:"field=refused,omitzero"`
+	Unreadable int            `tony:"field=unreadable,omitzero"`
 }
 
 // RunnerStatus is how this verse runs tasks: local (in-process), broker (a dial-in
