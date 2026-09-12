@@ -32,6 +32,54 @@ func QuestionRef(id string) entity.Ref {
 	return entity.VerseRef(QuestionSystem, QuestionKind, id)
 }
 
+// RuleRef addresses the record of one rule of the charter installed at an address:
+// `verse.trigger.rule.<at>:<name>`, and the bare name for baseline. It is spelled here and
+// used by the trigger package, rather than the other way round, because a question is co-owned
+// by the rule that posed it and the mirror is what writes that down — and mirror cannot import
+// trigger.
+func RuleRef(at, name string) entity.Ref {
+	return entity.VerseRef("trigger", "rule", RecordID(at, name))
+}
+
+// RecordID is the id a charter's durable records carry: the name alone for baseline, and
+// `<at>:<name>` for a charter installed at an address, so two packages may share a name.
+func RecordID(at, name string) string {
+	if at == "" {
+		return name
+	}
+	return at + ":" + name
+}
+
+// under records what posed the question as what co-owns it (entity.SetUnder): the task, or
+// the rule of the charter that asked. The link is what lets the task's owner, or the
+// charter's, answer what their own work asked, with the question standing at its own address.
+func under(store entity.Store, q task.GateQuestion, taskID string) {
+	var origin entity.Ref
+	switch {
+	case taskID != "":
+		origin = Ref(taskID)
+	case q.Origin != "":
+		origin = RuleRef(q.At, q.Origin)
+	default:
+		return
+	}
+	_ = entity.SetUnder(store, QuestionRef(q.ID), origin)
+}
+
+// Bind holds the question out to the binding that answers it: `read-write` on the question's
+// own record, which is what a resolver binding IS under the ownership model. The grantee is
+// the binding's address, so its verdicts — made as the binding — are admitted, and a binding
+// with no question to answer holds nothing. Exactly one binding at a time: a change of hands
+// replaces the grant.
+func Bind(store entity.Store, id, binding string) {
+	ref := QuestionRef(id)
+	var gs []entity.Grant
+	if binding != "" {
+		gs = []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {binding}}}}
+	}
+	_ = entity.SetGrants(store, ref, gs)
+}
+
 // Question status, monotonic: a question is posed once and settles once.
 const (
 	QuestionPending  = "pending"
@@ -114,6 +162,8 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 	}
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
+	under(store, q, taskID)
+	Bind(store, q.ID, q.BoundTo)
 }
 
 // DeadlineOf reads a record's deadline: the duration it was posed with, the option it settles
@@ -360,7 +410,8 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
-
+	under(store, task.GateQuestion{ID: ev.ID}, taskID)
+	Bind(store, ev.ID, owner)
 }
 
 // notStatus is the precondition "this record does not say status: s".

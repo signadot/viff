@@ -25,19 +25,20 @@ import (
 // compile here and at every call site, instead of decoding to a zero value and
 // answering "unknown or already-answered decision" at runtime.
 
-// postTony sends v as tony to path and returns the response.
+// postTony sends v as tony to path and returns the response, as the tester: the principal the
+// CLI would send from its config's `user:`, so what a test does is somebody's, the way what a
+// person does is. A test about the unattributed request sends none (postAs).
 func postTony(t *testing.T, url string, v any) *http.Response {
 	t.Helper()
 	b, err := codec.Marshal(v, codec.Tony)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp, err := http.Post(url, "application/tony", strings.NewReader(string(b)))
-	if err != nil {
-		t.Fatalf("post %s: %v", url, err)
-	}
-	return resp
+	return postAs(t, tester, url, "application/tony", string(b))
 }
+
+// tester is who a test acts as.
+const tester = "tester@example.com"
 
 // An engine gate posted to the registry is answered through POST /gate/resolve carrying
 // api.Resolve — the id names the gate, choice carries the answer, and say rides along

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/api"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -65,6 +66,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/resolvers/security/security-review", nil)
+	req.Header.Set(api.PrincipalHeader, tester)
 	del, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("remove: %v", err)

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -386,6 +387,7 @@ func mustReq(t *testing.T, method, url string) *http.Request {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
+	req.Header.Set(api.PrincipalHeader, tester)
 	return req
 }
 

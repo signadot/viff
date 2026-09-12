@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/api"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -162,6 +163,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resp.Header.Set(api.PrincipalHeader, tester)
 	del, err := http.DefaultClient.Do(resp)
 	if err != nil {
 		t.Fatalf("scoped remove: %v", err)

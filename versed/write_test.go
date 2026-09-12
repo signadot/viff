@@ -158,6 +158,7 @@ func TestRemoveEntityAndField(t *testing.T) {
 	rm := func(q url.Values) int {
 		t.Helper()
 		req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/entity?"+q.Encode(), nil)
+		req.Header.Set(api.PrincipalHeader, tester)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("delete: %v", err)

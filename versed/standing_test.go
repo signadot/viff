@@ -388,6 +388,7 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 func removeResolverAt(t *testing.T, url, ref string) {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodDelete, url+"/resolvers/"+ref, nil)
+	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("remove: %v", err)

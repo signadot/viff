@@ -77,8 +77,17 @@ type Attribution struct {
 // permsRecord is one perms record as the check reads it.
 type permsRecord struct {
 	owner  string
+	under  string
 	grants []Grant
 }
+
+// UnderField is the field of a perms record naming the node this node is ALSO under, for
+// ownership: a question stands at its own address and is co-owned by whoever owns what
+// posed it — the task, the rule — exactly as it would be had it stood beneath them. The
+// link confers co-ownership and nothing else: a grant on the origin does not reach through
+// it, which is what keeps a runner's grant on its task away from the questions the task
+// raised.
+const UnderField = "under"
 
 // As is a view of s that acts as principal: every write made through it that names no
 // principal of its own is stamped with this one, every write is checked against what its
@@ -178,15 +187,9 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if wholeDelete {
 		need = OwnerLevel
 	}
-	acc, err := a.accessOf(w.Principal, ref)
+	acc, err := a.check(w.Principal, need, ref)
 	if err != nil {
-		if a.attr.noteUnreadable() {
-			return false, 0, fmt.Errorf("checking %s at %s: %w", w.Principal, ref, err)
-		}
-	} else if !acc.level.Admits(need) {
-		if a.attr.noteRefusal(need, w.Principal, ref, acc) {
-			return false, 0, refusal(need, w.Principal, ref, acc)
-		}
+		return false, 0, err
 	}
 	committed, rev, err := a.Store.Write(w)
 	if !committed || err != nil {
@@ -214,6 +217,40 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 // principal; the embedded Store's Scope would hand back the inner store and lose it.
 func (a *attributed) Scope(name string) Store {
 	return &attributed{Store: a.Store.Scope(name), attr: a.attr, principal: a.principal}
+}
+
+// Check is the decision the store makes ahead of a write, asked ahead of something else: does
+// principal hold level at ref, and if not, is that refused. It is what a route asks before
+// delivering an answer whose record it will only write afterwards, so a refusal is a refusal
+// and not a record that failed to land. The error is ErrForbidden when enforced, nil when the
+// refusal is only counted (shadow), and the store's own error when the mirror did not answer.
+func Check(s Store, principal string, level Level, ref Ref) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil // a store that attributes nothing checks nothing
+	}
+	_, err := a.check(principal, level, ref)
+	return err
+}
+
+func (a *attributed) check(principal string, need Level, ref Ref) (access, error) {
+	acc, err := a.accessOf(principal, ref)
+	if err != nil {
+		if a.attr.noteUnreadable() {
+			return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
+		}
+		return acc, nil
+	}
+	held := acc.level.Admits(need)
+	if need == Control {
+		held = acc.control
+	}
+	if !held {
+		if a.attr.noteRefusal(need, principal, ref, acc) {
+			return acc, refusal(need, principal, ref, acc)
+		}
+	}
+	return acc, nil
 }
 
 // access is what the check found: the principal a write acts as once an address is resolved
@@ -282,13 +319,23 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 			acc.level, acc.control = OwnerLevel, true
 			return acc, nil
 		}
+		if rec.under != "" {
+			co, err := a.coOwns(who, rec.under, 3)
+			if err != nil {
+				return access{}, err
+			}
+			if co {
+				acc.level, acc.control = OwnerLevel, true
+				return acc, nil
+			}
+		}
 		if !crossed {
 			for _, g := range rec.grants {
 				if !g.Covers(segs) {
 					continue
 				}
 				for l, names := range g.To {
-					if !a.named(names, who) {
+					if !a.named(names, principal, who) {
 						continue
 					}
 					if l == Control {
@@ -310,13 +357,51 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	return acc, nil
 }
 
-// named reports whether a grantee list names the principal: by name, as everyone, or as a kind
-// the principal is listed under.
-func (a *attributed) named(names []string, who string) bool {
+// coOwns reports whether who owns a record at or above addr — the node a record said it was
+// under — following further `under` links a bounded number of hops. Only ownership is read
+// here: the grants along the way are the origin's and stop at it.
+func (a *attributed) coOwns(who, addr string, hops int) (bool, error) {
+	if hops == 0 || who == "" {
+		return false, nil
+	}
+	ref, err := ParseAddr(addr)
+	if err != nil {
+		return false, nil // a link that names no place links nothing
+	}
+	segs := ref.Segs()
+	for i := len(segs); i >= 1; i-- {
+		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
+		if err != nil {
+			return false, err
+		}
+		if rec == nil {
+			continue
+		}
+		if rec.owner != "" && rec.owner == who {
+			return true, nil
+		}
+		if rec.under != "" {
+			if co, err := a.coOwns(who, rec.under, hops-1); err != nil || co {
+				return co, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// named reports whether a grantee list names the principal: by the name it acts under or the
+// owner it resolves to, as everyone, or as a kind the principal is listed under. Both names,
+// because a grant to a binding's address means "whoever acts as that binding" and a grant to
+// a person means them and everything of theirs acting as itself.
+func (a *attributed) named(names []string, principal, who string) bool {
 	for _, n := range names {
 		switch n {
 		case who, Everyone:
 			return true
+		case principal:
+			if principal != "" {
+				return true
+			}
 		case UserKind, RunnerKind, AgentKind:
 			if who != "" && a.listedAs(n, who) {
 				return true
@@ -365,8 +450,13 @@ func refusal(need Level, principal string, ref Ref, acc access) error {
 }
 
 func verb(need Level) string {
-	if need == OwnerLevel {
+	switch need {
+	case OwnerLevel:
 		return "deleting it"
+	case Control:
+		return "controlling it"
+	case Read:
+		return "reading it"
 	}
 	return "writing it"
 }
@@ -503,7 +593,7 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 				logf("perms: record at %s: %v", key, gerr)
 			}
 		}
-		rec = &permsRecord{owner: Str(e.Payload, OwnerField), grants: grants}
+		rec = &permsRecord{owner: Str(e.Payload, OwnerField), under: Str(e.Payload, UnderField), grants: grants}
 	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {
@@ -585,7 +675,7 @@ func (a *attributed) resolve(principal string) string {
 func AddGrant(s Store, ref Ref, g Grant) error {
 	a, ok := s.(*attributed)
 	if !ok {
-		return fmt.Errorf("granting at %s: not an attributed store", ref)
+		return nil // a store that attributes nothing keeps no mirror
 	}
 	rec := PermsRef(ref)
 	for {
@@ -614,6 +704,43 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 			return nil
 		}
 	}
+}
+
+// SetGrants replaces the grants on the perms record of ref, as the system: what a question
+// holds out is exactly its binding's, so a change of binding is a replacement and not an
+// addition. An empty list removes the field.
+func SetGrants(s Store, ref Ref, gs []Grant) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	value := Obj{GrantsField: Removed()}
+	if len(gs) > 0 {
+		value[GrantsField] = GrantsPayload(gs)
+	}
+	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
+	if err != nil {
+		return fmt.Errorf("granting at %s: %w", ref, err)
+	}
+	a.attr.invalidate(ref.String())
+	return nil
+}
+
+// SetUnder records that the node at ref is also under another, for ownership (UnderField):
+// what a question is posed by co-owns it. As the system, like every write to the mirror.
+func SetUnder(s Store, ref, under Ref) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	_, _, err := a.Store.Write(Write{
+		At: PermsRef(ref).At(), Value: Obj{UnderField: under.String()}.Payload(), Principal: SystemPrincipal,
+	})
+	if err != nil {
+		return fmt.Errorf("linking %s under %s: %w", ref, under, err)
+	}
+	a.attr.invalidate(ref.String())
+	return nil
 }
 
 // Note lists a principal under a kind, the first time: `verse.principal.<kind>.<principal>`,

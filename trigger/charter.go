@@ -23,6 +23,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 )
 
 // CharterSystem/CharterKind name where the durable charter lives: trigger:rule:<name>, the
@@ -75,12 +76,7 @@ func recordName(id string) string {
 
 // recordID is the id a charter record takes: the name for baseline, `<address>:<name>` for a
 // package. One function, so a rule and a stratum cannot drift on the spelling.
-func recordID(at, name string) string {
-	if at == "" {
-		return name
-	}
-	return at + ":" + name
-}
+func recordID(at, name string) string { return mirror.RecordID(at, name) }
 
 // specField is where a durable record keeps the declaration it was installed from — the rule
 // on trigger:rule. One name for it across record kinds, because it is one idea: a goal kept

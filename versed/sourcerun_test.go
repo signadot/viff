@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/api"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -72,6 +73,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	// told which (the fork is TestRemovingASourceForksOnWhatItReflected); what is being
 	// asserted here is that either answer stops the reflector.
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/local?forget=true", nil)
+	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("remove: %v", err)
@@ -410,6 +412,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 			u += "?" + flag + "=true"
 		}
 		req, _ := http.NewRequest(http.MethodDelete, u, nil)
+		req.Header.Set(api.PrincipalHeader, tester)
 		resp, err := ts.Client().Do(req)
 		if err != nil {
 			t.Fatalf("remove: %v", err)
@@ -468,6 +471,7 @@ func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
 		t.Fatalf("install = %s", resp.Status)
 	}
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/git/never", nil)
+	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := ts.Client().Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove = %v (%v), want 200 with no flag", resp.Status, err)

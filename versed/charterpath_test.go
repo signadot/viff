@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -271,6 +272,7 @@ func deletePath(t *testing.T, url, path string, recurse bool) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

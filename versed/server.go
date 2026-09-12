@@ -1134,7 +1134,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		s.answerQuestion(w, r, body, r.PathValue("id"))
+		s.answerQuestion(w, r, body, r.PathValue("id"), s.scopedStore(r))
 	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running task) — runner-agnostic like cancel/say: a
 	// local task is served by the runtime mount (taskd's setVector), a brokered/remote
@@ -1166,9 +1166,16 @@ func (s *Server) principals(h http.Handler) http.Handler {
 	})
 }
 
-// noteUser records p as a user of this verse, the first time this process sees them.
+// noteUser records p as a user of this verse, the first time this process sees them — unless
+// the name is a RUNNER's. A worker that claimed work is listed under verse.principal.runner
+// by the claim, and a name that then turns up on the api is the runner, not a person: listing
+// it as a user too would hand it what a question holds out to people, which is the one grant
+// the model keeps from an executor.
 func (s *Server) noteUser(p string) {
 	if _, seen := s.users.Load(p); seen {
+		return
+	}
+	if _, isRunner, err := s.Store.Get(entity.PrincipalRef(entity.RunnerKind, p)); err != nil || isRunner {
 		return
 	}
 	if err := entity.Note(s.Store, entity.UserKind, p); err != nil {
@@ -1312,6 +1319,22 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 		store = s.Store.Scope(sc)
 	}
 	return entity.As(store, principalOf(r))
+}
+
+// asSystem is the store versed's OWN acts go through on a request's behalf, in the request's
+// scope: the clock settling an overdue question, the layer rule handing one on when a reader
+// arrives or a binding is removed. Whoever read the docket did not decide those, and a write
+// carrying their name would say they did.
+func (s *Server) asSystem(r *http.Request) entity.Store {
+	return entity.As(s.scopedStore(r), entity.SystemPrincipal)
+}
+
+// asBinding is the store a resolver acts through: the request's scope, as the binding whose
+// instance the request came through. A service says what it decided, never who it is
+// (resolverVerdict), so the party on the write is the binding — an address, which the check
+// resolves to whoever installed it, and which a question is held out to by name.
+func (s *Server) asBinding(r *http.Request, binding string) entity.Store {
+	return entity.As(s.scopedStore(r), binding)
 }
 
 // principalOf is who a request says it is made by (api.PrincipalHeader), and "" for a request
@@ -1908,10 +1931,10 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// docket as of now, and `⊤` is a person reading.
 	out := make([]map[string]any, 0)
 	ents, readErr := pendingQuestionsErr(s.scopedStore(r))
-	if s.settleOverdueIn(s.scopedStore(r), ents) {
+	if s.settleOverdueIn(s.asSystem(r), ents) {
 		ents, readErr = pendingQuestionsErr(s.scopedStore(r))
 	}
-	s.escalateOverdueIn(s.scopedStore(r), ents)
+	s.escalateOverdueIn(s.asSystem(r), ents)
 	for _, ent := range ents {
 		p := entity.ToObj(ent.Payload)
 		rec := map[string]any{}
@@ -2029,7 +2052,7 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.answerQuestion(w, r, body, "")
+	s.answerQuestion(w, r, body, "", s.scopedStore(r))
 }
 
 // answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
@@ -2040,7 +2063,14 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 //
 // taskID is the task the answer is addressed to, empty when the caller did not say and the
 // id must be read for it.
-func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, taskID string) {
+//
+// store is the view the answerer acts through: the request's principal, or a binding for a
+// verdict that came through its instance. Whether that party may answer is asked of the store
+// BEFORE the answer is delivered, since the record is written only afterwards and a refusal
+// then would be an answer that reached the work with no record of it. The answer is theirs to
+// give when they co-own the question — the task's owner, or the charter's — or hold `read-write`
+// on it: the binding it is held out to, or a person, under the seed.
+func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, taskID string, store entity.Store) {
 	if body.ID == "" {
 		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
 		return
@@ -2060,7 +2090,9 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res := task.Choose(body.Choice, body.By)
 	res.Steer = body.Say
 
-	store := s.scopedStore(r)
+	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID))) {
+		return
+	}
 	// The options are the RECORD's, and a choice that is not one of them is refused before
 	// anything is delivered or recorded: a ballot for an option nobody offered is not dissent,
 	// it is a typo, and the refusal lists what could have been chosen. A question with no
@@ -2328,7 +2360,7 @@ func watchesARun(origin entity.Ref) bool {
 // Context arrives before the ask, which is the whole reason a resolver is attached rather than
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
-	s.escalateOverdue(s.scopedStore(r)) // a resolver arriving is a reader arriving
+	s.escalateOverdue(s.asSystem(r)) // a resolver arriving is a reader arriving
 	_, origin, ok, readErr := s.instanceOf(r)
 	if unreadable(w, r, readErr) {
 		return
@@ -2528,7 +2560,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	}
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Choice: v.Verdict, By: binding, Say: v.Say,
-	}, taskID)
+	}, taskID, s.asBinding(r, binding))
 }
 
 // ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
@@ -2566,7 +2598,7 @@ func ghostResolver(store entity.Store, ref string) string {
 // the gate it always was. The verdict, when it comes, arrives on its stream like any other
 // frame, which is what lets it lean on the precedent next time rather than remember it.
 func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding string, origin entity.Ref) {
-	store := s.scopedStore(r)
+	store := s.asBinding(r, binding)
 	q, ok, err := store.Get(mirror.QuestionRef(id))
 	// A READ THAT DID NOT HAPPEN IS NOT A MISSING QUESTION. Collapsing the two answered 404
 	// "no such question" for a store that could not be read, which tells a resolver its
@@ -2692,7 +2724,8 @@ func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
 // know. On the INSTANCE, because who was watching is per run: writing it on the binding would
 // be one resolver's second run overwriting what its first one saw.
 func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok, readErr := s.instanceOf(r); unreadable(w, r, readErr) {
+	binding, _, ok, readErr := s.instanceOf(r)
+	if unreadable(w, r, readErr) {
 		return
 	} else if !ok {
 		http.NotFound(w, r)
@@ -2708,7 +2741,7 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 		rec["notes"] = p.Notes
 	}
 	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
-	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
+	if _, _, err := s.asBinding(r, binding).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -2879,7 +2912,7 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.releaseResolver(s.scopedStore(r), ref)
+	s.releaseResolver(s.asSystem(r), ref)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2938,6 +2971,9 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	if err != nil || !won {
 		return false
 	}
+	// And the grant goes with the record: the question is held out to the binding that now
+	// answers it and to no other, the old binding's grant going with the old binding.
+	mirror.Bind(store, at.ID(), binding)
 	// The new owner gets an instance for what it now watches, because re-owning IS an
 	// ownership decision and that is where instances are minted. Without it a layer could own
 	// a question with no record through which to act on it — and no way to read the fine grain
