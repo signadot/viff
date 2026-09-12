@@ -637,7 +637,8 @@ func Unread(err error) error {
 	return unread{err}
 }
 
-// IsUnread reports whether err, or anything it wraps or joins, is a read that did not happen.
+// IsUnread reports whether err itself is a read that did not happen; an error it wraps or
+// joins is not looked into.
 //
 // It is the question a restore asks: a rule that will not parse is reported and skipped, and a
 // listing the store did not answer is waited for and asked again — because the second says
