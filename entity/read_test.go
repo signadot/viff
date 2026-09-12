@@ -271,3 +271,42 @@ func seedRecordRaw(t *testing.T, store entity.Store, ref entity.Ref, rec entity.
 		t.Fatal(err)
 	}
 }
+
+// A whole delete takes the records beneath it with the subtree: a place deleted above a node
+// that had a record of its own leaves no ghost owning an address nothing stands at, and the
+// next creator there owns what they create.
+func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemPrincipal)
+	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+	space := entity.RefAt("spaces", "alice")
+	notes := entity.RefAt("spaces", "alice", "notes")
+	if err := entity.Claim(alice, space, "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := alice.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.AddGrant(alice, notes, entity.Grant{At: notes.Segs(), To: map[entity.Level][]string{entity.Read: {"bob@example.com"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ownerOf(t, inner, notes); !ok {
+		t.Fatal("the grant gave notes no record of its own")
+	}
+	// alice deletes her place whole.
+	if _, _, err := alice.Write(entity.Write{At: space.At()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []entity.Ref{space, notes} {
+		if o, ok := ownerOf(t, inner, ref); ok {
+			t.Fatalf("the record of %s outlived the delete, owned by %q", ref, o)
+		}
+	}
+	// bob takes the address: his, and alice's grant to bob is not what admits him.
+	if _, _, err := bob.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
+		t.Fatalf("bob cannot create where alice's place was: %v", err)
+	}
+	if o, _ := ownerOf(t, inner, notes); o != "bob@example.com" {
+		t.Fatalf("re-created by bob, owner = %q", o)
+	}
+}

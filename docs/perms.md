@@ -65,7 +65,8 @@ grants:
 
 **Ownership changes only by create and delete.** There is no transfer; to hand something over,
 place it under a node the other party owns. A whole-entity delete is a co-owner's act —
-eviction — and forgets the record, so whoever creates the node next owns it. A grant withdrawn
+eviction — and forgets the record, and every record beneath it, so whoever creates there next
+owns what they create and no ghost of the old owner stands in their way. A grant withdrawn
 stops future writes and touches nothing that exists.
 
 **The owner at creation follows the level held.** When a write creates a node, the principal

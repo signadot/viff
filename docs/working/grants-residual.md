@@ -78,6 +78,8 @@ plain one; the computed edge is the cheaper spelling of the same fact.
 
 ## 7. Smaller things
 
+- A whole delete lists the mirror to forget the records beneath it, which costs the mirror's
+  size per delete; the reaper deletes tasks routinely. Unmeasured on staging's mirror.
 - A listing's filter walks the mirror once per entity, through the cache. `verse ps` on
   staging's mirror has not been measured under it; if it shows, the answer is a memo per
   distinct prefix, not a weaker check.

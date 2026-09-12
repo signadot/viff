@@ -3,6 +3,7 @@ package entity
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -850,10 +851,21 @@ func (a *Attribution) invalidate(key string) {
 }
 
 // forget drops the owner record of a deleted entity, so a later creation at the address gets
-// an owner of its own rather than inheriting whoever had it before.
+// an owner of its own rather than inheriting whoever had it before — AND EVERY RECORD BENEATH
+// IT, since a whole delete takes the subtree and a record left standing for a node that is
+// gone is a ghost: it owns an address nothing stands at, and refuses the next creator there a
+// place that is nobody's. The mirror is keyed by address, so the records beneath are found by
+// listing it, which costs the mirror's size once per whole delete.
 func (a *attributed) forget(ref Ref) {
 	a.attr.invalidate(ref.String())
 	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
+	prefix := ref.String() + "."
+	for _, rec := range a.Store.ListAt([]string{VerseRoot, PermsSystem, PermsKind}, Depth+1, func(r Ref) bool {
+		return strings.HasPrefix(r.ID(), prefix)
+	}) {
+		a.attr.invalidate(rec.Ref.ID())
+		_, _, _ = a.Store.Write(Write{At: rec.Ref.At(), Principal: SystemPrincipal})
+	}
 }
 
 // resolve is the owner a principal confers: itself, unless it is the address of a node in
