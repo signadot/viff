@@ -198,7 +198,11 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if wholeDelete {
 		need = OwnerLevel
 	}
-	acc, err := a.check(w.Principal, need, ref)
+	act := "writing it"
+	if wholeDelete {
+		act = "deleting it"
+	}
+	acc, err := a.check(w.Principal, need, ref, act)
 	if err != nil {
 		return false, 0, err
 	}
@@ -236,16 +240,21 @@ func (a *attributed) Scope(name string) Store {
 // and not a record that failed to land. The error is ErrForbidden for a refusal, and the store's
 // own error when the mirror did not answer — which refuses too, as an unreadable precondition
 // does: a check that fails open admits everything while the store is down.
-func Check(s Store, principal string, level Level, ref Ref) error {
+//
+// act is what the caller is about to do, in the refusal's words — "answering it",
+// "controlling it", "setting its record" — since the level alone does not say: `owner` is
+// what a delete needs and what reading a node's own record needs, and a refusal that guessed
+// the act from the level told an owner-record reader they may not delete.
+func Check(s Store, principal string, level Level, ref Ref, act string) error {
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil // a store that attributes nothing checks nothing
 	}
-	_, err := a.check(principal, level, ref)
+	_, err := a.check(principal, level, ref, act)
 	return err
 }
 
-func (a *attributed) check(principal string, need Level, ref Ref) (access, error) {
+func (a *attributed) check(principal string, need Level, ref Ref, act string) (access, error) {
 	acc, err := a.accessOf(principal, ref)
 	if err != nil {
 		a.attr.noteUnreadable()
@@ -257,7 +266,7 @@ func (a *attributed) check(principal string, need Level, ref Ref) (access, error
 	}
 	if !held {
 		a.attr.noteRefusal(need)
-		return acc, refusal(need, principal, ref, acc)
+		return acc, refusal(need, act, principal, ref, acc)
 	}
 	return acc, nil
 }
@@ -321,7 +330,7 @@ func CheckInto(s Store, principal string, ref Ref) error {
 		return nil
 	}
 	a.attr.noteRefusal(Read)
-	return refusal(Read, principal, ref, acc)
+	return refusal(Read, "listing it", principal, ref, acc)
 }
 
 // accessOf is the check: what principal holds at ref.
@@ -486,7 +495,7 @@ func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
 
 func (a *attributed) Get(ref Ref) (Entity, bool, error) {
 	if a.principal != SystemPrincipal {
-		if _, err := a.check(a.principal, Read, ref); err != nil {
+		if _, err := a.check(a.principal, Read, ref, "reading it"); err != nil {
 			return Entity{}, false, err
 		}
 	}
@@ -542,7 +551,7 @@ type narrowed struct {
 }
 
 func (n narrowed) Get(ref Ref) (Entity, bool, error) {
-	if _, err := n.a.check(n.a.principal, Read, ref); err != nil {
+	if _, err := n.a.check(n.a.principal, Read, ref, "reading it"); err != nil {
 		return Entity{}, false, err
 	}
 	return n.Snapshot.Get(ref)
@@ -643,7 +652,7 @@ func (a *attributed) listedAs(kind, who string) bool {
 }
 
 // refusal spells a refused write: who wanted what, where, and what decided it.
-func refusal(need Level, principal string, ref Ref, acc access) error {
+func refusal(need Level, act, principal string, ref Ref, acc access) error {
 	who := principal
 	if who == "" {
 		who = "an unattributed request"
@@ -655,19 +664,7 @@ func refusal(need Level, principal string, ref Ref, acc access) error {
 		held = string(acc.level)
 	}
 	return fmt.Errorf("%w: %s holds %s at %s and %s needs %s; the nearest owner on record is %s",
-		ErrForbidden, who, held, ref, verb(need), need, acc.nearest)
-}
-
-func verb(need Level) string {
-	switch need {
-	case OwnerLevel:
-		return "deleting it"
-	case Control:
-		return "controlling it"
-	case Read:
-		return "reading it"
-	}
-	return "writing it"
+		ErrForbidden, who, held, ref, act, need, acc.nearest)
 }
 
 // noteRefusal counts a refusal, by the level wanted.
@@ -990,7 +987,7 @@ func Claim(s Store, ref Ref, principal string) error {
 	if !ok {
 		return nil
 	}
-	acc, err := a.check(principal, OwnerLevel, ref)
+	acc, err := a.check(principal, OwnerLevel, ref, "taking it")
 	if err != nil {
 		return err
 	}

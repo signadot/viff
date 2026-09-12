@@ -1900,15 +1900,16 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, e)
 }
 
-// getPerms answers a node's perms record to somebody who holds `owner` there: a co-owner reads
-// their own record, and nobody else reads the mirror.
+// getPerms answers a node's perms record to somebody who may READ the node: who owns what you
+// can read, and what it holds out, is yours to know, the way a file you can read shows its
+// mode. Nobody reads the mirror as a whole; setting a record is its owner's (putPerms).
 func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
 	ref, err := addressAt(r.URL.Query().Get("at"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.OwnerLevel, ref)) {
+	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Read, ref, "reading its record")) {
 		return
 	}
 	s.answerPerms(w, r, ref)
@@ -1934,7 +1935,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
-	if refused(w, entity.Check(store, who, entity.OwnerLevel, ref)) {
+	if refused(w, entity.Check(store, who, entity.OwnerLevel, ref, "setting its record")) {
 		return
 	}
 	if err := entity.Claim(store, ref, who); refused(w, err) {
@@ -2259,7 +2260,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res := task.Choose(body.Choice, body.By)
 	res.Steer = body.Say
 
-	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID))) {
+	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID), "answering it")) {
 		return
 	}
 	// The options are the RECORD's, and a choice that is not one of them is refused before
@@ -4253,7 +4254,7 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 // to refuse.
 func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
-	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id))) {
+	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id), "controlling it")) {
 		return
 	}
 	if _, ok := s.Taskd.SnapshotOf(id); ok {

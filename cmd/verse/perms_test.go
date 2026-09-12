@@ -50,6 +50,19 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 		t.Fatal("ana set the default on scott's place")
 	}
 	if _, err := runCLI(t, "perms", "spaces", "scott"); err == nil {
-		t.Fatal("ana read scott's record")
+		t.Fatal("ana read the record of a place she may not read")
+	}
+	// What she may read, she may see the record of: who owns it and what it holds out.
+	t.Setenv("VERSE_USER", "walter@example.com")
+	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read: [ana@example.com]}`); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	t.Setenv("VERSE_USER", "ana@example.com")
+	out, err = runCLI(t, "perms", "spaces", "scott", "notes")
+	if err != nil || !strings.Contains(out, "owner: walter@example.com") || !strings.Contains(out, "ana@example.com") {
+		t.Fatalf("ana cannot see the record of a node she may read: %v\n%s", err, out)
+	}
+	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read-write: [ana@example.com]}`); err == nil {
+		t.Fatal("ana set the record of a node she may only read")
 	}
 }
