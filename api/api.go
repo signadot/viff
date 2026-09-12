@@ -458,6 +458,10 @@ type Status struct {
 	// — so `rules: 0` appears where a charter really holds none, and nowhere else. Status is a
 	// census of numbers and the charter surface is what answers what a rule IS.
 	//
+	// `arming`, when present, names rules counted in `rules` whose watch is still being opened:
+	// restored from the charter over a store that did not answer, in the charter and firing on
+	// nothing until it does. Absent on a verse that is up.
+	//
 	// A TREE rather than a flat list of addresses, because addresses SHARE PREFIXES and a
 	// status line is read at a glance: `verse-dev.drift` and `verse-dev.merge` are two charters
 	// in one place, and a list said `verse-dev` twice and the shape not at all.
@@ -471,6 +475,12 @@ type Status struct {
 	// that climbs is a flow somebody is being refused, which is either the policy's intent or
 	// a row the seed is missing.
 	Perms *Perms `tony:"field=perms,omitzero"`
+	// Restoring is the phases of the server's start still being asked again, by name: each
+	// reads a slice of the store, the store did not answer, and what it would have restored —
+	// the sources, the docket's deadlines, a charter — is not running yet. A read that did
+	// not happen is asked again until it does; this is the sign that one is. Absent on a verse
+	// that is up.
+	Restoring []string `tony:"field=restoring,omitzero"`
 }
 
 // Group is a named set of principals (`verse group add`): as a grantee, its address admits its

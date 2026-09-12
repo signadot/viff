@@ -1989,6 +1989,15 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["perms"] = node
 	}
 
+	// Field: Restoring
+	if len(s.Restoring) > 0 {
+		slice := make([]*ir.Node, len(s.Restoring))
+		for i, v := range s.Restoring {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["restoring"] = ir.FromSlice(slice)
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2121,6 +2130,23 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Perms = &Perms{}
 			if err := s.Perms.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+		case "restoring":
+			// Field: Restoring
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Restoring = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"restoring\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {

@@ -46,7 +46,12 @@ verse
        [--broker-advertise-addr host:port]   publish THIS in each task's dialURL instead, when a
                                              worker dials the broker by a name the process cannot
                                              bind (a Service, a tailnet device)
-  status                                     engine/store snapshot
+  status                                     engine/store snapshot. `restoring:` names the
+                                             phases of a start still being asked again — each
+                                             read the store, the store did not answer, and what
+                                             it restores is not running yet; `arming:` under a
+                                             charter names its rules whose watch is still being
+                                             opened. Both absent on a verse that is up
   schema [<name>]                            the whole schema: the root — what a verse looks like,
                                              by top-level path — then every shape it names.
                                              A name prints just that one definition

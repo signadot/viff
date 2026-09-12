@@ -185,6 +185,14 @@ type Engine struct {
 	// removed trigger keeps firing off a watch nobody can see. Guarded by trigMu, with
 	// the charter it mirrors.
 	watchers map[string]func()
+	// arming holds, by name, the triggers whose subtree watch is still being opened: a rule
+	// that was written down and whose store did not answer when its watch was asked for. It
+	// is in the charter and it fires nothing until the watch opens (armTriggerSubtree), and
+	// this is what says so. Guarded by trigMu.
+	arming map[string]bool
+	// armWait is the first pause before a watch that could not be opened is asked for again;
+	// it doubles per attempt up to armWaitMax. Short in tests.
+	armWait time.Duration
 
 	// shapes fingerprints each installed sequence by its carrier's chain, so a running
 	// sequence can tell that the charter moved under it. Recorded at install (see
@@ -204,8 +212,13 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 		tripPace: DefaultTripPace,
 		shapes:   map[string]string{},
 		watchers: map[string]func(){},
+		arming:   map[string]bool{},
+		armWait:  time.Second,
 	}
 }
+
+// armWaitMax bounds the pause between attempts to open a restored rule's watch.
+const armWaitMax = 30 * time.Second
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 
@@ -275,7 +288,9 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
 	for _, t := range trigs {
-		if err := e.watchTriggerSubtree(t); err != nil {
+		// Arming rather than watching once: these rules stand, and a store that did not
+		// answer for one of them is asked again rather than leaving it in the charter deaf.
+		if err := e.armTriggerSubtree(t); err != nil {
 			e.tracef("subtree watch for %q: %v", t.Name, err)
 		}
 	}
@@ -303,23 +318,132 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 // goroutines while every other trigger keeps observing. A partial failure (the second of
 // three subtrees refuses to watch) cancels the ones already opened rather than leaving a
 // half-installed trigger firing.
+//
+// This is the INSTALL's watch: an operator is present, so a store that does not answer refuses
+// the install and the operator hears it. A rule that already stands is armed instead
+// (armTriggerSubtree), which asks again.
 func (e *Engine) watchTriggerSubtree(t Trigger) error {
+	subtrees, err := e.watchedSubtrees(t)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(e.bgctx)
+	if err := e.openWatches(ctx, t, subtrees); err != nil {
+		cancel() // stop this trigger's already-opened watchers; none of it is installed
+		return err
+	}
+	e.registerWatchers(t.Name, cancel)
+	return nil
+}
+
+// armTriggerSubtree is watchTriggerSubtree for a rule that was WRITTEN DOWN — restored from the
+// charter, or installed from being held when its stratum arrived. Nobody is present to hear a
+// refusal, and the rule is in the charter whether or not its watch opened, so a store that does
+// not answer is asked again, with a growing pause, until it does or the rule is removed.
+//
+// Before this a restored rule whose watch hit its deadline stayed in the charter, was counted
+// by status, and fired on nothing until the next restart: three of staging's merge rules came
+// back that way from a store busy with its own startup. What the rule reads is validated here
+// and now, because that answer does not change with waiting; only the store's does.
+//
+// The cancel is registered before the first attempt, under the rule's name, so RemoveTrigger
+// stops the asking as it would stop the watching. While the watch is not open the rule is in
+// Arming, which is what status shows.
+func (e *Engine) armTriggerSubtree(t Trigger) error {
+	subtrees, err := e.watchedSubtrees(t)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(e.bgctx)
+	e.registerWatchers(t.Name, cancel)
+	attempt := func() error {
+		// Each attempt under a context of its own, so the watches an attempt did open are
+		// closed with it when a later one is refused: the next attempt opens them all again.
+		actx, acancel := context.WithCancel(ctx)
+		if err := e.openWatches(actx, t, subtrees); err != nil {
+			acancel()
+			return err
+		}
+		go func() { <-ctx.Done(); acancel() }() // released with the rule's own
+		return nil
+	}
+	first := attempt()
+	if first == nil {
+		return nil
+	}
+	e.trigMu.Lock()
+	e.arming[t.Name] = true
+	e.trigMu.Unlock()
+	e.logger.Warn("charter: the rule's watch could not be opened; it is asked for again until it opens",
+		"trigger", t.Name, "err", first)
+	go func() {
+		defer func() {
+			e.trigMu.Lock()
+			delete(e.arming, t.Name)
+			e.trigMu.Unlock()
+		}()
+		wait := e.armWait
+		for tries := 1; ; tries++ {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			err := attempt()
+			if err == nil {
+				e.logger.Info("charter: the rule's watch opened", "trigger", t.Name, "tries", tries+1)
+				return
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			wait = min(wait*2, armWaitMax)
+		}
+	}()
+	return nil
+}
+
+// Arming is the names of the rules whose watch is still being opened, sorted: in the charter,
+// and firing on nothing until the store answers. Empty on a verse that is up.
+func (e *Engine) Arming() []string {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	if len(e.arming) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(e.arming))
+	for name := range e.arming {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// watchedSubtrees is what a trigger's watch has to cover, or why it cannot be watched at all —
+// the part of opening a watch that does not depend on the store answering.
+func (e *Engine) watchedSubtrees(t Trigger) ([]Subtree, error) {
 	// Everything the trigger READS, not just what dispatches it: a verdict is a function of
 	// its cause, its condition and its subject together, so a change to any of them can change
 	// it. This is the same list the commit skip is asked about (Trigger.reads), which is what
 	// keeps "what it watches" and "what could change its answer" from drifting apart.
 	subtrees := t.reads()
 	if len(subtrees) == 0 {
-		return fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
+		return nil, fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
 	}
 	for _, st := range subtrees {
 		if st.Named() == 0 { // a root alone is the whole of a half, which is not watchable
-			return fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
+			return nil, fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
 				"`subject` (kind optional); a scoped engine opens no root watch, so there is "+
 				"nothing to watch without one", t.Name)
 		}
 	}
-	ctx, cancel := context.WithCancel(e.bgctx)
+	return subtrees, nil
+}
+
+// openWatches opens one watch per subtree and evaluates the trigger on what each delivers,
+// until ctx ends. A watch the store refuses ends it with that error; the watches already opened
+// are the caller's to cancel.
+func (e *Engine) openWatches(ctx context.Context, t Trigger, subtrees []Subtree) error {
 	for _, st := range subtrees {
 		// AT THE SUBTREE'S OWN DEPTH — the depth the match that named it says its subjects
 		// stand at. Reported at the fixed arity instead, a change to anything deeper arrived
@@ -327,7 +451,6 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 		// about (see entity.Store.WatchSubtree).
 		ch, unsub, err := e.store.WatchSubtree(st.Depth(), st.Path()...)
 		if err != nil {
-			cancel() // stop this trigger's already-opened watchers; none of it is installed
 			return fmt.Errorf("scoped trigger %q: watch %s: %w", t.Name, strings.Join(st.Path(), ":"), err)
 		}
 		go func() {
@@ -360,7 +483,6 @@ func (e *Engine) watchTriggerSubtree(t Trigger) error {
 			}
 		}()
 	}
-	e.registerWatchers(t.Name, cancel)
 	return nil
 }
 

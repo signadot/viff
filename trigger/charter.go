@@ -204,9 +204,18 @@ func (e *Engine) LoadCharter() error {
 	// At the charter's own slice. A restore is the one moment the store is largest and
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
 	// startup — with restorePackages paying it again per package.
-	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
+	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
-	}, entity.VerseRoot, CharterSystem) {
+	}, entity.VerseRoot, CharterSystem)
+	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
+	// second reading brings a verse back running NO RULES and saying nothing about it — which
+	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so
+	// the restore asks again — and asked BEFORE anything is installed, so a load that reports
+	// it installed nothing and the next call is the same call.
+	if err := entity.ReadFailed(e.store); err != nil {
+		return fmt.Errorf("the charter could not be read, so nothing was restored from it: %w", err)
+	}
+	for _, ent := range ents {
 		if !e.ownRecord(ent) {
 			continue
 		}
@@ -215,20 +224,18 @@ func (e *Engine) LoadCharter() error {
 			errs = append(errs, err)
 			continue
 		}
+		// A rule already standing under its name is what this load would install: a load
+		// asked twice — the second time because the first could not read the strata, say —
+		// installs each rule once.
+		if _, standing := e.triggerNamed(t.Name); standing {
+			continue
+		}
 		// durable=false: it is already durable — that is where it came from. Re-writing it
 		// would be a no-op with a revision attached, and a charter subtree watch would see
 		// every restart as a charter change.
 		if err := e.addTrigger(t, false, ""); err != nil {
 			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
 		}
-	}
-	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
-	// second reading brings a verse back running NO RULES and saying nothing about it — which
-	// under load is exactly when it happens. Reported as the error it is, so Start prints it
-	// and an operator sees a verse that did not restore rather than one with nothing to run.
-	if err := entity.ReadFailed(e.store); err != nil {
-		errs = append(errs, fmt.Errorf("the charter could not be read, so nothing was "+
-			"restored from it: %w", err))
 	}
 	return errors.Join(errs...)
 }

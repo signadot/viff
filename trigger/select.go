@@ -165,10 +165,17 @@ func stringsNode(ss []string) *ir.Node {
 // ballot is holding up. The reconcile that ran before this orphaned every question whose
 // waiter died; re-posing the same id brings it back pending, over the ballots already cast
 // and against the deadline already stamped.
-func (e *Engine) ResumeSelections() int {
+//
+// The count is what it resumed. The error is the docket not answering (entity.IsUnread): a
+// listing that did not happen resumed nothing and settled nothing, and is asked for again.
+func (e *Engine) ResumeSelections() (int, error) {
 	resumed := 0
-	for _, ent := range entity.ListUnder(e.store, mirror.IsQuestion,
-		entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind) {
+	ents := entity.ListUnder(e.store, mirror.IsQuestion,
+		entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	if err := entity.ReadFailed(e.store); err != nil {
+		return 0, fmt.Errorf("the docket could not be read, so no selection was resumed: %w", err)
+	}
+	for _, ent := range ents {
 		p := ent.Payload
 		chain := entity.Str(p, "chain")
 		if chain == "" {
@@ -230,7 +237,7 @@ func (e *Engine) ResumeSelections() int {
 	if resumed > 0 {
 		e.logger.Info("resumed open selections from the docket", "count", resumed)
 	}
-	return resumed
+	return resumed, nil
 }
 
 // ownsQuestion answers whether a question is this engine's to resume or settle, by the

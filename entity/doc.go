@@ -20,6 +20,7 @@ package entity
 // source/own.go's globs still mean what they meant.
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
@@ -615,7 +616,33 @@ func ListUnderErr(r Reader, pred func(Ref) bool, at ...string) ([]Entity, error)
 // whether an empty charter is empty.
 func ReadFailed(r Reader) error {
 	if h, ok := r.(interface{ ReadError() error }); ok {
-		return h.ReadError()
+		return Unread(h.ReadError())
 	}
 	return nil
+}
+
+// unread is a read that did not happen. The store did not answer, so what it holds is unknown
+// rather than empty — and unknown is the one answer that is worth asking for again.
+type unread struct{ err error }
+
+func (u unread) Error() string { return u.err.Error() }
+func (u unread) Unwrap() error { return u.err }
+
+// Unread marks err as a read that did not happen, or returns nil for nil. ReadFailed marks
+// what it reports; a caller whose own read failed marks the error itself.
+func Unread(err error) error {
+	if err == nil {
+		return nil
+	}
+	return unread{err}
+}
+
+// IsUnread reports whether err, or anything it wraps or joins, is a read that did not happen.
+//
+// It is the question a restore asks: a rule that will not parse is reported and skipped, and a
+// listing the store did not answer is waited for and asked again — because the second says
+// nothing about the charter, and a verse that took it as empty came back running no rules.
+func IsUnread(err error) bool {
+	var u unread
+	return errors.As(err, &u)
 }

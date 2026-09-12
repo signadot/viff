@@ -195,6 +195,12 @@ One per installed registration, started at install, stopped at removal, restored
 after the charter — a reflection is a write triggers react to, and a level-triggered pass does
 not repeat itself, so a rule restored late misses what it missed for good.
 
+A restart whose listing of the registrations did not happen — the store busy, the read past
+its deadline — restores them when it does: the listing is asked for again until it answers,
+after the charter is back, and `verse status` lists `restored sources` under `restoring` until
+then. Each registration shows `running: false` meanwhile, and a hint to it is refused; neither
+needs anything done.
+
 Each runs an initial full pass, a periodic full pass every `versed.ResyncEvery` (one minute),
 and a targeted pass per hint.
 

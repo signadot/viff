@@ -118,6 +118,17 @@ type Server struct {
 	// charterWait overrides charterLockWait, for a test that has to observe the refusal
 	// rather than sit out the real one. Zero is the constant, which is every other caller.
 	charterWait time.Duration
+	// waiting is the phases of Start whose store read did not happen and that are being asked
+	// again (startup.go); status shows them as `restoring`. Guarded by waitMu.
+	waitMu  sync.Mutex
+	waiting map[string]bool
+	// retryWait is the first pause before a phase is asked again; it doubles per attempt up to
+	// retryWaitMax. Zero is the constant, which is every caller but a test.
+	retryWait time.Duration
+	// resumed marks the engines whose open selections have been given their awaiters back, so
+	// a resume asked again after the docket did not answer resumes each engine once — an
+	// awaiter given twice would answer twice.
+	resumed map[*trigger.Engine]bool
 	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
 	// is the only handle on a goroutine that WRITES a slice — so a remove that forgets to stop
 	// one leaks a second writer past the disjointness check the install just made.
@@ -639,15 +650,14 @@ func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error
 // run). This refines the old orphan-only reconcile now that a task can outlive verse
 // behind a remote runner. Control re-tracking (cancel/say a resumed task) is a
 // follow-on; this keeps the entity truthful.
-func (s *Server) reconcileTasks() {
+func (s *Server) reconcileTasks() error {
 	var resumed []resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
 	tasks := entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System)
 	if err := entity.ReadFailed(s.Store); err != nil {
 		// Not "no tasks outlived us": orphaning nothing is right, and resuming nothing is not.
-		fmt.Fprintf(os.Stderr, "verse: tasks could not be read, so none were resumed or "+
-			"orphaned: %v\n", err)
-		return
+		// Reported as the read it is, and the phase asks again.
+		return fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err)
 	}
 	for _, ent := range tasks {
 		if ent.Ref.Kind() == mirror.RunKind {
@@ -724,6 +734,7 @@ func (s *Server) reconcileTasks() {
 	}
 	s.reconcileClaims(resumed)
 	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
+	return nil
 }
 
 // reconcileQuestions settles the questions nobody is waiting on any more.
@@ -968,24 +979,15 @@ func (s *Server) StartServing(ctx context.Context) {
 
 func (s *Server) Start(ctx context.Context) {
 	s.ctx = ctx // scoped engines (created later, per federation) start under this
-	// WHERE THE TIME GOES, said out loud. Startup is several store-shaped phases in a row and
-	// nothing between them said which was slow: staging spent 93 seconds here with the store
-	// answering fine, and the only way to attribute it was to guess. A line per phase costs
-	// one log write each and answers it.
-	phase := func(name string, fn func()) {
-		t0 := time.Now()
-		fn()
-		fmt.Fprintf(os.Stderr, "verse up: %s in %s\n", name, time.Since(t0).Round(time.Millisecond))
-	}
+	// WHERE THE TIME GOES, said out loud, and A READ THAT DID NOT HAPPEN IS ASKED AGAIN: each
+	// phase reads the store, and one whose read hit its deadline says so and is retried until
+	// it answers, rather than restoring nothing for good (startup.go).
+	phase := s.phase
 	defer func() { s.restored.Store(true) }()
 	// The perms mirror, loaded and watched, so the check every write and read makes costs no
 	// round trip: on a busy store the per-write read hit its deadline and refused the write.
-	phase("loaded the perms mirror", func() {
-		if err := entity.Track(ctx, s.Store); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: perms: %v\n", err)
-		}
-	})
-	phase("reconciled tasks", s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
+	phase(phasePerms, func() error { return entity.Track(ctx, s.Store) })
+	phase(phaseTasks, s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and
@@ -1017,25 +1019,22 @@ func (s *Server) Start(ctx context.Context) {
 	// stratum is held rather than installed — correct, and it would then only start firing when
 	// something happened to touch the stratum again. Loading strata first makes the restart what
 	// it should be, an install over a verse that has moved on.
-	phase("restored the charter", func() {
-		if err := s.Eng.LoadStrata(); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: strata: %v\n", err)
-		}
-		if err := s.Eng.LoadCharter(); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
-		}
-	})
+	// Two phases rather than one, so that each is asked again on its own: a rule restored
+	// before its level is held and installs when the level arrives, so the order between the
+	// two holds whichever of them the store answers first.
+	phase(phaseStrata, func() error { return s.loaded(s.Eng.LoadStrata) })
+	phase(phaseCharter, func() error { return s.loaded(s.Eng.LoadCharter) })
 	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
 	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
 	// waiting for somebody to reconnect. It follows the baseline load because the two split the
 	// same listing between them — baseline takes the unstamped records, a package its own.
-	phase("restored packages", s.restorePackages)
+	phase(phasePackages, s.restorePackages)
 	// And the charter the deployment itself stands behind, as the system. After the restore,
 	// so that it is installed over what stood rather than under it, and every time, since an
 	// install of what already stands is a no-op with a revision attached and the file is the
 	// truth about what the system's charter is.
 	if s.SystemCharter != "" {
-		phase("installed the system charter", s.installSystemCharter)
+		phase(phaseSystem, func() error { s.installSystemCharter(); return nil })
 	}
 
 	// And the docket. A selection's question is durable and the goroutine awaiting it is
@@ -1045,13 +1044,13 @@ func (s *Server) Start(ctx context.Context) {
 	// AFTER the charter, which is what it navigates back into to find what a ballot is
 	// holding up; and after reconcileTasks, so a resumed selection sees the live registry
 	// rather than starting a second run beside work that outlived us.
-	phase("resumed selections", s.resumeSelections) // baseline AND every package's own engine
+	phase(phaseSelections, s.resumeSelections) // baseline AND every package's own engine
 	// And the clocks. A question's deadline is durable and the timer that fires it is not.
-	phase("armed deadlines", s.armDeadlines)
+	phase(phaseDeadlines, s.armDeadlines)
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
-	phase("restored sources", s.restoreSources)
+	phase(phaseSources, s.restoreSources)
 }
 
 // Handler returns the HTTP surface. Observation (read plane) and control are
@@ -2596,12 +2595,23 @@ func (s *Server) armDeadline(store entity.Store, id, within string) {
 // A firing's question is orphaned by the reconcile and re-posed by the charter's replay,
 // which arms it again through the ordinary path; a surviving task's question is re-posed by
 // nobody, so it is armed from the record here.
-func (s *Server) armDeadlines() {
-	for _, ent := range pendingQuestions(s.Store) {
+//
+// A docket that did not answer armed nothing, and says so (entity.IsUnread) so the phase asks
+// again: a clock that is never set is a question that never settles.
+func (s *Server) armDeadlines() error {
+	if err := s.awaiting(phaseTasks, phaseCharter, phasePackages); err != nil {
+		return err
+	}
+	ents, err := pendingQuestionsErr(s.Store)
+	if err != nil {
+		return entity.Unread(fmt.Errorf("the docket could not be read, so no deadline was armed: %w", err))
+	}
+	for _, ent := range ents {
 		if within, _, _ := mirror.DeadlineOf(ent.Payload); within != "" {
 			s.armDeadline(s.Store, ent.Ref.ID(), within)
 		}
 	}
+	return nil
 }
 
 // settleByDeadline settles one question whose deadline has passed, on its default option, as
@@ -3481,17 +3491,18 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// its mark from every answer that carries a commit — reads, writes, watch events, and
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
-		StoreRev: s.Store.Head(),
-		Flows:    len(s.flowSubjects(r.URL.Query().Get("scope"))),
-		Gates:    len(pendingQuestions(s.scopedStore(r))),
-		Tasks:    taskCount(s.scopedStore(r)),
-		Fired:    s.firedTotal(),
-		Runners:  runnerRefs(s.scopedStore(r)),
-		Sources:  sourceRefs(s.scopedStore(r)),
-		Charter:  s.charterTop(),
-		Runner:   s.runnerStatus(), // how tasks run: kind + resume + dial legs
-		LLM:      s.LLM,            // secrets-safe: are agent creds configured on THIS server
-		Perms:    s.permsStatus(),
+		StoreRev:  s.Store.Head(),
+		Flows:     len(s.flowSubjects(r.URL.Query().Get("scope"))),
+		Gates:     len(pendingQuestions(s.scopedStore(r))),
+		Tasks:     taskCount(s.scopedStore(r)),
+		Fired:     s.firedTotal(),
+		Runners:   runnerRefs(s.scopedStore(r)),
+		Sources:   sourceRefs(s.scopedStore(r)),
+		Charter:   s.charterTop(),
+		Runner:    s.runnerStatus(), // how tasks run: kind + resume + dial legs
+		LLM:       s.LLM,            // secrets-safe: are agent creds configured on THIS server
+		Perms:     s.permsStatus(),
+		Restoring: s.Restoring(),
 	}
 	// When docd-backed, publish its addresses so a controller task (verse connect)
 	// can reach the mount face; the client face is where store clients connect.
@@ -3618,6 +3629,7 @@ func (s *Server) charterTop() *ir.Node {
 type charterCensus struct {
 	here          bool // a charter is installed AT this address
 	rules, strata int
+	arming        []string // rules counted above whose watch is still being opened
 	kids          map[string]*charterCensus
 	order         []string
 }
@@ -3643,6 +3655,7 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 		return
 	}
 	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
+	c.arming = eng.Arming()
 }
 
 // empty reports whether this node has children.
@@ -3662,6 +3675,11 @@ func (c *charterCensus) node() *ir.Node {
 	if c.here {
 		add("rules", ir.FromInt(int64(c.rules)))
 		add("strata", ir.FromInt(int64(c.strata)))
+		// Named, not counted: a rule that is in the charter and fires on nothing is one
+		// somebody may be waiting on, and the count above says it is installed.
+		if len(c.arming) > 0 {
+			add("arming", strNodes(c.arming))
+		}
 	}
 	if len(c.order) > 0 {
 		sort.Strings(c.order)

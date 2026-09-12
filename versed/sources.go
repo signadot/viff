@@ -791,15 +791,19 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // exactly the gap scoped charters have, and it is survivable for the same reason: a scope is
 // created on demand by whatever owns it — `verse connect` for a session, a sandbox for its own
 // lifetime — so the thing that made the scope is the thing that can install into it again.
-func (s *Server) restoreSources() {
+//
+// A failed read is not "no sources installed", and taking it as one brought a verse back
+// reflecting NOTHING with no sign of it but `running: false` on each registration. Reported as
+// the read it is (entity.IsUnread), so the phase asks again until the listing happens and the
+// sources start — a restart is not what it should take.
+func (s *Server) restoreSources() error {
+	if err := s.awaiting(phaseStrata, phaseCharter, phasePackages); err != nil {
+		return err
+	}
 	installed := source.List(s.Store)
-	// A failed read is not "no sources installed", and taking it as one brings a verse back
-	// reflecting NOTHING with no sign of it. Said out loud rather than returned, because this
-	// is startup and the answer is to look at the store, not to abandon the boot.
 	if err := entity.ReadFailed(s.Store); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: sources could not be read, so none were restored "+
-			"— the registrations are still there: %v\n", err)
-		return
+		return fmt.Errorf("sources could not be read, so none were restored — the "+
+			"registrations are still there: %w", err)
 	}
 	for _, e := range installed {
 		if e.Scope != "" {
@@ -811,6 +815,7 @@ func (s *Server) restoreSources() {
 			fmt.Fprintf(os.Stderr, "verse: source %s: %v\n", source.Ref(e.System, e.Name), err)
 		}
 	}
+	return nil
 }
 
 // hintSource takes a low-latency hint: something changed over there, look now.

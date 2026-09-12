@@ -228,6 +228,7 @@ define:
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
   perms: .[nullable(verse-perms)]
+  restoring: .[array(string)]
   runner: .[nullable(verse-runner-status)]
   runners: .[array(string)]
   sources: .[array(string)]

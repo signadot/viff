@@ -114,7 +114,14 @@ func (s *Server) packageEngines() []*trigger.Engine {
 // which is what makes the answer right for motions written from here on (they carry `at`). And
 // baseline — which sweeps everything older than that field — is told how to ask the others
 // before it settles anything, because "not in my charter" was never the question.
-func (s *Server) resumeSelections() {
+//
+// EACH ENGINE ONCE. An engine's resume lists the docket, and a listing that did not happen
+// resumed nothing (entity.IsUnread) — so the phase is asked again, and when it is, the engines
+// that did answer are not asked twice: an awaiter given twice would answer twice.
+func (s *Server) resumeSelections() error {
+	if err := s.awaiting(phaseTasks, phaseStrata, phaseCharter, phasePackages); err != nil {
+		return err
+	}
 	pkgs := s.packageEngines()
 	s.Eng.KnowsElsewhere(func(name string) bool {
 		for _, e := range pkgs {
@@ -124,10 +131,21 @@ func (s *Server) resumeSelections() {
 		}
 		return false
 	})
-	s.Eng.ResumeSelections()
-	for _, e := range pkgs {
-		e.ResumeSelections()
+	if s.resumed == nil {
+		s.resumed = map[*trigger.Engine]bool{}
 	}
+	var unread error
+	for _, e := range append([]*trigger.Engine{s.Eng}, pkgs...) {
+		if s.resumed[e] {
+			continue
+		}
+		if _, err := e.ResumeSelections(); err != nil {
+			unread = err
+			continue
+		}
+		s.resumed[e] = true
+	}
+	return unread
 }
 
 // restorePackages installs each package's durable charter back into an engine of its own.
@@ -139,7 +157,11 @@ func (s *Server) resumeSelections() {
 //
 // It runs after the baseline charter is loaded, and takes only the records stamped with an
 // address; the baseline load takes only the unstamped ones (Engine.ownRecord).
-func (s *Server) restorePackages() {
+//
+// ASKED AGAIN WHOLE when a read did not happen — the listing of packages, or one package's
+// charter (entity.IsUnread): a load skips what already stands, and an engine is found rather
+// than made, so the second run installs what the first could not read and nothing twice.
+func (s *Server) restorePackages() error {
 	// THE CHARTER LOCK, because versed serves while it restores — that is what /healthz
 	// distinguishes — so an operator's install can arrive in the middle of this and race the
 	// charter it is being installed alongside. Taken here rather than inside the loop: the
@@ -148,8 +170,7 @@ func (s *Server) restorePackages() {
 	// Before scopeMu below, never inside it (charterlock.go).
 	release, err := s.lockCharter(s.ctxOrBackground())
 	if err != nil {
-		logPackage("charter packages: %v", err)
-		return
+		return entity.Unread(fmt.Errorf("charter packages: %w", err))
 	}
 	defer release()
 
@@ -157,9 +178,12 @@ func (s *Server) restorePackages() {
 	// installed and whose rules were refused is still a package, and one that did not come back
 	// at a restart would be a set of levels nobody could see or remove. packagesSeen is the one
 	// answer to "which packages exist", asked here too.
-	names := s.packagesSeen()
+	names, err := s.packagesSeenErr()
+	if err != nil {
+		return fmt.Errorf("charter packages could not be read, so none were restored: %w", err)
+	}
 	if len(names) == 0 {
-		return
+		return nil
 	}
 	s.scopeMu.Lock()
 	engs := make([]*trigger.Engine, 0, len(names))
@@ -182,14 +206,20 @@ func (s *Server) restorePackages() {
 	s.restorePackageImports()
 	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
 	// rule, and holding the registry lock across that stalls every other lookup behind it.
+	var unread error
 	for _, eng := range engs {
-		if err := eng.LoadStrata(); err != nil {
-			logPackage("charter package strata: %v", err)
-		}
-		if err := eng.LoadCharter(); err != nil {
-			logPackage("charter package: %v", err)
+		for _, load := range []func() error{eng.LoadStrata, eng.LoadCharter} {
+			err := load()
+			if entity.IsUnread(err) {
+				unread = err
+				continue
+			}
+			if err != nil {
+				logPackage("charter package: %v", err)
+			}
 		}
 	}
+	return unread
 }
 
 // packagesSeen is the addresses that currently have a charter package, for the status surface.
@@ -201,6 +231,13 @@ func isCharterRecord(r entity.Ref) bool {
 }
 
 func (s *Server) packagesSeen() []string {
+	out, _ := s.packagesSeenErr()
+	return out
+}
+
+// packagesSeenErr is packagesSeen reporting the read that did not happen, for the restore:
+// an empty answer and no answer are opposite facts about the charter.
+func (s *Server) packagesSeenErr() ([]string, error) {
 	var out []string
 	// ALL THREE KINDS OF RECORD, because any one of them makes a package exist: its rules, its
 	// levels, and the declaration of what it declares it reads. Reading only the rules made a package
@@ -220,8 +257,11 @@ func (s *Server) packagesSeen() []string {
 			out = append(out, at)
 		}
 	}
+	if err := entity.ReadFailed(s.Store); err != nil {
+		return nil, err
+	}
 	sort.Strings(out)
-	return dedupe(out)
+	return dedupe(out), nil
 }
 
 func dedupe(in []string) []string {

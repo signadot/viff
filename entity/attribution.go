@@ -959,13 +959,15 @@ func Track(ctx context.Context, s Store) error {
 	if !ok {
 		return nil
 	}
+	// Both failures are the store not answering, and both are marked so: a mirror that could
+	// not be loaded is not a mirror that is empty, and the caller asks again until it loads.
 	ents, err := ListAtErr(a.Store, []string{VerseRoot, PermsSystem, PermsKind}, Depth+1, nil)
 	if err != nil {
-		return fmt.Errorf("loading the perms mirror: %w", err)
+		return Unread(fmt.Errorf("loading the perms mirror: %w", err))
 	}
 	ch, unsub, err := a.Store.WatchSubtree(Depth+1, VerseRoot, PermsSystem, PermsKind)
 	if err != nil {
-		return fmt.Errorf("watching the perms mirror: %w", err)
+		return Unread(fmt.Errorf("watching the perms mirror: %w", err))
 	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {

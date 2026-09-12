@@ -70,7 +70,7 @@ func TestResumeReEntersASelection(t *testing.T) {
 		},
 	})
 
-	if n := eng.ResumeSelections(); n != 1 {
+	if n, _ := eng.ResumeSelections(); n != 1 {
 		t.Fatalf("resumed %d selections, want 1", n)
 	}
 	deadline := time.After(3 * time.Second)
@@ -110,7 +110,7 @@ func TestResumeOrphansASelectionWhoseRuleIsGone(t *testing.T) {
 	ref := posed(t, store, "verse.trigger.removed.provider~1", entity.Obj{
 		"status": mirror.QuestionPending, "subject": `demo.pr."1"`, "chain": "removed",
 	})
-	if n := eng.ResumeSelections(); n != 0 {
+	if n, _ := eng.ResumeSelections(); n != 0 {
 		t.Fatalf("resumed %d selections, want 0 — it has no rule to resume into", n)
 	}
 	got := statusOf(t, store, ref)
@@ -135,7 +135,7 @@ func TestResumeLeavesASettledSelectionAlone(t *testing.T) {
 		"status": mirror.QuestionAnswered, "verdict": "claude", "subject": `demo.pr."1"`,
 		"chain": "gone", // the rule is gone too, and it still must not be touched
 	})
-	if n := eng.ResumeSelections(); n != 0 {
+	if n, _ := eng.ResumeSelections(); n != 0 {
 		t.Fatalf("resumed %d selections, want 0", n)
 	}
 	got := statusOf(t, store, ref)

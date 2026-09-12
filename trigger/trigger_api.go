@@ -222,8 +222,16 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	e.recordShapes(t)
 	// In subtree (scoped) mode the engine runs no root loop: give this trigger its own
 	// subtree watch. In baseline mode the dispatch loop already sees every change.
+	//
+	// An INSTALL watches once and refuses if the store does not answer — the operator is
+	// there to hear it. A rule that was already written down (durable=false: a restore, or a
+	// held rule whose stratum arrived) is ARMED: it stands in the charter either way, so a
+	// store that does not answer is asked again rather than leaving the rule deaf.
 	if e.subtree {
-		return e.watchTriggerSubtree(t)
+		if durable {
+			return e.watchTriggerSubtree(t)
+		}
+		return e.armTriggerSubtree(t)
 	}
 	return nil
 }

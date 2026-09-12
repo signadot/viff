@@ -725,9 +725,15 @@ func (e *Engine) persistStratum(s Stratum, as string) error {
 // asked to be checked against is not in force in this federation.
 func (e *Engine) LoadStrata() error {
 	var errs []error
-	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
+	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
 		return r.Reserved() && r.System() == StrataSystem && r.Kind() == StrataKind
-	}, entity.VerseRoot, StrataSystem) {
+	}, entity.VerseRoot, StrataSystem)
+	// Asked before anything is installed, for LoadCharter's reason: a load that could not
+	// read installed nothing, and is asked again.
+	if err := entity.ReadFailed(e.store); err != nil {
+		return fmt.Errorf("the strata could not be read, so nothing was restored from them: %w", err)
+	}
+	for _, ent := range ents {
 		if !e.ownRecord(ent) {
 			continue
 		}
@@ -736,13 +742,12 @@ func (e *Engine) LoadStrata() error {
 			errs = append(errs, err)
 			continue
 		}
+		if _, standing := e.stratum(s.Name); standing {
+			continue // a load asked twice installs each level once
+		}
 		if err := e.addStratum(s, false, ""); err != nil {
 			errs = append(errs, fmt.Errorf("stratum %s: %w", ent.Ref, err))
 		}
-	}
-	if err := entity.ReadFailed(e.store); err != nil {
-		errs = append(errs, fmt.Errorf("the strata could not be read, so nothing was "+
-			"restored from them: %w", err))
 	}
 	return errors.Join(errs...)
 }
