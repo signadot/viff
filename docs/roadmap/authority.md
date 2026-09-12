@@ -287,7 +287,9 @@ elsewhere. The derivation is the part that is ours to design.
   predicate subsumption is the same frontier flagged in `task/action.go`.
 - Does the envelope belong to the task or the request? Two `task run`s of the same
   prompt by different callers may deserve different envelopes; that argues the envelope is a
-  property of the (requester, request) pair, which is where an identity model would enter.
+  property of the (requester, request) pair, which is where an identity model enters — and
+  the requester is now a principal the store checks ([perms.md](../perms.md)), so the pair is
+  nameable even though the envelope is not yet derived from it.
 
 ## References
 

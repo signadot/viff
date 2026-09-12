@@ -22,6 +22,7 @@ nav:
   - provider-selection.md
 - Entities and the store:
   - change-events.md
+  - perms.md
 - Tasks and autonomy:
   - task-control.md
   - attached-resolvers.md

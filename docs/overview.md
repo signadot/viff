@@ -53,6 +53,14 @@ parameterize it: `$subject`, and every field of the changed payload.
 A *task* is a governed unit of agentic work, hosted by a runtime, observable and steerable.
 Tasks are entities (`verse.task.instance.<id>`), so the fleet is visible by watching the store.
 
+A *principal* is who acts: a person by email, a runner under its own name, an operator agent,
+or the system, versed itself. Every request and every firing writes as one, and every node has
+one owner, fixed when it is created — its creator, or the owner above it — with the owners of
+its ancestors as co-owners. Anyone else acts on a node by a grant on its record, held out by
+its owner, and what a new node holds out comes from a default on the record above it. A charter
+acts as its owner and reads only what its owner can read; a question is answered by the owner
+of what asked it and by whoever it was held out to. See [permissions](perms.md).
+
 A *subject* and a *flow* are derived, and *derived* is meant literally: neither is a record
 anything keeps. A subject is the entity a piece of work is about, the PR moving through its
 lifecycle. It is what a rule's condition selects, and half of nearly every identity in the

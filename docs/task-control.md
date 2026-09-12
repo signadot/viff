@@ -447,6 +447,10 @@ worker GET /inbox?since=C2 → C3 → proceeds → POST /report exec@R8  (→ ev
 
 ### Claim, identity, takeover
 
+The identity on a claim is the principal the worker acts as from then on: verse lists it as a
+runner, grants it `read-write` and `control` on the task and on this run, and the mirror writes
+every report as it ([perms.md](perms.md)). It holds nothing on the questions the task raises.
+
 `POST /tasks/{id}/claim {identity}` is a CAS on the claim, and on success it returns the `spec` and
 resume cursors. Claimed by another gives `409` unless this is a takeover: the prior claim is
 revoked, its inbox getting a `revoked` item so a still-connected old worker stops, and the new

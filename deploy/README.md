@@ -542,7 +542,7 @@ it by url, and deploying it does not install it.
 ```sh
 make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
 make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-verse runner add pool.code http://coderunner:9802
+verse runner add pool.code http://coderunner:9802 --identity coderunner-bot   # the principal it acts as; default: its name
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own

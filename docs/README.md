@@ -83,7 +83,7 @@ drive a local agent, a remote one, and a human.
 | | [Nothing bounds a run](working/task-budget.md) — a review that concluded and would not stop, an operator's word ignored, and why the fix is not a prompt |
 | | [Config: a field that says where it reads itself from](working/config-secrets.md) — one question this repo answers twice, and why `!env` must not reach a charter |
 | | [The coding runner: what is left](working/coding-runner-residual.md) — deployed now, so what `principal: runner` actually contains is the live gap, plus the delete no destination can express |
-| | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; why entity writes having no author is the one defect underneath several |
+| | [Attribution](working/attribution.md) — an identity as a parameter at install and an argument at launch; largely overtaken by [permissions](perms.md), which gave every write an author |
 | | [Derive: what is left](working/derive-residual.md) — the fan-out landed; what it deliberately does not do, and why a sweep is not a longer loop |
 | | [verse-dev: a coding pipeline](working/verse-dev-coderunner.md) — the drive: the walls predicted before the first run, and what running it found |
 | | [An address is as deep as the tree](working/entity-tree.md) — why entity-hood is a lens rather than a stored fact, and the order the change landed in |

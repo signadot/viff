@@ -119,7 +119,7 @@ A put **merges**. Fields you do not name are left alone, which is why the answer
 entity as it now stands rather than an echo of what you sent:
 
 ```sh
-verse data demo pr 1 --put '{owner: dee}'        # changes the owner, keeps the stage
+verse data demo pr 1 --put '{owner: dee}'        # changes the owner field, keeps the stage
 verse data demo pr 1 labels urgent --put true   # one field, deep
 verse data demo pr 1 labels urgent --rm         # and gone again
 verse data demo scratch 1 --rm                  # the whole entity
@@ -418,7 +418,9 @@ The docket is not only for people. A **resolver** is a service bound to a run, o
 subjects, that reads the run's own stream and answers its gates, through the same path
 `verse gate approve` takes, with `by` naming the binding instead of a person. It can hand a question
 up a layer, carry a deadline that does the same thing more slowly, and be made the only answer that
-counts.
+counts. The same binding can put a person, or a group, on that rung instead of a service
+(`method: {driver: person, who: oscar@example.com}`), and a person climbs the ladder with
+`verse gate escalate`.
 
 ```sh
 ./scripts/attached-resolver.sh              # five acts, one command each
@@ -658,6 +660,21 @@ verse data demo vote 1              # stage: merged
 The record then reads `status: answered`, `verdict: proceed`, and `ballots` naming who chose what
 and when: the audit trail on the entity rather than a line that scrolled past. An answerer who
 changes their mind replaces their own ballot rather than casting a second.
+
+Who may cast one is the question's own to say. The charter's owner answers what their rule
+asked, and so does anyone the gate names:
+
+```tony
+  gates:
+  - { name: approvals, need: 2, answerers: [oscar@example.com, verse.principal.group.payments] }
+```
+
+Ana, not named, is refused, and told so. A gate that names nobody is held out to every person,
+which is the open verse's default; a worker raising a gate of its own says who it is for with
+`task do gate --to`; and whoever may answer may hand the question on instead, `verse gate
+escalate <id>`, to the next binding covering its subject. `need` over the answerers is what one
+or many means: one ballot each, `need: 1` a race, `need` equal to their number all of them.
+[Permissions](perms.md) is the whole of who may do what.
 
 A question is an ordinary entity (`verse.gate.question.<id>`), so the docket is a view of the
 store, and a rule can react to a question like anything else. It is checked against the world

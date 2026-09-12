@@ -53,7 +53,9 @@ entities, tasks, and the charters that relate them.
 
 - `entity/` — the entity-verse: a `<system, kind, id>` store, observable and
   revision-cursored, durable and scope-aware with copy-on-write, over logd/docd. One
-  conditional write addresses a whole entity or one field inside it.
+  conditional write addresses a whole entity or one field inside it, and every write names
+  who made it: a node is its creator's, and the store refuses what its place does not permit
+  ([permissions](docs/perms.md)).
 - `trigger/` — the ECA engine: conjunctive matches, conjunctive gates posed concurrently,
   actions-as-data, level-triggered catch-up via a cursor, and per-subtree watches with no
   root watch.
@@ -69,8 +71,9 @@ entities, tasks, and the charters that relate them.
   charter, because it outlives any one rule and belongs to whoever supervises rather than to
   whoever wrote the work. It covers a subject by match or a run by name, and one instance is
   minted per thing it watches (`resolvers.instance.<name>@<origin>`), carrying that watcher's
-  own position. A binding that goes silent past its deadline hands the question to the layer
-  above, and the second hop is always the docket a person reads.
+  own position. Its resolver is a service, a person or a group; a binding that goes silent
+  past its deadline hands the question to the next binding covering the subject, and the last
+  hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
   deploy and install (`verse source add`), reflecting an owned slice like `git:*` that triggers
   react to. Four ship (`sourced git|slack|linear|github`); anything else is the sample program

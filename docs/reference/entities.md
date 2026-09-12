@@ -251,9 +251,11 @@ by whoever runs the verse.
 The reserved half is read like anything else and written only through the verbs that own it.
 `verse data verse trigger rule review` reads a rule; `verse data --put` at any address under
 `verse` is refused, and says which verb to use instead (`verse c -a`,
-`verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Before the
-boundary had a name, anyone who could reach the store could install a rule, stamp a task record
-or answer a question on verse's behalf — with no route positioned to say no.
+`verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Each verb
+is where its checks live — what a rule may read, what a runner is, whether a source's claim
+overlaps — and beneath every one of them the store itself checks the write against what its
+place permits ([perms.md](../perms.md)), so nothing reaching the store may install a rule, stamp
+a task record or answer a question on somebody else's behalf.
 
 A charter that wants to react to verse's own state says which half it means:
 

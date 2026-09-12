@@ -1,8 +1,11 @@
 # Attribution: a parameter at install, an argument at launch
 
-Status: proposal. The **mechanism** is unbuilt — no descriptor takes an identity at install and no
-launch fills one in — but the exercise it came from has since landed, and one half of what it argued
-for runs.
+Status: proposal, largely overtaken. What it argued for is built another way and described in
+[perms.md](../perms.md): every entity write carries a principal, on the write and on the commit;
+a runner carries an `identity` on its entity and acts as it, a brokered worker as the identity
+on its claim; a charter and a source act as their record's address, resolved to their owner.
+What is still open here is the shape of the argument — an identity as a *parameter* at install
+verified against what the runner reports — since nothing verifies one yet.
 
 What runs: a spawn carries `Provenance{Principal, Subject, Chain}` to the runner over the
 task-control contract, `verse task run --as` is the run's principal rather than only the identity
