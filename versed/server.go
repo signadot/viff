@@ -978,6 +978,13 @@ func (s *Server) Start(ctx context.Context) {
 		fmt.Fprintf(os.Stderr, "verse up: %s in %s\n", name, time.Since(t0).Round(time.Millisecond))
 	}
 	defer func() { s.restored.Store(true) }()
+	// The perms mirror, loaded and watched, so the check every write and read makes costs no
+	// round trip: on a busy store the per-write read hit its deadline and refused the write.
+	phase("loaded the perms mirror", func() {
+		if err := entity.Track(ctx, s.Store); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: perms: %v\n", err)
+		}
+	})
 	phase("reconciled tasks", s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned

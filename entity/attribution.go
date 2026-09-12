@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -53,8 +54,10 @@ var ErrForbidden = errors.New("refused")
 type Attribution struct {
 	mu sync.Mutex
 	// records memoises the perms record at an address, nil for a known absence. It is what the
-	// walk up a node's prefixes reads, and the check consults nothing else.
+	// walk up a node's prefixes reads, and the check consults nothing else. Once loaded holds
+	// the whole mirror (Track), a key that is not here is absent and no read is made for it.
 	records map[string]*permsRecord
+	loaded  bool
 	// decided is every node this process has settled the owner record of: written it, found
 	// it standing, or found nothing to write because the node above owns it already.
 	decided map[Ref]struct{}
@@ -218,7 +221,7 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 		// The mirror keeps no records about itself, and what this process cached about the
 		// node the record is about is stale the moment the record moves.
 		if ref.Kind() == PermsKind {
-			a.attr.invalidate(ref.ID())
+			a.invalidate(ref.ID())
 		}
 		return committed, rev, nil
 	}
@@ -853,9 +856,13 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	if !fresh {
 		a.attr.mu.Lock()
 		rec, ok := a.attr.records[key]
+		loaded := a.attr.loaded
 		a.attr.mu.Unlock()
 		if ok {
 			return rec, nil
+		}
+		if loaded {
+			return nil, nil // the whole mirror is here, and this key is not in it
 		}
 	}
 	e, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, key))
@@ -864,23 +871,12 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	}
 	var rec *permsRecord
 	if ok {
-		grants, gerr := ParseGrants(e.Payload)
 		// A line that cannot be read grants nothing: ParseGrants refuses the whole field, so a
 		// record with one bad line holds out nothing until it is fixed, which is the safe way
-		// round and is visible on the record itself.
-		_ = gerr
-		rec = &permsRecord{owner: Str(e.Payload, OwnerField), under: Str(e.Payload, UnderField), grants: grants}
-		rec.defaults, rec.hasDefault, _ = ParseLevels(e.Payload, DefaultField)
-		// A RECORD WRITTEN BEFORE DEFAULTS EXISTED carries an owner and no grants field at all,
-		// and is read as holding out what the root's default says: the open verse's, which is
-		// what it held out when it was written.
-		if rec.owner != "" && Get(e.Payload, GrantsField) == nil {
-			if root := a.attr.RootDefault(); len(root) > 0 {
-				if ref, err := ParseAddr(key); err == nil {
-					rec.grants = []Grant{{At: ref.Segs(), To: map[Level][]string(root)}}
-				}
-			}
-		}
+		// round and is visible on the record itself. A RECORD WRITTEN BEFORE DEFAULTS EXISTED
+		// carries an owner and no grants field at all, and is read as holding out what the
+		// root's default says: the open verse's, which is what it held out when written.
+		rec = parseRecord(key, e.Payload, a.attr.RootDefault())
 	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {
@@ -893,13 +889,19 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 
 // invalidate drops what this process cached about a node's record — and every resolution,
 // since any of them may have read it — so the next check reads the mirror as it now stands.
-func (a *Attribution) invalidate(key string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	delete(a.records, key)
-	a.owners = nil
+// With the mirror loaded, a missing key would read as absent, so the record is read back now
+// rather than dropped: what this process just wrote is what it checks against next.
+func (a *attributed) invalidate(key string) {
+	a.attr.mu.Lock()
+	delete(a.attr.records, key)
+	a.attr.owners = nil
 	if ref, err := ParseAddr(key); err == nil {
-		delete(a.decided, ref)
+		delete(a.attr.decided, ref)
+	}
+	loaded := a.attr.loaded
+	a.attr.mu.Unlock()
+	if loaded {
+		_, _ = a.recordAt(key, true)
 	}
 }
 
@@ -910,15 +912,131 @@ func (a *Attribution) invalidate(key string) {
 // place that is nobody's. The mirror is keyed by address, so the records beneath are found by
 // listing it, which costs the mirror's size once per whole delete.
 func (a *attributed) forget(ref Ref) {
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
 	prefix := ref.String() + "."
-	for _, rec := range a.Store.ListAt([]string{VerseRoot, PermsSystem, PermsKind}, Depth+1, func(r Ref) bool {
-		return strings.HasPrefix(r.ID(), prefix)
-	}) {
-		a.attr.invalidate(rec.Ref.ID())
-		_, _, _ = a.Store.Write(Write{At: rec.Ref.At(), Principal: SystemPrincipal})
+	var beneath []string
+	a.attr.mu.Lock()
+	loaded := a.attr.loaded
+	if loaded {
+		for key, rec := range a.attr.records {
+			if rec != nil && strings.HasPrefix(key, prefix) {
+				beneath = append(beneath, key)
+			}
+		}
 	}
+	a.attr.mu.Unlock()
+	if !loaded {
+		// Not loaded: the mirror is listed, which costs its size once per whole delete.
+		for _, rec := range a.Store.ListAt([]string{VerseRoot, PermsSystem, PermsKind}, Depth+1, func(r Ref) bool {
+			return strings.HasPrefix(r.ID(), prefix)
+		}) {
+			beneath = append(beneath, rec.Ref.ID())
+		}
+	}
+	for _, key := range beneath {
+		_, _, _ = a.Store.Write(Write{At: VerseRef(PermsSystem, PermsKind, key).At(), Principal: SystemPrincipal})
+		a.invalidate(key)
+	}
+}
+
+// Track loads the whole perms mirror into the view's cache and keeps it there: a watch on
+// `verse.perms` applies every record written — by this process or another — as it lands, so a
+// check makes no round trip at all. A key not in the loaded mirror is absent, and no read is
+// made to learn it.
+//
+// WHY IT IS LOADED RATHER THAN READ. The check reads the mirror for every prefix of a written
+// address it has not seen, and a source's first pass after a wipe writes thousands of new
+// addresses: on a store already busy with those writes, the check's reads queued behind them,
+// hit their deadline, and a check whose mirror did not answer refused the write. The mirror is
+// small — one record per change of ownership — so holding it is cheaper than asking for it.
+//
+// The watch is opened after the load, and its opening replay of what stands is applied over
+// the load, which is idempotent; what this process writes is read back by invalidate the moment
+// it is written, so the watch's copy of that write changes nothing. It stops when ctx does.
+func Track(ctx context.Context, s Store) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	ents, err := ListAtErr(a.Store, []string{VerseRoot, PermsSystem, PermsKind}, Depth+1, nil)
+	if err != nil {
+		return fmt.Errorf("loading the perms mirror: %w", err)
+	}
+	ch, unsub, err := a.Store.WatchSubtree(Depth+1, VerseRoot, PermsSystem, PermsKind)
+	if err != nil {
+		return fmt.Errorf("watching the perms mirror: %w", err)
+	}
+	a.attr.mu.Lock()
+	if a.attr.records == nil {
+		a.attr.records = map[string]*permsRecord{}
+	}
+	for _, e := range ents {
+		a.attr.records[e.Ref.ID()] = parseRecord(e.Ref.ID(), e.Payload, a.attr.rootDefault)
+	}
+	a.attr.owners = nil
+	a.attr.loaded = true
+	a.attr.mu.Unlock()
+	go func() {
+		defer unsub()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case c, ok := <-ch:
+				if !ok {
+					return
+				}
+				for _, ev := range c.Changes {
+					if !ev.Ref.Reserved() || ev.Ref.System() != PermsSystem || ev.Ref.Kind() != PermsKind {
+						continue
+					}
+					a.apply(ev)
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+// Tracked reports whether the view holds the whole mirror.
+func (a *Attribution) Tracked() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.loaded
+}
+
+// apply is one change to the mirror, as the watch delivered it.
+func (a *attributed) apply(ev Event) {
+	key := ev.Ref.ID()
+	a.attr.mu.Lock()
+	defer a.attr.mu.Unlock()
+	if a.attr.records == nil {
+		a.attr.records = map[string]*permsRecord{}
+	}
+	if ev.Op == Delete || ev.To == nil {
+		delete(a.attr.records, key)
+	} else {
+		a.attr.records[key] = parseRecord(key, ev.To, a.attr.rootDefault)
+	}
+	a.attr.owners = nil
+	if ref, err := ParseAddr(key); err == nil {
+		delete(a.attr.decided, ref)
+	}
+}
+
+// parseRecord reads one mirror record as the check holds it, applying the transition rule for
+// a record from before defaults existed (see recordAt).
+func parseRecord(key string, payload Payload, root Levels) *permsRecord {
+	grants, _ := ParseGrants(payload)
+	rec := &permsRecord{owner: Str(payload, OwnerField), under: Str(payload, UnderField), grants: grants}
+	rec.defaults, rec.hasDefault, _ = ParseLevels(payload, DefaultField)
+	if rec.owner != "" && Get(payload, GrantsField) == nil && len(root) > 0 {
+		if ref, err := ParseAddr(key); err == nil {
+			rec.grants = []Grant{{At: ref.Segs(), To: map[Level][]string(root)}}
+		}
+	}
+	return rec
 }
 
 // resolve is the owner a principal confers: itself, unless it is the address of a node in
@@ -998,7 +1116,7 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 			return fmt.Errorf("granting at %s: %w", ref, err)
 		}
 		if committed {
-			a.attr.invalidate(ref.String())
+			a.invalidate(ref.String())
 			return nil
 		}
 	}
@@ -1018,7 +1136,7 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	if err != nil {
 		return fmt.Errorf("granting at %s: %w", ref, err)
 	}
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	return nil
 }
 
@@ -1048,7 +1166,7 @@ func SetDefault(s Store, ref Ref, levels Levels) error {
 	if err != nil {
 		return fmt.Errorf("setting the default at %s: %w", ref, err)
 	}
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	return nil
 }
 
@@ -1083,7 +1201,7 @@ func Claim(s Store, ref Ref, principal string) error {
 	if err != nil {
 		return fmt.Errorf("claiming %s: %w", ref, err)
 	}
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	_ = committed // refused is a record standing already, which the next read shows
 	return nil
 }
@@ -1139,7 +1257,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 			return fmt.Errorf("revoking at %s: %w", ref, err)
 		}
 		if committed {
-			a.attr.invalidate(ref.String())
+			a.invalidate(ref.String())
 			return nil
 		}
 	}
@@ -1180,7 +1298,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 	if err != nil {
 		return fmt.Errorf("establishing %s: %w", ref, err)
 	}
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	return nil
 }
 
@@ -1240,7 +1358,7 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 			return fmt.Errorf("setting %s at %s: %w", level, ref, err)
 		}
 		if committed {
-			a.attr.invalidate(ref.String())
+			a.invalidate(ref.String())
 			return nil
 		}
 	}
@@ -1259,7 +1377,7 @@ func SetUnder(s Store, ref, under Ref) error {
 	if err != nil {
 		return fmt.Errorf("linking %s under %s: %w", ref, under, err)
 	}
-	a.attr.invalidate(ref.String())
+	a.invalidate(ref.String())
 	return nil
 }
 
