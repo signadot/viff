@@ -464,11 +464,17 @@ deciding — the verse governs who resolves it, and the executor never resolves 
 
 ```sh
 verse task do gate "$ID" deploy-approval --as human:scott --reason prod --wait
+verse task do gate "$ID" unsure --as human:scott --to peggy@example.com --reason "which region?"
 # gate raised: deploy-approval-a1b2c3d4
 # awaiting resolution…
 verse task approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from someone with the authority
 verse task do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
 ```
+
+`--to` is who a worker-raised question is held out to — a person, a group's address, a kind —
+since a worker asking somebody is what raising a gate is for. Where the spawn's own gates carry
+a gate of that name with `answerers`, the spawn's stand and `--to` is ignored: that gate is the
+charter's policy, and the runner does not get to soften it.
 
 A gate raised this way is the same record a charter gate poses, so it can take outcomes of its
 own, a threshold per outcome, and a clock:

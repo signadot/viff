@@ -137,6 +137,16 @@ type Meta struct {
 	// Resolver is the binding a spawn NAMED to answer this run's gates, published on the
 	// entity so "who is watching this" is readable beside what the work may do.
 	Resolver string
+	// As is the principal the runner acts as, when the runner is known at spawn — a runner
+	// reached by url carries its identity on its entity. The mirror then does at the first
+	// reflection what a claim does for a brokered task: lists it as a runner, grants it the
+	// task, and writes every report as it. Empty for a local task, whose mirror is the
+	// system's, and for a brokered one, which learns its worker at the claim.
+	As string
+	// Gates are the spawn's own gates, the policy a task's questions are posed under. A gate a
+	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
+	// the frame says: that gate is the charter's, and the runner does not get to soften it.
+	Gates []task.Gate
 	// Owner answers "which standing binding covers this subject", for a question the spawn
 	// named nobody for. It is a callback rather than a call because mirror must not import
 	// the resolver package: resolver reads the charter's match vocabulary, trigger reads
@@ -303,6 +313,12 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		st["occurrence"] = rev
 	}
 	writeRun(store, id, occurrenceOf(st), st)
+	// A runner known at spawn is granted the task now, before its first report lands, and
+	// the reports are written as it from the first frame: the assignment is the owner's act,
+	// made at the moment of assigning.
+	if m.As != "" {
+		claimed(asPrincipal(store, entity.SystemPrincipal), id, st, m.As)
+	}
 	go func() {
 		// A stream ending is not the same fact as a task ending, and treating them as one
 		// is what let a mirror stop forever: the connection died, Reflect returned, and the
@@ -313,7 +329,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		// for a reason of its own, and the answer is to resume from the cursor this loop has
 		// been keeping all along.
 		attempt := 0
-		claimant := ""
+		claimant := m.As
 		for {
 			ended, heard := drainInto(store, id, st, m, h, ch, &claimant)
 			unsub()
@@ -338,6 +354,19 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 			ch, unsub = h.SubscribeSince(since)
 		}
 	}()
+}
+
+// answerersFor is who a worker-raised gate's question is held out to: the spawn's gate of that
+// name, when it has answerers of its own — the charter's policy, which the frame cannot soften
+// — and otherwise whoever the frame named, which is a worker asking somebody. Neither leaves
+// the question to the docket's default.
+func answerersFor(gates []task.Gate, ev task.Frame) []string {
+	for _, g := range gates {
+		if g.Name == ev.Gate && len(g.Answerers) > 0 {
+			return g.Answerers
+		}
+	}
+	return ev.Answerers
 }
 
 // asPrincipal is the store's view acting as principal, and the store itself where it
@@ -435,7 +464,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if owner == "" && subject != "" && m.Owner != nil {
 					owner = m.Owner(subject)
 				}
-				PostFrameQuestion(system, ev, id, subject, owner)
+				PostFrameQuestion(system, ev, id, subject, owner, answerersFor(m.Gates, ev))
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {

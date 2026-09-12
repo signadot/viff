@@ -41,6 +41,18 @@ type Entity struct {
 	// reconstructs from. Required, with no default and no local special case — `local` is what
 	// the ABSENCE of a runner means, which keeps every runner entity somewhere to reach.
 	URL string `tony:"field=url"`
+	// Identity is the principal the runner acts as: what a task's reports are written as, and
+	// what the spawn grants `read-write` and `control` on the task. A runner acts as itself,
+	// not as whoever installed it or whoever's work it runs. Defaults to the runner's name.
+	Identity string `tony:"field=identity,omitzero"`
+}
+
+// Principal is who the runner acts as: its identity, or its name.
+func (e Entity) Principal() string {
+	if e.Identity != "" {
+		return e.Identity
+	}
+	return e.Name
 }
 
 // Check validates a runner before it is installed.
@@ -98,7 +110,7 @@ func (e Entity) Check() error {
 // not recognise, so `ulr:` would install a runner with no address and report success — and the
 // url is the entire content of this entity, so the silence is total.
 func CheckFields(node *ir.Node) error {
-	known := map[string]string{"name": "", "kind": "", "url": ""}
+	known := map[string]string{"name": "", "kind": "", "url": "", "identity": ""}
 	node = unwrapNode(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms

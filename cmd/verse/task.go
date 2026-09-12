@@ -95,6 +95,7 @@ type taskDoGateConfig struct {
 	Options  string `cli:"name=options desc='the outcomes, comma-separated, each id[:need] (default: proceed,deny at one each)'"`
 	Deadline string `cli:"name=deadline desc='how long the question stands, within[:default] (e.g. 4h:deny)'"`
 	Wait     bool   `cli:"name=wait desc='block until the gate is resolved, then print the outcome'"`
+	To       string `cli:"name=to desc='who to hold the question out to, comma-separated: a person, a group address, a kind. A gate of this name on the spawn that names answerers stands over this'"`
 }
 
 // parseOptions reads `id[:need],id[:need]` into options. A threshold left out is one.
@@ -141,7 +142,7 @@ func taskDoGateCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "gate").
-		WithSynopsis("gate — raise a gate up to versed for resolution: gate <id> <name> --as <identity> [--reason <t>] [--wait]").
+		WithSynopsis("gate — raise a gate up to versed for resolution: gate <id> <name> --as <identity> [--to <who>,…] [--reason <t>] [--wait]").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
@@ -194,6 +195,15 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 	}
 	if clock != nil {
 		ev["deadline"] = clock
+	}
+	if cfg.To != "" {
+		var to []string
+		for _, who := range strings.Split(cfg.To, ",") {
+			if who = strings.TrimSpace(who); who != "" {
+				to = append(to, who)
+			}
+		}
+		ev["answerers"] = to
 	}
 	resp, err := httpPostURL(base+"/tasks/"+id+"/report",
 		map[string]any{"epoch": epoch, "events": []any{ev}})

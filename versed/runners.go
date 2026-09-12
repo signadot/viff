@@ -72,6 +72,9 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	body := entity.Obj{"name": e.Name, "kind": e.Kind, "url": e.URL}
+	if e.Identity != "" {
+		body["identity"] = e.Identity
+	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
 		At: runner.Ref(e.Kind, e.Name).At(), Value: body.Payload(),
 	}); err != nil {
@@ -309,6 +312,19 @@ const brokerName = "broker"
 // the default. A misspelled runner that ran the work in-process would be the same class of bug
 // as a misspelled resolver that quietly left work unsupervised: the deployment says one thing
 // and the verse does another.
+// runnerIdentity is the principal a named runner acts as — the identity on its entity, or its
+// name — and "" for the runtimes this process holds, which act as nobody of their own: a local
+// task's mirror is the system's, and a brokered task learns its worker at the claim.
+func runnerIdentity(store entity.Reader, name string) string {
+	if name == "" || name == brokerName {
+		return ""
+	}
+	if e, ok := runner.Find(store, name); ok {
+		return e.Principal()
+	}
+	return ""
+}
+
 func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, string, error) {
 	if name == "" {
 		return s.runner, "", nil

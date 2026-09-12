@@ -356,7 +356,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner string) {
+func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner string, answerers []string) {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -438,7 +438,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
-	poseRecord(store, task.GateQuestion{ID: ev.ID}, taskID)
+	poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers}, taskID)
 	if owner != "" {
 		Bind(store, ev.ID, owner)
 	}

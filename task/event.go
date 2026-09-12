@@ -24,9 +24,13 @@ type Frame struct {
 	Choice   string    `tony:"field=choice,omitzero"`
 	Options  []Option  `tony:"field=options,omitzero"`
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
-	Text     string    `tony:"field=text,omitzero"` // reason / detail / result
-	Err      string    `tony:"field=err,omitzero"`
-	Dropped  int       `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
+	// Answerers is who a worker raising a gate wants it held out to — a worker asking somebody,
+	// `task do gate --to`. The spawn's own gate of the same name, when it has answerers, stands
+	// over this: that gate is the charter's policy.
+	Answerers []string `tony:"field=answerers,omitzero"`
+	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
+	Err       string   `tony:"field=err,omitzero"`
+	Dropped   int      `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // Event kinds.

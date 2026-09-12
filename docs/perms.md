@@ -84,8 +84,10 @@ own work asked, exactly as if the question stood beneath them, and a runner's gr
 executor may not resolve its own gate, and nothing special-cases it.
 
 **Who else may answer is the question's own `read-write` line.** It is written when the
-question is posed: the gate's `answerers` when it named them, else the default on
-`verse.gate.question` — the docket's openness, `read-write: [user, agent]` in the seed. Binding
+question is posed: the gate's `answerers` when it named them; for a gate a worker raises, the
+spawn's gate of that name when it names answerers, else whom the worker named (`task do gate
+--to`), a worker asking somebody; else the default on `verse.gate.question` — the docket's
+openness, `read-write: [user, agent]` in the seed. Binding
 the question to a resolver replaces that line with whoever answers as the binding (its address
 for a service, the person or the group behind it otherwise), unbinding gives it back to the
 default, and `read` stays as the default gave it. `need` over the answerers is one-or-many:
@@ -244,7 +246,9 @@ binding a question is held out to answers it.
 - **A claim** is the assignment the model calls the owner's act: when a worker claims a
   brokered task, versed writes `read-write` and `control` for the claimant on the task's record
   and on this run's, and the mirror writes every report from then on **as the claimant**. A
-  question the task raises is posed and settled as the system whoever is working the task.
+  runner reached by url is known at spawn, so the same happens at the first reflection, for
+  the `identity` on its entity (its name by default). A question the task raises is posed and
+  settled as the system whoever is working the task.
 - **A binding** is a grant: when a question is bound to a resolver, the question's record holds
   out `read-write` to whoever answers as the binding — its address for a service, the person or
   the group behind it otherwise — replaced when the question changes hands and given back to

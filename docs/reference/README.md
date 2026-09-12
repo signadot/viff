@@ -250,7 +250,7 @@ verse
           vector <id> auto|ask|park [--as <who>] · vector <id> --file <f>
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
           do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
-          do gate <id> <name> --as <identity> [--reason <t>] [--wait]   raise a gate up
+          do gate <id> <name> --as <identity> [--to <who>,…] [--reason <t>] [--wait]   raise a gate up
                   [--options id[:need],…] [--deadline within[:default]]  …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [--probe]                 where work can run

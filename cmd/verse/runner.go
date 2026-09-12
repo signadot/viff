@@ -147,8 +147,9 @@ func (cfg *runnerRemoveConfig) run(cc *cli.Context, args []string) error {
 
 type runnerAddConfig struct {
 	*cli.Command
-	File    string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
-	NoProbe bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
+	File     string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
+	NoProbe  bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
+	Identity string `cli:"name=identity desc='the principal the runner acts as (default: its name): what its reports are written as and what a spawn grants it'"`
 }
 
 func runnerAddCmd() *cli.Command {
@@ -182,9 +183,11 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: want `runner add <kind>.<name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		resp, err := httpPostTo("/runners", q, map[string]any{
-			"kind": parts[0], "name": parts[1], "url": rawURL,
-		})
+		body := map[string]any{"kind": parts[0], "name": parts[1], "url": rawURL}
+		if cfg.Identity != "" {
+			body["identity"] = cfg.Identity
+		}
+		resp, err := httpPostTo("/runners", q, body)
 		return runnerAdded(cc, resp, err)
 	}
 	// More positionals than either form takes. Worth its own message, because the fall-through

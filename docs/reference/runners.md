@@ -10,6 +10,7 @@ A runner is an entity at `verse.runners.<kind>:<name>` carrying one field:
 | | |
 |---|---|
 | `url` | the verse-facing task-control base — what `runner.HTTP` drives and what a restart reconstructs from. Required |
+| `identity` | the principal the runner acts as: what a task's reports are written as, and what a spawn grants `read-write` and `control` on the task. A runner acts as itself, never as its installer or as whoever's work it runs. Default: the runner's name ([perms.md](../perms.md)) |
 
 `kind` is the operator's own category (what this runner *is*: pool, host, sandbox); `name` is
 its name within that kind. Neither may contain `/`, and `kind` may not contain `:` — both are
@@ -23,6 +24,7 @@ verse runner                              what is installed, with running/total/
 verse runner add <kind>:<name> <url>       install one, probing the url first
        add [--file <f>] | [file] | stdin   …or as a document (.tony/.json/.yaml)
            [--no-probe]                    install without asking the url what it is
+           [--identity <who>]              the principal it acts as (default: its name)
        show <ref>                          the entity
        check <ref>                         ask this runner what it is, right now
        remove <ref>                        take it away; refused if work is running on it

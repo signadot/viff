@@ -41,12 +41,11 @@ answerable; neither is answered.
 
 ## 4. What is not attributed
 
-- **A remote HTTP runner's reports.** A brokered task's reports are written as the claimant,
-  from the identity on the claim. A task spawned onto a runner by url reports through a handle
-  that names nobody, so the mirror goes on writing those as the spawn's principal — the owner —
-  which passes every check the runner's grant is meant to fail. The handle's stream would have
-  to carry the runner's name, and the runner's `GET /runner` descriptor is where it would come
-  from ([runner-descriptor.md](runner-descriptor.md)).
+- **A resumed task's gates.** A runner reached by url now acts as the identity on its entity
+  from the first reflection, and a brokered task as its claimant. What a resume cannot recover
+  is the spawn's own gates, which the task record does not carry, so a gate a worker raises
+  after a restart is held out to whom the frame names or to the docket's default, not to the
+  spawn's answerers for that name.
 - **The first toucher owns.** A node that exists with no record — one written before the
   mirror was, or by an unattributed request — is owned by the first principal holding `owner`
   who writes it, since the store cannot tell a create from a merge into what stands. Staging's
@@ -73,8 +72,6 @@ Built from the directed-gates note, which landed here: the question's owner reco
 `answerers`, a person and a group as a binding's resolver, `verse gate escalate`, the ladder
 walking every standing binding in name order, and groups. Not built:
 
-- **A worker-raised gate's answerers.** A gate a worker raises through the broker carries no
-  `answerers`; it is held out to the docket's default or to the binding covering the run.
 - **A hook's spawn gates are not checked at install.** The action's own spawn gates are; a
   spawn beneath `onDone` and the rest is not walked by the answerers check.
 - **A person's silence.** A person on a rung escalates past their binding's `deadline` as a

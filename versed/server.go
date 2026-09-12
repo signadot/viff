@@ -495,7 +495,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
 			Chain: spec.Chain, Prompt: spec.Prompt, Occurrence: spec.Occurrence,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
-			Resolver: spec.Resolver,
+			Resolver: spec.Resolver, Gates: spec.Gates,
 		}
 		if why := ghostResolver(st, spec.Resolver); why != "" {
 			// The same shape as an envelope this build does not have, below: a spawn that
@@ -3081,6 +3081,11 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
 	m.Owner = s.standingOwner
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
+	// Who the runner acts as, when it is one reached by url: a spawn and a resume both name
+	// the runner entity, and the entity names the principal.
+	if m.As == "" {
+		m.As = runnerIdentity(store, m.RunnerName)
+	}
 	mirror.Reflect(store, id, h, m)
 }
 
@@ -3892,7 +3897,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	}, nil)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
-		Subject: body.Subject, Resolver: body.Resolver,
+		Subject: body.Subject, Resolver: body.Resolver, Gates: body.Gates,
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
 		// Store.Rev() here looked obvious and is a store ROUND TRIP — it opens a watch when
