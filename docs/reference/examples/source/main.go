@@ -4,7 +4,7 @@
 // one that has not been written yet.
 //
 //	go run ./docs/reference/examples/source -addr :9801 -repo verse=/path/to/verse
-//	verse source add git:build-host http://localhost:9801
+//	verse source add git.build-host http://localhost:9801
 //	verse source
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
@@ -63,7 +63,7 @@ func main() {
 	// it sees. verse drives exactly this over HTTP, and its own in-process source is the same
 	// value behind the same handler — so there is no privileged local path for this to differ
 	// from.
-	log.Printf("source listening on %s — install it with: verse source add <system>:<name> http://<host>%s",
+	log.Printf("source listening on %s — install it with: verse source add <system>.<name> http://<host>%s",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, sourced.New(src).Handler()); err != nil {
 		log.Fatalf("source: %v", err)

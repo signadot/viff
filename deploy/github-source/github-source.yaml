@@ -13,7 +13,7 @@
 #
 # Install it once the pods are up (the name must match `githubSourceName`, because the hint url
 # below carries it):
-#   verse source add github:repos http://github-source:9801
+#   verse source add github.repo http://github-source:9801
 apiVersion: apps/v1
 kind: Deployment
 metadata:

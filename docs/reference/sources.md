@@ -4,7 +4,7 @@ The surface. For what a source *is* and why it is shaped this way, see
 [../sources.md](../sources.md). To build one, copy
 [examples/source](examples/source/main.go).
 
-A source is an entity at `verse.sources.<system>:<name>`:
+A source is an entity at `verse.sources.<system>.<name>`:
 
 | | |
 |---|---|
@@ -22,7 +22,7 @@ A source is an entity at `verse.sources.<system>:<name>`:
 `Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
 field present says which it is.
 
-The system is what the address is keyed on (`verse.sources.<system>:<name>`, under the
+The system is what the address is keyed on (`verse.sources.<system>.<name>`, under the
 reserved root like everything verse keeps about its own running) because it is a question verse
 already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
@@ -89,8 +89,8 @@ proved apart from nothing, so it is refused beside anything else in its system.
 ```
 verse source                                what is installed, with lastReflect/lastError
         [--probe]                            …and what each one says right now (not recorded)
-verse source add <system>:<name> <url>       install one, probing the url first
-       add --dir <d> <system>:<name>         …or a local git repo, reflected in task
+verse source add <system>.<name> <url>       install one, probing the url first
+       add --dir <d> <system>.<name>         …or a local git repo, reflected in task
        add [--file <f>] | [file] | stdin     …or as a document (.tony/.json/.yaml)
            [--no-probe]                      install without asking it what it is
            [--allow-overlap]                 install though another source may write the same place

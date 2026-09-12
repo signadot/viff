@@ -21,7 +21,7 @@ segments of the address and of the route that serves it.
 ```
 verse runner                              what is installed, with running/total/lastSpawn
         [--probe]                          …and what each one says right now (not recorded)
-verse runner add <kind>:<name> <url>       install one, probing the url first
+verse runner add <kind>.<name> <url>       install one, probing the url first
        add [--file <f>] | [file] | stdin   …or as a document (.tony/.json/.yaml)
            [--no-probe]                    install without asking the url what it is
            [--identity <who>]              the principal it acts as (default: its name)

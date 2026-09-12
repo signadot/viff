@@ -11,7 +11,7 @@
 //
 // Then install it, from anywhere that can reach verse:
 //
-//	verse source add git:build-host http://localhost:9801
+//	verse source add git.build-host http://localhost:9801
 //	verse source
 //
 // WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
@@ -141,7 +141,7 @@ func (c *common) serve(system string, src source.Source, routes map[string]http.
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	log.Printf("%s source on %s — install it with: verse source add %s:<name> %s",
+	log.Printf("%s source on %s — install it with: verse source add %s.<name> %s",
 		system, c.addr, system, dialable(c.addr))
 	if c.hintURL == "" && len(routes) > 0 {
 		log.Printf("no -hint-url: deliveries will be verified and dropped, and only verse's " +

@@ -13,7 +13,7 @@
 #
 # Install it once the pods are up. The name is free, as the git source's is: this one is polled
 # and posts no hints, so there is nothing for a baked-in url to have to match.
-#   verse source add git-issue:cluster http://git-issue-source:9801
+#   verse source add git-issue.cluster http://git-issue-source:9801
 #
 # What it reflects is the drive's own notices: the `contract` issues contributing.md asks for
 # before a breaking push land in this slice, which is what makes `verse docket`'s neighbourhood

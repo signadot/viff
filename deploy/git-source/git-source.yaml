@@ -9,7 +9,7 @@
 # those bake a hint url containing their name into the pod, so the name has to be decided
 # before it starts and there is a `<x>SourceName` knob for it. This one is polled and posts no
 # hints, so there is nothing to match and no knob (there never was a `gitSourceName`).
-#   verse source add git:cluster http://git-source:9801
+#   verse source add git.cluster http://git-source:9801
 apiVersion: apps/v1
 kind: Deployment
 metadata:

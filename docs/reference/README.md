@@ -264,8 +264,8 @@ verse
                                              no flags; take the place and set what it and
                                              what is created beneath it hold out
   source (sources) [--probe]                 what reflects an external system in
-          add <system>:<name> <url> [--no-probe] [--allow-overlap]
-          add --dir <d> <system>:<name>      a local git repo, reflected in task
+          add <system>.<name> <url> [--no-probe] [--allow-overlap]
+          add --dir <d> <system>.<name>      a local git repo, reflected in task
           add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask it what it is and what it claims, right now
           remove <ref> [--forget | --keep]   what becomes of what it reflected

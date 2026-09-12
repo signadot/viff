@@ -160,7 +160,7 @@ func sourceAddCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add a source: add <system>:<name> <url>, add --dir <d> <system>:<name>, " +
+		WithSynopsis("add a source: add <system>.<name> <url>, add --dir <d> <system>.<name>, " +
 			"or add --file <f> (- = stdin) | [file] | stdin").
 		WithOpts(opts...).
 		WithRun(cfg.run)

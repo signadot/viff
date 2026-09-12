@@ -3,7 +3,7 @@
 // the verse deployment does not otherwise need to know about.
 //
 //	go run ./docs/reference/examples/runner -addr :9800
-//	verse runner add pool:gpu http://localhost:9800
+//	verse runner add pool.gpu http://localhost:9800
 //	verse task run --runner verse.runners.pool.gpu "retrain the ranker"
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
@@ -49,7 +49,7 @@ func main() {
 	// drives exactly this over HTTP, and its own in-process runner is the same handler — so
 	// there is no privileged local path for this to differ from.
 	d := taskd.New(build)
-	log.Printf("runner listening on %s — install it with: verse runner add <kind>:<name> http://<host>%s",
+	log.Printf("runner listening on %s — install it with: verse runner add <kind>.<name> http://<host>%s",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, d.Handler()); err != nil {
 		log.Fatalf("runner: %v", err)
