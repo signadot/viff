@@ -57,15 +57,16 @@ answerable; neither is answered.
   write this process makes to the mirror, and nothing else. One versed runs against one store;
   a replica writing the mirror would have to be watched for, and is not.
 
-## 5. Reads, open by rule
+## 5. What a default is not yet
 
-The open verse reads everything but the mirror by a base case in code, not by a seed row: a
-`read: [*]` grant on a kind-rooted node would stop at the owner record a person's task or put
-carries, so it could not have said "everyone reads everything". With the rule off, reads are
-admitted by co-ownership and `read` grants alone — the tests of the granted path set it off —
-and there is no config knob for it yet, only `entity.Attribution.OpenReads`. A private verse
-wants the knob, and wants the seed to hold `read` out where the open rule did: a source's slice
-to everyone, most likely, which is §3's record again.
+What a new record holds out comes from the nearest default up the tree, the root's from
+config. Three things around it are not built. There is no `read` row in the seed for a
+source's slice, so a private root default hides every reflected entity from everybody but the
+installer, which is §3's record again. A default is copied at creation and nothing revisits a
+record when the default above it changes, which is the model's stance and also means a place
+made private after the fact has to be walked — `verse perms` takes one node. And the verb
+takes a node's grants whole or adds one; there is no revoke of one line, and no listing of
+what a person holds anywhere.
 
 ## 6. Where the question stands
 
@@ -81,7 +82,7 @@ plain one; the computed edge is the cheaper spelling of the same fact.
 - A listing's filter walks the mirror once per entity, through the cache. `verse ps` on
   staging's mirror has not been measured under it; if it shows, the answer is a memo per
   distinct prefix, not a weaker check.
-- `verse data verse perms` answers a person nothing of the mirror and says nothing about why; a
-  listing that leaves everything out reads as empty. The 403 is on `Get` alone.
+- `verse data verse perms` is refused a person, as a listing at a place they may not read into;
+  `verse perms <path>` is how they read their own record.
 - The runtime authority axis — a task's `Grant` and `Vector`, what a task may *do* — is
   untouched by any of this, and [authority.md](../roadmap/authority.md) is still its note.

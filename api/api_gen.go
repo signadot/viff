@@ -2052,6 +2052,257 @@ func (s *Status) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts PermsRecord to a Tony IR node.
+func (s *PermsRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Owner
+	if s.Owner != "" {
+		irMap["owner"] = ir.FromString(string(s.Owner))
+	}
+
+	// Field: Grants (optional)
+	if s.Grants != nil {
+		irMap["grants"] = s.Grants
+	}
+
+	// Field: Default (optional)
+	if s.Default != nil {
+		irMap["default"] = s.Default
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates PermsRecord from a Tony IR node.
+func (s *PermsRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for PermsRecord, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "owner":
+			// Field: Owner
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "owner", fieldNodeUnwrapped.Type)
+			}
+			s.Owner = string(fieldNodeUnwrapped.String)
+		case "grants":
+			if gomap.GetUnmapComments(opts...) {
+				s.Grants = fieldNode
+			} else {
+				s.Grants = fieldNodeUnwrapped
+			}
+		case "default":
+			if gomap.GetUnmapComments(opts...) {
+				s.Default = fieldNode
+			} else {
+				s.Default = fieldNodeUnwrapped
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for PermsRecord", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts PermsRecord to Tony format bytes.
+func (s *PermsRecord) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates PermsRecord.
+func (s *PermsRecord) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts PermsEdit to a Tony IR node.
+func (s *PermsEdit) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Default (optional)
+	if s.Default != nil {
+		irMap["default"] = s.Default
+	}
+
+	// Field: Grants (optional)
+	if s.Grants != nil {
+		irMap["grants"] = s.Grants
+	}
+
+	// Field: Grant (optional)
+	if s.Grant != nil {
+		irMap["grant"] = s.Grant
+	}
+
+	// Field: Below
+	if s.Below {
+		irMap["below"] = ir.FromBool(bool(s.Below))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates PermsEdit from a Tony IR node.
+func (s *PermsEdit) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for PermsEdit, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "default":
+			if gomap.GetUnmapComments(opts...) {
+				s.Default = fieldNode
+			} else {
+				s.Default = fieldNodeUnwrapped
+			}
+		case "grants":
+			if gomap.GetUnmapComments(opts...) {
+				s.Grants = fieldNode
+			} else {
+				s.Grants = fieldNodeUnwrapped
+			}
+		case "grant":
+			if gomap.GetUnmapComments(opts...) {
+				s.Grant = fieldNode
+			} else {
+				s.Grant = fieldNodeUnwrapped
+			}
+		case "below":
+			// Field: Below
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "below", fieldNodeUnwrapped.Type)
+			}
+			s.Below = bool(fieldNodeUnwrapped.Bool)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for PermsEdit", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts PermsEdit to Tony format bytes.
+func (s *PermsEdit) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates PermsEdit.
+func (s *PermsEdit) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts Perms to a Tony IR node.
 func (s *Perms) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {

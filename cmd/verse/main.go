@@ -202,6 +202,7 @@ func rootCmd() *cli.Command {
 			charterCmd(),
 			resolverCmd(),
 			runnerCmd(),
+			permsCmd(),
 			sourceCmd(),
 			providerCmd(),
 			connectCmd(),

@@ -462,6 +462,32 @@ type Status struct {
 	Perms *Perms `tony:"field=perms,omitzero"`
 }
 
+// PermsRecord is a node's perms record as its owner reads it back (`verse perms <path>`): who
+// owns the node, what they hold out on it, and what a node created beneath it holds out.
+//
+//tony:schemagen=verse-perms-record,notag
+type PermsRecord struct {
+	At      string         `tony:"field=at"`
+	Owner   string         `tony:"field=owner,omitzero"`
+	Grants  entity.Payload `tony:"field=grants,omitzero"`
+	Default entity.Payload `tony:"field=default,omitzero"`
+}
+
+// PermsEdit is what an owner sets on a node's record (`PUT /perms`). A node with no record of
+// its own gets one — the place is taken by its owner, holding out what the default above says
+// — and then: `default` sets what a node created beneath holds out (`{}` nothing, null
+// inherits again), `grants` replaces what the node itself holds out (`[]` nothing), and
+// `grant` adds one line at the node, beneath it when `below` is set.
+//
+//tony:schemagen=verse-perms-edit,notag
+type PermsEdit struct {
+	At      string         `tony:"field=at"`
+	Default entity.Payload `tony:"field=default,omitzero"`
+	Grants  entity.Payload `tony:"field=grants,omitzero"`
+	Grant   entity.Payload `tony:"field=grant,omitzero"`
+	Below   bool           `tony:"field=below,omitzero"`
+}
+
 // Perms is the permission check's census: refusals by the level a write or read wanted, checks
 // the mirror could not answer, and what listings left out.
 //

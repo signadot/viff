@@ -1049,6 +1049,11 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /watch", s.watch, "", stream("verse-event"))
 	rt.handle("GET /state", s.state, "", one("verse-state"))
 	rt.handle("GET /entity", s.getEntity, "", one("verse-entity"))
+	// A node's permissions, as its owner reads and sets them. The mirror itself is the
+	// system's and not readable over the entity routes; this is the owner's window onto their
+	// own record, and the one verb by which a person writes to it.
+	rt.handle("GET /perms", s.getPerms, "", one("verse-perms-record"))
+	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
 	rt.handle("GET /gates", s.listGates, "", nothing)
 	// The distinct subjects with live work — addresses, so a list of plain strings rather
 	// than of anything verse names. That is the whole shape, so it is published.
@@ -1438,6 +1443,9 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
+	if refused(w, readableAt(store, principalOf(r), sel)) {
+		return
+	}
 	// ABSENT MEANS FROM NOW, and it is not the same as `since=0`. A watch with no cursor is
 	// somebody saying "show me what happens", and answering that with a replay of the whole
 	// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to
@@ -1651,6 +1659,11 @@ func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 	if err == nil {
 		return false
 	}
+	// A read the check turned away is not a store that could not be read: it is answered,
+	// with why, and nothing about the store is wrong.
+	if refused(w, err) {
+		return true
+	}
 	codec.HTTPError(w, r, http.StatusServiceUnavailable, fmt.Sprintf(
 		"the store could not be read, so this answer would be an empty verse rather than the "+
 			"verse: %v — nothing is missing until it reads again, and writes may still be "+
@@ -1665,6 +1678,9 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
+	if refused(w, readableAt(store, principalOf(r), sel)) {
+		return
+	}
 	// AT THE PATH, not at the root. This read used to be List(matchRef) — the whole verse
 	// across the wire, filtered here — whatever `at` said, which made every read cost the same
 	// as reading everything: 0.74s for one registration on a 6900-entity store, against under
@@ -1882,6 +1898,129 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
+}
+
+// getPerms answers a node's perms record to somebody who holds `owner` there: a co-owner reads
+// their own record, and nobody else reads the mirror.
+func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
+	ref, err := addressAt(r.URL.Query().Get("at"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.OwnerLevel, ref)) {
+		return
+	}
+	s.answerPerms(w, r, ref)
+}
+
+// putPerms takes a place and sets what it holds out. The requester must hold `owner` at the
+// node already: this is a place being taken by whoever may take it, never a way to take one
+// from its owner — and a record already somebody else's refuses the edit the same way.
+func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
+	var body api.PermsEdit
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ref, err := addressAt(body.At)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	who := principalOf(r)
+	if who == "" {
+		http.Error(w, "a place is taken by somebody: set `user:` in the CLI's config, or --as", http.StatusBadRequest)
+		return
+	}
+	store := s.scopedStore(r)
+	if refused(w, entity.Check(store, who, entity.OwnerLevel, ref)) {
+		return
+	}
+	if err := entity.Claim(store, ref, who); refused(w, err) {
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	// Taking the place may have found a record standing that is somebody else's; the check
+	// above passed on co-ownership, so they are a co-owner of it and may edit it. Owner
+	// records never move: what the edit touches is what the node holds out.
+	if body.Default != nil {
+		var levels entity.Levels
+		if ir.Uncomment(body.Default).Type != ir.NullType {
+			var perr error
+			if levels, _, perr = entity.ParseLevels(entity.Obj{entity.DefaultField: body.Default}.Payload(), entity.DefaultField); perr != nil {
+				http.Error(w, perr.Error(), http.StatusBadRequest)
+				return
+			}
+			if levels == nil {
+				levels = entity.Levels{}
+			}
+		}
+		if err := entity.SetDefault(store, ref, levels); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
+	if body.Grants != nil {
+		gs, err := entity.ParseGrants(entity.Obj{entity.GrantsField: body.Grants}.Payload())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := entity.SetGrants(store, ref, gs); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
+	if body.Grant != nil {
+		levels, _, err := entity.ParseLevels(entity.Obj{"grant": body.Grant}.Payload(), "grant")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(levels) == 0 {
+			http.Error(w, "a grant holds out a level: read, read-write, owner or control", http.StatusBadRequest)
+			return
+		}
+		if err := entity.AddGrant(store, ref, entity.Grant{At: ref.Segs(), Below: body.Below, To: map[entity.Level][]string(levels)}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
+	s.answerPerms(w, r, ref)
+}
+
+// answerPerms writes a node's record back, read as the system since the mirror is not the
+// requester's to read; the caller has established that the requester owns the node.
+func (s *Server) answerPerms(w http.ResponseWriter, r *http.Request, ref entity.Ref) {
+	rec, ok, err := s.Store.Get(entity.PermsRef(ref))
+	if unreadable(w, r, err) {
+		return
+	}
+	if !ok {
+		codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf("%s has no record of its own: it is "+
+			"owned by whoever owns the node above it, and holds out what that node does", ref))
+		return
+	}
+	writeOut(w, r, http.StatusOK, api.PermsRecord{
+		At: ref.String(), Owner: entity.Str(rec.Payload, entity.OwnerField),
+		Grants: entity.Get(rec.Payload, entity.GrantsField), Default: entity.Get(rec.Payload, entity.DefaultField),
+	})
+}
+
+// readableAt is the check a listing or a watch AT a path makes before reading beneath it: the
+// path itself must be the reader's to read, as it would be for a Get. A listing at a readable
+// path then leaves out what may not be seen beneath it; a listing at a path that is not
+// readable at all is refused, and says so, rather than answered empty. A selector naming no
+// path reads at the root, which is everyone's.
+func readableAt(store entity.Store, principal string, sel selector) error {
+	prefix, _, ok := entity.AtPrefix(sel.at)
+	if !ok || len(prefix) == 0 {
+		return nil
+	}
+	return entity.CheckInto(store, principal, entity.RefAt(prefix...))
 }
 
 // refused answers a write the permission check turned away: 403, with the check's own words,
@@ -2566,7 +2705,9 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
 	// than a policy about who is asking: the instance names its binding and its origin, so
 	// this is a comparison of two fields the question already carries.
-	q, found, err := s.scopedStore(r).Get(mirror.QuestionRef(v.ID))
+	// AS THE BINDING, which is what the question is held out to; the service that carried the
+	// verdict may itself hold nothing on it.
+	q, found, err := s.asBinding(r, binding).Get(mirror.QuestionRef(v.ID))
 	if unreadable(w, r, err) {
 		return
 	}

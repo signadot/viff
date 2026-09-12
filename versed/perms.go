@@ -41,21 +41,39 @@ var seed = []struct {
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(source.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.ReadWrite, []string{entity.UserKind, entity.AgentKind}},
+	// The docket is everybody's to read, the runner working a task included; answering is
+	// the row above.
+	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Read, []string{entity.Everyone}},
+	// Who has been here is data anybody may read (`verse data verse principal`); the mirror,
+	// beside it, is held out to nobody.
+	{entity.VerseRef(entity.PrincipalSystem), entity.Read, []string{entity.Everyone}},
 }
 
 // seedPerms writes the seed, once: a row already standing — this verse's, or an operator's
 // edit of it — is left as it is.
 func seedPerms(store entity.Store) error {
+	// One record per node, whatever the table says about it: the rows for a node are its
+	// grants, and a second write under the absence precondition would be refused as the
+	// record standing already.
+	var order []entity.Ref
+	grants := map[entity.Ref][]entity.Grant{}
 	for _, row := range seed {
-		g := entity.Grant{At: row.at.Segs(), Below: true, To: map[entity.Level][]string{row.level: row.to}}
+		if _, seen := grants[row.at]; !seen {
+			order = append(order, row.at)
+		}
+		grants[row.at] = append(grants[row.at], entity.Grant{
+			At: row.at.Segs(), Below: true, To: map[entity.Level][]string{row.level: row.to},
+		})
+	}
+	for _, at := range order {
 		_, _, err := store.Write(entity.Write{
-			At:        entity.PermsRef(row.at).At(),
-			Value:     entity.Obj{entity.GrantsField: entity.GrantsPayload([]entity.Grant{g})}.Payload(),
+			At:        entity.PermsRef(at).At(),
+			Value:     entity.Obj{entity.GrantsField: entity.GrantsPayload(grants[at])}.Payload(),
 			When:      []entity.Require{entity.Created()},
 			Principal: entity.SystemPrincipal,
 		})
 		if err != nil {
-			return fmt.Errorf("seeding the grant at %s: %w", row.at, err)
+			return fmt.Errorf("seeding the grants at %s: %w", at, err)
 		}
 	}
 	return nil

@@ -36,6 +36,7 @@ context:
 define:
   api: .[verse-routes]
   entity: .[verse-entity]
+  perms: .[verse-perms-record]
   flows: .[array(string)]
   tasks: .[array(verse-instance)]
   state: .[verse-state]

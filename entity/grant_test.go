@@ -80,7 +80,7 @@ func holds(t *testing.T, s entity.Store, who string, level entity.Level, ref ent
 func TestWhoHoldsWhatWhere(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
-	entity.PolicyOf(system).OpenReads(false) // the granted model, with the open verse's reading rule off
+	entity.PolicyOf(system).SetRootDefault(nil) // the granted model: nothing is held out by default
 	alice, bob, bot := "alice@example.com", "bob@example.com", "bot"
 	rw := func(to ...string) map[entity.Level][]string { return map[entity.Level][]string{entity.ReadWrite: to} }
 

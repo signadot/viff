@@ -22,10 +22,18 @@ signature:
 context:
 - tony-format/context
 define:
+  default: .[object(array(string))]
+signature:
+  name: verse-perms-config
+---
+context:
+- tony-format/context
+define:
   addr: .[string]
   agent: .[string]
   format: !verse-format null
   llm: !verse-llm null
+  perms: !verse-perms-config null
   scope: .[string]
   systemCharter: .[string]
   tripDuration: .[string]

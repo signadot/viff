@@ -2,14 +2,14 @@
 
 Every node in the verse has one owner, fixed when the node is created; the owners of its
 ancestors co-own it; and anyone else acts on it by a grant. That is the whole model, and this
-is how it runs: where the owner is recorded, what a grant is, what the check consults, and
-what the two open defaults are that make a fresh verse usable by everybody until somebody
-narrows them.
+is how it runs: where the owner is recorded, what a grant is, what the check consults, what a
+new node holds out by default, and the one rule that makes a fresh verse usable by everybody
+until somebody takes a place of their own.
 
 The surface is small. A request names who makes it (`user:` in the CLI's config, or `--as`); a
 refused write or read is a 403 that says who wanted what and which record decided; `verse
-status` counts the refusals; and the records live at `verse.perms.node.<address>`, written by
-versed alone. [reference/entities.md](reference/entities.md#two-halves-one-tree) has the
+status` counts the refusals; `verse perms <path>` is how an owner reads and sets their own
+record; and the records live at `verse.perms.node.<address>`, written by versed alone. [reference/entities.md](reference/entities.md#two-halves-one-tree) has the
 spellings; [reference/up.md](reference/up.md#config) the config.
 
 ## Principals
@@ -126,7 +126,8 @@ record is alice at demo.pr.1* — and a count on `verse status` under `perms`.
 Reads go through the same view. A `Get` of what may not be read is refused as a write is; a
 listing, a replay, a live watch and a snapshot **leave out** what may not be seen, so one
 principal sees one set whichever way they ask, and what a listing withholds is counted apart
-(`hidden`) since the listing was answered. One window is real and one commit wide: the owner
+(`hidden`) since the listing was answered. A listing or a watch *at* a path is refused whole
+when the reader may not read into it — the node, or what a grant at it holds out beneath. One window is real and one commit wide: the owner
 record follows the write it records, so the commit that creates a node reaches a live watch
 before the record that would hide it.
 
@@ -141,20 +142,57 @@ Two things are asked of the check ahead of a write, because the record they woul
 after something that cannot be undone: an **answer** is checked before it is delivered to the
 work, and a **control** call before it is relayed.
 
-## Two open defaults
+## Defaults: what a new node holds out
 
-A fresh verse is usable by everyone, and the two rules that make it so are in code rather
-than in a record, because the root has no record to hang them on. They are the first thing a
-private verse changes.
+A record is written where ownership changes, and that is the moment it has to be decided what
+the new node holds out to everyone else. The answer is a **default**: a record may carry
+`default:`, grantees by level, and a node created beneath it — the nearest such record up the
+tree — gets that copied onto its own record as a grant at the node, the moment its record is
+written. A directory's default ACL rather than a process's umask, since a place is what verse
+addresses; copied at creation, since ownership is fixed at creation and a policy changed
+later touches nothing that exists.
 
-- **The world's half is open to write until a record says otherwise.** Everyone holds `owner`
-  at a world node with no owner record at or above it, so a raw put creates what it names as
-  its requester's, and a source's reflections are its installer's. A node with an owner is
-  that owner's, and their co-owners', and their grantees'.
-- **Everyone reads everything but the mirror.** Whatever the records say, a read is admitted
-  except at `verse.perms`, which only the system reads. With this rule off
-  (`entity.Attribution.OpenReads`) a read is admitted by co-ownership or a `read` grant and by
-  nothing else, and a charter matches only what its owner can read.
+```tony
+# verse.perms.node."spaces.walter@example.com"
+owner: walter@example.com
+grants: []                 # the place itself holds out nothing
+default: {}                # and nothing created beneath it does either
+```
+
+Two things follow. A node created under a record with no default inherits from above, up to
+the root; and a record holding an empty `grants: []` holds out nothing, where one with no
+grants field at all is from before defaults existed and reads as holding out the root's.
+
+**The root's default is the one that is not data**, since the root has no record: `read:
+["*"]`, so whatever anybody creates is readable by everyone until a default beneath says
+otherwise. It is set in the server's config (`perms: {default: {…}}`, [reference/up.md](reference/up.md#config)),
+and `{}` there is a verse where what anybody creates is theirs and their grantees' alone.
+
+**The world's half is open to write until a record says otherwise.** Everyone holds `owner`
+at a world node with no owner record at or above it, so a raw put creates what it names as
+its requester's, and a source's reflections are its installer's. This is the other rule in
+code rather than in a record, and the two are different questions: what a place with no record
+permits, and what a new record holds out.
+
+## `verse perms`: a place of one's own
+
+The one verb by which a person writes to the mirror. It reads a node's record to its owner, and
+sets it: a node with no record of its own gets one — the place is taken by whoever already
+holds `owner` there, holding out what the default above says — and then `--default` sets what
+is created beneath, `--grants` replaces what the node itself holds out, and `--grant` adds a
+line.
+
+```sh
+verse data spaces scott notes --put '{todo: [buy milk]}'   # scott's, readable by everyone
+verse perms spaces scott --default '{}' --grants '[]'       # scott's place: nothing held out, beneath or on it
+verse data spaces scott private --put '{…}'                 # scott's alone
+```
+
+Another user is refused `verse data spaces scott private` — a Get of what they may not read —
+and refused `verse data spaces scott`, since a listing at a place they may not read into is
+refused whole rather than answered empty; `verse data spaces scott notes` still answers them,
+by name, since that record holds out the read it was created with. `verse perms spaces scott
+--grant '{read: [ana@example.com]}'` opens the place to one person.
 
 ## The seed
 
@@ -167,6 +205,8 @@ nothing and an operator's edit stands:
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | owner | everyone |
 | `verse.sources.*`, `verse.runners.*`, `verse.resolvers.*` | owner | everyone |
 | `verse.gate.question.*` | read-write | `user`, `agent` |
+| `verse.gate.question.*` | read | everyone |
+| `verse.principal.*` | read | everyone |
 
 A question is the one row that is not everyone's: it is posed by versed and answered by
 whoever may, and "whoever" is a person — the runner working the task holds its grant on the

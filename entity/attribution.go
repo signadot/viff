@@ -63,11 +63,12 @@ type Attribution struct {
 	// kinds memoises a principal being listed under a kind; only a listing is kept, since a
 	// principal noted stays noted.
 	kinds map[string]bool
-	// openReads is the open verse's reading rule: everyone reads everything but the perms
-	// mirror, whatever the records say. It is the read side of the world half's base case —
-	// the one grant that is not data — and the first thing a private verse turns off, at
-	// which point a read is admitted by co-ownership or a `read` grant and by nothing else.
-	openReads bool
+	// rootDefault is what a node created with no default above it holds out — the root's
+	// default (DefaultField), the one default that is not data since the root has no record.
+	// The open verse's is `read: ["*"]`: whatever anybody creates is readable by everyone
+	// until a default beneath says otherwise. A record written before defaults existed carries
+	// no grants field and is read as holding out this.
+	rootDefault Levels
 	// refused counts what the check refused, by the level the write or read wanted; unreadable
 	// counts checks the mirror could not answer, apart, since a store that is down is not a
 	// policy that refused; hidden counts what listings, replays and watches left out for a
@@ -82,6 +83,10 @@ type permsRecord struct {
 	owner  string
 	under  string
 	grants []Grant
+	// defaults is what is created beneath this node holds out, when the record says
+	// (hasDefault); a record that says nothing inherits.
+	defaults   Levels
+	hasDefault bool
 }
 
 // UnderField is the field of a perms record naming the node this node is ALSO under, for
@@ -104,7 +109,7 @@ func As(s Store, principal string) Store {
 	if a, ok := s.(*attributed); ok {
 		return &attributed{Store: a.Store, attr: a.attr, principal: principal}
 	}
-	return &attributed{Store: s, attr: &Attribution{openReads: true}, principal: principal}
+	return &attributed{Store: s, attr: &Attribution{rootDefault: Levels{Read: {Everyone}}}, principal: principal}
 }
 
 // PrincipalOf reports the principal a store acts as, and "" for one that is not attributed.
@@ -124,12 +129,19 @@ func PolicyOf(s Store) *Attribution {
 	return nil
 }
 
-// OpenReads sets whether everyone may read everything but the mirror (the open verse), or
-// only what they co-own or hold `read` on.
-func (a *Attribution) OpenReads(on bool) {
+// SetRootDefault sets what a node created with no default above it holds out. nil or empty
+// is nothing: a verse where what anybody creates is theirs and their grantees' alone.
+func (a *Attribution) SetRootDefault(l Levels) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.openReads = on
+	a.rootDefault = l
+}
+
+// RootDefault reports what a node created with no default above it holds out.
+func (a *Attribution) RootDefault() Levels {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.rootDefault
 }
 
 // Refusals is what the check has refused since this process started, by the level the write
@@ -279,6 +291,39 @@ func Holds(s Store, principal string, level Level, ref Ref) (bool, error) {
 	return acc.level.Admits(level), nil
 }
 
+// CheckInto is the check a listing or a watch makes at a path: may principal read INTO ref —
+// the node itself, or what a grant at it holds out beneath it. A kind-rooted node of verse's
+// half is the system's and holds out `owner` beneath itself to everyone, and a listing there
+// is answered with what stands beneath, though the node itself is nobody's to write; a place
+// somebody took and holds nothing out on is refused whole. The error is ErrForbidden, counted
+// once, or the store's own.
+func CheckInto(s Store, principal string, ref Ref) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	acc, err := a.accessOf(principal, ref)
+	if err != nil {
+		a.attr.noteUnreadable()
+		return fmt.Errorf("checking %s at %s: %w", principal, ref, err)
+	}
+	if acc.level.Admits(Read) {
+		return nil
+	}
+	// Beneath: a probe one segment down, which a grant at the node covering what is beneath
+	// it reaches and a record above it decides as it would for any child.
+	below, err := a.accessOf(principal, RefAt(append(ref.Segs(), "*")...))
+	if err != nil {
+		a.attr.noteUnreadable()
+		return fmt.Errorf("checking %s at %s: %w", principal, ref, err)
+	}
+	if below.level.Admits(Read) {
+		return nil
+	}
+	a.attr.noteRefusal(Read)
+	return refusal(Read, principal, ref, acc)
+}
+
 // accessOf is the check: what principal holds at ref.
 //
 // The principal is first resolved to the owner it confers — a rule or a source acts as whoever
@@ -352,16 +397,7 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	if !crossed && !ref.Reserved() {
 		acc.level, acc.control = OwnerLevel, true
 	}
-	if acc.level == NoAccess && a.attr.readsOpen() && !(ref.Reserved() && ref.System() == PermsSystem) {
-		acc.level = Read
-	}
 	return acc, nil
-}
-
-func (a *Attribution) readsOpen() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.openReads
 }
 
 // The read side of the view: a read answers only what the principal may read. Get refuses, as
@@ -677,16 +713,21 @@ func (a *attributed) record(ref Ref, owner string) {
 	// only the second leaves the node unknown, so only the second is not remembered. Nothing
 	// is returned to the caller either way: the entity write landed, and an owner record that
 	// did not is a gap the next write closes.
+	// WHAT THE NEW NODE HOLDS OUT is decided here, where its record is written: the nearest
+	// default up the tree, the root's at the top, copied onto the record as a grant at the
+	// node. Always with a grants field, empty or not, so a record that holds out nothing is
+	// told apart from one written before defaults existed.
+	grants := a.defaultGrants(ref)
 	committed, _, err := a.Store.Write(Write{
 		At:        PermsRef(ref).At(),
-		Value:     Obj{OwnerField: owner}.Payload(),
+		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(grants)}.Payload(),
 		When:      []Require{Created()},
 		Principal: SystemPrincipal,
 	})
 	if err != nil {
 		return
 	}
-	rec := &permsRecord{owner: owner}
+	rec := &permsRecord{owner: owner, grants: grants}
 	if !committed {
 		rec, err = a.recordAt(ref.String(), true) // whoever got there first
 		if err != nil {
@@ -694,6 +735,29 @@ func (a *attributed) record(ref Ref, owner string) {
 		}
 	}
 	a.decide(ref, rec)
+}
+
+// defaultGrants is what a node created at ref holds out: the nearest default above it as a
+// grant at the node, and nothing when that default is empty.
+func (a *attributed) defaultGrants(ref Ref) []Grant {
+	levels := a.defaultAbove(ref)
+	if len(levels) == 0 {
+		return []Grant{}
+	}
+	return []Grant{{At: ref.Segs(), To: map[Level][]string(levels)}}
+}
+
+// defaultAbove is the default in force for a node created at ref: the nearest record above it
+// that says one, and the root's where none does.
+func (a *attributed) defaultAbove(ref Ref) Levels {
+	segs := ref.Segs()
+	for i := len(segs) - 1; i >= 1; i-- {
+		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
+		if err == nil && rec != nil && rec.hasDefault {
+			return rec.defaults
+		}
+	}
+	return a.attr.RootDefault()
 }
 
 // decide remembers that ref's owner record is settled, and what the mirror now says at that
@@ -755,6 +819,17 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 		// round and is visible on the record itself.
 		_ = gerr
 		rec = &permsRecord{owner: Str(e.Payload, OwnerField), under: Str(e.Payload, UnderField), grants: grants}
+		rec.defaults, rec.hasDefault, _ = ParseLevels(e.Payload, DefaultField)
+		// A RECORD WRITTEN BEFORE DEFAULTS EXISTED carries an owner and no grants field at all,
+		// and is read as holding out what the root's default says: the open verse's, which is
+		// what it held out when it was written.
+		if rec.owner != "" && Get(e.Payload, GrantsField) == nil {
+			if root := a.attr.RootDefault(); len(root) > 0 {
+				if ref, err := ParseAddr(key); err == nil {
+					rec.grants = []Grant{{At: ref.Segs(), To: map[Level][]string(root)}}
+				}
+			}
+		}
 	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {
@@ -869,21 +944,75 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 
 // SetGrants replaces the grants on the perms record of ref, as the system: what a question
 // holds out is exactly its binding's, so a change of binding is a replacement and not an
-// addition. An empty list removes the field.
+// addition. An empty list is written as one — a grants field holding nothing — since a record
+// with no grants field at all is one from before defaults existed, read as the root's.
 func SetGrants(s Store, ref Ref, gs []Grant) error {
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil
 	}
-	value := Obj{GrantsField: Removed()}
-	if len(gs) > 0 {
-		value[GrantsField] = GrantsPayload(gs)
-	}
+	value := Obj{GrantsField: GrantsPayload(gs)}
 	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
 	if err != nil {
 		return fmt.Errorf("granting at %s: %w", ref, err)
 	}
 	a.attr.invalidate(ref.String())
+	return nil
+}
+
+// SetDefault sets what a node created beneath ref holds out (DefaultField), as the system: a
+// nil map removes the field, so the node inherits again; an empty one says nothing is held
+// out.
+func SetDefault(s Store, ref Ref, levels Levels) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	value := Obj{DefaultField: Removed()}
+	if levels != nil {
+		value[DefaultField] = levels.Payload()
+	}
+	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
+	if err != nil {
+		return fmt.Errorf("setting the default at %s: %w", ref, err)
+	}
+	a.attr.invalidate(ref.String())
+	return nil
+}
+
+// Claim writes the owner record of ref for principal where none stands — the record a place
+// needs before it can carry a default or a grant of its own — holding out what the default
+// above says, exactly as a creation would. principal must hold `owner` there already: this is
+// a place being taken by whoever may take it, never a way to take one from its owner. A record
+// already standing is left as it is, whoever's it is; the caller decides what that means.
+func Claim(s Store, ref Ref, principal string) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	acc, err := a.check(principal, OwnerLevel, ref)
+	if err != nil {
+		return err
+	}
+	rec, err := a.recordAt(ref.String(), true)
+	if err != nil {
+		return fmt.Errorf("claiming %s: %w", ref, err)
+	}
+	if rec != nil {
+		return nil
+	}
+	grants := a.defaultGrants(ref)
+	committed, _, err := a.Store.Write(Write{
+		At:        PermsRef(ref).At(),
+		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(grants)}.Payload(),
+		When:      []Require{Created()},
+		Principal: SystemPrincipal,
+	})
+	if err != nil {
+		return fmt.Errorf("claiming %s: %w", ref, err)
+	}
+	a.attr.invalidate(ref.String())
+	_ = committed // refused is a record standing already, which the next read shows
 	return nil
 }
 

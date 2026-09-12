@@ -17,8 +17,9 @@ func refs(ents []entity.Entity) map[string]bool {
 	return out
 }
 
-// Under the open verse's reading rule everyone reads everything but the perms mirror, whatever
-// the records say; the mirror is the system's alone.
+// Under the open verse's default what anybody creates is readable by everyone — the root's
+// default, `read: ["*"]`, is copied onto the record at creation — and the mirror is the
+// system's alone.
 func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
@@ -43,13 +44,13 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	}
 }
 
-// With the open rule off a read is admitted by co-ownership or a `read` grant and by nothing
-// else — and the same principal sees the same set whichever way they ask: a Get, a listing, a
-// replay, a live watch and a snapshot.
+// With nothing held out by default a read is admitted by co-ownership or a `read` grant and by
+// nothing else — and the same principal sees the same set whichever way they ask: a Get, a
+// listing, a replay, a live watch and a snapshot.
 func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
-	entity.PolicyOf(system).OpenReads(false)
+	entity.PolicyOf(system).SetRootDefault(nil)
 	alice, bob, carol := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com"), entity.As(system, "carol@example.com")
 
 	mine := entity.RefAt("demo", "pr", "1")
@@ -153,5 +154,120 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	}
 	if got := refs(system.ListAt([]string{"demo", "pr"}, entity.Depth, nil)); len(got) != 3 {
 		t.Fatalf("the system's listing = %v", got)
+	}
+}
+
+// What a node holds out is decided where its record is written, from the nearest default up
+// the tree: a default of nothing makes what is created beneath its creator's alone, a default
+// set on a place is inherited beneath it until another says otherwise, and a record written
+// before defaults existed reads as holding out the root's.
+func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemPrincipal)
+	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+
+	// alice takes her space, and says nothing created beneath it is held out.
+	space := entity.RefAt("spaces", "alice")
+	if err := entity.Claim(alice, space, "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if o, ok := ownerOf(t, inner, space); !ok || o != "alice@example.com" {
+		t.Fatalf("the claimed place is owned by %q (%v)", o, ok)
+	}
+	if err := entity.SetDefault(alice, space, entity.Levels{}); err != nil {
+		t.Fatal(err)
+	}
+	// A place already somebody's is not bob's to claim.
+	if err := entity.Claim(bob, space, "bob@example.com"); !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("bob claimed alice's place: %v", err)
+	}
+
+	// The space's own record was written under the root's default, so what stood there is
+	// still readable; what alice creates beneath it now is not — and being alice's already, it
+	// carries no record of its own, so the space's grants are what decide, and they hold out
+	// what the root said when the space was claimed.
+	private := entity.RefAt("spaces", "alice", "private")
+	if _, _, err := alice.Write(entity.Write{At: private.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ownerOf(t, inner, private); ok {
+		t.Fatal("alice's node under alice's space got a record of its own")
+	}
+	if _, ok, err := bob.Get(private); err != nil || !ok {
+		t.Fatalf("the space still holds out the root's read: ok=%v err=%v", ok, err)
+	}
+	// So a private space is a default of nothing AND its own grants of nothing.
+	if err := entity.SetGrants(alice, space, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := bob.Get(private); !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("bob reads alice's private node: %v", err)
+	}
+	// What bob creates beneath alice's space, were he granted it, would be alice's and carry
+	// no record; what carol creates elsewhere carries the root's default.
+	pub := entity.RefAt("demo", "pr", "1")
+	if _, _, err := alice.Write(entity.Write{At: pub.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := bob.Get(pub); err != nil || !ok {
+		t.Fatalf("a creation under the root's default is not readable: ok=%v err=%v", ok, err)
+	}
+	rec, _, _ := inner.Get(entity.PermsRef(pub))
+	if gs, _ := entity.ParseGrants(rec.Payload); len(gs) != 1 || gs[0].To[entity.Read][0] != entity.Everyone {
+		t.Fatalf("the record does not carry the root's default as its grant: %v", rec.Payload)
+	}
+
+	// A default set beneath the root reaches a creation that gets a record of its own: bob,
+	// holding out `owner` under his space, sees carol's creation there hold out nothing.
+	bobs := entity.RefAt("spaces", "bob")
+	if err := entity.Claim(bob, bobs, "bob@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetDefault(bob, bobs, entity.Levels{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.AddGrant(bob, bobs, entity.Grant{At: bobs.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {"carol@example.com"}}}); err != nil {
+		t.Fatal(err)
+	}
+	carol := entity.As(system, "carol@example.com")
+	theirs := entity.RefAt("spaces", "bob", "carols")
+	if _, _, err := carol.Write(entity.Write{At: theirs.At(), Value: entity.Obj{"n": 3}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if o, _ := ownerOf(t, inner, theirs); o != "carol@example.com" {
+		t.Fatalf("carol's creation under bob's space is owned by %q", o)
+	}
+	if _, _, err := alice.Get(theirs); !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("carol's creation under bob's default of nothing is readable by alice: %v", err)
+	}
+	// Removing the default makes bob's space inherit the root's again.
+	if err := entity.SetDefault(bob, bobs, nil); err != nil {
+		t.Fatal(err)
+	}
+	later := entity.RefAt("spaces", "bob", "later")
+	if _, _, err := carol.Write(entity.Write{At: later.At(), Value: entity.Obj{"n": 4}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := alice.Get(later); err != nil || !ok {
+		t.Fatalf("after the default is removed, a creation does not hold out the root's: ok=%v err=%v", ok, err)
+	}
+
+	// A record from before defaults existed — an owner and no grants field — reads as the
+	// root's default.
+	old := entity.RefAt("demo", "pr", "old")
+	if _, _, err := system.Write(entity.Write{At: old.At(), Value: entity.Obj{"n": 5}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	seedRecordRaw(t, system, old, entity.Obj{entity.OwnerField: "alice@example.com"})
+	if _, ok, err := bob.Get(old); err != nil || !ok {
+		t.Fatalf("a pre-default record is not read as the root's default: ok=%v err=%v", ok, err)
+	}
+}
+
+// seedRecordRaw writes a perms record exactly as given, through the view so it learns of it.
+func seedRecordRaw(t *testing.T, store entity.Store, ref entity.Ref, rec entity.Obj) {
+	t.Helper()
+	if _, _, err := store.Write(entity.Write{At: entity.PermsRef(ref).At(), Value: rec.Payload(), Principal: entity.SystemPrincipal}); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -54,6 +54,63 @@ func (l Level) Admits(need Level) bool {
 // GrantsField is the field of a perms record listing what its node's owner holds out.
 const GrantsField = "grants"
 
+// DefaultField is the field of a perms record saying what a node CREATED BENEATH it holds out —
+// the levels and grantees copied onto the new node's own record at creation, as a grant at
+// the node. It is consulted where a record is written, which is where ownership changes and
+// so where what a node holds out has to be decided; below an owner the owner's own grants
+// cover everything. A directory's default ACL rather than a process's umask, since a place is
+// what verse addresses.
+//
+//	default: {read: ["*"]}      # what is created beneath is readable by everyone
+//	default: {}                 # what is created beneath is held out to nobody
+//
+// Absent means inherit: the nearest default up the tree, and the root's at the top.
+const DefaultField = "default"
+
+// Levels is what a default holds: grantees by level, the levels of a grant with no `at`.
+type Levels map[Level][]string
+
+// ParseLevels reads grantees by level out of an object: `{read: ["*"], control: [bot]}`.
+// present reports whether the field was there at all, since `{}` and absence say different
+// things — nothing, and inherit.
+func ParseLevels(rec Payload, field string) (levels Levels, present bool, err error) {
+	f := ir.Uncomment(Get(rec, field))
+	if f == nil {
+		return nil, false, nil
+	}
+	if f.Type != ir.ObjectType {
+		return nil, true, fmt.Errorf("%s: grantees by level, `{read: [...]}`", field)
+	}
+	levels = Levels{}
+	for name := range Fields(f) {
+		l := Level(name)
+		switch l {
+		case Read, ReadWrite, OwnerLevel, Control:
+		default:
+			return nil, true, fmt.Errorf("%s: %q is not a level (read, read-write, owner, control)", field, name)
+		}
+		to := ir.Uncomment(Get(f, name))
+		if to == nil || to.Type != ir.ArrayType {
+			return nil, true, fmt.Errorf("%s.%s: a list of grantees", field, name)
+		}
+		names := Strs(f, name)
+		if len(names) != len(to.Values) {
+			return nil, true, fmt.Errorf("%s.%s: every grantee is a string", field, name)
+		}
+		levels[l] = names
+	}
+	return levels, true, nil
+}
+
+// Payload spells the levels as a default's value.
+func (l Levels) Payload() Payload {
+	o := Obj{}
+	for level, names := range l {
+		o[string(level)] = strList(names)
+	}
+	return o.Payload()
+}
+
 // Everyone is the grantee that names every principal — the unattributed one included, which is
 // what makes an open verse open to a request made from curl with no `user:` behind it.
 const Everyone = "*"

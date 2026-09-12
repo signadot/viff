@@ -292,6 +292,19 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	} else if set {
 		srv.SetTripPace(d)
 	}
+	// The root's default: what a node created with no default above it holds out. Refused at
+	// startup for the reason the pace is, since a verse holding out something nobody asked for
+	// is what the setting exists to prevent.
+	if appCfg.Perms.Default != nil {
+		levels, _, err := entity.ParseLevels(entity.Obj{"default": appCfg.Perms.Default}.Payload(), "perms.default")
+		if err != nil {
+			return err
+		}
+		if levels == nil {
+			levels = entity.Levels{}
+		}
+		entity.PolicyOf(srv.Store).SetRootDefault(levels)
+	}
 	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}

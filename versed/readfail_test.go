@@ -122,7 +122,9 @@ func TestAbsentEntityIs404NotBadGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, ref := range []string{"demo.pr.2", "demo.issue.1", "verse.motion.channel.x"} {
+	// The reserved address is one the seed holds out to everyone: an address in verse's half
+	// nobody holds out is refused whether or not anything stands there.
+	for _, ref := range []string{"demo.pr.2", "demo.issue.1", "verse.task.instance.x"} {
 		resp, err := http.Get(ts.URL + "/entity?" + url.Values{"at": {ref}}.Encode())
 		if err != nil {
 			t.Fatalf("get %s: %v", ref, err)

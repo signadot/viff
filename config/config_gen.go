@@ -74,6 +74,15 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tripDuration"] = ir.FromString(string(s.TripDuration))
 	}
 
+	// Field: Perms (optional)
+	if !isZeroValue_Config_Perms(s.Perms) {
+		node, err = s.Perms.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Perms", err)
+		}
+		irMap["perms"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -153,6 +162,11 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "tripDuration", fieldNodeUnwrapped.Type)
 			}
 			s.TripDuration = string(fieldNodeUnwrapped.String)
+		case "perms":
+			// Field: Perms
+			if err := s.Perms.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "perms", err)
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Config", fieldName.String)
@@ -178,6 +192,126 @@ func (s *Config) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates Config.
 func (s *Config) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts PermsConfig to a Tony IR node.
+func (s *PermsConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Default
+	if len(s.Default) > 0 {
+		var node *ir.Node
+		ns0 := make(map[string]*ir.Node)
+		for k0, e0 := range s.Default {
+			var vn0 *ir.Node
+			ns1 := make([]*ir.Node, len(e0))
+			for i1, e1 := range e0 {
+				var en1 *ir.Node
+				en1 = ir.FromString(string(e1))
+				ns1[i1] = en1
+			}
+			vn0 = ir.FromSlice(ns1)
+			ns0[string(k0)] = vn0
+		}
+		node = ir.FromMap(ns0)
+		irMap["default"] = node
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates PermsConfig from a Tony IR node.
+func (s *PermsConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for PermsConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "default":
+			// Field: Default
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m0 := make(map[string][]string)
+				for k0, v0 := range ir.ToMap(fieldNodeUnwrapped) {
+					var mv0 []string
+					if v0.Type == ir.ArrayType {
+						sl1 := make([]string, len(v0.Values))
+						for i1, v1 := range v0.Values {
+							var e1 string
+							var x2 string
+							if v1.Type != ir.StringType {
+								return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", fmt.Sprintf("%s: key %q", "field \"default\"", k0), i1), v1.Type)
+							}
+							x2 = v1.String
+							e1 = string(x2)
+							sl1[i1] = e1
+						}
+						mv0 = sl1
+					} else {
+						return fmt.Errorf("%s: expected array, got %v", fmt.Sprintf("%s: key %q", "field \"default\"", k0), v0.Type)
+					}
+					m0[string(k0)] = mv0
+				}
+				s.Default = m0
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"default\"", fieldNodeUnwrapped.Type)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for PermsConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts PermsConfig to Tony format bytes.
+func (s *PermsConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates PermsConfig.
+func (s *PermsConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -452,5 +586,9 @@ func isZeroValue_Config_Format(v FormatConfig) bool {
 }
 
 func isZeroValue_Config_LLM(v LLMConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
+func isZeroValue_Config_Perms(v PermsConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }

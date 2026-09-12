@@ -13,6 +13,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [connect.md](connect.md) | federating a working tree, and scopes |
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
+| [../perms.md](../perms.md) | who may write where and who may read: principals, owners, grants, defaults, and `verse perms` |
 | [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
 | [sourced.md](sourced.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
@@ -254,6 +255,10 @@ verse
           add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
+  perms <step>… [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]]
+                                             a node's permissions, as its owner: read with
+                                             no flags; take the place and set what it and
+                                             what is created beneath it hold out
   source (sources) [--probe]                 what reflects an external system in
           add <system>:<name> <url> [--no-probe] [--allow-overlap]
           add --dir <d> <system>:<name>      a local git repo, reflected in task

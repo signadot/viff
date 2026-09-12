@@ -53,24 +53,28 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 	decodeResp(t, resp, &claim)
 	resp.Body.Close()
 
-	// The grant lands with the claim's running frame, which the mirror projects asynchronously.
+	// The grant lands with the claim's running frame, which the mirror projects asynchronously,
+	// beside the one the task's record carries from the root's default (read for everyone).
 	deadline := time.Now().Add(3 * time.Second)
-	var grants []entity.Grant
-	for time.Now().Before(deadline) {
+	var bots *entity.Grant
+	for bots == nil && time.Now().Before(deadline) {
 		rec, ok, err := srv.Store.Get(entity.PermsRef(taskRef))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if ok {
-			if grants, _ = entity.ParseGrants(rec.Payload); len(grants) > 0 {
-				break
+			grants, _ := entity.ParseGrants(rec.Payload)
+			for i, g := range grants {
+				if len(g.To[entity.ReadWrite]) > 0 && g.To[entity.ReadWrite][0] == "bot" {
+					bots = &grants[i]
+				}
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(grants) != 1 || grants[0].Below || strings.Join(grants[0].At, ".") != strings.Join(taskRef.Segs(), ".") ||
-		grants[0].To[entity.ReadWrite][0] != "bot" || grants[0].To[entity.Control][0] != "bot" {
-		t.Fatalf("the task's grants = %+v; want read-write and control for bot at the task", grants)
+	if bots == nil || bots.Below || strings.Join(bots.At, ".") != strings.Join(taskRef.Segs(), ".") ||
+		len(bots.To[entity.Control]) != 1 || bots.To[entity.Control][0] != "bot" {
+		t.Fatalf("the task's grant to bot = %+v; want read-write and control for bot at the task", bots)
 	}
 	if ok, err := entity.Holds(srv.Store, "bot", entity.ReadWrite, taskRef); err != nil || !ok {
 		t.Fatalf("bot holds read-write on its task: %v %v", ok, err)

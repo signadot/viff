@@ -78,6 +78,20 @@ type Config struct {
 	//
 	// A duration string ("1s", "500ms"). Server-side, read by `verse up`.
 	TripDuration string `tony:"field=tripDuration,omitzero"`
+	// Perms is the part of the permission check's policy that is a setting rather than a
+	// record. Server-side, read by `verse up`.
+	Perms PermsConfig `tony:"field=perms,omitzero"`
+}
+
+// PermsConfig is what a deployment sets about permissions that no record can say: the root's
+// default. Every other default is a record (`verse perms <path> --default`).
+//
+//tony:schemagen=verse-perms-config,notag
+type PermsConfig struct {
+	// Default is what a node created with no default above it holds out — grantees by level,
+	// `{read: ["*"]}` — the open verse's when left unset, and `{}` for a verse where what
+	// anybody creates is theirs and their grantees' alone.
+	Default map[string][]string `tony:"field=default,omitzero"`
 }
 
 // TripPace resolves TripDuration: the duration, whether it was SET at all, and any parse error.

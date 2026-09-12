@@ -61,7 +61,7 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	entity.PolicyOf(srv.Store).OpenReads(false)
+	entity.PolicyOf(srv.Store).SetRootDefault(nil)
 
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
@@ -91,7 +91,7 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 // trace, since a rule that cannot see a subject is not woken by it.
 func TestACharterReadsAsItsOwner(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-	entity.PolicyOf(srv.Store).OpenReads(false)
+	entity.PolicyOf(srv.Store).SetRootDefault(nil)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

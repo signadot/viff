@@ -74,6 +74,29 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  at: .[string]
+  below: .[bool]
+  default: .[tony-base:ir]
+  grant: .[tony-base:ir]
+  grants: .[tony-base:ir]
+signature:
+  name: verse-perms-edit
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  at: .[string]
+  default: .[tony-base:ir]
+  grants: .[tony-base:ir]
+  owner: .[string]
+signature:
+  name: verse-perms-record
+---
+context:
+- tony-format/context
 define:
   notes: .[string]
   position: .[int]
