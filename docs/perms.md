@@ -193,7 +193,8 @@ Another user is refused `verse data spaces scott private` — a Get of what they
 and refused `verse data spaces scott`, since a listing at a place they may not read into is
 refused whole rather than answered empty; `verse data spaces scott notes` still answers them,
 by name, since that record holds out the read it was created with. `verse perms spaces scott
---grant '{read: [ana@example.com]}'` opens the place to one person.
+--grant '{read: [ana@example.com]}'` opens the place to one person, and `--revoke '{read:
+[ana@example.com]}'` takes that back and nothing else; `--grants '[]'` takes everything back.
 
 ## The seed
 

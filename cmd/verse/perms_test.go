@@ -65,4 +65,34 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read-write: [ana@example.com]}`); err == nil {
 		t.Fatal("ana set the record of a node she may only read")
 	}
+
+	// Taking ana's read back leaves bob's standing: a revoke is one line's worth. `notes` was
+	// created before the place was closed, so its record also holds out `read` to everyone,
+	// and ana reads as everyone until that grantee is taken back too — `*` is a grantee like
+	// any other.
+	t.Setenv("VERSE_USER", "walter@example.com")
+	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read: [bob@example.com]}`); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runCLI(t, "perms", "spaces", "scott", "notes", "--revoke", `{read: [ana@example.com]}`)
+	if err != nil || strings.Contains(out, "ana@example.com") || !strings.Contains(out, "bob@example.com") || !strings.Contains(out, "- *") {
+		t.Fatalf("revoke: %v\n%s", err, out)
+	}
+	t.Setenv("VERSE_USER", "ana@example.com")
+	if _, err := runCLI(t, "data", "spaces", "scott", "notes"); err != nil {
+		t.Fatalf("ana no longer reads as everyone: %v", err)
+	}
+	t.Setenv("VERSE_USER", "walter@example.com")
+	out, err = runCLI(t, "perms", "spaces", "scott", "notes", "--revoke", `{read: ["*"]}`)
+	if err != nil || strings.Contains(out, "- *") || !strings.Contains(out, "bob@example.com") {
+		t.Fatalf("revoke everyone: %v\n%s", err, out)
+	}
+	t.Setenv("VERSE_USER", "ana@example.com")
+	if out, err := runCLI(t, "data", "spaces", "scott", "notes"); err == nil {
+		t.Fatalf("ana still reads notes after her read was revoked:\n%s", out)
+	}
+	t.Setenv("VERSE_USER", "bob@example.com")
+	if out, err := runCLI(t, "data", "spaces", "scott", "notes"); err != nil || !strings.Contains(out, "milk") {
+		t.Fatalf("bob lost his read to ana's revoke: %v\n%s", err, out)
+	}
 }

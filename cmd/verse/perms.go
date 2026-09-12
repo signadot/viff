@@ -18,6 +18,7 @@ type permsConfig struct {
 	Grants  string `cli:"name=grants desc='what this node itself holds out, replacing the list: [{at: …, read: […]}]; [] for nothing'"`
 	Grant   string `cli:"name=grant desc='one line to add at this node, as grantees by level: {read: [ana@example.com]}'"`
 	Below   bool   `cli:"name=below desc='the --grant covers what is beneath the node, not the node itself'"`
+	Revoke  string `cli:"name=revoke desc='grantees to take off this node, by level: {read: [ana@example.com]}; every other line stands'"`
 }
 
 func permsCmd() *cli.Command {
@@ -27,7 +28,7 @@ func permsCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "perms").
-		WithSynopsis("perms — a node's permissions, as its owner: perms <path…> [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]]").
+		WithSynopsis("perms — a node's permissions, as its owner: perms <path…> [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -43,7 +44,7 @@ func (cfg *permsConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("perms wants a path: perms <path…>")
 	}
 	at := entity.JoinSegs(args)
-	if cfg.Default == "" && cfg.Grants == "" && cfg.Grant == "" {
+	if cfg.Default == "" && cfg.Grants == "" && cfg.Grant == "" && cfg.Revoke == "" {
 		resp, err := httpGet("/perms", url.Values{"at": {at}})
 		if err != nil {
 			return fmt.Errorf("perms: %w", err)
@@ -54,7 +55,7 @@ func (cfg *permsConfig) run(cc *cli.Context, args []string) error {
 	for _, f := range []struct {
 		flag, src string
 		into      *entity.Payload
-	}{{"--default", cfg.Default, &edit.Default}, {"--grants", cfg.Grants, &edit.Grants}, {"--grant", cfg.Grant, &edit.Grant}} {
+	}{{"--default", cfg.Default, &edit.Default}, {"--grants", cfg.Grants, &edit.Grants}, {"--grant", cfg.Grant, &edit.Grant}, {"--revoke", cfg.Revoke, &edit.Revoke}} {
 		if f.src == "" {
 			continue
 		}

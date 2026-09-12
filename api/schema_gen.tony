@@ -81,6 +81,7 @@ define:
   default: .[tony-base:ir]
   grant: .[tony-base:ir]
   grants: .[tony-base:ir]
+  revoke: .[tony-base:ir]
 signature:
   name: verse-perms-edit
 ---

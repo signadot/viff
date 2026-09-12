@@ -255,7 +255,7 @@ verse
           add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
-  perms <step>… [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]]
+  perms <step>… [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']
                                              a node's permissions, as its owner: read with
                                              no flags; take the place and set what it and
                                              what is created beneath it hold out

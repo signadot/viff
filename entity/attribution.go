@@ -330,7 +330,7 @@ func CheckInto(s Store, principal string, ref Ref) error {
 		return nil
 	}
 	a.attr.noteRefusal(Read)
-	return refusal(Read, "listing it", principal, ref, acc)
+	return refusal(Read, "reading it", principal, ref, acc)
 }
 
 // accessOf is the check: what principal holds at ref.
@@ -1011,6 +1011,63 @@ func Claim(s Store, ref Ref, principal string) error {
 	a.attr.invalidate(ref.String())
 	_ = committed // refused is a record standing already, which the next read shows
 	return nil
+}
+
+// Revoke takes grantees off the grants at ref's own record, level by level: every line at the
+// node loses the named grantees at the named levels, and a line left holding out nothing goes.
+// One line's worth, so that taking one person's read back leaves everybody else's standing —
+// which replacing the list whole (SetGrants) does not.
+func Revoke(s Store, ref Ref, levels Levels) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	rec := PermsRef(ref)
+	for {
+		cur, exists, err := a.Store.Get(rec)
+		if err != nil {
+			return fmt.Errorf("revoking at %s: %w", ref, err)
+		}
+		if !exists {
+			return nil // nothing held out here to take back
+		}
+		grants, _ := ParseGrants(cur.Payload)
+		kept := make([]Grant, 0, len(grants))
+		for _, g := range grants {
+			to := map[Level][]string{}
+			for level, names := range g.To {
+				gone := map[string]bool{}
+				for _, n := range levels[level] {
+					gone[n] = true
+				}
+				var rest []string
+				for _, n := range names {
+					if !gone[n] {
+						rest = append(rest, n)
+					}
+				}
+				if len(rest) > 0 {
+					to[level] = rest
+				}
+			}
+			if len(to) > 0 {
+				kept = append(kept, Grant{At: g.At, Below: g.Below, To: to})
+			}
+		}
+		committed, _, err := a.Store.Write(Write{
+			At:        rec.At(),
+			Value:     Obj{GrantsField: GrantsPayload(kept)}.Payload(),
+			When:      []Require{{Pattern: Unchanged(cur.Payload)}},
+			Principal: SystemPrincipal,
+		})
+		if err != nil {
+			return fmt.Errorf("revoking at %s: %w", ref, err)
+		}
+		if committed {
+			a.attr.invalidate(ref.String())
+			return nil
+		}
+	}
 }
 
 // SetUnder records that the node at ref is also under another, for ownership (UnderField):

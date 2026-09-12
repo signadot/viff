@@ -2208,6 +2208,11 @@ func (s *PermsEdit) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["below"] = ir.FromBool(bool(s.Below))
 	}
 
+	// Field: Revoke (optional)
+	if s.Revoke != nil {
+		irMap["revoke"] = s.Revoke
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2271,6 +2276,12 @@ func (s *PermsEdit) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "below", fieldNodeUnwrapped.Type)
 			}
 			s.Below = bool(fieldNodeUnwrapped.Bool)
+		case "revoke":
+			if gomap.GetUnmapComments(opts...) {
+				s.Revoke = fieldNode
+			} else {
+				s.Revoke = fieldNodeUnwrapped
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for PermsEdit", fieldName.String)

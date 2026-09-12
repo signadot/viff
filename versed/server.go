@@ -1990,6 +1990,21 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Revoke != nil {
+		levels, _, err := entity.ParseLevels(entity.Obj{"revoke": body.Revoke}.Payload(), "revoke")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(levels) == 0 {
+			http.Error(w, "a revoke names grantees by level: {read: [who]}", http.StatusBadRequest)
+			return
+		}
+		if err := entity.Revoke(store, ref, levels); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+	}
 	s.answerPerms(w, r, ref)
 }
 

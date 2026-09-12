@@ -64,9 +64,8 @@ config. Three things around it are not built. There is no `read` row in the seed
 source's slice, so a private root default hides every reflected entity from everybody but the
 installer, which is §3's record again. A default is copied at creation and nothing revisits a
 record when the default above it changes, which is the model's stance and also means a place
-made private after the fact has to be walked — `verse perms` takes one node. And the verb
-takes a node's grants whole or adds one; there is no revoke of one line, and no listing of
-what a person holds anywhere.
+made private after the fact has to be walked — `verse perms` takes one node. And there is no
+listing of what a person holds anywhere: the verb reads one node's record.
 
 ## 6. Where the question stands
 

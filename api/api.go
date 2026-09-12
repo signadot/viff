@@ -476,8 +476,9 @@ type PermsRecord struct {
 // PermsEdit is what an owner sets on a node's record (`PUT /perms`). A node with no record of
 // its own gets one — the place is taken by its owner, holding out what the default above says
 // — and then: `default` sets what a node created beneath holds out (`{}` nothing, null
-// inherits again), `grants` replaces what the node itself holds out (`[]` nothing), and
-// `grant` adds one line at the node, beneath it when `below` is set.
+// inherits again), `grants` replaces what the node itself holds out (`[]` nothing), `grant`
+// adds one line at the node, beneath it when `below` is set, and `revoke` takes the named
+// grantees off the named levels of every line at the node, leaving the rest standing.
 //
 //tony:schemagen=verse-perms-edit,notag
 type PermsEdit struct {
@@ -486,6 +487,7 @@ type PermsEdit struct {
 	Grants  entity.Payload `tony:"field=grants,omitzero"`
 	Grant   entity.Payload `tony:"field=grant,omitzero"`
 	Below   bool           `tony:"field=below,omitzero"`
+	Revoke  entity.Payload `tony:"field=revoke,omitzero"`
 }
 
 // Perms is the permission check's census: refusals by the level a write or read wanted, checks
