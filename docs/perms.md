@@ -19,7 +19,7 @@ A principal is a string, and there are four kinds of party behind one:
 - **a person**, by email — `walter@example.com`. The CLI sends it on every request
   (`Verse-Principal`) from its config's `user:`, and the server lists it under
   `verse.principal.user.<email>` the first time it presents itself.
-- **a runner**, under its own name — `coderunner-bot`. A worker names itself when it claims
+- **a runner**, under its own name — `coderunner`. A worker names itself when it claims
   brokered work, and the claim lists it under `verse.principal.runner.<name>`. A runner acts
   as itself, not as whoever installed it; and a name that has claimed work is a runner's even
   when it turns up on the api, so it is never listed as a user too.
@@ -59,8 +59,8 @@ source and the source's record already says so.
 owner: walter@example.com
 grants:
 - at: [verse, task, instance, run-1]
-  read-write: [coderunner-bot]
-  control: [coderunner-bot]
+  read-write: [coderunner]
+  control: [coderunner]
 ```
 
 **Ownership changes only by create and delete.** There is no transfer; to hand something over,

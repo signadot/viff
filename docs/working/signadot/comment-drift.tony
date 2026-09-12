@@ -40,7 +40,7 @@
 #
 # ── THE RUNNER ───────────────────────────────────────────────────────────────────
 #
-# `verse.runners.pool.code` needs an environment named `signadot-fix`: the `verse-fix` shape with
+# `verse.runners.pool.coderunner` needs an environment named `signadot-fix`: the `verse-fix` shape with
 # the repository `https://github.com/example/app`, checkout name `signadot`, base the branch,
 # and the one destination `auto: refs/heads/verse/auto/$sha/$task`. No `push` tool, for the reason
 # verse-fix has none — a fix proposes and never lands, as a property of the environment.
@@ -137,7 +137,7 @@ reads: [ !verse-path [git] ]
         stage: gathered
   action:
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       environment: signadot-fix
       driver: llm
       grant: all

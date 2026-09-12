@@ -71,7 +71,7 @@
 #
 # ── THE RUNNER ───────────────────────────────────────────────────────────────────
 #
-# `verse.runners.pool.code` needs an environment named `signadot-pr`, the `verse-merge` shape
+# `verse.runners.pool.coderunner` needs an environment named `signadot-pr`, the `verse-merge` shape
 # pointed at `https://github.com/example/app`, checkout `signadot`, base the branch, with:
 #
 #   - `train`, ref `refs/heads/verse/train`, and ONE OPTION: `pull: {base: <branch>, title: …,
@@ -237,7 +237,7 @@ reads: [git, signadot.comment-drift]
     patch:
       stage: pushing
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       environment: signadot-pr
       grant: no-delegate
       vector: auto
@@ -279,7 +279,7 @@ reads: [git, signadot.comment-drift]
     patch:
       state: stale
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       environment: signadot-pr
       grant: no-delegate
       vector: auto

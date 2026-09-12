@@ -197,7 +197,7 @@ reads: [ !verse-path [git] ]
         stage: gathered
   action:
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       # That environment pushes `refs/heads/verse/auto/$sha/$task`, so the deliverable is a diff
       # rather than prose about a diff. Delivery is the runner's act and the task only proposes
       # it, at the end; a run that changed nothing proposes nothing and leaves no branch.
@@ -595,7 +595,7 @@ reads: [git, verse-dev.drift]
     patch:
       decided: landing
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       environment: verse-merge
       grant: no-delegate
       vector: auto
@@ -656,7 +656,7 @@ reads: [git, verse-dev.drift]
     patch:
       state: stale
     spawn:
-      runner: verse.runners.pool.code
+      runner: verse.runners.pool.coderunner
       environment: verse-merge
       grant: no-delegate
       vector: auto

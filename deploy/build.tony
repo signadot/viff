@@ -130,7 +130,7 @@ build:
 
     # The coderunner: a place code work RUNS (its own image, bubblewrap containment, a
     # workspace and a process per task). Off by default and independent of everything above —
-    # deploying it does not install it, which is `verse runner add pool:code
+    # deploying it does not install it, which is `verse runner add pool:coderunner
     # http://coderunner:9802` and is somebody's verb for the reason a source's is.
     #
     # Its own image because the two are sized by different things: the runtime image is thin
@@ -698,7 +698,7 @@ build:
               # Serve the dial-in broker, so `--runner broker` puts a task in front of a person
               # — a laptop agent, or somebody answering through `verse task do`. It is a NAME a
               # spawn may use and not where unnamed work goes: this verse goes on running its
-              # own spawns, and `verse.runners.pool.code` goes on running the charters'.
+              # own spawns, and `verse.runners.pool.coderunner` goes on running the charters'.
               - --broker
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
