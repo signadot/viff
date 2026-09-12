@@ -1,13 +1,13 @@
 module github.com/signadot/verse
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/fatih/color v1.19.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/gops v0.3.28
 	github.com/scott-cotton/cli v0.3.1
-	github.com/signadot/tony-format/go-tony v0.0.213
+	github.com/signadot/tony-format/go-tony v0.0.215
 )
 
 require (
@@ -37,7 +37,7 @@ require (
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
