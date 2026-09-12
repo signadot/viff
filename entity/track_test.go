@@ -9,10 +9,11 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 )
 
-// reads counts the reads of the perms mirror that reach the substrate.
+// reads counts the reads of the perms mirror that reach the substrate, and the writes to it.
 type reads struct {
 	entity.Store
 	mirror atomic.Int64
+	writes atomic.Int64
 }
 
 func (r *reads) Get(ref entity.Ref) (entity.Entity, bool, error) {
@@ -20,6 +21,52 @@ func (r *reads) Get(ref entity.Ref) (entity.Entity, bool, error) {
 		r.mirror.Add(1)
 	}
 	return r.Store.Get(ref)
+}
+
+func (r *reads) Write(w entity.Write) (bool, int64, error) {
+	if w.At.Reserved() && w.At.System() == entity.PermsSystem {
+		r.writes.Add(1)
+	}
+	return r.Store.Write(w)
+}
+
+// A node written again in a later life of the process — a source re-reflecting an entity it
+// reflected before the restart — has its owner record in the loaded mirror, and neither writes
+// it again nor reads for it: the record written again would be refused by its own absence
+// precondition, and a refused write is explained by reading everything it descended through.
+func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
+	raw := entitytest.Store(t)
+	inner := &reads{Store: raw}
+	pr := entity.RefAt("demo", "pr", "1")
+	first := entity.As(entity.As(inner, entity.SystemPrincipal), "alice@example.com")
+	if _, _, err := first.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := inner.writes.Load(); got != 1 {
+		t.Fatalf("%d mirror writes for a first write, want the owner record alone", got)
+	}
+
+	// The next life: a fresh view over the same store, the mirror loaded.
+	system := entity.As(inner, entity.SystemPrincipal)
+	if err := entity.Track(t.Context(), system); err != nil {
+		t.Fatal(err)
+	}
+	alice := entity.As(system, "alice@example.com")
+	reads, writes := inner.mirror.Load(), inner.writes.Load()
+	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "reviewed"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := inner.writes.Load() - writes; got != 0 {
+		t.Fatalf("%d mirror writes for a node whose record the loaded mirror holds, want none", got)
+	}
+	if got := inner.mirror.Load() - reads; got != 0 {
+		t.Fatalf("%d mirror reads for a node whose record the loaded mirror holds, want none", got)
+	}
+	// And the record stands as it was: alice's, so bob is still refused.
+	bob := entity.As(system, "bob@example.com")
+	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); ok {
+		t.Fatal("bob writes alice's pr")
+	}
 }
 
 // With the mirror loaded and watched, a check makes no round trip: an absent record is known

@@ -753,6 +753,20 @@ func (a *attributed) record(ref Ref, owner string) {
 	if seen {
 		return
 	}
+	// A RECORD ALREADY IN HAND IS THE DECISION. With the mirror loaded every record stands in
+	// the cache, and a node written again in a later life of this process — a source
+	// re-reflecting an entity it first reflected weeks ago — has its record there. Writing it
+	// again would be refused by its own absence precondition, and the store explains a refused
+	// write by reading what it descended through: the mirror's whole slice, once per such
+	// node, on a store already busy with the pass. Nothing is read here: a cached record is
+	// what the checks consult, and it is not less true for having arrived by the load.
+	a.attr.mu.Lock()
+	known := a.attr.records[ref.String()]
+	a.attr.mu.Unlock()
+	if known != nil {
+		a.decide(ref, known)
+		return
+	}
 	if owner == a.ownerAbove(ref) {
 		a.decide(ref, nil)
 		return
