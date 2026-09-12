@@ -32,7 +32,9 @@ makes the reactive loop converge.
 | read | [reference/entities.md](reference/entities.md) — refs, merging writes, conditional writes, selection, watching |
 | | [reference/store.md](reference/store.md) — what the store guarantees, and the entity grain the engine reacts at |
 | | [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain costs |
-| ahead | [The store session](working/store-session.md) — verse's own law turned on verse: a connection to reconcile rather than one to establish, and readiness as a fact about it |
+| | [Permissions](perms.md) — one owner per node, grants on the records, the check on every write and read, and the two open defaults a private verse turns off |
+| ahead | [Grants: what is left](working/grants-residual.md) — policy edits as gated changes, a claim as an owner record, and what is not attributed yet |
+| | [The store session](working/store-session.md) — verse's own law turned on verse: a connection to reconcile rather than one to establish, and readiness as a fact about it |
 | | [Named persistent channels](roadmap/channel-observe.md) — an idea, not yet a design |
 
 ### Charters and triggers

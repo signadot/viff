@@ -161,10 +161,16 @@ llm: {
 
 `addr` and `scope` are read by every command (they say which verse to talk to). `user` is who
 every command acts as: it rides each request (`Verse-Principal`), the server stamps it on every
-write the request makes, and what the request creates is owned by them. It is self-asserted —
-there is no login — and `--as` overrides it on the commands that take one, which is also why
-those commands no longer insist on the flag when the config names a user. A runner sets it to
-its own name. Env: `VERSE_USER`. The `llm`
+write the request makes, checks each write and read against what its place permits, and what
+the request creates is owned by them. It is self-asserted — there is no login — and `--as`
+overrides it on the commands that take one, which is also why those commands no longer insist
+on the flag when the config names a user. A runner sets it to its own name. Env: `VERSE_USER`.
+`agent` names an operator agent instead — a harness driving verse through the api, which is a
+principal of its own kind rather than the person whose terminal it runs in; when set, every
+request is the agent's (`Verse-Principal-Kind: agent`) and `--as` still names a person. Env:
+`VERSE_AGENT`. `systemCharter` is server-side: the path of a charter file `verse up` installs
+at start as the system, the rules the deployment itself stands behind, since a request cannot
+be made as the system. Env: `VERSE_SYSTEM_CHARTER`. See [perms.md](../perms.md). The `llm`
 block, however, is read by the server (`verse up`) — it hosts the task runtime, so
 that is whose config and environment the agent driver reads for its model + creds; setting it for
 a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,

@@ -231,18 +231,19 @@ installed charter — `trigger.rule.<package>:<name>` for a rule installed at an
 question's ballots live on its record (`gate.question.<id>.ballots.<who>`), written by the
 answer path that tallies them.
 
-Two more are about who: `principal.user.<email>` lists every user that has presented itself
-over the api (a runner is the other kind a principal can be), and `perms.node.<address>` is the
-perms mirror — a record wherever ownership changes down the tree, keyed by the node's own
-address spelled as one segment, holding `owner`. The owner of any node is the nearest record
-up its address, and the root is the system's, so a node owned by whoever owns the node above
-it has no record of its own: a source reflecting ten thousand refs under a slice the system
-owns writes none, and a user's first entity under it writes one. Every
-write carries a principal (the request's, from the CLI's `user:`; the rule's own address for a
-firing; the system for what verse writes unasked), and an entity's owner is whoever first
-wrote it, fixed until the entity is deleted. A principal that is itself an address — a rule's
-record — confers the owner of that record, so what a charter creates belongs to whoever
-installed the charter. The mirror is written only by versed; nothing is refused by it yet.
+Two more are about who: `principal.<kind>.<name>` lists every principal that has presented
+itself, by kind — `user` for a person by email, `runner` for a worker that claimed work,
+`agent` for an operator agent — and `perms.node.<address>` is the perms mirror: a record
+wherever ownership changes down the tree, keyed by the node's own address spelled as one
+segment, holding `owner`, the `grants` its owner holds out, and for a question `under`, the
+address of what posed it. The owner of any node is the nearest record up its address, and the
+root is the system's, so a node owned by whoever owns the node above it has no record of its
+own. Every write carries a principal (the request's, from the CLI's `user:`; the rule's own
+address for a firing; the system for what verse writes unasked), and is admitted by what its
+place permits or refused with a 403 saying why; an entity's owner is whoever first wrote it
+holding `owner` there, fixed until the entity is deleted. A read answers only what its reader
+may read. The mirror is written only by versed and read only by the system.
+[perms.md](../perms.md) is the whole of it.
 
 One thing is deliberately not in verse's half: `provider.*` — the registry of doers is written
 by whoever runs the verse.

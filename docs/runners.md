@@ -56,6 +56,12 @@ at the first spawn. A url nothing answers is the ordinary state of a runner depl
 entity that names it: the manifest lands, the pod is pending, the entity is already written.
 Refusing that would make deployment order-dependent for a fact that fixes itself.
 
+A worker that claims brokered work names itself, and the claim is where the task is assigned:
+versed writes `read-write` and `control` for the claimant on the task's record, the mirror writes
+every report from then on as the claimant, and the claimant is listed as a runner principal. The
+grant reaches the task and nothing else — not the questions the task raises, which the runner may
+not answer ([perms.md](perms.md)).
+
 **A runner answering 500 is *unreachable*, not *not a runner***, so it is installed with a warning
 rather than refused. A url speaking HTTP and failing has said nothing about whether it serves the
 contract, and is a runner having a bad day at least as often as it is the wrong address. Only 404

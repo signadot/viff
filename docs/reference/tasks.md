@@ -152,6 +152,12 @@ verse gate                                  # task gates, and engine gates that 
 verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-… run-…~d1
 ```
 
+**Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
+answers what their own work asked; the binding a question is held out to answers it as itself;
+and a person answers an unbound question by the seed's grant. The runner working the task holds
+nothing on the question it raised, and is refused. A refusal is a 403 naming who holds what and
+which record decided ([perms.md](../perms.md)).
+
 **A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
 `options` and, as answers arrive, its `ballots`; `verse gate approve <id> --as <who>` casts one, and
 the record settles in the same write as the ballot that reaches a threshold. A gate with a

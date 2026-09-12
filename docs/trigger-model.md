@@ -371,7 +371,10 @@ the scopes that have a charter needs a scope to be a listable thing, and it is n
 The charter is an observable slice like any other, so a trigger can watch it
 (`subject: {path: [trigger, rule, *]}`). It has to *name* it: `trigger:*` joins `task:*` as the
 engine's own machinery, kept out of the default match set so the loop cannot ignite on itself.
-Meta-observation stays possible, and stays deliberate.
+Meta-observation stays possible, and stays deliberate. The perms mirror (`verse.perms`) is one
+step further: it is the system's, held out to nobody, so only the system's own charter can
+read it, and a rule of anyone else's naming it is refused at install rather than installed to
+match nothing ([perms.md](perms.md)). A rule reads as its owner, all the way down.
 
 ## `subject` — what the firing is about, and required
 

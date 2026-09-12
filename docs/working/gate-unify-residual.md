@@ -24,12 +24,14 @@ the earlier fires first — which leaves §3 exactly where it was.
 
 ## 2. Where the record lives
 
-A question stands at `gate:question:<id>`, one constant (`mirror.QuestionRef`). Under the
-ownership model in git-issue `yezdk01bh12kshx9m9n0` a gate's question belongs under the
-firing and a task's under the task, so its owner falls out of the tree; moving it is a change
-to every reader of the address and to nothing the record carries, and it waits for that model
-to say what "under the origin" means for a firing that has no task. The ballots already live
-under the record (`ballots.<by>`), which is the shape that survives the move.
+A question stands at `gate:question:<id>`, one constant (`mirror.QuestionRef`), and stays
+there. The ownership model (git-issue `yezdk01bh12kshx9m9n0`) wanted it under its origin so
+that its co-owners fall out of the tree; what landed instead is the edge, computed: the
+question's perms record carries `under`, the address of the task or the rule that posed it,
+and the check follows the link for ownership ([perms.md](../perms.md)). Moving the address
+would have put a question inside the task or rule entity for every depth-four reader and made
+the docket a cross-depth query; the link is the cheaper spelling of the same fact, and
+[grants-residual.md §6](grants-residual.md#6-where-the-question-stands) keeps the argument.
 
 ## 3. Two clocks on one record
 

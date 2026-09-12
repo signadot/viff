@@ -41,7 +41,7 @@ against something that runs, and three rules follow from that:
   was *not built*; a corner of what was built belongs in the doc that describes it, and appears
   here only when the fix is a design rather than a patch.
 
-The ten, and what each is a residual of:
+The eleven, and what each is a residual of:
 
 | | of | what is in it |
 |---|---|---|
@@ -55,6 +55,7 @@ The ten, and what each is a residual of:
 | [derive-residual.md](derive-residual.md) | [strata.md](../strata.md) | the fan-out landed; the sweep, the two neighbours, and what `!each` deliberately does not reach |
 | [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | what `principal: runner` actually contains and the refusal nothing makes, staged work never swept |
 | [merge-gate-residual.md](merge-gate-residual.md) | [reference/examples/README.md §push](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations) | the sweep's discovery: a condition that reads another entity's value, which `!let` is the shape for |
+| [grants-residual.md](grants-residual.md) | [perms.md](../perms.md) | policy edits as gated changes, a claim as an owner record, what is not attributed yet, and where a question stands |
 
 [provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
 an older name: it reads against [provider selection](../provider-selection.md) and carries what
