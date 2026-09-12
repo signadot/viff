@@ -8,6 +8,40 @@ who asked for the work rather than from who typed. That is the part that surpris
 walks it in five steps: your own entities; a task you run and its gates; a charter and what it
 owns; a gate with no resolver behind it; and a gate with one.
 
+## Before the first step: who you are
+
+Every request the CLI makes carries a principal, and the check holds every write and read to
+what its place permits *for that name*. So the first thing to settle is what the name is.
+
+The CLI reads its config in layers — `/etc/verse.tony`, then `~/.config/verse.tony` patched
+over it, then the environment, then the flag on the command — and `user:` in the file is who
+every command acts as ([reference/up.md](reference/up.md#configuration)):
+
+```tony
+# ~/.config/verse.tony
+addr: "verse:9797"
+user: "walter@example.com"
+```
+
+`VERSE_USER` in the environment overrides the file for a shell, and `--as` overrides both on
+the commands that take one, which is how you act as somebody else for one command to see what
+they see. `VERSE_CONFIG=<file>` replaces both file layers outright, so a second verse gets a
+second file rather than a second identity in one. With no `user` anywhere a request is
+unattributed: it holds what `*` holds, it may still create where the world is open, and what
+it creates is not its own — with no name to record, the node belongs to whoever owns the place
+above it, the system at the top.
+
+```sh
+verse data spaces scott notes --put '{todo: [buy milk]}'
+verse perms spaces scott notes | grep owner             # owner: walter@example.com
+VERSE_USER=ana@example.com verse perms spaces scott notes | grep owner   # the same record, read as ana
+```
+
+A person is an email. A harness driving verse from outside sets `agent:` instead, and every
+request is then the agent's under its own kind; a runner names itself when it claims work
+(`--identity` on its entity, or `--as` on `task do`). The name is self-asserted — there is no
+login — and everything below is about what a name may do, not about proving who holds it.
+
 Three things to know before the first step, because each is a reasonable guess that is wrong:
 
 - **A group is not a principal.** `verse.principal.group.<name>` is an address that may stand
@@ -18,17 +52,15 @@ Three things to know before the first step, because each is a reasonable guess t
   outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
   own kind, and today it is granted exactly what a person is. It is a name that grants can
   narrow against later; until they do, read `[user, agent]` as "people".
-- **Identity is self-asserted.** A request is whoever `user:` in the config or `--as` or
-  `VERSE_USER` says, and the server trusts it as far as that. The check holds every write to
-  what its place permits *for that name*; who is behind the name is a different question, not
-  yet asked.
+- **Identity is self-asserted.** A request is whoever the config, `VERSE_USER` or `--as` says,
+  and the server trusts it as far as that. The check holds every write to what its place
+  permits *for that name*; who is behind the name is a different question, not yet asked.
 
 ## Step 1: your own entities, and who wrote them
 
-Everything you type carries a principal. Set `user: you@example.com` in the CLI's config
-([reference/up.md](reference/up.md#configuration)) and every request is yours; `VERSE_USER` or `--as`
-overrides it for one command. The seeded entities from [the tutorial](tutorial.md#2-entities)
-are a fine place to start, and so is an address of your own:
+With `user:` set, everything you type is yours. The seeded entities from
+[the tutorial](tutorial.md#2-entities) are a fine place to start, and so is an address of your
+own:
 
 ```sh
 verse data spaces scott notes --put '{todo: [buy milk]}'
