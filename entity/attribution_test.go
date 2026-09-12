@@ -227,8 +227,9 @@ func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
 	}
 }
 
-// A rule that had no owner on record resolves to itself, and starts resolving to its owner
-// the moment the record is written — a miss is not remembered.
+// A rule that has no owner on record acts as the nearest owner above it, the system, and starts
+// acting as its owner the moment the record is written — a miss is not remembered, and an
+// address is never an owner.
 func TestAResolutionMissIsNotRemembered(t *testing.T) {
 	inner := &stamped{Store: entitytest.Store(t)}
 	rule := entity.VerseRef("trigger", "rule", "late")
@@ -238,8 +239,9 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 	if _, _, err := firing.Write(entity.Write{At: first.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, first); o != rule.String() {
-		t.Fatalf("before the rule has an owner, its creation is owned by %q, want the rule itself", o)
+	if o, ok := ownerOf(t, inner, first); ok {
+		t.Fatalf("before the rule has an owner it acts as the system, and a system node under the "+
+			"system's root records nothing; got a record owned by %q", o)
 	}
 	scott := entity.As(system, "scott@example.com")
 	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "late"}.Payload()}); err != nil {

@@ -228,15 +228,17 @@ func (a *attributed) forget(ref Ref) {
 	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
 }
 
-// resolve is the owner a principal confers: itself, unless it is the address of a node with
-// an owner on record — a rule, a source — in which case the owner of that node, and so on up,
-// bounded so that a mirror written in a loop cannot spin this. A user's email looks up
-// nothing and resolves to itself, which is what makes one string serve both.
+// resolve is the owner a principal confers: itself, unless it is the address of a node in
+// verse's own half — a rule, a source — in which case the owner of that node: the nearest
+// record at or above it, and the system where none stands, since the system owns every
+// kind-rooted node. A rule installed before its record had an owner therefore acts as the
+// system until the charter is re-applied, and not as an address, because an address is not a
+// party and cannot be answerable for anything. A user's email is not in verse's half and
+// resolves to itself, which is what makes one string serve both.
 //
-// Only a resolution that FOUND a record is kept. A rule installed before its record had an
-// owner resolves to itself until the record is written, and that record can arrive at any
-// install; a miss remembered would leave every entity the rule creates owned by an address
-// for the life of the process.
+// Only a resolution that found a record is kept: the record can arrive at any install, and a
+// miss remembered would leave every entity the rule creates the system's for the life of the
+// process. A record this process writes is what the next resolution reads (decide).
 func (a *attributed) resolve(principal string) string {
 	a.attr.mu.Lock()
 	if o, ok := a.attr.owners[principal]; ok {
@@ -244,6 +246,10 @@ func (a *attributed) resolve(principal string) string {
 		return o
 	}
 	a.attr.mu.Unlock()
+	ref, err := ParseAddr(principal)
+	if err != nil || !ref.Reserved() {
+		return principal
+	}
 	p, found := principal, false
 	for hop := 0; hop < 4; hop++ {
 		o := a.ownerAt(p, false)
@@ -252,14 +258,15 @@ func (a *attributed) resolve(principal string) string {
 		}
 		p, found = o, true
 	}
-	if found {
-		a.attr.mu.Lock()
-		if a.attr.owners == nil {
-			a.attr.owners = map[string]string{}
-		}
-		a.attr.owners[principal] = p
-		a.attr.mu.Unlock()
+	if !found {
+		return a.ownerAbove(ref)
 	}
+	a.attr.mu.Lock()
+	if a.attr.owners == nil {
+		a.attr.owners = map[string]string{}
+	}
+	a.attr.owners[principal] = p
+	a.attr.mu.Unlock()
 	return p
 }
 
