@@ -455,7 +455,7 @@ func OrphanQuestions(store entity.Store, taskID string) {
 		if p["task"] != taskID || p["status"] != QuestionPending {
 			continue
 		}
-		writeAt(store, ent.Ref, entity.Obj{
+		settlePending(store, ent.Ref, entity.Obj{
 			"status":     QuestionOrphaned,
 			"orphanedAt": time.Now().UTC().Format(time.RFC3339),
 			"why":        "the task that raised it ended without it being answered",
@@ -493,7 +493,20 @@ func DropQuestion(store entity.Store, id, why string) {
 		// see answerRecord, which puts an answerer's note there.
 		rec["why"] = why
 	}
-	writeAt(store, QuestionRef(id), rec)
+	settlePending(store, QuestionRef(id), rec)
+}
+
+// settlePending writes a settling onto a question ONLY WHILE IT IS STILL PENDING, in the write
+// itself. The read the callers make ahead of it is a courtesy that says nothing about the
+// moment of the write: a withdrawal and the terminal sweep race, each reads pending, and the
+// second to land used to overwrite the first with its own account. The precondition is what
+// makes the first settling the one that stands, whichever it is.
+func settlePending(store entity.Store, ref entity.Ref, rec entity.Obj) {
+	_, _, _ = store.Write(entity.Write{
+		At:    ref.At(),
+		Value: rec.Payload(),
+		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
+	})
 }
 
 // SettledBy reports who answered a question, and whether it is settled at all. It is the
