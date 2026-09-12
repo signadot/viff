@@ -78,6 +78,9 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 			}
 		}
 	}
+	if err := e.checkAnswerers(t); err != nil {
+		return err
+	}
 	if err := t.Condition.validate(); err != nil {
 		return fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
@@ -402,6 +405,7 @@ func checkGates(node *ir.Node) error {
 		}
 		if err := checkFields(el, "gate", map[string]bool{
 			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
+			"answerers": true,
 		}, func(field string, val *ir.Node) error {
 			if field == "onDenied" {
 				return checkAction(val)
@@ -730,4 +734,71 @@ func desugarPatches(a *Action) {
 	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
 		desugarPatches(h)
 	}
+}
+
+// checkAnswerers refuses a gate whose question nobody could settle, at install rather than at
+// the first firing: a threshold above the number of answerers named, when every one of them
+// is a single principal and so casts at most one ballot; and an answerer that names nothing —
+// not a person (an email), not a kind, not everyone, and not an address that stands, which is
+// how a group or a binding is named. A person is taken at their word before they have ever
+// presented themselves, since a gate is routed to somebody before they act, not after.
+//
+// The spawn's own gates are checked the same way, since a task's questions are posed under
+// them; a hook's spawn beneath the action is not walked here.
+func (e *Engine) checkAnswerers(t Trigger) error {
+	var gates []task.Gate
+	if t.Action.Spawn != nil {
+		gates = t.Action.Spawn.Gates
+	}
+	for i, g := range t.AllGates() {
+		if err := e.checkGateAnswerers(g.Answerers, g.Need, g.Options); err != nil {
+			return fmt.Errorf("trigger %q gates[%d]: %w", t.Name, i, err)
+		}
+	}
+	for i, g := range gates {
+		if err := e.checkGateAnswerers(g.Answerers, g.Need, g.Options); err != nil {
+			return fmt.Errorf("trigger %q spawn.gates[%d]: %w", t.Name, i, err)
+		}
+	}
+	return nil
+}
+
+func (e *Engine) checkGateAnswerers(answerers []string, need int, options []task.Option) error {
+	if len(answerers) == 0 {
+		return nil
+	}
+	bounded := true
+	for _, a := range answerers {
+		switch {
+		case a == entity.Everyone, a == entity.UserKind, a == entity.RunnerKind, a == entity.AgentKind:
+			bounded = false
+		case strings.Contains(a, "@") && !strings.Contains(a, "."+entity.VerseRoot+"."):
+			// A person, by email; nobody has to have met them yet.
+		default:
+			ref, err := entity.ParseAddr(a)
+			if err != nil || !ref.Reserved() {
+				return fmt.Errorf("answerer %q names nobody: a person is an email, a kind is user, "+
+					"agent or runner, everyone is `*`, and a group or a binding is its address "+
+					"(verse.group.<name>, verse.resolvers.<kind>.<name>)", a)
+			}
+			if _, ok, gerr := e.store.Get(ref); gerr != nil || !ok {
+				return fmt.Errorf("answerer %q: nothing stands at that address", a)
+			}
+			bounded = false // a group or a binding may stand for any number
+		}
+	}
+	if !bounded {
+		return nil
+	}
+	most := need
+	for _, o := range options {
+		if o.Need > most {
+			most = o.Need
+		}
+	}
+	if most > len(answerers) {
+		return fmt.Errorf("a threshold of %d over %d answerer(s) is a question nobody can settle: "+
+			"each answerer casts one ballot", most, len(answerers))
+	}
+	return nil
 }

@@ -21,6 +21,15 @@ context:
 - tony-format/context
 define:
   by: .[string]
+  id: .[string]
+  say: .[string]
+signature:
+  name: verse-escalate
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
   subject: .[string]
   text: .[string]
 signature:

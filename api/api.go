@@ -89,6 +89,16 @@ type Condition struct {
 	Pattern entity.Payload `tony:"field=pattern,omitzero"`
 }
 
+// Escalate is a person handing a question on to the next rung covering its subject
+// (`verse gate escalate`): the question, who handed it on, and a word about why.
+//
+//tony:schemagen=verse-escalate,notag
+type Escalate struct {
+	ID  string `tony:"field=id"`
+	By  string `tony:"field=by"`
+	Say string `tony:"field=say,omitzero"`
+}
+
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the
 // trigger registry raised, or a task gate raised inside a running agent. The routing
 // is the server's problem (a task gate's id carries its owner ahead of
@@ -98,6 +108,7 @@ type Condition struct {
 // `decisionId`/`proceed` because they are the words the CLI, `gate list`, and the docs
 // already use, and because "decision id" named the same thing twice.
 //
+
 //tony:schemagen=verse-resolve,notag
 type Resolve struct {
 	ID string `tony:"field=id"`

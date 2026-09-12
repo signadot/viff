@@ -73,6 +73,7 @@ context:
 - tony-format/context
 - task: github.com/signadot/verse/task
 define:
+  answerers: .[array(string)]
   deadline: .[nullable(task:verse-deadline)]
   mode: .[string]
   name: .[string]

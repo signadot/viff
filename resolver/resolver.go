@@ -142,9 +142,16 @@ func (c *Condition) Covers(r entity.Reader, ref entity.Ref) bool {
 // Method is the answering half. Driver chooses who decides; the rest is the envelope of
 // whatever that driver runs — its ACTING grant, not the authority of what it answers.
 type Method struct {
-	// Driver is `url` for now: verse hands over two streams and applies what comes back,
-	// running nothing itself. `llm` and `script` are drivers over this same protocol.
+	// Driver is who answers: `url`, a service verse hands two streams to and applies what
+	// comes back from, running nothing itself; `person`, one principal answering from the
+	// docket; `group`, a group's members each as themselves. `llm` and `script` are drivers
+	// over the url protocol and are not built.
 	Driver string `tony:"field=driver"`
+	// Who is the person, for `driver: person`: the principal the question is held out to.
+	Who string `tony:"field=who,omitzero"`
+	// Group is the group's address, for `driver: group`: `verse.group.<name>`, whose members
+	// the question is held out to.
+	Group string `tony:"field=group,omitzero"`
 	// URL is where the service is, so verse can hand it a capability and an operator can see
 	// what is bound. It is not an endpoint verse posts questions to — the service dials out
 	// for both streams, so one behind NAT needs no special case.
@@ -222,16 +229,50 @@ func (r Resolver) Check() error {
 			return fmt.Errorf("resolver %q: method.url is required for driver url — it is "+
 				"where the service is, which is what verse hands a capability to", r.Name)
 		}
+	case DriverPerson:
+		if r.Method.Who == "" {
+			return fmt.Errorf("resolver %q: method.who is required for driver person — the "+
+				"principal the question is held out to", r.Name)
+		}
+	case DriverGroup:
+		if r.Method.Group == "" {
+			return fmt.Errorf("resolver %q: method.group is required for driver group — the "+
+				"group's address, verse.group.<name>", r.Name)
+		}
 	case "":
 		return fmt.Errorf("resolver %q: method.driver is required", r.Name)
 	case "llm", "script":
 		return fmt.Errorf("resolver %q: driver %q is not built yet; %q is, and the other two "+
 			"are drivers over the same protocol", r.Name, r.Method.Driver, "url")
 	default:
-		return fmt.Errorf("resolver %q: no driver %q (want url)", r.Name, r.Method.Driver)
+		return fmt.Errorf("resolver %q: no driver %q (want url, person or group)", r.Name, r.Method.Driver)
 	}
 	return nil
 }
+
+// The drivers: who answers as the binding.
+const (
+	DriverURL    = "url"
+	DriverPerson = "person"
+	DriverGroup  = "group"
+)
+
+// Answerer is who a question bound to this binding is held out to: the binding's own address
+// for a service, which acts as the binding through its instance; the person, or the group's
+// address, otherwise, since they answer as themselves from the docket.
+func (r Resolver) Answerer() string {
+	switch r.Method.Driver {
+	case DriverPerson:
+		return r.Method.Who
+	case DriverGroup:
+		return r.Method.Group
+	}
+	return Ref(r.Kind, r.Name).String()
+}
+
+// Dials reports whether the binding's resolver reads through an instance: a service does, a
+// person or a group answers from the docket and is minted none.
+func (r Resolver) Dials() bool { return r.Method.Driver == DriverURL }
 
 // CheckFields reports a field the decoder would drop in silence.
 //
@@ -262,7 +303,7 @@ func CheckFields(node *ir.Node) error {
 		}
 		if field == "method" {
 			return checkFields(val, "resolver method", map[string]string{
-				"driver": "", "url": "", "vector": "", "tools": "", "grant": "",
+				"driver": "", "url": "", "who": "", "group": "", "vector": "", "tools": "", "grant": "",
 			}, nil)
 		}
 		return nil
@@ -358,21 +399,35 @@ func Owner(r entity.Reader, subject entity.Ref) (Resolver, bool) {
 // Next returns the binding that answers a question about subject once `from` steps aside —
 // by declining it, or by being removed.
 //
-// THE LADDER IS TWO HOPS AND NEEDS NO COUNTER. A named binding gives way to the standing one
-// covering the subject; a standing one gives way to nothing, which is `⊤`, the docket a person
-// reads. That falls out of returning the standing owner and refusing to return `from` itself:
-// a binding cannot hand a question to itself, so the second hop always lands at `⊤`.
+// THE LADDER IS THE STANDING BINDINGS IN NAME ORDER, AND NEEDS NO COUNTER. A named binding
+// gives way to the first standing one covering the subject; a standing one gives way to the
+// next standing one after it by name; the last gives way to nothing, which is `⊤`, the docket
+// a person reads. That falls out of walking the same list Owner walks and refusing to hand a
+// question back to `from` or to anything before it — a binding cannot hand a question to
+// itself, and the list is the order, so it needs no layer stored anywhere. A binding that is
+// both named and standing is the same case as a standing one declining.
 //
-// It does not need to know which LAYER `from` occupied, which is why nothing stores that. If
-// the standing owner is somebody else, `from` was the named layer; if it is `from`, there is
-// nowhere above to go. One binding that is both named and standing is the same case as a
-// standing one declining, and gets the same answer.
+// The rungs are what a person, a group and a service are all bound through, so A handing to
+// B and B to C is three standing bindings over the subject, by name.
 func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
-	res, ok := Owner(r, subject)
-	if !ok || Ref(res.Kind, res.Name).String() == from {
+	passed := from == ""
+	for _, res := range List(r) {
+		if !res.Condition.Covers(r, subject) {
+			continue
+		}
+		if Ref(res.Kind, res.Name).String() == from {
+			passed = true
+			continue
+		}
+		if passed {
+			return res, true
+		}
+	}
+	if passed {
 		return Resolver{}, false
 	}
-	return res, true
+	// from was a named binding, not on the ladder: the first standing one covering the subject.
+	return Owner(r, subject)
 }
 
 // Find reads one binding by its ref, for a caller that has an owner and wants its dials.

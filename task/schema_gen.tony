@@ -79,6 +79,7 @@ signature:
 context:
 - tony-format/context
 define:
+  answerers: .[array(string)]
   deadline: .[nullable(verse-deadline)]
   match: !verse-gate-match null
   mode: .[string]

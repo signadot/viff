@@ -184,6 +184,14 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
 	store = entity.As(store, entity.SystemPrincipal)
+	// Who answers as a binding: the person or the group behind it, or the binding itself for
+	// a service. mirror binds by it and cannot read a binding.
+	mirror.AnswererOf = func(r entity.Reader, binding string) string {
+		if res, ok := resolver.Find(r, binding); ok {
+			return res.Answerer()
+		}
+		return ""
+	}
 	// And what the system holds out, written before anything is asked of the store on
 	// anybody's behalf: a request that arrived before the seed would be checked against a
 	// policy admitting nobody.
@@ -242,7 +250,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// that early, because one installed mid-run would own questions an earlier mint never
 	// heard of. Both call the same create-only Watch, so the two are one act done twice.
 	watch := func(st entity.Store, q task.GateQuestion, taskID string) {
-		if q.BoundTo == "" {
+		if q.BoundTo == "" || !dials(st, q.BoundTo) {
 			return
 		}
 		origin, err := entity.ParseAddr(q.Subject)
@@ -513,7 +521,9 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		s.reflect(st, id, h, meta)
 		// Who is watching this run, if anybody was named. Minted beside the mirror because
 		// the two answer adjacent questions — what the work is doing, and who is reading it.
-		mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
+		if dials(st, l.Resolver) {
+			mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
+		}
 		return h
 	}
 }
@@ -1110,6 +1120,7 @@ func (s *Server) Handler() http.Handler {
 
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
+	rt.handle("POST /gate/escalate", s.escalateGate, "verse-escalate", nothing)
 	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", one("verse-steered"))
@@ -2240,6 +2251,52 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 	s.answerQuestion(w, r, body, "", s.scopedStore(r))
 }
 
+// escalateGate is a person's escalation: the question moves to the next rung covering its
+// subject, and to the docket when there is none — what a service does through its instance,
+// done from the docket. Admitted to whoever holds `read-write` on the question, since handing
+// a question on is an answer of a kind, "not by me", and refused to anybody else.
+func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
+	var body api.Escalate
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" || body.By == "" {
+		http.Error(w, "id and by are required: an escalation names the question and who handed it on", http.StatusBadRequest)
+		return
+	}
+	store := s.scopedStore(r)
+	if refused(w, entity.Check(store, principalOf(r), entity.ReadWrite, mirror.QuestionRef(body.ID), "escalating it")) {
+		return
+	}
+	q, ok, err := store.Get(mirror.QuestionRef(body.ID))
+	if unreadable(w, r, err) {
+		return
+	}
+	if !ok {
+		http.Error(w, "no such question", http.StatusNotFound)
+		return
+	}
+	p := entity.ToObj(q.Payload)
+	if p["status"] != mirror.QuestionPending {
+		http.Error(w, "that question is already settled", http.StatusConflict)
+		return
+	}
+	subject, _ := p["subject"].(string)
+	from, _ := p["resolver"].(string)
+	why := "escalated by " + body.By
+	if body.Say != "" {
+		why += ": " + body.Say
+	}
+	// Versed's own act, in the request's scope: the handover is the layer rule's, not the
+	// person's write.
+	if !reown(s.asSystem(r), mirror.QuestionRef(body.ID), questionOrigin(p, subject), subject, from, why) {
+		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
 // finds the owner from the id, and `/tasks/{id}/resolve`, which is told it — because the
 // two differ in how the question is addressed and in nothing else. Having had two
@@ -3004,7 +3061,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 	ref := resolver.Ref(res.Kind, res.Name)
 	body := entity.Obj{
 		"name": res.Name, "kind": res.Kind, "byRef": res.ByRef,
-		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL},
+		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL, "who": res.Method.Who, "group": res.Method.Group},
 	}
 	if res.Condition != nil {
 		body["condition"] = entity.Obj{"subject": map[string]any(res.Condition.Subject)}
@@ -3166,10 +3223,17 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	// a question with no record through which to act on it — and no way to read the fine grain
 	// of a run it has just inherited. Create-only, so a binding that was already watching keeps
 	// the position it had. AFTER the write, so a handover that lost the race mints nothing.
-	if binding != "" {
+	if binding != "" && dials(store, binding) {
 		mirror.Watch(store, binding, resolverName(binding), origin)
 	}
 	return true
+}
+
+// dials reports whether a binding reads through an instance — a service does; a person or a
+// group answers from the docket and is minted none.
+func dials(r entity.Reader, binding string) bool {
+	res, ok := resolver.Find(r, binding)
+	return !ok || res.Dials()
 }
 
 // releaseResolver hands on what a removed binding was holding: the questions it owned, and
@@ -3757,7 +3821,9 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// none is live — which put a network call in front of the record write and let the
 		// task's first gate question arrive before the record it is about.
 	})
-	mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
+	if dials(store, body.Resolver) {
+		mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
+	}
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 

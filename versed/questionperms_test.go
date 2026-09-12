@@ -20,7 +20,11 @@ import (
 // which is what makes the co-ownership edge and the binding's grant visible.
 func withoutTheDocketDefault(t *testing.T, srv *Server) {
 	t.Helper()
-	if err := entity.SetGrants(srv.Store, entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), nil); err != nil {
+	questions := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
+	if err := entity.SetDefault(srv.Store, questions, entity.Levels{entity.Read: {entity.Everyone}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetGrants(srv.Store, questions, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -61,8 +65,8 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	if err != nil || !ok || entity.Str(rec.Payload, entity.UnderField) != mirror.Ref("run-1").String() {
 		t.Fatalf("the question's record does not link it under its task: %v (ok=%v err=%v)", rec.Payload, ok, err)
 	}
-	if got := entity.Str(rec.Payload, entity.OwnerField); got != "" {
-		t.Fatalf("the question carries an owner of its own, %q; it is the system's, like its parent", got)
+	if got := entity.Str(rec.Payload, entity.OwnerField); got != entity.SystemPrincipal {
+		t.Fatalf("the question's record is owned by %q; it is the system's, on a record of its own", got)
 	}
 
 	resp := answerAs(t, "bob@example.com", ts.URL, qid)
@@ -98,18 +102,21 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 	binding := "verse.resolvers.security.payments-review"
 
+	// The record is posed with the default's `read`, and the binding's `read-write` lands on
+	// the same line a moment later.
 	deadline := time.Now().Add(3 * time.Second)
 	var grants []entity.Grant
 	for time.Now().Before(deadline) {
 		if rec, ok, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid))); ok {
-			if grants, _ = entity.ParseGrants(rec.Payload); len(grants) > 0 {
+			if grants, _ = entity.ParseGrants(rec.Payload); len(grants) > 0 && len(grants[0].To[entity.ReadWrite]) > 0 {
 				break
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(grants) != 1 || grants[0].To[entity.ReadWrite][0] != binding {
-		t.Fatalf("the question's grants = %+v, want read-write for its binding", grants)
+	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != binding ||
+		len(grants[0].To[entity.Read]) != 1 || grants[0].To[entity.Read][0] != entity.Everyone {
+		t.Fatalf("the question's grants = %+v, want read-write for its binding beside read for everyone", grants)
 	}
 	if ok, _ := entity.Holds(srv.Store, binding, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
 		t.Fatal("the binding does not hold read-write on the question held out to it")
@@ -231,7 +238,9 @@ func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
 	resp = answerAs(t, "bob@example.com", ts.URL, qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("a stranger answered a charter's question: %s", resp.Status)
+		rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
+		above, _, _ := srv.Store.Get(entity.PermsRef(entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)))
+		t.Fatalf("a stranger answered a charter's question: %s\nrecord: %v\nabove: %v", resp.Status, entity.ToObj(rec.Payload), entity.ToObj(above.Payload))
 	}
 	resp = answerAs(t, "alice@example.com", ts.URL, qid)
 	resp.Body.Close()

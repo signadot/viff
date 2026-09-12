@@ -740,6 +740,15 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["deadline"] = node
 	}
 
+	// Field: Answerers
+	if len(s.Answerers) > 0 {
+		slice := make([]*ir.Node, len(s.Answerers))
+		for i, v := range s.Answerers {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["answerers"] = ir.FromSlice(slice)
+	}
+
 	// Field: OnDenied (optional)
 	if s.OnDenied != nil {
 		node, err = s.OnDenied.ToTonyIR(opts...)
@@ -847,6 +856,23 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Deadline = &task.Deadline{}
 			if err := s.Deadline.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
+			}
+		case "answerers":
+			// Field: Answerers
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Answerers = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"answerers\"", fieldNodeUnwrapped.Type)
 			}
 		case "onDenied":
 			// Field: OnDenied

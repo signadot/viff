@@ -333,6 +333,12 @@ type Gate struct {
 	// passes with none at its threshold. An empty default settles on nothing, which the
 	// firing reads as a refusal nobody made.
 	Deadline *task.Deadline `tony:"field=deadline,omitzero"`
+	// Answerers is who the question is held out to, when the gate says: grantees, the way a
+	// grant names them — a person, a kind (`user`, `agent`), `*`, a group's or a binding's
+	// address. Written as the question's `read-write` grant when it is posed, in place of the
+	// docket's default, so a gate naming davido is davido's to answer and the charter's owner's,
+	// who co-owns what their rule asked. `need` is how many of them it takes.
+	Answerers []string `tony:"field=answerers,omitzero"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
 	//

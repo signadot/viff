@@ -826,7 +826,7 @@ func gateCmd() *cli.Command {
 		WithAliases("gates").
 		WithSynopsis("gate — the docket: bare lists it, <id> shows one, <id> --answer <option> --as <who> answers it (approve|deny are the two default options)").
 		WithOpts(append(opts, filterOpts()...)...).
-		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false)).
+		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false), gateEscalateCmd()).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
@@ -974,6 +974,48 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 		return err
 	}
 	return answerGate(cc, args[0], choiceOf(approve), as, cfg.Say, cfg.Override, done)
+}
+
+type gateEscalateConfig struct {
+	*cli.Command
+	As  string `cli:"name=as desc='who is handing the question on; the configured user when left off'"`
+	Say string `cli:"name=say desc='a word about why, on the record'"`
+}
+
+// gateEscalateCmd is `gate escalate <id>`: hand a question on to the next rung covering its
+// subject — a person's form of what a service does through its instance.
+func gateEscalateCmd() *cli.Command {
+	cfg := &gateEscalateConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return cli.NewCommandAt(&cfg.Command, "escalate").
+		WithSynopsis("escalate a question to the next rung covering its subject: escalate <id> [--as <who>] [--say <why>]").
+		WithOpts(opts...).
+		WithRun(func(cc *cli.Context, args []string) error {
+			args, err := cfg.Parse(cc, args)
+			if err != nil {
+				return err
+			}
+			if len(args) < 1 {
+				return fmt.Errorf("%w: gate escalate wants a question id", cli.ErrUsage)
+			}
+			as, err := requireAs(cfg.As, "identity", "an escalation names who handed the question on")
+			if err != nil {
+				return err
+			}
+			resp, err := httpPost("/gate/escalate", api.Escalate{ID: args[0], By: as, Say: cfg.Say})
+			if err != nil {
+				return fmt.Errorf("gate escalate: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				return statusError(resp, "gate escalate")
+			}
+			fmt.Fprintf(cc.Out, "escalated %s\n", args[0])
+			return nil
+		})
 }
 
 // choiceOf spells a yes-or-no answer as the option it chooses. approve and deny are the two

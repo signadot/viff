@@ -50,35 +50,61 @@ func RecordID(at, name string) string {
 	return at + ":" + name
 }
 
-// under records what posed the question as what co-owns it (entity.SetUnder): the task, or
-// the rule of the charter that asked. The link is what lets the task's owner, or the
-// charter's, answer what their own work asked, with the question standing at its own address.
-func under(store entity.Store, q task.GateQuestion, taskID string) {
+// poseRecord writes the question's own record, once: the system's, under what posed it — the task,
+// or the rule of the charter that asked — and holding out what the default on
+// `verse.gate.question` says, or the gate's own answerers when it named them.
+//
+// AN OWNER RECORD, though the question is the system's like the node above it and the elision
+// would have written none: what reaches a question is decided on its record, so that a grant
+// held out above — the docket's open default — stops here, and a gate held out to davido is
+// held out to davido. The link under is what lets the task's owner, or the charter's, answer
+// what their own work asked, with the question standing at its own address.
+func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
 	var origin entity.Ref
 	switch {
 	case taskID != "":
 		origin = Ref(taskID)
 	case q.Origin != "":
 		origin = RuleRef(q.At, q.Origin)
-	default:
-		return
 	}
-	_ = entity.SetUnder(store, QuestionRef(q.ID), origin)
+	ref := QuestionRef(q.ID)
+	var grants []entity.Grant
+	if len(q.Answerers) > 0 {
+		levels := entity.DefaultFor(store, ref)
+		to := map[entity.Level][]string{entity.ReadWrite: q.Answerers}
+		if reads := levels[entity.Read]; len(reads) > 0 {
+			to[entity.Read] = reads
+		}
+		grants = []entity.Grant{{At: ref.Segs(), To: to}}
+	}
+	_ = entity.Establish(store, ref, entity.SystemPrincipal, origin, grants)
 }
 
 // Bind holds the question out to the binding that answers it: `read-write` on the question's
 // own record, which is what a resolver binding IS under the ownership model. The grantee is
-// the binding's address, so its verdicts — made as the binding — are admitted, and a binding
-// with no question to answer holds nothing. Exactly one binding at a time: a change of hands
-// replaces the grant.
+// who answers as the binding — its address for a service, which acts as the binding through
+// its instance; the person or the group behind it otherwise (resolver.Answerer) — so a
+// verdict is admitted, and a binding with no question to answer holds nothing. Exactly one
+// binding at a time: a change of hands replaces the level, and unbinding gives the question
+// back to whoever the default holds it out to. `read` is left as the record has it.
 func Bind(store entity.Store, id, binding string) {
 	ref := QuestionRef(id)
-	var gs []entity.Grant
-	if binding != "" {
-		gs = []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {binding}}}}
+	names := []string{binding}
+	if binding == "" {
+		names = entity.DefaultFor(store, ref)[entity.ReadWrite]
+	} else if AnswererOf != nil {
+		if who := AnswererOf(store, binding); who != "" {
+			names = []string{who}
+		}
 	}
-	_ = entity.SetGrants(store, ref, gs)
+	_ = entity.SetLevel(store, ref, entity.ReadWrite, names)
 }
+
+// AnswererOf says who answers as a binding — its own address for a service, the person or the
+// group behind it otherwise (resolver.Resolver.Answerer). Supplied by the party that can read
+// a binding, since mirror may not import resolver (see Meta.Owner for the cycle); nil binds
+// the address itself.
+var AnswererOf func(r entity.Reader, binding string) string
 
 // Question status, monotonic: a question is posed once and settles once.
 const (
@@ -162,8 +188,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 	}
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
-	under(store, q, taskID)
-	Bind(store, q.ID, q.BoundTo)
+	poseRecord(store, q, taskID)
+	if q.BoundTo != "" {
+		Bind(store, q.ID, q.BoundTo)
+	}
 }
 
 // DeadlineOf reads a record's deadline: the duration it was posed with, the option it settles
@@ -410,8 +438,10 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
-	under(store, task.GateQuestion{ID: ev.ID}, taskID)
-	Bind(store, ev.ID, owner)
+	poseRecord(store, task.GateQuestion{ID: ev.ID}, taskID)
+	if owner != "" {
+		Bind(store, ev.ID, owner)
+	}
 }
 
 // notStatus is the precondition "this record does not say status: s".

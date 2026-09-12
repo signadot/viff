@@ -45,6 +45,9 @@ type Gate struct {
 	// hands the question up rather than settling it; when both are set the earlier fires
 	// first, as on every other question record.
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
+	// Answerers is who this gate's question is held out to, when the spawn says — grantees, as
+	// a grant names them. See trigger.Gate.Answerers; a task's own gates take the same line.
+	Answerers []string `tony:"field=answerers,omitzero"`
 }
 
 // Validate refuses a gate whose question cannot be posed as written. Every refusal names

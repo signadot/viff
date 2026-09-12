@@ -767,10 +767,16 @@ func (a *attributed) decide(ref Ref, rec *permsRecord) {
 		a.attr.decided = map[Ref]struct{}{}
 	}
 	a.attr.decided[ref] = struct{}{}
-	if a.attr.records == nil {
-		a.attr.records = map[string]*permsRecord{}
+	// What was WRITTEN is cached; a decision that nothing needed writing caches nothing, since
+	// a record may stand there already for another reason — a question's, established beside
+	// the entity — and "absent" over it would hide it from every check until the next write
+	// to the mirror. An absence is learned by reading, never by deciding.
+	if rec != nil {
+		if a.attr.records == nil {
+			a.attr.records = map[string]*permsRecord{}
+		}
+		a.attr.records[key] = rec
 	}
-	a.attr.records[key] = rec
 	if rec != nil && rec.owner != "" {
 		if a.attr.owners == nil {
 			a.attr.owners = map[string]string{}
@@ -979,7 +985,17 @@ func SetDefault(s Store, ref Ref, levels Levels) error {
 	}
 	value := Obj{DefaultField: Removed()}
 	if levels != nil {
-		value[DefaultField] = levels.Payload()
+		// A write MERGES, and the default is an object: a level the new default does not name
+		// has to be removed by name, or it stands from the default before.
+		d := Obj{}
+		for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control} {
+			if names, ok := levels[l]; ok {
+				d[string(l)] = strList(names)
+			} else {
+				d[string(l)] = Removed()
+			}
+		}
+		value[DefaultField] = d
 	}
 	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
 	if err != nil {
@@ -1074,6 +1090,107 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 		})
 		if err != nil {
 			return fmt.Errorf("revoking at %s: %w", ref, err)
+		}
+		if committed {
+			a.attr.invalidate(ref.String())
+			return nil
+		}
+	}
+}
+
+// DefaultFor is what a node created at ref holds out: the nearest default up the tree, the
+// root's at the top — for a caller that writes a record of its own (Establish) and wants to
+// say so in the same words a creation would.
+func DefaultFor(s Store, ref Ref) Levels {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	return a.defaultAbove(ref)
+}
+
+// Establish writes ref's own record where none stands — owned by owner, under another node
+// when under says so, holding out grants, or the default above it when grants is nil — as the
+// system and under an absence precondition, so a record already standing is left as it is. It
+// is how a node that is the system's gets an owner record of its own where the elision would
+// have written none: a question, so that what reaches it is decided on its record and not by
+// the grants above it.
+func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	if grants == nil {
+		grants = a.defaultGrants(ref)
+	}
+	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(grants)}
+	if under.Len() > 0 {
+		rec[UnderField] = under.String()
+	}
+	_, _, err := a.Store.Write(Write{
+		At: PermsRef(ref).At(), Value: rec.Payload(), When: []Require{Created()}, Principal: SystemPrincipal,
+	})
+	if err != nil {
+		return fmt.Errorf("establishing %s: %w", ref, err)
+	}
+	a.attr.invalidate(ref.String())
+	return nil
+}
+
+// SetLevel replaces who holds level on ref's own lines — the grants at the node itself, not
+// beneath it: every such line loses the level, and the first of them (or a new one) gets it
+// back with names. Empty names remove the level. A binding's grant on a question is written
+// this way, so binding and unbinding move `read-write` and leave `read` as the default gave it.
+func SetLevel(s Store, ref Ref, level Level, names []string) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	rec := PermsRef(ref)
+	for {
+		cur, exists, err := a.Store.Get(rec)
+		if err != nil {
+			return fmt.Errorf("setting %s at %s: %w", level, ref, err)
+		}
+		var grants []Grant
+		when := Created()
+		if exists {
+			grants, _ = ParseGrants(cur.Payload)
+			when = Require{Pattern: Unchanged(cur.Payload)}
+		}
+		own := -1
+		out := make([]Grant, 0, len(grants)+1)
+		for _, g := range grants {
+			if strings.Join(g.At, "\x00") == strings.Join(ref.Segs(), "\x00") && !g.Below {
+				to := map[Level][]string{}
+				for l, ns := range g.To {
+					if l != level {
+						to[l] = ns
+					}
+				}
+				g.To = to
+				if own < 0 {
+					own = len(out)
+				} else if len(to) == 0 {
+					continue
+				}
+			}
+			out = append(out, g)
+		}
+		if len(names) > 0 {
+			if own < 0 {
+				own = len(out)
+				out = append(out, Grant{At: ref.Segs(), To: map[Level][]string{}})
+			}
+			out[own].To[level] = names
+		} else if own >= 0 && len(out[own].To) == 0 {
+			out = append(out[:own], out[own+1:]...)
+		}
+		committed, _, err := a.Store.Write(Write{
+			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(out)}.Payload(), When: []Require{when}, Principal: SystemPrincipal,
+		})
+		if err != nil {
+			return fmt.Errorf("setting %s at %s: %w", level, ref, err)
 		}
 		if committed {
 			a.attr.invalidate(ref.String())

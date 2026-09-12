@@ -59,6 +59,10 @@ type GateQuestion struct {
 	// declared and answered by whatever is currently watching. The instance is derivable from
 	// the two (binding, origin) and would be a second spelling of a pair already here.
 	BoundTo string
+	// Answerers is who the gate held the question out to, when it named them — grantees, the
+	// way a grant names them: a principal, a kind, a group's address. Empty leaves the question
+	// to the docket's default. Written as the question's `read-write` grant when it is posed.
+	Answerers []string
 	// At is the ADDRESS of the charter whose rule is asking — `verse-dev.merge` — empty for
 	// baseline and for a question a task raised (a task knows what it is doing, not which
 	// charter spawned it). Gate above names the rule, and a rule's name is unique within a
@@ -201,7 +205,7 @@ func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 		}
 		if g.Mode >= d.Mode {
 			d = GateQuestion{Mode: g.Mode, Gate: g.Name, Reason: reason,
-				Options: g.options(), Deadline: g.Deadline}
+				Options: g.options(), Deadline: g.Deadline, Answerers: g.Answerers}
 		}
 	}
 	return d

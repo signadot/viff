@@ -719,6 +719,8 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// from one person; the tally and the clock are whoever answers' to keep.
 			Options:  gate.options(),
 			Deadline: gate.Deadline,
+			// And who it is held out to, when the gate says.
+			Answerers: gate.Answerers,
 		}
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {
