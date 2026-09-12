@@ -1063,6 +1063,11 @@ func (s *Server) Handler() http.Handler {
 	// system's and not readable over the entity routes; this is the owner's window onto their
 	// own record, and the one verb by which a person writes to it.
 	rt.handle("GET /perms", s.getPerms, "", one("verse-perms-record"))
+	// Groups: a named set of principals, a grantee whose address admits its members.
+	rt.handle("GET /groups", s.listGroups, "", nothing)
+	rt.handle("POST /groups", s.putGroup, "verse-group", nothing)
+	rt.handle("GET /groups/{name}", s.getGroup, "", nothing)
+	rt.handle("DELETE /groups/{name}", s.removeGroup, "", nothing)
 	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
 	rt.handle("GET /gates", s.listGates, "", nothing)
 	// The distinct subjects with live work — addresses, so a list of plain strings rather
@@ -1909,6 +1914,79 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
+}
+
+// putGroup writes a group — its maker's, by the seed's grant beneath verse.principal.group —
+// or replaces the members of one its requester owns. A member is taken as written: a
+// principal, a kind, `*`, another group's address or a binding's; membership is read when it
+// is checked, so a group may name a member nobody has met.
+func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
+	var body api.Group
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Name == "" {
+		http.Error(w, "a group has a name", http.StatusBadRequest)
+		return
+	}
+	for _, m := range body.Members {
+		if m == "" || strings.ContainsAny(m, " \t\n") {
+			http.Error(w, fmt.Sprintf("member %q: a member is a principal, a kind, `*`, or an address", m), http.StatusBadRequest)
+			return
+		}
+	}
+	ref := entity.GroupRef(body.Name)
+	members := make([]any, 0, len(body.Members))
+	for _, m := range body.Members {
+		members = append(members, m)
+	}
+	_, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: entity.Obj{entity.MembersField: members}.Payload()})
+	if refused(w, err) {
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String(), "members": body.Members})
+}
+
+func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
+	store := s.scopedStore(r)
+	ents, err := entity.ListUnderErr(store, func(ref entity.Ref) bool { return entity.IsGroup(ref) },
+		entity.VerseRoot, entity.PrincipalSystem, entity.GroupKind)
+	if unreadable(w, r, err) {
+		return
+	}
+	out := make([]map[string]any, 0, len(ents))
+	for _, e := range ents {
+		out = append(out, map[string]any{"at": e.Ref.String(), "name": e.Ref.ID(), "members": entity.Strs(e.Payload, entity.MembersField)})
+	}
+	writeOut(w, r, http.StatusOK, out)
+}
+
+func (s *Server) getGroup(w http.ResponseWriter, r *http.Request) {
+	ref := entity.GroupRef(r.PathValue("name"))
+	e, ok, err := s.scopedStore(r).Get(ref)
+	if unreadable(w, r, err) {
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	writeOut(w, r, http.StatusOK, map[string]any{"at": ref.String(), "name": ref.ID(), "members": entity.Strs(e.Payload, entity.MembersField)})
+}
+
+func (s *Server) removeGroup(w http.ResponseWriter, r *http.Request) {
+	ref := entity.GroupRef(r.PathValue("name"))
+	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At()}); refused(w, err) {
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // getPerms answers a node's perms record to somebody who may READ the node: who owns what you

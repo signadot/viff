@@ -310,3 +310,51 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 		t.Fatalf("re-created by bob, owner = %q", o)
 	}
 }
+
+// A group's address admits its members: a principal, a kind, everyone, another group, a
+// binding; a group of groups is walked to a bounded depth, and a cycle admits nobody.
+func TestAGroupAdmitsItsMembers(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemPrincipal)
+	entity.PolicyOf(system).SetRootDefault(nil)
+	alice := entity.As(system, "alice@example.com")
+	pr := entity.RefAt("demo", "pr", "1")
+	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	group := func(name string, members ...string) {
+		ms := make([]any, 0, len(members))
+		for _, m := range members {
+			ms = append(ms, m)
+		}
+		if _, _, err := system.Write(entity.Write{At: entity.GroupRef(name).At(), Value: entity.Obj{entity.MembersField: ms}.Payload()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	group("payments", "oscar@example.com", entity.GroupRef("security").String())
+	group("security", "carol@example.com", entity.RunnerKind)
+	group("loop-a", entity.GroupRef("loop-b").String())
+	group("loop-b", entity.GroupRef("loop-a").String())
+	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.Read: {entity.GroupRef("payments").String(), entity.GroupRef("loop-a").String()}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.Note(system, entity.RunnerKind, "bot"); err != nil {
+		t.Fatal(err)
+	}
+	for who, want := range map[string]bool{
+		"oscar@example.com": true,  // a member
+		"carol@example.com":   true,  // a member of a member group
+		"bot":                 true,  // listed under a kind a member group names
+		"bob@example.com":     false, // nobody's member
+		"":                    false, // the unattributed request is not a member of anything
+	} {
+		if got, _ := entity.Holds(system, who, entity.Read, pr); got != want {
+			t.Errorf("%q reads alice's pr = %v, want %v", who, got, want)
+		}
+	}
+	// Membership moves: taking davido out takes his read.
+	group("payments", entity.GroupRef("security").String())
+	if got, _ := entity.Holds(system, "oscar@example.com", entity.Read, pr); got {
+		t.Fatal("davido reads after being taken out of the group")
+	}
+}

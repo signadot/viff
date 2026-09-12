@@ -473,6 +473,15 @@ type Status struct {
 	Perms *Perms `tony:"field=perms,omitzero"`
 }
 
+// Group is a named set of principals (`verse group add`): as a grantee, its address admits its
+// members. A member is a principal, a kind, `*`, another group's address or a binding's.
+//
+//tony:schemagen=verse-group,notag
+type Group struct {
+	Name    string   `tony:"field=name"`
+	Members []string `tony:"field=members,omitzero"`
+}
+
 // PermsRecord is a node's perms record as its owner reads it back (`verse perms <path>`): who
 // owns the node, what they hold out on it, and what a node created beneath it holds out.
 //

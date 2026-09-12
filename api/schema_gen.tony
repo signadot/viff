@@ -37,6 +37,14 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  members: .[array(string)]
+  name: .[string]
+signature:
+  name: verse-group
+---
+context:
+- tony-format/context
 - task: github.com/signadot/verse/task
 define:
   by: .[string]

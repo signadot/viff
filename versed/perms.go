@@ -47,6 +47,8 @@ var seed = []struct {
 	// Who has been here is data anybody may read (`verse data verse principal`); the mirror,
 	// beside it, is held out to nobody.
 	{entity.VerseRef(entity.PrincipalSystem), entity.Read, []string{entity.Everyone}},
+	// Anyone makes a group; the group is its maker's.
+	{entity.VerseRef(entity.PrincipalSystem, entity.GroupKind), entity.OwnerLevel, []string{entity.Everyone}},
 }
 
 // defaults is what the seed says a node created beneath a kind-rooted node holds out, where

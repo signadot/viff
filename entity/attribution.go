@@ -64,6 +64,9 @@ type Attribution struct {
 	// kinds memoises a principal being listed under a kind; only a listing is kept, since a
 	// principal noted stays noted.
 	kinds map[string]bool
+	// groups memoises a group's members, dropped when the group is written through this
+	// process, since membership is meant to move.
+	groups map[string][]string
 	// rootDefault is what a node created with no default above it holds out — the root's
 	// default (DefaultField), the one default that is not data since the root has no record.
 	// The open verse's is `read: ["*"]`: whatever anybody creates is readable by everyone
@@ -218,6 +221,11 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 			a.attr.invalidate(ref.ID())
 		}
 		return committed, rev, nil
+	}
+	if IsGroup(ref) {
+		a.attr.mu.Lock()
+		delete(a.attr.groups, ref.String())
+		a.attr.mu.Unlock()
 	}
 	if wholeDelete {
 		a.forget(ref)
@@ -613,6 +621,12 @@ func (a *attributed) coOwns(who, addr string, hops int) (bool, error) {
 // because a grant to a binding's address means "whoever acts as that binding" and a grant to
 // a person means them and everything of theirs acting as itself.
 func (a *attributed) named(names []string, principal, who string) bool {
+	return a.namedWithin(names, principal, who, 3)
+}
+
+// namedWithin is named, following a group's members to a bounded depth: a group of groups is
+// walked, and a cycle admits nobody rather than everybody.
+func (a *attributed) namedWithin(names []string, principal, who string, depth int) bool {
 	for _, n := range names {
 		switch n {
 		case who, Everyone:
@@ -625,9 +639,42 @@ func (a *attributed) named(names []string, principal, who string) bool {
 			if who != "" && a.listedAs(n, who) {
 				return true
 			}
+		default:
+			if depth > 0 && who != "" {
+				if ref, err := ParseAddr(n); err == nil && IsGroup(ref) {
+					if a.namedWithin(a.members(ref), principal, who, depth-1) {
+						return true
+					}
+				}
+			}
 		}
 	}
 	return false
+}
+
+// members reads a group's members, through the cache; a group that cannot be read has none.
+func (a *attributed) members(ref Ref) []string {
+	key := ref.String()
+	a.attr.mu.Lock()
+	ms, ok := a.attr.groups[key]
+	a.attr.mu.Unlock()
+	if ok {
+		return ms
+	}
+	e, found, err := a.Store.Get(ref)
+	if err != nil {
+		return nil // not remembered: the store did not answer
+	}
+	if found {
+		ms = Strs(e.Payload, MembersField)
+	}
+	a.attr.mu.Lock()
+	if a.attr.groups == nil {
+		a.attr.groups = map[string][]string{}
+	}
+	a.attr.groups[key] = ms
+	a.attr.mu.Unlock()
+	return ms
 }
 
 // listedAs reports whether who is listed under `verse.principal.<kind>`.
@@ -1237,6 +1284,24 @@ const PrincipalSystem = "principal"
 
 // UserKind is the kind of a principal who is a person, identified by email.
 const UserKind = "user"
+
+// GroupKind is the kind of a principal that is a SET: `verse.principal.group.<name>` lists its
+// members, and as a grantee the group's address admits them — the way a binding's address
+// admits whoever acts as the binding. A member is a principal, a kind, everyone, another
+// group's address, or a binding's; membership is read when it is checked, since a group is for
+// changing who is in it without touching every place it is granted.
+const GroupKind = "group"
+
+// MembersField is the field of a group listing its members.
+const MembersField = "members"
+
+// GroupRef addresses a group.
+func GroupRef(name string) Ref { return PrincipalRef(GroupKind, name) }
+
+// IsGroup reports whether an address is a group's.
+func IsGroup(ref Ref) bool {
+	return ref.Reserved() && ref.System() == PrincipalSystem && ref.Kind() == GroupKind && ref.ID() != ""
+}
 
 // UserRef addresses the record of one user having acted here.
 func UserRef(principal string) Ref { return PrincipalRef(UserKind, principal) }

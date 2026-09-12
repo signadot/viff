@@ -203,6 +203,7 @@ func rootCmd() *cli.Command {
 			resolverCmd(),
 			runnerCmd(),
 			permsCmd(),
+			groupCmd(),
 			sourceCmd(),
 			providerCmd(),
 			connectCmd(),
