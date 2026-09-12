@@ -41,7 +41,6 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 
 	// Enforced from here: the worker's reports have to be admitted by its grant and by
 	// nothing else.
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json",
 		strings.NewReader(`{"identity":"bot"}`))

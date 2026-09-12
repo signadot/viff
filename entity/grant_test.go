@@ -179,9 +179,8 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	}
 }
 
-// Enforced, a refusal refuses and writes nothing; in shadow it is counted and the write lands.
-// Either way the count is there for /status to read.
-func TestARefusalRefusesOnlyWhenEnforced(t *testing.T) {
+// A refusal refuses and writes nothing, says who wanted what and what decided, and is counted.
+func TestARefusalRefusesAndIsCounted(t *testing.T) {
 	inner := &stamped{Store: entitytest.Store(t)}
 	system := entity.As(inner, entity.SystemPrincipal)
 	alice := entity.As(system, "alice@example.com")
@@ -191,42 +190,27 @@ func TestARefusalRefusesOnlyWhenEnforced(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var logged []string
-	entity.PolicyOf(system).Log(func(f string, args ...any) { logged = append(logged, f) })
-	committed, _, err := bob.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("reviewed")})
-	if err != nil || !committed {
-		t.Fatalf("in shadow the write proceeds: committed=%v err=%v", committed, err)
+	before := inner.last.At.String()
+	committed, _, err := bob.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("merged")})
+	if !errors.Is(err, entity.ErrForbidden) || committed {
+		t.Fatalf("committed=%v err=%v", committed, err)
 	}
-	if inner.last.Principal != "bob@example.com" || len(logged) != 1 {
-		t.Fatalf("shadow: last write by %q, %d lines logged", inner.last.Principal, len(logged))
+	if inner.last.At.String() != before || entity.Str(inner.last.Value, "") == "merged" {
+		t.Fatalf("a refused write reached the store: %s", inner.last.At)
+	}
+	if !strings.Contains(err.Error(), "bob@example.com holds read at "+pr.String()) ||
+		!strings.Contains(err.Error(), "alice@example.com at "+pr.String()) {
+		t.Fatalf("the refusal does not say who, where, or what decided: %v", err)
 	}
 	byLevel, unreadable := entity.PolicyOf(system).Refusals()
 	if byLevel[string(entity.ReadWrite)] != 1 || unreadable != 0 {
 		t.Fatalf("refusals = %v, %d", byLevel, unreadable)
 	}
-
-	entity.PolicyOf(bob).Enforce(true)
-	before := inner.last.At.String()
-	committed, _, err = bob.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("merged")})
-	if !errors.Is(err, entity.ErrForbidden) || committed {
-		t.Fatalf("enforced: committed=%v err=%v", committed, err)
-	}
-	if inner.last.At.String() != before || entity.Str(inner.last.Value, "") == "merged" {
-		t.Fatalf("a refused write reached the store: %s", inner.last.At)
-	}
-	if !strings.Contains(err.Error(), "bob@example.com holds read at "+pr.String()) || // read, under the open verse
-		!strings.Contains(err.Error(), "alice@example.com at "+pr.String()) {
-		t.Fatalf("the refusal does not say who, where, or what decided: %v", err)
-	}
-	byLevel, _ = entity.PolicyOf(system).Refusals()
-	if byLevel[string(entity.ReadWrite)] != 2 {
-		t.Fatalf("refusals = %v", byLevel)
-	}
 	// Modify is the same write, and reports the same refusal rather than retrying it.
 	if err := entity.Modify(t.Context(), bob, pr, func(cur entity.Payload) entity.Payload { return cur }); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("Modify: %v", err)
 	}
-	// alice, and the system, are untouched by enforcement.
+	// alice, and the system, write.
 	if _, _, err := alice.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("merged")}); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +224,6 @@ func TestARefusalRefusesOnlyWhenEnforced(t *testing.T) {
 func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
-	entity.PolicyOf(system).Enforce(true)
 	alice := entity.As(system, "alice@example.com")
 	bob := entity.As(system, "bob@example.com")
 	notes := entity.RefAt("spaces", "alice", "notes")

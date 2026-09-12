@@ -184,11 +184,6 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
 	store = entity.As(store, entity.SystemPrincipal)
-	// A refusal the check would make is reported here, one line each, while it is counted
-	// rather than refused; once it refuses, the caller hears it and nothing is logged twice.
-	entity.PolicyOf(store).Log(func(format string, args ...any) {
-		slog.Warn(fmt.Sprintf(format, args...))
-	})
 	// And what the system holds out, written before anything is asked of the store on
 	// anybody's behalf: a request that arrived before the seed would be checked against a
 	// policy admitting nobody.
@@ -3199,9 +3194,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// permsStatus is the permission check's census: what it has refused, and whether refusing is
-// what it does yet. Every store verse writes through is a view over the one attribution, so
-// one count covers a request's write, a firing's and a source's alike.
+// permsStatus is the permission check's census: what it has refused. Every store verse writes
+// through is a view over the one attribution, so one count covers a request's write, a
+// firing's and a source's alike.
 func (s *Server) permsStatus() *api.Perms {
 	pol := entity.PolicyOf(s.Store)
 	if pol == nil {
@@ -3211,7 +3206,7 @@ func (s *Server) permsStatus() *api.Perms {
 	if len(refused) == 0 {
 		refused = nil
 	}
-	return &api.Perms{Enforced: pol.Enforcing(), Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden()}
+	return &api.Perms{Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden()}
 }
 
 // installSystemCharter applies the charter file named by SystemCharter as the system: its rules

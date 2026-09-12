@@ -2060,9 +2060,6 @@ func (s *Perms) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Enforced
-	irMap["enforced"] = ir.FromBool(bool(s.Enforced))
-
 	// Field: Refused
 	if len(s.Refused) > 0 {
 		mapNodes := make(map[string]*ir.Node)
@@ -2115,12 +2112,6 @@ func (s *Perms) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "enforced":
-			// Field: Enforced
-			if fieldNodeUnwrapped.Type != ir.BoolType {
-				return fmt.Errorf("field %q: expected bool, got %v", "enforced", fieldNodeUnwrapped.Type)
-			}
-			s.Enforced = bool(fieldNodeUnwrapped.Bool)
 		case "refused":
 			// Field: Refused
 			if fieldNodeUnwrapped.Type == ir.ObjectType {

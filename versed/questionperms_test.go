@@ -52,7 +52,6 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
@@ -92,7 +91,6 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
@@ -142,7 +140,6 @@ func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
 	defer ts.Close()
 	worker := httptest.NewServer(b.WorkerHandler())
 	defer worker.Close()
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	resp := postAs(t, "alice@example.com", ts.URL+"/tasks", "application/json",
 		`{"prompt":"deploy","driver":"human","runner":"broker"}`)
@@ -197,7 +194,6 @@ func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	resp := postAs(t, "alice@example.com", ts.URL+"/charter", "application/tony", `{
 		name: approve-ask,

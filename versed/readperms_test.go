@@ -37,7 +37,6 @@ func TestTheMirrorIsNotAPersonsToRead(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	entity.PolicyOf(srv.Store).Enforce(true)
 	resp := putAs(t, "alice@example.com", ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
 	resp.Body.Close()
 
@@ -62,7 +61,6 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	entity.PolicyOf(srv.Store).Enforce(true)
 	entity.PolicyOf(srv.Store).OpenReads(false)
 
 	pr(t, srv, "1", "payments")
@@ -93,7 +91,6 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 // trace, since a rule that cannot see a subject is not woken by it.
 func TestACharterReadsAsItsOwner(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-	entity.PolicyOf(srv.Store).Enforce(true)
 	entity.PolicyOf(srv.Store).OpenReads(false)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

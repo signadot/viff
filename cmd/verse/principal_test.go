@@ -32,11 +32,8 @@ func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 	if !strings.Contains(out, "alice@example.com") {
 		t.Fatalf("`verse data verse principal` does not list the user:\n%s", out)
 	}
-	perms, err := runCLI(t, "data", "verse", "perms")
-	if err != nil {
-		t.Fatalf("data verse perms: %v", err)
-	}
-	if !strings.Contains(perms, "alice@example.com") {
-		t.Fatalf("`verse data verse perms` does not show the owner:\n%s", perms)
+	// The mirror, though, is the system's: a person reading it is answered with nothing of it.
+	if perms, _ := runCLI(t, "data", "verse", "perms"); strings.Contains(perms, "alice@example.com") {
+		t.Fatalf("`verse data verse perms` shows a person the mirror:\n%s", perms)
 	}
 }

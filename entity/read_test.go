@@ -22,7 +22,6 @@ func refs(ents []entity.Entity) map[string]bool {
 func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
-	entity.PolicyOf(system).Enforce(true)
 	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
@@ -50,7 +49,6 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemPrincipal)
-	entity.PolicyOf(system).Enforce(true)
 	entity.PolicyOf(system).OpenReads(false)
 	alice, bob, carol := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com"), entity.As(system, "carol@example.com")
 

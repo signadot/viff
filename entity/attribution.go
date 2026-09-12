@@ -41,8 +41,8 @@ var ErrForbidden = errors.New("refused")
 
 // Attribution is what an attributed store shares across the views derived from it: the perms
 // records this process has read, which nodes it has settled the owner of, what each address-
-// shaped principal resolves to, and whether a refusal refuses. One per underlying store; As
-// derives a per-principal view over it.
+// shaped principal resolves to, and what it has refused. One per underlying store; As derives
+// a per-principal view over it.
 //
 // The cache is an optimisation and not the truth. The owner record is written under an
 // absence precondition, so a process that has forgotten (a restart, a second replica) costs
@@ -63,24 +63,18 @@ type Attribution struct {
 	// kinds memoises a principal being listed under a kind; only a listing is kept, since a
 	// principal noted stays noted.
 	kinds map[string]bool
-	// enforce says a refusal refuses. Until it is set the check runs in SHADOW: a refusal is
-	// counted and logged and the write proceeds, which is how a deployment finds the flow the
-	// seed missed before anything is refused.
-	enforce bool
 	// openReads is the open verse's reading rule: everyone reads everything but the perms
 	// mirror, whatever the records say. It is the read side of the world half's base case —
 	// the one grant that is not data — and the first thing a private verse turns off, at
 	// which point a read is admitted by co-ownership or a `read` grant and by nothing else.
-	// Off is what the tests of the granted path set.
 	openReads bool
-	refused   map[Level]int
-	// unreadable counts checks the mirror could not answer, which in shadow proceed and are
-	// counted apart: a store that is down is not a policy that refused.
+	// refused counts what the check refused, by the level the write or read wanted; unreadable
+	// counts checks the mirror could not answer, apart, since a store that is down is not a
+	// policy that refused; hidden counts what listings, replays and watches left out for a
+	// reader, apart again, since a listing that leaves something out is answered.
+	refused    map[Level]int
 	unreadable int
-	// hidden counts what listings, replays and watches left out for a reader — or would have,
-	// in shadow. Apart from refused, since a listing that leaves something out is answered.
-	hidden int
-	logf   func(format string, args ...any)
+	hidden     int
 }
 
 // permsRecord is one perms record as the check reads it.
@@ -121,27 +115,13 @@ func PrincipalOf(s Store) string {
 	return ""
 }
 
-// PolicyOf is the attribution an attributed store shares — where enforcement is switched and
-// the shadow counters read — and nil for a store that is not attributed.
+// PolicyOf is the attribution an attributed store shares — where the open reading rule is
+// switched and the refusal counters read — and nil for a store that is not attributed.
 func PolicyOf(s Store) *Attribution {
 	if a, ok := s.(*attributed); ok {
 		return a.attr
 	}
 	return nil
-}
-
-// Enforce switches a refusal from counted to refused.
-func (a *Attribution) Enforce(on bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.enforce = on
-}
-
-// Enforcing reports whether a refusal refuses.
-func (a *Attribution) Enforcing() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.enforce
 }
 
 // OpenReads sets whether everyone may read everything but the mirror (the open verse), or
@@ -152,16 +132,10 @@ func (a *Attribution) OpenReads(on bool) {
 	a.openReads = on
 }
 
-// Log sets where a shadow refusal is reported, one line each.
-func (a *Attribution) Log(logf func(format string, args ...any)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.logf = logf
-}
-
 // Refusals is what the check has refused since this process started, by the level the write
-// wanted, and how many checks the mirror could not answer. In shadow the writes proceeded;
-// enforced, they did not.
+// or read wanted, and how many checks the mirror could not answer. It is what /status reports:
+// a count that climbs is a flow somebody is being refused, which is either the policy's
+// intent or a row the seed is missing.
 func (a *Attribution) Refusals() (byLevel map[string]int, unreadable int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -173,7 +147,7 @@ func (a *Attribution) Refusals() (byLevel map[string]int, unreadable int) {
 }
 
 // Hidden is how many entities listings, replays and watches have left out for a reader who
-// may not see them — or would have left out, in shadow.
+// may not see them.
 func (a *Attribution) Hidden() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -247,8 +221,9 @@ func (a *attributed) Scope(name string) Store {
 // Check is the decision the store makes ahead of a write, asked ahead of something else: does
 // principal hold level at ref, and if not, is that refused. It is what a route asks before
 // delivering an answer whose record it will only write afterwards, so a refusal is a refusal
-// and not a record that failed to land. The error is ErrForbidden when enforced, nil when the
-// refusal is only counted (shadow), and the store's own error when the mirror did not answer.
+// and not a record that failed to land. The error is ErrForbidden for a refusal, and the store's
+// own error when the mirror did not answer — which refuses too, as an unreadable precondition
+// does: a check that fails open admits everything while the store is down.
 func Check(s Store, principal string, level Level, ref Ref) error {
 	a, ok := s.(*attributed)
 	if !ok {
@@ -261,19 +236,16 @@ func Check(s Store, principal string, level Level, ref Ref) error {
 func (a *attributed) check(principal string, need Level, ref Ref) (access, error) {
 	acc, err := a.accessOf(principal, ref)
 	if err != nil {
-		if a.attr.noteUnreadable() {
-			return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
-		}
-		return acc, nil
+		a.attr.noteUnreadable()
+		return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
 	}
 	held := acc.level.Admits(need)
 	if need == Control {
 		held = acc.control
 	}
 	if !held {
-		if a.attr.noteRefusal(need, principal, ref, acc) {
-			return acc, refusal(need, principal, ref, acc)
-		}
+		a.attr.noteRefusal(need)
+		return acc, refusal(need, principal, ref, acc)
 	}
 	return acc, nil
 }
@@ -395,7 +367,7 @@ func (a *Attribution) readsOpen() bool {
 // The read side of the view: a read answers only what the principal may read. Get refuses, as
 // a write does; a listing, a replay and a watch leave out what may not be seen, so the same
 // principal sees the same set whichever way they ask. The system reads everything and pays
-// for none of this; in shadow a read that would be refused is counted and answered.
+// for none of this.
 
 // keep reports whether the view's principal may read ref, for a listing: false and no error
 // for what they may not, an error for a mirror that did not answer.
@@ -404,30 +376,28 @@ func (a *Attribution) readsOpen() bool {
 // reader may see in it, and counting every record withheld from every `verse data` as a
 // refused request would bury the count that matters — a request turned away — under the
 // mirror's own records, which no listing of verse's half may show a person. What is withheld
-// is counted apart (Refusals' hidden), and in shadow it is counted and shown.
+// is counted apart (Hidden).
 func (a *attributed) keep(ref Ref) (bool, error) {
 	if a.principal == SystemPrincipal {
 		return true, nil
 	}
 	acc, err := a.accessOf(a.principal, ref)
 	if err != nil {
-		if a.attr.noteUnreadable() {
-			return false, err
-		}
-		return true, nil
+		a.attr.noteUnreadable()
+		return false, err
 	}
 	if acc.level.Admits(Read) {
 		return true, nil
 	}
-	return !a.attr.noteHidden(), nil
+	a.attr.noteHidden()
+	return false, nil
 }
 
-// noteHidden counts an entity a listing withheld, and reports whether it is withheld.
-func (a *Attribution) noteHidden() bool {
+// noteHidden counts an entity a listing withheld.
+func (a *Attribution) noteHidden() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.hidden++
-	return a.enforce
 }
 
 func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
@@ -664,27 +634,21 @@ func verb(need Level) string {
 	return "writing it"
 }
 
-// noteRefusal counts a refusal and reports whether it refuses.
-func (a *Attribution) noteRefusal(need Level, principal string, ref Ref, acc access) bool {
+// noteRefusal counts a refusal, by the level wanted.
+func (a *Attribution) noteRefusal(need Level) {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.refused == nil {
 		a.refused = map[Level]int{}
 	}
 	a.refused[need]++
-	enforce, logf := a.enforce, a.logf
-	a.mu.Unlock()
-	if !enforce && logf != nil {
-		logf("perms: %v", refusal(need, principal, ref, acc))
-	}
-	return enforce
 }
 
-// noteUnreadable counts a check the mirror could not answer and reports whether that refuses.
-func (a *Attribution) noteUnreadable() bool {
+// noteUnreadable counts a check the mirror could not answer.
+func (a *Attribution) noteUnreadable() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.unreadable++
-	return a.enforce
 }
 
 // record settles the owner of ref, once: the principal that held `owner` there when it was
@@ -786,16 +750,10 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	var rec *permsRecord
 	if ok {
 		grants, gerr := ParseGrants(e.Payload)
-		if gerr != nil {
-			// A line that cannot be read grants nothing, and says so once where the record
-			// is read rather than silently at every check.
-			a.attr.mu.Lock()
-			logf := a.attr.logf
-			a.attr.mu.Unlock()
-			if logf != nil {
-				logf("perms: record at %s: %v", key, gerr)
-			}
-		}
+		// A line that cannot be read grants nothing: ParseGrants refuses the whole field, so a
+		// record with one bad line holds out nothing until it is fixed, which is the safe way
+		// round and is visible on the record itself.
+		_ = gerr
 		rec = &permsRecord{owner: Str(e.Payload, OwnerField), under: Str(e.Payload, UnderField), grants: grants}
 	}
 	a.attr.mu.Lock()

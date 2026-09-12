@@ -13,12 +13,24 @@ import (
 // that reached the substrate — the log does not hold one yet.
 type stamped struct {
 	entity.Store
-	last entity.Write
+	last   entity.Write
+	writes []entity.Write
 }
 
 func (s *stamped) Write(w entity.Write) (bool, int64, error) {
 	s.last = w
+	s.writes = append(s.writes, w)
 	return s.Store.Write(w)
+}
+
+// lastAt is the principal of the last write the substrate saw at ref's own address.
+func (s *stamped) lastAt(ref entity.Ref) string {
+	for i := len(s.writes) - 1; i >= 0; i-- {
+		if s.writes[i].At.Ref == ref {
+			return s.writes[i].Principal
+		}
+	}
+	return ""
 }
 
 // seedRecord writes a perms record by hand: the owner of ref and what they hold out. The
@@ -84,9 +96,12 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 		t.Fatalf("owner of %s = %q, %v; want alice", pr, o, ok)
 	}
 
-	// A LATER write by somebody else is theirs — and moves nothing: ownership changes only by
-	// create and delete.
+	// A LATER write by somebody else — admitted by alice holding it out to them — is theirs,
+	// and moves nothing: ownership changes only by create and delete.
 	bob := entity.As(alice, "bob@example.com") // one memory, two views, as versed derives them
+	seedRecord(t, alice, pr, "alice@example.com", entity.Grant{
+		At: pr.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"bob@example.com"}},
+	})
 	if _, _, err := bob.Write(entity.Write{At: pr.At("stage"), Value: entity.Val("reviewed")}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +119,8 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if inner.last.Principal != "alice@example.com" {
-		t.Fatalf("Modify's write reached the store as %q", inner.last.Principal)
+	if got := inner.lastAt(pr); got != "alice@example.com" {
+		t.Fatalf("Modify's write reached the store as %q", got)
 	}
 
 	// Deleting the whole entity forgets its owner, so whoever creates it next owns it.

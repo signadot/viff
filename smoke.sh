@@ -433,16 +433,18 @@ ok "the question is settled with both ballots on the record"
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live task to exercise the control surfaces against (and observe the slide on).
+# One principal for the run and its control: a task is its requester's, and control is held
+# by the owner and the runner, so the party that spawned it is the party that steers it.
 step "task run + control surfaces"
-v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
+VERSE_USER=human:smoke v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
 ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v task get "$ID")" "$ID" || die "task get missing the id"
 ok "task get"
-v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
+VERSE_USER=human:smoke v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
 ok "task say (re-prompt)"
-out=$(v task vector "$ID" ask --as human:smoke) || die "task vector failed"
+out=$(VERSE_USER=human:smoke v task vector "$ID" ask --as human:smoke) || die "task vector failed"
 has "$out" "ask" || die "task vector did not report the new mode"
 ok "task vector → ask (as human:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
@@ -456,7 +458,7 @@ for _ in $(seq 1 25); do
 done
 [ -n "$observed" ] || die "slide not observable on the entity (vector/vectorBy not projected)"
 ok "slide observable on the entity (vector/vectorBy projected)"
-v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
+VERSE_USER=human:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 
 # ── connect: federate a local tree into a scope (docd-only path) ─────────────

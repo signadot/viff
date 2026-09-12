@@ -79,7 +79,6 @@ func TestControlIsHeldByTheTasksOwner(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	entity.PolicyOf(srv.Store).Enforce(true)
 
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
@@ -115,7 +114,6 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	}
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	srv.SystemCharter = path
-	entity.PolicyOf(srv.Store).Enforce(true)
 	srv.Start(t.Context())
 
 	rule := trigger.CharterRef("system-watch")
