@@ -24,7 +24,7 @@ field present says which it is.
 
 The system is what the address is keyed on (`verse.sources.<system>.<name>`, under the
 reserved root like everything verse keeps about its own running) because it is a question verse
-already asks: who writes `git:*`. Neither it nor `name` may contain `/`, and `system` may not
+already asks: who writes `git.*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
 
 A source reflects the world's half and only that: a reflection naming an address under `verse.`
@@ -101,7 +101,7 @@ verse source add <system>.<name> <url>       install one, probing the url first
               [--keep]                       …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.sources.git.laptop` or `git:laptop` — the whole address or the bare pair;
+A `<ref>` is `verse.sources.git.laptop` or `git.laptop` — the whole address or the bare pair;
 the middle form (`sources.git.laptop`) is not accepted, since that was the whole address before
 verse's own half of the tree had a name.
 

@@ -15,7 +15,7 @@ program that compiles with the tree, and the two functions you change are marked
 
 ## Installing one
 
-A runner lives at `verse.runners.<kind>:<name>` and carries a url, the verse-facing
+A runner lives at `verse.runners.<kind>.<name>` and carries a url, the verse-facing
 [task-control](task-control.md) base. `kind` is the operator's own category: what this runner *is*,
 the way a resolver's kind is what it is *for*.
 

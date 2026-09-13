@@ -5,7 +5,7 @@ The surface. For what a runner *is* and why it is shaped this way, see
 [../task-control.md](../task-control.md). To build one, copy
 [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `verse.runners.<kind>:<name>` carrying one field:
+A runner is an entity at `verse.runners.<kind>.<name>` carrying one field:
 
 | | |
 |---|---|
@@ -32,7 +32,7 @@ verse runner add <kind>.<name> <url>       install one, probing the url first
               [--leave]                    …the place stays: leave it running
 ```
 
-A `<ref>` is `verse.runners.pool.gpu` or `pool:gpu`: the whole address as it is listed and stored,
+A `<ref>` is `verse.runners.pool.gpu` or `pool.gpu`: the whole address as it is listed and stored,
 or the bare pair typed on a command line. The middle form, `runners.pool.gpu`, is not accepted,
 because two ways to say one thing is one too many.
 
@@ -73,7 +73,7 @@ the flow. It is never quietly run somewhere else.
 | | |
 |---|---|
 | `runner` | the resolved url (or `local`) — what a restart re-attaches with |
-| `runnerName` | the `verse.runners.<kind>:<name>` the spawn named, when it named one |
+| `runnerName` | the `verse.runners.<kind>.<name>` the spawn named, when it named one |
 | `startedAt` | when the task began; carried across a re-attach rather than re-stamped |
 
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing

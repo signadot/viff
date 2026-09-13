@@ -150,7 +150,7 @@ started as its own process has no way to guess them. It asks.
 stored.
 
 What makes this a seam rather than a cache is that the indirection is invisible from above. An
-agent's `read_file` becomes an ordinary `Get` at `local:dir-content-<scope>:<path>`, and docd
+agent's `read_file` becomes an ordinary `Get` at `local.dir-content-<scope>.<path>`, and docd
 resolves that path to the mounted controller, which stats and reads the file *at request time*,
 confined to its root and capped in size, answering null for a traversal attempt or a non-regular
 file. It looks like a store read the whole way down, and is a live filesystem read at the bottom.

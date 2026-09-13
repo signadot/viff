@@ -1,7 +1,7 @@
 # Sources
 
 A Source reflects an external system — a git repo, GitHub, Linear — into the slice of the
-entity-verse it owns (`git:*`, `github:*`, …), and is the single writer of that slice. Triggers
+entity-verse it owns (`git.*`, `github.*`, …), and is the single writer of that slice. Triggers
 and agents *read* the reflected entities and react. A source only reflects: acting back on the
 external system is the outbound path, not this one.
 
@@ -45,7 +45,7 @@ unauthenticated in a wide-open dogfood verse.
 
 ## Ownership = single writer = no CAS
 
-A Source owns `github:*` and is its only writer, so within that slice there is no lost-update
+A Source owns `github.*` and is its only writer, so within that slice there is no lost-update
 problem: reflected slices need no compare-and-swap because they have one writer. CAS still matters
 where several triggers write a *shared subject*, which a reflected slice is not.
 
@@ -78,7 +78,7 @@ type Reflection struct {
 
 The store cannot cross a process boundary, but that is not the reason it is on this side of the
 seam. Shipping a store client is trivial and `POST /entity` already exists, so an external program
-could write `git:*`. The reason is what converge *does*, which must not be re-implemented once per
+could write `git.*`. The reason is what converge *does*, which must not be re-implemented once per
 source:
 
 - **skip unchanged**, or every periodic resync re-fires every trigger over the slice;
@@ -159,7 +159,7 @@ one has by construction:
 **And the system itself is the operator's**, which is a coarser separation than a claim and exists
 for a different reason. A source is deployed, and more than one will be. The partition between them
 is drawn by whoever runs them — by credential, by budget, by which slices are busy — and that has
-no reason to line up with how the external system is organised. Two deployments sharing `github:*`
+no reason to line up with how the external system is organised. Two deployments sharing `github.*`
 need only disjoint claims, computed from each source's own configuration rather than written by
 hand. One that wants no coordination at all takes `-system` and owes nobody a proof, since two
 systems are disjoint on the first segment. It is also how a second *instance* of a product gets a

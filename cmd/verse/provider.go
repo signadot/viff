@@ -9,14 +9,14 @@ import (
 )
 
 // providerCmd lists the provider registry — the attribute-rich doers a select gate draws
-// from (provider:<capability>:<id>). Providers are registered as entities (e.g.
+// from (provider.<capability>.<id>). Providers are registered as entities (e.g.
 // `verse data provider:review:claude --put '{"driver":"llm","tier":"premium"}'`).
 //
 // Singular with a plural alias, like every other collection, even though it has no verbs to
 // act through: the rule an operator learns is "the command is the singular", and one listing
 // that answers only to the plural is one exception to remember.
 func providerCmd() *cli.Command {
-	return listing("provider", "provider — the provider registry (provider:<capability>:<id>)",
+	return listing("provider", "provider — the provider registry (provider.<capability>.<id>)",
 		func(cc *cli.Context, args []string) error {
 			// The capability is the KIND, read out of the document rather than sliced back off
 			// the front of a rendered ref.

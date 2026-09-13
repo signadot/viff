@@ -171,7 +171,7 @@ Nothing sequences "review, then reviewed." The review task completing becomes a
 `verse.task.instance` change, and either the trigger's own `onDone` hook or a separate `reviewed`
 trigger reacts to it and advances the subject. Composition is triggers reacting to shared state,
 which is why the model scales to many concurrent, independent flows with no central plan.
-Triggers must opt in to `task:*` matches, so the loop cannot ignite on its own machinery.
+Triggers must opt in to `verse.task.*` matches, so the loop cannot ignite on its own machinery.
 
 With no plan to read, a flow is derived rather than stored. `verse flow show <subject>` assembles
 a subject's shape per request by joining the charter (what may yet happen), the mirror (what

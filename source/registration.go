@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed sources live: `verse:sources:<system>:<name>`.
+// System is where installed sources live: `verse.sources.<system>.<name>`.
 //
 // The first segment after the system is the SLICE REFLECTED, unlike a runner's kind, which is
 // the operator's own category (pool, host, broker). The difference is not cosmetic: a runner's
@@ -149,12 +149,12 @@ func (e Entity) Check() error {
 		return fmt.Errorf("source %q: system is required — it is the other half of the address, "+
 			"and it is the SLICE this source reflects and is the single writer of", e.Name)
 	}
-	// The system is the kind segment of `verse:sources:<system>:<name>` and a segment of the route
+	// The system is the kind segment of `verse.sources.<system>.<name>` and a segment of the route
 	// that serves it, so neither punctuation survives. The name is the id, which may carry a
 	// colon (ParseRef splits three ways and the rest is the id) but not a slash.
 	if strings.ContainsAny(e.System, ":/") {
 		return fmt.Errorf("source %q: system %q may not contain : or / — it is a segment of the "+
-			"address (verse:sources:<system>:<name>) and of the route that serves it", e.Name, e.System)
+			"address (verse.sources.<system>.<name>) and of the route that serves it", e.Name, e.System)
 	}
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("source %q: a name may not contain / — it is a path segment on the "+

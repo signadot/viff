@@ -14,7 +14,7 @@ sits inside a rule, see [the trigger model](trigger-model.md).
 
 ## The registry
 
-A doer is an entity: `provider:<capability>:<id>`. The capability is what it can do; the id is
+A doer is an entity: `provider.<capability>.<id>`. The capability is what it can do; the id is
 which one it is.
 
 ```sh
@@ -113,7 +113,7 @@ spawn permits cannot do the work.
 
 ## The ceiling
 
-A `provider:*` entity is an ordinary entity. **Anyone who can write one can create a doer** —
+A `provider.*` entity is an ordinary entity. **Anyone who can write one can create a doer** —
 so if a doer's `grant` were taken as-is, writing an entity would be a privilege escalation,
 and the charter that spawned the task never said so.
 
@@ -149,7 +149,7 @@ places:
 | why nothing is eligible | where the fix is |
 |---|---|
 | the spawn names no doers and no capability | the charter |
-| no `provider:<cap>:*` is registered | register one |
+| no `provider.<cap>.*` is registered | register one |
 | all registered were excluded by `match` | loosen the match |
 | they matched and may not run under this spawn | narrow the doer, **or** widen the spawn |
 

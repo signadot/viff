@@ -7,7 +7,7 @@ verbs an operator types. Why it is shaped this way is
 
 ## The binding
 
-Installed as `verse.resolvers.<kind>:<name>`.
+Installed as `verse.resolvers.<kind>.<name>`.
 
 ```tony
 name:      security-review
@@ -53,7 +53,7 @@ first binding *by name* owns the questions they both cover.
 
 | ref | what it is |
 |---|---|
-| `verse.resolvers.<kind>:<name>` | the binding — what is installed |
+| `verse.resolvers.<kind>.<name>` | the binding — what is installed |
 | `verse.resolvers.instance.<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
 One `verse data resolvers` shows both, which is why the instance is a reserved
@@ -152,7 +152,7 @@ verse gate approve <id> --as <who> [--override] # answer, or answer over an excl
 
 A resolver ref is typed the way it is stored — `verse.resolvers.security.review` — because an
 operator reading `verse data` and one typing `verse resolver show` should not have to know two
-spellings of one thing. The leading `verse:resolvers:` may be dropped, leaving `<kind>:<name>`.
+spellings of one thing. The leading `verse.resolvers.` may be dropped, leaving `<kind>.<name>`.
 
 ## Binding one to work
 

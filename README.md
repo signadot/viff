@@ -65,7 +65,7 @@ entities, tasks, and the charters that relate them.
   remote (another verse over HTTP), or a dial-in broker where a firewalled worker or a human
   executes it. The engine drives all three through one handle, so every `verse task` verb
   works whichever it is.
-- `mirror/` — reflects a running task into the verse as a `task:instance` entity, so
+- `mirror/` — reflects a running task into the verse as a `verse.task.instance` entity, so
   "observe or steer another task" is just "observe an entity."
 - `resolver/` — who answers a gate. A binding is *installed* rather than written into a
   charter, because it outlives any one rule and belongs to whoever supervises rather than to
@@ -75,7 +75,7 @@ entities, tasks, and the charters that relate them.
   past its deadline hands the question to the next binding covering the subject, and the last
   hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
-  deploy and install (`verse source add`), reflecting an owned slice like `git:*` that triggers
+  deploy and install (`verse source add`), reflecting an owned slice like `git.*` that triggers
   react to. Four ship (`sourced git|slack|linear|github`); anything else is the sample program
   plus one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,

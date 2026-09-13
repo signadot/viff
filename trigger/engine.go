@@ -1021,7 +1021,7 @@ type providerCandidate struct {
 // providerCandidates lists every doer the spawn's Provider names or matches, each marked
 // eligible or refused. Inline Eligible: the option IS the driver, and contributes nothing
 // else — an inline list is a list of names, and a name has no attributes to carry. Registry
-// Capability: list provider:<capability>:* whose attributes satisfy Match (a tony merge
+// Capability: list provider.<capability>.* whose attributes satisfy Match (a tony merge
 // match); the option is the provider id and the fragment is read off its payload.
 //
 // The payload is one namespace holding two kinds of key: SELECTION attributes (`tier`,

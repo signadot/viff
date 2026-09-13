@@ -285,11 +285,11 @@ verse
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
           the shell would expand — so quote it. A second positional is refused rather
           than read as a step
-  provider (providers)                       the provider registry (provider:<capability>:<id>)
+  provider (providers)                       the provider registry (provider.<capability>.<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +
           [--interval <dur>]                  content controller + a validator per file
-  disconnect                                  drop the --scope overlay (else remove local:* entities)
+  disconnect                                  drop the --scope overlay (else remove local.* entities)
 
   global:  --addr <host:port>   --scope <name>
            --ofmt, -o <tony|yaml>  output format (default tony; verse renders no json)

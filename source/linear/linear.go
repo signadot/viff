@@ -91,7 +91,7 @@ func New(ctx context.Context, cfg Config) (*Linear, error) {
 	}
 	if strings.ContainsAny(l.system, ":/") {
 		return nil, fmt.Errorf("linear: system %q may not contain : or / — it is a segment of "+
-			"the address (verse:sources:<system>:<name>) and of the route that serves it", l.system)
+			"the address (verse.sources.<system>.<name>) and of the route that serves it", l.system)
 	}
 	if l.pageSize <= 0 {
 		l.pageSize = DefaultPageSize

@@ -12,11 +12,11 @@ is split into an index and served bytes is [content federation](../content-feder
 Three things.
 
 It writes each file's rich metadata — full fstat plus a content hash — to the store as
-`local:dir-status-<scope>:<path>` entities. That is an index, not a warehouse: the stat and
+`local.dir-status-<scope>.<path>` entities. That is an index, not a warehouse: the stat and
 the hash, not the bytes.
 
 It serves file contents on demand through docd, from a content controller at
-`local:dir-content-<scope>:*`, so a validator reads them through the verse with no shared
+`local.dir-content-<scope>.*`, so a validator reads them through the verse with no shared
 filesystem required.
 
 And it installs a scoped trigger that spawns a validator per file.
@@ -77,11 +77,11 @@ verse disconnect --scope me                        # drop the whole overlay
 ```
 
 `disconnect --scope me` tears the overlay down in one shot — every scope write, not just
-`local:*` files — via logd's `DeleteScope`.
+`local.*` files — via logd's `DeleteScope`.
 
 Scopes are the store's, not the surface's: a copy-on-write overlay is something logd/docd
 does, and `disconnect --scope` asks it to drop one. A store without real scopes would answer
-501 and the client would fall back to removing `local:*` entities one at a time.
+501 and the client would fall back to removing `local.*` entities one at a time.
 
 The scope's engine observes via per-trigger subtree watches, each watching exactly the
 `system.kind` it matches rather than a root.

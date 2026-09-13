@@ -61,7 +61,7 @@ func (g *Git) SetSystem(system string) error {
 	}
 	if strings.ContainsAny(system, ":/") {
 		return fmt.Errorf("git: system %q may not contain : or / — it is a segment of the "+
-			"address (verse:sources:<system>:<name>) and of the route that serves it", system)
+			"address (verse.sources.<system>.<name>) and of the route that serves it", system)
 	}
 	g.system = system
 	return nil

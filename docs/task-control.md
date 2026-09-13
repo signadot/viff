@@ -59,7 +59,7 @@ is the dual of a [Source](sources.md). A Source reflects external state *into* t
 task-control backend runs and governs *work* on a substrate. Both reconcile a resource and both
 must be idempotent, but only one of them is a controller, and this is the one
 (see [sources.md](sources.md#a-source-is-not-a-controller-and-cannot-be)). k8s sits on both sides:
-`k8s:*` as a Source reflecting the cluster in, and k8s as a task-control backend running tasks as
+`k8s.*` as a Source reflecting the cluster in, and k8s as a task-control backend running tasks as
 Jobs out.
 
 ## Idempotency ⇒ the restart discipline (`verse down; up`)
@@ -478,5 +478,5 @@ brokered tasks alike.
 
 Not built: the inbox long-poll, so a worker polls. Two larger tracks sit outside this document:
 a human surfacer and identity-projected inbox, with `owner`, `claimant` and `resolver` stamps,
-and a k8s runner that spawns Jobs behind the broker, alongside `k8s:*` as a
+and a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as a
 [Source](controllers.md).

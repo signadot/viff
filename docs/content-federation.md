@@ -12,11 +12,11 @@ the index/warehouse line and federates the two halves differently, because docd 
 scope-specific: a mount is too far from the copy-on-write mechanism to make per-scope.
 
 - Status (the index) → scoped writes. `connect` writes each file's rich metadata (full fstat
-  and a content hash) to docd as `local:dir-status-<scope>:<path>` entities in copy-on-write
+  and a content hash) to docd as `local.dir-status-<scope>.<path>` entities in copy-on-write
   scope `<scope>`. These live in logd, via docd, and the scope isolates one dev's tree from
   baseline and from other devs. This is what triggers watch.
 - Content (the bytes) → a controller. `connect` runs a read-only content controller mounted at
-  `local:dir-content-<scope>` that serves a file's bytes on demand, read live from the tree,
+  `local.dir-content-<scope>` that serves a file's bytes on demand, read live from the tree,
   with nothing written to the store. The nonce keeps this baseline mount collision-free across
   sessions. Large and binary files are served rather than warehoused, and the controller is the
   single owner of that content, so there is no second copy to drift.
@@ -27,15 +27,15 @@ The two kinds are symmetric, `dir-status-<scope>` and `dir-content-<scope>`, and
 ### The task side
 
 A scoped validator's `read_file` resolves through the verse. It fetches
-`local:dir-content-<scope>:<path>`, which docd routes to the connect content controller.
+`local.dir-content-<scope>.<path>`, which docd routes to the connect content controller.
 "Follow the reference into the real system" stays the rule. The real system is reachable via
 the verse, wherever the task runs, and a federated task never touches the server's disk for a
 file.
 
 ```
   federated (scoped writes + content controller):
-    connect ──scoped metadata──▶ docd:  local:dir-status-<scope>:*   (index, in logd)
-    connect = content controller ──mount──▶ docd: local:dir-content-<scope>:*
+    connect ──scoped metadata──▶ docd:  local.dir-status-<scope>.*   (index, in logd)
+    connect = content controller ──mount──▶ docd: local.dir-content-<scope>.*
     validator.read_file ──through the verse──▶ content controller serves it
                                                (on demand, owner-served)   ← any machine
 ```

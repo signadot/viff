@@ -6,13 +6,13 @@ mounted at a
 [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath), to which docd
 routes every client operation (`Match`/`Patch`/`Watch`) for that subtree by longest-prefix
 mount. To verse's store client, which points at docd's client address, a controller-served
-subtree is indistinguishable *to a read*: `demo:*` and `task:*` resolve to logd,
-`local:dir-content-*` resolves to a controller, with no store rewrite. To a *watch* it is not
+subtree is indistinguishable *to a read*: `demo.*` and `verse.task.*` resolve to logd,
+`local.dir-content-*` resolves to a controller, with no store rewrite. To a *watch* it is not
 indistinguishable at all, and that is the first thing to know.
 
 `verse connect` mounts one over your working tree; see
 [reference/connect.md](reference/connect.md). The content controller (`source/content.go`)
-serves file bytes on demand under `local:dir-content-<scope>:*`.
+serves file bytes on demand under `local.dir-content-<scope>.*`.
 
 This note is the how-to, and the invariants a controller must honor. Read them before you write
 a `Watch`, starting with the one that decides whether to write a controller at all.
@@ -122,7 +122,7 @@ mount processes coming and going. Verse simply has no such watches, and that sim
    returns `{path, size, binary:"non-utf8"}`, and `{truncated:"size-cap"}` for an over-cap file.
    Bound size too; a subtree read should not stream an unbounded blob into one node.
 
-3. Own the subtree, as its single writer. A controller owns `system:*`, or a `system.kind.*`
+3. Own the subtree, as its single writer. A controller owns `system.*`, or a `system.kind.*`
    slice, and is the only writer there, so reflected data needs no CAS. Mount per-system or
    per-`(system,kind)`.
 

@@ -174,7 +174,7 @@ back what stood before it (see
 [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records. A package's rules and strata are addressed by
-package (`verse.trigger.rule.drift:head-moved`), so two packages may each declare a `reflected`
+package (`verse.trigger.rule."verse-dev.drift:head-moved"`), so two packages may each declare a `reflected`
 level without one overwriting the other, which is what comment-drift's two halves need, since both
 read the git source and both want a bottom level for it. They are not confined: a package's lowest
 level owns the slice it *reads*, and its rules select from there and derive above it. What makes
@@ -561,7 +561,7 @@ distinction the model deliberately does not carry, and "unknown key" would not s
 
 The address string is sugar for the identity dimensions, so `demo.pr.*` means
 `{path: [demo, pr, *]}` — and since a trailing wildcard *is* an unset dimension, that is
-what reads back when you read it out of `verse c`: `demo:pr`. Same match, shorter spelling.
+what reads back when you read it out of `verse c`: `demo.pr`. Same match, shorter spelling.
 
 Keep it small. This is where complexity hides. To act "only the first time", match a state field
 your action then advances: a **latch**. That is not a nicety. A rule with no latch is considered at
@@ -1601,7 +1601,7 @@ steering applies the match and acts on the matched tasks. A query, not a maintai
 ```
 
 `review` reads as *while a PR is open, review it*. No cause is named, so it is considered at every
-commit touching `demo:pr`, and its patch advances each PR past `open` so it settles. Its spawn is
+commit touching `demo.pr`, and its patch advances each PR past `open` so it settles. Its spawn is
 allowed only *because* of that patch: a spawning action with nothing to latch on is refused.
 
 `ship-green` reads as *at the moment CI goes green, ship everything reviewed*. It fires once,

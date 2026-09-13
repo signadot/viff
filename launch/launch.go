@@ -233,14 +233,14 @@ type Call struct {
 // Vector). Absent = today's fixed Driver.
 //
 // Eligibility takes one of two forms: an inline `Eligible` list of doer ids (simple), or
-// the registry form `Capability` (+ optional `Where`) which selects the `provider:<cap>:*`
+// the registry form `Capability` (+ optional `Where`) which selects the `provider.<cap>.*`
 // entities whose attributes match — attribute-rich, discoverable doers resolved at fire
 // time. A matched provider entity carries the `driver` bound into the spawn.
 //
 //tony:schemagen=verse-launch-provider,notag
 type Provider struct {
 	Eligible   []string       `tony:"field=eligible,omitzero"`   // inline doer ids (option == driver)
-	Capability string         `tony:"field=capability,omitzero"` // registry: select provider:<capability>:*
+	Capability string         `tony:"field=capability,omitzero"` // registry: select provider.<capability>.*
 	Match      map[string]any `tony:"field=match,omitzero"`      // registry: a tony match over provider attributes
 	// Select is the who-dial: how the doer is picked among the eligible options —
 	// "auto" (a rule picks the first eligible), "ask" (one party picks; a threshold of 1),

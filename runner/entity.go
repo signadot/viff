@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed runners live: `verse:runners:<kind>:<name>`.
+// System is where installed runners live: `verse.runners.<kind>.<name>`.
 //
 // A runner is an ENTITY rather than a startup flag, because the ask this answers is
 // "deploying arbitrary runners in the verse namespace" — adding one is a deployment act, a
@@ -76,7 +76,7 @@ func (e Entity) Check() error {
 	// serves them, so a name with a slash addresses something else or nothing.
 	if strings.ContainsAny(e.Kind, ":/") {
 		return fmt.Errorf("runner %q: kind %q may not contain : or / — it is a segment of the "+
-			"address (verse:runners:<kind>:<name>) and of the route that serves it", e.Name, e.Kind)
+			"address (verse.runners.<kind>.<name>) and of the route that serves it", e.Name, e.Kind)
 	}
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("runner %q: a name may not contain / — it is a path segment on the "+
