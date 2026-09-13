@@ -332,8 +332,6 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 	return rn, nil
 }
 
-// splitDescription reads description.md as git-issue writes it: the title is the first line
-// with any leading `# ` stripped, and the body is whatever follows.
 // treeEntries is the names in a tree object as `git cat-file --batch` hands one back: entries
 // of `<mode> <name>\0<20-byte id>`, in tree order. Nil for anything that is not a tree.
 func treeEntries(tree []byte) []string {
@@ -376,6 +374,8 @@ func commentText(b []byte) string {
 	return strings.TrimSpace(s)
 }
 
+// splitDescription reads description.md as git-issue writes it: the title is the first line
+// with any leading `# ` stripped, and the body is whatever follows.
 func splitDescription(b []byte) (title, body string) {
 	s := strings.ReplaceAll(string(b), "\r\n", "\n")
 	first, rest, _ := strings.Cut(s, "\n")
@@ -391,8 +391,6 @@ func addTime(p entity.Obj, key string, t time.Time) {
 	}
 }
 
-// addStrings writes a list, and nothing at all for an empty one: `labels: []` and no labels
-// are the same fact, and only one of them costs a charter a special case.
 // addStrings writes a list field, EMPTY INCLUDED. A charter copies an issue's facts onto a row
 // of its own by reference, and an absent reference fails the firing (docs/trigger-model.md), so
 // an issue with no labels has `labels: []` rather than nothing where labels would be: every

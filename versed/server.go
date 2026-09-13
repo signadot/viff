@@ -2011,9 +2011,6 @@ func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
 	s.answerPerms(w, r, ref)
 }
 
-// putPerms takes a place and sets what it holds out. The requester must hold `owner` at the
-// node already: this is a place being taken by whoever may take it, never a way to take one
-// from its owner — and a record already somebody else's refuses the edit the same way.
 // listPerms is bare `verse perms`: every record whose node the requester may read, in address
 // order — who owns what they can see, and what each place holds out.
 //
@@ -2044,6 +2041,9 @@ func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
+// putPerms takes a place and sets what it holds out. The requester must hold `owner` at the
+// node already: this is a place being taken by whoever may take it, never a way to take one
+// from its owner — and a record already somebody else's refuses the edit the same way.
 func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 	var body api.PermsEdit
 	if err := codec.Read(r, &body); err != nil {
