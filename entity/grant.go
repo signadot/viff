@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -126,14 +127,19 @@ const (
 // Grant is one line of a record's grants: a path the grant covers, and who holds which level
 // there.
 //
-//   - at: [verse, task, instance, *]
+//   - read-write: [coderunner]            # the record's own node, and beneath it
+//   - below: true                          # beneath the record's node, not the node itself
 //     owner: ["*"]
+//   - at: [spaces, scott, shared, "*"]     # somewhere else: a path, with at most a trailing *
+//     read: [ana@example.com]
 //
-// `at` is a path with at most a TRAILING `*`, the claim grammar (source.ParseClaim), and for
-// the same reason a claim refuses a `*` anywhere else: a grant meaning something wider than it
-// looks is authority resting on a typo. Without the star the grant covers the node itself and
-// everything beneath it, which is what a runner's grant on its task needs; with it, the
-// children and beneath, which is what a grant about creating needs.
+// A line with no `at` is about the node the record is on, which is what nearly every line is:
+// the default copied at creation, a runner's grant on its task, a question's answerers. It is
+// spelled without one so a record does not repeat its own address on every line. `below` on
+// such a line covers the children and beneath — what a grant about creating needs — and not
+// the node. `at` names any other path, with at most a TRAILING `*` for the same meaning: the
+// claim grammar (source.ParseClaim), and for the same reason a claim refuses a `*` anywhere
+// else, since a grant meaning something wider than it looks is authority resting on a typo.
 type Grant struct {
 	At    []string
 	Below bool
@@ -153,10 +159,12 @@ func (g Grant) Covers(segs []string) bool {
 	return true
 }
 
-// ParseGrants reads a record's grants field. A record with none has nil grants and no error;
-// a line that cannot be read is an error naming it, so a policy edit that would silently
-// grant nothing is refused where it is written rather than discovered where it is checked.
-func ParseGrants(rec Payload) ([]Grant, error) {
+// ParseGrants reads a record's grants field, for the record at node: a line with no `at` is
+// about that node. A record with none has nil grants and no error; a line that cannot be read
+// is an error naming it, so a policy edit that would silently grant nothing is refused where
+// it is written rather than discovered where it is checked. With no node — a caller holding a
+// grants field that belongs nowhere yet — every line has to say where it is.
+func ParseGrants(node []string, rec Payload) ([]Grant, error) {
 	f := ir.Uncomment(Get(rec, GrantsField))
 	if f == nil {
 		return nil, nil
@@ -166,7 +174,7 @@ func ParseGrants(rec Payload) ([]Grant, error) {
 	}
 	var out []Grant
 	for i, v := range f.Values {
-		g, err := parseGrant(v)
+		g, err := parseGrant(node, v)
 		if err != nil {
 			return nil, fmt.Errorf("%s[%d]: %w", GrantsField, i, err)
 		}
@@ -175,17 +183,26 @@ func ParseGrants(rec Payload) ([]Grant, error) {
 	return out, nil
 }
 
-func parseGrant(v Payload) (Grant, error) {
+func parseGrant(node []string, v Payload) (Grant, error) {
 	v = ir.Uncomment(v)
 	if v == nil || v.Type != ir.ObjectType {
-		return Grant{}, fmt.Errorf("a grant is an object with `at` and a level")
+		return Grant{}, fmt.Errorf("a grant is an object holding out a level, with `at` when it is not about this node")
 	}
 	var g Grant
 	at := ir.Uncomment(Get(v, "at"))
 	var segs []string
 	switch {
-	case at == nil:
+	case at == nil && len(node) == 0:
 		return Grant{}, fmt.Errorf("a grant names the path it covers in `at`")
+	case at == nil:
+		// This node. `below` is the only other thing such a line says about where.
+		g.At = append([]string{}, node...)
+		if b := ir.Uncomment(Get(v, "below")); b != nil {
+			if b.Type != ir.BoolType {
+				return Grant{}, fmt.Errorf("below: true or false")
+			}
+			g.Below = b.Bool
+		}
 	case at.Type == ir.StringType:
 		var err error
 		if segs, err = ExprSegs(at.String); err != nil {
@@ -199,7 +216,7 @@ func parseGrant(v Payload) (Grant, error) {
 	default:
 		return Grant{}, fmt.Errorf("at: a path, spelled as a list or a kinded path")
 	}
-	if len(segs) == 0 {
+	if at != nil && len(segs) == 0 {
 		return Grant{}, fmt.Errorf("at: a path, spelled as a list or a kinded path")
 	}
 	for i, s := range segs {
@@ -215,7 +232,9 @@ func parseGrant(v Payload) (Grant, error) {
 			segs = segs[:i]
 		}
 	}
-	g.At = segs
+	if at != nil {
+		g.At = segs
+	}
 	for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control} {
 		to := ir.Uncomment(Get(v, string(l)))
 		if to == nil {
@@ -239,24 +258,32 @@ func parseGrant(v Payload) (Grant, error) {
 	return g, nil
 }
 
-// Payload spells the grant back as a record line, the inverse of parseGrant.
-func (g Grant) Payload() Payload {
-	at := append([]string{}, g.At...)
-	if g.Below {
-		at = append(at, "*")
+// Payload spells the grant back as a line of the record at node, the inverse of parseGrant: a
+// grant about that node says no `at`, and `below: true` when it is about what is beneath it.
+func (g Grant) Payload(node []string) Payload {
+	o := Obj{}
+	if len(node) > 0 && slices.Equal(g.At, node) {
+		if g.Below {
+			o["below"] = ir.FromBool(true)
+		}
+	} else {
+		at := append([]string{}, g.At...)
+		if g.Below {
+			at = append(at, "*")
+		}
+		o["at"] = strList(at)
 	}
-	o := Obj{"at": strList(at)}
 	for l, names := range g.To {
 		o[string(l)] = strList(names)
 	}
 	return o.Payload()
 }
 
-// GrantsPayload spells a list of grants as the record field's value.
-func GrantsPayload(gs []Grant) Payload {
+// GrantsPayload spells a list of grants as the field's value on the record at node.
+func GrantsPayload(node []string, gs []Grant) Payload {
 	arr := &ir.Node{Type: ir.ArrayType}
 	for _, g := range gs {
-		arr.Values = append(arr.Values, g.Payload())
+		arr.Values = append(arr.Values, g.Payload(node))
 	}
 	return arr
 }

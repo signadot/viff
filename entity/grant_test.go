@@ -23,7 +23,7 @@ func mustParse(t *testing.T, src string) entity.Payload {
 // A grant's `at` is a path with at most a trailing `*`, spelled as a list or a kinded path, and
 // a line that grants nothing readable is refused where it is written.
 func TestParseGrants(t *testing.T) {
-	gs, err := entity.ParseGrants(mustParse(t, `{grants: [
+	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
 	  {at: [verse, task, instance, "*"], owner: ["*"]},
 	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, user]},
 	  {at: verse.task.instance.t1, read-write: [bot], control: [bot]},
@@ -44,9 +44,40 @@ func TestParseGrants(t *testing.T) {
 		t.Fatalf("a control grant: %+v", gs[2])
 	}
 	// Round trip.
-	back, err := entity.ParseGrants(entity.Obj{entity.GrantsField: entity.GrantsPayload(gs)}.Payload())
+	back, err := entity.ParseGrants(nil, entity.Obj{entity.GrantsField: entity.GrantsPayload(nil, gs)}.Payload())
 	if err != nil || len(back) != 3 || !back[0].Below || back[2].To[entity.Control][0] != "bot" {
 		t.Fatalf("round trip: %+v %v", back, err)
+	}
+
+	// ON A RECORD, a line about the record's own node says no `at`, and `below` is the one other
+	// thing it says about where. Spelled back for that node, the address is not repeated; spelled
+	// for no node, it is.
+	node := []string{"verse", "task", "instance", "t1"}
+	own, err := entity.ParseGrants(node, mustParse(t, `{grants: [
+	  {read-write: [bot], control: [bot]},
+	  {below: true, owner: ["*"]},
+	  {at: [verse, task, instance, t1], read: ["*"]},
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(own) != 3 || strings.Join(own[0].At, ".") != "verse.task.instance.t1" || own[0].Below || !own[1].Below || own[2].Below {
+		t.Fatalf("lines about the node: %+v", own)
+	}
+	spelled := entity.GrantsPayload(node, own)
+	for i, want := range []string{"", "", ""} {
+		if at := entity.Get(spelled.Values[i], "at"); (at == nil) != (want == "") {
+			t.Errorf("line %d spelled for its node carries at=%v", i, at)
+		}
+	}
+	if b := entity.Get(spelled.Values[1], "below"); b == nil || !b.Bool {
+		t.Errorf("the below line lost its below: %v", spelled.Values[1])
+	}
+	if at := entity.Get(entity.GrantsPayload(nil, own).Values[0], "at"); at == nil {
+		t.Error("spelled for no node, a line does not say where it is")
+	}
+	if _, err := entity.ParseGrants(nil, mustParse(t, `{grants: [{below: true, owner: ["*"]}]}`)); err == nil {
+		t.Error("a line with no at and no node parsed")
 	}
 
 	for _, bad := range []string{
@@ -57,11 +88,11 @@ func TestParseGrants(t *testing.T) {
 		`{grants: [{at: [demo], owner: "*"}]}`,                   // grantees are a list
 		`{grants: {at: [demo], owner: ["*"]}}`,                   // grants are a list
 	} {
-		if _, err := entity.ParseGrants(mustParse(t, bad)); err == nil {
+		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil {
 			t.Errorf("%s: parsed, want a refusal", bad)
 		}
 	}
-	if gs, err := entity.ParseGrants(mustParse(t, `{owner: alice}`)); err != nil || gs != nil {
+	if gs, err := entity.ParseGrants(nil, mustParse(t, `{owner: alice}`)); err != nil || gs != nil {
 		t.Fatalf("a record with no grants: %v %v", gs, err)
 	}
 }

@@ -782,7 +782,7 @@ func (a *attributed) record(ref Ref, owner string) {
 	grants := a.defaultGrants(ref)
 	committed, _, err := a.Store.Write(Write{
 		At:        PermsRef(ref).At(),
-		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(grants)}.Payload(),
+		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 		When:      []Require{Created()},
 		Principal: SystemPrincipal,
 	})
@@ -1044,7 +1044,8 @@ func (a *attributed) apply(ev Event) {
 // parseRecord reads one mirror record as the check holds it, applying the transition rule for
 // a record from before defaults existed (see recordAt).
 func parseRecord(key string, payload Payload, root Levels) *permsRecord {
-	grants, _ := ParseGrants(payload)
+	node, _ := PathSegs(key)
+	grants, _ := ParseGrants(node, payload)
 	rec := &permsRecord{owner: Str(payload, OwnerField), under: Str(payload, UnderField), grants: grants}
 	rec.defaults, rec.hasDefault, _ = ParseLevels(payload, DefaultField)
 	if rec.owner != "" && Get(payload, GrantsField) == nil && len(root) > 0 {
@@ -1118,13 +1119,13 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = ParseGrants(cur.Payload)
+			grants, _ = ParseGrants(ref.Segs(), cur.Payload)
 			when = Require{Pattern: Unchanged(cur.Payload)}
 		}
 		grants = append(grants, g)
 		committed, _, err := a.Store.Write(Write{
 			At:        rec.At(),
-			Value:     Obj{GrantsField: GrantsPayload(grants)}.Payload(),
+			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 			When:      []Require{when},
 			Principal: SystemPrincipal,
 		})
@@ -1147,7 +1148,7 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	if !ok {
 		return nil
 	}
-	value := Obj{GrantsField: GrantsPayload(gs)}
+	value := Obj{GrantsField: GrantsPayload(ref.Segs(), gs)}
 	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
 	if err != nil {
 		return fmt.Errorf("granting at %s: %w", ref, err)
@@ -1210,7 +1211,7 @@ func Claim(s Store, ref Ref, principal string) error {
 	grants := a.defaultGrants(ref)
 	committed, _, err := a.Store.Write(Write{
 		At:        PermsRef(ref).At(),
-		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(grants)}.Payload(),
+		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 		When:      []Require{Created()},
 		Principal: SystemPrincipal,
 	})
@@ -1240,7 +1241,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 		if !exists {
 			return nil // nothing held out here to take back
 		}
-		grants, _ := ParseGrants(cur.Payload)
+		grants, _ := ParseGrants(ref.Segs(), cur.Payload)
 		kept := make([]Grant, 0, len(grants))
 		for _, g := range grants {
 			to := map[Level][]string{}
@@ -1265,7 +1266,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 		}
 		committed, _, err := a.Store.Write(Write{
 			At:        rec.At(),
-			Value:     Obj{GrantsField: GrantsPayload(kept)}.Payload(),
+			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), kept)}.Payload(),
 			When:      []Require{{Pattern: Unchanged(cur.Payload)}},
 			Principal: SystemPrincipal,
 		})
@@ -1304,7 +1305,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 	if grants == nil {
 		grants = a.defaultGrants(ref)
 	}
-	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(grants)}
+	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}
 	if under.Len() > 0 {
 		rec[UnderField] = under.String()
 	}
@@ -1336,7 +1337,7 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = ParseGrants(cur.Payload)
+			grants, _ = ParseGrants(ref.Segs(), cur.Payload)
 			when = Require{Pattern: Unchanged(cur.Payload)}
 		}
 		own := -1
@@ -1368,7 +1369,7 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 			out = append(out[:own], out[own+1:]...)
 		}
 		committed, _, err := a.Store.Write(Write{
-			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(out)}.Payload(), When: []Require{when}, Principal: SystemPrincipal,
+			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(ref.Segs(), out)}.Payload(), When: []Require{when}, Principal: SystemPrincipal,
 		})
 		if err != nil {
 			return fmt.Errorf("setting %s at %s: %w", level, ref, err)

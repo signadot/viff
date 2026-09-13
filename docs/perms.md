@@ -60,8 +60,7 @@ source and the source's record already says so.
 # verse.perms.node."verse.task.instance.run-1"
 owner: walter@example.com
 grants:
-- at: [verse, task, instance, run-1]
-  read-write: [coderunner]
+- read-write: [coderunner]        # about the node the record is on
   control: [coderunner]
 ```
 
@@ -98,21 +97,24 @@ next binding covering its subject by name, and to the docket when there is none.
 
 ## Grants and levels
 
-A grant is a line on a record: a path it covers, and who holds which level there.
+A grant is a line on a record: who holds which level, and where.
 
 ```tony
+# verse.perms.node."spaces.walter@example.com"
 grants:
-- at: [verse, task, instance, "*"]       # beneath this path
-  owner: ["*"]
-- at: [spaces, walter@example.com, shared, "*"]
+- read: [ana@example.com]                    # this node, and everything beneath it
+- below: true                                # the children and beneath, not the node
+  read-write: [user]
+- at: [spaces, walter@example.com, shared, "*"]  # another path, with at most a trailing *
   read-write: [ana@example.com, user]
-- at: verse.gate.question.run-1~d1       # the node itself, and beneath it
-  read-write: [verse.resolvers.security.payments-review]
 ```
 
-`at` is a path with at most a trailing `*` — the claim grammar, refused elsewhere for the
-reason a claim refuses it. Without the star the grant covers the node and everything beneath;
-with it, the children and beneath, which is what a grant about *creating* needs. A grantee is a
+A line says no `at` when it is about the node the record is on, which nearly every line is —
+the default copied at creation, a runner's grant on its task, a question's answerers — so a
+record does not repeat its own address per line; `below: true` on such a line covers the
+children and beneath, which is what a grant about *creating* needs, and not the node. `at`
+names any other path, with at most a trailing `*` for the same meaning: the claim grammar,
+refused elsewhere for the reason a claim refuses it. A grantee is a
 principal by the name it acts under or the owner it resolves to, `*` for everyone (the
 unattributed request included), a kind — `user`, `runner`, `agent` — meaning whoever is listed
 under it, or a **group's address**, meaning its members.

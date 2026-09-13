@@ -2038,10 +2038,7 @@ func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
 		if entity.Check(store, who, entity.Read, ref, "reading its record") != nil {
 			continue
 		}
-		out = append(out, api.PermsRecord{
-			At: ref.String(), Owner: entity.Str(e.Payload, entity.OwnerField),
-			Grants: entity.Get(e.Payload, entity.GrantsField), Default: entity.Get(e.Payload, entity.DefaultField),
-		})
+		out = append(out, permsRecordOf(ref, e.Payload))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].At < out[j].At })
 	writeOut(w, r, http.StatusOK, out)
@@ -2094,7 +2091,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.Grants != nil {
-		gs, err := entity.ParseGrants(entity.Obj{entity.GrantsField: body.Grants}.Payload())
+		gs, err := entity.ParseGrants(ref.Segs(), entity.Obj{entity.GrantsField: body.Grants}.Payload())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -2149,10 +2146,23 @@ func (s *Server) answerPerms(w http.ResponseWriter, r *http.Request, ref entity.
 			"owned by whoever owns the node above it, and holds out what that node does", ref))
 		return
 	}
-	writeOut(w, r, http.StatusOK, api.PermsRecord{
-		At: ref.String(), Owner: entity.Str(rec.Payload, entity.OwnerField),
-		Grants: entity.Get(rec.Payload, entity.GrantsField), Default: entity.Get(rec.Payload, entity.DefaultField),
-	})
+	writeOut(w, r, http.StatusOK, permsRecordOf(ref, rec.Payload))
+}
+
+// permsRecordOf is a record as the surface shows it. The grants are spelled for the node they
+// are on — a line about the node itself says no `at` — whatever spelling the store holds, so
+// a record written before that was the spelling reads the same as one written after; a
+// grants field that will not parse is shown as it is, since what is wrong with it is the
+// thing to see.
+func permsRecordOf(ref entity.Ref, payload entity.Payload) api.PermsRecord {
+	grants := entity.Get(payload, entity.GrantsField)
+	if gs, err := entity.ParseGrants(ref.Segs(), payload); err == nil && grants != nil {
+		grants = entity.GrantsPayload(ref.Segs(), gs)
+	}
+	return api.PermsRecord{
+		At: ref.String(), Owner: entity.Str(payload, entity.OwnerField),
+		Grants: grants, Default: entity.Get(payload, entity.DefaultField),
+	}
 }
 
 // readableAt is the check a listing or a watch AT a path makes before reading beneath it: the

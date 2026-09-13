@@ -104,7 +104,7 @@ func seedGrants(store entity.Store) error {
 	for _, at := range order {
 		_, _, err := store.Write(entity.Write{
 			At:        entity.PermsRef(at).At(),
-			Value:     entity.Obj{entity.GrantsField: entity.GrantsPayload(grants[at])}.Payload(),
+			Value:     entity.Obj{entity.GrantsField: entity.GrantsPayload(at.Segs(), grants[at])}.Payload(),
 			When:      []entity.Require{entity.Created()},
 			Principal: entity.SystemPrincipal,
 		})

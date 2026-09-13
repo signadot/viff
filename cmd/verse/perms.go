@@ -15,7 +15,7 @@ import (
 type permsConfig struct {
 	*cli.Command
 	Default string `cli:"name=default desc='what a node created beneath this one holds out, as grantees by level: {read: [\"*\"]}; {} for nothing; null to inherit again'"`
-	Grants  string `cli:"name=grants desc='what this node itself holds out, replacing the list: [{at: …, read: […]}]; [] for nothing'"`
+	Grants  string `cli:"name=grants desc='what this node holds out, replacing the list: [{read: […]}] is about the node, {below: true, …} what is beneath it, {at: …, …} another path; [] for nothing'"`
 	Grant   string `cli:"name=grant desc='one line to add at this node, as grantees by level: {read: [ana@example.com]}'"`
 	Below   bool   `cli:"name=below desc='the --grant covers what is beneath the node, not the node itself'"`
 	Revoke  string `cli:"name=revoke desc='grantees to take off this node, by level: {read: [ana@example.com]}; every other line stands'"`

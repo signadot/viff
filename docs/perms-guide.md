@@ -70,8 +70,7 @@ verse perms spaces scott notes
 ```tony
 at: spaces.scott.notes
 grants:
-- at: [spaces, scott, notes]
-  read: ["*"]
+- read: ["*"]
 owner: walter@example.com
 ```
 
@@ -222,8 +221,7 @@ verse perms verse trigger rule 'verse-dev.merge:train-run'
 ```tony
 owner: walter@example.com
 grants:
-- at: [verse, trigger, rule, "verse-dev.merge:train-run"]
-  read: ["*"]
+- read: ["*"]
 ```
 
 Every train the rule cuts, every task it runs and every `merge-to-main` question it poses is
@@ -241,15 +239,15 @@ verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
 ```tony
 owner: system
 grants:
-- at: [verse, gate, question, verse.trigger.train-run.merge-to-main~adaa5e99]
-  read: ["*"]
+- read: ["*"]
   read-write: [user, agent]
 ```
 
 Read it as three questions:
 
 - **Who may see it?** `read: ["*"]` — everyone, runners included. That is the docket's
-  default, copied onto the record at pose.
+  default, copied onto the record at pose. A line with no `at` is about the node the record
+  is on, which is what nearly every line is.
 - **Who may answer it?** The `read-write` line. This gate named no `answerers:`, so it took
   the default too: any person, any agent. A runner is not on it and is refused.
 - **Who owns it?** The system, and — through `under`, which `verse perms` does not print but
@@ -279,7 +277,7 @@ nothing: a question already on the docket keeps the record it was posed with.
 
 ```sh
 verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
-  --grants '[{at: [verse, gate, question, "verse.trigger.train-run.merge-to-main~adaa5e99"], read: ["*"], read-write: [walter@example.com]}]'
+  --grants '[{read: ["*"], read-write: [walter@example.com]}]'
 ```
 
 **To close the docket for a whole verse,** narrow the default on `verse.gate.question` — it is

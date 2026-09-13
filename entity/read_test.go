@@ -213,7 +213,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 		t.Fatalf("a creation under the root's default is not readable: ok=%v err=%v", ok, err)
 	}
 	rec, _, _ := inner.Get(entity.PermsRef(pub))
-	if gs, _ := entity.ParseGrants(rec.Payload); len(gs) != 1 || gs[0].To[entity.Read][0] != entity.Everyone {
+	if gs, _ := entity.ParseGrants(pub.Segs(), rec.Payload); len(gs) != 1 || gs[0].To[entity.Read][0] != entity.Everyone {
 		t.Fatalf("the record does not carry the root's default as its grant: %v", rec.Payload)
 	}
 

@@ -63,7 +63,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 			t.Fatal(err)
 		}
 		if ok {
-			grants, _ := entity.ParseGrants(rec.Payload)
+			grants, _ := entity.ParseGrants(taskRef.Segs(), rec.Payload)
 			for i, g := range grants {
 				if len(g.To[entity.ReadWrite]) > 0 && g.To[entity.ReadWrite][0] == "bot" {
 					bots = &grants[i]

@@ -64,7 +64,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	qid := waitRuleQuestion(t, srv, "approve-ask", subject.String())
 
 	rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
-	grants, _ := entity.ParseGrants(rec.Payload)
+	grants, _ := entity.ParseGrants(mirror.QuestionRef(qid).Segs(), rec.Payload)
 	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "oscar@example.com" {
 		t.Fatalf("the question's grants = %+v; want read-write for davido", grants)
 	}

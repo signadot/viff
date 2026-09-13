@@ -108,7 +108,7 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 	var grants []entity.Grant
 	for time.Now().Before(deadline) {
 		if rec, ok, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid))); ok {
-			if grants, _ = entity.ParseGrants(rec.Payload); len(grants) > 0 && len(grants[0].To[entity.ReadWrite]) > 0 {
+			if grants, _ = entity.ParseGrants(mirror.QuestionRef(qid).Segs(), rec.Payload); len(grants) > 0 && len(grants[0].To[entity.ReadWrite]) > 0 {
 				break
 			}
 		}

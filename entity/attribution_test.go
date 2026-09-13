@@ -45,7 +45,7 @@ func seedRecord(t *testing.T, store entity.Store, ref entity.Ref, owner string, 
 	// A write merges, so a record re-written without grants says so, or the old ones stand.
 	rec[entity.GrantsField] = entity.Removed()
 	if len(grants) > 0 {
-		rec[entity.GrantsField] = entity.GrantsPayload(grants)
+		rec[entity.GrantsField] = entity.GrantsPayload(ref.Segs(), grants)
 	}
 	if _, _, err := store.Write(entity.Write{
 		At: entity.PermsRef(ref).At(), Value: rec.Payload(), Principal: entity.SystemPrincipal,

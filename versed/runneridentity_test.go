@@ -129,7 +129,7 @@ func TestAWorkerRaisedGateIsHeldOutToWhomItNames(t *testing.T) {
 		deadline := time.Now().Add(3 * time.Second)
 		for time.Now().Before(deadline) {
 			if rec, ok, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid))); ok {
-				if gs, _ := entity.ParseGrants(rec.Payload); len(gs) > 0 && len(gs[0].To[entity.ReadWrite]) > 0 {
+				if gs, _ := entity.ParseGrants(mirror.QuestionRef(qid).Segs(), rec.Payload); len(gs) > 0 && len(gs[0].To[entity.ReadWrite]) > 0 {
 					return gs[0].To[entity.ReadWrite]
 				}
 			}
