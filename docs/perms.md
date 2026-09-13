@@ -57,15 +57,13 @@ package's address gets one naming its installer, taken when the package is insta
 rows its rules derive beneath it are owned through the address and need none of their own.
 Installing at an address somebody else owns is refused, with the check's words.
 
-**A source's reflections are the exception, and it is planned to change.** Nothing records a
-source's slice today, so each entity a source reflects gets a record naming its installer — on
-staging, most of the mirror. A slice cannot be owned through a parent at an address the way a
-package is, because a reflected entity's id carries its repository inside one segment
-(`git-issue.issue.verse/<id>`) and a claim may carry a glob. The planned change owns a slice
-through the source's claim instead: where the walk up a node finds no record, the check matches
-the node against the installed claims, which are proven disjoint at install, and the one that
-matches names the owner — so a reflected entity's writer is already its owner and no record is
-written (f1fj0w49h12krtm2mnn0).
+**A source takes the nodes its claims name, the same way.** A claim in a source's `owns` names
+a node: its levels up to the first glob — `git.*.verse/*` names `git`, and `git.head.verse` names
+itself. Installing the source writes an owner record at each node for the installer, and what the
+source reflects beneath is owned through it with no record of its own. Ownership here is not
+single-writership: two sources whose claims are proven disjoint may still share a node, and the
+node decides who answers for what is reflected beneath it — so a source over a node somebody else
+owns is refused, and two sources sharing one share an installer.
 
 ```tony
 # verse.perms.node."verse.task.instance.run-1"

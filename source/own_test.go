@@ -392,3 +392,39 @@ func mustClaim(t *testing.T, s string, field ...string) source.Claim {
 	c.Field = field
 	return c
 }
+
+// A claim's node is its levels up to the first glob, and a registration's nodes drop any that
+// lie beneath another: an owner record at `git` already owns `git.head.verse`.
+func TestAClaimsNodeIsItsLiteralLevels(t *testing.T) {
+	claim := func(s string) source.Claim {
+		t.Helper()
+		c, err := source.ParseClaim(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	for _, c := range []struct {
+		claim, node string
+		ok          bool
+	}{
+		{"git.*.verse/*", "git", true},
+		{"git.head.verse", "git.head.verse", true},
+		{"git.verse", "git.verse", true},
+		{"github.pr.signadot/verse#*", "github.pr", true},
+		{"*.*.*", "", false},
+	} {
+		n, ok := claim(c.claim).Node()
+		if ok != c.ok || (ok && n.String() != c.node) {
+			t.Errorf("%s: node %q %v, want %q %v", c.claim, n.String(), ok, c.node, c.ok)
+		}
+	}
+	nodes := source.Nodes([]source.Claim{claim("git.head.verse"), claim("git.*.verse/*"), claim("git-issue.repo.verse")})
+	var got []string
+	for _, n := range nodes {
+		got = append(got, n.String())
+	}
+	if strings.Join(got, " ") != "git git-issue.repo.verse" {
+		t.Errorf("nodes = %v, want [git git-issue.repo.verse]", got)
+	}
+}

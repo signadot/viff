@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/signadot/verse/entity"
@@ -391,6 +392,68 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 		out = append(out, entity.Path{Ref: ref, Field: c.Field})
 	}
 	return shallowest(out)
+}
+
+// Node is the place in the tree this claim's owner record sits at: the claim's levels up to
+// the first that is a glob, and whether there is one. `git.head.verse` is its own node;
+// `git.*.verse/*` is `git`, the deepest literal place everything it could match lies beneath.
+// A claim whose first level is a glob names no place, and answers false.
+//
+// IT IS OWNERSHIP, NOT SINGLE-WRITERSHIP. Two sources whose claims are disjoint may share a
+// node — two repositories' refs both under `git` — and the claims still prove neither writes
+// the other's slice. What the node decides is who is answerable for what is reflected beneath
+// it: whoever installed the source, so two sources sharing one must share an installer.
+func (c Claim) Node() (entity.Ref, bool) {
+	var segs []string
+	for _, s := range c.Segs {
+		if s.Prefix {
+			break
+		}
+		segs = append(segs, s.Name)
+	}
+	if len(segs) == 0 {
+		return entity.Ref{}, false
+	}
+	return entity.RefAt(segs...), true
+}
+
+// Nodes is the places a registration's claims own, shallowest first and with any node beneath
+// another dropped: an owner record at `git` already owns `git.head.verse`.
+func Nodes(claims []Claim) []entity.Ref {
+	var all []entity.Ref
+	for _, c := range claims {
+		if n, ok := c.Node(); ok {
+			all = append(all, n)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].Len() < all[j].Len() })
+	var out []entity.Ref
+	for _, n := range all {
+		within := false
+		for _, o := range out {
+			if under(n.Segs(), o.Segs()) {
+				within = true
+				break
+			}
+		}
+		if !within {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// under reports whether segs is at or beneath prefix.
+func under(segs, prefix []string) bool {
+	if len(segs) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if segs[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // shallowest drops any place another place already contains, duplicates included.

@@ -151,6 +151,24 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// AND THE NODES ITS CLAIMS NAME ARE THE INSTALLER'S TO TAKE (place.go). Ownership is not
+	// single-writership: two sources proven disjoint above may share a node, and what the node
+	// decides is who answers for what is reflected beneath it — so a node somebody else owns is
+	// refused here, and two sources over one node share an installer.
+	claims, err := source.ParseOwns(e.Owns)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("source %q: %v", e.Name, err), http.StatusBadRequest)
+		return
+	}
+	nodes := source.Nodes(claims)
+	installer := entity.PrincipalOf(store)
+	for _, node := range nodes {
+		if code, err := checkPlace(store, installer, node, "installing a source that owns it"); err != nil {
+			http.Error(w, err.Error(), code)
+			return
+		}
+	}
+
 	body := entity.Obj{"name": e.Name, "system": e.System}
 	for k, v := range map[string]string{
 		"url": e.URL, "dir": e.Dir, "scope": e.Scope,
@@ -167,6 +185,10 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Taken before the reflector starts, so its first pass writes beneath places already owned.
+	for _, node := range nodes {
+		takePlace(store, installer, node, "source "+source.Ref(e.System, e.Name).String())
 	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused

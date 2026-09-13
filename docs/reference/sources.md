@@ -34,8 +34,11 @@ own.
 
 ## Ownership
 
-`owns` is a list of claims, and it is what an install proves disjointness against and what a
-`--forget` removal may tombstone. An ownership claim is an **address**, not a payload predicate,
+`owns` is a list of claims, and it is what an install proves disjointness against, what a
+`--forget` removal may tombstone, and what names the nodes the source owns. A claim's node is its
+levels up to the first glob; installing takes each for the installer, so what the source reflects
+beneath is theirs with no owner record per entity, and an install over a node somebody else owns
+is refused ([perms.md](../perms.md#ownership)). An ownership claim is an **address**, not a payload predicate,
 because an install compares declarations with no entities in hand.
 
 ```tony

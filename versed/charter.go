@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 
@@ -516,20 +515,16 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 }
 
 // checkPackageAddress refuses an install at an address the installer does not hold `owner` at.
-// Baseline's charter has no address, and the system and an unattributed request take no place:
-// the system owns the root already, and nobody's name is no name to record.
+// Baseline's charter has no address.
 func checkPackageAddress(store entity.Store, installer, at string) (int, error) {
-	if at == "" || installer == "" || installer == entity.SystemPrincipal {
+	if at == "" {
 		return 0, nil
 	}
 	ref, err := entity.ParseAddr(at)
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
-	if err := entity.Check(store, installer, entity.OwnerLevel, ref, "installing a charter at it"); err != nil {
-		return http.StatusForbidden, err
-	}
-	return 0, nil
+	return checkPlace(store, installer, ref, "installing a charter at it")
 }
 
 // takePackageAddresses gives each package's address an owner record naming its installer, once
@@ -543,12 +538,8 @@ func checkPackageAddress(store entity.Store, installer, at string) (int, error) 
 // here, every row beneath is owned through the address and needs none.
 //
 // AFTER the install rather than before it, so a file refused part-way leaves no place taken that
-// nothing was installed at. A record that could not be written is said and not fatal: the charter
-// is installed, and what it derives is recorded per row, as it was, until the next install.
+// nothing was installed at.
 func takePackageAddresses(store entity.Store, installer string, groups []charterGroup) {
-	if installer == "" || installer == entity.SystemPrincipal {
-		return
-	}
 	for _, g := range groups {
 		if g.at == "" {
 			continue
@@ -557,10 +548,7 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 		if err != nil {
 			continue // refused before anything installed; unreachable here
 		}
-		if err := entity.Claim(store, ref, installer); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: charter package %s: taking its address for %s: %v\n",
-				g.at, installer, err)
-		}
+		takePlace(store, installer, ref, "charter package "+g.at)
 	}
 }
 
