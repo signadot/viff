@@ -975,7 +975,19 @@ func field(n *ir.Node, name string) string {
 	return v.String
 }
 
+// setField writes one string field on a decoded document, REPLACING the field when it stands.
+//
+// A launch encodes its empty fields — `id: ""`, `driver: ""` — so the fields this side fills in
+// are usually already there with nothing in them, and appending a second one wrote the same key
+// twice. The child's parser refuses that document, so every task this runner hosted failed before
+// it started, with nothing on the record to say why.
 func setField(n *ir.Node, name, value string) {
+	for i, f := range n.Fields {
+		if f.String == name {
+			n.Values[i] = ir.FromString(value)
+			return
+		}
+	}
 	n.Fields = append(n.Fields, ir.FromString(name))
 	n.Values = append(n.Values, ir.FromString(value))
 }

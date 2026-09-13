@@ -14,7 +14,9 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
@@ -1116,5 +1118,38 @@ func TestAnEmptyCallListFailsAcrossTheHop(t *testing.T) {
 	}
 	if e := h.Err(); !strings.Contains(e, "calls") {
 		t.Errorf("the refusal does not say what it could not read: %q", e)
+	}
+}
+
+// setField replaces a field that stands rather than writing its key a second time: a launch
+// arrives with `driver: ""` and `id: ""` already in it, and a document with a key twice is
+// refused by the parser on the child's side.
+func TestSetFieldReplacesAFieldThatStands(t *testing.T) {
+	var body ir.Node
+	if err := codec.Unmarshal([]byte(`{id: "", driver: "", prompt: hi}`), &body, codec.Tony); err != nil {
+		t.Fatal(err)
+	}
+	setField(&body, "driver", "sh")
+	setField(&body, "id", "p1")
+	setField(&body, "environment", "e")
+	seen := map[string]int{}
+	for _, f := range body.Fields {
+		seen[f.String]++
+	}
+	for k, n := range seen {
+		if n != 1 {
+			t.Errorf("%q is written %d times", k, n)
+		}
+	}
+	if field(&body, "driver") != "sh" || field(&body, "id") != "p1" || field(&body, "environment") != "e" {
+		t.Fatalf("fields = driver %q id %q environment %q", field(&body, "driver"), field(&body, "id"), field(&body, "environment"))
+	}
+	out, err := codec.Marshal(&body, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back ir.Node
+	if err := codec.Unmarshal(out, &back, codec.Tony); err != nil {
+		t.Fatalf("the written document does not parse back: %v\n%s", err, out)
 	}
 }

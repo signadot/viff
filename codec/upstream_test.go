@@ -40,7 +40,6 @@ func TestUpstreamJSONParsesAsTony(t *testing.T) {
 		`{"a":1e10,"b":-0.5,"c":1.2E-3,"d":0,"e":-0}`, // exponents and signed zero
 		`{"f":1.0}`,                   // a float that looks like an int
 		`{}`, `[]`, `{"a":{},"b":[]}`, // empty containers
-		`{"a":1,"a":2}`, // duplicate keys
 		// tony-significant characters, quoted: none of these may start a comment, a block
 		// scalar, a list item or a mapping.
 		`{"s":"# not a comment","t":"!glob","u":"a: b","v":"- item","w":"|","x":">","y":"k:v"}`,
@@ -64,6 +63,16 @@ func TestUpstreamJSONParsesAsTony(t *testing.T) {
 		if !asTony.DeepEqual(asJSON) {
 			t.Errorf("%s parsed differently as tony vs json", in)
 		}
+	}
+
+	// A key written twice is refused by both, which is agreement too: an object whose key
+	// names two fields has no one reading, and go-tony refuses it in every format.
+	dup := `{"a":1,"a":2}`
+	if _, err := parse.Parse([]byte(dup), parse.ParseTony()); err == nil {
+		t.Errorf("tony parser accepted a duplicate key: %s", dup)
+	}
+	if _, err := parse.Parse([]byte(dup), parse.ParseJSON()); err == nil {
+		t.Errorf("JSON parser accepted a duplicate key: %s", dup)
 	}
 }
 
