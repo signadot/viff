@@ -23,7 +23,7 @@ import (
 //	    system: merge
 //	    kind:   proposal
 //	    value: !let
-//	      let: [{tip: !get-path {system: git, kind: head, id: verse, path: sha}}]
+//	      let: [{tip: !get-path {at: [git, verse, head], path: sha}}]
 //	      in:  {state: open, base: !not .[tip]}
 //
 // — every open proposal cut from a commit that is no longer the tip of main, which is exactly

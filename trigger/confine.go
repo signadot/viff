@@ -132,8 +132,8 @@ func (s Subtree) String() string {
 //
 // It asks about WRITES only, and the subject is a write ONLY WHEN THE ACTION PATCHES IT. That
 // distinction is the difference between a useful package and a useless one, and the charter we
-// run is what says so: comment-drift's `head-moved` selects `git:head:verse` and derives into
-// `drift:head` — it reads a source as its subject and writes somewhere else entirely. A rule
+// run is what says so: comment-drift's `head-moved` selects `git.verse.head` and derives into
+// `drift.head` — it reads a source as its subject and writes somewhere else entirely. A rule
 // like that belongs to the `drift` package, and a check that asked only "is the subject inside"
 // would refuse it, leaving packages unable to react to any source — which two charters both
 // reading `git:*` is the ordinary case for, not the exotic one.

@@ -9,7 +9,7 @@
 
 name: docs-drift
 condition:
-  subject: { system: git, kind: commit, value: { repo: verse } }
+  subject: { path: [git, verse, commit, "*"] }
 action:
   spawn:
     prompt:      "$subject landed. Find references in the verse repository's docs/ that no longer resolve against that tree, and fix them."

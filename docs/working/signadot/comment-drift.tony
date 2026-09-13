@@ -18,7 +18,7 @@
 # things follow from that:
 #
 #   - THE BRANCH IS ONE STRING, read as a ref rather than as the mirror's head: the tip is
-#     `git.ref."signadot/<branch>"`, which the source reflects for master and for any other
+#     `git.signadot.ref.<branch>`, which the source reflects for master and for any other
 #     branch alike. It is `verse/drive` while the drive is being driven — a branch cut from
 #     master that anybody may commit to freely, with the review, the proposals and the pull
 #     request all landing there — and it becomes `master` by changing that string here, in

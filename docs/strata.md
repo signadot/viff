@@ -219,7 +219,7 @@ action:
 The address becomes (rule, subject, key) — the fan-out's identity with one element — and it is
 there for the case a plain derive cannot say: **the same subject, decided more than once.**
 
-A merge train is the case that needs it. `git.head.verse` is a single entity whose `sha` moves, so
+A merge train is the case that needs it. `git.verse.head` is a single entity whose `sha` moves, so
 a rule deriving a batch from it writes one address, and a
 [gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of (trigger, gate, subject).
 Without a key, the second batch lands at an address whose motion is already settled and inherits

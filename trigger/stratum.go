@@ -925,14 +925,14 @@ type deriveTarget struct {
 	// value, verbatim, so `verse-dev.drift.head.aaaa1111` is an address a charter can SPELL.
 	//
 	// That is the whole difference, and it is the reader's. A keyed id is
-	// `head-moved@git:head:verse@aaaa1111` — a function of (rule, subject, key), which no
+	// `head-moved@git.verse.head@aaaa1111` — a function of (rule, subject, key), which no
 	// charter can compose, so anything wanting that record has to describe it instead of naming
 	// it. Describing it costs a glob and a predicate at every reader; naming it costs nothing.
 	//
 	// WHAT THE PREFIX BOUGHT, and who pays for it now: two subjects of one rule that compute the
 	// same key share one entity here, where `key` gives them one each. So `id` says the key
 	// identifies the record ACROSS subjects — `head-moved`'s does, its subject being the single
-	// entity `git:head:verse` — and `key` says it identifies it only within one. Getting that
+	// entity `git.verse.head` — and `key` says it identifies it only within one. Getting that
 	// backwards is the clobber this charter already paid for once, one plane over.
 	//
 	// The PLACE is still the engine's: a derive may only write inside its own stratum, checked

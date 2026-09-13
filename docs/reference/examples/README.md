@@ -279,7 +279,7 @@ what it sees — so you can look at exactly what verse would be told:
 
 ```sh
 curl localhost:9801/source
-curl "localhost:9801/reflect?ref=git.head.verse"
+curl "localhost:9801/reflect?at=git.verse"
 ```
 
 As shipped it reflects real git repositories, so what you copy already works before you change

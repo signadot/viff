@@ -1,9 +1,9 @@
 # The trigger model
 
 One noun and two grammars carry the whole model. An entity is a node at an address — a path in
-the tree, at whatever depth the thing writing it uses: three segments where a source reflects one
-(`git.commit.acme/9fe1`), four in verse's own half and inside a package's tree
-(`verse-dev.drift.finding.abc`) — carrying a small payload. A match names entities at an instant;
+the tree, at whatever depth the thing writing it uses: four segments where the git source reflects
+a commit under its repository (`git.acme.commit.9fe1`), four in verse's own half and inside a
+package's tree (`verse-dev.drift.finding.abc`) — carrying a small payload. A match names entities at an instant;
 a formula is a match asked of the verse as it moves. Every trigger concept, `when` and `subject`
 and flows, lands on one of those two, and a gate on neither: it asks somebody. Knowing which is
 the thing to be unambiguous about.
@@ -143,7 +143,7 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
   match: {path: [drift]}
 - name: head-moved          # in the `drift` package
   stratum: reflected
-  condition: {subject: git.head.verse}    # a source: read, never written
+  condition: {subject: git.verse.head}    # a source: read, never written
   action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
 ```
 
@@ -155,9 +155,9 @@ whatever it names, and nothing else. An undeclared read does not install, and th
 which line to add:
 
 ```
-rule "note-the-head" reads git.head.*, which notes.* does not declare: a charter installed
+rule "note-the-head" reads git.verse.*, which notes.* does not declare: a charter installed
 at an address reads inside it and what it declares, so that the graph over packages can be
-checked for a cycle. Add it: `reads: [git.head]` (this package reads nothing)
+checked for a cycle. Add it: `reads: [git.verse]` (this package reads nothing)
 ```
 
 An absent `reads:` is not "everything". It is nothing: a package with no declaration reads only
@@ -965,12 +965,12 @@ level, other entities. It is only installable inside a declared level ordering, 
 strictly above the rule that writes it. See [strata](strata.md).
 
 **Unnamed, the address is the engine's, and it is the provenance**: the place, then the rule, then
-the subject's own segments. A rule selecting `git.ref.*` and deriving into
+the subject's own segments. A rule selecting `git.verse.ref.*` and deriving into
 `[verse-dev, merge, proposal]` writes
 
-    verse-dev.merge.proposal.proposal-appeared.git.ref."verse/auto/…"
+    verse-dev.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"
 
-which is **seven** segments — three for the place, one for the rule, three for the subject. No
+which is **eight** segments — three for the place, one for the rule, four for the subject. No
 two rules can address the same entity, which is what the composition is for.
 
 **So a reader of a derivation says how deep one is**, and how deep follows from the depth of the
@@ -998,7 +998,7 @@ instead of (rule, subject). One entity per value of something, where the same su
 moving: see [strata](strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key with the composition dropped**, and the difference is the reader's. A keyed
-entity's id is `head-moved@git.head.verse@aaaa1111`, and nothing in the grammar composes one, so
+entity's id is `head-moved@git.verse.head@aaaa1111`, and nothing in the grammar composes one, so
 anything that wants that record has to *describe* it — a `"*"` and a predicate on a field it
 happens to know — instead of naming it. With `id: $subject.value.sha` the record is
 `verse-dev.drift.head.aaaa1111`, and a reader spells it:
@@ -1007,7 +1007,7 @@ happens to know — instead of naming it. With `id: $subject.value.sha` the reco
 What the composition buys is uniqueness, and `id:` hands that to the author. Two subjects of one
 rule that compute the same value share one entity, where `key:` gives them one each. So `id:`
 claims the value identifies the record **across subjects**, true when the subject is a singleton as
-`git.head.verse` is, and `key:` claims it only within one. The *place* stays the engine's either
+`git.verse.head` is, and `key:` claims it only within one. The *place* stays the engine's either
 way, since a derive may only write inside its own stratum, checked at install. A derive carrying
 both is refused, since which one stands would decide that question silently.
 
@@ -1196,7 +1196,7 @@ action:
     # the string form addresses an entity and stops there
     also:     !get-path "git:repo:$subject.value.head"
     # and `at:` names the address as a path, at whatever depth the tree is
-    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git.head.verse"], path: result.report }
+    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git.verse.head"], path: result.report }
     open:     !list-paths { at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says }
 ```
 
@@ -1265,7 +1265,7 @@ Every open proposal cut from a commit that is no longer the tip of main — "whi
 still land", with no ancestry walk and nothing to poll.
 
 **It joins what the rule reads**, which is the difference from an action's read, and it is not a
-detail: the rule above is re-evaluated when `git.head.verse` moves, over proposals that did not
+detail: the rule above is re-evaluated when `git.verse.head` moves, over proposals that did not
 change. A trigger is skipped at a commit that touched nothing it reads, and a condition comparing
 against another entity reaches a different verdict the moment that entity moves, so the read counts
 or the skip would be wrong.

@@ -278,7 +278,7 @@ func (c Claim) String() string {
 // the payload.
 //
 // A shorter claim is not a weaker one: `git` owns everything under it, so it overlaps
-// `git.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
+// `git.verse.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
 // something, and it is the case the three fixed dimensions could not express at all.
 func (c Claim) Disjoint(o Claim) bool {
 	n := len(c.Segs)
@@ -395,12 +395,12 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 }
 
 // Node is the place in the tree this claim's owner record sits at: the claim's levels up to
-// the first that is a glob, and whether there is one. `git.head.verse` is its own node;
-// `git.*.verse/*` is `git`, the deepest literal place everything it could match lies beneath.
-// A claim whose first level is a glob names no place, and answers false.
+// the first that is a glob, and whether there is one. `git.verse` is its own node;
+// `linear.issue.ENG-*` is `linear.issue`, the deepest literal place everything it could match
+// lies beneath. A claim whose first level is a glob names no place, and answers false.
 //
 // IT IS OWNERSHIP, NOT SINGLE-WRITERSHIP. Two sources whose claims are disjoint may share a
-// node — two repositories' refs both under `git` — and the claims still prove neither writes
+// node — two teams' issues both under `linear.issue` — and the claims still prove neither writes
 // the other's slice. What the node decides is who is answerable for what is reflected beneath
 // it: whoever installed the source, so two sources sharing one must share an installer.
 func (c Claim) Node() (entity.Ref, bool) {
@@ -418,7 +418,7 @@ func (c Claim) Node() (entity.Ref, bool) {
 }
 
 // Nodes is the places a registration's claims own, shallowest first and with any node beneath
-// another dropped: an owner record at `git` already owns `git.head.verse`.
+// another dropped: an owner record at `git` already owns `git.verse`.
 func Nodes(claims []Claim) []entity.Ref {
 	var all []entity.Ref
 	for _, c := range claims {

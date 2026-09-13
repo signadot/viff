@@ -8,7 +8,7 @@
 #     verse charter -a -f docs/working/signadot/pr.tony
 #
 # THE BRANCH IS ONE STRING, and it is the same one comment-drift.tony reads: the tip is
-# `git.ref."signadot/<branch>"`. It is `master`. The loop was driven first on `verse/drive`, a
+# `git.signadot.ref.<branch>`. It is `master`. The loop was driven first on `verse/drive`, a
 # branch cut from master where commits were free and a pull request merged with a click, and
 # moving it was that string in both files and the two environments' `base`; nothing below
 # changes with it.
@@ -103,9 +103,10 @@ reads: [git, signadot.comment-drift]
 ---
 # 1. A delivered branch becomes a proposal, and nothing else.
 #
-# `repo: signadot`, because the git source mirrors more than one repository and a ref named
-# `verse/auto/…` in any of them reflects under the same kind. Without it this file would claim
-# verse's deliveries too, and try to retire them through an environment that cannot reach them.
+# `[git, signadot, ref, …]`, because the git source mirrors more than one repository and a ref
+# named `verse/auto/…` in any of them has the same name. Without the repository's place this file
+# would claim verse's deliveries too, and try to retire them through an environment that cannot
+# reach them.
 #
 # TWO segments after `verse/auto/`, since `!glob` is filepath.Match and `*` does not cross `/`.
 #
@@ -115,10 +116,8 @@ reads: [git, signadot.comment-drift]
   stratum: reflected
   condition:
     subject:
-      system: git
-      kind: ref
+      path: [git, signadot, ref, "*"]
       value:
-        repo: signadot
         name: !glob "verse/auto/*/*"
   action:
     derive:

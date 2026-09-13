@@ -767,8 +767,8 @@ func discussionPayload(repo string, d discussion) entity.Obj {
 // commentPayload is what a charter reads a comment as.
 //
 // `on` is the number of the issue or pull request it hangs off, and the join is the ref rather
-// than a guess: `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>` are two addresses and
-// exactly one of them exists, so a rule that has a comment can read the thing it is about
+// than a guess: `github.<org>.<name>.issue.<n>` and `github.<org>.<name>.pr.<n>` are two
+// addresses and exactly one of them exists, so a rule that has a comment can read the thing it is about
 // without this payload having to say which kind it was.
 //
 // `kind` is the comment's own nature: a conversation comment — which is what an issue has and

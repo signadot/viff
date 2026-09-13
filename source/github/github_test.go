@@ -596,9 +596,9 @@ func TestAPullRequestWithNoRunCarriesNoCheckState(t *testing.T) {
 	}
 }
 
-// Discussions have their own number space, so `github.issue.org/repo#1` and
-// `github.discussion.org/repo#1` are different things carrying the same number. That is fine —
-// a ref is (system, kind, id) — and worth pinning because `#1` alone reads like an identifier
+// Discussions have their own number space, so `github.org.repo.issue."1"` and
+// `github.org.repo.discussion."1"` are different things carrying the same number. That is fine —
+// the kind is a level of the address — and worth pinning because `#1` alone reads like an identifier
 // and is not one.
 func TestADiscussionDoesNotCollideWithAnIssue(t *testing.T) {
 	f := newFake()
@@ -927,8 +927,8 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 }
 
 // A source pointed at a system of its own writes, covers, claims AND HINTS there. The last is
-// the one that is easy to miss: a delivery endpoint hinting `github.issue.x` reaches nothing
-// when the source writes `github-internal.issue.x`, and the failure is silent — the hint 404s
+// the one that is easy to miss: a delivery endpoint hinting `github.org.repo.issue."1"` reaches
+// nothing when the source writes `github-internal.org.repo.issue."1"`, and the failure is silent — the hint 404s
 // or lands on somebody else's registration, and only the resync converges.
 func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
 	f := newFake()
@@ -1061,7 +1061,8 @@ func TestCommentsAreReflectedAndWindowed(t *testing.T) {
 }
 
 // A comment joins to the thing it is on by REF rather than by a field saying which kind it was:
-// `github:issue:<repo>#<n>` and `github:pr:<repo>#<n>` are two addresses and exactly one exists.
+// `github.<org>.<name>.issue.<n>` and `github.<org>.<name>.pr.<n>` are two addresses and exactly
+// one exists.
 func TestACommentJoinsToItsItemByRef(t *testing.T) {
 	f := newFake()
 	r := f.repo("acme/app")

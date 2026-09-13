@@ -93,8 +93,8 @@ times.
 `Covers` is the load-bearing field: a reconcile's scoping, said out loud rather than held in a
 parameter. An entity under a covered pattern and absent from `Entities` is tombstoned; an entity in
 `Entities` under no covered pattern is written and never tombstoned. Git's "keep history" is then a
-declaration in the answer rather than a branch in verse's code. It covers `git.ref.*` and
-`git.head.*` for a repo and does not cover `git.commit.*`, so a commit that has fallen out of the
+declaration in the answer rather than a branch in verse's code. It covers `git.<repo>.ref.*` and
+`git.<repo>.head` and does not cover `git.<repo>.commit.*`, so a commit that has fallen out of the
 bounded tip window is not mentioned, and stays.
 
 A write **replaces** rather than merges, because the answer is what the entity *is*: a field the

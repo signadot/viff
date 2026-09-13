@@ -110,7 +110,7 @@ reads: [ !verse-path [git] ]
 #
 # `sha: !not .[tip]` is condread.go's own example inverted — fire while the cursor is not
 # standing on the tip — and the read joins this trigger's reads, so main moving is what wakes it.
-# No `on:` clause: an `on` is a formula over the whole verse, and "a git:head exists" rises once
+# No `on:` clause: an `on` is a formula over the whole verse, and "a git head exists" rises once
 # and then stands, which is a level rather than an edge and never fires again (trigger/edge.go).
 - name: claim
   stratum: cursor
@@ -436,20 +436,18 @@ reads: [git, verse-dev.drift]
   stratum: reflected
   condition:
     subject:
-      system: git
-      kind: ref
+      # THIS repository's, because the git source mirrors more than one and each mirror's refs
+      # stand under its own place: example/app's deliveries are named the same way and
+      # belong to docs/working/signadot/pr.tony, which reaches them through an environment this
+      # file's cannot.
+      path: [git, verse, ref, "*"]
       value:
-        # THIS repository's, because the git source mirrors more than one and every mirror's
-        # refs reflect under the one kind: example/app's deliveries are named the same
-        # way and belong to docs/working/signadot/pr.tony, which reaches them through an
-        # environment this file's cannot.
-        repo: verse
         name: !glob "verse/auto/*/*"
   action:
     derive:
     # THE BRANCH IS THE ID, said outright. A derive that does not name one is addressed by its
     # PROVENANCE — `<target>.<rule>.<subject…>`, so this one would land seven segments down at
-    # `verse-dev.merge.proposal.proposal-appeared.git.ref."verse/auto/…"` — and every rule below
+    # `verse-dev.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"` — and every rule below
     # that reads a proposal says `[verse-dev, merge, proposal, "*"]`, which is four. Those rules
     # would go on selecting, on the RULE level, whose payload is the whole subtree rather than
     # one proposal: `proposal-outrun` fired on it and asked the coderunner to retire a `$branch`
@@ -501,7 +499,7 @@ reads: [git, verse-dev.drift]
 - name: train-cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.verse.head
   action:
     derive:
     - path: [verse-dev, merge, train]
