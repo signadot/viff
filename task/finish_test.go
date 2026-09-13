@@ -263,3 +263,40 @@ func TestNoDelegateAdmitsEveryVerbButDelegation(t *testing.T) {
 		t.Error("read-only permits a push")
 	}
 }
+
+// A closing act OUTSIDE THE GRANT ends the run done, not failed, and says so on the read plane.
+//
+// The grant is the caller's, and a task launched `read-only` to read and answer was failing at
+// this door on a delivery of nothing, its answer lost with it. The finisher is consulted and
+// refused, the frame carries the refusal where the push would have been narrated, and the
+// answer stands; a gate's no to the same act was already compliance rather than failure.
+func TestAClosingActOutsideTheGrantEndsTheRunDone(t *testing.T) {
+	d := &scripted{acts: []string{"a"}}
+	f := &finisher{action: "push"}
+	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, nil), d, &recorder{})
+	p.SetFinisher(f)
+	p.SetScope(Grant{Allow: []GateMatch{{Verbs: []Verb{Read}}}}) // read-only: no push
+	frames, cancelSub := p.Subscribe()
+	defer cancelSub()
+
+	out, err := p.Run(context.Background())
+	if err != nil {
+		t.Fatalf("a refused delivery of nothing failed the run: %v", err)
+	}
+	if out.Reason != string(Done) {
+		t.Fatalf("outcome = %s, want done", out.Reason)
+	}
+	if f.ran != 0 {
+		t.Fatal("the closing act ran outside the grant")
+	}
+	cancelSub()
+	var said string
+	for fr := range frames {
+		if fr.Kind == EvExec && fr.Tool == "push" {
+			said = fr.Err
+		}
+	}
+	if !strings.Contains(said, "outside the task's grant") {
+		t.Fatalf("the read plane does not say the delivery was refused by the grant: %q", said)
+	}
+}

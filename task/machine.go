@@ -805,12 +805,19 @@ func (s *state) finish(v inFinish) []effect {
 		return s.quiesce()
 	}
 	if !s.scope.Permits(v.tu) {
-		// Refused by the task's own envelope, which no gate can approve and no rephrasing
-		// makes permitted. It fails rather than ending quietly, because the work did not
-		// leave and nobody can be asked to let it.
-		s.setCause(fmt.Errorf("the closing action %q is outside the grant this task was "+
-			"launched with, so its work cannot leave and no gate can approve it", v.tu.Name))
-		return s.exit(Failed)
+		// Outside the task's own envelope, which no gate can approve and no rephrasing makes
+		// permitted — and NOT a failure, for the reason a gate's no to the closing act is not
+		// one (see the resolution below): being told not to deliver is a decision the task
+		// complied with, and here the one who said no is the caller, at launch, by the grant.
+		// A task launched `read-only` to read and answer was failing at this door on a
+		// delivery of nothing, its answer lost with it; a task that did make work keeps it in
+		// its workspace, and the read plane says it did not leave. What must not happen is the
+		// quiet ending the failure was there to prevent, so the refusal is said where a push
+		// would have been narrated.
+		return append([]effect{
+			effLog{"⛔ " + v.tu.Name + " not delivered: outside the task's grant"},
+			effEmit{Frame{Kind: EvExec, Tool: v.tu.Name, Err: "outside the task's grant: not delivered"}},
+		}, s.quiesce()...)
 	}
 	s.action = v.tu
 	s.closing = true
