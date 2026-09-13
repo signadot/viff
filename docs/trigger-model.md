@@ -117,7 +117,7 @@ record naming the installer, what the package derives beneath it is owned throug
 and an install at an address somebody else owns is refused ([perms.md](perms.md)).
 
 ```sh
-verse c -a notes -f notes-charter.tony    # its rules write under notes:*
+verse c -a notes -f notes-charter.tony    # its rules write under notes.*
 verse c -a -f charter.tony                # baseline: may write anywhere
 ```
 
@@ -147,7 +147,7 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
   action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
 ```
 
-Two packages both reacting to `git:*` is the ordinary arrangement, not an exotic one. What each
+Two packages both reacting to `git.*` is the ordinary arrangement, not an exotic one. What each
 may do about it is write in its own address.
 
 **Reads are declared**, which is the `reads:` line above. A package reads inside its own address and
@@ -155,7 +155,7 @@ whatever it names, and nothing else. An undeclared read does not install, and th
 which line to add:
 
 ```
-rule "note-the-head" reads git.head.*, which notes:* does not declare: a charter installed
+rule "note-the-head" reads git.head.*, which notes.* does not declare: a charter installed
 at an address reads inside it and what it declares, so that the graph over packages can be
 checked for a cycle. Add it: `reads: [git.head]` (this package reads nothing)
 ```
@@ -371,7 +371,7 @@ What a restart still cannot do is bring back a scope nobody has reconnected to: 
 the scopes that have a charter needs a scope to be a listable thing, and it is not one yet.
 
 The charter is an observable slice like any other, so a trigger can watch it
-(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `trigger:*` joins `task:*` as the
+(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `verse.trigger.*` joins `verse.task.*` as the
 engine's own machinery, kept out of the default match set so the loop cannot ignite on itself.
 Meta-observation stays possible, and stays deliberate. The perms mirror (`verse.perms`) is one
 step further: it is the system's, held out to nobody, so only the system's own charter can
