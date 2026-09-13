@@ -98,6 +98,9 @@ func TestTheCharactersInTheTreeEarnNoOperatorShapedNote(t *testing.T) {
 		"../docs/working/verse-dev/drift-local.tony",
 		"../docs/working/verse-dev/docs-drift.tony",
 		"../docs/working/verse-dev/once.tony",
+		"../docs/working/issue-triage.tony",
+		"../docs/working/signadot/comment-drift.tony",
+		"../docs/working/signadot/pr.tony",
 	} {
 		src, err := os.ReadFile(f)
 		if err != nil {

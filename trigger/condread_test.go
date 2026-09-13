@@ -197,3 +197,50 @@ func TestExpansionKeepsATagOnAString(t *testing.T) {
 		})
 	}
 }
+
+// A condition can hold a subject against a LIST OF OBJECTS read from another slice: `!list-paths`
+// over a field that is an object answers the objects, and `!not.or` over them selects the
+// subject that matches none — which is "not yet judged as it now stands", the staleness a
+// triage row needs to say without naming the subject in the condition (it cannot). An empty
+// list selects everything, since nothing has been judged.
+func TestAConditionHoldsASubjectAgainstAListOfObjects(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+
+	a := entity.RefAt("tracker", "issue", "a")
+	b := entity.RefAt("tracker", "issue", "b")
+	setPayload(t, store, a, `{id: a, status: open, updatedAt: "t1"}`)
+	setPayload(t, store, b, `{id: b, status: open, updatedAt: "t1"}`)
+	// a was judged as it stands; b was judged at an earlier updatedAt, so it is stale.
+	setPayload(t, store, entity.RefAt("triage", "next", "a"), `{judged: {id: a, updatedAt: "t1"}}`)
+	setPayload(t, store, entity.RefAt("triage", "next", "b"), `{judged: {id: b, updatedAt: "t0"}}`)
+
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: judge
+  condition:
+    subject:
+      path: [tracker, issue, "*"]
+      value: !let
+        let:
+        - judged: !list-paths {at: [triage, next, "*"], path: judged}
+        in: !and
+        - {status: open}
+        - !not.or .[judged]
+  action:
+    patch: {stale: yes}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	setPayload(t, store, b, `{id: b, status: open, updatedAt: "t1", touched: 1}`)
+	waitField(t, store, b, "stale", "yes")
+	if got := field(t, store, a, "stale"); got != nil {
+		t.Fatalf("the issue judged as it stands was selected: stale=%v", got)
+	}
+	// a moves: its judgement no longer matches, and it is selected on that commit.
+	setPayload(t, store, a, `{id: a, status: open, updatedAt: "t2"}`)
+	waitField(t, store, a, "stale", "yes")
+}

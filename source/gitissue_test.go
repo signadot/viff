@@ -44,6 +44,22 @@ func fileIssue(t *testing.T, dir, title, body string, mutate func(*issuelib.Issu
 	return issue.ID
 }
 
+// commentOn writes a comment the way `git issue comment` does: one file under discussion/,
+// named by its instant, an html comment carrying the instant above the text.
+func commentOn(t *testing.T, dir, xidr, stamp, text string) {
+	t.Helper()
+	t.Chdir(dir)
+	s := issuelib.NewGitStoreWithOutput(testLog{t})
+	issue, _, err := s.Get(xidr)
+	if err != nil {
+		t.Fatalf("get %s: %v", xidr, err)
+	}
+	name := "discussion/" + stamp + "-" + xidr[:8] + ".md"
+	if err := s.Update(issue, "comment", map[string]string{name: "<!-- " + stamp + " -->\n\n" + text + "\n"}); err != nil {
+		t.Fatalf("comment on %s: %v", xidr, err)
+	}
+}
+
 // closeIssue closes one the way `git issue close` does — by MOVING its ref, which is what
 // makes the namespace authoritative for status.
 func closeIssue(t *testing.T, dir, xidr string) {
@@ -102,6 +118,8 @@ func TestGitIssueReconcile(t *testing.T) {
 	shut := fileIssue(t, dirA, "already fixed upstream", "", nil)
 	elsewhere := fileIssue(t, dirB, "another repo entirely", "", nil)
 	closeIssue(t, dirA, shut)
+	commentOn(t, dirA, open, "20260912T213534Z", "underway on a branch")
+	commentOn(t, dirA, open, "20260912T213630Z", "landed; closing next")
 
 	gi := source.NewGitIssue()
 	gi.AddRepo("A", dirA)
@@ -129,11 +147,39 @@ func TestGitIssueReconcile(t *testing.T) {
 	if o["labels"] == nil {
 		t.Error("labels are how a charter selects an issue; none carried")
 	}
+	// The one with nothing to say answers every question anyway — an absent field would fail
+	// a charter's reference to it, and "none" is an answer.
+	if q := get("issue", "A/"+shut); q["labels"] == nil || q["commits"] == nil || q["comments"] != int64(0) && q["comments"] != 0 {
+		t.Errorf("a bare issue leaves fields absent: labels=%v commits=%v comments=%v", q["labels"], q["commits"], q["comments"])
+	} else if _, has := q["discussion"]; !has {
+		t.Errorf("a bare issue carries no discussion list: %v", q)
+	} else if _, has := q["body"]; !has {
+		t.Errorf("a bare issue carries no body: %v", q)
+	}
 	if o["commits"] == nil {
 		t.Error("no commits carried, so `git issue link` is invisible to a charter")
 	}
 	if o["id"] != open {
 		t.Errorf("id = %v, want %s", o["id"], open)
+	}
+	// The discussion: how many, when the last was, and the text under bodies — the activity a
+	// charter otherwise cannot see.
+	if o["comments"] != int64(2) && o["comments"] != 2 {
+		t.Errorf("comments = %v (%T), want 2", o["comments"], o["comments"])
+	}
+	if o["lastCommentAt"] != "2026-09-12T21:36:30Z" {
+		t.Errorf("lastCommentAt = %v", o["lastCommentAt"])
+	}
+	e, _, _ := store.Get(entity.RefAt(source.GitIssueSystem, "issue", "A/"+open))
+	discussion := entity.Get(e.Payload, "discussion")
+	if discussion == nil || len(discussion.Values) != 2 {
+		t.Fatalf("discussion = %v, want two comments", discussion)
+	}
+	if got := entity.Str(discussion.Values[0], "text"); got != "underway on a branch" {
+		t.Errorf("the first comment's text = %q", got)
+	}
+	if got := entity.Str(discussion.Values[1], "at"); got != "2026-09-12T21:36:30Z" {
+		t.Errorf("the second comment's instant = %q", got)
 	}
 
 	// Closed: the ref namespace says so, and the entity is KEPT rather than windowed away —

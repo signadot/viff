@@ -27,7 +27,8 @@ func gitIssueMain(args []string) error {
 	state := fs.String("state", envOr("SOURCED_STATE", "/repos"),
 		"where -mirror clones live (one directory per repo id)")
 	bodies := fs.Bool("bodies", true,
-		"reflect each issue's description body; off makes the slice an index of issue state "+
+		"reflect each issue's description body and the text of its discussion; off makes the "+
+			"slice an index of issue state — with how many comments and when the last was — "+
 			"rather than a copy of everyone's prose")
 	if err := fs.Parse(args); err != nil {
 		return err

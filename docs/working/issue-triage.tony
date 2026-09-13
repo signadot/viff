@@ -1,38 +1,72 @@
-# THE ISSUE TRIAGE DRIVE: a new issue is read against the code, by whoever is at a keyboard.
+# THE ISSUE TRIAGE DRIVE: every open issue carries a guess at its next step, kept current.
 #
-# One half, two strata, two rules. A git-issue appears; a row is derived for it; a task is
-# spawned that NAMES `broker`, so it lands `unclaimed` and waits for a person's session to claim
-# it (.claude/skills/verse-work). Naming it is the whole point: silence means versed runs the
-# task itself, immediately. The answer lands back as a fact on the row.
+# One half, two strata, two rules. An issue in this repository that has moved past its last
+# judgement gets a row of this package's own — the issue's facts copied onto it, and a mark of
+# what was judged — and a row not yet judged is judged, by an unattended task on the coderunner
+# reading the issue's text and discussion, main, and the roadmap. The judgement lands on the
+# row: `next`, what the next step is, one of a small vocabulary; `arc`, whether that step runs
+# with the direction of verse; `why`, one paragraph. When the issue moves — a comment, a label,
+# a linked commit, a close — the judgement is stale by construction and is made again. When it
+# does not, nothing runs.
 #
-# It is deliberately the small mirror of comment-drift: that one asks whether a comment still
-# agrees with its code and answers with a branch, this one asks whether an ISSUE still agrees
-# with its code and answers with prose. Same question, different subject, and no push.
+# WHAT IT REPLACED, and why. The first drive briefed each new issue against the code, once, by
+# a task a person had to claim. Two things about the ground truth made that a nice proof and a
+# poor fit. Most of the activity on an issue is out of band of any step verse defines: an
+# issue is written already triaged, or its author meant triage to be premature — a design note
+# with a decision pending, where "which source files does this touch" is not yet a question —
+# and a one-shot brief could say neither. And the brief lived in a brokered task, which is a
+# layer between the person and the issue for anybody working issues their own way; 25 of the
+# 29 briefs staging ever posed were declined unread. So the judgement here is a guess at the
+# NEXT STEP rather than a step, "underway already, nothing to do" is one of its answers, and
+# nobody claims anything: it runs unattended and lands where `verse data` reads it.
+#
+# THE VOCABULARY is small so that a rule can act on it later, and each word is a claim the
+# judge has to back with what it read:
+#
+#     next: underway   — work is in progress; a linked commit, a branch, a comment says so
+#     next: decide     — a question stands before any work, and `why` names it
+#     next: build      — concrete against main as it stands, and `why` says where
+#     next: close      — done or moot on main, and `why` says what settles it
+#     next: note       — a record rather than a task; nothing to do
+#
+# `arc` is the same judgement about direction: `on` the roadmap's threads, `ahead` of them
+# (right, and waiting on something the roadmap orders first), or `beside` them (not what verse
+# is for, or not yet). `thread` names the roadmap thread it belongs to, or `none`. What comes
+# AFTER a guess — a `decide` posed as a gate to the author, a `close` proposed for approval, a
+# `build` handed to a fix task — is not here; the vocabulary is chosen so those are rules added
+# beside this one rather than a rewrite of it.
 #
 #     verse charter -a -f docs/working/issue-triage.tony
 #
-# INSTALLING BRIEFS THE BACKLOG, once, and that is the design rather than a hazard to work
-# around. Every open verse issue gets a row and a task the moment this installs — 43 of them
-# today — because the charter cannot tell a new issue from an old one and should not pretend to.
+# ── SEEDING, which is one write per open issue and comes FIRST ───────────────────────────
 #
-# It cannot because nothing in the grammar can say it. `Op` is `set` or `delete` and
-# create-vs-update "needs prior existence the substrate does not carry" (docs/change-events.md),
-# so "this entity just appeared" is unsayable; and the match operators are and/or/not/glob/
-# has-path/let and their kin, with no comparison, so "created after now" is unsayable too. A
-# rule over `git-issue.issue.*` selects the whole backlog, and there is no predicate that does
-# otherwise.
+# Installing over a backlog judges all of it: every open issue matches until a row says it was
+# judged as it stands, and there is no predicate for "created after now" (change-events.md).
+# To skip the backlog, seed a row per open issue that says it was judged at its current
+# updatedAt, BEFORE installing — so only an issue that moves from then on is judged:
 #
-# WHAT NOT TO DO ABOUT IT: latch the existing rows first, so only later ones fire. That is a
-# write per row, and every one of them wakes this rule again over the rows not yet latched — a
-# rule re-selects its whole set on any commit, and "a rule acting on member A writes A; that
-# commit re-evaluates the rule, which selects B, already matching and never brought in by
-# anything" (docs/cycle-throttle.md). So the latching IS the storm it means to prevent, and it
-# spawns for whatever it has not reached yet. It fails worse the more rows there are.
+#     scripts/triage-seed.sh            # one row per open issue: {judged: {id, updatedAt}}
+#     verse charter -a -f docs/working/issue-triage.tony
 #
-# So the backlog is briefed, and a task nobody wants is CANCELLED — which is terminal here, and
-# the reason `onCancelled` latches rather than clearing. A cancel that cleared the latch would
-# put the row back in this rule's selection and spawn it again, which is a loop with a person
-# at one end of it.
+# Seeding after installing is a race the install wins.
+#
+# ── THE IDIOM: stale by construction ─────────────────────────────────────────────────────
+#
+# A condition cannot name its subject (condread.go), so "this issue's row says it was judged at
+# this issue's updatedAt" is not a read the condition can make directly. What it can do is read
+# every row's `judged` — an object {id, updatedAt} — as a list, and hold the issue against the
+# list: an issue matching none of them has not been judged as it now stands. `!not.or` over a
+# list of object patterns is exactly that, and an empty list selects everything. The judged
+# mark carries the id so that two issues moved in the same second cannot stand in for each
+# other.
+#
+# The mark is written by the DERIVE, in the same firing that copies the issue onto the row, so
+# the same issue is not marked twice for one change: the rule's own read (the rows) wakes it
+# when the derive lands, and it selects nothing. That is the loop closing, not a cycle. The
+# judgement itself is a PATCH on the row by the judge's completion hooks — a derive may carry
+# its subject and nothing from a task's answer (deriveMayReference), which is why there are two
+# rules and why the second one's subject is the row. A judgement that failed latches too, so
+# an issue whose judge fell over is judged again when it moves, not on every commit until then.
 at: verse-dev.triage
 reads: [ !verse-path [git-issue] ]
 ---
@@ -43,129 +77,160 @@ reads: [ !verse-path [git-issue] ]
   match:
     system: git-issue
 
-# One row per issue, keyed by the issue. It exists so the briefing has a subject of its OWN —
-# a task's id is (rule, subject), and the issue entity is written by the source on every poll,
-# so a rule spawning against it directly would re-fire on `updatedAt` moving.
-#
-# It is also where the answer lands. The source is the SINGLE WRITER of `git-issue.*`
-# (docs/sources.md: "Ownership = single writer = no CAS"), so a brief written onto the issue
-# would be writing into somebody else's slice. Read theirs, write your own.
-- name: brief
+# One row per issue, keyed by the issue: the judgement and the mark of what was judged. It is
+# this package's own slice, since the source is the single writer of `git-issue.*` and a
+# judgement written onto the issue would be writing into somebody else's.
+- name: next
   level: 10
   match:
-    path: [verse-dev, triage, brief]
+    path: [verse-dev, triage, next]
 ---
-# 1. An open issue in this repository gets a row.
+# 1. An open issue in this repository that no row says was judged as it now stands gets a row:
+# the issue's facts, copied — the judge's prompt binds against the payload that fired it, so
+# what it reads has to be on the row — and the mark of what is being judged.
 #
-# The subject is a PATH, `[git-issue, issue, "*"]`, and that is the spelling that selects. The
-# same rule written as `system: git-issue` with `kind: issue` derives its rows when the charter
-# is installed and never again — an issue arriving does not wake it — while rule 2 below, whose
-# subject is a path, fires on every row it is given.
-#
-# FACTS ONLY in the value, for the reason `proposal-appeared` records: a derive MERGES its
-# literal fields every run, so anything named here is restated every time the source re-reflects
-# the issue. `title` is the issue's to change and is restated deliberately. `stage` is absent
-# because it is state the row owns, and restating it would drag a briefed row back and spawn
-# again.
-- name: issue-noticed
+# The subject is the ISSUE, and that is what makes the issue's commits wake this rule. `stage`
+# is removed here rather than set: it is the row's own state (the judge writes it), and a
+# derive restating it would latch the row shut; removing it is what reopens the row for a
+# judgement when the issue moves.
+- name: mark
   stratum: reflected
   condition:
     subject:
       path: [git-issue, issue, "*"]
-      value:
-        repo: verse
-        status: open
+      value: !let
+        let:
+        - judged: !list-paths {at: [verse-dev, triage, next, "*"], path: judged}
+        in: !and
+        - {repo: verse, status: open}
+        - !not.or .[judged]
   action:
     derive:
-    - path: [verse-dev, triage, brief]
+    - path: [verse-dev, triage, next]
       id: $subject.value.id
       value:
         issue: $subject.value.id
-        repo: $subject.value.repo
         title: $subject.value.title
+        createdAt: $subject.value.createdAt
+        updatedAt: $subject.value.updatedAt
+        labels: $subject.value.labels
+        commits: $subject.value.commits
+        branches: $subject.value.branches
+        related: $subject.value.related
+        blocks: $subject.value.blocks
+        blockedBy: $subject.value.blockedBy
+        body: $subject.value.body
+        discussion: $subject.value.discussion
+        judged: {id: $subject.value.id, updatedAt: $subject.value.updatedAt}
+        stage: !delete null
 ---
-# 2. …and a row nobody has briefed becomes a question somebody answers.
+# 2. …and a row with no judgement yet is judged.
 #
-# `runner: broker` is the entire point of this rule. It names the dial-in broker, so the spawn
-# lands `unclaimed` and waits for a person to claim it from their own session — the work happens
-# where the checkout and the credentials already are, and nothing about either crosses verse.
-#
-# It is NAMED and not left to the default, which is what a spawn saying nothing gets: this
-# verse's own runtime, running the work itself. Silence means "run this"; asking for a person is
-# something a rule has to say.
-#
-# NO `answer:` contract either, for the same reason. A contract is what makes an LLM driver's
-# final message parseable; here the executor is a person reporting through
-# `verse task do complete <id> "<text>"`, which is a STRING. A shape contract would refuse every
-# answer a human gives.
-#
-# `!not.has-path stage` is the latch, and the spelling matters: `!not {stage: null}` is what it
-# looks like it should be and does not work — absence is written as a bare null and every bare
-# null is hidden on read, so the durable rule comes back as `!not {}` and selects everything.
-# The failure is invisible until the first restart.
-- name: brief-issue
-  stratum: brief
+# A task's id is (rule, subject), so this is `judge@verse-dev.triage.next.<id>` with the
+# causing commit as its occurrence: one run per time the row is reopened. `!not.has-path
+# stage` is the latch, spelled that way for the reason the drift drive gives: a bare null is
+# hidden on read, so `!not {stage: null}` comes back as `!not {}` after a restart and selects
+# everything.
+- name: judge
+  stratum: next
   condition:
     subject:
-      path: [verse-dev, triage, brief, "*"]
+      path: [verse-dev, triage, next, "*"]
       value: !not.has-path stage
   action:
     spawn:
-      runner: broker
+      runner: verse.runners.pool.coderunner
+      # The fixing environment for its checkout of main and its git, under a grant that lets
+      # it act on nothing: a judge reads and answers. Delivery is not in it, so no branch.
+      environment: verse-fix
+      driver: llm
+      grant: read-only
       vector: auto
+      # THE ANSWER IS A CONTRACT. An unparseable final message is no answer: `$data` resolves to
+      # nothing, the completion hook is refused, and the judgement is lost silently. Every key
+      # is a string, and the prompt says what each may hold.
+      answer:
+        next: !irtype string
+        arc: !irtype string
+        thread: !irtype string
+        why: !irtype string
       prompt: |
-        A verse issue has just been filed, and nobody has read it against the code yet.
+        You are judging what the NEXT STEP is for one issue in the verse repository, which is
+        checked out at ./verse at the tip of main. You are not doing the step. Read what you
+        need, once, and answer.
 
-        Issue $title
-        Its id is $issue, in the verse repository. `git issue show $issue` is the full text,
-        labels and comments.
+        THE ISSUE, as its tracker holds it now:
 
-        ANSWER TWO QUESTIONS, in this order.
+            id:        $issue
+            title:     $title
+            created:   $createdAt
+            updated:   $updatedAt
+            labels:    $labels
+            commits:   $commits
+            branches:  $branches
+            related:   $related
+            blocks:    $blocks
+            blockedBy: $blockedBy
 
-        WHAT DOES IT TOUCH. Name the files and Go symbols this issue is actually about —
-        repo-relative and spelled the way Go does: `entity.JoinSegs`, `source/github.Reflect`,
-        `versed.(*Server).HostBroker`. A symbol survives the code moving between files, which a
-        line number does not. If the issue is about docs or deploy rather than code, name those
-        paths instead and say so.
+        Its description:
 
-        IS IT STILL TRUE OF MAIN. Read what stands there NOW, not what the issue says stood
-        there when it was filed. An issue outlives the code it was filed against: the thing may
-        be fixed, may have moved, may have been made moot by something unrelated, or may be
-        exactly as described. Say which, and say what you read that settles it.
+        $body
 
-        Those two together are the deliverable. "Summarise the issue" is not the task — the
-        issue already says what it says, and repeating it back is a turn nobody bought.
+        Its discussion, oldest first (`at`, `text`):
 
-        Read each thing once. A second read of a file does not make a verdict truer.
+        $discussion
 
-        WHAT TO DO WITH YOUR ANSWER: report it with
+        WHAT YOU ANSWER. A JSON document with exactly four string keys, nothing before it and
+        nothing after it, every key and every string quoted:
 
-            verse task do complete <this task id> "<your answer>" --as <you>
+            {"next": "...", "arc": "...", "thread": "...", "why": "..."}
 
-        and narrate what you find along the way with `verse task do note`, so whoever is watching
-        with `verse task attach` sees it happen. If the issue turns out to need a decision rather
-        than a reading — it is ambiguous, or answering it would change something — raise a gate
-        with `verse task do gate` and let somebody answer, rather than deciding it yourself.
+        `next` is ONE of these words, and each is a claim you have to back in `why` with what
+        you read:
 
-        If you cannot settle it, that is an answer too: complete with what you established and
-        what you would need to go further. `fail` is for work that could not be carried out, not
-        for a question that turned out to be hard.
+            underway  work on this is in progress. A linked commit, a branch, a comment that
+                      says somebody is on it, a related issue that is. Nothing to do.
+            decide    a question stands before any work can, and you name it. A design note
+                      with a choice pending, a proposal waiting on a call, two readings of the
+                      ask that lead to different work. "Which files does this touch" is NOT
+                      the question when the issue is at this stage; do not answer it.
+            build     the issue is concrete against main as it stands: you can say where the
+                      change goes (files, Go symbols spelled the way Go does, `entity.JoinSegs`)
+                      and nothing has to be decided first.
+            close     main already does what the issue asks, or the thing it is about is gone,
+                      or it duplicates another issue. Say what you read that settles it.
+            note      a working note, a record of a decision, a place to keep an argument.
+                      Not a task, and nothing to do.
+
+        `arc` is whether that step runs with the direction of verse: `on` the roadmap's
+        threads, `ahead` of them (right, but waiting on something the roadmap orders first),
+        or `beside` them (not what verse is for, or not yet). Judge it against
+        ./verse/docs/roadmap/README.md — its threads and its "Rough order" — and the
+        "What is built, and what is not" section of ./verse/docs/README.md. `thread` is the
+        roadmap thread the issue belongs to, by the heading's own words, or `none`.
+
+        `why` is ONE paragraph: what you read and what it settles. Name what you read — a
+        commit, a comment's date, a file, a heading — so a reader can check you. Do not
+        summarise the issue; it already says what it says.
+
+        READ THE TREE, NOT YOUR MEMORY OF IT. An issue outlives the code it was filed against.
+        Before you say `build` or `close`, read what stands on main now. Before you say
+        `underway`, say what shows it. Read each thing once; a second read of a file does not
+        make a verdict truer. When every claim in your answer is backed, answer.
     onDone:
       patch:
-        brief: $result
-        stage: briefed
+        next: $data.next
+        arc: $data.arc
+        thread: $data.thread
+        why: $data.why
+        stage: judged
         err: !delete null
+    # A judge that fell over latches too, with the failure on the row: the issue is judged
+    # again when it moves, not on every commit until then. Same for a cancelled one.
     onFailed:
       patch:
         stage: failed
         err: $err
-    # A cancelled briefing LATCHES, and it is the one hook where that is load-bearing. Clearing
-    # the stage would put the row back in this rule's selection, so cancelling a task would
-    # spawn it again — a loop whose lap time is however long a person takes to press cancel, and
-    # which the cycle throttle paces rather than stops because every lap is a real write.
-    #
-    # `declined` and not `failed`: nothing went wrong, somebody decided this issue does not need
-    # reading. Removing the stage by hand is how it goes back on the docket.
     onCancelled:
       patch:
         stage: declined
