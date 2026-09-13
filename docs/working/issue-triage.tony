@@ -45,10 +45,13 @@
 # To skip the backlog, seed a row per open issue that says it was judged at its current
 # updatedAt, BEFORE installing — so only an issue that moves from then on is judged:
 #
-#     scripts/triage-seed.sh            # one row per open issue: {judged: {id, updatedAt}}
+#     scripts/triage-seed.sh            # one row per open issue: {judged: {id, updatedAt}, stage: seeded}
 #     verse charter -a -f docs/working/issue-triage.tony
 #
-# Seeding after installing is a race the install wins.
+# Seeding after installing is a race the install wins. A seeded row carries `stage: seeded` as
+# well as the mark, because the two rules read different things: `mark` reads the mark, and
+# `judge` reads `stage` — a row with the mark and no stage is one the mark rule leaves alone
+# and the judge rule takes, which is thirty judgements of thirty rows holding nothing.
 #
 # ── THE IDIOM: stale by construction ─────────────────────────────────────────────────────
 #
@@ -123,6 +126,7 @@ reads: [ !verse-path [git-issue] ]
         discussion: $subject.value.discussion
         judged: {id: $subject.value.id, updatedAt: $subject.value.updatedAt}
         stage: !delete null
+        err: !delete null
 ---
 # 2. …and a row with no judgement yet is judged.
 #
@@ -131,6 +135,13 @@ reads: [ !verse-path [git-issue] ]
 # stage` is the latch, spelled that way for the reason the drift drive gives: a bare null is
 # hidden on read, so `!not {stage: null}` comes back as `!not {}` after a restart and selects
 # everything.
+#
+# THE LATCH IS WRITTEN BY THE FIRING, not by the hooks: `stage: judging` lands in the same
+# commit that spawns, so the row leaves this rule's selection the moment it is taken. Left to
+# the completion hooks, a hook whose patch did not land — a store busy enough to time it out —
+# left the row selectable, and the next commit spawned a second judge for it, and a third;
+# thirty of them, on staging, on a store the first thirty had made busy. A hook that fails
+# now loses a judgement, not the latch, and the issue's next move re-marks the row.
 - name: judge
   stratum: next
   condition:
@@ -138,6 +149,8 @@ reads: [ !verse-path [git-issue] ]
       path: [verse-dev, triage, next, "*"]
       value: !not.has-path stage
   action:
+    patch:
+      stage: judging
     spawn:
       runner: verse.runners.pool.coderunner
       # The fixing environment for its checkout of main and its git, under a grant that lets

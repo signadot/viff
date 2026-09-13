@@ -152,3 +152,54 @@ func TestTheTriageDriveMarksAnIssueThatSaysLittleAndReopensARow(t *testing.T) {
 		}
 	}
 }
+
+// The `judge` rule takes a row with no stage and latches it IN ITS OWN FIRING: `stage: judging`
+// lands with the spawn, so a hook that never lands cannot leave the row selectable. A seeded row
+// carries a stage and is never taken; a judged one neither.
+func TestTheTriageDriveLatchesARowAsItTakesIt(t *testing.T) {
+	src, err := os.ReadFile("../docs/working/issue-triage.tony")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trigs, _, strata, _, ok := parseBlock(string(src))
+	if !ok {
+		t.Fatal("did not parse")
+	}
+	var judge Trigger
+	for _, tr := range trigs {
+		if tr.Name == "judge" {
+			judge = tr
+		}
+	}
+	if judge.Action.Patch == nil || judge.Action.Spawn == nil {
+		t.Fatalf("the judge's action is not a patch beside a spawn: %+v", judge.Action)
+	}
+	// The latch is the question, not the coderunner: the spawn goes, and the hooks with it,
+	// since a hook needs something that finishes.
+	judge.Action.Spawn = nil
+	judge.Action.OnDone, judge.Action.OnFailed, judge.Action.OnCancelled = nil, nil, nil
+
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	for _, st := range strata {
+		if err := eng.AddStratum(st); err != nil {
+			t.Fatalf("AddStratum %s: %v", st.Name, err)
+		}
+	}
+	seeded := entity.RefAt("verse-dev", "triage", "next", "aaa")
+	open := entity.RefAt("verse-dev", "triage", "next", "bbb")
+	setPayload(t, store, seeded, `{judged: {id: aaa, updatedAt: "t1"}, stage: seeded}`)
+	setPayload(t, store, open, `{judged: {id: bbb, updatedAt: "t1"}, title: fresh}`)
+	if err := eng.AddTrigger(judge); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	setPayload(t, store, open, `{judged: {id: bbb, updatedAt: "t1"}, title: fresh, touched: 1}`)
+	waitField(t, store, open, "stage", "judging")
+	if got := field(t, store, seeded, "stage"); got != "seeded" {
+		t.Fatalf("the seeded row was taken: stage=%v", got)
+	}
+}
