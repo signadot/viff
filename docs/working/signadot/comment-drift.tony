@@ -76,7 +76,7 @@ reads: [ !verse-path [git] ]
       value: !let
         let:
         - tip: !get-path
-            at: [git, ref, "signadot/master"]
+            at: [git, signadot, ref, master]
             path: sha
         in:
           stage: idle
@@ -85,7 +85,7 @@ reads: [ !verse-path [git] ]
     patch:
       stage: claimed
       covering: !get-path
-        at: [git, ref, "signadot/master"]
+        at: [git, signadot, ref, master]
         path: sha
 ---
 # 2. …and the range it claimed becomes an entity, so the review has a subject of its own — and

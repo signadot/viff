@@ -42,7 +42,7 @@ disjoint claims, which are computed from each source's own configuration rather 
 hand. One that wants no coordination at all takes a system of its own: two systems are disjoint
 on the first segment, so neither owes the other a proof. It is also how a second *instance* of a
 product — a GitHub Enterprise Server beside github.com — gets a slice that is not confused with
-the first, since `org/repo#42` is unique within a host and not across two.
+the first, since `org/repo` #42 is unique within a host and not across two.
 
 What it costs is paid by whoever chose it: **a charter cannot glob a system** — it names the
 subtree to watch, so it must be a literal — so every rule about a separated slice names it. That
@@ -73,11 +73,14 @@ converges on the resync.
 
 | entity | payload |
 |---|---|
-| `git.ref.<repo>/<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
-| `git.head.<repo>` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
-| `git.commit.<repo>/<sha>` | `repo, sha, msg, author, parents` (a list of shas: empty for a root commit, two for a merge, first parent first), and `trailers` when the commit has any — covered by nothing, so history stays |
+| `git.<repo>.ref.<name>` | `repo, name, sha, type` — branches, tags and remote-tracking branches, and nothing else |
+| `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
+| `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents` (a list of shas: empty for a root commit, two for a merge, first parent first), and `trailers` when the commit has any — covered by nothing, so history stays |
 
-Owns `git.*.<id>/*` and `git.head.<id>` per repo.
+**A repository is a level of the address**, so everything one repository reflects stands under
+`git.<repo>`. Owns `git.<repo>` per repo — a place, with no glob — and the install takes an
+owner record there for its installer, which is what every ref and commit beneath is owned
+through. A ref name keeps its slashes inside one segment: `git.verse.ref."origin/main"`.
 
 **Three ref spaces, named rather than assumed.** `for-each-ref` with no pattern is every ref, and
 a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs/tags` and
@@ -86,7 +89,7 @@ a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs
 merge refs are the reason it matters rather than a size complaint: GitHub recreates them
 whenever the base branch moves, so every fetch after any push to main changed a batch of shas
 and the store took writes on every pass with nothing having happened. A pull request's tip is
-`github.pr.<repo>#<n>.headSha`, from the source that owns the concept.
+`github.<org>.<name>.pr.<n>.headSha`, from the source that owns the concept.
 
 `msg` is the **subject** — the first line — and the body is not reflected. `trailers` is the
 exception: the `Key: value` block at the end of a message, as an object, so a charter can
@@ -94,7 +97,7 @@ condition on what a commit *declared* rather than search prose.
 
 ```tony
 condition:
-  subject: {path: [git, commit, *], value: {trailers: {Tier: change}}}
+  subject: {path: [git, verse, commit, "*"], value: {trailers: {Tier: change}}}
 ```
 
 and `!glob "*"` in place of a value matches any commit that *declared* the key at all — which is
@@ -131,11 +134,10 @@ ordinary case: they write disjoint slices, so nothing coordinates.
 
 | entity | payload |
 |---|---|
-| `git-issue.issue.<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError`; `comments` (how many) and, with any, `lastCommentAt`; under `-bodies` the `discussion` itself as `[{at, text}]`. The lists and `comments` are always present, empty when there is nothing, so a charter may reference them |
-| `git-issue.repo.<repo>` | `repo, open, closed, issues` |
+| `git-issue.<repo>.issue.<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError`; `comments` (how many) and, with any, `lastCommentAt`; under `-bodies` the `discussion` itself as `[{at, text}]`. The lists and `comments` are always present, empty when there is nothing, so a charter may reference them |
+| `git-issue.<repo>.repo` | `repo, open, closed, issues` |
 
-Owns `git-issue.*.<id>/*` and `git-issue.repo.<id>` per repo, for the reason git's claim is two
-entries: `<id>*` would also claim `<id>-extras/…`.
+Owns `git-issue.<repo>` per repo, a place, for the reason git's claim is one.
 
 **Status comes from the ref namespace, not from `meta.tony`.** Closing an issue *moves* its ref,
 which is what preserves its history — and it leaves a `status` field behind in the tree that a
@@ -174,7 +176,7 @@ such an issue and `git issue list` silently omits it.
 take it. An operator who wants lower latency adds a line to their own hook:
 
 ```sh
-curl -fsS -X POST "$VERSE_HINT_URL?ref=git-issue.repo.<id>" >/dev/null 2>&1 || true
+curl -fsS -X POST "$VERSE_HINT_URL?at=git-issue.<id>" >/dev/null 2>&1 || true
 ```
 
 A mirror has no hook either — nobody pushes to it — and it is also the only way this source sees
@@ -293,17 +295,18 @@ Point the repository's Settings → Webhooks at `https://<host>/github/webhook`,
 
 | entity | payload |
 |---|---|
-| `github.repo.<org>/<name>` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
-| `github.issue.<org>/<name>#<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
-| `github.pr.<org>/<name>#<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
-| `github.discussion.<org>/<name>#<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
-| `github.run.<org>/<name>/<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
-| `github.comment.<org>/<name>#<n>/<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
+| `github.<org>.<name>.repo` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
+| `github.<org>.<name>.issue.<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
+| `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
+| `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
+| `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
+| `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
 
-Owns `github.repo.<org>/<name>` and `github:{issue,pr,discussion}:<org>/<name>#*` and
-`github.run.<org>/<name>/*` per repository. The `#` is load-bearing — `acme/app#*` does not claim
-`acme/app2#1` — and the kinds are **named rather than globbed**, which is what leaves room for a
-later source claiming `github.user.*` alone.
+**A repository is two levels of the address**, because it is two levels at GitHub: everything
+`signadot/verse` reflects stands under `github.signadot.verse`, and a number is quoted where it
+is written (`github.signadot.verse.pr."42"`). Owns `github.<org>.<name>` per repository — a
+place, so `acme.app` and `acme.app2` are apart with nothing else said — and the install takes an
+owner record there for its installer.
 
 **The set-shaped kinds are covered twice**: the open set complete, the closed set as a window of
 the most recent `-settled`. Neither precedent fits — git keeps history, Slack keeps a window —
@@ -324,10 +327,10 @@ read — conversation comments (which an issue has, and which a pull request's d
 review comments on a diff — so it costs two conditional requests a pass rather than one per item,
 and `kind` says which a comment was.
 
-A comment hangs off the item it is on (`…#7/900`), so "the comments on #7" is a prefix of one
-address rather than a predicate over the repository. `on` carries that number, and the join is by
-ref rather than by a field naming a kind: `github.issue.<repo>#<n>` and `github.pr.<repo>#<n>`
-are two addresses and exactly one of them exists.
+A comment hangs off the item it is on (`….comment."7"."900"`), so "the comments on #7" is a place
+rather than a predicate over the repository. `on` carries that number, and the join is by ref
+rather than by a field naming a kind: `github.<org>.<name>.issue.<n>` and
+`github.<org>.<name>.pr.<n>` are two addresses and exactly one of them exists.
 
 **An issue carries a comment count and a pull request does not**, which looks inconsistent and is
 not: the count comes from the issues listing, and a pull request read from the pulls listing has

@@ -39,9 +39,9 @@ func TestTheTriageDriveMarksWhatMovedAndOnlyThat(t *testing.T) {
 
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	seeded := entity.RefAt("git-issue", "issue", "verse/aaa")
-	fresh := entity.RefAt("git-issue", "issue", "verse/bbb")
-	other := entity.RefAt("git-issue", "issue", "tony-format/ccc")
+	seeded := entity.RefAt("git-issue", "verse", "issue", "aaa")
+	fresh := entity.RefAt("git-issue", "verse", "issue", "bbb")
+	other := entity.RefAt("git-issue", "tony-format", "issue", "ccc")
 	setPayload(t, store, seeded, `{id: aaa, repo: verse, status: open, updatedAt: "t1", title: seeded}`)
 	setPayload(t, store, fresh, `{id: bbb, repo: verse, status: open, updatedAt: "t1", title: fresh}`)
 	setPayload(t, store, other, `{id: ccc, repo: tony-format, status: open, updatedAt: "t1", title: elsewhere}`)
@@ -106,7 +106,7 @@ func TestTheTriageDriveMarksAnIssueThatSaysLittleAndReopensARow(t *testing.T) {
 			t.Fatalf("AddStratum %s: %v", st.Name, err)
 		}
 	}
-	issue := entity.RefAt("git-issue", "issue", "verse/ddd")
+	issue := entity.RefAt("git-issue", "verse", "issue", "ddd")
 	row := entity.RefAt("verse-dev", "triage", "next", "ddd")
 	// As the source writes an issue that says little: every field present, the lists empty.
 	terse := `id: ddd, repo: verse, status: open, createdAt: "t0", updatedAt: "t1", title: terse, labels: [], commits: [], branches: [], related: [], blocks: [], blockedBy: [], body: "", comments: 0, discussion: []`

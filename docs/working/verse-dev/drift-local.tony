@@ -44,7 +44,7 @@ reads: [ !verse-path [git] ]
       value: !let
         let:
         - tip: !get-path
-            at: [git, head, verse]
+            at: [git, verse, head]
             path: sha
         in:
           stage: idle
@@ -53,7 +53,7 @@ reads: [ !verse-path [git] ]
     patch:
       stage: claimed
       covering: !get-path
-        at: [git, head, verse]
+        at: [git, verse, head]
         path: sha
 ---
 # 2. …and the range becomes an entity, which is what gives each review its own task id.

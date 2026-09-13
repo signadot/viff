@@ -42,9 +42,9 @@ is refused ([perms.md](../perms.md#ownership)). An ownership claim is an **addre
 because an install compares declarations with no entities in hand.
 
 ```tony
-{at: "git.ref.verse/main"}     one entity
-{at: "git.*.verse/*"}          a level may be `*`, and may END in one — a literal prefix
-{at: "git"}                    a whole subtree: everything under it, at every depth
+{at: "git.verse.head"}         one entity
+{at: "git.verse"}              a whole subtree: everything under it, at every depth
+{at: "linear.issue.ENG-*"}     a level may be `*`, and may END in one — a literal prefix
 {at: "verse-dev.drift"}        …which is how a source that keeps two levels of its own says so
 {at: "linear.project.*", path: [owners, ENG]}   …at a place INSIDE the payload
 ```
@@ -53,7 +53,7 @@ A claim is **one pattern per level, at whatever depth** — the same shape an ad
 not three fixed dimensions: a claim shorter than an entity owns everything under it, and one
 longer than three owns a place a package keeps its own tree at.
 
-`at` is the path inside the payload the claim is about, the same address a write takes
+`path` is the path inside the payload the claim is about, the same address a write takes
 (`entity.Path`). It is what lets two sources share an entity without either being a second
 writer of anything: one is the single writer of `owners.ENG`, the other of `owners.OPS`.
 Sharing is not an exception to single-writership; it is single-writership at a deeper address.
@@ -62,22 +62,22 @@ the whole entity.
 
 Two claims are **disjoint** when any level is: two literal names that differ, or two prefixes
 neither of which prefixes the other. Where neither parts company first, the shorter claim
-contains the longer — `git` overlaps `git.ref.x` rather than being disjoint from it — which is
+contains the longer — `git` overlaps `git.verse.ref.x` rather than being disjoint from it — which is
 the same rule the payload path already followed, asked once of the address and once inside the
 payload. A `*` level is disjoint from nothing, so `git.*.*` can be proved apart from nothing in
 its system. A `*` anywhere but the end of a level is a parse error, not an approximation.
 Levels and paths both compare **segment-wise**, so `owners.ENG` and `owners.ENGINE` are
 disjoint, while `owners` contains `owners.ENG` and an absent path contains every path there is.
 
-Git claims **two entries per repo**, because refs and commits are `<repo>/<name>` while a head
-is the bare `<repo>`:
+Git claims **one place per repo**, because a repository is a level of every address it writes:
 
 ```tony
-owns: [{at: "git.*.verse/*"}, {at: "git.head.verse"}]
+owns: [{at: "git.verse"}]
 ```
 
-The single glob `verse*` would cover both and also claim `verse-extras/main` — a real
-overclaim, and one that would make two disjoint repos refuse to install alongside each other.
+A place is the claim to prefer. It is disjoint from `git.verse-extras` on a literal comparison,
+where a glob such as `git.verse*` would overclaim it, and it is a node the install can take an
+owner record at, where a claim that globs at its second level names only its system.
 
 **A claim is a document rather than a string**, and the ids are what forced it: `@` — the
 separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids (a task's
@@ -149,22 +149,28 @@ Two routes, no state, no write face:
 | | |
 |---|---|
 | `GET /source` | `{system, owns}` — what this program is. Has no effect, which is what makes it the probe |
-| `GET /reflect` | `?ref=<ref>` (absent = everything it owns) → a `Reflection` |
+| `GET /reflect` | `?at=<address>` (absent = everything it owns) → a `Reflection` |
 
 ```tony
 covers:
-- {path: [git, ref, *], value: {repo: verse}}
-- {path: [git, head, *], value: {repo: verse}}
+- {path: [git, verse, ref, "*"]}
+- {path: [git, verse, head]}
 entities:
-- at: git.ref.verse/main
+- at: git.verse.ref.main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}
-- at: git.head.verse
+- at: git.verse.head
   payload: {repo: verse, ref: main, sha: "82bd107…", dirty: false}
 ```
 
 `covers` is what the answer is **complete for**: an entity under a covered pattern and absent
 from `entities` is tombstoned. An entity under no cover is written and never tombstoned — which
 is how git keeps history, since it covers `ref` and `head` and not `commit`.
+
+A cover's `path` is a place, one segment per level with `*` any one segment, and it is also
+what converge **reads**: `git.verse.ref` four deep and `git.verse.head` alone, rather than the
+whole system. A cover may add `value`, a payload predicate, where a place alone cannot say what
+the answer is complete for — GitHub covers a repository's open issues and its recent closed
+ones as two halves of `github.<org>.<name>.issue.*`.
 
 A cover may also carry a **`slot`** — a path inside the payload — saying the answer is complete
 for the value at that path in each entity it matches, and for nothing else there. converge then

@@ -38,10 +38,13 @@ type Pattern struct {
 	// that reads as a glob and matches literally is a rule that silently selects nothing.
 	//
 	// When it is set it is the authority and Root/System/Kind are ignored; when it is not, they
-	// are, which is every pattern written before addresses became trees. It is not on the wire
-	// (`tony:"-"`) because the charter grammar's spelling of it is `trigger.Match`'s `path:`,
-	// and a Pattern is what that compiles TO.
-	Path []*ir.Node `tony:"-"`
+	// are, which is every pattern written before addresses became trees.
+	//
+	// It IS on the wire, and a source's Covers is why: a git source covers `git.verse.ref.*` and
+	// `git.verse.head`, one place per repository at two depths, and no three-dimension reading can
+	// say either. A charter never writes this field — its spelling is `trigger.Match`'s `path:`,
+	// which compiles to it — so the one document that carries it is a reflection.
+	Path []*ir.Node `tony:"field=path,omitzero"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
 	// it. Create and update are not distinguished (see Op) — express "only the

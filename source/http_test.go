@@ -54,7 +54,7 @@ func TestReflectionIsTheSameAcrossBothTransports(t *testing.T) {
 
 	// And a targeted ref, since that is a parameter the transport has to carry rather than a
 	// value it merely echoes: a ref lost on the way would answer for the whole source.
-	one, err := serve(t, g).Reflect(ctx, entity.RefAt(source.GitSystem, "head", "A"))
+	one, err := serve(t, g).Reflect(ctx, g.RepoRef("A"))
 	if err != nil {
 		t.Fatalf("targeted reflect over http: %v", err)
 	}
@@ -179,9 +179,8 @@ func TestProbe(t *testing.T) {
 	if d.System != source.GitSystem {
 		t.Fatalf("descriptor system = %q, want git", d.System)
 	}
-	// The ownership claim an install proves disjointness with: two ref globs per repo, since
-	// refs and commits are <repo>/<name> while a head is the bare <repo>.
-	want := []source.Own{{At: "git.*.A/*"}, {At: "git.head.A"}}
+	// The ownership claim an install proves disjointness with: one place per repo.
+	want := []source.Own{{At: "git.A"}}
 	// EqualFunc rather than Equal: a claim carries a path, so it holds a slice and is not
 	// comparable. Its rendering is the whole of it.
 	if !slices.EqualFunc(d.Owns, want, func(a, b source.Own) bool { return a.String() == b.String() }) {
@@ -265,7 +264,7 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 	if len(covers.Values) == 0 || len(entities.Values) == 0 {
 		t.Fatalf("expected a cover and an entity to look at: %v", entity.ToObj(rn))
 	}
-	has("a cover", covers.Values[0], "system", "kind", "value")
+	has("a cover", covers.Values[0], "path")
 	has("an entity", entities.Values[0], "at", "payload")
 
 	// An address is one string, a kinded path, everywhere it is written — a charter, a CLI

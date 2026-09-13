@@ -19,9 +19,9 @@ import (
 // which refs went stale — so this one constant is the whole of git's side of the contract, and
 // the installed hook and the reflector have to agree about it.
 func TestGitHintNamesTheRepo(t *testing.T) {
-	want := entity.RefAt(source.GitSystem, "head", "A")
-	if got := source.HeadRef("A"); got != want {
-		t.Fatalf("HeadRef(A) = %v, want %v", got, want)
+	want := entity.RefAt(source.GitSystem, "A")
+	if got := source.RepoRef("A"); got != want {
+		t.Fatalf("RepoRef(A) = %v, want %v", got, want)
 	}
 }
 
@@ -53,7 +53,7 @@ func TestGitInstallHook(t *testing.T) {
 	// The address is escaped as a query value, and it is asked for rather than spelled: a
 	// segment that kpath quotes (an id that looks like a number, which is exactly what AddRepo
 	// hands out) carries its quotes through the escaping.
-	want := "at=" + url.QueryEscape(g.HeadRef(id).String())
+	want := "at=" + url.QueryEscape(g.RepoRef(id).String())
 	if s := string(b); !contains(s, "/sources/git/laptop/hint") || !contains(s, want) {
 		t.Fatalf("hook does not POST a hint at the registration: %s", s)
 	}
@@ -92,19 +92,19 @@ func TestGitReflectorHintReconciles(t *testing.T) {
 	defer cancel()
 	go rf.Run(ctx)
 
-	waitFor(t, store, entity.RefAt(source.GitSystem, "head", "A")) // initial sync
+	waitFor(t, store, entity.RefAt(source.GitSystem, "A", "head")) // initial sync
 
 	// a new branch the periodic net won't see (it's off) — only a hint reconcile surfaces it.
 	gitRun(t, dir, "branch", "shiny")
-	rf.Hint(source.HeadRef("A"))
+	rf.Hint(source.RepoRef("A"))
 
-	waitFor(t, store, entity.RefAt(source.GitSystem, "ref", "A/shiny"))
+	waitFor(t, store, entity.RefAt(source.GitSystem, "A", "ref", "shiny"))
 
 	// And a hint with NO refs is a full resync, which is what a delivery that named nothing
 	// asks for.
 	gitRun(t, dir, "branch", "shinier")
 	rf.Hint()
-	waitFor(t, store, entity.RefAt(source.GitSystem, "ref", "A/shinier"))
+	waitFor(t, store, entity.RefAt(source.GitSystem, "A", "ref", "shinier"))
 }
 
 func waitFor(t *testing.T, store entity.Store, ref entity.Ref) {

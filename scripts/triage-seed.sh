@@ -12,10 +12,10 @@ set -euo pipefail
 v() { verse ${VERSE_ADDR:+-addr "$VERSE_ADDR"} "$@"; }
 
 # The listing, trimmed to the two facts the mark carries. Output is tony:
-#   verse/<xidr>:
+#   <xidr>:
 #     id: <xidr>
 #     updatedAt: "<instant>"
-v data git-issue issue --if '{repo: verse, status: open}' --trim '{id: null, updatedAt: null}' \
+v data git-issue verse issue --if '{status: open}' --trim '{id: null, updatedAt: null}' \
 | awk '
   /^[^ ]/            { id=""; at="" }
   /^ *id: /          { id=$2 }

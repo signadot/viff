@@ -39,8 +39,8 @@ import (
 // every claim in the tree today and every claim a person types.
 //
 // The cost is stated in docs/working/sources-residual.md and worth knowing: this works when a
-// source's ids encode ownership positionally, which git's do because git.go prefixes every id
-// with the repo. What is still not spellable here is ownership that is a VALUE rather than a
+// source's addresses encode ownership positionally, which git's do because a repository is a
+// level of every address git.go writes. What is still not spellable here is ownership that is a VALUE rather than a
 // place — an owner in the payload and a uuid in the ref. That wants a predicate, and predicates
 // do not compare statically; the shape one would have to take is in shared-ownership.md.
 

@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/source"
@@ -211,25 +210,18 @@ func Sign(secret string, body []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// targetComment reads a ref as one comment: `<org>/<name>#<n>/<id>`.
+// targetComment reads a ref as one comment: `<system>.<org>.<name>.comment.<n>.<id>`.
 func (g *GitHub) targetComment(ref entity.Ref) (repo string, number int, id int64, ok bool) {
-	if ref.Kind() != "comment" {
+	repo, rest, under := g.under(ref)
+	if !under || len(rest) != 3 || rest[0] != "comment" {
 		return "", 0, 0, false
 	}
-	rest, num, found := strings.Cut(ref.ID(), "#")
-	if !found {
+	n, err1 := strconv.Atoi(rest[1])
+	i, err2 := strconv.ParseInt(rest[2], 10, 64)
+	if err1 != nil || err2 != nil || n <= 0 || i <= 0 {
 		return "", 0, 0, false
 	}
-	numStr, idStr, found := strings.Cut(num, "/")
-	if !found {
-		return "", 0, 0, false
-	}
-	n, err1 := strconv.Atoi(numStr)
-	i, err2 := strconv.ParseInt(idStr, 10, 64)
-	if err1 != nil || err2 != nil || n <= 0 || i <= 0 || !g.reflects(rest) {
-		return "", 0, 0, false
-	}
-	return rest, n, i, true
+	return repo, n, i, true
 }
 
 // reflectComment answers for ONE comment, and covers exactly it.
@@ -240,8 +232,7 @@ func (g *GitHub) targetComment(ref entity.Ref) (repo string, number int, id int6
 // no; a comment that is neither is covered and absent, which tombstones one that was deleted.
 func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id int64) (source.Reflection, error) {
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: "comment",
-			Predicate: entity.Obj{"repo": repo, "id": id}.Payload()},
+		g.cover(repo, "comment", strconv.Itoa(number), strconv.FormatInt(id, 10)),
 	}}
 	for _, where := range []struct{ path, kind string }{
 		{"issues", "conversation"}, {"pulls", "review"},
@@ -265,16 +256,12 @@ func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id
 
 // targetRun reads a ref as one workflow run.
 func (g *GitHub) targetRun(ref entity.Ref) (repo string, id int64, ok bool) {
-	if ref.Kind() != "run" {
+	repo, rest, under := g.under(ref)
+	if !under || len(rest) != 2 || rest[0] != "run" {
 		return "", 0, false
 	}
-	slash := strings.LastIndex(ref.ID(), "/")
-	if slash < 0 {
-		return "", 0, false
-	}
-	repo, num := ref.ID()[:slash], ref.ID()[slash+1:]
-	n, err := strconv.ParseInt(num, 10, 64)
-	if err != nil || n <= 0 || !g.reflects(repo) {
+	n, err := strconv.ParseInt(rest[1], 10, 64)
+	if err != nil || n <= 0 {
 		return "", 0, false
 	}
 	return repo, n, true
@@ -282,9 +269,9 @@ func (g *GitHub) targetRun(ref entity.Ref) (repo string, id int64, ok bool) {
 
 // reflectRun answers for ONE workflow run, and covers exactly it.
 //
-// The cover names the run by the fields the payload carries, for step 1's reason one kind over:
-// a targeted pass that declared the window's cover while carrying one run would tombstone every
-// other run in the repository.
+// The cover is the run's own address, for step 1's reason one kind over: a targeted pass that
+// declared the window's cover while carrying one run would tombstone every other run in the
+// repository.
 //
 // IT ALSO CARRIES THE CHECK STATE ONTO THE PULL REQUEST the run ran for, which is what makes
 // this delivery worth targeting rather than escalating to a repository pass. A run finishing is
@@ -292,7 +279,7 @@ func (g *GitHub) targetRun(ref entity.Ref) (repo string, id int64, ok bool) {
 // run, and the pull requests it names — against the eight a repository pass costs.
 func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (source.Reflection, error) {
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: "run", Predicate: entity.Obj{"repo": repo, "id": id}.Payload()},
+		g.cover(repo, "run", strconv.FormatInt(id, 10)),
 	}}
 	var r workflowRun
 	if err := g.api.get(ctx, "/repos/"+repo+"/actions/runs/"+strconv.FormatInt(id, 10), &r); err != nil {
@@ -320,10 +307,7 @@ func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (source.
 	for _, p := range prs {
 		payload := pullPayload(repo, p)
 		payload["checks"] = state
-		rn.Covers = append(rn.Covers, entity.Pattern{
-			System: g.system, Kind: "pr",
-			Predicate: entity.Obj{"repo": repo, "number": p.Number}.Payload(),
-		})
+		rn.Covers = append(rn.Covers, g.cover(repo, "pr", strconv.Itoa(p.Number)))
 		rn.Add(g.ItemRef("pr", repo, p.Number), payload)
 	}
 	return rn, nil

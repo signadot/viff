@@ -42,13 +42,13 @@ func TestCommitParentsAreAList(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	parentsOf := func(sha string) *ir.Node {
-		e, ok, _ := store.Get(entity.RefAt(source.GitSystem, "commit", "R/"+sha))
+		e, ok, _ := store.Get(entity.RefAt(source.GitSystem, "R", "commit", sha))
 		if !ok {
-			t.Fatalf("missing git.commit.R/%s", sha)
+			t.Fatalf("missing git.R.commit.%s", sha)
 		}
 		p := ir.Get(e.Payload, "parents")
 		if p == nil {
-			t.Fatalf("git.commit.R/%s carries no parents at all", sha)
+			t.Fatalf("git.R.commit.%s carries no parents at all", sha)
 		}
 		return p
 	}
@@ -87,9 +87,9 @@ func TestCommitParentsAreAList(t *testing.T) {
 		if err != nil {
 			t.Fatalf("pattern: %v", err)
 		}
-		e, _, _ := store.Get(entity.RefAt(source.GitSystem, "commit", "R/"+of))
+		e, _, _ := store.Get(entity.RefAt(source.GitSystem, "R", "commit", of))
 		return (entity.Pattern{Predicate: pat}).MatchEvent(entity.Event{
-			Ref: entity.RefAt(source.GitSystem, "commit", "R/"+of), Op: entity.Set, To: e.Payload,
+			Ref: entity.RefAt(source.GitSystem, "R", "commit", of), Op: entity.Set, To: e.Payload,
 		})
 	}
 	if !match(second, mergeSha) || !match(side, mergeSha) {

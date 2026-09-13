@@ -27,7 +27,7 @@ demo.pr."a.b"              the id `a.b` — quoted, so the dots are in the name
 demo.pr.a.b                four segments, because these dots are not quoted
 demo.pr."1"                the id `1`, quoted so it is a name rather than a number
 git.ref.x@git:ref:y        `@` and `:` are ordinary characters in a name; nothing reads them
-github.pr.org/repo#42      …and so are `/` and `#`
+demo.pr.org/repo#42        …and so are `/` and `#`
 verse.task.instance.run-a1b2   a leading `verse` is the reserved root, a level like any other
 ```
 

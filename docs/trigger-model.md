@@ -650,7 +650,7 @@ It goes wherever the string form goes:
 
 ```tony
 subject: !verse-path [demo pr 1]      # the same as "demo.pr.1"
-when:    !verse-path [git head verse]
+when:    !verse-path [git verse head]
 ```
 
 The tag is required on a list, so a list of steps cannot be read as anything else, and an address
@@ -1255,7 +1255,7 @@ elsewhere. `!let` binds the read, and the body compares:
     subject:
       path: [merge, proposal, *]
       value: !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: [git, verse, head], path: sha}}]
         in:  {state: open, base: !not .[tip]}
   action:
     patch: { state: stale }

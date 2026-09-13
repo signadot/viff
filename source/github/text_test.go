@@ -49,7 +49,7 @@ func TestEveryBodyShapeSurvivesTheWire(t *testing.T) {
 	} {
 		want := text(body)
 		rn := source.Reflection{}
-		rn.Add(entity.RefAt("github", "comment", "x/y#1/2"),
+		rn.Add(entity.RefAt("github", "x", "y", "comment", "1", "2"),
 			entity.Obj{"author": "ana", "body": want, "id": 2, "on": 1})
 		_ = want
 		node, err := codec.ToNode(rn)

@@ -411,7 +411,7 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 
 	if len(reflected) > 0 && !forget && !keep {
 		http.Error(w, fmt.Sprintf(
-			"refused: %s has reflected %d entit(ies), and removing it means one of two things "+
+			"refused: %s has reflected into %d place(s), and removing it means one of two things "+
 				"this cannot tell apart:\n"+
 				"    --forget   the reflection is over; tombstone what it wrote\n"+
 				"    --keep     the same truth is moving elsewhere; leave the last known state, "+
@@ -455,8 +455,11 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 //
 // A PLACE rather than a ref, because a claim may be to a slot inside a shared entity. Deleting
 // the entity there would take the other owners' slots with it, so what is removed is what was
-// claimed — and for every claim that carries no path, which is all of them until a source
-// declares one, a place IS its entity and this is what it always did.
+// claimed.
+//
+// A LITERAL CLAIM IS ITS OWN PLACE. `git.verse` claims everything under that node, at whatever
+// depths the source writes there, so the removal is the node — one place standing, however many
+// refs and commits it holds. Only a claim with a glob or a path is asked about entity by entity.
 //
 // The claims are parsed ONCE, and a claim that does not parse fails the whole answer rather
 // than being skipped. This is the caller that deletes: a skipped claim there is either an
@@ -469,6 +472,23 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 	if err != nil {
 		return nil, err
 	}
+	var out []entity.Path
+	var patterned []source.Claim
+	for _, c := range claims {
+		if node, ok := c.Node(); ok && len(c.Field) == 0 && len(node.Segs()) == len(c.Segs) {
+			segs := node.Segs()
+			if len(r.ListAt(segs, len(segs), nil)) > 0 {
+				out = append(out, node.At())
+			}
+			continue
+		}
+		patterned = append(patterned, c)
+	}
+	if len(patterned) == 0 {
+		sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+		return out, nil
+	}
+	claims = patterned
 	systems := map[string]bool{}
 	wildcard := false
 	for _, c := range claims {
@@ -481,7 +501,6 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 		}
 		systems[head] = true
 	}
-	var out []entity.Path
 	// `!Reserved()` says at the enumeration what `source.Claimed` also refuses at the point:
 	// verse's own half is not a slice a source can own, so a removal cannot tombstone it.
 	for _, ent := range r.List(func(ref entity.Ref) bool {

@@ -75,55 +75,56 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	get := func(kind, id string) entity.Obj {
-		e, ok, _ := store.Get(entity.RefAt(source.GitSystem, kind, id))
+	get := func(segs ...string) entity.Obj {
+		ref := entity.RefAt(append([]string{source.GitSystem}, segs...)...)
+		e, ok, _ := store.Get(ref)
 		if !ok {
-			t.Fatalf("missing git:%s:%s", kind, id)
+			t.Fatalf("missing %s", ref)
 		}
 		return entity.ToObj(e.Payload)
 	}
 
 	// main exists in BOTH repos, no collision, distinct shas + repo fields.
-	mainA := get("ref", "A/main")
-	mainB := get("ref", "B/main")
+	mainA := get("A", "ref", "main")
+	mainB := get("B", "ref", "main")
 	if mainA["sha"] == mainB["sha"] {
 		t.Fatal("distinct repos' main should have distinct shas")
 	}
 	if mainA["repo"] != "A" || mainB["repo"] != "B" || mainA["name"] != "main" {
 		t.Fatalf("ref repo/name fields wrong: %+v %+v", mainA, mainB)
 	}
-	get("ref", "A/feature")
-	get("ref", "B/dev")
+	get("A", "ref", "feature")
+	get("B", "ref", "dev")
 
 	// head + commit reflected per repo.
-	if h := get("head", "A"); h["ref"] != "main" || h["repo"] != "A" || h["dirty"] != false {
-		t.Fatalf("git.head.A = %+v", h)
+	if h := get("A", "head"); h["ref"] != "main" || h["repo"] != "A" || h["dirty"] != false {
+		t.Fatalf("git.A.head = %+v", h)
 	}
-	if c := get("commit", "A/"+shaA); c["msg"] != "first on A" || c["repo"] != "A" || c["sha"] != shaA {
-		t.Fatalf("git.commit.A/%s = %+v", shaA, c)
+	if c := get("A", "commit", shaA); c["msg"] != "first on A" || c["repo"] != "A" || c["sha"] != shaA {
+		t.Fatalf("git.A.commit.%s = %+v", shaA, c)
 	}
 	// a commit is repo-scoped, not a global sha key.
 	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "commit", shaA)); ok {
-		t.Fatal("commit should be keyed git:commit:<repo>/<sha>, not by bare sha")
+		t.Fatal("a commit should stand under its repository, git.<repo>.commit.<sha>, not by bare sha")
 	}
 
 	// Delete A's feature branch; reconcile only A → A/feature tombstones, B untouched.
 	gitRun(t, dirA, "branch", "-D", "feature")
-	if err := rf.Reconcile(ctx, entity.RefAt(source.GitSystem, "head", "A")); err != nil {
+	if err := rf.Reconcile(ctx, g.RepoRef("A")); err != nil {
 		t.Fatalf("targeted reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "ref", "A/feature")); ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "A", "ref", "feature")); ok {
 		t.Fatal("A/feature should have tombstoned after branch delete")
 	}
-	get("ref", "B/dev") // B's slice untouched by A's targeted reconcile
+	get("B", "ref", "dev") // B's slice untouched by A's targeted reconcile
 
 	// A new commit on A/main advances its sha (a change a trigger would see).
-	before := get("ref", "A/main")["sha"]
+	before := get("A", "ref", "main")["sha"]
 	commit(t, dirA, "a.txt", "hello A v2", "second on A")
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if after := get("ref", "A/main")["sha"]; after == before {
+	if after := get("A", "ref", "main")["sha"]; after == before {
 		t.Fatal("A/main sha should have advanced after a new commit")
 	}
 }
@@ -158,14 +159,15 @@ func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	get := func(kind, refID string) entity.Obj {
-		e, ok, _ := store.Get(entity.RefAt(source.GitSystem, kind, refID))
+	get := func(segs ...string) entity.Obj {
+		ref := entity.RefAt(append([]string{source.GitSystem}, segs...)...)
+		e, ok, _ := store.Get(ref)
 		if !ok {
-			t.Fatalf("missing git:%s:%s", kind, refID)
+			t.Fatalf("missing %s", ref)
 		}
 		return entity.ToObj(e.Payload)
 	}
-	if sha := get("ref", id+"/main")["sha"]; sha != first {
+	if sha := get(id, "ref", "main")["sha"]; sha != first {
 		t.Fatalf("main is %v, want the remote's %s", sha, first)
 	}
 
@@ -176,7 +178,7 @@ func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile after remote commit: %v", err)
 	}
-	if sha := get("ref", id+"/main")["sha"]; sha != second {
+	if sha := get(id, "ref", "main")["sha"]; sha != second {
 		t.Fatalf("main is %v after a remote commit, want %s — the pass did not fetch", sha, second)
 	}
 
@@ -237,12 +239,12 @@ func TestGitReflectsBranchesAndTagsAndNothingElse(t *testing.T) {
 	}
 	var refs []string
 	for _, e := range rn.Entities {
-		if e.Ref.Kind() == "ref" {
-			refs = append(refs, e.Ref.ID())
+		if segs := e.Ref.Segs(); len(segs) == 4 && segs[2] == "ref" {
+			refs = append(refs, segs[3])
 		}
 	}
 	sort.Strings(refs)
-	want := []string{"r/main", "r/v1"}
+	want := []string{"main", "v1"}
 	if len(refs) != len(want) {
 		t.Fatalf("reflected %v, want only the branch and the tag (%v)", refs, want)
 	}

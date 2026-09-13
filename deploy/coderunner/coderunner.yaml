@@ -116,7 +116,7 @@ data:
     # is the allowlist a subprocess inherits, and it never will be — it goes to the task process
     # and is used there. So `git` in here can read this clone and can push nothing. What a shell
     # buys is the one question a charter cannot answer for
-    # itself: which files a commit changed. `git:commit:*` carries the sha, the message and the
+    # itself: which files a commit changed. `git.<repo>.commit.*` carries the sha, the message and the
     # trailers, and not the paths, so without a shell the task cannot find out what it is
     # reviewing. The day that list is a field on the commit entity, this environment goes back
     # to the file tools alone — that is the first item in the note.

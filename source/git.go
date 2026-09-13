@@ -18,21 +18,23 @@ import (
 // GitSystem is the entity slice a git Source owns and is the single writer of.
 const GitSystem = "git"
 
-// Git reflects one or more git repositories into the git:* slice of the verse — read-only
+// Git reflects one or more git repositories into the git.* slice of the verse — read-only
 // reflection, the inbound half of a Source (docs/sources.md). It is the single writer of
-// git:*, so the slice needs no CAS. Reflection is content-addressed, which makes reconcile
+// git.*, so the slice needs no CAS. Reflection is content-addressed, which makes reconcile
 // CURSORLESS: `git for-each-ref` yields a ref→sha map, and comparing shas against the stored
-// git:ref:* entities IS the level-triggered diff — no since-token, no missed-event window.
+// git.<repo>.ref.* entities IS the level-triggered diff — no since-token, no missed-event window.
 //
-// It is **multi-repo native**: a repo is registered under an id, every ref/head entity carries
-// that id (as the `repo` field and as an id prefix), and reconcile is per-repo — so a webhook
-// for one repo never tombstones another's refs. It reflects git-*aware* state (what SDLC flows
+// It is **multi-repo native**: a repo is registered under an id, and THE ID IS A LEVEL OF THE
+// ADDRESS — `git.<repo>.ref.<name>`, `git.<repo>.commit.<sha>`, `git.<repo>.head` — so a
+// repository is a place in the tree rather than a prefix packed inside every id. Reconcile is
+// per-repo, and a webhook for one repo never tombstones another's refs, because a pass reads
+// and covers its own repository's place and nothing beside it. It reflects git-*aware* state (what SDLC flows
 // react to — "commit landed on main", "branch deleted", "tag created"), an index not a
 // warehouse: a task needing a diff follows the ref into the real repo (`git show`). Acting
 // back on a repo (commit, tag, push) is the separate outbound executor path, not here.
 type Git struct {
 	repos       repoSet
-	commitDepth int // how many tip commits to reflect as git:commit:<sha>
+	commitDepth int // how many tip commits to reflect as git.<repo>.commit.<sha>
 	// system is the slice this source writes, GitSystem unless an operator said otherwise.
 	// Set once before serving and read without the lock thereafter, as a Config field would be
 	// on the connectors that have one — see SetSystem.
@@ -42,11 +44,11 @@ type Git struct {
 // NewGit returns an empty git Source; register repositories with AddRepo or AddMirror.
 func NewGit() *Git { return &Git{repos: newRepoSet(), commitDepth: 50, system: GitSystem} }
 
-// SetSystem points this source at a slice other than `git:*`. Call it before serving; it is read
+// SetSystem points this source at a slice other than `git.*`. Call it before serving; it is read
 // on every pass and never written again.
 //
 // A source is deployed, and more than one of them will be — different hosts, different
-// credentials, a partition drawn by whoever runs them. Two deployments sharing `git:*` is the
+// credentials, a partition drawn by whoever runs them. Two deployments sharing `git.*` is the
 // ordinary case and needs only disjoint claims; one that wants no coordination at all takes a
 // system of its own, and two systems are disjoint on the first segment. See
 // docs/sources.md, where the argument is made at length for the connector that raised
@@ -100,39 +102,39 @@ func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, er
 // System is the owned slice.
 func (g *Git) System() string { return g.system }
 
-// Owns is the ownership claim an install checks against the other installed sources, as ref
-// globs (see own.go).
+// Owns is the ownership claim an install checks against the other installed sources: ONE PLACE
+// PER REPOSITORY, `git.<repo>`, with no glob in it.
 //
-// It is KIND-LESS where a reflection's Covers names a kind, and the difference is real rather
-// than sloppy. A cover says what one pass is complete for — the mutable kinds, since history
-// is kept — while this says what no other source may write, which is the whole of a repo's
-// slice, commits included. Two sources reflecting one repo would fight over its commits just
-// as surely as over its branches.
+// It is wider than a reflection's Covers, and the difference is real rather than sloppy. A
+// cover says what one pass is complete for — the mutable kinds, since history is kept — while
+// this says what no other source may write, which is the whole of a repo's place, commits
+// included. Two sources reflecting one repo would fight over its commits just as surely as over
+// its branches.
 //
-// TWO ENTRIES PER REPO, and the shortcut is worth naming because it is tempting. Refs and
-// commits are `<repo>/<name>`, but a head is the bare `<repo>` — so the claim is
-// `git:*:<id>/*` AND `git:head:<id>`. The single glob `<id>*` covers both, and also claims
-// `<id>-extras/main`: not a false alarm but a real overclaim, and one that would make two
-// perfectly disjoint repos refuse to install alongside each other.
+// A literal place is also what the install takes an owner record at (versed's addSource), so
+// everything this source writes under a repository is owned through one record rather than one
+// per ref.
 func (g *Git) Owns() []Own {
 	ids := g.repos.ids()
-	out := make([]Own, 0, 2*len(ids))
+	out := make([]Own, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, Own{At: g.system + ".*." + id + "/*"}, Own{At: g.system + ".head." + id})
+		out = append(out, Own{At: g.RepoRef(id).String()})
 	}
 	return out
 }
 
-// HeadRef is the ref that targets one repo: a reconcile of it reconciles that repo, since a
-// per-repo pass is content-addressed and subsumes finer targeting. It is what a hint names.
-func HeadRef(id string) entity.Ref {
-	return entity.RefAt(GitSystem, "head", id)
+// RepoRef is the place one repository's entities stand under, in this source's system — what a
+// hint names, since a reconcile of it reconciles that repository and a per-repo pass is
+// content-addressed and subsumes finer targeting. A hook this source installs has to name it in
+// THIS system: a hint at `git.x` reaches nothing when the source writes `mirror.x`.
+func (g *Git) RepoRef(id string) entity.Ref {
+	return entity.RefAt(g.system, id)
 }
 
-// HeadRef is the same ref in THIS source's system, which is what a hook this source installs
-// has to name: a hint at `git:head:x` reaches nothing when the source writes `mirror:head:x`.
-func (g *Git) HeadRef(id string) entity.Ref {
-	return entity.RefAt(g.system, "head", id)
+// RepoRef is a repository's place in the default system, which is what a hint for a git source
+// registered without a system of its own names.
+func RepoRef(id string) entity.Ref {
+	return entity.RefAt(GitSystem, id)
 }
 
 // hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
@@ -144,7 +146,7 @@ const hookMarker = "# verse git Source hook"
 //
 // hintURL is the registration's hint route, `<verse>/sources/git/<name>/hint`. The ref is
 // appended HERE, because which ref targets a repo is git's knowledge and not the route's: a
-// reconcile of `git:head:<id>` is a reconcile of that repo. verse never parses this delivery —
+// reconcile of `git.<id>` is a reconcile of that repo. verse never parses this delivery —
 // there is nothing to parse, which is the point.
 func (g *Git) InstallHook(id, hintURL string) error {
 	dir, ok := g.dirOf(id)
@@ -168,7 +170,7 @@ func (g *Git) InstallHook(id, hintURL string) error {
 	script := "#!/bin/sh\n" + hookMarker + "\n" +
 		`[ "$1" = committed ] || exit 0` + "\n" +
 		fmt.Sprintf(`curl -fsS -X POST "%s?at=%s" >/dev/null 2>&1 || true`+"\n",
-			hintURL, url.QueryEscape(g.HeadRef(id).String()))
+			hintURL, url.QueryEscape(g.RepoRef(id).String()))
 	return os.WriteFile(path, []byte(script), 0o755)
 }
 
@@ -205,14 +207,15 @@ func gitHooksDir(dir string) (string, error) {
 
 var _ Source = (*Git)(nil)
 
-// Reflect reads the repositories and returns what git:* should hold. A zero ref reads every
-// registered repo (a full resync); a git:* ref reads just the repo it names (the targeted
-// pass a hint asks for). Per-repo reflection is content-addressed, so it subsumes finer
+// Reflect reads the repositories and returns what git.* should hold. A zero ref reads every
+// registered repo (a full resync); a ref at or under `git.<repo>` reads just that repo (the
+// targeted pass a hint asks for). Per-repo reflection is content-addressed, so it subsumes finer
 // targeting — there is no cursor to keep and no missed-event window.
 //
-// It writes nothing, and the answer is scoped by what it Covers: `git:ref:*` and `git:head:*`
-// for each repo it actually read. Commits are carried and covered by NOTHING, which is how
-// "keep history" is said — they fall out of the bounded tip window and stay standing.
+// It writes nothing, and the answer is scoped by what it Covers: `git.<repo>.ref.*` and
+// `git.<repo>.head` for each repo it actually read. Commits are carried and covered by NOTHING,
+// which is how "keep history" is said — they fall out of the bounded tip window and stay
+// standing.
 func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 	var out Reflection
 	targets := g.targets(ref)
@@ -232,25 +235,22 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 	return out, nil
 }
 
-// targets is the repo id→repo set a reconcile should touch: all repos for a zero ref, else the
-// single repo the ref belongs to (its id is the git:head:<repo> id, or the leading segment of
-// a git:ref:<repo>/<name> id).
+// targets is the repo id→repo set a reconcile should touch: all repos for a ref that names none,
+// else the single repo whose place the ref is at or under — the second level of the address.
 func (g *Git) targets(ref entity.Ref) map[string]repo {
-	if ref.System() != g.system || ref.ID() == "" {
+	segs := ref.Segs()
+	if len(segs) < 2 || segs[0] != g.system {
 		return g.repos.all()
 	}
-	id := ref.ID()
-	if ref.Kind() == "ref" {
-		id, _, _ = strings.Cut(ref.ID(), "/") // <repo>/<name>
-	}
+	id := segs[1]
 	if r, ok := g.repos.get(id); ok {
 		return map[string]repo{id: r}
 	}
 	return nil
 }
 
-// reflectRepo reads one repository. Everything it returns is scoped by the `repo` field —
-// including the covers — so one repo's pass never tombstones another's refs.
+// reflectRepo reads one repository. Everything it returns stands under the repository's place —
+// covers included — so one repo's pass never tombstones another's refs.
 func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, error) {
 	dir := rp.dir
 	// A mirror's read starts with a fetch, and a FAILED one fails the pass rather than
@@ -263,21 +263,19 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 			return Reflection{}, fmt.Errorf("fetching %s: %w", rp.remote, err)
 		}
 	}
-	// What this answer is COMPLETE for: the two mutable kinds, narrowed to this repo by the
-	// field the payloads below already carry. Declared BEFORE the read, and unconditionally:
-	// a repo whose every branch was deleted must still cover `git:ref:{repo: id}`, or the
-	// refs it no longer has would stand forever.
+	// What this answer is COMPLETE for: the two mutable kinds, at this repo's place. Declared
+	// BEFORE the read, and unconditionally: a repo whose every branch was deleted must still
+	// cover `git.<repo>.ref.*`, or the refs it no longer has would stand forever.
 	//
-	// `git:commit:*` is deliberately absent, and that absence IS the history rule. Commits are
-	// carried in Entities and covered by nothing, so one that has fallen out of the bounded
+	// `git.<repo>.commit.*` is deliberately absent, and that absence IS the history rule. Commits
+	// are carried in Entities and covered by nothing, so one that has fallen out of the bounded
 	// tip window is simply not mentioned — and an unmentioned, uncovered entity stays.
-	mine := entity.Obj{"repo": id}.Payload()
 	rn := Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: "ref", Predicate: mine},
-		{System: g.system, Kind: "head", Predicate: mine},
+		Cover(g.system, id, "ref", "*"),
+		Cover(g.system, id, "head"),
 	}}
 
-	// Refs: refs/heads, refs/tags, refs/remotes — git:ref:<repo>/<short> {repo, name, sha, type}.
+	// Refs: refs/heads, refs/tags, refs/remotes — git.<repo>.ref.<short> {repo, name, sha, type}.
 	// That list is enforced in gitForEachRef rather than assumed; a mirror holds far more.
 	refs, err := gitForEachRef(ctx, dir)
 	if err != nil {
@@ -290,17 +288,17 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	sort.Strings(names)
 	for _, name := range names {
 		r := refs[name]
-		rn.Add(entity.RefAt(g.system, "ref", id+"/"+name),
+		rn.Add(entity.RefAt(g.system, id, "ref", name),
 			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
 	if head := gitHead(ctx, dir); head != nil {
 		head["repo"] = id
-		rn.Add(entity.RefAt(g.system, "head", id), head)
+		rn.Add(entity.RefAt(g.system, id, "head"), head)
 	}
 
-	// Recent commits: a bounded tip window. Scoped per-repo (git:commit:<repo>/<sha>) — a
+	// Recent commits: a bounded tip window. Scoped per-repo (git.<repo>.commit.<sha>) — a
 	// sha is NOT a sound cross-repo key: repos have independent histories, "the same" commit
 	// diverges under rebase/amend, and the object format (sha1→sha256) changes hashes. So a
 	// commit belongs to its repo; two repos never share one entity.
@@ -315,7 +313,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		if len(c.trailers) > 0 {
 			p["trailers"] = c.trailers
 		}
-		rn.Add(entity.RefAt(g.system, "commit", id+"/"+c.sha), p)
+		rn.Add(entity.RefAt(g.system, id, "commit", c.sha), p)
 	}
 	return rn, nil
 }
@@ -355,7 +353,7 @@ func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) 
 	return refs, nil
 }
 
-// gitHead returns the git:head payload, or nil for an unborn repo (no HEAD sha yet).
+// gitHead returns the git.<repo>.head payload, or nil for an unborn repo (no HEAD sha yet).
 func gitHead(ctx context.Context, dir string) entity.Obj {
 	sha, err := gitCmd(ctx, dir, "rev-parse", "HEAD")
 	if err != nil {

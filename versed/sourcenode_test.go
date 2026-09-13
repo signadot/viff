@@ -15,8 +15,8 @@ import (
 
 // A source's install takes the nodes its claims name for its installer, like a package's address:
 // what it reflects beneath them is owned through that one record and carries none of its own,
-// somebody else may not write it, and somebody else may not install a source over the same node
-// — while the installer may, for a second repository.
+// somebody else may not write it, and somebody else may not install a source over the same node.
+// A second repository is a second node, so anybody may install a source over that.
 func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	requireGit(t)
 	raw := entitytest.Store(t)
@@ -32,7 +32,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp := postAs(t, as, ts.URL+"/sources", "application/tony", string(body))
+		resp := postAs(t, as, ts.URL+"/sources?allow-overlap=true", "application/tony", string(body))
 		defer resp.Body.Close()
 		msg, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(msg)
@@ -57,7 +57,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		}
 	}
 
-	head := entity.RefAt(source.GitSystem, "head", baseOf(first))
+	head := entity.RefAt(source.GitSystem, baseOf(first), "head")
 	waitForRef(t, raw, head)
 	if _, ok := ownerOfRecord(t, raw, head); ok {
 		t.Fatalf("a reflected entity has an owner record of its own")
@@ -71,14 +71,19 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		t.Fatalf("bob's write to a reflected entity = %s", resp.Status)
 	}
 
-	// Bob may not install a source over a node alice owns, and is told who does.
-	code, msg := install("bob@example.com", "bobs", repoWithCommit(t))
+	// Bob may not install a source over a node alice owns, and is told who does — even past the
+	// overlap refusal, which is the operator's to waive and not the owner's.
+	code, msg := install("bob@example.com", "bobs", first)
 	if code != http.StatusForbidden || !strings.Contains(msg, "installing a source that owns it") || !strings.Contains(msg, "alice@example.com") {
 		t.Fatalf("bob's install over alice's node = %d: %s", code, msg)
 	}
-	// Alice may, for a second repository beneath the same node.
-	if code, msg := install("alice@example.com", "second", repoWithCommit(t)); code != http.StatusCreated {
-		t.Fatalf("alice's second install = %d: %s", code, msg)
+	// Another repository is another node, and bob takes it.
+	other := repoWithCommit(t)
+	if code, msg := install("bob@example.com", "bobs", other); code != http.StatusCreated {
+		t.Fatalf("bob's install of another repository = %d: %s", code, msg)
+	}
+	if o, ok := ownerOfRecord(t, raw, entity.RefAt(source.GitSystem, baseOf(other))); !ok || o != "bob@example.com" {
+		t.Fatalf("bob's repository is owned by %q (record %v)", o, ok)
 	}
 }
 

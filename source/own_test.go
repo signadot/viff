@@ -278,7 +278,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git declares a claim that does not parse: %v", err)
 	}
-	for _, ref := range []string{`git.ref."A/main"`, "git.head.A", `git.commit."A/abc123"`} {
+	for _, ref := range []string{"git.A.ref.main", "git.A.head", "git.A.commit.abc123"} {
 		// The place claimed is the ENTITY, since git claims no path — which is what makes a
 		// --forget on it exactly the removal it has always been.
 		places := source.Claimed(claims, mustRef(t, ref))
@@ -288,7 +288,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	}
 	// And it does not claim a neighbour's — which is what bounds a --forget removal to the
 	// slice this registration was proved to own.
-	for _, ref := range []string{"git.ref.B/main", "git.head.B"} {
+	for _, ref := range []string{"git.B.ref.main", "git.B.head", "git.A-extras.head"} {
 		if places := source.Claimed(claims, mustRef(t, ref)); len(places) != 0 {
 			t.Fatalf("%s belongs to another repo but is claimed at %v", ref, places)
 		}
@@ -334,8 +334,8 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 		}
 	}
 	// The hook a git source installs hints in its own system, or the hint reaches nothing.
-	if got := g.HeadRef("verse").String(); got != "mirror.head.verse" {
-		t.Fatalf("git HeadRef = %q", got)
+	if got := g.RepoRef("verse").String(); got != "mirror.verse" {
+		t.Fatalf("git RepoRef = %q", got)
 	}
 	// And two systems are provably disjoint with nothing else said.
 	plain := source.NewGit()

@@ -56,7 +56,7 @@ type Config struct {
 	// drawn by whoever runs them rather than by how GitHub organises itself. Two deployments
 	// sharing `github` is the ordinary case and needs only disjoint claims; one that wants no
 	// coordination at all takes a system of its own, and two systems are disjoint on the first
-	// segment. It is also the answer to a second GitHub instance, where `org/repo#42` is unique
+	// segment. It is also the answer to a second GitHub instance, where `org/repo` #42 is unique
 	// within a host and not across two. See docs/reference/sourced.md under `github`.
 	System string
 	// Settled is how many recently-closed issues and pull requests each repository keeps
@@ -161,13 +161,6 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		if !ok || org == "" || name == "" || strings.Contains(name, "/") {
 			return nil, fmt.Errorf("github: %q is not a repository — want <org>/<name>", r)
 		}
-		// `#` separates a repository from an item number in every id this source writes, and
-		// the ownership claim `<org>/<name>#*` is a prefix comparison over exactly that. A
-		// repository carrying one would address something it does not name.
-		if strings.ContainsAny(r, "#:") {
-			return nil, fmt.Errorf("github: repository %q contains # or :, which are what its "+
-				"entity ids and its ownership claim are built out of", r)
-		}
 		g.repos = append(g.repos, r)
 	}
 	sort.Strings(g.repos)
@@ -186,69 +179,81 @@ func (g *GitHub) System() string { return g.system }
 // Repos is the set of repositories this source reflects.
 func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
 
-// Owns is the ownership claim an install proves disjointness with: one per kind per repository,
-// and the kinds are NAMED rather than globbed.
+// Owns is the ownership claim an install proves disjointness with: ONE PLACE PER REPOSITORY,
+// `github.<org>.<name>`, with no glob in it.
 //
-// A `github:*:<org>/<name>#*` claim would be shorter and would work today. It would also refuse
-// one particular future install, and it is the one this design is most likely to want: a source
-// reflecting PEOPLE, claiming `github:user:*` and nothing else, since a GitHub user belongs to
-// GitHub rather than to any repository. Against a kind-globbed claim that is refused — a `*`
-// kind is disjoint from nothing, and the user claim's id is a bare `*`, disjoint from nothing
-// either — while against these it is disjoint on the kind segment and installs clean.
-//
-// The `#` is load-bearing in the way Linear's hyphen is: `signadot/verse#*` does not claim
-// `signadot/verse2#1`, because that id does not start with `signadot/verse#`. A single glob
-// `signadot/verse*` would, which is not a false alarm but a real overclaim, and one that would
-// make two perfectly disjoint repositories refuse to install alongside each other.
-//
-// THE LIST GROWS WITH THE CONNECTOR, and must not run ahead of it. A source claims what it
-// writes and no more — claiming a kind this build does not reflect refuses a neighbour over
-// entities nobody is writing. Discussions and Actions runs add theirs when they arrive.
+// A repository is two levels of the address because it is two levels at GitHub, and that is
+// what makes the claim a place rather than a pattern over ids: everything this source writes
+// about `signadot/verse` stands under `github.signadot.verse`, and `signadot/verse2` is a
+// different place rather than an id that happens to share a prefix. A literal place is also
+// what the install takes an owner record at (versed's addSource).
 func (g *GitHub) Owns() []source.Own {
-	out := make([]source.Own, 0, 6*len(g.repos))
+	out := make([]source.Own, 0, len(g.repos))
 	for _, r := range g.repos {
-		out = append(out,
-			source.Own{At: g.system + ".repo." + r},
-			source.Own{At: g.system + ".issue." + r + "#*"},
-			source.Own{At: g.system + ".pr." + r + "#*"},
-			// A run's id is GitHub's own number under the repository, so it is scoped the way
-			// git scopes a ref rather than with the `#` the numbered kinds share.
-			source.Own{At: g.system + ".run." + r + "/*"},
-			source.Own{At: g.system + ".discussion." + r + "#*"},
-			source.Own{At: g.system + ".comment." + r + "#*"})
+		out = append(out, source.Own{At: g.RepoRef(r).String()})
 	}
 	return out
 }
 
-// RepoRef is the ref that targets one repository: a reconcile of it reconciles that repository
-// whole, which is what a hint about a push or a repository event names.
+// place is the address segments a repository's entities stand under, followed by more.
+func (g *GitHub) place(repo string, more ...string) []string {
+	org, name, _ := strings.Cut(repo, "/")
+	return append([]string{g.system, org, name}, more...)
+}
+
+// cover is a cover under one repository's place.
+func (g *GitHub) cover(repo string, more ...string) entity.Pattern {
+	return source.Cover(g.place(repo, more...)...)
+}
+
+// RepoRef is the place one repository's entities stand under: a reconcile of it reconciles that
+// repository whole, which is what a hint about a push or a repository event names.
 func (g *GitHub) RepoRef(repo string) entity.Ref {
-	return entity.RefAt(g.system, "repo", repo)
+	return entity.RefAt(g.place(repo)...)
+}
+
+// SummaryRef is the entity describing the repository itself — its default branch and tip.
+func (g *GitHub) SummaryRef(repo string) entity.Ref {
+	return entity.RefAt(g.place(repo, "repo")...)
 }
 
 // RunRef is the ref of one workflow run.
 func (g *GitHub) RunRef(repo string, id int64) entity.Ref {
-	return entity.RefAt(g.system, "run", repo+"/"+strconv.FormatInt(id, 10))
+	return entity.RefAt(g.place(repo, "run", strconv.FormatInt(id, 10))...)
 }
 
 // CommentRef is the ref of one comment: the item it is on, then GitHub's own id.
 //
-// Under the item rather than beside it, so a charter reading "the comments on #42" is a prefix
-// of one address rather than a payload predicate over the whole repository — and so the
-// ownership claim is the same `<org>/<name>#*` the numbered kinds already share.
+// Under the item's number rather than beside it, so a charter reading "the comments on #42" is
+// a place — `github.<org>.<name>.comment."42".*` — rather than a payload predicate over the
+// whole repository. The number is GitHub's one space for issues and pull requests alike, so it
+// names the item without saying which.
 func (g *GitHub) CommentRef(repo string, number int, id int64) entity.Ref {
-	return entity.RefAt(g.system, "comment",
-		repo+"#"+strconv.Itoa(number)+"/"+strconv.FormatInt(id, 10))
-
+	return entity.RefAt(g.place(repo, "comment", strconv.Itoa(number), strconv.FormatInt(id, 10))...)
 }
 
-// ItemRef is the ref of one issue or pull request.
+// ItemRef is the ref of one issue, pull request or discussion.
 func (g *GitHub) ItemRef(kind, repo string, number int) entity.Ref {
-	return entity.RefAt(g.system, kind, repo+"#"+strconv.Itoa(number))
+	return entity.RefAt(g.place(repo, kind, strconv.Itoa(number))...)
 }
 
-// Reflect reads what `<system>:*` should hold. A zero ref reads every repository; a repo ref
-// reads that repository whole; an issue or pull-request ref reads just that item.
+// under reads a ref as a place under one of this source's repositories: the repository, and the
+// segments below its place. ok is false for a ref that is not under one it reflects.
+func (g *GitHub) under(ref entity.Ref) (repo string, rest []string, ok bool) {
+	segs := ref.Segs()
+	if len(segs) < 3 || segs[0] != g.system {
+		return "", nil, false
+	}
+	repo = segs[1] + "/" + segs[2]
+	if !g.reflects(repo) {
+		return "", nil, false
+	}
+	return repo, segs[3:], true
+}
+
+// Reflect reads what `<system>.*` should hold. A zero ref reads every repository; a ref at a
+// repository's place reads that repository whole; an issue or pull-request ref reads just that
+// item.
 func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection, error) {
 	if ref.System() != "" && ref.System() != g.system {
 		// Another source's slice. No targets means an empty reflection with NO covers, which
@@ -276,20 +281,25 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 	return out, nil
 }
 
-// targetRepos reads a ref as "which repositories": all of them for a zero ref, else the one it
-// names, and none at all for a repository this source does not reflect.
+// targetRepos reads a ref as "which repositories": all of them for a ref naming no place under
+// the system, those of one organisation for a ref at an organisation, else the one repository
+// the ref is under — and none at all for a place this source does not reflect.
 func (g *GitHub) targetRepos(ref entity.Ref) []string {
-	if ref.ID() == "" {
+	segs := ref.Segs()
+	if len(segs) < 2 {
 		return g.repos
 	}
-	repo := ref.ID()
-	if i := strings.Index(repo, "#"); i >= 0 {
-		repo = repo[:i]
-	}
-	for _, r := range g.repos {
-		if r == repo {
-			return []string{r}
+	if len(segs) == 2 {
+		var out []string
+		for _, r := range g.repos {
+			if org, _, _ := strings.Cut(r, "/"); org == segs[1] {
+				out = append(out, r)
+			}
 		}
+		return out
+	}
+	if repo, _, ok := g.under(ref); ok {
+		return []string{repo}
 	}
 	return nil
 }
@@ -307,39 +317,29 @@ type targetedItem struct {
 }
 
 func (g *GitHub) targetItem(ref entity.Ref) (targetedItem, bool) {
-	if ref.Kind() != "issue" && ref.Kind() != "pr" {
+	repo, rest, ok := g.under(ref)
+	if !ok || len(rest) != 2 || (rest[0] != "issue" && rest[0] != "pr") {
 		return targetedItem{}, false
 	}
-	repo, num, ok := strings.Cut(ref.ID(), "#")
-	if !ok {
-		return targetedItem{}, false
-	}
-	n, err := strconv.Atoi(num)
+	n, err := strconv.Atoi(rest[1])
 	if err != nil || n <= 0 {
 		return targetedItem{}, false
 	}
-	for _, r := range g.repos {
-		if r == repo {
-			return targetedItem{kind: ref.Kind(), repo: repo, number: n}, true
-		}
-	}
-	return targetedItem{}, false
+	return targetedItem{kind: rest[0], repo: repo, number: n}, true
 }
 
 // reflectItem answers for ONE item, and covers exactly it.
 //
 // THE COVER IS THE WHOLE OF WHY THIS IS SEPARATE. A targeted pass that answered with the live
-// cover — `{repo: X, state: open}` — while carrying one entity would tombstone every other open
-// issue in the repository, which is the one mistake in this connector that destroys a slice. So
-// the cover names the item by the fields the payload carries, and a pass about #42 can say
-// nothing at all about #43.
+// cover — every open issue of the repository — while carrying one entity would tombstone every
+// other open issue in it, which is the one mistake in this connector that destroys a slice. So
+// the cover is the item's own address, and a pass about #42 can say nothing at all about #43.
 //
 // An item GitHub no longer has is covered and absent, which tombstones it — a deleted or
 // transferred issue, which is exactly what a targeted pass should conclude.
 func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflection, error) {
-	mine := entity.Obj{"repo": t.repo, "number": t.number}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: t.kind, Predicate: mine},
+		g.cover(t.repo, t.kind, strconv.Itoa(t.number)),
 	}}
 	if t.kind == "pr" {
 		var p pull
@@ -368,8 +368,8 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflec
 	return rn, nil
 }
 
-// reflectRepo reads one repository whole. Everything it returns is scoped by the `repo` field —
-// including the covers — so one repository's pass never tombstones another's.
+// reflectRepo reads one repository whole. Everything it returns stands under the repository's
+// place — covers included — so one repository's pass never tombstones another's.
 //
 // TWO COVERS PER SET-SHAPED KIND, which is the decision this connector exists to make. Neither
 // precedent fits: git keeps history (commits covered by nothing, so they stand forever) and
@@ -378,23 +378,27 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (source.Reflec
 // covered complete and the settled set is covered as a window. An item that closes appears in
 // the settled half carrying its new state, ages, and leaves.
 //
-// Both halves must be covered or neither works. Covering only `{repo}` and answering with the
+// Both halves must be covered or neither works. Covering the whole kind and answering with the
 // live set plus a recent tail would tombstone the whole back catalogue on the first pass;
 // covering only the live half would leave a husk per item ever closed while this source watched,
 // which is the warehouse arriving slowly rather than at once.
 func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflection, error) {
-	mine := entity.Obj{"repo": repo}.Payload()
-	open := entity.Obj{"repo": repo, "state": "open"}.Payload()
-	closed := entity.Obj{"repo": repo, "state": "closed"}.Payload()
+	open := entity.Obj{"state": "open"}.Payload()
+	closed := entity.Obj{"state": "closed"}.Payload()
+	half := func(kind string, state entity.Payload) entity.Pattern {
+		c := g.cover(repo, kind, "*")
+		c.Predicate = state
+		return c
+	}
 	// Declared BEFORE the read and unconditionally, as git's and Linear's are: a repository
-	// whose every issue was closed must still cover `{repo, state: open}`, or the ones it no
-	// longer has open would stand forever.
+	// whose every issue was closed must still cover its open issues, or the ones it no longer
+	// has open would stand forever.
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: "repo", Predicate: mine},
-		{System: g.system, Kind: "issue", Predicate: open},
-		{System: g.system, Kind: "issue", Predicate: closed},
-		{System: g.system, Kind: "pr", Predicate: open},
-		{System: g.system, Kind: "pr", Predicate: closed},
+		g.cover(repo, "repo"),
+		half("issue", open),
+		half("issue", closed),
+		half("pr", open),
+		half("pr", closed),
 		// Runs are a WINDOW and nothing else — Slack's messages rather than issues' two
 		// halves. A completed run is never interesting again and an unbounded stream of them
 		// is the warehouse a source is not supposed to be, so the last `-runs` created are
@@ -409,20 +413,20 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		// waiting on that run never sees its conclusion. That is this connector's version of
 		// Slack's aged-out thread parent, and the lever is the same — `-runs` wants to be
 		// comfortably more than a repository creates while its longest job runs.
-		{System: g.system, Kind: "run", Predicate: mine},
+		g.cover(repo, "run", "*"),
 		// Comments are a WINDOW, and Slack's messages are the precedent rather than issues' two
 		// halves: a conversation is an unbounded stream, and an entity-verse holding all of one
 		// is the warehouse a source is not supposed to be. The most recently updated `-comments`
 		// are kept and what falls out is tombstoned — which also makes a comment DELETED inside
 		// the window go, where an uncovered one would stand forever.
-		{System: g.system, Kind: "comment", Predicate: mine},
+		g.cover(repo, "comment", "*", "*"),
 	}}
 
 	r, sha, err := g.api.readRepo(ctx, repo)
 	if err != nil {
 		return source.Reflection{}, err
 	}
-	rn.Add(g.RepoRef(repo), repoPayload(repo, r, sha))
+	rn.Add(g.SummaryRef(repo), repoPayload(repo, r, sha))
 
 	// The live set, to exhaustion. Bounded by maxOpen, which errors rather than truncating.
 	openIssues, err := g.api.listIssues(ctx, repo, "open", "", g.maxOpen, 0)
@@ -475,8 +479,8 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (source.Reflectio
 		g.log("github: %s: reflecting no discussions this pass: %v", repo, err)
 	} else {
 		rn.Covers = append(rn.Covers,
-			entity.Pattern{System: g.system, Kind: "discussion", Predicate: open},
-			entity.Pattern{System: g.system, Kind: "discussion", Predicate: closed})
+			half("discussion", open),
+			half("discussion", closed))
 		for _, d := range ds {
 			rn.Add(g.ItemRef("discussion", repo, d.Number), discussionPayload(repo, d))
 		}
@@ -658,7 +662,7 @@ func issuePayload(repo string, i issue) entity.Obj {
 
 // pullPayload is what a charter reads a pull request as.
 //
-// `headSha` is the join to a git source: a `git:commit:<repo>/<sha>` is addressed by the same
+// `headSha` is the join to a git source: a `git.<repo>.commit.<sha>` is addressed by the same
 // sha, so "the commit this proposes" is a field read rather than a key anybody minted.
 func pullPayload(repo string, p pull) entity.Obj {
 	out := entity.Obj{
@@ -713,7 +717,7 @@ func runPayload(repo string, r workflowRun) entity.Obj {
 		"workflow": r.Name, "event": r.Event, "conclusion": r.Conclusion,
 		"branch": r.HeadBranch,
 		// The join to a git source and to the pull request this ran for, both by the same
-		// field: a `git:commit:<repo>/<sha>` is addressed by this sha, and so is a PR's head.
+		// field: a `git.<repo>.commit.<sha>` is addressed by this sha, and so is a PR's head.
 		"headSha": r.HeadSHA, "url": r.HTMLURL,
 		"startedAt": r.CreatedAt, "updatedAt": r.UpdatedAt,
 	} {
@@ -730,9 +734,9 @@ func runPayload(repo string, r workflowRun) entity.Obj {
 // straight through, because it is what the covers are spelled with and what a rule about "an
 // open thing" matches — one vocabulary across the three set-shaped kinds rather than two.
 //
-// A discussion's number space is its OWN: `github:issue:org/repo#1` and
-// `github:discussion:org/repo#1` are different things with the same number, which is fine
-// because a ref is (system, kind, id) — and worth saying because `#1` alone reads like an
+// A discussion's number space is its OWN: `github.<org>.<name>.issue."1"` and
+// `github.<org>.<name>.discussion."1"` are different things with the same number, which is fine
+// because the kind is a level of the address — and worth saying because `#1` alone reads like an
 // identifier and is not one.
 func discussionPayload(repo string, d discussion) entity.Obj {
 	state := "open"

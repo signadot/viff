@@ -141,7 +141,7 @@ reads: [git, signadot.comment-drift]
       value: !not.has-path base
   action:
     patch:
-      base: !get-path {at: [git, ref, "signadot/master"], path: sha}
+      base: !get-path {at: [git, signadot, ref, master], path: sha}
 ---
 # 1c. …and the proposal says what it is about: the review's report for the range that ends at
 # its base, which is the review that proposed it unless master moved between the answer and the
@@ -164,7 +164,7 @@ reads: [git, signadot.comment-drift]
   stratum: reflected
   condition:
     subject:
-      path: [git, ref, "signadot/master"]
+      path: [git, signadot, ref, master]
   action:
     derive:
     - path: [signadot, pr, train]
@@ -188,7 +188,7 @@ reads: [git, signadot.comment-drift]
       - !not.has-path stage
       - !let
         let:
-        - tip: !get-path {at: [git, ref, "signadot/master"], path: sha}
+        - tip: !get-path {at: [git, signadot, ref, master], path: sha}
         - fresh: !list-paths
             at: [signadot, pr, proposal, "*"]
             value: !not.has-path state
@@ -231,7 +231,7 @@ reads: [git, signadot.comment-drift]
       - !not {branches: []}
       - !not.has-path stage
       - !let
-        let: [{tip: !get-path {at: [git, ref, "signadot/master"], path: sha}}]
+        let: [{tip: !get-path {at: [git, signadot, ref, master], path: sha}}]
         in: {sha: .[tip]}
   action:
     patch:
@@ -273,7 +273,7 @@ reads: [git, signadot.comment-drift]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, ref, "signadot/master"], path: sha}}]
+        let: [{tip: !get-path {at: [git, signadot, ref, master], path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:

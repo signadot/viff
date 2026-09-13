@@ -39,5 +39,5 @@ To pin an exact ref rather than only "finer than the repository", add a `verseWa
 top level of the file:
 
 ```json
-{ "event": "issues", "verseWant": "github.issue.\"acme/app#42\"", "request": { ... } }
+{ "event": "issues", "verseWant": "github.acme.app.issue.\"42\"", "request": { ... } }
 ```

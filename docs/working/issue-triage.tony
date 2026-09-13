@@ -100,12 +100,12 @@ reads: [ !verse-path [git-issue] ]
   stratum: reflected
   condition:
     subject:
-      path: [git-issue, issue, "*"]
+      path: [git-issue, verse, issue, "*"]
       value: !let
         let:
         - judged: !list-paths {at: [verse-dev, triage, next, "*"], path: judged}
         in: !and
-        - {repo: verse, status: open}
+        - {status: open}
         - !not.or .[judged]
   action:
     derive:

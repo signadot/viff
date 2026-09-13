@@ -120,7 +120,7 @@ reads: [ !verse-path [git] ]
       value: !let
         let:
         - tip: !get-path
-            at: [git, head, verse]
+            at: [git, verse, head]
             path: sha
         in:
           stage: idle
@@ -129,7 +129,7 @@ reads: [ !verse-path [git] ]
     patch:
       stage: claimed
       covering: !get-path
-        at: [git, head, verse]
+        at: [git, verse, head]
         path: sha
 ---
 # 2. …and the range it claimed becomes an entity, so the review has a subject of its own.
@@ -475,7 +475,7 @@ reads: [git, verse-dev.drift]
       value: !not.has-path base
   action:
     patch:
-      base: !get-path {at: [git, head, verse], path: sha}
+      base: !get-path {at: [git, verse, head], path: sha}
 ---
 # 1c. …and the proposal says what it is about, so the docket asks a real question rather than
 # `whether open` about a ref name.
@@ -536,7 +536,7 @@ reads: [git, verse-dev.drift]
       - !not.has-path decided
       - !let
         let:
-        - tip: !get-path {at: [git, head, verse], path: sha}
+        - tip: !get-path {at: [git, verse, head], path: sha}
         - fresh: !list-paths
             at: [verse-dev, merge, proposal, "*"]
             value: !not.has-path state
@@ -582,7 +582,7 @@ reads: [git, verse-dev.drift]
       - !not {branches: []}
       - !not.has-path decided
       - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: [git, verse, head], path: sha}}]
         in: {sha: .[tip]}
   gates:
   - name: merge-to-main
@@ -650,7 +650,7 @@ reads: [git, verse-dev.drift]
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: [git, verse, head], path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:

@@ -58,12 +58,14 @@ rows its rules derive beneath it are owned through the address and need none of 
 Installing at an address somebody else owns is refused, with the check's words.
 
 **A source takes the nodes its claims name, the same way.** A claim in a source's `owns` names
-a node: its levels up to the first glob — `git.*.verse/*` names `git`, and `git.head.verse` names
-itself. Installing the source writes an owner record at each node for the installer, and what the
-source reflects beneath is owned through it with no record of its own. Ownership here is not
-single-writership: two sources whose claims are proven disjoint may still share a node, and the
-node decides who answers for what is reflected beneath it — so a source over a node somebody else
-owns is refused, and two sources sharing one share an installer.
+a node: its levels up to the first glob. The shipped sources claim a repository's place, so the
+node is the place itself — `git.verse`, `git-issue.verse`, `github.signadot.verse` — and a
+glob such as `linear.issue.ENG-*` names `linear.issue`. Installing the source writes an owner
+record at each node for the installer, and what the source reflects beneath is owned through it
+with no record of its own. Ownership here is not single-writership: two sources whose claims are
+proven disjoint may still share a node, and the node decides who answers for what is reflected
+beneath it — so a source over a node somebody else owns is refused, and two sources sharing one
+share an installer.
 
 ```tony
 # verse.perms.node."verse.task.instance.run-1"

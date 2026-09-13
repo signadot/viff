@@ -64,7 +64,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, baseOf(dir), "head"))
 
 	// …and removing it STOPS the reflector. A reflector outliving its registration is a writer
 	// on a slice nothing claims — the second writer the install check exists to prevent,
@@ -103,7 +103,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
+	head := entity.RefAt(source.GitSystem, baseOf(dir), "head")
 	waitForRef(t, store, head)
 	ts.Close()
 	first.stopSource(source.Ref("git", "local"))
@@ -128,8 +128,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	}
 	// And it is really reflecting rather than merely running: the restored reflector's own
 	// first pass picks up what happened while it was gone.
-	waitForRef(t, store, entity.RefAt(
-		source.GitSystem, "ref", baseOf(dir)+"/while-down"))
+	waitForRef(t, store, entity.RefAt(source.GitSystem, baseOf(dir), "ref", "while-down"))
 }
 
 // What a pass writes about ITSELF, and what it deliberately does not.
@@ -154,7 +153,7 @@ func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
 	defer srv.stopSource(ref)
 
 	// The first pass wrote the repo, so it stamps the cursor.
-	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, baseOf(dir), "head"))
 	deadline := time.Now().Add(5 * time.Second)
 	var stamped string
 	for time.Now().Before(deadline) && stamped == "" {
@@ -321,11 +320,11 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, "head", baseOf(dir)))
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, baseOf(dir), "head"))
 
 	gitIn(t, dir, "branch", "hinted")
 	hint := ts.URL + "/sources/git/local/hint?ref=" +
-		url.QueryEscape(source.HeadRef(baseOf(dir)).String())
+		url.QueryEscape(source.RepoRef(baseOf(dir)).String())
 	resp, err := ts.Client().Post(hint, "", nil)
 	if err != nil {
 		t.Fatalf("hint: %v", err)
@@ -333,8 +332,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("hint = %s, want 204", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(
-		source.GitSystem, "ref", baseOf(dir)+"/hinted"))
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, baseOf(dir), "ref", "hinted"))
 
 	// A hint naming nothing is a full resync, which is what a delivery that could not say which
 	// slice asks for.
@@ -343,8 +341,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 		resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bare hint = %v (%v)", resp.Status, err)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(
-		source.GitSystem, "ref", baseOf(dir)+"/resynced"))
+	waitForRef(t, srv.Store, entity.RefAt(source.GitSystem, baseOf(dir), "ref", "resynced"))
 }
 
 // What a hint may NOT do, and what it must not do silently.
@@ -421,7 +418,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	}
 
 	install("local")
-	head := entity.RefAt(source.GitSystem, "head", baseOf(dir))
+	head := entity.RefAt(source.GitSystem, baseOf(dir), "head")
 	waitForRef(t, srv.Store, head)
 
 	// Bare: refused, and the message names both flags, because neither default survives
@@ -485,13 +482,13 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	srv := testServer(t)
 	ref := source.Ref("git", "a")
 	e := source.Entity{Name: "a", System: "git", URL: "http://x:1",
-		Owns: []source.Own{{At: "git.*.A/*"}}}
+		Owns: []source.Own{{At: "git.A"}}}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "a", "system": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
 
-	mine := entity.RefAt("git", "ref", "A/main")
-	theirs := entity.RefAt("git", "ref", "B/main")
+	mine := entity.RefAt("git", "A", "ref", "main")
+	theirs := entity.RefAt("git", "B", "ref", "main")
 	entitytest.Set(t, srv.Store, mine, entity.Obj{"repo": "A"}.Payload())
 	entitytest.Set(t, srv.Store, theirs, entity.Obj{"repo": "B"}.Payload())
 
@@ -499,8 +496,9 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Ref != mine || !got[0].IsEntity() {
-		t.Fatalf("reflectedBy = %v, want just the whole of %v", got, mine)
+	// A literal claim is its own place: the repository's node, whatever stands beneath it.
+	if len(got) != 1 || got[0].Ref != entity.RefAt("git", "A") || !got[0].IsEntity() {
+		t.Fatalf("reflectedBy = %v, want just the place git.A that holds %v", got, mine)
 	}
 }
 

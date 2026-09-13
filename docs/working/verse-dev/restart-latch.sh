@@ -37,7 +37,7 @@ boot() {
 }
 # A PUSH, not a commit: the review's unit is the range a push leaves behind, so what the flow
 # reacts to is the tip moving. The cursor is seeded once, standing on the first tip.
-land()  { v data git head verse --put "{repo: verse, sha: $1}" >/dev/null; }
+land()  { v data git verse head --put "{repo: verse, sha: $1}" >/dev/null; }
 seed()  { v data verse-dev.drift.at --put "{sha: $1, stage: idle}" >/dev/null; }
 state() { v data "verse-dev.drift.range.$1" 2>/dev/null | sed -n 's/^stage: //p'; }
 gathered() {  # <sha> <seconds>

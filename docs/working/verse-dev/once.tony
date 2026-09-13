@@ -26,4 +26,4 @@ reads: [ !verse-path [git] ]
       value: !not.has-path sha
   action:
     patch:
-      sha: !get-path { at: [git, head, verse], path: sha }
+      sha: !get-path { at: [git, verse, head], path: sha }

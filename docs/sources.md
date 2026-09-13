@@ -171,9 +171,10 @@ separated slice names it. That is why it is a flag rather than the shape.
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
 read; an install compares two *declarations* with nothing in hand. Addresses compare
-statically; predicates do not. So `owns` is an address with `*` allowed — `{at: "git.*.verse/*"}` —
-with id globs restricted to a literal prefix and a trailing `*`, which makes disjointness a
-string comparison where general glob disjointness would be automata intersection. Two claims are
+statically; predicates do not. So `owns` is an address — `{at: "git.verse"}`, a repository's
+place — with `*` allowed at a level and a level's glob restricted to a literal prefix and a
+trailing `*`, which makes disjointness a string comparison where general glob disjointness would
+be automata intersection. Two claims are
 disjoint when any segment is; a `*` segment is disjoint from nothing, so `git.*.*` claims the
 lot and can be proved apart from nothing in its own system.
 
@@ -327,10 +328,10 @@ a project through an owner. That is the honest shape of an entity nobody owns th
 org- or user-owned and spans repositories, so no per-repo source can claim it as an address
 either — which is what makes this a limit of the address grammar rather than a quirk of one data
 model. A GitHub *user* is a third variant and not the same one: it has exactly one owner and that
-owner is the system, so the way out is not a slot but a source of its own, claiming
-`github.user.*` and nothing else. Neither kind is reflected today
-([working/gh-source-residual.md](working/gh-source-residual.md)); both are why the GitHub source
-names its kinds in `owns` rather than globbing them, which is what leaves room for that install.
+owner is the system, so the way out is not a slot but a source of its own, in a system of its
+own: under `github.` the level after the system is an organisation, and a people source claiming
+a level there would be claiming a name GitHub could give an organisation. Neither kind is
+reflected today ([working/gh-source-residual.md](working/gh-source-residual.md)).
 
 ### The window, and why Slack is not git
 
@@ -348,8 +349,8 @@ knowable. So the same kind is covered **twice**:
 
 ```tony
 covers:
-- {path: [github, issue, *], value: {repo: signadot/verse, state: open}}
-- {path: [github, issue, *], value: {repo: signadot/verse, state: closed}}
+- {path: [github, signadot, verse, issue, "*"], value: {state: open}}
+- {path: [github, signadot, verse, issue, "*"], value: {state: closed}}
 ```
 
 The first says the answer holds *every* open issue, so one that has gone absent is gone. The
@@ -377,8 +378,9 @@ and is SDLC-native.
 - Reflection is **cursorless**, because git is content-addressed: `git for-each-ref` yields a
   `ref→sha` map, and comparing shas against the stored entities *is* the level-triggered diff —
   no since-token, no missed-event window.
-- It is **multi-repo native**: a repo is registered under an id, every entity carries it, and a
-  pass is per-repo, so one repo's reconcile never tombstones another's refs.
+- It is **multi-repo native**: a repo is registered under an id, the id is a level of every
+  address (`git.<repo>.ref.<name>`, `git.<repo>.head`), and a pass is per-repo, so one repo's
+  reconcile never tombstones another's refs.
 - It reflects git-*aware* state — branch, HEAD, dirty, ahead/behind — which is what SDLC flows
   react to ("commit landed on main", "branch deleted", "tag created"), not "a byte changed". An
   index, not a warehouse: a task needing a diff follows the ref into the real repo.

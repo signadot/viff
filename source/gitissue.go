@@ -22,7 +22,8 @@ import (
 const GitIssueSystem = "git-issue"
 
 // GitIssue reflects the issues `git issue` keeps INSIDE a git repository into the
-// git-issue:* slice — read-only reflection, the inbound half of a Source (docs/sources.md).
+// git-issue.* slice — `git-issue.<repo>.issue.<id>` per issue and `git-issue.<repo>.repo` for
+// the tracker's counts, the repository a level of the address as it is for git — read-only reflection, the inbound half of a Source (docs/sources.md).
 //
 // It is a separate source from Git rather than more kinds on it, because the two answer
 // different questions about the same directory. Git reflects what the repository IS — refs,
@@ -59,7 +60,7 @@ func NewGitIssue() *GitIssue {
 	return &GitIssue{repos: newRepoSet(), bodies: true, system: GitIssueSystem}
 }
 
-// SetSystem points this source at a slice other than `git-issue:*`. Call it before serving.
+// SetSystem points this source at a slice other than `git-issue.*`. Call it before serving.
 // The system is a segment of the address and of the route that serves the registration, so
 // neither punctuation survives.
 func (g *GitIssue) SetSystem(system string) error {
@@ -98,22 +99,19 @@ func (g *GitIssue) AddMirror(ctx context.Context, id, remote, dir string) (strin
 // System is the owned slice.
 func (g *GitIssue) System() string { return g.system }
 
-// Owns is the ownership claim an install checks against the other installed sources.
-//
-// TWO ENTRIES PER REPO, for the reason git's Owns spells out: issues are `<repo>/<xidr>` but
-// the repo summary is the bare `<repo>`, and the single glob `<id>*` that covers both would
-// also claim `<id>-extras/…` and make two disjoint repositories refuse to install together.
+// Owns is the ownership claim an install checks against the other installed sources: one place
+// per repository, `git-issue.<repo>`, for the reason git's Owns spells out.
 func (g *GitIssue) Owns() []Own {
 	ids := g.repos.ids()
-	out := make([]Own, 0, 2*len(ids))
+	out := make([]Own, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, Own{At: g.system + ".*." + id + "/*"}, Own{At: g.system + ".repo." + id})
+		out = append(out, Own{At: entity.RefAt(g.system, id).String()})
 	}
 	return out
 }
 
-// RepoRef is the ref that targets one repository: a reconcile of it reconciles that
-// repository's whole tracker, since the pass enumerates refs and is complete. It is what a
+// RepoRef is the place one repository's tracker stands under: a reconcile of it reconciles
+// that repository's whole tracker, since the pass enumerates refs and is complete. It is what a
 // hint names.
 //
 // This source installs no git hook, unlike Git, and the reason is that there is only one
@@ -123,13 +121,14 @@ func (g *GitIssue) Owns() []Own {
 // adds a line to their OWN hook posting to the hint route with this ref. docs/reference/
 // sourced.md carries the line.
 func (g *GitIssue) RepoRef(id string) entity.Ref {
-	return entity.RefAt(g.system, "repo", id)
+	return entity.RefAt(g.system, id)
 }
 
 var _ Source = (*GitIssue)(nil)
 
-// Reflect reads the registered repositories' trackers and returns what git-issue:* should
-// hold. A zero ref reads every repository; a git-issue:* ref reads just the one it names.
+// Reflect reads the registered repositories' trackers and returns what git-issue.* should
+// hold. A zero ref reads every repository; a ref at or under `git-issue.<repo>` reads just that
+// one.
 func (g *GitIssue) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 	var out Reflection
 	targets := g.targets(ref)
@@ -149,25 +148,22 @@ func (g *GitIssue) Reflect(ctx context.Context, ref entity.Ref) (Reflection, err
 	return out, nil
 }
 
-// targets is the repo id→repo set a reconcile should touch: all of them for a zero ref, else
-// the single repository the ref belongs to (the bare id of a git-issue:repo:<id>, or the
-// leading segment of a git-issue:issue:<id>/<xidr>).
+// targets is the repo id→repo set a reconcile should touch: all of them for a ref that names
+// none, else the single repository whose place the ref is at or under.
 func (g *GitIssue) targets(ref entity.Ref) map[string]repo {
-	if ref.System() != g.system || ref.ID() == "" {
+	segs := ref.Segs()
+	if len(segs) < 2 || segs[0] != g.system {
 		return g.repos.all()
 	}
-	id := ref.ID()
-	if ref.Kind() != "repo" {
-		id, _, _ = strings.Cut(ref.ID(), "/")
-	}
+	id := segs[1]
 	if r, ok := g.repos.get(id); ok {
 		return map[string]repo{id: r}
 	}
 	return nil
 }
 
-// reflectRepo reads one repository's tracker whole. Everything it returns is scoped by the
-// `repo` field — including the covers — so one repository's pass never tombstones another's.
+// reflectRepo reads one repository's tracker whole. Everything it returns stands under the
+// repository's place — covers included — so one repository's pass never tombstones another's.
 //
 // ONE COVER PER KIND, complete, and the contrast with the GitHub connector is the decision
 // worth stating. GitHub covers issues twice — the open set complete, the closed set as a
@@ -187,12 +183,12 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 			return Reflection{}, fmt.Errorf("fetching %s: %w", rp.remote, err)
 		}
 	}
-	mine := entity.Obj{"repo": id}.Payload()
 	// Declared BEFORE the read and unconditionally: a repository whose every issue was deleted
-	// must still cover `{repo: id}`, or the ones it no longer has would stand forever.
+	// must still cover `git-issue.<repo>.issue.*`, or the ones it no longer has would stand
+	// forever.
 	rn := Reflection{Covers: []entity.Pattern{
-		{System: g.system, Kind: "repo", Predicate: mine},
-		{System: g.system, Kind: "issue", Predicate: mine},
+		Cover(g.system, id, "repo"),
+		Cover(g.system, id, "issue", "*"),
 	}}
 
 	refs, err := gitIssueRefs(ctx, dir)
@@ -323,10 +319,10 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 			}
 			p["discussion"] = discussion
 		}
-		rn.Add(entity.RefAt(g.system, "issue", id+"/"+xidr), p)
+		rn.Add(entity.RefAt(g.system, id, "issue", xidr), p)
 	}
 
-	rn.Add(g.RepoRef(id), entity.Obj{
+	rn.Add(entity.RefAt(g.system, id, "repo"), entity.Obj{
 		"repo": id, "open": open, "closed": closed, "issues": open + closed,
 	})
 	return rn, nil

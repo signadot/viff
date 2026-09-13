@@ -97,7 +97,7 @@ func TestSourceAddListShow(t *testing.T) {
 	decodeResp(t, sr, &one)
 	owns, _ := one["owns"].([]any)
 	first, _ := owns[0].(map[string]any)
-	if len(owns) != 2 || first["at"] != "git.*.verse/*" {
+	if len(owns) != 1 || first["at"] != "git.verse" {
 		t.Fatalf("show = %+v, want the ownership the probe read", one)
 	}
 
@@ -167,7 +167,7 @@ func TestSourceAddProvesDisjointness(t *testing.T) {
 		t.Fatalf("two sources over one repo = %s, want 409", resp.Status)
 	}
 	body := bodyOf(t, resp)
-	for _, want := range []string{"git.*.verse/*", "verse.sources.git.a", "--allow-overlap"} {
+	for _, want := range []string{"git.verse", "verse.sources.git.a", "--allow-overlap"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the refusal should mention %q, got: %s", want, body)
 		}
@@ -265,7 +265,7 @@ func TestADirSourceIsDescribedInTask(t *testing.T) {
 	sr, _ := ts.Client().Get(ts.URL + "/sources/git/local")
 	var one map[string]any
 	decodeResp(t, sr, &one)
-	if owns, _ := one["owns"].([]any); len(owns) != 2 {
+	if owns, _ := one["owns"].([]any); len(owns) != 1 {
 		t.Fatalf("a dir source should claim its repo: %+v", one)
 	}
 }

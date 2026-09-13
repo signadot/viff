@@ -277,6 +277,15 @@ func (s *Pattern) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["kind"] = ir.FromString(string(s.Kind))
 	}
 
+	// Field: Path
+	if len(s.Path) > 0 {
+		slice := make([]*ir.Node, len(s.Path))
+		for i, v := range s.Path {
+			slice[i] = v
+		}
+		irMap["path"] = ir.FromSlice(slice)
+	}
+
 	// Field: Op
 	if txt, err := s.Op.MarshalText(); err != nil {
 		return nil, fmt.Errorf("failed to marshal field %q: %w", "Op", err)
@@ -358,6 +367,21 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
 			}
 			s.Kind = string(fieldNodeUnwrapped.String)
+		case "path":
+			// Field: Path
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]*ir.Node, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := new(ir.Node)
+					if err := elem.FromTonyIR(v); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Path = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"path\"", fieldNodeUnwrapped.Type)
+			}
 		case "op":
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "op", fieldNodeUnwrapped.Type)

@@ -34,7 +34,7 @@ through a scheduler.
 ## The model
 
 An *entity* is anything the SDLC refers to. It has an address (`demo.pr.1`,
-`github.pr.org/repo#42`, `verse.task.instance.review-1`) and an arbitrary payload value. The
+`github.signadot.verse.pr.42`, `verse.task.instance.review-1`) and an arbitrary payload value. The
 entity store is the shared, observable, cursored log of these.
 
 A *trigger* is one charter rule: when the condition holds and the gates resolve, an action

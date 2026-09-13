@@ -11,8 +11,8 @@
 # Reassembling the chain is then a read over the set, because a derive is about exactly one
 # subject and rollups are deliberately not available.
 #
-# THE SYSTEMS ARE SEEDED, AND THE VOCABULARY IS NOT. It writes its own `git:commit:*` and
-# `github:pr:*` fixtures, so it runs against a bare verse with nothing installed — but the ids
+# THE SYSTEMS ARE SEEDED, AND THE VOCABULARY IS NOT. It writes its own `git.<repo>.commit.*` and
+# `github.<org>.<name>.pr.*` fixtures, so it runs against a bare verse with nothing installed — but the ids
 # and the field names are the ones the shipped connectors actually write (source/git.go,
 # source/github). A demo that invents both sides of a join can make any join look easy; using
 # the real spellings is what keeps it honest without making it need a token and a repository.
@@ -20,9 +20,9 @@
 # Three sharp edges it shows rather than hides, all at the end:
 #   1. membership is not askable — a predicate narrows by what a trace LOOKS like, not by
 #      which release it is in
-#   2. the cross-system join is a LIST read, not an identity one — git ids a commit
-#      `<repo>/<sha>` and a pull request carries a bare `headSha`, and `!get-path` refuses a
-#      predicate, so there is no identity read that reaches it
+#   2. the cross-system join is a LIST read, not an identity one — git keeps a commit under
+#      its own id for the repository and a pull request carries a bare `headSha`, and
+#      `!get-path` refuses a predicate, so there is no identity read that reaches it
 #   3. the manifest COPIES, it does not track (docs/working/derived-views.md)
 #
 # A fourth is real and NOT demonstrable here, because seeding hides it: a rule does not
@@ -120,7 +120,7 @@ until_ok() {
 has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 
 # Real-shaped shas, because the join is by sha and a three-character stand-in would hide that
-# the id carrying it has a repo glued on the front.
+# the address carrying it has a repository in front of it.
 A=a1b2c3d4e5f60718293a4b5c6d7e8f9012345678
 B=d4e5f60718293a4b5c6d7e8f901234567890abcd
 C=90abcdef1234567890abcdef1234567890abcdef
@@ -128,18 +128,18 @@ C=90abcdef1234567890abcdef1234567890abcdef
 # The subject this run is about, spelled once, as the STEPS an address is: one word per
 # segment, handed to `verse data` unquoted. It is a merged pull request in the seed below, and
 # everything that asks about the correlation asks about this.
-PR="github pr acme/widget#42"
+PR="github acme widget pr 42"
 # The same address as the store RENDERS it inside a document — which is what a grep over a
-# rendered record looks for. A `#` makes kpath quote the segment, so the rendering carries
+# rendered record looks for. A number makes kpath quote the segment, so the rendering carries
 # quotes the steps form does not.
-PR_SUBJ='github.pr."acme/widget#42"'
+PR_SUBJ='github.acme.widget.pr."42"'
 
 TRIGGERS=(lin-pr-lineage lin-release-manifest)
 STRATA=(lin-source lin-change lin-trace)
 ENTITIES=(
-	"git commit widget/$A" "git commit widget/$B" "git commit widget/$C"
-	"github pr acme/widget#42" "github pr acme/widget#43"
-	"github pr acme/widget#44" "github pr acme/widget#45"
+	"git widget commit $A" "git widget commit $B" "git widget commit $C"
+	"github acme widget pr 42" "github acme widget pr 43"
+	"github acme widget pr 44" "github acme widget pr 45"
 )
 
 if $clean; then
@@ -150,14 +150,14 @@ if $clean; then
 	# own segments — so they are removed by the address the engine chose, not by one this script
 	# invented.
 	# `--paths` answers in steps, one address per LINE — read a line at a time, and handed over
-	# UNQUOTED so the shell splits it into the steps it is. `--depth 6` because that is where a
-	# trace stands (two for the target, one for the rule, three for the pull request); without a
+	# UNQUOTED so the shell splits it into the steps it is. `--depth 8` because that is where a
+	# trace stands (two for the target, one for the rule, five for the pull request); without a
 	# bound the walk goes on into every field of every one.
 	for sys in lineage lintag; do
 		while IFS= read -r e; do
 			# shellcheck disable=SC2086
 			[ -n "$e" ] && v data $e --rm >/dev/null 2>&1 || true
-		done < <(v data --paths --depth 6 "$sys" 2>/dev/null)
+		done < <(v data --paths --depth 8 "$sys" 2>/dev/null)
 	done
 	# Unquoted: each entry IS the steps of one address, split back by the shell.
 	# shellcheck disable=SC2086
@@ -175,7 +175,7 @@ if $clean; then
 fi
 
 # ── nobody else's territory ──────────────────────────────────────────────────
-# The fixtures go into `git:*` and `github:*` because those are the shipped connectors'
+# The fixtures go into `git.*` and `github.*` because those are the shipped connectors'
 # systems and using anything else would teach a vocabulary that does not exist. The cost is
 # that a real source of either kind is the SINGLE WRITER of that slice, and its converge
 # tombstones what it covers and does not find — so these fixtures would quietly disappear
@@ -186,9 +186,9 @@ fi
 step "checking nobody owns what this is about to write"
 # grep -E rather than a sed alternation: `\|` inside `\(...\)` is a GNU extension that BSD sed
 # accepts and ignores, so on macOS the guard silently matched nothing and let the run proceed.
-# The claim's own spelling: `git.ref.verse/*`, a kinded path. It was `git:ref:*` when this
-# guard was written, and matching on the colon quietly stopped matching anything — the guard
-# passed by finding nothing rather than by there being nothing.
+# The claim's own spelling: `git.verse`, a kinded path. It was `git:ref:*` when this guard was
+# written, and matching on the colon quietly stopped matching anything — the guard passed by
+# finding nothing rather than by there being nothing.
 owned=$(v sources -o tony 2>/dev/null |
 	grep -E '^[[:space:]]*- at:[[:space:]]*"?(git|github)[.:]' |
 	sed -E 's|.*at:[[:space:]]*"?([a-z]+)[.:].*|\1|' | sort -u | tr '\n' ' ' || true)
@@ -205,7 +205,7 @@ elif [ -n "${owned// /}" ]; then
 	# appear in baseline at all.
 	ok "a source claims $owned, but this run is scoped — its converge does not reach here"
 else
-	ok "no source claims git:* or github:*, so the fixtures are this script's to write"
+	ok "no source claims git.* or github.*, so the fixtures are this script's to write"
 fi
 
 # ── the ordering, and the two rules ──────────────────────────────────────────
@@ -233,7 +233,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
   match: "lineage"
 ---
 # One correlation per merged PR. The derived ADDRESS is not chosen here — the engine writes
-# `lineage.trace.lin-pr-lineage.github.pr."acme/widget#42"`: the target, the rule, then the
+# `lineage.trace.lin-pr-lineage.github.acme.widget.pr."42"`: the target, the rule, then the
 # subject's own segments — so re-firing about the same PR rewrites one address rather than
 # accumulating duplicates.
 #
@@ -248,7 +248,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
     # GitHub's own vocabulary: a pull request is `merged`, and the branch it proposed against
     # is its `base`. Matching a display string instead is what breaks when somebody renames a
     # column; there is nothing to rename here.
-    subject: {path: [github, pr, *], value: { merged: true }}
+    subject: {path: [github, acme, widget, pr, "*"], value: { merged: true }}
   action:
     derive:
       lineage:
@@ -258,16 +258,18 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
           commit:  $subject.value.headSha
           target:  $subject.value.base
           # The commit is a different system's entity, and reaching it is where two real id
-          # schemes bite. git ids a commit `<repo>/<sha>` — a sha is not a sound cross-repo
-          # key, since two repositories have independent histories — while a pull request
-          # carries a bare `headSha`. So there is no id to name, and `!get-path` refuses a
-          # predicate: the join has to be a LIST read narrowed by the sha the payload carries.
+          # schemes bite. git keeps a commit under its repository — a sha is not a sound
+          # cross-repo key, since two repositories have independent histories — and names the
+          # repository by the id its operator gave it, while a pull request carries a bare
+          # `headSha` and spells its repository GitHub's way. So there is no address to name,
+          # and `!get-path` refuses a predicate: the join has to be a LIST read narrowed by the
+          # sha the payload carries.
           #
           # It answers a one-element list rather than a value, which is the shape of "find the
           # thing that says this about itself" and the price of two systems that never agreed
           # on an id — which is the whole point being demonstrated.
-          message: !list-paths {at: [git, commit, "*"], value: {sha: $subject.value.headSha}, path: msg}
-          author:  !list-paths {at: [git, commit, "*"], value: {sha: $subject.value.headSha}, path: author}
+          message: !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: msg}
+          author:  !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: author}
 
 # The release does not correlate anything; it READS THE SET. A derive is about exactly one
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
@@ -277,8 +279,8 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 # is expanded like the rest of the address — `$subject.value.target` is the release's OWN
 # branch, so this is one rule rather than one rule per branch.
 #
-# SIX SEGMENTS, because a derived entity is as deep as what it is about: `lineage.trace`, the
-# rule that derived, and the three of the pull request it derived about. That is the cost of a
+# EIGHT SEGMENTS, because a derived entity is as deep as what it is about: `lineage.trace`, the
+# rule that derived, and the five of the pull request it derived about. That is the cost of a
 # derivation being ADDRESSED by its provenance rather than carrying a flattened id — a reader of
 # the set says how deep the set is, and how deep follows from the depth of the subjects the
 # producing rule selects.
@@ -288,10 +290,10 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
   action:
     patch:
       stage:   shipped
-      prs:     !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: pr}
-      commits: !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: commit}
-      authors: !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: author}
-      titles:  !list-paths {at: [lineage, trace, "*", "*", "*", "*"], value: { target: $subject.value.target }, path: title}
+      prs:     !list-paths {at: [lineage, trace, "*", "*", "*", "*", "*", "*"], value: { target: $subject.value.target }, path: pr}
+      commits: !list-paths {at: [lineage, trace, "*", "*", "*", "*", "*", "*"], value: { target: $subject.value.target }, path: commit}
+      authors: !list-paths {at: [lineage, trace, "*", "*", "*", "*", "*", "*"], value: { target: $subject.value.target }, path: author}
+      titles:  !list-paths {at: [lineage, trace, "*", "*", "*", "*", "*", "*"], value: { target: $subject.value.target }, path: title}
     spawn: { driver: scripted, vector: auto, prompt: "echo shipping $subject; sleep 30" }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
@@ -301,22 +303,22 @@ ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the s
 # semver tag. That is the premise of the question, not a simplification of it.
 step "two systems, two id schemes, no coordination"
 # The ids and fields are the shipped connectors', not this script's inventions. A git source
-# writes `git:commit:<repo>/<sha>` with `sha`/`msg`/`author`/`repo`; a github source writes
-# `github:pr:<org>/<repo>#<n>` with `merged`/`headSha`/`base`/`title`. Both spellings are
+# writes `git.<repo>.commit.<sha>` with `sha`/`msg`/`author`/`repo`; a github source writes
+# `github.<org>.<name>.pr.<n>` with `merged`/`headSha`/`base`/`title`. Both spellings are
 # copied from what those sources produce, so a charter written against this demo is a charter
 # that works — which is the whole reason not to invent a vocabulary here.
-v data git commit "widget/$A" --put "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
-v data git commit "widget/$B" --put "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
-v data git commit "widget/$C" --put "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
-ok "three commits — git ids them <repo>/<sha>, because a sha alone is not a cross-repo key"
+v data git widget commit "$A" --put "{sha: $A, msg: \"add the token TTL\", author: ana, repo: widget}" >/dev/null
+v data git widget commit "$B" --put "{sha: $B, msg: \"fix the docket label\", author: bo, repo: widget}" >/dev/null
+v data git widget commit "$C" --put "{sha: $C, msg: \"widen the gate vector\", author: cy, repo: widget}" >/dev/null
+ok "three commits — git keeps each under its repository, because a sha alone is not a cross-repo key"
 
 # shellcheck disable=SC2086
 v data $PR --put "{merged: true,  headSha: $A, base: main, title: \"token TTL\", number: 42, repo: acme/widget, state: closed}" >/dev/null
-v data github pr "acme/widget#45" --put "{merged: true,  headSha: $C, base: main, title: \"gate vector\", number: 45, repo: acme/widget, state: closed}" >/dev/null
-v data github pr "acme/widget#43" --put "{merged: true,  headSha: $B, base: next, title: \"docket label\", number: 43, repo: acme/widget, state: closed}" >/dev/null
-v data github pr "acme/widget#44" --put "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
-ok "four PRs — GitHub ids them <org>/<repo>#<n>; :42 and :45 onto main, :43 onto next, :44 unmerged"
-note "a pull request carries a BARE headSha, and the commit's id has a repo in front of it"
+v data github acme widget pr 45 --put "{merged: true,  headSha: $C, base: main, title: \"gate vector\", number: 45, repo: acme/widget, state: closed}" >/dev/null
+v data github acme widget pr 43 --put "{merged: true,  headSha: $B, base: next, title: \"docket label\", number: 43, repo: acme/widget, state: closed}" >/dev/null
+v data github acme widget pr 44 --put "{merged: false, headSha: $A, base: main, title: \"still in review\", number: 44, repo: acme/widget, state: open}" >/dev/null
+ok "four PRs — GitHub numbers them within acme/widget; #42 and #45 onto main, #43 onto next, #44 unmerged"
+note "a pull request carries a BARE headSha, and the commit stands under git's id for the repository"
 
 # ── the correlation, which is a derived entity ───────────────────────────────
 step "the link verse writes, and the id it gives it"
@@ -344,7 +346,7 @@ for _ in $(seq 1 100); do
 			tref=$t
 			break 2
 		fi
-	done < <(v data --paths --depth 6 lineage 2>/dev/null)
+	done < <(v data --paths --depth 8 lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||
@@ -355,12 +357,12 @@ v data $tref
 printf '\n'
 ok "one entity names a GitHub number and a git sha, each still in its own system's spelling"
 note "the message and author came from git by a PREDICATE on sha, not by naming an id: the"
-note "commit's id is widget/$A and the pull request only ever knew the bare sha"
+note "commit is git.widget.commit.$A and the pull request only ever knew the bare sha"
 note "the trace's id is f(rule, subject) — re-merging #42 rewrites THIS address, never a second"
 
 # #44 is the control. It shares a headSha with #42, so a rule keyed on the commit would have
 # correlated it; the subject predicate is what says only merged PRs have lineage.
-v -o tony data lineage | grep -qF 'github:pr:acme/widget#44' &&
+v -o tony data lineage | grep -qF 'github.acme.widget.pr."44"' &&
 	die "an unmerged PR was correlated — the subject predicate is not selecting"
 ok "#44 is unmerged, so nothing was derived about it (it shares its headSha with #42)"
 
@@ -414,7 +416,7 @@ note "authors nests and commits does not: the join answers with a list, and the 
 # because its base was `next`. That is a different exclusion from #44's, which is not traced
 # at all — one is the read's predicate, the other is the rule's subject.
 # shellcheck disable=SC2086
-v data $REL | grep -qF 'github:pr:acme/widget#43' &&
+v data $REL | grep -qF 'github.acme.widget.pr."43"' &&
 	die "a trace onto next is in a release cut from main — the read's predicate did not narrow"
 ok "#43 is traced but absent: it went onto next, and this release asked for its own branch"
 
@@ -443,11 +445,12 @@ cat <<'EDGES'
      Pairwise correlation and a predicate over the set; still nothing in between.
 
   2. THE COMMIT JOIN IS A LIST READ, not an identity one, because the two systems never
-     agreed on an id: git spells a commit `<repo>/<sha>` and a pull request carries a
-     bare `headSha`. `!get-path` refuses a predicate, so the rule narrows `git:commit:*`
-     by the `sha` its payload carries and takes the one element back. That is what a
-     cross-system join costs when nobody minted a shared key — and paying it here, in
-     the open, is the alternative to minting a fourth id nobody asked for.
+     agreed on an id: git keeps a commit under its own id for the repository and a pull
+     request carries a bare `headSha`. `!get-path` refuses a predicate, so the rule
+     narrows `git.*.commit.*` by the `sha` its payload carries and takes the one element
+     back. That is what a cross-system join costs when nobody minted a shared key — and
+     paying it here, in the open, is the alternative to minting a fourth id nobody asked
+     for.
 
   3. THE MANIFEST COPIES; IT DOES NOT TRACK. Merge another PR onto main now and this
      release does not change — the read happened at the commit that fired the rule.

@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -44,15 +45,29 @@ type Reflection struct {
 	// It is not new information — it is the scoping a reconcile always had, said out loud
 	// instead of held in a parameter. It is also what turns "keep git history" from a branch
 	// in verse's code into a declaration in the source's answer: the git source covers
-	// `git:ref:*` and `git:head:*` for a repo and does NOT cover `git:commit:*`, so commits
-	// fall out of the bounded tip window and stay.
+	// `git.<repo>.ref.*` and `git.<repo>.head` and does NOT cover `git.<repo>.commit.*`, so
+	// commits fall out of the bounded tip window and stay.
 	//
 	// The grammar is entity.Pattern, the charter's own selector, so ownership needs no second
-	// vocabulary. A pattern's Predicate is evaluated against the stored payload — for git,
-	// `{repo: <id>}`, which is the field it already writes into every entity.
+	// vocabulary. A cover's path says WHERE the answer is complete — a repository is a level of
+	// the address, so one repository's pass is scoped by the place it reads — and its Predicate,
+	// evaluated against the stored payload, narrows further where a place alone cannot: GitHub's
+	// open and closed halves of one kind.
 	Covers []entity.Pattern `tony:"field=covers,omitzero"`
 	// Entities is what external truth says stands there right now.
 	Entities []entity.Entity `tony:"field=entities,omitzero"`
+}
+
+// Cover is a cover at a place: one segment per level, each a literal name, with a bare `*` any
+// one segment (entity.SegMatches). `Cover("git", "verse", "ref", "*")` is an answer complete
+// for every ref of one repository; `Cover("git", "verse", "head")` for its head alone. A cover
+// that also narrows by payload sets Predicate on the result.
+func Cover(segs ...string) entity.Pattern {
+	path := make([]*ir.Node, len(segs))
+	for i, s := range segs {
+		path[i] = ir.FromString(s)
+	}
+	return entity.Pattern{Path: path}
 }
 
 // Add appends one reflected entity, spelled as the object payload most sources build.
@@ -70,28 +85,39 @@ func (r *Reflection) Add(ref entity.Ref, p entity.Obj) {
 // at, and tombstones whatever the answer did not carry.
 func (r Reflection) Check(system string) error {
 	for _, p := range r.Covers {
-		if p.System == "" {
+		top := p.System
+		if len(p.Path) > 0 {
+			// A PATH COVER NAMES ITS SYSTEM IN ITS FIRST SEGMENT, and it must be a literal: a `*`
+			// or an operator there is the same wildcard an empty System is, one spelling over.
+			lit, ok := entity.PathLiteral(p.Path[0])
+			if !ok {
+				return fmt.Errorf("reflection: a cover whose path does not begin with a literal "+
+					"system claims every system it is compared against — begin it with %q", system)
+			}
+			top = lit
+		}
+		if top == "" {
 			return fmt.Errorf("reflection: a cover with no system claims EVERYTHING it is "+
 				"compared against, since an empty dimension is a wildcard — name %q", system)
 		}
-		if p.System != system {
+		if top != system {
 			return fmt.Errorf("reflection: cover over system %q, but this source owns %q — a "+
 				"source is the single writer of one slice and may not tombstone another's",
-				p.System, system)
+				top, system)
 		}
 		// Op filters a CHANGE, and converge compares against what stands in the store, which
 		// has no op. Carrying one here would read as a narrowing that is silently not applied.
 		if p.Op != "" {
-			return fmt.Errorf("reflection: cover over system %q carries op %q — a cover selects "+
-				"stored entities, which have no op", p.System, p.Op)
+			return fmt.Errorf("reflection: cover over %s carries op %q — a cover selects "+
+				"stored entities, which have no op", coverString(p), p.Op)
 		}
 		// A slot cover claims only the value at a path. converge writes, compares and tombstones
 		// there and nowhere else, which is what lets two sources own two slots of one entity.
 		for _, seg := range p.Slot {
 			if seg == "" {
-				return fmt.Errorf("reflection: cover over %s:%s has an empty segment in its slot "+
+				return fmt.Errorf("reflection: cover over %s has an empty segment in its slot "+
 					"%q — a path segment is a field name, and an empty one addresses nothing",
-					p.System, p.Kind, strings.Join(p.Slot, "."))
+					coverString(p), strings.Join(p.Slot, "."))
 			}
 		}
 	}
@@ -398,37 +424,132 @@ func valueAt(p entity.Payload, path []string) entity.Payload {
 	return p
 }
 
-// current reads what stands in the store for the systems the reflection touches — one
-// ListUnder per system, at the prefix that system implies, rather than one List at the root.
+// current reads what stands in the store at the places a reflection is about — one read per
+// place, at the depth that place's entities sit at, rather than one List at the root.
 //
-// It reads the whole system slice rather than only what the covers select, because the
-// unchanged-comparison has to see entities that no cover claims: a git commit is written once
-// and never tombstoned, and one that was re-read without this would be re-written on every
-// pass.
+// A PLACE IS WHAT A COVER NAMES, read down to its first wildcard: `git.verse.ref.*` is a read of
+// `git.verse.ref` four deep, and `git.verse.head` is a read of that one entity. An answer is
+// complete for exactly those, so they are what a tombstone can be decided from.
+//
+// An entity NO COVER HOLDS is read too, at its parent, because the unchanged-comparison has to
+// see it: a git commit is written once and never tombstoned, and one that was not re-read would
+// be re-written on every pass.
+//
+// It does not read the whole system, and on a store carrying several repositories under one
+// system that is the difference between a pass reading its own repository and reading every
+// repository's history. This runs on every pass.
 func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
-	systems := map[string]bool{}
-	for _, p := range rn.Covers {
-		systems[p.System] = true
+	var at []place
+	for _, c := range rn.Covers {
+		at = append(at, coverPlace(c))
+	}
+	held := func(ref entity.Ref) bool {
+		for _, p := range at {
+			if p.holds(ref) {
+				return true
+			}
+		}
+		return false
 	}
 	for _, e := range rn.Entities {
-		systems[e.Ref.System()] = true
+		if segs := e.Ref.Segs(); !held(e.Ref) {
+			at = append(at, place{prefix: segs[:len(segs)-1], depth: len(segs)})
+		}
 	}
 	out := map[entity.Ref]entity.Payload{}
-	// Not verse's own half, for the reason Claimed says at length: a system name is not a half,
-	// and this map is what `covered` decides tombstones from.
-	//
-	// ONE READ PER SYSTEM rather than one at the root. A source writes one system in the
-	// ordinary case, so this is the same number of round trips and a fraction of the payload;
-	// where it writes several it is one read each, which is still what it asked for rather
-	// than the whole verse. This runs on every pass.
-	for system := range systems {
-		for _, e := range entity.ListUnder(rf.store, func(ref entity.Ref) bool {
-			return !ref.Reserved() && systems[ref.System()]
-		}, system) {
+	for _, p := range distinctPlaces(at) {
+		// Not verse's own half, for the reason Claimed says at length: a system name is not a
+		// half, and this map is what `covered` decides tombstones from.
+		//
+		// EXACTLY AT THE PLACE'S DEPTH, because a listing also reports a value standing above
+		// it (Reader.ListAt), and a head's fields are not refs.
+		for _, e := range rf.store.ListAt(p.prefix, p.depth, func(ref entity.Ref) bool {
+			return !ref.Reserved() && len(ref.Segs()) == p.depth
+		}) {
 			out[e.Ref] = e.Payload
 		}
 	}
 	return out
+}
+
+// place is one read converge makes: the literal segments to read under, and how deep the
+// entities there sit.
+type place struct {
+	prefix []string
+	depth  int
+}
+
+// holds reports whether a ref is one of the entities a read of this place returns.
+func (p place) holds(ref entity.Ref) bool {
+	segs := ref.Segs()
+	if len(segs) != p.depth || len(segs) < len(p.prefix) {
+		return false
+	}
+	for i, s := range p.prefix {
+		if segs[i] != s {
+			return false
+		}
+	}
+	return true
+}
+
+// coverPlace is where a cover's entities are read: its path down to the first segment that is
+// not a literal name, at the path's own depth — or, for a cover spelled as a system and a kind,
+// that slice at the depth those two imply.
+func coverPlace(c entity.Pattern) place {
+	if len(c.Path) == 0 {
+		prefix := []string{c.System}
+		if c.Kind != "" {
+			prefix = append(prefix, c.Kind)
+		}
+		return place{prefix: prefix, depth: entity.Depth}
+	}
+	var prefix []string
+	for _, seg := range c.Path {
+		lit, ok := entity.PathLiteral(seg)
+		if !ok {
+			break
+		}
+		prefix = append(prefix, lit)
+	}
+	return place{prefix: prefix, depth: len(c.Path)}
+}
+
+// distinctPlaces drops a place another one already reads: the same depth under a prefix that is
+// already being read.
+func distinctPlaces(at []place) []place {
+	sort.SliceStable(at, func(i, j int) bool { return len(at[i].prefix) < len(at[j].prefix) })
+	var out []place
+	for _, p := range at {
+		redundant := false
+		for _, q := range out {
+			if q.depth == p.depth && len(q.prefix) <= len(p.prefix) &&
+				slices.Equal(q.prefix, p.prefix[:len(q.prefix)]) {
+				redundant = true
+				break
+			}
+		}
+		if !redundant {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// coverString renders a cover's address for a message, whichever spelling it came in.
+func coverString(c entity.Pattern) string {
+	if len(c.Path) == 0 {
+		return c.System + "." + c.Kind
+	}
+	segs := make([]string, len(c.Path))
+	for i, seg := range c.Path {
+		if lit, ok := entity.PathLiteral(seg); ok {
+			segs[i] = lit
+		} else {
+			segs[i] = "*"
+		}
+	}
+	return strings.Join(segs, ".")
 }
 
 // covered returns the PLACES in the stored entities a reflection claims tombstone authority

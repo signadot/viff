@@ -5,7 +5,7 @@
 # review that fails, a finding carried from one review to the next — and none of it is reachable
 # against staging in less than ten minutes: a real review is an llm task over a real checkout,
 # behind a real git source polling a real remote. Iterating on the rules that way does not
-# converge. Here a push is a `verse data git head verse --put` and the review is a brokered task
+# converge. Here a push is a `verse data git verse head --put` and the review is a brokered task
 # this script completes with a fixture, so the whole cycle is a few seconds and the timing is the
 # script's rather than the model's.
 #
@@ -68,12 +68,12 @@ ok "the drift charter is installed"
 # ── the verse as the flow sees it ────────────────────────────────────────────
 # A PUSH IS ONE MOVE OF THE TIP, whatever it carries: that is what makes a range the unit. The
 # commits themselves need not be reflected at all — the review reads them out of a checkout, and
-# nothing in the charter selects on `git:commit`.
+# nothing in the charter selects on `git.<repo>.commit`.
 # THE FIXTURE SHAS CARRY LETTERS on purpose: an all-digit id is quoted in a kinded path
 # (`range."77777777"`), because the quoting is about tony TYPES rather than about the path — so a
 # script composing a task id by hand would build one that matches nothing. Real shas are hex and
 # almost always carry a letter; the harness should not be the one place that depends on it.
-push()    { v data git head verse --put "{repo: verse, sha: $1}" >/dev/null; }
+push()    { v data git verse head --put "{repo: verse, sha: $1}" >/dev/null; }
 cursor()  { v data verse-dev.drift.at 2>/dev/null; }
 at()      { sed -n 's/^sha: //p' <<<"$(cursor)"; }
 stage()   { sed -n 's/^stage: //p' <<<"$(cursor)"; }

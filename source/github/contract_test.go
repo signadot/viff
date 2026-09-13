@@ -47,10 +47,10 @@ func TestAHostileBodySurvivesTheHTTPContract(t *testing.T) {
 		t.Fatalf("a real body did not survive the contract: %v", err)
 	}
 	got := payloads(rn)
-	if body := got[`github.comment."acme/app#1/900"`]["body"]; body != "trailing space  \nand a blank line\n   \n\n" {
+	if body := got[`github.acme.app.comment."1"."900"`]["body"]; body != "trailing space  \nand a blank line\n   \n\n" {
 		t.Fatalf("the body came back as %q", body)
 	}
-	if got[`github.comment."acme/app#2/901"`] == nil {
+	if got[`github.acme.app.comment."2"."901"`] == nil {
 		t.Fatalf("the review comment is missing: %v", got)
 	}
 }

@@ -119,7 +119,7 @@ func TestReflectorQuietRepoIsSilent(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(ref(source.GitSystem, "ref", "A/shiny")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "A", "ref", "shiny")); !ok {
 		t.Fatal("first reconcile should have reflected A/shiny")
 	}
 	if !quiet(t, store, func() {
@@ -592,5 +592,107 @@ func TestASlotIsReplacedNotMerged(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("a settled slot wrote %d", n)
+	}
+}
+
+// readingStore records the places a pass lists, which is the cost a pass carries that a count of
+// writes cannot show.
+type readingStore struct {
+	entity.Store
+	read []string
+}
+
+func (r *readingStore) ListAt(at []string, depth int, pred func(entity.Ref) bool) []entity.Entity {
+	r.read = append(r.read, fmt.Sprintf("%s@%d", strings.Join(at, "."), depth))
+	return r.Store.ListAt(at, depth, pred)
+}
+
+// A PASS READS WHERE ITS ANSWER IS, and nothing beside it. One repository's refs and head are
+// the places its covers name, and its commits — which no cover holds — are read where they
+// stand; another repository's history under the same system is never read. It is also where
+// the mixed depths meet: a head three segments deep beside refs and commits four deep, each
+// read at its own depth, and a second pass over the same answer writes nothing.
+func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
+	store := &readingStore{Store: entitytest.Store(t)}
+	for i := 0; i < 3; i++ {
+		entitytest.Set(t, store.Store, entity.RefAt("x", "B", "commit", fmt.Sprint(i)), entity.Obj{"sha": i}.Payload())
+	}
+	refs := []string{"main", "dev"}
+	src := &fakeSource{system: "x", answer: func() source.Reflection {
+		rn := source.Reflection{Covers: []entity.Pattern{
+			source.Cover("x", "A", "ref", "*"),
+			source.Cover("x", "A", "head"),
+		}}
+		for _, name := range refs {
+			rn.Add(entity.RefAt("x", "A", "ref", name), entity.Obj{"sha": name})
+		}
+		rn.Add(entity.RefAt("x", "A", "head"), entity.Obj{"ref": "main"})
+		rn.Add(entity.RefAt("x", "A", "commit", "c1"), entity.Obj{"sha": "c1"})
+		return rn
+	}}
+	rf := source.NewReflector(src, store, 0)
+	wrote := -1
+	rf.OnPass(func(p source.Pass) { wrote = p.Wrote })
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(store.read)
+	if want := []string{"x.A.commit@4", "x.A.head@3", "x.A.ref@4"}; !slices.Equal(store.read, want) {
+		t.Fatalf("a pass read %v, want %v", store.read, want)
+	}
+
+	// Unchanged, it writes nothing: each place was read at its own depth, so every entity was
+	// found where it was written.
+	store.read = nil
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if wrote != 0 {
+		t.Fatalf("a second pass over the same answer wrote %d", wrote)
+	}
+
+	// A ref that goes is tombstoned; the commit, which no cover holds, stays.
+	refs = []string{"main"}
+	src.answer = func() source.Reflection {
+		rn := source.Reflection{Covers: []entity.Pattern{
+			source.Cover("x", "A", "ref", "*"),
+			source.Cover("x", "A", "head"),
+		}}
+		rn.Add(entity.RefAt("x", "A", "ref", "main"), entity.Obj{"sha": "main"})
+		rn.Add(entity.RefAt("x", "A", "head"), entity.Obj{"ref": "main"})
+		return rn
+	}
+	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := store.Get(entity.RefAt("x", "A", "ref", "dev")); ok {
+		t.Fatal("a ref the answer stopped carrying stands under a cover")
+	}
+	for _, still := range []entity.Ref{entity.RefAt("x", "A", "commit", "c1"), entity.RefAt("x", "B", "commit", "0")} {
+		if _, ok, _ := store.Get(still); !ok {
+			t.Fatalf("%s is under no cover of this answer and was tombstoned", still)
+		}
+	}
+}
+
+// A path cover names its system in its first segment, literally. A `*` there is the wildcard
+// an empty system is, and is refused for the same reason: it claims every system it is compared
+// against.
+func TestAPathCoverNamesItsSystem(t *testing.T) {
+	wild := source.Cover("*", "A", "ref", "*")
+	for _, c := range []struct {
+		cover entity.Pattern
+		want  string
+	}{
+		{wild, "literal system"},
+		{source.Cover("y", "A", "ref", "*"), `this source owns "x"`},
+	} {
+		err := source.Reflection{Covers: []entity.Pattern{c.cover}}.Check("x")
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Fatalf("Check(%v) = %v, want a refusal naming %q", c.cover.Path, err, c.want)
+		}
+	}
+	if err := (source.Reflection{Covers: []entity.Pattern{source.Cover("x", "A", "ref", "*")}}).Check("x"); err != nil {
+		t.Fatalf("a cover at this source's own place was refused: %v", err)
 	}
 }
