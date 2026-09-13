@@ -114,7 +114,7 @@ object on every commit.
 sourced git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
                   -mirror [<id>=]<url>    a remote to mirror and keep fetched (repeatable)
                   -state  <dir>           where -mirror clones live (SOURCED_STATE, default /repos)
-                  -bodies                 reflect each issue's description body (default true)
+                  -bodies                 reflect each issue's description body and its discussion's text (default true)
 ```
 
 [`git issue`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/cmd/git-issue) keeps its
@@ -131,7 +131,7 @@ ordinary case: they write disjoint slices, so nothing coordinates.
 
 | entity | payload |
 |---|---|
-| `git-issue.issue.<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError` |
+| `git-issue.issue.<repo>/<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError`; `comments` (how many) and, with any, `lastCommentAt`; under `-bodies` the `discussion` itself as `[{at, text}]`. The lists and `comments` are always present, empty when there is nothing, so a charter may reference them |
 | `git-issue.repo.<repo>` | `repo, open, closed, issues` |
 
 Owns `git-issue.*.<id>/*` and `git-issue.repo.<id>` per repo, for the reason git's claim is two

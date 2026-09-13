@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
@@ -202,11 +203,31 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 	// Every blob this pass needs, read in ONE `git cat-file --batch`. The shape that suggests
 	// itself — two `git show`s per issue — is two processes per issue, so a tracker with two
 	// hundred issues would fork four hundred times a pass to read a few kilobytes.
-	specs := make([]string, 0, 2*len(refs))
+	specs := make([]string, 0, 3*len(refs))
 	for _, ref := range refs {
-		specs = append(specs, ref+":meta.tony", ref+":description.md")
+		specs = append(specs, ref+":meta.tony", ref+":description.md", ref+":discussion")
 	}
 	blobs, err := gitCatFile(ctx, dir, specs)
+	if err != nil {
+		return Reflection{}, err
+	}
+	// THE DISCUSSION, which is where the activity a charter cannot see any other way lives: an
+	// issue written already triaged, a decision taken in a comment, a "this is underway". The
+	// `discussion` tree came back in the batch above as a tree object; its entries name the
+	// comment files, and one more batch reads those. Two round trips per pass however many
+	// issues carry comments, rather than a process per issue.
+	comments := map[string][]string{}
+	var commentSpecs []string
+	for _, ref := range refs {
+		for _, name := range treeEntries(blobs[ref+":discussion"]) {
+			if !strings.HasSuffix(name, ".md") {
+				continue
+			}
+			comments[ref] = append(comments[ref], name)
+			commentSpecs = append(commentSpecs, ref+":discussion/"+name)
+		}
+	}
+	commentBlobs, err := gitCatFile(ctx, dir, commentSpecs)
 	if err != nil {
 		return Reflection{}, err
 	}
@@ -276,8 +297,31 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 		if status == "closed" && issue.ClosedBy != nil && *issue.ClosedBy != "" {
 			p["closedBy"] = *issue.ClosedBy
 		}
-		if g.bodies && body != "" {
-			p["body"] = body
+		if g.bodies {
+			p["body"] = body // "" for an issue that is its title alone, for addStrings' reason
+		}
+		// The comments, as `git issue comment` writes them: one file each under discussion/,
+		// named by its instant. The count and the last instant ride whether or not bodies do,
+		// since "somebody said something since" is state and not prose; the text is prose.
+		names := comments[ref]
+		sort.Strings(names)
+		p["comments"] = len(names)
+		if len(names) > 0 {
+			if at, ok := commentInstant(names[len(names)-1]); ok {
+				p["lastCommentAt"] = at
+			}
+		}
+		if g.bodies {
+			discussion := &ir.Node{Type: ir.ArrayType}
+			for _, name := range names {
+				c := entity.Obj{}
+				if at, ok := commentInstant(name); ok {
+					c["at"] = at
+				}
+				c["text"] = commentText(commentBlobs[ref+":discussion/"+name])
+				discussion.Values = append(discussion.Values, c.Payload())
+			}
+			p["discussion"] = discussion
 		}
 		rn.Add(entity.RefAt(g.system, "issue", id+"/"+xidr), p)
 	}
@@ -290,6 +334,48 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 
 // splitDescription reads description.md as git-issue writes it: the title is the first line
 // with any leading `# ` stripped, and the body is whatever follows.
+// treeEntries is the names in a tree object as `git cat-file --batch` hands one back: entries
+// of `<mode> <name>\0<20-byte id>`, in tree order. Nil for anything that is not a tree.
+func treeEntries(tree []byte) []string {
+	var names []string
+	for len(tree) > 0 {
+		nul := bytes.IndexByte(tree, 0)
+		if nul < 0 || nul+21 > len(tree) {
+			return names
+		}
+		_, name, ok := bytes.Cut(tree[:nul], []byte(" "))
+		if !ok {
+			return names
+		}
+		names = append(names, string(name))
+		tree = tree[nul+21:]
+	}
+	return names
+}
+
+// commentInstant is when a comment was made, from its file's name — `20260912T213534Z-<hash>.md`
+// — spelled the way every other instant here is.
+func commentInstant(name string) (string, bool) {
+	stamp, _, _ := strings.Cut(strings.TrimSuffix(name, ".md"), "-")
+	t, err := time.Parse("20060102T150405Z", stamp)
+	if err != nil {
+		return "", false
+	}
+	return t.UTC().Format(time.RFC3339), true
+}
+
+// commentText is a comment's body without the `<!-- instant -->` line `git issue comment`
+// writes above it.
+func commentText(b []byte) string {
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
+	if strings.HasPrefix(s, "<!--") {
+		if _, rest, ok := strings.Cut(s, "-->"); ok {
+			s = rest
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
 func splitDescription(b []byte) (title, body string) {
 	s := strings.ReplaceAll(string(b), "\r\n", "\n")
 	first, rest, _ := strings.Cut(s, "\n")
@@ -307,10 +393,15 @@ func addTime(p entity.Obj, key string, t time.Time) {
 
 // addStrings writes a list, and nothing at all for an empty one: `labels: []` and no labels
 // are the same fact, and only one of them costs a charter a special case.
+// addStrings writes a list field, EMPTY INCLUDED. A charter copies an issue's facts onto a row
+// of its own by reference, and an absent reference fails the firing (docs/trigger-model.md), so
+// an issue with no labels has `labels: []` rather than nothing where labels would be: every
+// issue answers every question the tracker's shape can ask, and "none" is an answer.
 func addStrings(p entity.Obj, key string, v []string) {
-	if len(v) > 0 {
-		p[key] = v
+	if v == nil {
+		v = []string{}
 	}
+	p[key] = v
 }
 
 // ── git plumbing ─────────────────────────────────────────────────────────────
