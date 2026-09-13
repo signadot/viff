@@ -1069,6 +1069,7 @@ func (s *Server) Handler() http.Handler {
 	// system's and not readable over the entity routes; this is the owner's window onto their
 	// own record, and the one verb by which a person writes to it.
 	rt.handle("GET /perms", s.getPerms, "", one("verse-perms-record"))
+	rt.handle("GET /perms/records", s.listPerms, "", list("verse-perms-record"))
 	// Groups: a named set of principals, a grantee whose address admits its members.
 	rt.handle("GET /groups", s.listGroups, "", nothing)
 	rt.handle("POST /groups", s.putGroup, "verse-group", nothing)
@@ -2013,6 +2014,39 @@ func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
 // putPerms takes a place and sets what it holds out. The requester must hold `owner` at the
 // node already: this is a place being taken by whoever may take it, never a way to take one
 // from its owner — and a record already somebody else's refuses the edit the same way.
+// listPerms is bare `verse perms`: every record whose node the requester may read, in address
+// order — who owns what they can see, and what each place holds out.
+//
+// THE MIRROR IS LISTED AS THE SYSTEM and filtered here, node by node, with the same check
+// getPerms makes for one: the mirror itself is the system's with nothing held out on it, so
+// listed through the request's own view it would answer nothing, and a person reads their
+// records through this verb rather than through `verse data verse perms` for exactly that
+// reason. The check per record costs a walk through the cache and no read.
+func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
+	ents, err := entity.ListAtErr(s.asSystem(r),
+		[]string{entity.VerseRoot, entity.PermsSystem, entity.PermsKind}, entity.Depth+1, nil)
+	if unreadable(w, r, err) {
+		return
+	}
+	store, who := s.scopedStore(r), principalOf(r)
+	out := make([]api.PermsRecord, 0, len(ents))
+	for _, e := range ents {
+		ref, err := entity.ParseAddr(e.Ref.ID())
+		if err != nil {
+			continue // a record keyed by something that is not an address is nobody's to see
+		}
+		if entity.Check(store, who, entity.Read, ref, "reading its record") != nil {
+			continue
+		}
+		out = append(out, api.PermsRecord{
+			At: ref.String(), Owner: entity.Str(e.Payload, entity.OwnerField),
+			Grants: entity.Get(e.Payload, entity.GrantsField), Default: entity.Get(e.Payload, entity.DefaultField),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At < out[j].At })
+	writeOut(w, r, http.StatusOK, out)
+}
+
 func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 	var body api.PermsEdit
 	if err := codec.Read(r, &body); err != nil {

@@ -197,9 +197,10 @@ permits, and what a new record holds out.
 
 ## `verse perms`: a place of one's own
 
-The one verb by which a person writes to the mirror. It reads a node's record to anyone who may
-read the node — who owns what you can read, and what it holds out, is yours to know — and its
-owner sets it: a node with no record of its own gets one — the place is taken by whoever already
+The one verb by which a person writes to the mirror. Bare, it lists the records of every node
+the requester may read — who owns what you can see, and what each place holds out — since the
+mirror itself is the system's and `verse data verse perms` answers nobody else. With a path it
+reads that node's record to anyone who may read the node, and its owner sets it: a node with no record of its own gets one — the place is taken by whoever already
 holds `owner` there, holding out what the default above says — and then `--default` sets what
 is created beneath, `--grants` replaces what the node itself holds out, and `--grant` adds a
 line.

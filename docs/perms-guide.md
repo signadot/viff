@@ -116,8 +116,8 @@ yet; what it prints is the record that decided, which is the same fact from the 
 the reserved half is written through the verbs that own it (`verse c -a`, `verse task run`,
 `verse gate approve`, `verse perms`), and beneath each verb the store checks the write against
 its place, so nothing reaching the store can stamp a task or answer a question on your behalf.
-`verse data verse perms` is refused too: a person reads their own records with `verse perms
-<path>`, never the mirror.
+`verse data verse perms` is refused too: a person reads records with `verse perms`, never the
+mirror — bare, it lists the records of every node you may read, and with a path it reads one.
 
 ## Step 2: a task you run, and what it may do for its gates
 

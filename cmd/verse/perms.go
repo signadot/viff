@@ -28,20 +28,32 @@ func permsCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "perms").
-		WithSynopsis("perms — a node's permissions, as its owner: perms <path…> [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']").
-		WithOpts(opts...).
+		WithSynopsis("perms — permissions: bare lists the records of every node you may read; perms <path…> reads one, and sets it as its owner with [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']").
+		// --if/--trim beside its own, as every listing carries them (filteredCollection).
+		WithOpts(append(opts, filterOpts()...)...).
 		WithRun(cfg.run)
 }
 
-// run reads the record with no flags, and sets it with any. The path is given as words, the
-// way `verse data` takes one, so a segment holding a dot needs no quoting from the shell.
+// run lists with no path, reads the record with a path and no flags, and sets it with any. The
+// path is given as words, the way `verse data` takes one, so a segment holding a dot needs no
+// quoting from the shell.
 func (cfg *permsConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("perms wants a path: perms <path…>")
+		if cfg.Default != "" || cfg.Grants != "" || cfg.Grant != "" || cfg.Revoke != "" {
+			return fmt.Errorf("%w: setting a record wants the path of the node it is about: perms <path…> [--default …]", cli.ErrUsage)
+		}
+		resp, err := httpGet("/perms/records", nil)
+		if err != nil {
+			return fmt.Errorf("perms: %w", err)
+		}
+		return printBody(cc, resp)
+	}
+	if args[0] == "list" {
+		return fmt.Errorf("%w: there is no `verse perms list` — bare `verse perms` is the listing", cli.ErrUsage)
 	}
 	at := entity.JoinSegs(args)
 	if cfg.Default == "" && cfg.Grants == "" && cfg.Grant == "" && cfg.Revoke == "" {

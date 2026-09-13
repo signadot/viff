@@ -259,15 +259,17 @@ verse
                   [--options id[:need],…] [--deadline within[:default]]  …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [--probe]                 where work can run
-          add <kind>:<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
+          add <kind>.<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
   group (groups)                             named sets of principals, granted by address
           add <name> <member>… · show <name> · remove <name>
+  perms [--if <pattern>] [--trim <match>]    the records of every node you may read: who
+                                             owns what you can see, and what it holds out
   perms <step>… [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']
-                                             a node's permissions, as its owner: read with
-                                             no flags; take the place and set what it and
-                                             what is created beneath it hold out
+                                             one node's record, as its owner: read with no
+                                             flags; take the place and set what it and what
+                                             is created beneath it hold out
   source (sources) [--probe]                 what reflects an external system in
           add <system>.<name> <url> [--no-probe] [--allow-overlap]
           add --dir <d> <system>.<name>      a local git repo, reflected in task

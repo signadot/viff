@@ -96,3 +96,51 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 		t.Fatalf("bob lost his read to ana's revoke: %v\n%s", err, out)
 	}
 }
+
+// Bare `verse perms` lists, as every collection does: the records of what the requester may
+// read, and nothing about what they may not.
+func TestBarePermsListsWhatOneMayRead(t *testing.T) {
+	serve(t)
+	t.Setenv("VERSE_USER", "walter@example.com")
+	if _, err := runCLI(t, "data", "spaces", "scott", "notes", "--put", `{todo: [buy milk]}`); err != nil {
+		t.Fatalf("put notes: %v", err)
+	}
+	if _, err := runCLI(t, "perms", "spaces", "scott", "--default", "{}", "--grants", "[]"); err != nil {
+		t.Fatalf("perms: %v", err)
+	}
+	if _, err := runCLI(t, "data", "spaces", "scott", "private", "--put", `{todo: [nothing]}`); err != nil {
+		t.Fatalf("put private: %v", err)
+	}
+	out, err := runCLI(t, "perms")
+	if err != nil {
+		t.Fatalf("bare perms: %v", err)
+	}
+	// The place and the notes have records; the private node has none, being owned through
+	// the place above it, so it is not listed — there is nothing to list.
+	for _, at := range []string{"at: spaces.scott\n", "at: spaces.scott.notes"} {
+		if !strings.Contains(out, at) {
+			t.Errorf("scott's listing lacks %q:\n%s", strings.TrimSpace(at), out)
+		}
+	}
+	if strings.Contains(out, "spaces.scott.private") {
+		t.Errorf("a node with no record of its own is listed:\n%s", out)
+	}
+	if _, err := runCLI(t, "perms", "list"); err == nil || !strings.Contains(err.Error(), "bare `verse perms` is the listing") {
+		t.Errorf("`perms list` is not told what the listing is: %v", err)
+	}
+	if _, err := runCLI(t, "perms", "--grants", "[]"); err == nil {
+		t.Error("a set with no path was not refused")
+	}
+
+	t.Setenv("VERSE_USER", "ana@example.com")
+	out, err = runCLI(t, "perms")
+	if err != nil {
+		t.Fatalf("bare perms as ana: %v", err)
+	}
+	if !strings.Contains(out, "at: spaces.scott.notes") {
+		t.Errorf("ana's listing lacks the notes she may read:\n%s", out)
+	}
+	if strings.Contains(out, "spaces.scott.private") || strings.Contains(out, "at: spaces.scott\n") {
+		t.Errorf("ana's listing carries what she may not read:\n%s", out)
+	}
+}

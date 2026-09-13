@@ -72,3 +72,72 @@ func TestARefusedWriteIsA403AndCounted(t *testing.T) {
 		t.Fatalf("alice's put: %s", resp.Status)
 	}
 }
+
+// Bare `verse perms` is the records of every node the requester may read, and no other: who
+// owns what they can see, and what it holds out. The mirror is the system's, so this is the
+// one listing a person has of it — and a record whose node they may not read is not theirs to
+// know exists.
+func TestTheRecordsOneMayReadAreListed(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	scott := entity.As(srv.Store, "walter@example.com")
+	space, notes, private := entity.RefAt("spaces", "scott"), entity.RefAt("spaces", "scott", "notes"), entity.RefAt("spaces", "scott", "private")
+	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.scott.notes", entity.Obj{"todo": "milk"}.Payload()); resp.StatusCode/100 != 2 {
+		t.Fatalf("notes: %s", resp.Status)
+	}
+	if err := entity.Claim(scott, space, "walter@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetDefault(scott, space, entity.Levels{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetGrants(scott, space, nil); err != nil {
+		t.Fatal(err)
+	}
+	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.scott.private", entity.Obj{"todo": "mine"}.Payload()); resp.StatusCode/100 != 2 {
+		t.Fatalf("private: %s", resp.Status)
+	}
+
+	listed := func(as string) map[string]api.PermsRecord {
+		t.Helper()
+		resp := getAs(t, as, ts.URL+"/perms/records")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s lists: %s", as, resp.Status)
+		}
+		var recs []api.PermsRecord
+		decodeResp(t, resp, &recs)
+		out := map[string]api.PermsRecord{}
+		for i, r := range recs {
+			if i > 0 && recs[i-1].At > r.At {
+				t.Fatalf("the listing is not in address order: %s before %s", recs[i-1].At, r.At)
+			}
+			out[r.At] = r
+		}
+		return out
+	}
+	mine := listed("walter@example.com")
+	for _, at := range []string{space.String(), notes.String()} {
+		if _, ok := mine[at]; !ok {
+			t.Errorf("scott's listing lacks %s: %v", at, mine)
+		}
+	}
+	// The private node has no record of its own: its owner is the owner above it, and a
+	// record is written only where ownership changes. It is not listed because it is not there.
+	if _, ok := mine[private.String()]; ok {
+		t.Errorf("a node owned through the place above it has a record: %v", mine[private.String()])
+	}
+	if mine[space.String()].Owner != "walter@example.com" {
+		t.Errorf("the place's record reads %+v", mine[space.String()])
+	}
+	theirs := listed("ana@example.com")
+	if _, ok := theirs[notes.String()]; !ok {
+		t.Errorf("ana's listing lacks the notes she may read: %v", theirs)
+	}
+	for _, at := range []string{space.String(), private.String()} {
+		if _, ok := theirs[at]; ok {
+			t.Errorf("ana's listing carries %s, which she may not read", at)
+		}
+	}
+}
