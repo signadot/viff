@@ -188,7 +188,11 @@ func TestEntitiesRecoversTheAddresses(t *testing.T) {
 		{"demo.pr.1", []string{`demo.pr."1"`}},
 		{"demo.*.1", []string{`demo.pr."1"`}},
 		{"*.pr", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
-		{"demo.pr.1.stage", []string{}}, // inside a payload: no entities down here
+		// A selection of N segments identifies entities at depth N, a name and a `*` alike: the
+		// map of prs is one entity when three segments ask, and each stage is one when four do.
+		{"demo.pr.1.stage", []string{`demo.pr."1".stage`}},
+		{"demo.pr.*.stage", []string{`demo.pr."1".stage`, `demo.pr."2".stage`, `demo.pr."a.b".stage`}},
+		{"*.pr.*.stage", []string{`demo.pr."1".stage`, `demo.pr."2".stage`, `demo.pr."a.b".stage`}},
 	} {
 		got := nest(t, fixture(), tc.path).EntityPaths(at(t, tc.path))
 		sort.Strings(got)

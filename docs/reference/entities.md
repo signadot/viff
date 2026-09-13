@@ -326,7 +326,18 @@ verse data demo pr 1
 ```
 
 `--if` narrows which entities the document holds, per entity, before the nesting — it never
-prunes inside a payload, since the document's leaves are whole payloads. It is a
+prunes inside what it keeps. **It asks at the depth the path asks at**: a path of N segments
+identifies entities at depth N, a name and a `*` alike, and a shorter path is a prefix of the
+addresses in its half (three segments in the world's, four in verse's own). A reflected issue
+is four segments down, a repository being a level, so the `*` is what makes each issue the
+thing asked about:
+
+```sh
+verse data --at 'git-issue.verse.issue.*' --if '{status: open}'   # each open issue
+verse data git-issue verse issue --if '{status: open}'            # the map of issues, as one: {}
+```
+
+`--trim` projects the same entities. `--if` is a
 [tony match](https://signadot.github.io/tony-format/) against the payload — the same predicate
 a charter carries in `value`, so a read answers "what would a rule with this predicate
 select?". Operators (`!or`, `!and`, `!not`, `!glob`, presence and absence) are

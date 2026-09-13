@@ -224,15 +224,16 @@ func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 // the answer as a key. So `demo.*.1` answers `{pr: <payload>}` and the kind is read back out of
 // the one key standing there.
 //
-// It answers nil when the path reaches INSIDE a payload (more than three segments), or names a
-// level in a way an entity address cannot be recovered from (an index, a keyed element). Below
-// the id there are no entities to recover — only places inside one — and saying so with nil is
+// The entities are at the depth the path asks at (atDepth): its own length, or its half's
+// address where it is shorter. It answers nil when the path names a level in a way an entity
+// address cannot be recovered from (an index, a keyed element), and saying so with nil is
 // better than naming an entity whose payload is not what the document holds.
 func (d Doc) Entities(at *kpath.KPath) []Entity {
 	fixed, wild, ok := levels(at)
 	if !ok {
 		return nil
 	}
+	asked := AtDepth(at)
 	var out []Entity
 	var rec func(n *ir.Node, seen []string)
 	rec = func(n *ir.Node, seen []string) {
@@ -252,9 +253,9 @@ func (d Doc) Entities(at *kpath.KPath) []Entity {
 		}
 		// AT EACH DEPTH, not at one: the two halves of the verse are different depths, so a
 		// read that spans both — the whole verse, or a wildcard at the top — reaches an address
-		// three levels down on one side and four on the other. RefOf is what says which, and
+		// three levels down on one side and four on the other. refAtDepth is what says which, and
 		// asking it here rather than counting levels is what lets one walk serve both.
-		if ref, ok := RefOf(segs); ok {
+		if ref, ok := refAtDepth(segs, asked); ok {
 			out = append(out, Entity{Ref: ref, Payload: n})
 			return
 		}
@@ -364,6 +365,20 @@ func pathPrefix(at *kpath.KPath) ([]string, error) {
 	return out, nil
 }
 
+// refAtDepth is RefOf asked by a read of `asked` segments: the segments name an entity when
+// there are as many as the path asked for, or as many as an address in their own half has where
+// the path asked for fewer.
+func refAtDepth(segs []string, asked int) (Ref, bool) {
+	want := Depth
+	if len(segs) > 0 && segs[0] == VerseRoot {
+		want++
+	}
+	if len(segs) != max(want, asked) {
+		return Ref{}, false
+	}
+	return RefOfAny(segs)
+}
+
 // levels splits a path into the entity levels it fixes and the number it leaves for the
 // document to carry. ok is false for a path that cannot address entities at all.
 func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
@@ -371,13 +386,10 @@ func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
 	// A path that has not said which half it is in — the whole verse, or a wildcard at the top
 	// — must leave room for the deeper one, and Entities stops at whichever depth is an address.
 	if at == nil || at.Field == nil {
-		fixed = make([]string, Depth+1)
+		fixed = make([]string, max(Depth+1, AtDepth(at)))
 	}
 	depth := 0
 	for kp := at; kp != nil; kp = kp.Next {
-		if depth >= len(fixed) {
-			return nil, 0, false // inside a payload: no entities down here
-		}
 		switch {
 		case kp.Field != nil:
 			fixed[depth] = *kp.Field
@@ -492,7 +504,7 @@ func AtDepth(at *kpath.KPath) int {
 // kind holding nothing and `verse.motion.channel` is the same claim one level down, so counting
 // both against the world's depth makes the second a thing that is not there — which is what an
 // empty docket answered with, under a path that is exactly where motions live.
-func AtNamesEntity(at *kpath.KPath) bool { return AtDepth(at) >= atDepth(at) }
+func AtNamesEntity(at *kpath.KPath) bool { return AtDepth(at) >= halfDepth(at) }
 
 // AtPrefix answers how a read at this path may be NARROWED: the literal segments it can be
 // asked under, and the depth entities beneath it sit at (Store.ListAt's two arguments).
@@ -503,9 +515,9 @@ func AtNamesEntity(at *kpath.KPath) bool { return AtDepth(at) >= atDepth(at) }
 // moved with the path because the work never did.
 //
 // The prefix stops at the first segment that is not a literal name (`*`, an index, a keyed
-// element): nothing below a wildcard is a literal to read under. It is capped at the entity
-// depth, because a path may reach INSIDE a payload (`demo.pr.1.labels.urgent`) and the entity
-// to read is still `demo:pr:1` — the rest is what Nest trims afterwards.
+// element): nothing below a wildcard is a literal to read under. The depth is atDepth's — the
+// path's own length where that is deeper than its half — so `git-issue.verse.issue.*` reads
+// under `git-issue.verse.issue` for the issues, one entity each, and `--if` asks of each.
 //
 // ok is false for a path that names nothing, and the caller must fall back to List there:
 // the whole verse spans both halves, whose entities sit at different depths, and one ListAt
@@ -515,7 +527,7 @@ func AtPrefix(at *kpath.KPath) (prefix []string, depth int, ok bool) {
 		return nil, 0, false
 	}
 	depth = atDepth(at)
-	for kp := at; kp != nil && len(prefix) < depth; kp = kp.Next {
+	for kp := at; kp != nil; kp = kp.Next {
 		if kp.FieldAll || kp.Field == nil {
 			break
 		}
@@ -527,13 +539,22 @@ func AtPrefix(at *kpath.KPath) (prefix []string, depth int, ok bool) {
 	return prefix, depth, true
 }
 
-// atDepth is how many segments an address under this path has: one more in verse's own half,
-// where the reserved root is a level of its own.
+// atDepth is how many segments an entity read at this path has: A SELECTION OF N SEGMENTS
+// IDENTIFIES ENTITIES AT DEPTH N (docs/working/entity-tree.md, §8), and a shorter path is a
+// prefix of its half's addresses.
+//
+// So `demo.pr` lists at three and `verse-dev.triage.next.*` at four, one row each. A name and a
+// `*` count alike, because the depth is the length of the question: `git-issue.verse.issue.<id>`
+// is the issue, not a place inside the whole map of them, which is what `--if` on it asks of.
+func atDepth(at *kpath.KPath) int { return max(halfDepth(at), AtDepth(at)) }
+
+// halfDepth is how many segments an address has by default in the half a path is about: one
+// more in verse's own, where the reserved root is a level of its own.
 //
 // It reads the path's FIRST segment, which is the only thing that can say which half a read is
 // about before anything has been walked. A path that names no segment at all (the whole verse)
 // spans both halves, and the walks handle that by asking again at each top-level key.
-func atDepth(at *kpath.KPath) int {
+func halfDepth(at *kpath.KPath) int {
 	if at != nil && at.Field != nil && *at.Field == VerseRoot {
 		return Depth + 1
 	}

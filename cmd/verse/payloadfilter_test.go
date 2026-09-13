@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -179,6 +180,61 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	}
 	if has(lines(out), "demo pr 2") || has(lines(out), "demo pr 3") {
 		t.Errorf("--if-at labels named an entity that does not satisfy it:\n%s", out)
+	}
+}
+
+// --if and --trim ask of the entities at the depth the PATH asks at, and a reflected issue is
+// four segments down (`git-issue.verse.issue.<id>`, a repository being a level). Read at three
+// segments the map of issues is the one entity, and an --if about an issue's status keeps
+// nothing — which is how the triage seed came to seed nothing and the drive judged the backlog.
+// The `*` is what says "each issue", and it is a kinded path's: as a step it is the id `*`.
+func TestAFilterAsksAtThePathsDepth(t *testing.T) {
+	serve(t)
+	for _, e := range []struct{ id, payload string }{
+		{"a", `{id: a, status: open, updatedAt: "t1", title: one}`},
+		{"b", `{id: b, status: closed, updatedAt: "t2", title: two}`},
+		{"c", `{id: c, status: open, updatedAt: "t3", title: three}`},
+	} {
+		if _, err := runCLI(t, "data", "tracker", "verse", "issue", e.id, "--put", e.payload); err != nil {
+			t.Fatalf("put %s: %v", e.id, err)
+		}
+	}
+
+	out, err := runState(t, "--at", "tracker.verse.issue.*",
+		"--if", "{status: open}", "--trim", "{id: null, updatedAt: null}")
+	if err != nil {
+		t.Fatalf("data --if --trim: %v", err)
+	}
+	doc, err := codec.ParseNode([]byte(out), codec.Tony)
+	if err != nil {
+		t.Fatalf("parse %q: %v", out, err)
+	}
+	// The answer is rooted at the path, so its keys are the ids.
+	got := map[string]string{}
+	for i, f := range doc.Fields {
+		issue := doc.Values[i]
+		if len(issue.Fields) != 2 {
+			t.Errorf("issue %s kept %d fields, want the 2 --trim names:\n%s", f.String, len(issue.Fields), out)
+		}
+		for j, k := range issue.Fields {
+			if k.String == "updatedAt" {
+				got[f.String] = issue.Values[j].String
+			}
+		}
+	}
+	if want := map[string]string{"a": "t1", "c": "t3"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("--if {status: open} at issue.* = %v, want %v:\n%s", got, want, out)
+	}
+
+	// One literal id four segments down is that issue, not a place inside the map of them.
+	for pattern, kept := range map[string]bool{"{status: closed}": true, "{status: open}": false} {
+		out, err = runState(t, "tracker", "verse", "issue", "b", "--if", pattern)
+		if err != nil {
+			t.Fatalf("data --if %s at one issue: %v", pattern, err)
+		}
+		if got := strings.Contains(out, "title: two"); got != kept {
+			t.Errorf("--if %s at issue b kept it = %v, want %v:\n%s", pattern, got, kept, out)
+		}
 	}
 }
 

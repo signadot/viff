@@ -29,10 +29,14 @@ func TestAtPrefix(t *testing.T) {
 	}{
 		{"demo.pr", []string{"demo", "pr"}, 3, true},
 		{"demo.pr.1", []string{"demo", "pr", "1"}, 3, true},
-		// Deeper than an entity: the entity is still demo.pr.1, and Nest trims the rest.
-		{"demo.pr.1.labels.urgent", []string{"demo", "pr", "1"}, 3, true},
-		// A wildcard ends the prefix — nothing below it is a literal to read under.
-		{"demo.pr.*.stage", []string{"demo", "pr"}, 3, true},
+		// A path of N segments reads at depth N: what it names is the entity asked about.
+		{"demo.pr.1.labels.urgent", []string{"demo", "pr", "1", "labels", "urgent"}, 5, true},
+		// A wildcard ends the prefix — nothing below it is a literal to read under — and still
+		// counts toward the depth.
+		{"demo.pr.*.stage", []string{"demo", "pr"}, 4, true},
+		// A repository is a level of a reflected address, so its issues are four segments down.
+		{"git-issue.verse.issue.*", []string{"git-issue", "verse", "issue"}, 4, true},
+		{"git-issue.verse.issue", []string{"git-issue", "verse", "issue"}, 3, true},
 		// Verse's own half is one deeper, and the root counts as a segment.
 		{"verse.gate.question", []string{"verse", "gate", "question"}, 4, true},
 		// Naming nothing spans both halves, whose entities sit at different depths: no single

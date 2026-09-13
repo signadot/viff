@@ -152,7 +152,8 @@ func (f filters) apply(node *ir.Node) (*ir.Node, error) {
 // exactly the question `Doc.Entities` answers, and answering it twice would be answering it
 // differently one day.
 //
-// A path INSIDE a payload names no entities, and there the document itself is the one item.
+// A path through an index or a keyed element names no entities, and there the document itself
+// is the one item.
 func (f filters) applyDoc(node *ir.Node, at *kpath.KPath) (*ir.Node, error) {
 	if f.none() || node == nil {
 		return node, nil
