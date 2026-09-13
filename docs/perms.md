@@ -55,10 +55,17 @@ the system's. The mirror records exactly the changes of ownership down the tree:
 `verse.task.instance` gets one small record naming the person who ran it, and a charter
 package's address gets one naming its installer, taken when the package is installed — so the
 rows its rules derive beneath it are owned through the address and need none of their own.
-Installing at an address somebody else owns is refused, with the check's words. A source's
-reflections are the exception for now: nothing records a source's slice, so each entity a
-source reflects gets a record naming its installer (f1fj0w49h12krtm2mnn0 is the change that
-would own a slice through its claim instead).
+Installing at an address somebody else owns is refused, with the check's words.
+
+**A source's reflections are the exception, and it is planned to change.** Nothing records a
+source's slice today, so each entity a source reflects gets a record naming its installer — on
+staging, most of the mirror. A slice cannot be owned through a parent at an address the way a
+package is, because a reflected entity's id carries its repository inside one segment
+(`git-issue.issue.verse/<id>`) and a claim may carry a glob. The planned change owns a slice
+through the source's claim instead: where the walk up a node finds no record, the check matches
+the node against the installed claims, which are proven disjoint at install, and the one that
+matches names the owner — so a reflected entity's writer is already its owner and no record is
+written (f1fj0w49h12krtm2mnn0).
 
 ```tony
 # verse.perms.node."verse.task.instance.run-1"
