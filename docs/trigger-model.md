@@ -112,7 +112,9 @@ as an entity, and the engine interprets it directly. There is no compiled form.
 
 A charter installed at an address is a **package**. It runs in an engine of its own, and it may
 write only inside that address. The address is where the install points, either the positional
-path or the file's own `at:` declaration.
+path or the file's own `at:` declaration, and installing takes it: the address gets an owner
+record naming the installer, what the package derives beneath it is owned through that record,
+and an install at an address somebody else owns is refused ([perms.md](perms.md)).
 
 ```sh
 verse c -a notes -f notes-charter.tony    # its rules write under notes:*

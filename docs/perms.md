@@ -52,9 +52,13 @@ carry — so that when a principal is verified, nothing else has to change.
 
 **The owner of a node is the nearest record at or above it in the mirror**, and the root is
 the system's. The mirror records exactly the changes of ownership down the tree: a task under
-`verse.task.instance` gets one small record naming the person who ran it, and the ten thousand
-refs a source reflects under a slice get none, since each is owned by whoever installed the
-source and the source's record already says so.
+`verse.task.instance` gets one small record naming the person who ran it, and a charter
+package's address gets one naming its installer, taken when the package is installed — so the
+rows its rules derive beneath it are owned through the address and need none of their own.
+Installing at an address somebody else owns is refused, with the check's words. A source's
+reflections are the exception for now: nothing records a source's slice, so each entity a
+source reflects gets a record naming its installer (f1fj0w49h12krtm2mnn0 is the change that
+would own a slice through its claim instead).
 
 ```tony
 # verse.perms.node."verse.task.instance.run-1"

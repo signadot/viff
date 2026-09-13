@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 
@@ -469,7 +470,16 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 		return nil, http.StatusBadRequest, err
 	}
 	tx := &charterTx{s: s, store: store}
+	installer := entity.PrincipalOf(store)
 	for _, g := range groups {
+		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
+		// package writes beneath its address, and what it writes is owned through the address
+		// (takePackageAddresses), so installing at a place somebody else owns is refused here
+		// with the check's own words rather than at the first firing that writes there.
+		if code, err := checkPackageAddress(store, installer, g.at); err != nil {
+			code, err := tx.refuse(code, err)
+			return nil, code, err
+		}
 		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
 		// refused must leave the address as it found it, and a package engine standing where
 		// nothing is installed is a charter that lists as nothing and runs as nothing.
@@ -501,7 +511,57 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 			}
 		}
 	}
+	takePackageAddresses(store, installer, groups)
 	return groups, http.StatusCreated, nil
+}
+
+// checkPackageAddress refuses an install at an address the installer does not hold `owner` at.
+// Baseline's charter has no address, and the system and an unattributed request take no place:
+// the system owns the root already, and nobody's name is no name to record.
+func checkPackageAddress(store entity.Store, installer, at string) (int, error) {
+	if at == "" || installer == "" || installer == entity.SystemPrincipal {
+		return 0, nil
+	}
+	ref, err := entity.ParseAddr(at)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	if err := entity.Check(store, installer, entity.OwnerLevel, ref, "installing a charter at it"); err != nil {
+		return http.StatusForbidden, err
+	}
+	return 0, nil
+}
+
+// takePackageAddresses gives each package's address an owner record naming its installer, once
+// the whole file has installed.
+//
+// ONE RECORD FOR THE PACKAGE, NOT ONE PER ROW. A rule acts as its record, which resolves to the
+// installer, and a record is written only where ownership changes down the tree: with nothing
+// recorded at the address, the owner above a derived row was the system, so every row a package
+// derived got a record of its own naming the installer — the triage drive's thirty rows, the
+// drift ledger's findings, each one a record saying what the address could say once. Taken
+// here, every row beneath is owned through the address and needs none.
+//
+// AFTER the install rather than before it, so a file refused part-way leaves no place taken that
+// nothing was installed at. A record that could not be written is said and not fatal: the charter
+// is installed, and what it derives is recorded per row, as it was, until the next install.
+func takePackageAddresses(store entity.Store, installer string, groups []charterGroup) {
+	if installer == "" || installer == entity.SystemPrincipal {
+		return
+	}
+	for _, g := range groups {
+		if g.at == "" {
+			continue
+		}
+		ref, err := entity.ParseAddr(g.at)
+		if err != nil {
+			continue // refused before anything installed; unreachable here
+		}
+		if err := entity.Claim(store, ref, installer); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: charter package %s: taking its address for %s: %v\n",
+				g.at, installer, err)
+		}
+	}
 }
 
 // installedReport is what a successful install answers with: one entry per package the file

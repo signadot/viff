@@ -205,7 +205,10 @@ person who installed the charter. Everything follows from that one resolution:
 
 Installing is open in the seed — `verse.trigger.rule.*` holds `owner` out to everyone — so
 anybody may install, and a rule's record holds out `read: ["*"]` by the root's default, so
-anybody may read what is installed. The one place a rule may not read is the perms mirror:
+anybody may read what is installed. **A package takes its address.** Installing at
+`verse-dev.triage` writes an owner record there for the installer, so every row the package's
+rules derive beneath it is owned through that one record rather than each carrying its own — and
+somebody else installing at the same address is refused, told who owns it. The one place a rule may not read is the perms mirror:
 `verse.perms` is the system's with nothing held out on it, and a rule watching it is refused at
 install and told why; the charter the system stands behind, from `systemCharter:` in the
 deployment's config, is the one that may. A package's `reads:` declaration is a separate
