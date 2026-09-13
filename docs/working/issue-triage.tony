@@ -158,6 +158,11 @@ reads: [ !verse-path [git-issue] ]
       environment: verse-fix
       driver: llm
       grant: read-only
+      # AND ONLY THE READING TOOLS ARE OFFERED. The grant refuses a shell call when it is made;
+      # the tool list is what the model sees, and offered `run_bash` beside a checkout it reaches
+      # for git, is refused, and tries another spelling — sixteen refusals on one judgement, each
+      # a turn. Narrowed here, there is nothing to reach for, and the prompt says so.
+      tools: [read_file, list_dir]
       vector: auto
       # THE ANSWER IS A CONTRACT. An unparseable final message is no answer: `$data` resolves to
       # nothing, the completion hook is refused, and the judgement is lost silently. Every key
@@ -170,7 +175,9 @@ reads: [ !verse-path [git-issue] ]
       prompt: |
         You are judging what the NEXT STEP is for one issue in the verse repository, which is
         checked out at ./verse at the tip of main. You are not doing the step. Read what you
-        need, once, and answer.
+        need, once, and answer. You have two tools, read_file and list_dir, and no shell: what
+        git would tell you is on the issue below (its linked commits and branches), and the
+        tree is what you read.
 
         THE ISSUE, as its tracker holds it now:
 
