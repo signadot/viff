@@ -26,7 +26,8 @@ const VersionHeader = "Verse-Version"
 // that a write names a party, on the write, rather than in a field only some verbs carry.
 //
 // A request without it is unattributed: nothing is refused, and what it creates reads as its
-// parent's, which is what an api used by hand from curl gets.
+// parent's, which is what an api used by hand from curl gets. One carrying a name the grammar
+// does not read, or a name versed makes — `via:`, `system:` — is refused 400.
 const PrincipalHeader = "Verse-Principal"
 
 // Version is this binary's own verse version, read from its build info — the version that

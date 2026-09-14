@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,18 +18,40 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// The system is versed itself, and a request cannot be made as it.
-func TestARequestCannotBeMadeAsTheSystem(t *testing.T) {
+// A request presents user:, agent: or runner:, or a bare email for a person. A name versed makes
+// — via: a rule, system: — and a name the grammar does not read are refused at the door, before
+// any check runs, and write nothing.
+func TestTheDoorAdmitsOnlyWhatARequestMayPresent(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := putAs(t, entity.SystemDefault, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("a request as the system: %s", resp.Status)
+	for _, p := range []string{"verse.principal.group.release", "verse.trigger.rule.x",
+		"via:verse.trigger.rule.x", entity.SystemDefault, "coderunner", "group:release"} {
+		resp := putAs(t, p, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("a request as %q: %s %s", p, resp.Status, body)
+		}
+		if _, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1")); ok {
+			t.Fatalf("the refused request as %q wrote", p)
+		}
 	}
-	if _, ok, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1")); ok {
-		t.Fatal("the refused request wrote")
+	if refused, _ := entity.PolicyOf(srv.Store).Refusals(); len(refused) != 0 {
+		t.Errorf("a request refused at the door reached the check: %v", refused)
+	}
+	for i, p := range []string{"walter@example.com", "agent:harness", "runner:coderunner"} {
+		at := entity.RefAt("demo", "pr", fmt.Sprint(i+2))
+		resp := putAs(t, p, ts.URL, at.String(), entity.Obj{"stage": "open"}.Payload())
+		body := readBody(t, resp)
+		if resp.StatusCode/100 != 2 {
+			t.Fatalf("a request as %q: %s %s", p, resp.Status, body)
+		}
+	}
+	if got := owner(t, srv, entity.RefAt("demo", "pr", "2")); got != "user:walter@example.com" {
+		t.Fatalf("a bare email is recorded as %q", got)
+	}
+	if _, ok, _ := srv.Store.Get(entity.UserRef("walter@example.com")); !ok {
+		t.Fatal("the person is not listed under user")
 	}
 }
 

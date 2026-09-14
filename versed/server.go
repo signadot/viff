@@ -1191,26 +1191,35 @@ func (s *Server) Handler() http.Handler {
 // It is a middleware rather than a line in scopedStore because reads present a principal too,
 // and a party that only ever looked is still a party the verse has met.
 //
-// THE SYSTEM IS NOT SELF-ASSERTABLE. A request saying it is the system is refused here, since
-// a header saying `system:<part>` is precisely the assertion that was fine while nothing was refused
-// and is a way to hold everything once something is. What installs a system-owned charter is
-// versed itself, from the file its deployment names (Server.SystemCharter).
+// WHAT A REQUEST MAY PRESENT is `user:`, `agent:` or `runner:`, self-asserted within the three,
+// and a bare email, which is respelled `user:` on the request itself so every write and check
+// below reads the one form. A name the grammar does not read is refused. So are the names versed
+// makes — `via:` when a rule fires, a source reflects or a binding answers, `system:` when versed
+// acts — since a header saying either is precisely the assertion that was fine while nothing was
+// refused and is a way to hold what it names once something is. What installs a system-owned
+// charter is versed itself, from the file its deployment names (Server.SystemCharter). `group:`
+// does not parse as a principal, since nobody acts as a group.
 func (s *Server) principals(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := principalOf(r)
-		// A bare email is a person, and is stored as one: the name is respelled on the request
-		// itself, so every write and check below reads the one form.
-		if g, err := entity.ParsePrincipal(p); err == nil && g.String() != p {
-			p = g.String()
-			r.Header.Set(api.PrincipalHeader, p)
-		}
-		if entity.IsSystem(p) {
-			http.Error(w, "the system is versed itself, and a request cannot be made as it: a "+
-				"charter the system stands behind is installed from the file the deployment "+
-				"names (systemCharter in its config)", http.StatusForbidden)
-			return
-		}
 		if p != "" {
+			g, err := entity.ParsePrincipal(p)
+			if err != nil {
+				http.Error(w, api.PrincipalHeader+": "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			switch g.Kind {
+			case entity.ViaKind, entity.SystemKind:
+				http.Error(w, fmt.Sprintf("%s: %q is a name versed makes — via: when a rule fires, a "+
+					"source reflects or a binding answers, system: when versed acts — and not one a "+
+					"request presents; a request is user:, agent: or runner:. A charter the system "+
+					"stands behind is installed from the file the deployment names (systemCharter "+
+					"in its config)", api.PrincipalHeader, p), http.StatusBadRequest)
+				return
+			}
+			if p = g.String(); p != principalOf(r) {
+				r.Header.Set(api.PrincipalHeader, p)
+			}
 			s.notePrincipal(p)
 		}
 		h.ServeHTTP(w, r)
