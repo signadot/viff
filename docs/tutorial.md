@@ -237,7 +237,7 @@ This is the join between entities and tasks. Every task is mirrored into the sto
 its own running. So observing the fleet is observing entities:
 
 ```sh
-verse watch verse.task                        # the whole fleet's lifecycle
+verse watch verse task                        # the whole fleet's lifecycle
 verse data verse task instance <id>      # its result, still there after it finished
 verse data verse task --trim '{status}'         # …or just where everything got to
 ```
