@@ -66,7 +66,10 @@ func TestFlowVerbsSendTheirFlags(t *testing.T) {
 			"/flow/suspend", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "reading it"}},
 		{[]string{"suspend", "--charter", "verse-dev", "-r", "--subject", `github.signadot.verse.pr."42"`, "--why", "a PR"},
 			"/flow/suspend", api.FlowSelect{Charter: "verse-dev", Recursive: true, Subject: `github.signadot.verse.pr."42"`, Why: "a PR"}},
+		{[]string{"suspend", "--charter", ":demo-review", "--why", "a rule, about everything"},
+			"/flow/suspend", api.FlowSelect{Charter: ":demo-review", Why: "a rule, about everything"}},
 		{[]string{"suspend", "--task", "review@demo.pr.1"}, "/flow/suspend", api.FlowSelect{Task: "review@demo.pr.1"}},
+		{[]string{"resume", "--subject", "demo.pr.1"}, "/flow/resume", api.FlowSelect{Subject: "demo.pr.1"}},
 		{[]string{"resume", "--charter", ":claim", "--subject", "git.verse.head"},
 			"/flow/resume", api.FlowSelect{Charter: ":claim", Subject: "git.verse.head"}},
 		{[]string{"cancel", "--task", "review@demo.pr.1"}, "/flow/cancel", api.FlowSelect{Task: "review@demo.pr.1"}},
@@ -91,15 +94,15 @@ func TestFlowVerbsSendTheirFlags(t *testing.T) {
 	}
 }
 
-// A verb that does not say what it acts on prints its usage and sends nothing: nothing is
-// "every" by being left out.
+// A verb that does not say what it acts on prints its usage and sends nothing.
 func TestAFlowVerbNarrowsOrIsRefused(t *testing.T) {
 	got, _ := flowServer(t, nil)
 	for _, args := range [][]string{
 		{"suspend"},
-		{"suspend", "--charter", "verse-dev.drift", "--why", "no subject"},
-		{"suspend", "--charter", "verse-dev.drift", "--subject", "*"}, // no --why
-		{"resume", "--subject", "demo.pr.1"},
+		{"suspend", "--why", "nothing named"},
+		{"suspend", "--charter", "verse-dev.drift"}, // no --why
+		{"resume"},
+		{"resume", "--as", "alice@example.com"},
 		{"say", "hello"},
 		{"cancel", "--subject", "demo.pr.1"},
 		{"suspend", "--task", "x", "--subject", "demo.pr.1"},

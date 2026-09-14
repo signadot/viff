@@ -52,8 +52,8 @@ func stays(t *testing.T, s entity.Store, ref entity.Ref, field, want string) {
 
 // A suspension's subject is the selector `verse flow --subject` lists by — `*` open in any segment,
 // covering at or beneath — and its charter is one address, or with recursive that address and
-// every charter beneath it. Two spellings of one selector are one record, and nothing is "every"
-// by being left out.
+// every charter beneath it. Two spellings of one selector are one record, and the record spells
+// every part: an empty subject is refused rather than read as every one.
 func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 	sus := func(charter, rule, subject string, recursive bool) Suspension {
 		t.Helper()

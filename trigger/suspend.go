@@ -81,8 +81,9 @@ type Holder struct {
 // address are one record: addresses are parsed and rendered by segment, never compared as
 // strings, since a string comparison would let a respelling fail open.
 //
-// Nothing is "every" by being left out. Every charter and every subject are Every, said; an empty
-// charter is baseline's, and an empty subject is refused.
+// The record spells every part: every charter and every subject are Every, an empty charter is
+// baseline's, and an empty subject is refused. A flag left out on the command line is filled in
+// before it gets here (versed's selectionOf), since an empty charter already means baseline's.
 func NewSuspension(charter, rule, subject string, recursive bool) (Suspension, error) {
 	s := Suspension{Recursive: recursive}
 	switch charter {

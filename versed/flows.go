@@ -19,22 +19,22 @@ import (
 // acted on through one selection (api.FlowSelect), and `GET /flows` narrowed by a selection lists
 // exactly what an act with the same selection reaches now.
 //
-// A selection is a TASK, that run only, or a CHARTER and a SUBJECT. Nothing is "every" by being
-// left out: an act that names neither is refused with its usage, since an absent flag meaning
-// everything is how somebody typing a verb to see its usage suspends the verse. Only the listing,
+// A selection is a TASK, that run only, or a CHARTER and a SUBJECT, the one left out being `*`. An
+// act names something: one that names nothing is refused with its usage, since a bare verb meaning
+// everything is how somebody typing it to see its usage would suspend the verse. Only the listing,
 // a read, answers for everything when nothing narrows it.
 
 // Usage sentences a refused selection answers with.
 const (
-	usageHold   = "name a run with --task, or a charter and a subject with --charter and --subject; every charter and every subject are '*', said"
+	usageHold   = "name a run with --task, or what to suspend with --charter, --subject or both; the one left out is '*'"
 	usageSay    = "name what to say it to with --task, --charter or --subject"
 	usageCancel = "cancel names one run, with --task: a charter or a subject is suspended, and then its runs cancelled one by one"
 	usageTask   = "--task names one run, and combines with neither --charter nor --subject"
 )
 
 // selectionOf reads a selection's charter and subject into the suspension that spells them,
-// every charter and every subject standing in for an absent one: what a listing and a say narrow
-// by. An act that holds or lifts reads its own (holdSelection), where absent is refused.
+// every charter and every subject standing in for an absent one: what a listing narrows by, and
+// what a say or a suspension names once it has named something (holdSelection).
 func selectionOf(sel api.FlowSelect) (trigger.Suspension, error) {
 	charter, subject := sel.Charter, sel.Subject
 	if charter == "" {
@@ -247,15 +247,15 @@ func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// holdSelection reads the suspension an act that holds or lifts names: both a charter and a
-// subject, or refused with the usage. False means refused, having written the response.
+// holdSelection reads the suspension an act that holds or lifts names: a charter, a subject, or
+// both, the one left out being every charter or every subject; naming neither is refused with the
+// usage. False means refused, having written the response.
 func holdSelection(w http.ResponseWriter, b api.FlowSelect) (trigger.Suspension, bool) {
-	if b.Charter == "" || b.Subject == "" {
+	if b.Charter == "" && b.Subject == "" {
 		http.Error(w, usageHold, http.StatusBadRequest)
 		return trigger.Suspension{}, false
 	}
-	address, rule := trigger.ParseCharterFlag(b.Charter)
-	sus, err := trigger.NewSuspension(address, rule, b.Subject, b.Recursive)
+	sus, err := selectionOf(b)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return trigger.Suspension{}, false

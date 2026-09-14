@@ -286,17 +286,17 @@ verse
           [--subject <address>]              a selector, * open in any segment: demo.pr.*,
                                              demo.*.1, '*' (every subject) — quote it
           [--args]                           each row as the flags naming it, for xargs -L1
-          suspend --task <id> | --charter … --subject … --why <text> [--as <who>]
+          suspend --task <id> | [--charter …] [--subject …] --why <text> [--as <who>]
                                              hold that run at its next boundary, or suspend the
                                              work about a charter and a subject until resumed
-          resume  --task <id> | --charter … --subject … [--as <who>]
+          resume  --task <id> | [--charter …] [--subject …] [--as <who>]
                                              lift the hold or the suspension; --task is refused
                                              while a suspension holds the run
           say     --task | --charter | --subject <text…>   an instruction to what they name
           cancel  --task <id>                end that run (destructive)
           show <addr>                        a subject's flow as a tree
-          Nothing is "every" by being absent: a verb that names nothing prints its usage and
-          does nothing. See ../control.md
+          A verb that names nothing prints its usage and does nothing; of --charter and
+          --subject, the one left out beside the other is '*'. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

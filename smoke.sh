@@ -453,7 +453,7 @@ out=$(v flow suspend 2>&1) && die "a bare verse flow suspend was accepted: $out"
 has "$out" "--charter" || die "a bare verse flow suspend does not print its usage: $out"
 haskv "$(v status)" suspensions 0 || die "a bare verse flow suspend wrote a suspension"
 ok "a bare verse flow suspend prints its usage and suspends nothing"
-v flow suspend --charter smoke-susp --subject '*' --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
+v flow suspend --charter smoke-susp --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
 has "$(v flow)" 'smoke: hold the package' || die "the listing does not say why it is held"
 ok "suspended the charter at smoke-susp, and the listing says why"
 v data smoke-susp level 1 --put '{stage: open}' >/dev/null || die "data --put failed"
@@ -589,7 +589,7 @@ ok "a validated file is not validated again ($after tasks)"
 
 # A suspension is a control write, and a scope owns what it creates: from the scope, baseline's
 # package is refused with the sentence every control write refuses in.
-out=$(v --scope "$SCOPE" flow suspend --charter smoke-susp --subject '*' --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
+out=$(v --scope "$SCOPE" flow suspend --charter smoke-susp --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
 has "$out" "baseline's" || die "the scope's refusal does not say whose the charter is: $out"
 ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
 

@@ -290,8 +290,8 @@ type SetVector struct {
 // Charter is `<address>[:<rule>]`: an installed charter's address, and one rule of it after the
 // colon. Baseline's charter has no address, so its rule is `:<rule>` and all its rules `:`.
 // Recursive names the charter at the address and every charter beneath it. Subject is an address
-// with `*` open in any segment. Neither is "every" by being absent: every charter and every
-// subject are `*`, said, and only the listing reads an absent one as everything.
+// with `*` open in any segment. Either may be left out beside the other, and is then `*`; an act
+// naming neither is refused, and only the listing reads a selection of nothing as everything.
 //
 // Why is what a suspension is for; Text is what a say says; By is who says it.
 //

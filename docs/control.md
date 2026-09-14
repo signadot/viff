@@ -25,11 +25,13 @@ verb of the same noun.
   predicate: a suspension whose subject was a predicate would be lifted by an ordinary write that
   took the subject out of the match.
 
-**Nothing is "every" by being left out.** An absent flag meaning everything is how somebody typing
-a verb to see its usage would suspend the verse, so an act is narrowed or refused: `suspend` and
-`resume` take `--task`, or both `--charter` and `--subject`; `say` takes at least one flag;
-`cancel` takes `--task`. A bare verb prints its usage and sends nothing. Only the listing, a read,
-answers for everything when no flag narrows it.
+**An act names something.** A bare verb meaning everything is how somebody typing it to see its
+usage would suspend the verse, so an act that names nothing is refused: `suspend`, `resume` and
+`say` take `--task`, or `--charter`, `--subject` or both; `cancel` takes `--task`. A bare verb
+prints its usage and sends nothing. Of `--charter` and `--subject`, the one left out beside the
+other is `'*'`: `--charter :review` is that rule about every subject, and `--subject demo.pr.2`
+is that subject for every charter. `'*'` for both is refused. Only the listing, a read, answers
+for everything when no flag narrows it.
 
 ```sh
 verse flow                                           # every live task and every suspension
@@ -39,11 +41,11 @@ verse flow resume  --task review@demo.pr.2
 verse flow say     --subject 'demo.pr.*' "hurry"     # to every live task about a PR
 verse flow cancel  --task review@demo.pr.2           # end one run (destructive)
 
-verse flow suspend --charter verse-dev.drift --subject '*' --why "…"          # a charter, about everything
-verse flow suspend --charter '*' --subject github.signadot.verse.pr.'"42"' --why "…"  # a subject, for every charter
+verse flow suspend --charter verse-dev.drift --why "…"                        # a charter, about everything
+verse flow suspend --subject github.signadot.verse.pr.'"42"' --why "…"         # a subject, for every charter
 verse flow suspend --charter verse-dev.drift:claim --subject git.verse.head --why "…"
-verse flow suspend --charter verse-dev -r --subject '*' --why "…"              # every package under verse-dev
-verse flow resume  --charter verse-dev.drift --subject '*'                     # the same flags lift it
+verse flow suspend --charter verse-dev -r --why "…"                            # every package under verse-dev
+verse flow resume  --charter verse-dev.drift                                   # the same flags lift it
 ```
 
 `--args` prints each row of the listing as the flags that name it, one per line, quoted so that a

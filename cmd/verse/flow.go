@@ -16,9 +16,8 @@ import (
 
 // verse flow: the work in flight and the work held from now on, through one set of flags. Bare,
 // it lists live tasks and suspensions; its verbs act on what the same flags name — one run with
-// --task, or a charter and a subject with --charter and --subject. Nothing is "every" by being
-// left out: a verb that names nothing prints its usage and does nothing, and every charter or
-// every subject is '*', said.
+// --task, or a charter and a subject with --charter and --subject, the one left out being '*'. A
+// verb that names nothing prints its usage and does nothing.
 
 // flowFlags is the selection, declared once on `flow` and read by its verbs: the options are
 // resolved along the command's path, so `verse flow suspend --task x` sets them here.
@@ -30,7 +29,7 @@ type flowFlags struct {
 	Args      bool   `cli:"name=args desc='print each row as the flags that name it, one per line, for xargs -L1 verse flow <verb>'"`
 }
 
-const flowSynopsis = "flow [--task <id> | --charter <address>[:<rule>] [-r] --subject <address>] [--args] — " +
+const flowSynopsis = "flow [--task <id> | [--charter <address>[:<rule>] [-r]] [--subject <address>]] [--args] — " +
 	"list live tasks and suspensions; verbs: suspend, resume, say, cancel, show"
 
 func flowCmd() *cli.Command {
@@ -143,9 +142,9 @@ func (sel *flowFlags) narrowed(verb string) error {
 	}
 	switch verb {
 	case "suspend", "resume":
-		if sel.Task == "" && (sel.Charter == "" || sel.Subject == "") {
-			return usage("--task <id>, or --charter <address>[:<rule>] and --subject <address>; " +
-				"every charter and every subject are '*', said")
+		if sel.Task == "" && sel.Charter == "" && sel.Subject == "" {
+			return usage("--task <id>, or --charter <address>[:<rule>], --subject <address> or both; " +
+				"the one left out is '*'")
 		}
 	case "say":
 		if sel.Task == "" && sel.Charter == "" && sel.Subject == "" {
@@ -169,8 +168,9 @@ type flowSuspendConfig struct {
 func flowSuspendCmd(sel *flowFlags) *cli.Command {
 	cfg := &flowSuspendConfig{}
 	return cli.NewCommandAt(&cfg.Command, "suspend").
-		WithSynopsis("suspend --task <id> | --charter <address>[:<rule>] [-r] --subject <address> --why <text> — " +
-			"hold one run at its next boundary, or suspend a charter's work about a subject until resumed").
+		WithSynopsis("suspend --task <id> | [--charter <address>[:<rule>] [-r]] [--subject <address>] --why <text> — " +
+			"hold one run at its next boundary, or suspend a charter's work about a subject until resumed; " +
+			"the one of --charter and --subject left out is '*'").
 		WithOpts(mustOpts(cfg)...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			if err := noVerbArgs(cfg.Command, cc, args, "suspend"); err != nil {
@@ -199,7 +199,7 @@ type flowResumeConfig struct {
 func flowResumeCmd(sel *flowFlags) *cli.Command {
 	cfg := &flowResumeConfig{}
 	return cli.NewCommandAt(&cfg.Command, "resume").
-		WithSynopsis("resume --task <id> | --charter <address>[:<rule>] [-r] --subject <address> — " +
+		WithSynopsis("resume --task <id> | [--charter <address>[:<rule>] [-r]] [--subject <address>] — " +
 			"lift the hold or the suspension the same flags made").
 		WithOpts(mustOpts(cfg)...).
 		WithRun(func(cc *cli.Context, args []string) error {

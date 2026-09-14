@@ -283,11 +283,11 @@ stop a rule — or everything about a subject — and keep it stopped, suspend i
 seeded demo](#1-start), where `demo-review` is holding `demo.pr.1` at a gate:
 
 ```sh
-verse flow suspend --charter :demo-review --subject '*' --why "reading the review rule"   # baseline's rule: its charter has no address
+verse flow suspend --charter :demo-review --why "reading the review rule"   # baseline's rule, about every subject: its charter has no address
 verse gate                                   # the question is withdrawn: nobody can answer it now
 verse data demo pr 2 --put '{stage: open}'   # demo-review does not fire
 verse flow --charter :demo-review            # held by you, why, since when, what it holds
-verse flow resume --charter :demo-review --subject '*'   # both PRs are asked about, once, as they stand now
+verse flow resume --charter :demo-review    # both PRs are asked about, once, as they stand now
 ```
 
 Nothing that happened meanwhile is replayed: the lift arms the rule again, and it acts on the world

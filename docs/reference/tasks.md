@@ -417,10 +417,10 @@ the work about something and keep it stopped — no new firings, questions withd
 docket, hooks recording and starting nothing — suspend it instead:
 
 ```sh
-verse flow suspend --charter '*' --subject demo.pr.2 --why "a person is reviewing it by hand"
+verse flow suspend --subject demo.pr.2 --why "a person is reviewing it by hand"
 verse flow show demo.pr.2                      # heldBy: [<the suspension>] on the live task
 verse flow resume --task review@demo.pr.2      # refused, 409: a suspension holds it
-verse flow resume --charter '*' --subject demo.pr.2
+verse flow resume --subject demo.pr.2
 ```
 
 A task knows whose hold it is under — `heldBy` on its record and in `flow show` — so the two do

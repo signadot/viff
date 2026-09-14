@@ -364,9 +364,10 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 	}
 }
 
-// An act is narrowed or refused: nothing is "every" by being left out, so a verb that names
-// nothing is 400 with its usage and changes nothing, a task combines with no other flag, cancel
-// names one run, and every charter about every subject is not a suspension.
+// An act names something or is refused: a verb that names nothing is 400 with its usage and
+// changes nothing, a task combines with no other flag, cancel names one run, and every charter
+// about every subject is not a suspension. A charter or a subject given alone names its side, and
+// the side left out is every one.
 func TestAFlowActIsNarrowedOrRefused(t *testing.T) {
 	srv, ts := startedServer(t)
 	h := newIdleHandle(t)
@@ -376,9 +377,9 @@ func TestAFlowActIsNarrowedOrRefused(t *testing.T) {
 		sel  api.FlowSelect
 		says string
 	}{
-		{"suspend", api.FlowSelect{Why: "bare"}, "--charter and --subject"},
-		{"suspend", api.FlowSelect{Charter: "*", Why: "a charter alone"}, "--charter and --subject"},
-		{"resume", api.FlowSelect{Subject: "demo.pr.1"}, "--charter and --subject"},
+		{"suspend", api.FlowSelect{Why: "bare"}, "--charter, --subject or both"},
+		{"resume", api.FlowSelect{}, "--charter, --subject or both"},
+		{"suspend", api.FlowSelect{Charter: "*", Why: "every charter, and so every subject"}, "every charter about every subject"},
 		{"say", api.FlowSelect{Text: "to nobody"}, "--task, --charter or --subject"},
 		{"cancel", api.FlowSelect{Subject: "demo.pr.1"}, "--task"},
 		{"suspend", api.FlowSelect{Task: "run", Subject: "demo.pr.1", Why: "both"}, "combines with neither"},
@@ -392,6 +393,25 @@ func TestAFlowActIsNarrowedOrRefused(t *testing.T) {
 	}
 	if h.count("pause")+h.count("say")+h.count("cancel") != 0 || len(srv.susp.List()) != 0 {
 		t.Fatal("a refused act reached a task or wrote a suspension")
+	}
+	for _, c := range []struct {
+		sel api.FlowSelect
+		id  string
+	}{
+		{api.FlowSelect{Charter: ":review", Why: "a rule, about everything"}, ":review@*"},
+		{api.FlowSelect{Subject: "demo.pr.1", Why: "a subject, for every charter"}, `*:*@demo.pr."1"`},
+	} {
+		if code, row, msg := suspendAs(t, ts, "suspend", "", "", c.sel); code != http.StatusOK || row.ID != c.id {
+			t.Fatalf("flow suspend %+v = %d %+v %s, want %s", c.sel, code, row, msg, c.id)
+		}
+		lift := c.sel
+		lift.Why = ""
+		if code, row, msg := suspendAs(t, ts, "resume", "", "", lift); code != http.StatusOK || row.ID != c.id {
+			t.Fatalf("flow resume %+v = %d %+v %s, want %s lifted", lift, code, row, msg, c.id)
+		}
+	}
+	if n := len(srv.susp.List()); n != 0 {
+		t.Fatalf("%d suspensions stand after each was resumed by the flag that made it", n)
 	}
 	resp, err := http.Get(ts.URL + "/flows?task=run&subject=demo.pr.1")
 	if err != nil {

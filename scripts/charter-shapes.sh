@@ -336,14 +336,14 @@ suspend)
 	need_shape "${1:-}"
 	up_or_die
 	step "suspend"
-	v flow suspend --charter ":shape-$1" --subject '*' --why "charter-shapes: holding shape-$1" >/dev/null || die "suspending shape-$1 failed"
+	v flow suspend --charter ":shape-$1" --why "charter-shapes: holding shape-$1" >/dev/null || die "suspending shape-$1 failed"
 	ok "suspended shape-$1 — drive it: nothing fires until \`$0 resume $1\`"
 	;;
 resume)
 	need_shape "${1:-}"
 	up_or_die
 	step "resume"
-	v flow resume --charter ":shape-$1" --subject '*' >/dev/null || die "resuming shape-$1 failed"
+	v flow resume --charter ":shape-$1" >/dev/null || die "resuming shape-$1 failed"
 	ok "resumed shape-$1 — it acts once on what matches it now"
 	;;
 remove)
