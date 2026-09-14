@@ -14,7 +14,9 @@ rest of verse. It rests on a reading of the engine at `ead39d3d`, on how eleven 
 model the same thing ([prior art](#prior-art)), and on two adversarial passes against the code that
 broke the drafts before this one ([how this was checked](#how-this-was-checked)). Those drafts each
 exempted work already running, and the exemption was where they kept breaking; this one covers the
-work about a subject in every form, the way a standing resolver does.
+work about a subject in every form, the way a standing resolver does. It takes the scope model of
+`docs/working/scope-planes-plan.md` as given: a suspension is a control write, and belongs to a
+plane ([below](#a-suspension-belongs-to-a-plane)).
 
 ## The design in one paragraph
 
@@ -26,16 +28,17 @@ next boundary, a question about it is withdrawn from in front of people, and a h
 about it does not land. When the suspension lifts, each of those is released in the order that keeps
 them consistent — tasks resume, held hooks land, then the covered rules are re-armed, the path an
 install and a restart already take — so a rule acts on the world as it stands when the suspension
-lifts, and nothing that happened meanwhile is replayed. The suspensions in force are one in-memory
-table for the process, written only by the route that also writes the store, and loaded before any
-task is re-attached or charter restored.
+lifts, and nothing that happened meanwhile is replayed. A suspension belongs to the plane it was
+made in and covers only the work that plane created. The suspensions in force are one in-memory
+table per plane, written only by the route that also writes the store, and loaded before that
+plane's tasks are re-attached or its charter restored.
 
 ```tony
 # verse.trigger.suspension."verse-dev.drift:*@git.verse.*"
 charter: verse-dev.drift         # an installed charter's address, trailing * allowed; "*" for every charter
 rule: "*"                         # a rule's name in it; "*" for all of them
 subject: git.verse.*              # an address, trailing * allowed; "*" for every subject
-scope: ""                         # a scope's own rules; "" for baseline's and every package's
+scope: ""                         # the plane it was made in, as a rule record's; "" is baseline's, packages included
 held:
   user:walter@example.com:
     why: "reviewing the drift charter's range logic before it runs again"
@@ -90,7 +93,7 @@ when a new kind of work is added.
 
 Every form of work already carries its subject — a firing's selected member, a task's `flow`, a
 question's `subject`, a hook's `flowTask.subject` (`trigger/engine.go:36`) — and its charter: the
-engine it runs in, and the chain it was spawned at. So one predicate, *is (scope, charter, rule,
+engine it runs in, and the chain it was spawned at. So one predicate, *is (plane, charter, rule,
 subject) suspended now?*, is asked of each form where it would next make progress, and each form
 already has a way to wait:
 
@@ -121,8 +124,10 @@ move on unwatched.
 
 **A running task** is held at its next boundary by the pause every runtime already implements —
 local, remote and brokered alike (`task.Handle.Pause`). The effect is derived from the record, not
-stored on the task: a task re-attached after a restart, or spawned about a subject by hand, is held
-the moment it is seen, because the table covers it.
+stored on the task: a task re-attached after a restart is held the moment it is seen, because the
+table covers it. Tasks are found through the plan's `flowEngines` for the plane; a task spawned by
+hand is in no engine's live map today, which the plan notes and leaves, so holding it needs it found
+by its record's `flow` ([what it costs](#what-it-costs-to-build)).
 
 **A hook** is where a charter records what a task did, so holding it is only safe because the rule
 the hook would feed is suspended too: nothing about the subject re-fires while the hook waits, and
@@ -161,7 +166,7 @@ What a resumed rule sees is what an install sees:
   about.
 
 A re-arm replays whole rules, not only what was held, and that is its price: lifting `charter: "*"`
-about one subject replays every rule in every engine, a restart's worth of evaluation.
+about one subject replays every rule in every engine of the plane, a restart's worth of evaluation.
 
 The prior art converges on current state over replay. Temporal's scheduler skips paused time
 outright (`service/worker/scheduler/workflow.go`: "use end as last action time so that we don't
@@ -170,33 +175,62 @@ Kubernetes documents a CronJob starting a surprise run on unsuspend. Drools and 
 activation whose condition went false, so a group regaining focus fires on current truth. Kafka
 replays because it is a log whose every record must be processed, which a charter is not.
 
-### One table, one writer
+### A suspension belongs to a plane
+
+`docs/working/scope-planes-plan.md` (for git-issue `h7wwzxtnh12ksc4yh5n0`) settles what a scope
+owns, and a suspension takes its model whole. A scope's **world half** is copy-on-write; its
+**program half** — rules, tasks, gates, flows, the things with a live half that cannot be copied —
+it reads by reference, and a control write may name a scope only for work that scope created. Named
+for inherited work it is refused, 409, saying which plane owns it; baseline acting on a scope's work
+is refused the same way. Perms take the world's rule instead, because a grant has no live half.
+
+A suspension holds live things, so it is a control write on the program half:
+
+- **it covers only work its plane created.** Made with `--scope me`, it covers the rules scope `me`
+  installed, the tasks and questions they spawned, and the tasks spawned in that scope. Made
+  without, it covers baseline's and every package's, since packages are baseline's plane. A baseline
+  suspension does not reach into a scope, and a scope's does not reach baseline; naming another
+  plane's charter is refused 409 before `control` is asked, which is the order the plan fixes for
+  every control route;
+- **its coverage is decided the way the plan decides ownership**, with no logic of its own: a rule
+  by the engine that `Knows` it, a task or question by which store holds its record (`planeOf`), a
+  flow by the engines of the plane (`flowEngines`);
+- **its record is stored in its plane and stamped with it**, as a rule record is, and restored by
+  the stamp the way `ownRecord` restores a scope's rules (`trigger/charter.go:126`);
+- **its table is its plane's**: baseline's loads first at startup; a scope's loads when the scope's
+  engine opens, beside `restoreScopeCharter` and the scope's perms mirror (the plan's §6b), under
+  the same `sync.Once`, and goes with the scope in `deleteScope`;
+- **its authority is read from its plane's mirror**: a scope's suspension against the scope's
+  layered mirror, baseline's grants and the scope's own; baseline's against baseline's.
+
+### One table per plane, one writer
 
 `docs/deployment-and-steering.md` holds that an intervention must never queue behind observation.
 Tonight's ship is the evidence: for minutes after the wipe the store answered past its callers'
 deadlines under the sources' first pass, and the drift charter's claim missed the head moving in
 that window. So a suspension does not take effect by being observed.
 
-There is **one table for the process**, as `entity.Track` keeps one perms mirror for it, and **only
-the route writes it** — under one lock, together with the store write, so the table and the store
-change in the same order. There is no watch to race the route, so no revision ordering and no
-tombstones are needed. An automatic suspension is made by calling the same function in the process,
-not by a rule writing the record.
+There is **one table per plane**, as the plan keeps one perms mirror per plane, and **only the route
+writes it** — under one lock, together with the store write, so the table and the store change in
+the same order. There is no watch to race the route, so no revision ordering and no tombstones are
+needed. An automatic suspension is made by calling the same function in the process, not by a rule
+writing the record.
 
-**The table loads in a restore phase of its own, first.** The tasks phase, which re-attaches
-surviving tasks, and the charter and package phases wait on it (`awaiting`,
-`versed/startup.go:128`), and the sources already wait on those (`versed/sources.go:841`), because
-"a source's first pass before the rules are armed is an edge nothing saw" (`startup.go:124`). Until
-it has loaded, the table answers *suspended* for everything, which covers the one path that can
-start work during a restore — a request served before the phases finish; when the load completes,
-what was held meanwhile is released in the order above. A store that cannot serve the slice holds
-every rule, which is the right failure: a suspension that failed open on restart would resume what
-somebody stopped on purpose.
+**Baseline's table loads in a restore phase of its own, first** (a scope's loads when its engine
+opens, [above](#a-suspension-belongs-to-a-plane)). The tasks phase, which re-attaches surviving
+tasks, and the charter and package phases wait on it (`awaiting`, `versed/startup.go:128`), and the
+sources already wait on those (`versed/sources.go:841`), because "a source's first pass before the
+rules are armed is an edge nothing saw" (`startup.go:124`). Until it has loaded, the table answers
+*suspended* for everything, which covers the one path that can start work during a restore — a
+request served before the phases finish; when the load completes, what was held meanwhile is
+released in the order above. A store that cannot serve the slice holds every rule, which is the
+right failure: a suspension that failed open on restart would resume what somebody stopped on
+purpose.
 
 ### Identity
 
-A rule is **(scope, charter address, name)**. Names are unique only within an engine, and a scope's
-engine is unconfined, so its address is empty like baseline's: without the scope, a suspension of
+A rule is **(plane, charter address, name)**. Names are unique only within an engine, and a scope's
+engine is unconfined, so its address is empty like baseline's: without the plane, a suspension of
 baseline's `claim` would suspend every developer's scoped `claim` too.
 
 Addresses are parsed and compared by segment at the route, never as strings, so two quotings of one
@@ -205,7 +239,8 @@ subject are one subject; a string comparison would let a spelling fail open.
 ### Authority is decided when it applies
 
 A suspension covers a piece of work only while **some holder of it may suspend that work**, asked at
-the moment it would make progress, against the perms mirror held in memory:
+the moment it would make progress, against the perms mirror of the suspension's plane, held in
+memory:
 
 - **from the charter side**, a holder may suspend a charter's work if they hold `control` over the
   charter — a package's place, or a baseline rule's own record;
@@ -219,8 +254,9 @@ anything beneath `gitlab` — everyone holds `control` at a world node with no o
 (`entity/attribution.go:416`) — and when alice later installs a source that owns `gitlab.alice`,
 every charter about her repositories is suspended by somebody she never consented to. Checked at
 application time, bob's holder no longer covers alice's subjects the moment she owns them; the
-record stands, and the listing says it covers less. The walk costs no read: the mirror is in memory
-once loaded, and the routes refuse until it is (`attribution.go:894`).
+record stands, and the listing says it covers less. The walk costs no read: the plane's mirror is in
+memory once loaded, and the routes refuse until it is (`attribution.go:894`; per scope, the plan's
+§6b).
 
 **System rules are marked by how they were installed, not by perms.** A rule resolves to
 `system:default` whenever its record has no owner record (`attribution.go:1096`), which includes a
@@ -343,6 +379,9 @@ out.
   Kubernetes stops a paused Deployment's progress deadline; doing the same here is an open question
   below.
 - **An `on` edge during a suspension**, for a firing it had not started.
+- **A scope deleted while one of its suspensions holds work.** The plan leaves `deleteScope` not
+  cancelling a scope's live tasks; a suspension removed with its scope has to release or cancel what
+  it held, and follows whatever `deleteScope` becomes.
 - **A layered charter suspended one level at a time.** A suspended lower rule stops deriving, and
   rules about the rows it derived act on its last ones. Suspending the package is the whole answer.
 
@@ -354,18 +393,26 @@ out.
 - **Firings.** One predicate with the per-holder authority check at three call sites; a waiting
   firing whose question is withdrawn keeps waiting and re-poses on resume; `reArm(rule)`, which is
   `stopWatchers` and `armTriggerSubtree` together.
-- **Tasks.** Control has to reach every engine's tasks, not only the baseline engine's (git-issue
-  `h7wwzxtnh12ksc4yh5n0`), and a task record has to carry the charter address it was spawned under,
-  which it does not today; `flow`, `trigger` and `chain` are there, the package is not.
+- **Tasks.** Reaching every engine's tasks, and knowing which plane holds one, is the scope-planes
+  plan's `flowEngines` and `planeOf` (§2–§4), built first. What a suspension adds: a task record
+  carries the charter address it was spawned under, which it does not today (`flow`, `trigger` and
+  `chain` are there, the package is not); and a task spawned by hand, which is in no engine's live
+  map, is found by its record's `flow`.
 - **Hooks and `seq` steps.** Held in the engine, and marked on the task record so a restart during a
   suspension finds them — `flowTask.chain` is already "what a reader (or, later, a resume) can
   navigate back to the action that owns it". This is the largest piece, and it closes an existing
   gap: today a hook due while verse restarts is lost too.
-- **Questions and deadlines.** Withdraw on suspend with ballots kept, re-arm on lift; fix
-  `clearPriorAnswer` first ([found along the way](#found-along-the-way)).
+- **Questions and deadlines.** Withdraw on suspend with ballots kept, re-arm on lift, each through
+  the store of the question's plane (the plan's §5); fix `clearPriorAnswer` first ([found along the
+  way](#found-along-the-way)).
 - **Resume.** The five-step order, under the table's lock.
 - **Surfaces and docs.** The CLI pair; census, status and `flow show` fields; a section of the
-  trigger model beside flows, the perms table, the CLI reference.
+  trigger model beside flows, the perms table, the CLI reference, and a line in the plan's "What a
+  scope owns" section of `docs/reference/connect.md`.
+
+**Order.** The scope-planes plan's commits 1–4 first (the model, the plane helper and flow steering,
+task control and gates, charter removal), then its §6b (a perms mirror per scope), which a scope's
+suspension authorises against. Baseline suspensions need only 1–3.
 
 ## What adopting it does to the rest of verse
 
@@ -381,7 +428,7 @@ argument per path about whether it starts or runs, and a new feature needed the 
 the question for a new feature is only *where does it wait* — the same question a pause already asks
 of a task.
 
-**3. Stored names become references.** A suspension names an address, a rule, a subject and a scope,
+**3. Stored names become references.** A suspension names an address, a rule, a subject and a plane,
 durably. Moving a package, renaming a rule, or respelling an address grammar — verse did that twice
 this week — leaves a suspension naming nothing, and it fails **open**. Every such change adds
 "respell the suspensions" to its notice, as it now does for grants; the listing marking a suspension
@@ -395,9 +442,10 @@ what is restoring.
 covered. On a verse with many rules over busy slices that is a restart's worth of reads at a moment
 an operator chose; it must never run automatically in a loop.
 
-**6. Task control stops being baseline-only.** A suspension that holds tasks forces control to reach
-every engine, which fixes `verse flow` for packages as a side effect; and a task record gains its
-charter.
+**6. It adds no plane logic of its own.** Which rules, tasks and questions a suspension may touch is
+the scope-planes plan's answer, reached through the same `planeOf` and `flowEngines`, refused on the
+wrong plane with the same 409. A later change to what a scope owns changes what a suspension covers
+with it, and needs no second edit; the cost is that a suspension cannot be built before that plan.
 
 **7. `control` gets a consistent use.** Suspensions check it on every application. Today only task
 cancel, say and vector check it; the flow routes and the runtime's task pause and resume do not,
@@ -434,8 +482,6 @@ genuinely new mechanism is holding a hook durably, and it closes a gap verse has
   which needs the suspension's start on the question.
 - **Suspending the system charter from outside.** Only the system can, which means editing the file.
   An operator in an incident may want more.
-- **Suspensions in a scope.** Stored in baseline with their `scope:`; whether a scope's owner may
-  suspend baseline's work inside their scope is undecided.
 - **This draft has not had its own adversarial pass.** The checks to run first: that every place a
   task's hook and a `seq` step lands goes through one function that can hold it; that a waiting
   firing can withdraw its question and keep waiting without `untilMoot` reading the withdrawal as
@@ -465,8 +511,9 @@ Read while working this out, and not fixed here. None was verified by a test exc
 - **A hook whose spawn needs a provider selection blocks its engine's reap loop** until somebody
   answers (`engine.go:1654`).
 - `verse flow pause|resume|cancel|say` act only on the baseline engine's tasks, though `verse flow`
-  lists every engine's.
-- The flow routes and the runtime's `/tasks/{id}/pause|resume` check no `control`.
+  lists every engine's — the scope-planes plan fixes this (§3).
+- The flow routes and the runtime's `/tasks/{id}/pause|resume` check no `control`; the plan orders
+  the plane check before `control` on every control route, and the missing checks are still to add.
 - `reconcileTasks` calls `AdoptChain` before the charter is loaded, so a surviving task's hooks may
   never be re-attached at restart.
 - The cycle throttle's documented "aborts if its chain breaks" is wired only through the dormant
