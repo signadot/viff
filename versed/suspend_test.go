@@ -628,3 +628,79 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 		}
 	}
 }
+
+// A suspension is never a mystery: status counts them in the scope asked about, the charter
+// marks a rule suspended whole in its listing and its census, a flow's unfinished position says
+// what suspends it, and the listing says what each suspension holds now and whether it names
+// anything at all.
+func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
+	srv, ts := startedServer(t)
+	addRule(t, ts, `{
+		name: review,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {patch: {stage: reviewed}},
+	}`)
+	srv.Eng.Adopt("demo.pr.1", "by-hand", newIdleHandle(t))
+	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("review@demo.pr.2").At(),
+		Value: entity.Obj{"status": "running", "flow": "demo.pr.2", "chain": "review"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []api.Suspend{
+		{Charter: "*", Subject: "demo.pr.1", Why: "a person is looking"},
+		{Rule: "review", Why: "the review rule is wrong"},
+		{Charter: "verse-dev.gone", Why: "a package that is not installed"},
+	} {
+		if code, _, msg := suspendAs(t, ts, "suspend", "", "", body); code != http.StatusOK {
+			t.Fatalf("suspend %+v = %d %s", body, code, msg)
+		}
+	}
+
+	if st := statusOf(t, ts); st.Suspensions != 3 {
+		t.Fatalf("status counts %d suspensions, want 3", st.Suspensions)
+	}
+	resp, err := http.Get(ts.URL + "/status?scope=me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scoped api.Status
+	decodeResp(t, resp, &scoped)
+	if scoped.Suspensions != 0 {
+		t.Fatalf("status in a scope with none counts %d", scoped.Suspensions)
+	}
+
+	byID := map[string]api.Suspension{}
+	for _, s := range suspensionsIn(t, ts, "") {
+		byID[s.ID] = s
+	}
+	if s := byID[`*:*@demo.pr."1"`]; s.Holding.Tasks != 1 || !s.Covers {
+		t.Fatalf("the PR's suspension lists as %+v, want one task held and covering", s)
+	}
+	if s := byID[":review@*"]; !s.Covers {
+		t.Fatalf("review's suspension lists as %+v, want it covering the installed rule", s)
+	}
+	if s := byID["verse-dev.gone:*@*"]; s.Covers {
+		t.Fatalf("a suspension of a package nobody installed lists as covering: %+v", s)
+	}
+
+	resp, err = http.Get(ts.URL + "/charter?path=rules")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, "suspended") || !strings.Contains(body, ":review@*") {
+		t.Fatalf("the charter listing does not mark review suspended:\n%s", body)
+	}
+	resp, err = http.Get(ts.URL + "/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, "suspended:") {
+		t.Fatalf("the status census does not name the suspended rule:\n%s", body)
+	}
+	resp, err = http.Get(ts.URL + "/flow/tree?subject=demo.pr.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, ":review@*") {
+		t.Fatalf("flow show does not say what suspends review's work:\n%s", body)
+	}
+}

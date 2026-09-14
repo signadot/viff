@@ -103,6 +103,7 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 	if err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
+	markSuspendedRules(eng, node.triggers)
 	node.strata, err = codec.ToNode(eng.Strata())
 	return err
 }

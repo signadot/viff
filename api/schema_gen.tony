@@ -234,6 +234,7 @@ define:
   runners: .[array(string)]
   sources: .[array(string)]
   storeRev: .[int]
+  suspensions: .[int]
   tasks: .[int]
 signature:
   name: verse-status
@@ -271,8 +272,19 @@ signature:
 context:
 - tony-format/context
 define:
+  launches: .[int]
+  questions: .[int]
+  tasks: .[int]
+signature:
+  name: verse-suspension-holding
+---
+context:
+- tony-format/context
+define:
   charter: .[string]
+  covers: .[bool]
   held: .[array(verse-suspension-holder)]
+  holding: !verse-suspension-holding null
   id: .[string]
   rule: .[string]
   scope: .[string]

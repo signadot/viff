@@ -59,6 +59,7 @@ define:
   lastAction: .[string]
   prompt: .[string]
   status: .[string]
+  suspended: .[array(string)]
 signature:
   name: verse-flow-node
 ---

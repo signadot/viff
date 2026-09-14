@@ -65,8 +65,11 @@ type FlowNode struct {
 	LastAction string `tony:"field=lastAction,omitzero"`
 	// HeldBy is who holds a live task at its boundary: `operator` for a `flow pause`, and the
 	// suspensions that paused it.
-	HeldBy   []string   `tony:"field=heldBy,omitzero"`
-	Children []FlowNode `tony:"field=children,omitzero"`
+	HeldBy []string `tony:"field=heldBy,omitzero"`
+	// Suspended is the suspensions holding this position's work while it has not finished: a
+	// branch that will not run, a question that stands withdrawn, until they lift.
+	Suspended []string   `tony:"field=suspended,omitzero"`
+	Children  []FlowNode `tony:"field=children,omitzero"`
 }
 
 // Statuses a node carries that no task ever reports: a position in the charter that has
@@ -193,7 +196,20 @@ func (e *Engine) rootsFor(subject string, ents []entity.Entity) []FlowNode {
 		out = append(out, root)
 	}
 	sort.Slice(bare, func(i, j int) bool { return bare[i].ID < bare[j].ID })
-	return append(out, bare...)
+	out = append(out, bare...)
+	e.markSuspended(out, subjectOf(subject))
+	return out
+}
+
+// markSuspended says, on every position that has not finished, what suspends its work.
+func (e *Engine) markSuspended(nodes []FlowNode, subj entity.Ref) {
+	for i := range nodes {
+		n := &nodes[i]
+		if !task.TerminalStatus(n.Status) && n.Status != StatusSkipped && n.Status != StatusApplied {
+			n.Suspended = e.holding(mirror.TriggerOf(n.Chain), subj)
+		}
+		e.markSuspended(n.Children, subj)
+	}
 }
 
 // node builds the node at chain and recurses into the action's completion hooks. act is the

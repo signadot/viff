@@ -324,6 +324,21 @@ type Suspension struct {
 	// Still is what else covers everything this one does — on a resume, the suspensions the
 	// lifted pair is still held by.
 	Still []string `tony:"field=still,omitzero"`
+	// Holding is what it is holding now, across the engines of its scope.
+	Holding SuspensionHolding `tony:"field=holding"`
+	// Covers is whether it names anything installed: false for a suspension whose charter or rule
+	// is gone — renamed, moved, removed — which holds nothing and fails open.
+	Covers bool `tony:"field=covers"`
+}
+
+// SuspensionHolding is what a suspension holds now: tasks it paused, questions it withdrew, and
+// launches it parked.
+//
+//tony:schemagen=verse-suspension-holding,notag
+type SuspensionHolding struct {
+	Tasks     int `tony:"field=tasks,omitzero"`
+	Questions int `tony:"field=questions,omitzero"`
+	Launches  int `tony:"field=launches,omitzero"`
 }
 
 // SuspensionHolder is one party's hold on a suspension.
@@ -464,8 +479,10 @@ type Status struct {
 	StoreRev int64 `tony:"field=storeRev"`
 	Flows    int   `tony:"field=flows"`
 	Gates    int   `tony:"field=gates"`
-	Tasks    int   `tony:"field=tasks"`
-	Fired    int   `tony:"field=fired"`
+	// Suspensions is how many suspensions are in force in the scope asked about.
+	Suspensions int `tony:"field=suspensions"`
+	Tasks       int `tony:"field=tasks"`
+	Fired       int `tony:"field=fired"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
 	// these three are things somebody put here, and a verse that has lost them looks healthy by

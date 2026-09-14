@@ -3654,18 +3654,20 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// its mark from every answer that carries a commit — reads, writes, watch events, and
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
-		StoreRev:  s.Store.Head(),
-		Flows:     len(s.flowSubjects(r.URL.Query().Get("scope"))),
-		Gates:     len(pendingQuestions(s.scopedStore(r))),
-		Tasks:     taskCount(s.scopedStore(r)),
-		Fired:     s.firedTotal(),
-		Runners:   runnerRefs(s.scopedStore(r)),
-		Sources:   sourceRefs(s.scopedStore(r)),
-		Charter:   s.charterTop(),
-		Runner:    s.runnerStatus(), // how tasks run: kind + resume + dial legs
-		LLM:       s.LLM,            // secrets-safe: are agent creds configured on THIS server
-		Perms:     s.permsStatus(),
-		Restoring: s.Restoring(),
+		StoreRev: s.Store.Head(),
+		Flows:    len(s.flowSubjects(r.URL.Query().Get("scope"))),
+		Gates:    len(pendingQuestions(s.scopedStore(r))),
+		// In force in the scope asked about; a scope nobody has opened holds none.
+		Suspensions: s.suspensionCount(r.URL.Query().Get("scope")),
+		Tasks:       taskCount(s.scopedStore(r)),
+		Fired:       s.firedTotal(),
+		Runners:     runnerRefs(s.scopedStore(r)),
+		Sources:     sourceRefs(s.scopedStore(r)),
+		Charter:     s.charterTop(),
+		Runner:      s.runnerStatus(), // how tasks run: kind + resume + dial legs
+		LLM:         s.LLM,            // secrets-safe: are agent creds configured on THIS server
+		Perms:       s.permsStatus(),
+		Restoring:   s.Restoring(),
 	}
 	// When docd-backed, publish its addresses so a controller task (verse connect)
 	// can reach the mount face; the client face is where store clients connect.
@@ -3793,6 +3795,7 @@ type charterCensus struct {
 	here          bool // a charter is installed AT this address
 	rules, strata int
 	arming        []string // rules counted above whose watch is still being opened
+	suspended     []string // rules counted above that a suspension holds about every subject
 	kids          map[string]*charterCensus
 	order         []string
 }
@@ -3819,6 +3822,11 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 	}
 	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
 	c.arming = eng.Arming()
+	for _, t := range eng.Triggers() {
+		if len(eng.SuspendedWhole(t.Name)) > 0 {
+			c.suspended = append(c.suspended, t.Name)
+		}
+	}
 }
 
 // empty reports whether this node has children.
@@ -3842,6 +3850,11 @@ func (c *charterCensus) node() *ir.Node {
 		// somebody may be waiting on, and the count above says it is installed.
 		if len(c.arming) > 0 {
 			add("arming", strNodes(c.arming))
+		}
+		// And the ones a suspension holds whole: installed, counted, and firing on nothing until
+		// somebody resumes them.
+		if len(c.suspended) > 0 {
+			add("suspended", strNodes(c.suspended))
 		}
 	}
 	if len(c.order) > 0 {

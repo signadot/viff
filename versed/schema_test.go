@@ -110,6 +110,7 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	for _, want := range []string{
 		"GET /status", "GET /entity", "POST /entity", "POST /gate/resolve",
 		"GET /tasks", "POST /tasks", "GET /schema", "GET /api",
+		"GET /suspensions", "POST /suspend", "POST /resume",
 	} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("route table is missing %q", want)
@@ -121,6 +122,11 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	}
 	if r := got["POST /entity"]; r.Request != "verse-put-entity" {
 		t.Errorf("POST /entity request = %q, want verse-put-entity", r.Request)
+	}
+	for _, route := range []string{"POST /suspend", "POST /resume"} {
+		if r := got[route]; r.Request != "verse-suspend" || r.Response != "verse-suspension" {
+			t.Errorf("%s = %+v, want a verse-suspend answered by a verse-suspension", route, r)
+		}
 	}
 }
 

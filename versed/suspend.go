@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -397,6 +399,13 @@ func (s *Server) listSuspensions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) suspensionRecord(sus trigger.Suspension) api.Suspension {
 	out := api.Suspension{ID: sus.ID(), Charter: sus.Charter, Rule: sus.Rule, Subject: sus.Subject,
 		Scope: sus.Scope, Held: []api.SuspensionHolder{}}
+	for _, eng := range s.flowEngines(sus.Scope) {
+		tasks, questions, launches := eng.Holds(sus.ID())
+		out.Holding.Tasks += tasks
+		out.Holding.Questions += questions
+		out.Holding.Launches += launches
+		out.Covers = out.Covers || eng.Names(sus)
+	}
 	head := s.Store.Head()
 	for _, who := range sus.Holders() {
 		h := sus.Held[who]
@@ -429,4 +438,31 @@ func heldBySuspension(w http.ResponseWriter, r *http.Request, what string, by []
 	codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
 		"%s is held by %s; resuming it would run what that suspends — `verse resume` lifts a suspension, "+
 			"and `verse suspend` lists them", what, strings.Join(by, ", ")))
+}
+
+// suspensionCount is how many suspensions are in force in a scope: what status counts.
+func (s *Server) suspensionCount(scope string) int {
+	tbl := s.suspensionsOf(scope)
+	if tbl == nil {
+		return 0
+	}
+	return len(tbl.List())
+}
+
+// markSuspendedRules marks each rule in a charter listing that a suspension holds about every
+// subject with what holds it.
+func markSuspendedRules(eng *trigger.Engine, rules *ir.Node) {
+	if rules == nil || rules.Type != ir.ArrayType {
+		return
+	}
+	for _, rule := range rules.Values {
+		name := entity.Str(rule, "name")
+		if name == "" || rule.Type != ir.ObjectType {
+			continue
+		}
+		if held := eng.SuspendedWhole(name); len(held) > 0 {
+			rule.Fields = append(rule.Fields, ir.FromString("suspended"))
+			rule.Values = append(rule.Values, strNodes(held))
+		}
+	}
 }

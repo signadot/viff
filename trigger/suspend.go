@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -619,9 +620,11 @@ func (e *Engine) ask(wctx context.Context, fl *flight, t Trigger, subj entity.Re
 		if err != nil && wctx.Err() == nil && errors.As(context.Cause(pctx), &susp) {
 			cancel(nil)
 			e.tracef("gate %s on %s: %v", d.ID, subj, susp)
+			fl.setWithdrawn(susp.IDs)
 			withdrawn = true
 			continue
 		}
+		fl.setWithdrawn(nil)
 		cancel(nil)
 		return res, err
 	}
@@ -853,4 +856,57 @@ func (e *Engine) reArm(covers func(rule string) bool) {
 		}
 		go e.evaluate(e.bgctx, t, entity.Commit{Rev: head})
 	}
+}
+
+// Holds is what this engine holds for one suspension now: live tasks it paused, questions it has
+// withdrawn, and launches parked that it covers.
+func (e *Engine) Holds(id string) (tasks, questions, launches int) {
+	for _, fp := range e.liveTasks() {
+		if slices.Contains(fp.suspended, id) {
+			tasks++
+		}
+	}
+	for _, f := range e.flights() {
+		f.mu.Lock()
+		if slices.Contains(f.withdrawn, id) {
+			questions++
+		}
+		f.mu.Unlock()
+	}
+	e.parkMu.Lock()
+	parked := append([]parkedLaunch(nil), e.parked...)
+	e.parkMu.Unlock()
+	for _, l := range parked {
+		if slices.Contains(e.settled(mirror.TriggerOf(l.chain), l.subj), id) {
+			launches++
+		}
+	}
+	return tasks, questions, launches
+}
+
+// Names reports whether a suspension names anything this engine runs: an installed rule of its
+// charter, or — for every rule of every charter — the work no rule started too. A suspension that
+// names nothing anywhere holds nothing, and its listing says so; a package moved or a rule renamed
+// leaves one behind.
+func (e *Engine) Names(s Suspension) bool {
+	if s.EveryCharter() && s.Rule == Every {
+		return true
+	}
+	at := e.atSegs()
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	for _, set := range [][]Trigger{e.triggers, e.pending} {
+		for _, t := range set {
+			if s.CoversCharter(at, t.Name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SuspendedWhole is what holds a rule about every subject, when something does: what the charter
+// listing marks a rule with.
+func (e *Engine) SuspendedWhole(rule string) []string {
+	return e.holdingRule(rule)
 }

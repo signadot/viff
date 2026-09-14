@@ -239,6 +239,15 @@ type flight struct {
 	mu    sync.Mutex
 	poses map[int]context.CancelCauseFunc
 	next  int
+	// withdrawn is the suspensions its question stands withdrawn by, until it is asked again.
+	withdrawn []string
+}
+
+// setWithdrawn records what the firing's question stands withdrawn by; nil once asked again.
+func (f *flight) setWithdrawn(ids []string) {
+	f.mu.Lock()
+	f.withdrawn = ids
+	f.mu.Unlock()
 }
 
 // posing registers the cancel of one question being asked, until done is called.
