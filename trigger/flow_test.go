@@ -14,11 +14,10 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// PauseFlow holds a subject's tasks at their next boundary; ResumeFlow releases
-// them. It is per-flow (not the engine loop) and honored at the boundary — never a
-// store write. Here the flow is paused before its task runs, so it must hold at
-// its first boundary and only complete once resumed.
-func TestPauseFlowHoldsThenResumes(t *testing.T) {
+// HoldTask holds a run at its next boundary, and lifting it releases the run. It is per-task
+// (not the engine loop) and honored at the boundary. Here the run is held before it starts, so it
+// must hold at its first boundary and only complete once released.
+func TestHoldTaskHoldsThenReleases(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
@@ -36,8 +35,8 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 		t.Fatal("spawner was not invoked")
 	}
 
-	if n := eng.PauseFlow(mustExpr(t, subj)); n != 1 {
-		t.Fatalf("PauseFlow signalled %d, want 1", n)
+	if _, ok := eng.HoldTask("work-1", true); !ok {
+		t.Fatal("HoldTask did not find the live run")
 	}
 	go tk.Run(context.Background())
 
@@ -46,11 +45,11 @@ func TestPauseFlowHoldsThenResumes(t *testing.T) {
 	ref := mirror.Ref("work-1")
 	time.Sleep(150 * time.Millisecond)
 	if e, _, _ := store.Get(ref); entity.ToObj(e.Payload)["status"] == "done" {
-		t.Fatal("flow completed while paused — PauseFlow did not hold")
+		t.Fatal("the run completed while held — HoldTask did not hold")
 	}
 
-	if n := eng.ResumeFlow(mustExpr(t, subj)); n != 1 {
-		t.Fatalf("ResumeFlow signalled %d, want 1", n)
+	if _, ok := eng.HoldTask("work-1", false); !ok {
+		t.Fatal("HoldTask did not find the live run to release")
 	}
 	deadline := time.After(2 * time.Second)
 	for {
@@ -97,12 +96,12 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 }
 
 // reap must not race a concurrent control op: reap runs on the loop goroutine while
-// matchFlow snapshots the live registry. Under -race this trips if either touches the map
-// unguarded. (Behavioral guard; -race is the assertion.)
-func TestReapVsCancelFlowNoRace(t *testing.T) {
+// SelectFlow snapshots the live registry and HoldTask changes an entry. Under -race this trips if
+// either touches the map unguarded. (Behavioral guard; -race is the assertion.)
+func TestReapVsFlowControlNoRace(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	const subj = `demo.pr."1"`
-	addr := mustExpr(t, subj)
+	sel := mustSelect(t, "*", subj)
 	mkTask := func(id string) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(id, sup, immediate{}, noExec{})
@@ -128,10 +127,23 @@ func TestReapVsCancelFlowNoRace(t *testing.T) {
 	go func() { // address the flow concurrently
 		defer wg.Done()
 		for range 3000 {
-			eng.CancelFlow(addr)
+			for _, lt := range eng.SelectFlow(sel) {
+				eng.HoldTask(lt.ID, true)
+			}
 		}
 	}()
 	wg.Wait()
+}
+
+// mustSelect is a selection of a charter and a subject for a test.
+func mustSelect(t *testing.T, charter, subject string) Suspension {
+	t.Helper()
+	address, rule := ParseCharterFlag(charter)
+	s, err := NewSuspension(address, rule, subject, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 // mustExpr parses a flow address for a test.

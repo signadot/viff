@@ -29,8 +29,8 @@ import (
 // an engine over its own overlay and holds only what it started. A scope nobody has opened has
 // no engine and yields none — a listing or a steer never brings one into being.
 //
-// One function under both the listing (flowSubjects) and the steer, so that the subjects
-// `verse flow` prints are exactly the ones `verse flow pause` can reach.
+// One function under both the listing and the acts (flows.go), so that the tasks `verse flow`
+// prints are exactly the ones `verse flow say` and `verse flow suspend` can reach.
 func (s *Server) flowEngines(scope string) []*trigger.Engine {
 	if scope != "" {
 		if eng := s.engFor(scope); eng != nil {
@@ -55,20 +55,20 @@ func (s *Server) scopeEngines() map[string]*trigger.Engine {
 	return out
 }
 
-// flowHolders is the scopes with live work the address selects, other than the one asked:
+// flowHolders is the scopes with live work the selection names, other than the one asked:
 // "" for baseline (its packages included), else the scope's name. What a refusal names.
-func (s *Server) flowHolders(asked string, m trigger.Match) []string {
+func (s *Server) flowHolders(asked string, sel trigger.Suspension) []string {
 	var out []string
 	if asked != "" {
 		for _, eng := range s.flowEngines("") {
-			if eng.FlowCount(m) > 0 {
+			if len(eng.SelectFlow(sel)) > 0 {
 				out = append(out, "")
 				break
 			}
 		}
 	}
 	for name, eng := range s.scopeEngines() {
-		if name != asked && eng.FlowCount(m) > 0 {
+		if name != asked && len(eng.SelectFlow(sel)) > 0 {
 			out = append(out, name)
 		}
 	}
@@ -114,15 +114,26 @@ func (s *Server) scopeOf(ref entity.Ref, asked string) (holder string, found boo
 	return "", false, nil
 }
 
-// taskScope is scopeOf for a task by id, asking the runtime as well: a task hosted here knows
-// the scope it was launched in (task.Launch.Scope) whether or not its scope has an engine open
-// or its record has landed yet.
+// taskScope is scopeOf for a task by id, asking the runtime and the engines as well: a task
+// hosted here knows the scope it was launched in (task.Launch.Scope) whether or not its scope has
+// an engine open or its record has landed yet, and a task hosted elsewhere and adopted is live in
+// the engine of the scope that holds it.
 func (s *Server) taskScope(id, asked string) (holder string, found bool, err error) {
 	if holder, found, err = s.scopeOf(mirror.Ref(id), asked); found || err != nil {
 		return holder, found, err
 	}
 	if sc, ok := s.Taskd.ScopeOf(id); ok {
 		return sc, true, nil
+	}
+	for _, eng := range s.flowEngines("") {
+		if _, ok := eng.Live(id); ok {
+			return "", true, nil
+		}
+	}
+	for name, eng := range s.scopeEngines() {
+		if _, ok := eng.Live(id); ok {
+			return name, true, nil
+		}
 	}
 	return "", false, nil
 }

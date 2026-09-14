@@ -36,7 +36,7 @@ const InstanceKind = "instance"
 // Ref is the entity that mirrors task id.
 func Ref(id string) entity.Ref { return entity.VerseRef(System, InstanceKind, id) }
 
-// HeldByField is who holds a task at its boundary, on its record: `operator` for a `flow pause`,
+// HeldByField is who holds a task at its boundary, on its record: `operator` for `flow suspend --task`,
 // and the ids of the suspensions that paused it. Absent when nothing does.
 const HeldByField = "heldBy"
 
@@ -147,7 +147,7 @@ type Meta struct {
 	// task, and writes every report as it. Empty for a local task, whose mirror is the
 	// system's, and for a brokered one, which learns its worker at the claim.
 	As string
-	// HeldBy says who holds the task at its boundary — `operator` for a `flow pause`, and the
+	// HeldBy says who holds the task at its boundary — `operator` for `flow suspend --task`, and the
 	// suspensions that paused it — asked at every write, since the engine holding the task is
 	// who knows and this record is replaced whole at each one. Nil holds nothing.
 	HeldBy func() []string

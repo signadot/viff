@@ -48,8 +48,8 @@ type flowTask struct {
 	// a resume) can navigate back to the action that owns it.
 	chain string
 	// WHOSE HOLD it is at its boundary, since a pause is one bool in the runtime and two parties
-	// take it: an operator's `flow pause` (operator), and the suspensions that paused it
-	// (suspended). A lift resumes only what nothing else holds, and `flow resume` does not
+	// take it: an operator's `flow suspend --task` (operator), and the suspensions that paused it
+	// (suspended). A lift resumes only what nothing else holds, and `flow resume --task` does not
 	// resume what a suspension holds. See heldBy.
 	operator  bool
 	suspended []string
@@ -64,7 +64,7 @@ func (fp flowTask) heldBy() []string {
 	return append(out, fp.suspended...)
 }
 
-// HeldByOperator is how a task's `heldBy` names an operator's `flow pause`.
+// HeldByOperator is how a task's `heldBy` names an operator's `flow suspend --task`.
 const HeldByOperator = "operator"
 
 // Engine runs the ECA loop over an entity-verse.
@@ -1322,8 +1322,8 @@ func (e *Engine) track(fp flowTask) {
 
 // Adopt registers an already-running task (id + governing handle) under a flow — the
 // resume path on restart, when a remote-hosted task outlived verse. It re-tracks it
-// exactly as Spawn does a fresh one, so the resumed task is steerable (flow
-// cancel/say/pause) and reaped from the flow when it ends — not merely observed. subject
+// exactly as Spawn does a fresh one, so the resumed task is steerable (`verse flow` say,
+// cancel, suspend) and reaped from the flow when it ends — not merely observed. subject
 // "" is a no-op.
 func (e *Engine) Adopt(subject, id string, h task.Handle) {
 	e.AdoptChain(subject, id, "", h)
@@ -1573,10 +1573,6 @@ func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 	return ev
 }
 
-// Flows lists the distinct subjects with in-flight tasks — a QUERY over the live
-// registry, not a maintained index. Terminal tasks are reaped, so a subject drops off
-// once its work finishes; the handles behind it are this engine's live tasks (control
-// targets), not a durable membership view.
 // SubjectOf returns the subject a live task is about, or "" if the engine does not know
 // it — a task spawned directly by `task run` genuinely has none, and one that has
 // already been reaped is no longer live. A flow is a query over these subjects, so this is
@@ -1587,6 +1583,10 @@ func (e *Engine) SubjectOf(id string) string {
 	return e.live[id].subject
 }
 
+// Flows lists the distinct subjects with in-flight tasks — a QUERY over the live
+// registry, not a maintained index. Terminal tasks are reaped, so a subject drops off
+// once its work finishes; the handles behind it are this engine's live tasks (control
+// targets), not a durable membership view.
 func (e *Engine) Flows() []string {
 	e.liveMu.Lock()
 	seen := make(map[string]bool, len(e.live))
@@ -1604,8 +1604,8 @@ func (e *Engine) Flows() []string {
 
 // matchFlow selects the live tasks a subject-Match addresses. This IS the flow
 // primitive: a flow is not a stored key but the answer to "which live tasks are about
-// entities matching this". A payload predicate (`fields`) is applied by reading the subject
-// entity, so "pause every open PR's work" is the same selector at a wider setting.
+// entities matching this". A payload predicate (`value`) is applied by reading the subject
+// entity.
 func (e *Engine) matchFlow(m Match) []flowTask {
 	e.liveMu.Lock()
 	all := make([]flowTask, 0, len(e.live))
@@ -1635,92 +1635,88 @@ func (e *Engine) matchFlow(m Match) []flowTask {
 	return out
 }
 
-// FlowCount is how many live tasks the address selects, signalling none of them: the question
-// a steer asks before it acts, so that a scope which holds no work about a subject can be told
-// which engine does rather than answering zero over work that is running elsewhere.
-func (e *Engine) FlowCount(m Match) int { return len(e.matchFlow(m)) }
+// LiveTask is one live task as a flow listing reads it: its id, the rule of this engine that
+// spawned it ("" for a task run by hand), the subject it is about, and who holds it.
+type LiveTask struct {
+	ID      string
+	Rule    string
+	Subject string
+	HeldBy  []string
+}
 
-// FlowTasks is the ids of the live tasks the address selects, sorted, signalling none of them:
-// what a steer asks control over before it acts on any.
-func (e *Engine) FlowTasks(m Match) []string {
-	ps := e.matchFlow(m)
-	out := make([]string, len(ps))
-	for i, fp := range ps {
-		out[i] = fp.id
+func (fp flowTask) live() LiveTask {
+	return LiveTask{ID: fp.id, Rule: mirror.TriggerOf(fp.chain), Subject: fp.subject, HeldBy: fp.heldBy()}
+}
+
+// SelectFlow is the live tasks a selection names, sorted by id, signalling none of them. A
+// selection is spelled as a suspension is — a charter, a rule of it, a subject — so what a
+// listing shows is exactly what a suspension in the same words would hold now.
+func (e *Engine) SelectFlow(sel Suspension) []LiveTask {
+	at := e.atSegs()
+	var out []LiveTask
+	for _, fp := range e.liveTasks() {
+		lt := fp.live()
+		if sel.CoversCharter(at, lt.Rule) && sel.CoversSubject(subjectOf(fp.subject)) {
+			out = append(out, lt)
+		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// CancelFlow cancels every task the address selects (out-of-band control, honored at
-// each task's next boundary — never a store write). Returns how many were signalled.
-func (e *Engine) CancelFlow(m Match) int {
-	ps := e.matchFlow(m)
-	for _, fp := range ps {
-		fp.h.Cancel("flow cancel: " + fp.subject)
-	}
-	return len(ps)
+// Live is one live task by id, when this engine tracks it.
+func (e *Engine) Live(id string) (LiveTask, bool) {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	fp, ok := e.live[id]
+	return fp.live(), ok
 }
 
-// SteerFlow says an instruction to every task the address selects, attributed to by.
-// Returns how many were said-to.
-func (e *Engine) SteerFlow(m Match, text, by string) int {
-	ps := e.matchFlow(m)
-	for _, fp := range ps {
-		fp.h.Steer(text, by)
-	}
-	return len(ps)
-}
-
-// PauseFlow holds every task of a flow at its next boundary — an operator's
-// ad-hoc freeze of one subject's live work (distinct from cancel, which is
-// destructive, and from a park gate, which is a charter-declared hold). Out-of-band
-// control, honored at the boundary, never a store write. Lift it with ResumeFlow.
-// Returns how many were signalled. (This is per-flow; it does not pause the engine's
-// dispatch loop — other flows keep reacting.)
-//
-// The hold is the operator's, and says so on the task (heldBy): a suspension's lift leaves it.
-func (e *Engine) PauseFlow(m Match) int {
-	ps := e.matchFlow(m)
-	for _, fp := range ps {
-		if fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.operator = true }); ok {
-			fp.h.Pause()
-			e.recordHold(fp)
-		}
-	}
-	return len(ps)
-}
-
-// ResumeFlow lifts a PauseFlow, releasing each task to run from its held boundary — unless a
-// suspension holds it too, when the operator's hold is lifted and the task stays held; the steer
-// route refuses that case before it gets here (FlowSuspended). Returns how many were signalled.
-func (e *Engine) ResumeFlow(m Match) int {
-	ps := e.matchFlow(m)
-	for _, fp := range ps {
-		held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
-		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.operator, fp.suspended = false, held })
+// HoldTask takes or lifts an operator's hold on one live task — an ad-hoc stop of that run,
+// distinct from cancel, which is destructive, and from a suspension, which is durable. Taken, the
+// task holds at its next boundary and says the hold is the operator's (heldBy), so a
+// suspension's lift leaves it held. Lifted, the task runs from its boundary — unless a suspension
+// holds it too, when the operator's hold is lifted and the task stays held; the route refuses that
+// case before it gets here (TaskSuspended). Out-of-band control, honored at the boundary. False
+// when the task is not live here.
+func (e *Engine) HoldTask(id string, hold bool) (LiveTask, bool) {
+	var held []string
+	if !hold {
+		fp, ok := e.Live(id)
 		if !ok {
-			continue
+			return LiveTask{}, false
 		}
-		if len(held) == 0 {
-			fp.h.Resume()
-		}
-		e.recordHold(fp)
+		held = e.settled(fp.Rule, subjectOf(fp.Subject))
 	}
-	return len(ps)
+	fp, ok := e.setHold(id, func(fp *flowTask) {
+		fp.operator = hold
+		if !hold {
+			fp.suspended = held
+		}
+	})
+	if !ok {
+		return LiveTask{}, false
+	}
+	switch {
+	case hold:
+		fp.h.Pause()
+	case len(held) == 0:
+		fp.h.Resume()
+	}
+	e.recordHold(fp)
+	return fp.live(), true
 }
 
-// FlowSuspended is the first live task the address selects that a suspension holds, and what
-// holds it: what `flow resume` is refused naming, since resuming it would run covered work.
-func (e *Engine) FlowSuspended(m Match) (id string, by []string) {
-	for _, fp := range e.matchFlow(m) {
-		if held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject)); len(held) > 0 {
-			return fp.id, held
-		}
-	}
-	return "", nil
+// Handle is the handle one live task is controlled through, when this engine tracks it.
+func (e *Engine) Handle(id string) (task.Handle, bool) {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	fp, ok := e.live[id]
+	return fp.h, ok
 }
 
-// TaskSuspended is FlowSuspended for one live task by id.
+// TaskSuspended is what suspends one live task by id: what resuming it is refused naming, since
+// resuming it would run covered work.
 func (e *Engine) TaskSuspended(id string) []string {
 	e.liveMu.Lock()
 	fp, ok := e.live[id]

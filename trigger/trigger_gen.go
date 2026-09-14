@@ -271,6 +271,15 @@ func (s *FlowTree) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Subject
 	irMap["subject"] = ir.FromString(string(s.Subject))
 
+	// Field: Suspended
+	if len(s.Suspended) > 0 {
+		slice := make([]*ir.Node, len(s.Suspended))
+		for i, v := range s.Suspended {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["suspended"] = ir.FromSlice(slice)
+	}
+
 	// Field: Roots
 	if len(s.Roots) > 0 {
 		slice := make([]*ir.Node, len(s.Roots))
@@ -323,6 +332,23 @@ func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
+		case "suspended":
+			// Field: Suspended
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Suspended = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"suspended\"", fieldNodeUnwrapped.Type)
+			}
 		case "roots":
 			// Field: Roots
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

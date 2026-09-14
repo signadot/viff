@@ -2,7 +2,6 @@ package versed
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,39 +17,29 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// suspendAs posts a suspend or a resume as a principal, in scope when one is named, and hands
-// back the status, the record when there is one, and the body's text.
-func suspendAs(t *testing.T, ts *httptest.Server, verb, as, scope string, body api.Suspend) (int, api.Suspension, string) {
+// suspendAs posts `flow suspend` or `flow resume` as a principal, in scope when one is named, and
+// hands back the status, the row when there is one, and the body's text.
+func suspendAs(t *testing.T, ts *httptest.Server, verb, as, scope string, sel api.FlowSelect) (int, api.FlowRow, string) {
 	t.Helper()
-	url := ts.URL + "/" + verb
-	if scope != "" {
-		url += "?scope=" + scope
-	}
-	doc, err := codec.Marshal(body, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp := postAs(t, as, url, "application/tony", string(doc))
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	var out api.Suspension
-	if resp.StatusCode == http.StatusOK {
-		if err := codec.Unmarshal(raw, &out, codec.Tony); err != nil {
-			t.Fatalf("decoding %s: %v\n%s", verb, err, raw)
+	code, msg := flowAct(t, ts, verb, as, scope, sel)
+	var out api.FlowRow
+	if code == http.StatusOK {
+		if err := codec.Unmarshal([]byte(msg), &out, codec.Tony); err != nil {
+			t.Fatalf("decoding %s: %v\n%s", verb, err, msg)
 		}
 	}
-	return resp.StatusCode, out, strings.TrimSpace(string(raw))
+	return code, out, msg
 }
 
-// suspensionsIn lists the suspensions in force in a scope.
-func suspensionsIn(t *testing.T, ts *httptest.Server, scope string) []api.Suspension {
+// suspensionsIn lists the suspensions in force in a scope: the listing's suspension rows.
+func suspensionsIn(t *testing.T, ts *httptest.Server, scope string) []api.FlowRow {
 	t.Helper()
-	resp, err := http.Get(ts.URL + "/suspensions?scope=" + scope)
-	if err != nil {
-		t.Fatal(err)
+	var out []api.FlowRow
+	for _, row := range flowRows(t, ts, scope, api.FlowSelect{}) {
+		if row.Kind == api.FlowRowSuspension {
+			out = append(out, row)
+		}
 	}
-	var out []api.Suspension
-	decodeResp(t, resp, &out)
 	return out
 }
 
@@ -71,13 +60,13 @@ func TestASuspensionIsOneRecordPerThingItCovers(t *testing.T) {
 
 	for _, c := range []struct {
 		as   string
-		body api.Suspend
+		body api.FlowSelect
 		want string
 	}{
-		{"alice@example.com", api.Suspend{Charter: "verse-dev.drift", Why: "reading its range logic"}, "verse-dev.drift:*@*"},
-		{"alice@example.com", api.Suspend{Charter: "*", Subject: `demo.pr."1"`, Why: "a person is reviewing it"}, `*:*@demo.pr."1"`},
-		{"bob@example.com", api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "and so am I"}, `*:*@demo.pr."1"`},
-		{"alice@example.com", api.Suspend{Charter: "verse-dev.drift", Rule: "claim", Subject: "git.verse.head", Why: "the claim is wrong"}, "verse-dev.drift:claim@git.verse.head"},
+		{"alice@example.com", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "reading its range logic"}, "verse-dev.drift:*@*"},
+		{"alice@example.com", api.FlowSelect{Charter: "*", Subject: `demo.pr."1"`, Why: "a person is reviewing it"}, `*:*@demo.pr."1"`},
+		{"bob@example.com", api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "and so am I"}, `*:*@demo.pr."1"`},
+		{"alice@example.com", api.FlowSelect{Charter: "verse-dev.drift:claim", Subject: "git.verse.head", Why: "the claim is wrong"}, "verse-dev.drift:claim@git.verse.head"},
 	} {
 		code, got, msg := suspendAs(t, ts, "suspend", c.as, "", c.body)
 		if code != http.StatusOK || got.ID != c.want {
@@ -118,7 +107,7 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 	if _, err := srv.hold("", sus, throttle, "the cycle throttle tripped"); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, msg := suspendAs(t, ts, "suspend", "alice@example.com", "", api.Suspend{Rule: "loop", Why: "and I want to read it"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "suspend", "alice@example.com", "", api.FlowSelect{Charter: ":loop", Subject: "*", Why: "and I want to read it"}); code != http.StatusOK {
 		t.Fatalf("alice's suspend = %d %s", code, msg)
 	}
 	rest, lifted, err := srv.release("", sus.ID(), throttle)
@@ -131,7 +120,7 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 	if _, ok, _ := srv.Store.Get(trigger.SuspensionRef(sus.ID())); !ok {
 		t.Fatal("the system's release deleted a record a person still holds")
 	}
-	code, got, msg := suspendAs(t, ts, "resume", "bob@example.com", "", api.Suspend{Rule: "loop"})
+	code, got, msg := suspendAs(t, ts, "resume", "bob@example.com", "", api.FlowSelect{Charter: ":loop", Subject: "*"})
 	if code != http.StatusOK || got.ID != sus.ID() {
 		t.Fatalf("bob's resume = %d %+v %s, want the suspension lifted", code, got, msg)
 	}
@@ -149,10 +138,10 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 func TestASuspensionBelongsToItsScope(t *testing.T) {
 	srv, ts := startedServer(t)
 
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "me", api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "mine"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "me", api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "mine"}); code != http.StatusOK {
 		t.Fatalf("suspend --scope me = %d %s", code, msg)
 	}
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.pr.2", Why: "baseline's"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.pr.2", Why: "baseline's"}); code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
 	if got := suspensionsIn(t, ts, "me"); len(got) != 1 || got[0].Scope != "me" {
@@ -168,11 +157,11 @@ func TestASuspensionBelongsToItsScope(t *testing.T) {
 			t.Fatalf("%s = %d %q; want 409 naming %s and saying %q", what, code, msg, whose, redo)
 		}
 	}
-	code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.pr.1"})
+	code, _, msg := suspendAs(t, ts, "resume", "", "", api.FlowSelect{Charter: "*", Subject: "demo.pr.1"})
 	refusesNaming(code, msg, "scope me's", "--scope me", "resume from baseline of the scope's")
-	code, _, msg = suspendAs(t, ts, "resume", "", "me", api.Suspend{Charter: "*", Subject: "demo.pr.2"})
+	code, _, msg = suspendAs(t, ts, "resume", "", "me", api.FlowSelect{Charter: "*", Subject: "demo.pr.2"})
 	refusesNaming(code, msg, "baseline's", "without --scope", "resume --scope me of baseline's")
-	code, _, msg = suspendAs(t, ts, "suspend", "", "me", api.Suspend{Charter: "verse-dev.drift", Why: "not mine"})
+	code, _, msg = suspendAs(t, ts, "suspend", "", "me", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "not mine"})
 	refusesNaming(code, msg, "baseline's", "without --scope", "suspend --scope me of a package")
 
 	if _, ok, _ := srv.Store.Scope("me").Get(trigger.SuspensionRef(`*:*@demo.pr."1"`)); !ok {
@@ -188,10 +177,10 @@ func TestASuspensionBelongsToItsScope(t *testing.T) {
 func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	_, ts := startedServer(t)
 
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "verse-dev.drift"}); code != http.StatusBadRequest || !strings.Contains(msg, "why") {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*"}); code != http.StatusBadRequest || !strings.Contains(msg, "why") {
 		t.Fatalf("suspend with no why = %d %s, want 400 asking for it", code, msg)
 	}
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Why: "everything"}); code != http.StatusBadRequest {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "*", Why: "everything"}); code != http.StatusBadRequest {
 		t.Fatalf("suspend of every charter about every subject = %d %s, want 400", code, msg)
 	}
 	resp := putAs(t, "", ts.URL, "verse.trigger.suspension.x", entity.Obj{"charter": "*"}.Payload())
@@ -211,8 +200,8 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "suspension") {
 		t.Fatalf("a rule deriving a suspension = %s %s, want it refused at install", resp.Status, body)
 	}
-	if !strings.Contains(body, "verse suspend") {
-		t.Fatalf("the refusal = %s, want it to name verse suspend", body)
+	if !strings.Contains(body, "verse flow suspend") {
+		t.Fatalf("the refusal = %s, want it to name verse flow suspend", body)
 	}
 }
 
@@ -225,7 +214,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	first.susp.Unload() // where a restore begins
 	ts := httptest.NewServer(first.Handler())
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "verse-dev.drift", Why: "early"}); code != http.StatusServiceUnavailable {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "early"}); code != http.StatusServiceUnavailable {
 		t.Fatalf("a suspend before the table loaded = %d %s, want 503", code, msg)
 	}
 	// Work that arrives in the window — a task run by hand while the restore reads — is held,
@@ -257,7 +246,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	if early.count("resume") != 1 {
 		t.Fatalf("the task held while the suspensions loaded was resumed %d times once they had, want once", early.count("resume"))
 	}
-	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "verse-dev.drift", Why: "across a restart"})
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "across a restart"})
 	if code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
@@ -336,7 +325,7 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 		t.Fatalf("alice's ballot = %d, want it recorded as 1 of 2", code)
 	}
 
-	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold the release"})
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1", Why: "hold the release"})
 	if code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
@@ -362,7 +351,7 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 	}
 	stays()
 
-	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
 		t.Fatalf("resume = %d %s", code, msg)
 	}
 	rec = waitQuestionStatus(t, srv, id, mirror.QuestionPending)
@@ -407,7 +396,7 @@ func TestAWithdrawnQuestionsClockStops(t *testing.T) {
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
 
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
 	waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
@@ -419,7 +408,7 @@ func TestAWithdrawnQuestionsClockStops(t *testing.T) {
 	}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
 		t.Fatalf("resume = %d %s", code, msg)
 	}
 	rec := waitQuestionStatus(t, srv, id, mirror.QuestionPending)
@@ -446,13 +435,13 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 	subject := entity.RefAt("demo", "release", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
-	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
 	waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "withdrawn"}.Payload())
 	time.Sleep(200 * time.Millisecond)
-	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
 		t.Fatalf("resume = %d %s", code, msg)
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -464,32 +453,27 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 	}
 }
 
-// flowVerb posts a flow steer about a subject and hands back the status and the body's text.
-func flowVerb(t *testing.T, ts *httptest.Server, verb, subject string) (int, string) {
+// runVerb posts `flow suspend|resume --task` and hands back the status and the body's text.
+func runVerb(t *testing.T, ts *httptest.Server, verb, id string) (int, string) {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/flow/"+verb, "application/tony", strings.NewReader(`{subject: "`+subject+`"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, strings.TrimSpace(string(raw))
+	return flowAct(t, ts, verb, "", "", api.FlowSelect{Task: id})
 }
 
-// A task knows whose hold it is under. An operator's pause and a suspension's are two holds: a
-// `flow resume` of a task a suspension holds is refused, naming it, and leaves it held; the lift
-// resumes only what nothing else holds, so an operator's pause outlives it whichever came first.
+// A task knows whose hold it is under. An operator's hold on a run and a suspension's are two
+// holds: a `flow resume --task` of a run a suspension holds is refused, naming it, and leaves it
+// held; the lift resumes only what nothing else holds, so an operator's hold outlives it whichever
+// came first.
 func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	srv, ts := startedServer(t)
-	suspend := api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "hold it"}
-	lift := api.Suspend{Charter: "*", Subject: "demo.pr.1"}
+	suspend := api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "hold it"}
+	lift := api.FlowSelect{Charter: "*", Subject: "demo.pr.1"}
 	heldBy := func(id string) []string { return srv.Eng.HeldBy(id) }
 
-	// flow pause, suspend, flow resume → refused; lift → still held by the operator.
+	// suspend --task, suspend, resume --task → refused; lift → still held by the operator.
 	first := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "first", first)
-	if code, msg := flowVerb(t, ts, "pause", "demo.pr.1"); code != http.StatusOK {
-		t.Fatalf("flow pause = %d %s", code, msg)
+	if code, msg := runVerb(t, ts, "suspend", "first"); code != http.StatusOK {
+		t.Fatalf("flow suspend --task = %d %s", code, msg)
 	}
 	code, held, msg := suspendAs(t, ts, "suspend", "", "", suspend)
 	if code != http.StatusOK {
@@ -498,9 +482,9 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	if got := heldBy("first"); len(got) != 2 || got[0] != trigger.HeldByOperator || got[1] != held.ID {
 		t.Fatalf("the paused task under a suspension is held by %v, want the operator and %s", got, held.ID)
 	}
-	code, msg = flowVerb(t, ts, "resume", "demo.pr.1")
-	if code != http.StatusConflict || !strings.Contains(msg, held.ID) {
-		t.Fatalf("flow resume of a suspended task = %d %q, want 409 naming %s", code, msg, held.ID)
+	code, msg = runVerb(t, ts, "resume", "first")
+	if code != http.StatusConflict || !strings.Contains(msg, held.ID) || !strings.Contains(msg, "verse flow resume") {
+		t.Fatalf("flow resume --task of a suspended task = %d %q, want 409 naming %s and the verb that lifts it", code, msg, held.ID)
 	}
 	if code, msg := control(t, ts, "/tasks/first/resume", "", nil); code != http.StatusConflict || !strings.Contains(msg, held.ID) {
 		t.Fatalf("task resume of a suspended task = %d %q, want 409 naming %s", code, msg, held.ID)
@@ -515,13 +499,14 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 		t.Fatalf("after the lift the task is held by %v and resumed %d times, want the operator's hold standing",
 			got, first.count("resume"))
 	}
-	if code, msg := flowVerb(t, ts, "resume", "demo.pr.1"); code != http.StatusOK || first.count("resume") != 1 {
-		t.Fatalf("flow resume once nothing suspends it = %d %s, resumed %d", code, msg, first.count("resume"))
+	if code, msg := runVerb(t, ts, "resume", "first"); code != http.StatusOK || first.count("resume") != 1 {
+		t.Fatalf("flow resume --task once nothing suspends it = %d %s, resumed %d", code, msg, first.count("resume"))
 	}
 	close(first.ch)
 	first.ch = make(chan task.Frame)
 
-	// suspend, flow pause, lift → still held.
+	// suspend, the runtime's task pause, lift → still held: `/tasks/{id}/pause` is the operator's
+	// hold too.
 	second := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "second", second)
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "", suspend); code != http.StatusOK {
@@ -530,8 +515,8 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	if second.count("pause") != 1 {
 		t.Fatalf("the suspension paused the task %d times, want once", second.count("pause"))
 	}
-	if code, msg := flowVerb(t, ts, "pause", "demo.pr.1"); code != http.StatusOK {
-		t.Fatalf("flow pause = %d %s", code, msg)
+	if code, msg := control(t, ts, "/tasks/second/pause", "", nil); code != http.StatusNoContent {
+		t.Fatalf("task pause = %d %s", code, msg)
 	}
 	if code, _, msg := suspendAs(t, ts, "resume", "", "", lift); code != http.StatusOK {
 		t.Fatalf("resume = %d %s", code, msg)
@@ -546,7 +531,7 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 // about a suspended subject — is held as it is tracked, and says so on its record and its flow.
 func TestATaskTrackedUnderASuspensionIsHeld(t *testing.T) {
 	srv, ts := startedServer(t)
-	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "hold it"})
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "hold it"})
 	if code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
@@ -587,7 +572,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
-	if code, _, msg := suspendAs(t, firstHTTP, "suspend", "", "me", api.Suspend{Rule: "scoped-review", Why: "reading it"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, firstHTTP, "suspend", "", "me", api.FlowSelect{Charter: ":scoped-review", Subject: "*", Why: "reading it"}); code != http.StatusOK {
 		t.Fatalf("suspend --scope me = %d %s", code, msg)
 	}
 	firstHTTP.Close()
@@ -613,7 +598,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	if e, _, _ := store.Scope("me").Get(ref); entity.Str(e.Payload, "stage") != "open" {
 		t.Fatalf("the restored rule acted on a PR its scope's suspension holds: %v", e.Payload)
 	}
-	if code, _, msg := suspendAs(t, ts, "resume", "", "me", api.Suspend{Rule: "scoped-review"}); code != http.StatusOK {
+	if code, _, msg := suspendAs(t, ts, "resume", "", "me", api.FlowSelect{Charter: ":scoped-review", Subject: "*"}); code != http.StatusOK {
 		t.Fatalf("resume --scope me = %d %s", code, msg)
 	}
 	deadline := time.After(3 * time.Second)
@@ -645,10 +630,10 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 		Value: entity.Obj{"status": "running", "flow": "demo.pr.2", "chain": "review"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []api.Suspend{
+	for _, body := range []api.FlowSelect{
 		{Charter: "*", Subject: "demo.pr.1", Why: "a person is looking"},
-		{Rule: "review", Why: "the review rule is wrong"},
-		{Charter: "verse-dev.gone", Why: "a package that is not installed"},
+		{Charter: ":review", Subject: "*", Why: "the review rule is wrong"},
+		{Charter: "verse-dev.gone", Subject: "*", Why: "a package that is not installed"},
 	} {
 		if code, _, msg := suspendAs(t, ts, "suspend", "", "", body); code != http.StatusOK {
 			t.Fatalf("suspend %+v = %d %s", body, code, msg)
@@ -668,18 +653,38 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 		t.Fatalf("status in a scope with none counts %d", scoped.Suspensions)
 	}
 
-	byID := map[string]api.Suspension{}
+	byID := map[string]api.FlowRow{}
 	for _, s := range suspensionsIn(t, ts, "") {
 		byID[s.ID] = s
 	}
-	if s := byID[`*:*@demo.pr."1"`]; s.Holding.Tasks != 1 || !s.Covers {
+	covers := func(row api.FlowRow) bool { return row.Covers != nil && *row.Covers }
+	if s := byID[`*:*@demo.pr."1"`]; s.Holding == nil || s.Holding.Tasks != 1 || !covers(s) {
 		t.Fatalf("the PR's suspension lists as %+v, want one task held and covering", s)
 	}
-	if s := byID[":review@*"]; !s.Covers {
-		t.Fatalf("review's suspension lists as %+v, want it covering the installed rule", s)
+	if s := byID[":review@*"]; !covers(s) || s.Charter != ":review" {
+		t.Fatalf("review's suspension lists as %+v, want it covering the installed rule, named --charter :review", s)
 	}
-	if s := byID["verse-dev.gone:*@*"]; s.Covers {
+	if s := byID["verse-dev.gone:*@*"]; s.Covers == nil || covers(s) {
 		t.Fatalf("a suspension of a package nobody installed lists as covering: %+v", s)
+	}
+
+	// THE LISTING IS WHAT AN ACT REACHES: narrowed, it shows the live tasks the selection names
+	// and the suspensions that could hold work it names.
+	for _, c := range []struct {
+		sel  api.FlowSelect
+		want string
+	}{
+		{api.FlowSelect{Charter: "*", Subject: "demo.pr.1"}, `by-hand,*:*@demo.pr."1",:review@*,verse-dev.gone:*@*`},
+		{api.FlowSelect{Charter: ":review", Subject: "demo.pr.1"}, `*:*@demo.pr."1",:review@*`},
+		{api.FlowSelect{Subject: "demo.pr.2"}, `:review@*,verse-dev.gone:*@*`},
+	} {
+		var got []string
+		for _, row := range flowRows(t, ts, "", c.sel) {
+			got = append(got, row.Task+row.ID)
+		}
+		if strings.Join(got, ",") != c.want {
+			t.Errorf("flows %+v = %v, want %s", c.sel, got, c.want)
+		}
 	}
 
 	resp, err = http.Get(ts.URL + "/charter?path=rules")
@@ -702,5 +707,14 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 	}
 	if body := readBody(t, resp); !strings.Contains(body, ":review@*") {
 		t.Fatalf("flow show does not say what suspends review's work:\n%s", body)
+	}
+	resp, err = http.Get(ts.URL + "/flow/tree?subject=demo.pr.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var trees []trigger.FlowTree
+	decodeResp(t, resp, &trees)
+	if len(trees) != 1 || strings.Join(trees[0].Suspended, ",") != `*:*@demo.pr."1",:review@*,verse-dev.gone:*@*` {
+		t.Fatalf("flow show demo.pr.1 = %+v, want every suspension naming the subject at the top", trees)
 	}
 }

@@ -68,6 +68,7 @@ context:
 define:
   roots: .[array(verse-flow-node)]
   subject: .[string]
+  suspended: .[array(string)]
 signature:
   name: verse-flow-tree
 ---

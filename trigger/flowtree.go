@@ -63,7 +63,7 @@ type FlowNode struct {
 	// in flight.
 	Gate       string `tony:"field=gate,omitzero"`
 	LastAction string `tony:"field=lastAction,omitzero"`
-	// HeldBy is who holds a live task at its boundary: `operator` for a `flow pause`, and the
+	// HeldBy is who holds a live task at its boundary: `operator` for `flow suspend --task`, and the
 	// suspensions that paused it.
 	HeldBy []string `tony:"field=heldBy,omitzero"`
 	// Suspended is the suspensions holding this position's work while it has not finished: a
@@ -97,8 +97,10 @@ const (
 //
 //tony:schemagen=verse-flow-tree,notag
 type FlowTree struct {
-	Subject string     `tony:"field=subject"`
-	Roots   []FlowNode `tony:"field=roots,omitzero"`
+	Subject string `tony:"field=subject"`
+	// Suspended is the suspensions naming the subject, for any charter.
+	Suspended []string   `tony:"field=suspended,omitzero"`
+	Roots     []FlowNode `tony:"field=roots,omitzero"`
 }
 
 // FlowTrees renders the flow tree of every subject the address selects. A concrete address
@@ -141,7 +143,11 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 
 	trees := make([]FlowTree, 0, len(subjects))
 	for _, s := range subjects {
-		trees = append(trees, FlowTree{Subject: s, Roots: e.rootsFor(s, bySubject[s])})
+		tree := FlowTree{Subject: s, Roots: e.rootsFor(s, bySubject[s])}
+		if e.susp != nil {
+			tree.Suspended = e.susp.NamingSubject(subjectOf(s))
+		}
+		trees = append(trees, tree)
 	}
 	return trees
 }

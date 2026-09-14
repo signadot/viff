@@ -449,8 +449,8 @@ v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a fail
   action:
     patch: {stage: approved}
 TONY
-v suspend smoke-susp --why "smoke: hold the package" >/dev/null || die "verse suspend smoke-susp failed"
-has "$(v suspend)" 'smoke: hold the package' || die "the listing does not say why it is held"
+v flow suspend --charter smoke-susp --subject '*' --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
+has "$(v flow)" 'smoke: hold the package' || die "the listing does not say why it is held"
 ok "suspended the charter at smoke-susp, and the listing says why"
 v data smoke-susp level 1 --put '{stage: open}' >/dev/null || die "data --put failed"
 v data smoke-susp gated 1 --put '{stage: open}' >/dev/null || die "data --put failed"
@@ -459,7 +459,7 @@ haskv "$(v data smoke-susp level 1)" stage open || die "a suspended level rule f
 has "$(v gate)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
 haskv "$(v status)" suspensions 1 || die "status does not count the suspension"
 ok "nothing fired, nothing was asked, and status counts suspensions: 1"
-v resume smoke-susp >/dev/null || die "verse resume smoke-susp failed"
+v flow resume --charter smoke-susp --subject '*' >/dev/null || die "verse flow resume --charter smoke-susp failed"
 settled=
 for _ in $(seq 1 100); do
 	if haskv "$(v data smoke-susp level 1 2>/dev/null || true)" stage settled; then
@@ -478,7 +478,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$asked" ] || die "the resumed gated rule did not ask"
-has "$(v suspend)" 'smoke-susp' && die "the lifted suspension is still listed"
+has "$(v flow)" 'smoke-susp' && die "the lifted suspension is still listed"
 ok "resumed: settle acted, approve asked, and nothing is suspended"
 
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
@@ -583,7 +583,7 @@ ok "a validated file is not validated again ($after tasks)"
 
 # A suspension is a control write, and a scope owns what it creates: from the scope, baseline's
 # package is refused with the sentence every control write refuses in.
-out=$(v --scope "$SCOPE" suspend smoke-susp --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
+out=$(v --scope "$SCOPE" flow suspend --charter smoke-susp --subject '*' --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
 has "$out" "baseline's" || die "the scope's refusal does not say whose the charter is: $out"
 ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
 

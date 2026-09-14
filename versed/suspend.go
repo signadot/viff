@@ -210,25 +210,6 @@ func (s *Server) release(scope, id, by string) (rest trigger.Suspension, lifted 
 	return cur, true, nil
 }
 
-// suspensionOf reads a request's body into the suspension it names.
-func suspensionOf(w http.ResponseWriter, r *http.Request) (api.Suspend, trigger.Suspension, bool) {
-	var body api.Suspend
-	if err := codec.Read(r, &body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return body, trigger.Suspension{}, false
-	}
-	subject := body.Subject
-	if subject == "" {
-		subject = trigger.Every
-	}
-	sus, err := trigger.NewSuspension(body.Charter, body.Rule, subject, false)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return body, trigger.Suspension{}, false
-	}
-	return body, sus, true
-}
-
 // suspensionOwnHere is the ownership check a suspension makes before control is asked: a charter
 // named by address is baseline's, since packages are, and a rule named in the unaddressed charter
 // is the scope's whose engine holds it. Refused (inherited) otherwise, having written the response.
@@ -288,76 +269,6 @@ func (s *Server) maySuspend(w http.ResponseWriter, r *http.Request, sus trigger.
 	return !refused(w, entity.Check(store, principal, entity.Control, at, act))
 }
 
-// suspend is `POST /suspend`: hold a suspension, as the request's principal, for why.
-func (s *Server) suspend(w http.ResponseWriter, r *http.Request) {
-	body, sus, ok := suspensionOf(w, r)
-	if !ok {
-		return
-	}
-	if body.Why == "" {
-		http.Error(w, "why is required: a suspension says what it is for, since nothing ends it but "+
-			"somebody reading that", http.StatusBadRequest)
-		return
-	}
-	if sus.EveryCharter() && sus.EverySubject() {
-		http.Error(w, "every charter about every subject is not a suspension anybody can stand behind: "+
-			"name a charter, a subject, or both", http.StatusBadRequest)
-		return
-	}
-	if !s.suspensionOwnHere(w, r, sus) || !s.maySuspend(w, r, sus, "suspending it") {
-		return
-	}
-	scope := r.URL.Query().Get("scope")
-	by := principalOf(r)
-	if by == "" {
-		by = entity.SystemDefault
-	}
-	held, err := s.hold(scope, sus, by, body.Why)
-	if err != nil {
-		suspensionError(w, r, err)
-		return
-	}
-	writeOut(w, r, http.StatusOK, s.suspensionRecord(held))
-}
-
-// resume is `POST /resume`: lift the suspension the body names, whoever holds it.
-func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
-	_, sus, ok := suspensionOf(w, r)
-	if !ok {
-		return
-	}
-	scope := r.URL.Query().Get("scope")
-	if tbl := s.suspensionsOf(scope); tbl != nil && tbl.Loaded() {
-		if _, standing := tbl.Get(sus.ID()); !standing {
-			if holders := s.suspensionHolders(scope, sus.ID()); len(holders) > 0 {
-				inherited(w, r, "the suspension "+sus.ID(), scope, holders)
-				return
-			}
-		}
-	}
-	if !s.suspensionOwnHere(w, r, sus) || !s.maySuspend(w, r, sus, "resuming it") {
-		return
-	}
-	by := principalOf(r)
-	if by == "" {
-		by = entity.SystemDefault
-	}
-	rest, _, err := s.release(scope, sus.ID(), by)
-	if err != nil {
-		suspensionError(w, r, err)
-		return
-	}
-	out := s.suspensionRecord(rest)
-	// SUSPENSIONS ONLY ADD UP: lifting a pair a wider suspension also covers leaves the pair held,
-	// and the answer says by what rather than letting the reader believe it runs.
-	for _, other := range s.suspensionsOf(scope).List() {
-		if other.ID() != sus.ID() && sus.Within(other) {
-			out.Still = append(out.Still, other.ID())
-		}
-	}
-	writeOut(w, r, http.StatusOK, out)
-}
-
 // suspensionHolders is the scopes, other than the one asked, whose table holds a suspension by
 // this id: what a resume from the wrong scope is refused naming.
 func (s *Server) suspensionHolders(asked, id string) []string {
@@ -381,35 +292,21 @@ func (s *Server) suspensionHolders(asked, id string) []string {
 	return out
 }
 
-// listSuspensions is `GET /suspensions`: every suspension in force in the request's scope.
-func (s *Server) listSuspensions(w http.ResponseWriter, r *http.Request) {
-	tbl := s.suspensionsOf(r.URL.Query().Get("scope"))
-	out := []api.Suspension{}
-	if tbl == nil {
-		writeOut(w, r, http.StatusOK, out)
-		return
-	}
-	if !tbl.Loaded() {
-		suspensionError(w, r, errSuspensionsLoading)
-		return
-	}
-	for _, sus := range tbl.List() {
-		out = append(out, s.suspensionRecord(sus))
-	}
-	writeOut(w, r, http.StatusOK, out)
-}
-
-// suspensionRecord is a suspension as the wire carries it.
-func (s *Server) suspensionRecord(sus trigger.Suspension) api.Suspension {
-	out := api.Suspension{ID: sus.ID(), Charter: sus.Charter, Rule: sus.Rule, Subject: sus.Subject,
-		Scope: sus.Scope, Held: []api.SuspensionHolder{}}
+// suspensionRow is a suspension as the wire carries it: named by the flags that reach it, with
+// who holds it and why, and what it holds now across the engines of its scope.
+func (s *Server) suspensionRow(sus trigger.Suspension) api.FlowRow {
+	out := api.FlowRow{Kind: api.FlowRowSuspension, ID: sus.ID(), Charter: sus.CharterFlag(),
+		Recursive: sus.Recursive, Subject: sus.Subject, Scope: sus.Scope, Held: []api.SuspensionHolder{},
+		Holding: &api.SuspensionHolding{}}
+	covers := false
 	for _, eng := range s.flowEngines(sus.Scope) {
 		tasks, questions, launches := eng.Holds(sus.ID())
 		out.Holding.Tasks += tasks
 		out.Holding.Questions += questions
 		out.Holding.Launches += launches
-		out.Covers = out.Covers || eng.Names(sus)
+		covers = covers || eng.Names(sus)
 	}
+	out.Covers = &covers
 	head := s.Store.Head()
 	for _, who := range sus.Holders() {
 		h := sus.Held[who]
@@ -440,8 +337,8 @@ func suspensionError(w http.ResponseWriter, r *http.Request, err error) {
 // verb that lifts them.
 func heldBySuspension(w http.ResponseWriter, r *http.Request, what string, by []string) {
 	codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
-		"%s is held by %s; resuming it would run what that suspends — `verse resume` lifts a suspension, "+
-			"and `verse suspend` lists them", what, strings.Join(by, ", ")))
+		"%s is held by %s; resuming it would run what that suspends — `verse flow resume --charter … "+
+			"--subject …` lifts a suspension, and `verse flow` lists them", what, strings.Join(by, ", ")))
 }
 
 // suspensionCount is how many suspensions are in force in a scope: what status counts.

@@ -117,7 +117,7 @@ type Resolve struct {
 	// them. A ballot naming an option the record does not carry is refused, with the
 	// options listed. It was a boolean, `approve`, which could not name a third option.
 	Choice string `tony:"field=choice"`
-	// By is who answered. It rides the wire the same way FlowSteer.By and a say's By do,
+	// By is who answered. It rides the wire the same way FlowSelect.By and a say's By do,
 	// and for the same reason: a resolution is an act, and an act has an actor.
 	//
 	// REQUIRED, and never defaulted: a default publishes a name belonging to nobody, and an
@@ -283,52 +283,70 @@ type SetVector struct {
 	By     string       `tony:"field=by,omitzero"` // who slid it, for the record
 }
 
-// FlowSteer addresses a flow — every live task whose subject matches — and pauses,
-// resumes, cancels, or says to all of them as a unit. Subject is an address or a
-// pattern, so one call can steer a subject, a kind, or a whole system.
+// FlowSelect names the work a `verse flow` verb reaches, and narrows what `GET /flows` lists (as
+// query parameters there). A selection is a TASK — that run only — or a CHARTER and a SUBJECT,
+// the coordinates a live task carries and a suspension names; a task combines with neither.
 //
-//tony:schemagen=verse-flow-steer,notag
-type FlowSteer struct {
-	Subject string `tony:"field=subject"`
-	Text    string `tony:"field=text,omitzero"`
-	By      string `tony:"field=by,omitzero"`
+// Charter is `<address>[:<rule>]`: an installed charter's address, and one rule of it after the
+// colon. Baseline's charter has no address, so its rule is `:<rule>` and all its rules `:`.
+// Recursive names the charter at the address and every charter beneath it. Subject is an address
+// with `*` open in any segment. Neither is "every" by being absent: every charter and every
+// subject are `*`, said, and only the listing reads an absent one as everything.
+//
+// Why is what a suspension is for; Text is what a say says; By is who says it.
+//
+//tony:schemagen=verse-flow-select,notag
+type FlowSelect struct {
+	Task      string `tony:"field=task,omitzero"`
+	Charter   string `tony:"field=charter,omitzero"`
+	Subject   string `tony:"field=subject,omitzero"`
+	Recursive bool   `tony:"field=recursive,omitzero"`
+	Why       string `tony:"field=why,omitzero"`
+	Text      string `tony:"field=text,omitzero"`
+	By        string `tony:"field=by,omitzero"`
 }
 
-// Suspend names what a suspension covers — a charter (or every charter), a rule of it (or all),
-// a subject (or every subject) — for `POST /suspend` and `POST /resume`. Charter "" is
-// baseline's; "*" is every one. Rule "" and "*" are every rule; subject "" and "*" every
-// subject. An address may end `.*` for everything beneath it.
-//
-// Why is required on a suspend, and read by nothing on a resume.
-//
-//tony:schemagen=verse-suspend,notag
-type Suspend struct {
-	Charter string `tony:"field=charter,omitzero"`
-	Rule    string `tony:"field=rule,omitzero"`
-	Subject string `tony:"field=subject,omitzero"`
-	Why     string `tony:"field=why,omitzero"`
-}
+// Flow row kinds.
+const (
+	FlowRowTask       = "task"
+	FlowRowSuspension = "suspension"
+)
 
-// Suspension is one suspension in force, as `GET /suspensions` lists it and `POST /suspend`
-// answers: what it covers, the scope it was made in, and who holds it and why.
+// FlowRow is one row of `GET /flows`, and what `POST /flow/suspend` and `/flow/resume` answer: a
+// live task, or a suspension. A suspension is usually holding work that is not running yet, so it
+// is a row of its own rather than a field of a task.
 //
-//tony:schemagen=verse-suspension,notag
-type Suspension struct {
-	ID      string `tony:"field=id"`
-	Charter string `tony:"field=charter,omitzero"`
-	Rule    string `tony:"field=rule"`
-	Subject string `tony:"field=subject"`
-	Scope   string `tony:"field=scope,omitzero"`
-	// Held is every holder, by principal, in order.
-	Held []SuspensionHolder `tony:"field=held"`
-	// Still is what else covers everything this one does — on a resume, the suspensions the
-	// lifted pair is still held by.
+// Charter, Recursive, Subject and Task are the selection that names the row, so a row printed as
+// flags is the act that reaches it again.
+//
+//tony:schemagen=verse-flow-row,notag
+type FlowRow struct {
+	// Kind is task | suspension.
+	Kind string `tony:"field=kind"`
+	// Task is a live task's id.
+	Task string `tony:"field=task,omitzero"`
+	// ID is a suspension's id.
+	ID string `tony:"field=id,omitzero"`
+	// Charter is a task's charter and the rule that spawned it, or a suspension's; empty for a
+	// task run by hand, which no rule spawned.
+	Charter   string `tony:"field=charter,omitzero"`
+	Recursive bool   `tony:"field=recursive,omitzero"`
+	Subject   string `tony:"field=subject,omitzero"`
+	// Scope is the scope a suspension was made in.
+	Scope string `tony:"field=scope,omitzero"`
+	// HeldBy is who holds a live task at its boundary: `operator` for `flow suspend --task`, and
+	// the suspensions that paused it.
+	HeldBy []string `tony:"field=heldBy,omitzero"`
+	// Held is every holder of a suspension, by principal, in order.
+	Held []SuspensionHolder `tony:"field=held,omitzero"`
+	// Still is what else covers everything a lifted suspension did — on a resume, the suspensions
+	// the lifted pair is still held by.
 	Still []string `tony:"field=still,omitzero"`
-	// Holding is what it is holding now, across the engines of its scope.
-	Holding SuspensionHolding `tony:"field=holding"`
-	// Covers is whether it names anything installed: false for a suspension whose charter or rule
-	// is gone — renamed, moved, removed — which holds nothing and fails open.
-	Covers bool `tony:"field=covers"`
+	// Holding is what a suspension is holding now, across the engines of its scope.
+	Holding *SuspensionHolding `tony:"field=holding,omitzero"`
+	// Covers is whether a suspension names anything installed: false for one whose charter or
+	// rule is gone — renamed, moved, removed — which holds nothing and fails open.
+	Covers *bool `tony:"field=covers,omitzero"`
 }
 
 // SuspensionHolding is what a suspension holds now: tasks it paused, questions it withdrew, and
@@ -382,8 +400,7 @@ type Route struct {
 	Path    string `tony:"field=path"`
 	Request string `tony:"field=request,omitzero"`
 	// Response is a signature name, or a tony base type where that is the whole truth:
-	// `GET /flows` answers with the subjects that have live work, which are addresses, so its
-	// response is `string` and there is nothing further to name.
+	// a route that answers with plain strings says `string`, and there is nothing further to name.
 	Response string `tony:"field=response,omitzero"`
 	Returns  string `tony:"field=returns,omitzero"`
 }
@@ -410,28 +427,22 @@ type Routes struct {
 	Routes []Route `tony:"field=routes"`
 }
 
-// Steered is the result of steering a flow: pause, resume, cancel, or say.
+// Steered is the result of steering live work: say, or cancel.
 //
-// ONE type with a verb field rather than four types keyed by verb. The routes used to answer
-// `{subject, paused: 2}`, `{subject, resumed: 2}`, `{subject, cancelled: 2}`, `{subject,
-// said: 2}` — four shapes for one operation, where the key was doing double duty as the name
-// of what happened and the count of it. A reader had to know which endpoint produced a
-// document to know what its second key meant.
-//
-// Carrying the verb makes the answer self-describing: piped, logged, or read back later it
-// says what was done without reference to the route that did it. And a consumer parses one
-// shape for all eight routes instead of eight.
+// ONE type with a verb field rather than a type per verb, so the answer describes itself: piped,
+// logged, or read back later it says what was done without reference to the route that did it,
+// and a key never does double duty as the name of the act and the count of it.
 //
 //tony:schemagen=verse-steered,notag
 type Steered struct {
-	// Subject is what was steered: the entity address (or pattern) the flow's tasks are
-	// about. A `goal` field stood beside it while a goal could be steered by name — one
-	// operation addressed two ways — and went with goals.
+	// Task, Charter and Subject are the selection that was steered.
+	Task    string `tony:"field=task,omitzero"`
+	Charter string `tony:"field=charter,omitzero"`
 	Subject string `tony:"field=subject,omitzero"`
-	// Verb is what was done: pause | resume | cancel | say.
+	// Verb is what was done: say | cancel.
 	Verb string `tony:"field=verb"`
-	// Affected is how many live tasks it reached. Zero is a normal answer — an address
-	// that names no running work is not an error, it is a flow that has finished.
+	// Affected is how many live tasks it reached. Zero is a normal answer — a selection that
+	// names no running work is not an error, it is a flow that has finished.
 	Affected int `tony:"field=affected"`
 }
 
@@ -465,6 +476,14 @@ type InboxItem struct {
 	Vector *task.Vector `tony:"field=vector,omitzero"`
 }
 
+// FlowCount is how much work is live: tasks, and the distinct subjects they are about.
+//
+//tony:schemagen=verse-flow-count,notag
+type FlowCount struct {
+	Tasks    int `tony:"field=tasks"`
+	Subjects int `tony:"field=subjects"`
+}
+
 // Status is what GET /status answers: what this verse is, what it is running, and where to
 // reach the pieces around it.
 //
@@ -476,9 +495,9 @@ type InboxItem struct {
 //
 //tony:schemagen=verse-status,notag
 type Status struct {
-	StoreRev int64 `tony:"field=storeRev"`
-	Flows    int   `tony:"field=flows"`
-	Gates    int   `tony:"field=gates"`
+	StoreRev int64     `tony:"field=storeRev"`
+	Flows    FlowCount `tony:"field=flows"`
+	Gates    int       `tony:"field=gates"`
 	// Suspensions is how many suspensions are in force in the scope asked about.
 	Suspensions int `tony:"field=suspensions"`
 	Tasks       int `tony:"field=tasks"`

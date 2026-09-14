@@ -122,6 +122,41 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		t.Error("demo.pr.1 is not within demo.*")
 	}
 
+	// A listing narrowed by a selection shows the suspensions that could hold what it names.
+	for _, c := range []struct {
+		a, b [2]string
+		want bool
+	}{
+		{[2]string{"verse-dev.drift", "demo.pr.1"}, [2]string{"*", "*"}, true},
+		{[2]string{"verse-dev.drift", "demo.pr.1"}, [2]string{"verse-dev.drift", "demo.*.1"}, true},
+		{[2]string{"verse-dev.drift", "demo.pr.1"}, [2]string{"verse-dev.other", "*"}, false},
+		{[2]string{"verse-dev.drift", "demo.pr.1"}, [2]string{"*", "demo.issue"}, false},
+		{[2]string{":review", "*"}, [2]string{":triage", "*"}, false},
+		{[2]string{":review", "*"}, [2]string{"*", "demo.pr.1"}, true},
+	} {
+		a, b := sus(c.a[0], "", c.a[1], false), sus(c.b[0], "", c.b[1], false)
+		if c.a[0] == ":review" {
+			a = sus("", "review", c.a[1], false)
+		}
+		if c.b[0] == ":triage" {
+			b = sus("", "triage", c.b[1], false)
+		}
+		if a.Overlaps(b) != c.want || b.Overlaps(a) != c.want {
+			t.Errorf("%s overlaps %s = %v, want %v", a.ID(), b.ID(), a.Overlaps(b), c.want)
+		}
+	}
+	if !drift.Overlaps(sus("verse-dev.drift.x", "", "*", false)) || drift.Overlaps(sus("verse-dev", "", "*", false)) {
+		t.Error("a recursive charter overlaps what is not beneath it, or not what is")
+	}
+
+	// A row's charter, printed as --charter, reads back as the suspension it came from.
+	for _, flag := range []string{"verse-dev.drift", "verse-dev.drift:claim", ":review", ":", "*", "*:review"} {
+		address, rule := ParseCharterFlag(flag)
+		if got := sus(address, rule, "*", false).CharterFlag(); got != flag {
+			t.Errorf("--charter %s reads back as %s", flag, got)
+		}
+	}
+
 	if place, ok := sus("*", "", "demo.*.1", false).SubjectPlace(); !ok || place != entity.RefAt("demo") {
 		t.Errorf("demo.*.1's subject place = %s %v, want its literal head demo", place, ok)
 	}

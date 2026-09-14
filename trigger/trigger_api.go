@@ -353,7 +353,7 @@ const ChainSep = "@"
 // stand in a chain (validTriggerName refuses ':' and a descent appends a Go field name), and the
 // scope and the address are rendered as tokens with none of ':', '@' or '~' (ownerToken), so the
 // first "::" bounds the scope, the next ':' the address, and the first '@' the chain: the
-// composition is injective, and the spellings `verse suspend` reads share it.
+// composition is injective, and the spellings `verse flow --charter` reads share it.
 const (
 	AtSep    = ":"
 	ScopeSep = "::"

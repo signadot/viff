@@ -651,6 +651,18 @@ func quoteStep(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
+// ShellWord is one argument as a word that a shell and `xargs` both read back as itself: bare
+// when it already is one, and single-quoted otherwise, a single quote inside it spelled as the
+// quote closed, the character backslash-escaped and the quote reopened, which both readers take.
+// It is quoteStep with that one extension, for a line whose reader is `xargs -L1` as often as a
+// shell: `verse flow --args` prints rows as the flags that name them.
+func ShellWord(s string) string {
+	if s != "" && !strings.ContainsFunc(s, shellSpecial) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // shellSpecial reports whether a rune stops a string from being a bare shell word. It is a
 // DENY list of what the shell acts on rather than an allow list of what is safe, so a character
 // nobody thought about prints as itself rather than being needlessly quoted — and the ones here

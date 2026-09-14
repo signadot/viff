@@ -1151,9 +1151,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /groups/{name}", s.removeGroup, "", nothing)
 	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
 	rt.handle("GET /gates", s.listGates, "", nothing)
-	// The distinct subjects with live work — addresses, so a list of plain strings rather
-	// than of anything verse names. That is the whole shape, so it is published.
-	rt.handle("GET /flows", s.listFlows, "", list("string"))
+	// The live tasks and the suspensions a selection names (flows.go): the work in flight and
+	// the work held from now on, one listing narrowed by the flags an act takes.
+	rt.handle("GET /flows", s.listFlows, "", list("verse-flow-row"))
 	rt.handle("GET /flow/tree", s.flowTree, "", list("verse-flow-tree"))
 	// ONE ROUTE FOR THE CHARTER: the tree at an address, and one rule or one level by name
 	// inside it. `/triggers` and `/strata` were two surfaces over one idea — see versed/charter.go.
@@ -1207,14 +1207,12 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
 	rt.handle("POST /gate/escalate", s.escalateGate, "verse-escalate", nothing)
-	rt.handle("POST /flow/pause", s.flowPause, "verse-flow-steer", one("verse-steered"))
-	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", one("verse-steered"))
-	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", one("verse-steered"))
-	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", one("verse-steered"))
-	// Suspensions: what is held, by whom and why; holding one, and lifting it (suspend.go).
-	rt.handle("GET /suspensions", s.listSuspensions, "", list("verse-suspension"))
-	rt.handle("POST /suspend", s.suspend, "verse-suspend", one("verse-suspension"))
-	rt.handle("POST /resume", s.resume, "verse-suspend", one("verse-suspension"))
+	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
+	// (flows.go).
+	rt.handle("POST /flow/suspend", s.flowSuspend, "verse-flow-select", one("verse-flow-row"))
+	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-select", one("verse-flow-row"))
+	rt.handle("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
+	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-select", one("verse-steered"))
 	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active runner's own tasks
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
@@ -3655,7 +3653,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// the heartbeat. So an idle verse tracks the head from a request it was making anyway,
 		// and this handler stops opening a root watch per call to find out.
 		StoreRev: s.Store.Head(),
-		Flows:    len(s.flowSubjects(r.URL.Query().Get("scope"))),
+		Flows:    s.flowCount(r.URL.Query().Get("scope")),
 		Gates:    len(pendingQuestions(s.scopedStore(r))),
 		// In force in the scope asked about; a scope nobody has opened holds none.
 		Suspensions: s.suspensionCount(r.URL.Query().Get("scope")),
@@ -4496,15 +4494,13 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 // trouble NOT to 404 wrongly (a runner that did not answer is not a runner without the task) and
 // then threw that reasoning away at the last line.
 //
-// The clause about flows is there because the CLI hands you the wrong id and then rejects it.
-// `verse flows` lists SUBJECTS — `drift:head:head-moved@git:head:verse` — while a task is named
-// `<chain>@<subject>`, so the obvious copy-paste is a 404 that says nothing. Both ids carry `@`
-// and `:`, so nothing about their shape tells them apart, which is exactly why the answer has to.
+// The clause about subjects is there because a subject and a task id both carry `@` and `:`, so
+// nothing about their shape tells them apart, which is exactly why the answer has to.
 func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
 	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
 		"no task %q — not in this verse's runtime, not on its runner, and no record of one. "+
-			"If that came from `verse flows`, it is a SUBJECT rather than a task id: a trigger "+
-			"names its task `<chain>@<subject>`. `verse ps` lists task ids; "+
+			"A SUBJECT is not a task id: a trigger names its task `<chain>@<subject>`. "+
+			"`verse flow` lists live tasks by id; "+
 			"`verse flow show %s` reads the flow.", id, id))
 }
 
@@ -4622,7 +4618,8 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 
 // taskControl routes cancel/say: a task the local runtime hosts is served by it (live
 // detail); otherwise the request goes to the runner's handle (a brokered/remote task),
-// so the same command works wherever a task runs.
+// so the same command works wherever a task runs. Pause and resume are the operator's hold
+// (holdTask), taken and lifted as `flow suspend|resume --task` take them.
 //
 // CONTROL IS HELD, not assumed: the task's owner holds it by owning the task, and the runner
 // working it by the grant its claim made. Asked of the store before anything is relayed, the
@@ -4630,24 +4627,18 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 // to refuse.
 func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
+	if op == "pause" || op == "resume" {
+		if _, ok := s.holdTask(w, r, id, op == "pause"); ok {
+			w.WriteHeader(http.StatusNoContent)
+		}
+		return
+	}
 	// THE SCOPE'S OWN, first: the runtime below hosts baseline's tasks and every scope's, and
 	// found by id, a task is reached whatever scope asked. A scope owns what it creates
 	// (owns.go), so a control write addressed from the wrong scope is refused naming the right
 	// one, before anything is relayed and before whether the asker may control it is asked.
-	holder, found, err := s.taskScope(id, r.URL.Query().Get("scope"))
-	if !s.ownHere(w, r, "task "+id, holder, found, err) {
+	if _, ok := s.controlledTask(w, r, id); !ok {
 		return
-	}
-	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id), "controlling it")) {
-		return
-	}
-	if op == "resume" {
-		for _, eng := range s.flowEngines(holder) {
-			if by := eng.TaskSuspended(id); len(by) > 0 {
-				heldBySuspension(w, r, "task "+id, by)
-				return
-			}
-		}
 	}
 	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
@@ -4669,10 +4660,6 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		return
 	}
 	switch op {
-	case "pause":
-		h.Pause()
-	case "resume":
-		h.Resume()
 	case "cancel":
 		h.Cancel("")
 	case "say":
@@ -4700,42 +4687,6 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ── flow: engine steering (control plane) ────────────────────────────────────
-
-func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
-	writeOut(w, r, http.StatusOK, s.flowSubjects(r.URL.Query().Get("scope")))
-}
-
-// flowSubjects is the distinct subjects with in-flight work: the list `verse flow` prints and
-// the number `status` counts, through one function so that the two are the same answer rather
-// than two that agree.
-//
-// EVERY ENGINE THE SCOPE MAY SEE (flowEngines), for the reason firedTotal adds every engine's
-// counter: a live task is tracked by the engine that spawned it (Engine.track) and a package's
-// charter runs in an engine of its own, so baseline's registry alone is blind to the work a
-// packaged rule started — on staging, where the whole charter sits under `verse-dev`, that is
-// all of it. A named scope answers for itself: its own engine's registry and nothing else, and
-// one nobody has opened has no live work and says so with an empty list rather than baseline's.
-//
-// Deduped, because a subject is a QUESTION ("what is happening to this entity") and two
-// engines with work about the same one are one busy subject, not two. Sorted for the reason
-// Engine.Flows sorts: a listing an operator diffs against the last one.
-func (s *Server) flowSubjects(scope string) []string {
-	engines := s.flowEngines(scope)
-	seen := map[string]bool{}
-	out := make([]string, 0, len(engines))
-	for _, eng := range engines {
-		for _, subj := range eng.Flows() {
-			if !seen[subj] {
-				seen[subj] = true
-				out = append(out, subj)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // flowTree renders a subject's work as a SHAPE — the trigger that acted on it, the task
 // that ran, and the completion hooks branching off it, including the ones that have not run
 // yet. A read, so the address rides the query string rather than a body (steering is POST).
@@ -4760,103 +4711,6 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, eng.FlowTrees(m))
-}
-
-// flowAddress decodes the steering body's `subject` — an entity ADDRESS, not just a ref:
-// "demo:pr:1" names one subject, "demo:pr:*" the whole kind. A flow is a query over live
-// tasks' subjects, so one field serves both, and a plain ref stays valid (no client
-// breaks). Returns false having already written the error response.
-func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (trigger.Match, bool) {
-	if err := codec.Read(r, body); err != nil || body.Subject == "" {
-		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
-		return nil, false
-	}
-	m, err := trigger.ParseExpr(body.Subject)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, false
-	}
-	return m, true
-}
-
-// steer is the one shape of a flow verb: decode the address, act on every engine the request's
-// scope may see (flowEngines), and answer with how many tasks that reached — a task count, so a
-// subject busy in baseline and in a package sums to what was signalled.
-//
-// A SCOPE STEERS ITS OWN. Its engine holds what it started and nothing inherited, so the verb
-// runs there alone; when that reaches nothing and another scope's engine holds work about the
-// subject — baseline's, typically, read through the overlay — the steer is refused naming it
-// (inherited), since answering `affected: 0` over work that is running would be wrong twice:
-// the work is not stopped, and the reader is told there is none. The same from baseline: a
-// scope's work is not baseline's to stop unaware. Nothing anywhere is a normal zero.
-//
-// CONTROL IS HELD over every task the address selects, as it is for `task cancel`: asked after
-// the ownership check, of each task's record, before any handle is signalled. A steer is one
-// act, so one task refused refuses the whole of it, naming that task, rather than stopping the
-// tasks the asker holds and leaving the rest running under an answer that counts only those.
-//
-// Serviced with priority over observation by each engine's control plane (see
-// docs/deployment-and-steering.md); the engine's verbs are out-of-band and never store writes.
-func (s *Server) steer(w http.ResponseWriter, r *http.Request, verb string, act func(*trigger.Engine, trigger.Match, api.FlowSteer) int) {
-	var b api.FlowSteer
-	m, ok := flowAddress(w, r, &b)
-	if !ok {
-		return
-	}
-	if verb == "say" && b.Text == "" {
-		http.Error(w, "text required", http.StatusBadRequest)
-		return
-	}
-	scope := r.URL.Query().Get("scope")
-	engines := s.flowEngines(scope)
-	var ids []string
-	for _, eng := range engines {
-		ids = append(ids, eng.FlowTasks(m)...)
-	}
-	if len(ids) == 0 {
-		if holders := s.flowHolders(scope, m); len(holders) > 0 {
-			inherited(w, r, "the live work about "+b.Subject, scope, holders)
-			return
-		}
-	}
-	store := s.scopedStore(r)
-	for _, id := range ids {
-		if refused(w, entity.Check(store, principalOf(r), entity.Control, mirror.Ref(id), "steering it")) {
-			return
-		}
-	}
-	// A SUSPENDED TASK IS NOT THE OPERATOR'S TO RESUME: `flow resume` of work a suspension holds
-	// would run what the suspension covers, so it is refused whole, naming what holds it.
-	if verb == "resume" {
-		for _, eng := range engines {
-			if id, by := eng.FlowSuspended(m); id != "" {
-				heldBySuspension(w, r, "task "+id, by)
-				return
-			}
-		}
-	}
-	n := 0
-	for _, eng := range engines {
-		n += act(eng, m, b)
-	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: verb, Affected: n})
-}
-
-// flowPause/flowResume hold the addressed tasks at their next boundary and release them.
-func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
-	s.steer(w, r, "pause", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.PauseFlow(m) })
-}
-
-func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
-	s.steer(w, r, "resume", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.ResumeFlow(m) })
-}
-
-func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
-	s.steer(w, r, "cancel", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.CancelFlow(m) })
-}
-
-func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
-	s.steer(w, r, "say", func(eng *trigger.Engine, m trigger.Match, b api.FlowSteer) int { return eng.SteerFlow(m, b.Text, b.By) })
 }
 
 // eventWire is gone: an Event is written as itself. It used to be rebuilt field by field

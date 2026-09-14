@@ -29,11 +29,61 @@ signature:
 context:
 - tony-format/context
 define:
-  by: .[string]
-  subject: .[string]
-  text: .[string]
+  subjects: .[int]
+  tasks: .[int]
 signature:
-  name: verse-flow-steer
+  name: verse-flow-count
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  moved: .[int]
+  occurrence: .[int]
+  since: .[string]
+  why: .[string]
+signature:
+  name: verse-suspension-holder
+---
+context:
+- tony-format/context
+define:
+  launches: .[int]
+  questions: .[int]
+  tasks: .[int]
+signature:
+  name: verse-suspension-holding
+---
+context:
+- tony-format/context
+define:
+  charter: .[string]
+  covers: .[nullable(bool)]
+  held: .[array(verse-suspension-holder)]
+  heldBy: .[array(string)]
+  holding: .[nullable(verse-suspension-holding)]
+  id: .[string]
+  kind: .[string]
+  recursive: .[bool]
+  scope: .[string]
+  still: .[array(string)]
+  subject: .[string]
+  task: .[string]
+signature:
+  name: verse-flow-row
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  charter: .[string]
+  recursive: .[bool]
+  subject: .[string]
+  task: .[string]
+  text: .[string]
+  why: .[string]
+signature:
+  name: verse-flow-select
 ---
 context:
 - tony-format/context
@@ -224,7 +274,7 @@ define:
   charter: .[tony-base:ir]
   docd: .[nullable(verse-docd)]
   fired: .[int]
-  flows: .[int]
+  flows: !verse-flow-count null
   gates: .[int]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
@@ -243,55 +293,12 @@ context:
 - tony-format/context
 define:
   affected: .[int]
+  charter: .[string]
   subject: .[string]
+  task: .[string]
   verb: .[string]
 signature:
   name: verse-steered
----
-context:
-- tony-format/context
-define:
-  charter: .[string]
-  rule: .[string]
-  subject: .[string]
-  why: .[string]
-signature:
-  name: verse-suspend
----
-context:
-- tony-format/context
-define:
-  by: .[string]
-  moved: .[int]
-  occurrence: .[int]
-  since: .[string]
-  why: .[string]
-signature:
-  name: verse-suspension-holder
----
-context:
-- tony-format/context
-define:
-  launches: .[int]
-  questions: .[int]
-  tasks: .[int]
-signature:
-  name: verse-suspension-holding
----
-context:
-- tony-format/context
-define:
-  charter: .[string]
-  covers: .[bool]
-  held: .[array(verse-suspension-holder)]
-  holding: !verse-suspension-holding null
-  id: .[string]
-  rule: .[string]
-  scope: .[string]
-  still: .[array(string)]
-  subject: .[string]
-signature:
-  name: verse-suspension
 ---
 context:
 - tony-format/context

@@ -74,7 +74,7 @@ func TestASayCarriesItsSpeaker(t *testing.T) {
 	if _, err := runCLI(t, "task", "say", "t1", "carry", "on"); err != nil {
 		t.Fatalf("task say: %v", err)
 	}
-	if _, err := runCLI(t, "flow", "say", "demo.pr.1", "carry", "on"); err != nil {
+	if _, err := runCLI(t, "flow", "say", "--subject", "demo.pr.1", "carry", "on"); err != nil {
 		t.Fatalf("flow say: %v", err)
 	}
 	for _, path := range []string{"/tasks/t1/say", "/flow/say"} {

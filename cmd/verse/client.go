@@ -916,7 +916,7 @@ func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done
 // The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
 // `gate resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
 // ways and so needed a runtime check to police two states the grammar should never have
-// allowed. Every other verb in this CLI is already a subcommand (flow pause/resume/cancel,
+// allowed. Every other verb in this CLI is already a subcommand (flow suspend/resume/say/cancel,
 // task cancel/say); the gate's answer was the one that had
 // been demoted into a flag, mirroring api.Resolve's `Approve bool` rather than the operator.
 //

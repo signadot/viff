@@ -610,7 +610,7 @@ func (m Match) MatchRef(ref entity.Ref) bool {
 }
 
 // ParseExpr parses an entity-address expression into a Match — the ONE string surface for
-// addressing entities by identity, shared by the CLI (`flow pause <addr>`) and the charter
+// addressing entities by identity, shared by the CLI (`verse flow --subject <addr>`) and the charter
 // wire (a string-form Match). It is a KINDED PATH, `*` is a wildcard per segment, and an id
 // may also glob:
 //

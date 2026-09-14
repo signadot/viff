@@ -347,6 +347,56 @@ func (s Suspension) Within(o Suspension) bool {
 	return true
 }
 
+// Overlaps reports whether some work could be named by both: what a listing narrowed by a
+// selection shows a suspension for. It answers by the spellings, as Within does, and a glob
+// inside a segment overlaps whatever stands in that segment.
+func (s Suspension) Overlaps(o Suspension) bool {
+	if !s.charterAll && !o.charterAll {
+		switch {
+		case slices.Equal(s.charter, o.charter):
+		case s.Recursive && atOrBeneath(s.charter, o.charter):
+		case o.Recursive && atOrBeneath(o.charter, s.charter):
+		default:
+			return false
+		}
+	}
+	if s.Rule != Every && o.Rule != Every && s.Rule != o.Rule {
+		return false
+	}
+	if s.subjectAll || o.subjectAll {
+		return true
+	}
+	for i := range min(len(s.subject), len(o.subject)) {
+		a, b := s.subject[i], o.subject[i]
+		if a != b && !strings.Contains(a, Every) && !strings.Contains(b, Every) {
+			return false
+		}
+	}
+	return true
+}
+
+// CharterFlag is the charter side as `--charter` spells it: the address, and `:<rule>` when it
+// names one rule. Baseline's charter is the empty address, so all its rules are `:`.
+func (s Suspension) CharterFlag() string {
+	switch {
+	case s.Rule != Every:
+		return s.Charter + AtSep + s.Rule
+	case s.Charter == "":
+		return AtSep
+	}
+	return s.Charter
+}
+
+// ParseCharterFlag splits `--charter <address>[:<rule>]` on its last colon, since a rule's name
+// holds none: `verse-dev.drift:claim`, `:claim` for baseline's rule, `:` for all of baseline's
+// rules, and an address alone for every rule of the charter there.
+func ParseCharterFlag(s string) (charter, rule string) {
+	if i := strings.LastIndex(s, AtSep); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, Every
+}
+
 // atOrBeneath reports whether segs stands at prefix or beneath it.
 func atOrBeneath(prefix, segs []string) bool {
 	return len(segs) >= len(prefix) && slices.Equal(prefix, segs[:len(prefix)])
@@ -503,6 +553,19 @@ func (t *Suspensions) Lift(id string) {
 		at := e.atSegs()
 		e.reArm(func(rule string) bool { return s.CoversCharter(at, rule) })
 	}
+}
+
+// NamingSubject is the ids of the suspensions naming a subject, whatever charter they name and
+// whoever holds them: what the top of a flow tree says. Each position in the tree says, with
+// authority asked, what holds its own work.
+func (t *Suspensions) NamingSubject(subj entity.Ref) []string {
+	var out []string
+	for _, s := range t.List() {
+		if s.CoversSubject(subj) {
+			out = append(out, s.ID())
+		}
+	}
+	return out
 }
 
 // notLoaded is what holds everything while a table has not loaded, named as a suspension would be.

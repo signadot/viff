@@ -29,7 +29,7 @@
 #             `verse-stratum` still describe what is INSIDE it, and GET /charter/{name}
 #             answers one of them.
 #
-# The control plane is absent by construction: POST /flow/pause is something you DO to a verse,
+# The control plane is absent by construction: POST /flow/suspend is something you DO to a verse,
 # not part of what one looks like.
 context:
 - tony-format/context
@@ -37,8 +37,7 @@ define:
   api: .[verse-routes]
   entity: .[verse-entity]
   perms: .[verse-perms-record]
-  flows: .[array(string)]
-  suspensions: .[array(verse-suspension)]
+  flows: .[array(verse-flow-row)]
   tasks: .[array(verse-instance)]
   state: .[verse-state]
   status: .[verse-status]

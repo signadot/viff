@@ -36,8 +36,7 @@ func TestAnInterruptedHostedTaskWithdrawsItsQuestionAtOnce(t *testing.T) {
 	qid := waitQuestion(t, srv, "held-1")
 
 	// An intervention — a `say` redirects the run, and the machine withdraws whatever gate was
-	// outstanding (state.interrupt → effDropGate). `/flow/pause` is the other one and does not
-	// reach here: it steers the ENGINE's flows, and this task was spawned straight into taskd.
+	// outstanding (state.interrupt → effDropGate).
 	say := postTony(t, ops.URL+"/tasks/held-1/say", api.Say{Instruction: "do the other thing", By: "human:scott"})
 	say.Body.Close()
 	if say.StatusCode >= 300 {

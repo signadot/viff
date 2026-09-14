@@ -1269,16 +1269,38 @@ func (s *SetVector) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts FlowSteer to a Tony IR node.
-func (s *FlowSteer) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+// ToTonyIR converts FlowSelect to a Tony IR node.
+func (s *FlowSelect) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
+	// Field: Task
+	if s.Task != "" {
+		irMap["task"] = ir.FromString(string(s.Task))
+	}
+
+	// Field: Charter
+	if s.Charter != "" {
+		irMap["charter"] = ir.FromString(string(s.Charter))
+	}
+
 	// Field: Subject
-	irMap["subject"] = ir.FromString(string(s.Subject))
+	if s.Subject != "" {
+		irMap["subject"] = ir.FromString(string(s.Subject))
+	}
+
+	// Field: Recursive
+	if s.Recursive {
+		irMap["recursive"] = ir.FromBool(bool(s.Recursive))
+	}
+
+	// Field: Why
+	if s.Why != "" {
+		irMap["why"] = ir.FromString(string(s.Why))
+	}
 
 	// Field: Text
 	if s.Text != "" {
@@ -1293,8 +1315,8 @@ func (s *FlowSteer) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromMap(irMap), nil
 }
 
-// FromTonyIR populates FlowSteer from a Tony IR node.
-func (s *FlowSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+// FromTonyIR populates FlowSelect from a Tony IR node.
+func (s *FlowSelect) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -1312,7 +1334,7 @@ func (s *FlowSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return nil
 	}
 	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for FlowSteer, got %v", node.Type)
+		return fmt.Errorf("expected map for FlowSelect, got %v", node.Type)
 	}
 
 	for i, fieldName := range node.Fields {
@@ -1323,12 +1345,36 @@ func (s *FlowSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
+		case "task":
+			// Field: Task
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+			}
+			s.Task = string(fieldNodeUnwrapped.String)
+		case "charter":
+			// Field: Charter
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "charter", fieldNodeUnwrapped.Type)
+			}
+			s.Charter = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
+		case "recursive":
+			// Field: Recursive
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "recursive", fieldNodeUnwrapped.Type)
+			}
+			s.Recursive = bool(fieldNodeUnwrapped.Bool)
+		case "why":
+			// Field: Why
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "why", fieldNodeUnwrapped.Type)
+			}
+			s.Why = string(fieldNodeUnwrapped.String)
 		case "text":
 			// Field: Text
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1343,7 +1389,7 @@ func (s *FlowSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.By = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for FlowSteer", fieldName.String)
+				return fmt.Errorf("unknown field %q for FlowSelect", fieldName.String)
 			}
 		}
 	}
@@ -1351,8 +1397,8 @@ func (s *FlowSteer) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	return nil
 }
 
-// ToTony converts FlowSteer to Tony format bytes.
-func (s *FlowSteer) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+// ToTony converts FlowSelect to Tony format bytes.
+func (s *FlowSelect) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	node, err := s.ToTonyIR(opts...)
 	if err != nil {
 		return nil, err
@@ -1364,8 +1410,8 @@ func (s *FlowSteer) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FromTony parses Tony format bytes and populates FlowSteer.
-func (s *FlowSteer) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+// FromTony parses Tony format bytes and populates FlowSelect.
+func (s *FlowSelect) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -1373,125 +1419,8 @@ func (s *FlowSteer) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts Suspend to a Tony IR node.
-func (s *Suspend) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
-	if s == nil {
-		return ir.Null(), nil
-	}
-	// Create IR object map
-	irMap := make(map[string]*ir.Node)
-
-	// Field: Charter
-	if s.Charter != "" {
-		irMap["charter"] = ir.FromString(string(s.Charter))
-	}
-
-	// Field: Rule
-	if s.Rule != "" {
-		irMap["rule"] = ir.FromString(string(s.Rule))
-	}
-
-	// Field: Subject
-	if s.Subject != "" {
-		irMap["subject"] = ir.FromString(string(s.Subject))
-	}
-
-	// Field: Why
-	if s.Why != "" {
-		irMap["why"] = ir.FromString(string(s.Why))
-	}
-
-	return ir.FromMap(irMap), nil
-}
-
-// FromTonyIR populates Suspend from a Tony IR node.
-func (s *Suspend) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	if node == nil {
-		return nil
-	}
-
-	// Unwrap CommentType nodes to get the actual data node
-	if node.Type == ir.CommentType {
-		if len(node.Values) > 0 {
-			node = node.Values[0]
-		} else {
-			return nil
-		}
-	}
-
-	if node.Type == ir.NullType {
-		return nil
-	}
-	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for Suspend, got %v", node.Type)
-	}
-
-	for i, fieldName := range node.Fields {
-		fieldNode := node.Values[i]
-		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
-		fieldNodeUnwrapped := fieldNode
-		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
-			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
-		}
-		switch fieldName.String {
-		case "charter":
-			// Field: Charter
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "charter", fieldNodeUnwrapped.Type)
-			}
-			s.Charter = string(fieldNodeUnwrapped.String)
-		case "rule":
-			// Field: Rule
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "rule", fieldNodeUnwrapped.Type)
-			}
-			s.Rule = string(fieldNodeUnwrapped.String)
-		case "subject":
-			// Field: Subject
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
-			}
-			s.Subject = string(fieldNodeUnwrapped.String)
-		case "why":
-			// Field: Why
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "why", fieldNodeUnwrapped.Type)
-			}
-			s.Why = string(fieldNodeUnwrapped.String)
-		default:
-			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for Suspend", fieldName.String)
-			}
-		}
-	}
-
-	return nil
-}
-
-// ToTony converts Suspend to Tony format bytes.
-func (s *Suspend) ToTony(opts ...gomap.MapOption) ([]byte, error) {
-	node, err := s.ToTonyIR(opts...)
-	if err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// FromTony parses Tony format bytes and populates Suspend.
-func (s *Suspend) FromTony(data []byte, opts ...gomap.UnmapOption) error {
-	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
-	if err != nil {
-		return err
-	}
-	return s.FromTonyIR(node, opts...)
-}
-
-// ToTonyIR converts Suspension to a Tony IR node.
-func (s *Suspension) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+// ToTonyIR converts FlowRow to a Tony IR node.
+func (s *FlowRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
@@ -1503,27 +1432,50 @@ func (s *Suspension) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
+	// Field: Kind
+	irMap["kind"] = ir.FromString(string(s.Kind))
+
+	// Field: Task
+	if s.Task != "" {
+		irMap["task"] = ir.FromString(string(s.Task))
+	}
+
 	// Field: ID
-	irMap["id"] = ir.FromString(string(s.ID))
+	if s.ID != "" {
+		irMap["id"] = ir.FromString(string(s.ID))
+	}
 
 	// Field: Charter
 	if s.Charter != "" {
 		irMap["charter"] = ir.FromString(string(s.Charter))
 	}
 
-	// Field: Rule
-	irMap["rule"] = ir.FromString(string(s.Rule))
+	// Field: Recursive
+	if s.Recursive {
+		irMap["recursive"] = ir.FromBool(bool(s.Recursive))
+	}
 
 	// Field: Subject
-	irMap["subject"] = ir.FromString(string(s.Subject))
+	if s.Subject != "" {
+		irMap["subject"] = ir.FromString(string(s.Subject))
+	}
 
 	// Field: Scope
 	if s.Scope != "" {
 		irMap["scope"] = ir.FromString(string(s.Scope))
 	}
 
+	// Field: HeldBy
+	if len(s.HeldBy) > 0 {
+		slice := make([]*ir.Node, len(s.HeldBy))
+		for i, v := range s.HeldBy {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["heldBy"] = ir.FromSlice(slice)
+	}
+
 	// Field: Held
-	{
+	if len(s.Held) > 0 {
 		slice := make([]*ir.Node, len(s.Held))
 		for i, v := range s.Held {
 			node, err = v.ToTonyIR(opts...)
@@ -1544,21 +1496,25 @@ func (s *Suspension) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["still"] = ir.FromSlice(slice)
 	}
 
-	// Field: Holding
-	node, err = s.Holding.ToTonyIR(opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert field %q: %w", "Holding", err)
+	// Field: Holding (optional)
+	if s.Holding != nil {
+		node, err = s.Holding.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["holding"] = node
 	}
-	irMap["holding"] = node
 
-	// Field: Covers
-	irMap["covers"] = ir.FromBool(bool(s.Covers))
+	// Field: Covers (optional)
+	if s.Covers != nil {
+		irMap["covers"] = ir.FromBool(bool(*s.Covers))
+	}
 
 	return ir.FromMap(irMap), nil
 }
 
-// FromTonyIR populates Suspension from a Tony IR node.
-func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+// FromTonyIR populates FlowRow from a Tony IR node.
+func (s *FlowRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -1576,7 +1532,7 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 		return nil
 	}
 	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for Suspension, got %v", node.Type)
+		return fmt.Errorf("expected map for FlowRow, got %v", node.Type)
 	}
 
 	for i, fieldName := range node.Fields {
@@ -1587,6 +1543,18 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
+		case "kind":
+			// Field: Kind
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
+			}
+			s.Kind = string(fieldNodeUnwrapped.String)
+		case "task":
+			// Field: Task
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+			}
+			s.Task = string(fieldNodeUnwrapped.String)
 		case "id":
 			// Field: ID
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1599,12 +1567,12 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 				return fmt.Errorf("field %q: expected string, got %v", "charter", fieldNodeUnwrapped.Type)
 			}
 			s.Charter = string(fieldNodeUnwrapped.String)
-		case "rule":
-			// Field: Rule
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "rule", fieldNodeUnwrapped.Type)
+		case "recursive":
+			// Field: Recursive
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "recursive", fieldNodeUnwrapped.Type)
 			}
-			s.Rule = string(fieldNodeUnwrapped.String)
+			s.Recursive = bool(fieldNodeUnwrapped.Bool)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1617,6 +1585,23 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 				return fmt.Errorf("field %q: expected string, got %v", "scope", fieldNodeUnwrapped.Type)
 			}
 			s.Scope = string(fieldNodeUnwrapped.String)
+		case "heldBy":
+			// Field: HeldBy
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.HeldBy = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"heldBy\"", fieldNodeUnwrapped.Type)
+			}
 		case "held":
 			// Field: Held
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -1651,18 +1636,25 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 			}
 		case "holding":
 			// Field: Holding
+			s.Holding = &SuspensionHolding{}
 			if err := s.Holding.FromTonyIR(fieldNode, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "holding", err)
+				return err
 			}
 		case "covers":
 			// Field: Covers
-			if fieldNodeUnwrapped.Type != ir.BoolType {
-				return fmt.Errorf("field %q: expected bool, got %v", "covers", fieldNodeUnwrapped.Type)
+			if fieldNodeUnwrapped.Type == ir.NullType {
+				// null value - leave pointer as nil
+			} else {
+				val := new(bool)
+				if fieldNodeUnwrapped.Type != ir.BoolType {
+					return fmt.Errorf("%s: expected bool, got %v", "field \"covers\"", fieldNodeUnwrapped.Type)
+				}
+				*val = bool(fieldNodeUnwrapped.Bool)
+				s.Covers = val
 			}
-			s.Covers = bool(fieldNodeUnwrapped.Bool)
 		default:
 			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for Suspension", fieldName.String)
+				return fmt.Errorf("unknown field %q for FlowRow", fieldName.String)
 			}
 		}
 	}
@@ -1670,8 +1662,8 @@ func (s *Suspension) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 	return nil
 }
 
-// ToTony converts Suspension to Tony format bytes.
-func (s *Suspension) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+// ToTony converts FlowRow to Tony format bytes.
+func (s *FlowRow) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	node, err := s.ToTonyIR(opts...)
 	if err != nil {
 		return nil, err
@@ -1683,8 +1675,8 @@ func (s *Suspension) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FromTony parses Tony format bytes and populates Suspension.
-func (s *Suspension) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+// FromTony parses Tony format bytes and populates FlowRow.
+func (s *FlowRow) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -2158,6 +2150,16 @@ func (s *Steered) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
+	// Field: Task
+	if s.Task != "" {
+		irMap["task"] = ir.FromString(string(s.Task))
+	}
+
+	// Field: Charter
+	if s.Charter != "" {
+		irMap["charter"] = ir.FromString(string(s.Charter))
+	}
+
 	// Field: Subject
 	if s.Subject != "" {
 		irMap["subject"] = ir.FromString(string(s.Subject))
@@ -2202,6 +2204,18 @@ func (s *Steered) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
+		case "task":
+			// Field: Task
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+			}
+			s.Task = string(fieldNodeUnwrapped.String)
+		case "charter":
+			// Field: Charter
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "charter", fieldNodeUnwrapped.Type)
+			}
+			s.Charter = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -2440,6 +2454,97 @@ func (s *InboxItem) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts FlowCount to a Tony IR node.
+func (s *FlowCount) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Tasks
+	irMap["tasks"] = ir.FromInt(int64(s.Tasks))
+
+	// Field: Subjects
+	irMap["subjects"] = ir.FromInt(int64(s.Subjects))
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates FlowCount from a Tony IR node.
+func (s *FlowCount) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for FlowCount, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "tasks":
+			// Field: Tasks
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "tasks", fieldNodeUnwrapped.Type)
+			}
+			s.Tasks = int(*fieldNodeUnwrapped.Int64)
+		case "subjects":
+			// Field: Subjects
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "subjects", fieldNodeUnwrapped.Type)
+			}
+			s.Subjects = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for FlowCount", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts FlowCount to Tony format bytes.
+func (s *FlowCount) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates FlowCount.
+func (s *FlowCount) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts Status to a Tony IR node.
 func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
@@ -2457,7 +2562,11 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap["storeRev"] = ir.FromInt(int64(s.StoreRev))
 
 	// Field: Flows
-	irMap["flows"] = ir.FromInt(int64(s.Flows))
+	node, err = s.Flows.ToTonyIR(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert field %q: %w", "Flows", err)
+	}
+	irMap["flows"] = node
 
 	// Field: Gates
 	irMap["gates"] = ir.FromInt(int64(s.Gates))
@@ -2589,10 +2698,9 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.StoreRev = int64(*fieldNodeUnwrapped.Int64)
 		case "flows":
 			// Field: Flows
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "flows", fieldNodeUnwrapped.Type)
+			if err := s.Flows.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "flows", err)
 			}
-			s.Flows = int(*fieldNodeUnwrapped.Int64)
 		case "gates":
 			// Field: Gates
 			if fieldNodeUnwrapped.Int64 == nil {

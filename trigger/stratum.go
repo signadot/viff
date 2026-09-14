@@ -1241,7 +1241,7 @@ func (a Action) validateDerive() error {
 	for _, t := range a.derives() {
 		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == CharterSystem &&
 			(len(segs) == 2 || segs[2] == SuspensionKind) {
-			return fmt.Errorf("action.derive into %s: a suspension is made by `verse suspend`, "+
+			return fmt.Errorf("action.derive into %s: a suspension is made by `verse flow suspend`, "+
 				"and a record a rule wrote there would hold nothing", strings.Join(segs, "."))
 		}
 	}

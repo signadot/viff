@@ -374,7 +374,7 @@ func (s *state) fold(in input) []effect {
 		// declined it, nobody withdrew it, the task was simply held.
 		//
 		// Read as a refusal it was fatal for any driver that cannot re-plan: a scripted or
-		// calls task died on `flow pause` + `flow resume`, with its charter's onFailed firing,
+		// calls task died on a pause and a resume, with its charter's onFailed firing,
 		// for a control the tutorial describes as "freeze its tasks at their next boundary".
 		//
 		// So the question is withdrawn (a held task must not leave one in front of somebody)

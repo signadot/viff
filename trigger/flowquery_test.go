@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// ParseExpr is the address grammar behind `flow pause <addr>`: three segments, `*` as a
+// ParseExpr is the address grammar behind `verse flow --subject <addr>`: three segments, `*` as a
 // wildcard per segment, trailing segments optional. An id may contain colons.
 func TestParseExpr(t *testing.T) {
 	cases := []struct {
@@ -96,45 +96,39 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	}
 }
 
-// Steering by a set address reaches every selected task and reports the count — the
-// {subject, verb, affected} contract the tutorial documents (api.Steered).
-func TestSteerWholeKind(t *testing.T) {
+// A selection is spelled as a suspension is, so one address reaches a subject, a kind or a whole
+// system, and a charter narrows it to the rules of one charter.
+func TestSelectionReachesSets(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawnFP(t, eng, "p1", `demo.pr."1"`)
 	spawnFP(t, eng, "p2", `demo.pr."2"`)
 	spawnFP(t, eng, "p3", `demo.issue."9"`)
+	eng.liveMu.Lock()
+	fp := eng.live["p1"]
+	fp.chain = "review"
+	eng.live["p1"] = fp
+	eng.liveMu.Unlock()
 
-	if n := eng.PauseFlow(mustExpr(t, "demo.pr.*")); n != 2 {
-		t.Fatalf("PauseFlow(demo.pr.*) signalled %d, want 2", n)
+	for _, c := range []struct {
+		charter, subject string
+		want             int
+	}{
+		{"*", "demo.pr.*", 2},
+		{"*", "demo.*.*", 3},
+		{"*", "*.*.9", 1},
+		{":review", "*", 1},
+		{":triage", "*", 0},
+		{"elsewhere", "*", 0}, // no task here is a package's
+	} {
+		if n := len(eng.SelectFlow(mustSelect(t, c.charter, c.subject))); n != c.want {
+			t.Errorf("--charter %s --subject %s selected %d, want %d", c.charter, c.subject, n, c.want)
+		}
 	}
-	if n := eng.ResumeFlow(mustExpr(t, "demo.pr.*")); n != 2 {
-		t.Fatalf("ResumeFlow(demo.pr.*) signalled %d, want 2", n)
+	if _, ok := eng.Handle("p3"); !ok {
+		t.Fatal("Handle did not find the live task")
 	}
-	if n := eng.SteerFlow(mustExpr(t, "demo.*.*"), "hurry", "human:scott"); n != 3 {
-		t.Fatalf("SteerFlow(demo.*.*) said to %d, want 3", n)
-	}
-	if n := eng.CancelFlow(mustExpr(t, `demo.issue."9"`)); n != 1 {
-		t.Fatalf("CancelFlow signalled %d, want 1", n)
-	}
-}
-
-// A payload predicate addresses flows by what their subject IS, not just by identity — so
-// "hold the work on every open PR" is the same selector at a wider setting. It reads the
-// subject entity, so it only applies to subjects that exist in the store.
-func TestFlowAddressingByPayload(t *testing.T) {
-	store := entitytest.Store(t)
-	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"), entity.Obj{"stage": "merged"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("demo", "pr", "3"), entity.Obj{"stage": "open"}.Payload())
-
-	eng := New(store, task.AutoResolver{})
-	spawnFP(t, eng, "p1", `demo.pr."1"`)
-	spawnFP(t, eng, "p2", `demo.pr."2"`)
-	spawnFP(t, eng, "p3", `demo.pr."3"`)
-
-	open := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}
-	if n := eng.PauseFlow(open); n != 2 {
-		t.Fatalf("pausing every open PR's work signalled %d, want 2", n)
+	if _, ok := eng.Handle("gone"); ok {
+		t.Fatal("Handle found a task that is not live")
 	}
 }
 

@@ -110,7 +110,7 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	for _, want := range []string{
 		"GET /status", "GET /entity", "POST /entity", "POST /gate/resolve",
 		"GET /tasks", "POST /tasks", "GET /schema", "GET /api",
-		"GET /suspensions", "POST /suspend", "POST /resume",
+		"GET /flows", "POST /flow/suspend", "POST /flow/resume", "POST /flow/say", "POST /flow/cancel",
 	} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("route table is missing %q", want)
@@ -123,9 +123,14 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	if r := got["POST /entity"]; r.Request != "verse-put-entity" {
 		t.Errorf("POST /entity request = %q, want verse-put-entity", r.Request)
 	}
-	for _, route := range []string{"POST /suspend", "POST /resume"} {
-		if r := got[route]; r.Request != "verse-suspend" || r.Response != "verse-suspension" {
-			t.Errorf("%s = %+v, want a verse-suspend answered by a verse-suspension", route, r)
+	for _, route := range []string{"POST /flow/suspend", "POST /flow/resume"} {
+		if r := got[route]; r.Request != "verse-flow-select" || r.Response != "verse-flow-row" {
+			t.Errorf("%s = %+v, want a verse-flow-select answered by a verse-flow-row", route, r)
+		}
+	}
+	for _, gone := range []string{"GET /suspensions", "POST /suspend", "POST /resume", "POST /flow/pause"} {
+		if _, ok := got[gone]; ok {
+			t.Errorf("route table still serves %q", gone)
 		}
 	}
 }
@@ -393,20 +398,17 @@ func published(t *testing.T, ts *httptest.Server, path string) *ir.Node {
 	return doc
 }
 
-// All four steer routes answer in ONE shape carrying the verb, rather than four shapes whose
-// key names what happened. The key used to do double duty — `paused: 2` was both the name of
-// the act and the count of it — so a reader had to know which endpoint produced a document to
-// know what its second key meant.
+// The two steer routes answer in ONE shape carrying the verb and the selection it was asked about,
+// rather than a shape per verb whose key names what happened.
 func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	srv.Eng.Adopt("demo.pr.1", "run", newIdleHandle(t))
 
 	for _, c := range []struct{ path, body, wantVerb string }{
-		{"/flow/pause", `{subject: "demo.pr.*"}`, "pause"},
-		{"/flow/resume", `{subject: "demo.pr.*"}`, "resume"},
-		{"/flow/cancel", `{subject: "demo.pr.*"}`, "cancel"},
 		{"/flow/say", `{subject: "demo.pr.*", text: "hi"}`, "say"},
+		{"/flow/cancel", `{task: run}`, "cancel"},
 	} {
 		resp, err := http.Post(ts.URL+c.path, "application/tony", strings.NewReader(c.body))
 		if err != nil {
@@ -417,11 +419,11 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 			t.Fatalf("decode %s: %v", c.path, err)
 		}
 		resp.Body.Close()
-		if got.Verb != c.wantVerb {
-			t.Errorf("%s verb = %q, want %q", c.path, got.Verb, c.wantVerb)
+		if got.Verb != c.wantVerb || got.Affected != 1 {
+			t.Errorf("%s = %+v, want verb %q reaching the one run", c.path, got, c.wantVerb)
 		}
-		if got.Subject != "demo.pr.*" {
-			t.Errorf("%s subject = %q, want the address it was asked about", c.path, got.Subject)
+		if got.Subject+got.Task == "" {
+			t.Errorf("%s = %+v, want the selection it was asked about", c.path, got)
 		}
 	}
 }
