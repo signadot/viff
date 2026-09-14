@@ -1,6 +1,6 @@
 # Scopes own what they create: the control plane under one model
 
-Status: plan, nothing built. Branch `flow-steer` off main (ead39d3d).
+Status: LANDED on `flow-steer` 2026-09-14 — f95842a8 (model), 5884ada9 (flow steer), 242200f8 (task control, gates), 51903799 (charter remove), 4a6d2034 (perms mirror per scope). Open: the `flow show` residual from vp67q7ha.
 Closes git-issue h7wwzxtnh12ksc4yh5n0 (flow steering ignores `--scope`); lands the same model on every control route.
 
 ## Context
