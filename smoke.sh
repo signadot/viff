@@ -449,6 +449,10 @@ v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a fail
   action:
     patch: {stage: approved}
 TONY
+out=$(v flow suspend 2>&1) && die "a bare verse flow suspend was accepted: $out"
+has "$out" "--charter" || die "a bare verse flow suspend does not print its usage: $out"
+haskv "$(v status)" suspensions 0 || die "a bare verse flow suspend wrote a suspension"
+ok "a bare verse flow suspend prints its usage and suspends nothing"
 v flow suspend --charter smoke-susp --subject '*' --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
 has "$(v flow)" 'smoke: hold the package' || die "the listing does not say why it is held"
 ok "suspended the charter at smoke-susp, and the listing says why"
@@ -459,7 +463,9 @@ haskv "$(v data smoke-susp level 1)" stage open || die "a suspended level rule f
 has "$(v gate)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
 haskv "$(v status)" suspensions 1 || die "status does not count the suspension"
 ok "nothing fired, nothing was asked, and status counts suspensions: 1"
-v flow resume --charter smoke-susp --subject '*' >/dev/null || die "verse flow resume --charter smoke-susp failed"
+args=$(v flow --charter smoke-susp --args) || die "verse flow --charter smoke-susp --args failed"
+[ "$args" = "--charter smoke-susp --subject '*'" ] || die "the listing's --args is not the flags that name it: $args"
+printf '%s\n' "$args" | xargs -L1 "$BIN" --addr "$ADDR" flow resume >/dev/null || die "xargs -L1 verse flow resume over --args failed"
 settled=
 for _ in $(seq 1 100); do
 	if haskv "$(v data smoke-susp level 1 2>/dev/null || true)" stage settled; then
@@ -479,7 +485,7 @@ for _ in $(seq 1 100); do
 done
 [ -n "$asked" ] || die "the resumed gated rule did not ask"
 has "$(v flow)" 'smoke-susp' && die "the lifted suspension is still listed"
-ok "resumed: settle acted, approve asked, and nothing is suspended"
+ok "resumed through verse flow --args | xargs -L1 verse flow resume: settle acted, approve asked, and nothing is suspended"
 
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
