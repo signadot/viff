@@ -133,8 +133,11 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 	defer ts.Close()
 	for _, tc := range []struct{ gate, want string }{
 		{`{name: g, mode: ask, need: 2, answerers: [oscar@example.com]}`, "nobody can settle"},
-		{`{name: g, mode: ask, answerers: [nobody]}`, "names nobody"},
-		{`{name: g, mode: ask, answerers: [verse.group.payments]}`, "nothing stands at that address"},
+		{`{name: g, mode: ask, answerers: [nobody]}`, "a bare word names nothing"},
+		{`{name: g, mode: ask, answerers: [verse.principal.group.payments]}`, "is no person"},
+		{`{name: g, mode: ask, answerers: [verse.resolvers.instance.review@run-1]}`, "is no person"},
+		{`{name: g, mode: ask, answerers: [group:payments]}`, "nothing stands at verse.principal.group.payments"},
+		{`{name: g, mode: ask, answerers: [via:verse.resolvers.security.ghost]}`, "nothing stands at verse.resolvers.security.ghost"},
 		{`{name: g, mode: ask, need: 3, options: [{id: yes, need: 3}], answerers: [a@x, b@x]}`, "nobody can settle"},
 	} {
 		resp := installAs(t, "alice@example.com", ts.URL, fmt.Sprintf(`{
@@ -149,11 +152,11 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 			t.Errorf("%s: %s %s; want a refusal saying %q", tc.gate, resp.Status, body, tc.want)
 		}
 	}
-	// A threshold a kind or everyone can meet is not refused: their number is not known.
+	// A threshold a kind, a group or everyone can meet is not refused: their number is not known.
 	resp := installAs(t, "alice@example.com", ts.URL, `{
 		name: open-ask,
 		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
-		gates: [{name: g, mode: ask, need: 3, answerers: [user]}],
+		gates: [{name: g, mode: ask, need: 3, answerers: [user:*]}],
 		action: {patch: {stage: reviewing}},
 	}`)
 	resp.Body.Close()

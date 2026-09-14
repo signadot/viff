@@ -1,6 +1,8 @@
 package entity_test
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -56,17 +58,18 @@ func TestGranteeRefusals(t *testing.T) {
 		"agent", // a kind word, which a principal could once be named
 		"verse.principal.group.release",
 		"user", "coderunner", "system", "",
-		"wizard:x",                          // no such kind
-		"group:*",                           // a group is named, not listed under
-		"user:",                             // an empty id
-		"user:a*b",                          // a * that is not the whole id
-		"user:a b",                          // an id with a space
-		"via:",                              // an empty address
-		"via:demo.pr.1",                     // the world's half acts as nobody
-		"via:verse.*.x",                     // a * that is not trailing
-		"via:verse.*",                       // no system, so nothing that acts
-		"via:verse.runners.pool.coderunner", // a runner acts as runner:<identity>
-		"via:verse.trigger.package.x",       // a package is not a rule
+		"wizard:x",                              // no such kind
+		"group:*",                               // a group is named, not listed under
+		"user:",                                 // an empty id
+		"user:a*b",                              // a * that is not the whole id
+		"user:a b",                              // an id with a space
+		"via:",                                  // an empty address
+		"via:demo.pr.1",                         // the world's half acts as nobody
+		"via:verse.*.x",                         // a * that is not trailing
+		"via:verse.*",                           // no system, so nothing that acts
+		"via:verse.runners.pool.coderunner",     // a runner acts as runner:<identity>
+		"via:verse.trigger.package.x",           // a package is not a rule
+		"verse.resolvers.instance.review@run-1", // an instance's address is no person
 	} {
 		_, err := entity.ParseGrantee(in)
 		if err == nil {
@@ -99,5 +102,70 @@ func TestEverySystemPartHoldsTheRoot(t *testing.T) {
 				t.Errorf("%s does not hold owner at %s: %v", part, ref, err)
 			}
 		}
+	}
+}
+
+// The match reads each name by its structure. A kind admits by the kind a name carries, so a
+// person named agent is not an agent; a place admits what acts as it, and beneath it under a
+// trailing `*`; and a name the grammar does not read admits nobody, is counted, and is said.
+func TestTheMatchReadsTheGrammar(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	system := entity.As(entitytest.Store(t), entity.SystemDefault)
+	entity.PolicyOf(system).SetRootDefault(nil)
+	grant := func(name string, to ...string) entity.Ref {
+		t.Helper()
+		ref := entity.RefAt("demo", "pr", name)
+		if err := entity.Claim(system, ref, "user:owner@example.com"); err != nil {
+			t.Fatal(err)
+		}
+		if err := entity.AddGrant(system, ref, entity.Grant{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: to}}); err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	reads := func(who string, ref entity.Ref) bool {
+		t.Helper()
+		ok, err := entity.Holds(system, who, entity.Read, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+
+	agents := grant("agents", "agent:*")
+	if !reads("agent:harness", agents) || reads("user:agent", agents) {
+		t.Error("agent:* reads the kind off the name")
+	}
+	person := grant("person", "user:agent")
+	if !reads("user:agent", person) || reads("agent:agent", person) {
+		t.Error("user:agent admits exactly that principal")
+	}
+	// Each place is somebody's, so what it holds is what the grant holds out and not the
+	// system's: a place with no owner on record acts as the system, which holds everything.
+	for _, place := range []entity.Ref{entity.VerseRef("sources", "git", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("sources")} {
+		if err := entity.Establish(system, place, "user:installer@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sources := grant("sources", "via:verse.sources.*")
+	if !reads("via:verse.sources.git.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
+		reads("via:verse.sources", sources) {
+		t.Error("via:verse.sources.* admits what acts beneath it, and nothing else")
+	}
+
+	stale := grant("stale", "verse.principal.group.release")
+	before := entity.PolicyOf(system).Unparsed()
+	if reads("user:anyone@example.com", stale) {
+		t.Error("a group's bare address admitted somebody")
+	}
+	if entity.PolicyOf(system).Unparsed() <= before {
+		t.Error("a name that does not parse was not counted")
+	}
+	if !strings.Contains(logged.String(), "verse.principal.group.release") || !strings.Contains(logged.String(), "demo.pr.stale") {
+		t.Errorf("the log does not name the line and its record:\n%s", logged.String())
 	}
 }

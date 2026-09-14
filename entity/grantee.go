@@ -61,17 +61,23 @@ func Grammar() string {
 }
 
 // ParseGrantee reads a name in the grammar. A bare string holding an `@` and no colon is a
-// person's email, `user:<s>`; every other bare word names nothing and is refused — which is
-// where `user`, `agent`, `coderunner` and `verse.principal.group.<name>` stop meaning anything.
+// person's email, `user:<s>` — unless it is an address in verse's own half, as a resolver
+// instance's is (`verse.resolvers.instance.<name>@<origin>`), which is no person. Every other
+// bare word names nothing and is refused — which is where `user`, `agent`, `coderunner` and
+// `verse.principal.group.<name>` stop meaning anything.
 func ParseGrantee(s string) (Grantee, error) {
 	if s == Everyone {
 		return Grantee{Kind: Everyone}, nil
 	}
 	kind, rest, found := strings.Cut(s, ":")
 	if !found {
-		if strings.Contains(s, "@") {
+		switch {
+		case strings.HasPrefix(s, VerseRoot+"."):
+			return Grantee{}, refuseName(s, "an address in verse's half is no person; a place "+
+				"acting is via:<address>, and a group is group:<name>")
+		case strings.Contains(s, "@"):
 			kind, rest = UserKind, s
-		} else {
+		default:
 			return Grantee{}, refuseName(s, "a bare word names nothing")
 		}
 	}

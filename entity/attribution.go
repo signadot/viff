@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +76,11 @@ type Attribution struct {
 	refused    map[Level]int
 	unreadable int
 	hidden     int
+	// unparsed counts grantee names a check met that the grammar does not read, which admit
+	// nobody — a record from before the grammar, or a line nothing refused where it was written —
+	// apart again, since it is neither a refusal nor the store; said names what has been logged.
+	unparsed int
+	said     map[string]bool
 }
 
 // permsRecord is one perms record as the check reads it.
@@ -390,7 +396,7 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 					continue
 				}
 				for l, names := range g.To {
-					if !a.named(names, principal, who) {
+					if !a.named(names, principal, who, key) {
 						continue
 					}
 					if l == Control || l == OwnerLevel {
@@ -440,6 +446,33 @@ func (a *attributed) keep(ref Ref) (bool, error) {
 	}
 	a.attr.noteHidden()
 	return false, nil
+}
+
+// Unparsed is how many times a check met a grantee name the grammar does not read, which
+// admitted nobody.
+func (a *Attribution) Unparsed() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.unparsed
+}
+
+// noteUnparsed counts a grantee that does not parse, and says it once per record and name:
+// nothing rewrites it, so what it holds out is nothing, said out loud.
+func (a *Attribution) noteUnparsed(at, name string, err error) {
+	a.mu.Lock()
+	a.unparsed++
+	key := at + "\x00" + name
+	first := !a.said[key]
+	if first {
+		if a.said == nil {
+			a.said = map[string]bool{}
+		}
+		a.said[key] = true
+	}
+	a.mu.Unlock()
+	if first {
+		slog.Warn("perms: a grantee the grammar does not read admits nobody", "record", at, "grantee", name, "err", err)
+	}
 }
 
 // noteHidden counts an entity a listing withheld.
@@ -611,36 +644,54 @@ func (a *attributed) coOwns(who, addr string, hops int) (bool, error) {
 	return false, nil
 }
 
-// named reports whether a grantee list names the principal: by the name it acts under or the
-// owner it resolves to, as everyone, or as a kind its name carries. Both names, because a grant
-// to a binding means "whoever acts as that binding" and a grant to a person means them and
-// everything of theirs acting as itself.
-func (a *attributed) named(names []string, principal, who string) bool {
-	return a.namedWithin(names, principal, who, 3)
+// named reports whether a grantee list names the principal, by the structure of each name
+// (Grantee): `*` names everyone; `<kind>:<id>` the principal named exactly that, or whose owner
+// resolves to it, since a grant to a person means them and everything of theirs acting as
+// itself; `<kind>:*` any principal whose name, or whose owner's, carries the kind; `via:` the
+// place acting as that address, or beneath it under a trailing `*`, and never its owner, since
+// the address is the identity; `group:` the group's members, each named the same way. at is the
+// record the names are on, for a name that does not parse to be said against.
+func (a *attributed) named(names []string, principal, who, at string) bool {
+	return a.namedIn(names, principal, who, at, map[string]bool{})
 }
 
-// namedWithin is named, following a group's members to a bounded depth: a group of groups is
-// walked, and a cycle admits nobody rather than everybody.
-func (a *attributed) namedWithin(names []string, principal, who string, depth int) bool {
-	for _, n := range Canonical(names) {
-		switch n {
-		case who, Everyone:
+// namedIn is named, walking a group's members with the groups already seen: a group met a
+// second time is skipped, so a cycle ends because the walk does and a group nested any depth
+// admits its members.
+func (a *attributed) namedIn(names []string, principal, who, at string, seen map[string]bool) bool {
+	for _, n := range names {
+		g, err := ParseGrantee(n)
+		if err != nil {
+			a.attr.noteUnparsed(at, n, err)
+			continue
+		}
+		switch {
+		case g.Kind == Everyone:
 			return true
-		case principal:
-			if principal != "" {
+		case g.Kind == ViaKind:
+			if KindOf(principal) != ViaKind {
+				continue
+			}
+			if s := g.String(); principal == s ||
+				g.Path[len(g.Path)-1] == Everyone && strings.HasPrefix(principal, strings.TrimSuffix(s, Everyone)) {
+				return true
+			}
+		case g.Kind == GroupKind:
+			if who == "" || seen[g.ID] {
+				continue
+			}
+			seen[g.ID] = true
+			ref := GroupRef(g.ID)
+			if a.namedIn(a.members(ref), principal, who, ref.String(), seen) {
+				return true
+			}
+		case g.ID == Everyone:
+			if KindOf(principal) == g.Kind || KindOf(who) == g.Kind {
 				return true
 			}
 		default:
-			if kind, id, _ := strings.Cut(n, ":"); id == Everyone && who != "" &&
-				(KindOf(who) == kind || KindOf(principal) == kind) {
+			if s := g.String(); principal == s || who == s {
 				return true
-			}
-			if depth > 0 && who != "" {
-				if ref, err := ParseAddr(n); err == nil && IsGroup(ref) {
-					if a.namedWithin(a.members(ref), principal, who, depth-1) {
-						return true
-					}
-				}
 			}
 		}
 	}

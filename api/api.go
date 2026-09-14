@@ -521,7 +521,8 @@ type PermsEdit struct {
 }
 
 // Perms is the permission check's census: refusals by the level a write or read wanted, checks
-// the mirror could not answer, and what listings left out.
+// the mirror could not answer, what listings left out, and grantee names the grammar does not
+// read.
 //
 //tony:schemagen=verse-perms,notag
 type Perms struct {
@@ -530,6 +531,10 @@ type Perms struct {
 	// Hidden is what listings, replays and watches left out for a reader who may not see it —
 	// apart from refused, since a listing that leaves something out is answered.
 	Hidden int `tony:"field=hidden,omitzero"`
+	// Unparsed is how many times a check met a grantee name the grammar does not read
+	// (entity.Grammar), which admitted nobody. A stored grant from before the grammar is one;
+	// zero is the expected reading.
+	Unparsed int `tony:"field=unparsed,omitzero"`
 }
 
 // RunnerStatus is how this verse runs tasks: local (in-process), broker (a dial-in

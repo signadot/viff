@@ -2,6 +2,7 @@ package entity_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -311,8 +312,9 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 	}
 }
 
-// A group's address admits its members: a principal, a kind, everyone, another group, a
-// binding; a group of groups is walked to a bounded depth, and a cycle admits nobody.
+// A group admits its members: a principal, a kind, everyone, another group, a binding. A group
+// of groups is walked exactly — five deep admits the leaf — and a cycle admits nobody because
+// the walk ends.
 func TestAGroupAdmitsItsMembers(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemDefault)
@@ -331,18 +333,24 @@ func TestAGroupAdmitsItsMembers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	group("payments", "user:oscar@example.com", entity.GroupRef("security").String())
+	group("payments", "user:oscar@example.com", "group:security", "group:chain-1")
 	group("security", "user:carol@example.com", "runner:*")
-	group("loop-a", entity.GroupRef("loop-b").String())
-	group("loop-b", entity.GroupRef("loop-a").String())
-	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.Read: {entity.GroupRef("payments").String(), entity.GroupRef("loop-a").String()}}}); err != nil {
+	group("loop-a", "group:loop-b", "user:erin@example.com")
+	group("loop-b", "group:loop-a")
+	for i := 1; i < 5; i++ {
+		group(fmt.Sprintf("chain-%d", i), fmt.Sprintf("group:chain-%d", i+1))
+	}
+	group("chain-5", "user:frank@example.com")
+	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.Read: {"group:loop-a", "group:payments"}}}); err != nil {
 		t.Fatal(err)
 	}
 	for who, want := range map[string]bool{
 		"user:oscar@example.com": true,  // a member
 		"user:carol@example.com":   true,  // a member of a member group
 		"runner:bot":               true,  // of a kind a member group names
-		"user:bob@example.com":     false, // nobody's member
+		"user:erin@example.com":    true,  // a member of a group in a cycle
+		"user:frank@example.com":   true,  // five groups down
+		"user:bob@example.com":     false, // nobody's member, walked through the cycle to the end
 		"":                         false, // the unattributed request is not a member of anything
 	} {
 		if got, _ := entity.Holds(system, who, entity.Read, pr); got != want {
@@ -350,7 +358,7 @@ func TestAGroupAdmitsItsMembers(t *testing.T) {
 		}
 	}
 	// Membership moves: taking davido out takes his read.
-	group("payments", entity.GroupRef("security").String())
+	group("payments", "group:security")
 	if got, _ := entity.Holds(system, "user:oscar@example.com", entity.Read, pr); got {
 		t.Fatal("davido reads after being taken out of the group")
 	}

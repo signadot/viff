@@ -3573,7 +3573,7 @@ func (s *Server) permsStatus() *api.Perms {
 	if len(refused) == 0 {
 		refused = nil
 	}
-	return &api.Perms{Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden()}
+	return &api.Perms{Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden(), Unparsed: pol.Unparsed()}
 }
 
 // installSystemCharter applies the charter file named by SystemCharter as the system: its rules

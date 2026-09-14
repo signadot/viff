@@ -85,6 +85,7 @@ context:
 define:
   hidden: .[int]
   refused: .[object(int)]
+  unparsed: .[int]
   unreadable: .[int]
 signature:
   name: verse-perms

@@ -746,10 +746,10 @@ func desugarPatches(a *Action) {
 
 // checkAnswerers refuses a gate whose question nobody could settle, at install rather than at
 // the first firing: a threshold above the number of answerers named, when every one of them
-// is a single principal and so casts at most one ballot; and an answerer that names nothing —
-// not a person (an email), not a kind, not everyone, and not an address that stands, which is
-// how a group or a binding is named. A person is taken at their word before they have ever
-// presented themselves, since a gate is routed to somebody before they act, not after.
+// is a single principal and so casts at most one ballot; and an answerer the grammar does not
+// read (entity.Grammar), or a group or a place acting that does not stand. A person is taken
+// at their word before they have ever presented themselves, since a gate is routed to somebody
+// before they act, not after.
 //
 // The spawn's own gates are checked the same way, since a task's questions are posed under
 // them; a hook's spawn beneath the action is not walked here.
@@ -777,22 +777,27 @@ func (e *Engine) checkGateAnswerers(answerers []string, need int, options []task
 	}
 	bounded := true
 	for _, a := range answerers {
+		g, err := entity.ParseGrantee(a)
+		if err != nil {
+			return fmt.Errorf("answerer %w", err)
+		}
+		var stands entity.Ref
 		switch {
-		case a == entity.Everyone, a == entity.UserKind, a == entity.RunnerKind, a == entity.AgentKind:
+		case g.Kind == entity.Everyone, g.ID == entity.Everyone:
 			bounded = false
-		case strings.Contains(a, "@") && !strings.Contains(a, "."+entity.VerseRoot+"."):
-			// A person, by email; nobody has to have met them yet.
-		default:
-			ref, err := entity.ParseAddr(a)
-			if err != nil || !ref.Reserved() {
-				return fmt.Errorf("answerer %q names nobody: a person is an email, a kind is user, "+
-					"agent or runner, everyone is `*`, and a group or a binding is its address "+
-					"(verse.group.<name>, verse.resolvers.<kind>.<name>)", a)
+		case g.Kind == entity.GroupKind:
+			stands, bounded = entity.GroupRef(g.ID), false // a group may stand for any number
+		case g.Kind == entity.ViaKind && g.Path[len(g.Path)-1] == entity.Everyone:
+			bounded = false
+		case g.Kind == entity.ViaKind:
+			stands = entity.RefAt(g.Path...)
+		}
+		// A person, an agent or a runner is taken at their word; a group or a place is a record
+		// somebody installed, and one that is not there is a question nobody is held out to.
+		if stands.Len() > 0 {
+			if _, ok, gerr := e.store.Get(stands); gerr != nil || !ok {
+				return fmt.Errorf("answerer %q: nothing stands at %s", a, stands)
 			}
-			if _, ok, gerr := e.store.Get(ref); gerr != nil || !ok {
-				return fmt.Errorf("answerer %q: nothing stands at that address", a)
-			}
-			bounded = false // a group or a binding may stand for any number
 		}
 	}
 	if !bounded {

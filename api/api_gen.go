@@ -2577,6 +2577,11 @@ func (s *Perms) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["hidden"] = ir.FromInt(int64(s.Hidden))
 	}
 
+	// Field: Unparsed
+	if s.Unparsed != 0 {
+		irMap["unparsed"] = ir.FromInt(int64(s.Unparsed))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2640,6 +2645,12 @@ func (s *Perms) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "hidden", fieldNodeUnwrapped.Type)
 			}
 			s.Hidden = int(*fieldNodeUnwrapped.Int64)
+		case "unparsed":
+			// Field: Unparsed
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "unparsed", fieldNodeUnwrapped.Type)
+			}
+			s.Unparsed = int(*fieldNodeUnwrapped.Int64)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Perms", fieldName.String)

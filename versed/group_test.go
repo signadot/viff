@@ -48,7 +48,7 @@ func TestAGateHeldOutToAGroup(t *testing.T) {
 	resp = installAs(t, "alice@example.com", ts.URL, `{
 		name: group-ask,
 		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
-		gates: [{name: approval, mode: ask, need: 2, answerers: [verse.principal.group.payments]}],
+		gates: [{name: approval, mode: ask, need: 2, answerers: [group:payments]}],
 		action: {patch: {stage: reviewing}},
 	}`)
 	resp.Body.Close()
@@ -96,7 +96,7 @@ func TestAGroupAsABindingsResolver(t *testing.T) {
 	resp.Body.Close()
 	mustInstall(t, ts.URL, `{name: review-group, kind: approvals,
 		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
-		method: {driver: group, group: verse.principal.group.reviewers}}`)
+		method: {driver: group, group: group:reviewers}}`)
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
