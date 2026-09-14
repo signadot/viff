@@ -1,10 +1,8 @@
 package versed
 
 import (
-	"bufio"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,26 +18,12 @@ import (
 // returns the frames.
 func planeOf(t *testing.T, ts *httptest.Server, taskID string, answer func(questionID string)) []task.Frame {
 	t.Helper()
-	resp, err := http.Get(ts.URL + "/tasks/" + taskID + "/events?since=0")
-	if err != nil {
-		t.Fatalf("events: %v", err)
-	}
-	defer resp.Body.Close()
-
 	// Scanned on its own goroutine so the deadline can fire while the stream is SILENT,
 	// which is exactly the failure this waits for: a decision that never reaches the plane
 	// is a stream with nothing more to say, and a reader that only checks the clock between
 	// frames waits on it forever.
-	lines := make(chan string, 256)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
+	_, lines, stop := sseData(t, http.DefaultClient, ts.URL+"/tasks/"+taskID+"/events?since=0")
+	defer stop()
 
 	var got []task.Frame
 	answered := false
@@ -190,21 +174,8 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 // nobody has answered — and returns what it has said so far.
 func framesSoFar(t *testing.T, url string) []task.Frame {
 	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("attach %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-	lines := make(chan string, 256)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
+	_, lines, stop := sseData(t, http.DefaultClient, url)
+	defer stop()
 	var out []task.Frame
 	for {
 		select {

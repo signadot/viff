@@ -1,10 +1,8 @@
 package versed
 
 import (
-	"bufio"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -27,21 +25,8 @@ import (
 // what arrived by then; a nil `until` is one of those, and reads until quiet from the start.
 func commitsOf(t *testing.T, url string, until func([]entity.Event) bool) []entity.Event {
 	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("spine: %v", err)
-	}
-	defer resp.Body.Close()
-	lines := make(chan string, 256)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
+	_, lines, stop := sseData(t, http.DefaultClient, url)
+	defer stop()
 	var out []entity.Event
 	met := until == nil
 	// A hang guard, not a budget: it is reached only when what is waited for never comes,
