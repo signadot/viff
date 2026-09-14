@@ -94,8 +94,8 @@ The engine is a client of a bound base URL. It spawns there, subscribes to the e
 mirrors the stream into the `verse.task.instance` entity, so durability lives in verse rather than
 the runner. Which runner runs a given task is a per-spawn binding — `runner: <url>` in the charter
 or spec, like `--driver` — and there is deliberately no in-memory shortcut: `verse task
-cancel/say/pause` go through the same dispatch as a remote one, which forces the contract to be
-complete and keeps local equivalent to remote. The dispatch is per scope: with `--scope` it reaches
+cancel|say` and `verse flow suspend --task` go through the same dispatch as a remote one, which
+forces the contract to be complete and keeps local equivalent to remote. The dispatch is per scope: with `--scope` it reaches
 a task that scope spawned and refuses one it inherited, naming the scope that holds it (see [what a
 scope owns](reference/connect.md#what-a-scope-owns)).
 
@@ -121,7 +121,7 @@ POST   /tasks/{id}/resolve  {id, choice, by, say?, key}      answer a gate: choi
        204 applied · 404 no such decision · 409 already answered · 502 runner unreachable
 POST   /tasks/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /tasks/{id}/cancel   {by, key}
-POST   /tasks/{id}/pause    {by}
+POST   /tasks/{id}/pause    {by}                             the operator's hold (docs/control.md)
 POST   /tasks/{id}/resume   {by}                             409 when a suspension holds the task
 PUT    /tasks/{id}/vector   {vector, by}                     slide autonomy
 POST   /tasks                {id?, prompt, subject, vector, claim?, runner-config}  spawn → {id}

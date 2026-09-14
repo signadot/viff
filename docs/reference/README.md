@@ -278,18 +278,25 @@ verse
           remove <ref> [--forget | --keep]   what becomes of what it reflected
   resolver (resolvers)                       who answers questions
           add [--file <f>|-] [file] · show <ref> · remove <ref>
-  flow (flows)                               the distinct subjects with live work
-          show <addr> · pause <addr> · resume <addr> · cancel <addr> · say <addr> <text…>
-          <addr> addresses live tasks by the subject they are about: demo.pr.1 (one),
-          demo.pr.* (a kind), demo.*.* (a system) — a flow is a query, not a stored key
-          ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
-          the shell would expand — so quote it. A second positional is refused rather
-          than read as a step. resume refuses a task a suspension holds, naming it
-  suspend (suspensions)                      bare: what is suspended, by whom, why, and what it holds
-          [<charter>[:<rule>]] [<subject>] --why <text> [--as <who>]
-                                             hold the work about a charter, a subject, or both:
-                                             verse-dev.drift · '*' demo.pr.1 · :review · a:b c.*
-  resume [<charter>[:<rule>]] [<subject>]    lift the suspension the same words made
+  flow (flows)                               live tasks and suspensions, narrowed by the flags
+          [--task <id>]                      that run only; combines with neither of the others
+          [--charter <address>[:<rule>]]     a charter, and one rule of it: verse-dev.drift:claim,
+                                             :review (baseline's), '*' (every charter)
+          [-r | --recursive]                 …and every charter installed beneath the address
+          [--subject <address>]              a selector, * open in any segment: demo.pr.*,
+                                             demo.*.1, '*' (every subject) — quote it
+          [--args]                           each row as the flags naming it, for xargs -L1
+          suspend --task <id> | --charter … --subject … --why <text> [--as <who>]
+                                             hold that run at its next boundary, or suspend the
+                                             work about a charter and a subject until resumed
+          resume  --task <id> | --charter … --subject … [--as <who>]
+                                             lift the hold or the suspension; --task is refused
+                                             while a suspension holds the run
+          say     --task | --charter | --subject <text…>   an instruction to what they name
+          cancel  --task <id>                end that run (destructive)
+          show <addr>                        a subject's flow as a tree
+          Nothing is "every" by being absent: a verb that names nothing prints its usage and
+          does nothing. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

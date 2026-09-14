@@ -99,6 +99,7 @@ intervention defeated.
 | | |
 |---|---|
 | walk | [§3 steering](tutorial.md#steering) |
+| read | [Control](control.md) — what an operator stops and for how long: a run's hold and a durable suspension, whose hold it is, who may, and what each reaches |
 | read | [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs a cursor rather than a buffer |
 
 ### Federation: bringing the outside in

@@ -376,70 +376,66 @@ A completion hook (`onDone` and friends) reads that task's own payload: `$status
 
 ## Steering
 
-A *flow* is not a stored thing: it is a query over the subjects of live tasks, which is
-why steering takes an address rather than a ref, and why steering a whole set needs no new
-machinery — it is the same selector at a wider setting. A task run by hand is a flow too:
-of its `--subject`, or of its own id when it names none.
+A *flow* is not a stored thing: it is a query over live tasks, which is why steering takes a
+selection rather than a ref, and why steering a whole set needs no new machinery — it is the same
+selector at a wider setting. A task run by hand is a flow too: of its `--subject`, or of its own
+id when it names none. The verbs, their flags, and how a run's hold differs from a suspension are
+[control](../control.md); this is what they do to a task.
 
 ```sh
-verse flow                   # the distinct subjects with live work
-verse flow show demo.pr.2    # the tree: what ran, what is running, what comes next
-verse flow pause  demo.pr.2  # freeze its tasks at their next boundary
-verse flow resume demo.pr.2
-verse flow say    demo.pr.2 "hurry"
-verse flow cancel demo.pr.2  # stop them (destructive)
-verse flow pause 'demo.pr.*' # a selector, per segment
+verse flow                                     # live tasks and suspensions
+verse flow show demo.pr.2                      # the tree: what ran, what is running, what comes next
+verse flow suspend --task review@demo.pr.2     # hold that run at its next boundary
+verse flow resume  --task review@demo.pr.2
+verse flow say     --subject demo.pr.2 "hurry" # to every live task about it
+verse flow cancel  --task review@demo.pr.2     # end that run (destructive)
 ```
 
-Each command reports how many tasks it reached, echoes the address it reached them by so
-you can see what a wildcard actually selected, and names the verb:
+`say` and `cancel` report how many tasks they reached, echo the selection they reached them by,
+and name the verb; `suspend` and `resume` answer the row they held or lifted:
 
 ```tony
 affected: 1
 subject: demo.pr.2
-verb: pause
+verb: say
 ```
 
-All eight steer routes (four flow verbs, four goal verbs) answer in that one shape; a goal
-reports `goal:` instead of `subject:`.
+They land at each task's next boundary, so a run can be held, redirected or stopped mid-flight
+while every *other* flow keeps reacting. A scripted task is a single command, so `cancel` stops it
+at once by killing the command while a hold and a `say` land at its next boundary — which for a
+one-command task is when it ends. They take hold mid-run on a multi-step task: the `llm` driver,
+whose every tool call is a boundary.
 
-They land at each task's next boundary, so a flow can be held, redirected or stopped
-mid-flight while every *other* flow keeps reacting. A scripted task is a single command,
-so `cancel` stops it at once by killing the command while `pause` and `say` land at its
-next boundary — which for a one-command task is when it ends. They take hold mid-run on a
-multi-step task: the `llm` driver, whose every tool call is a boundary.
+A run's hold is the operator's ad-hoc freeze — "hold this, I want to look" — distinct from
+`cancel`, which ends the work, and from a `park` gate, which is a hold the *charter* declares per
+action. The runtime's `POST /tasks/{id}/pause|resume` are the same hold. Why out-of-band matters,
+and the engine's priority servicing, are in [deployment and
+steering](../deployment-and-steering.md).
 
-`pause` is the operator's ad-hoc freeze — "hold this, I want to look" — distinct from
-`cancel`, which ends the work, and from a `park` gate, which is a hold the *charter* declares
-per action. Why out-of-band matters, and the engine's priority servicing, are in
-[deployment and steering](../deployment-and-steering.md).
-
-`pause` is also forgetful: it holds the tasks live now, and the rules go on firing beside them.
-To stop the work about something and keep it stopped — no new firings, questions withdrawn from
-the docket, hooks recording and starting nothing — suspend it instead
-([the trigger model](../trigger-model.md#suspending)):
+A run's hold is also forgetful: it holds that task, and the rules go on firing beside it. To stop
+the work about something and keep it stopped — no new firings, questions withdrawn from the
+docket, hooks recording and starting nothing — suspend it instead:
 
 ```sh
-verse suspend '*' demo.pr.2 --why "a person is reviewing it by hand"
-verse flow show demo.pr.2      # heldBy: [<the suspension>] on the live task
-verse flow resume demo.pr.2    # refused, 409: a suspension holds it — `verse resume` lifts that
-verse resume '*' demo.pr.2
+verse flow suspend --charter '*' --subject demo.pr.2 --why "a person is reviewing it by hand"
+verse flow show demo.pr.2                      # heldBy: [<the suspension>] on the live task
+verse flow resume --task review@demo.pr.2      # refused, 409: a suspension holds it
+verse flow resume --charter '*' --subject demo.pr.2
 ```
 
 A task knows whose hold it is under — `heldBy` on its record and in `flow show` — so the two do
-not undo each other: a lift resumes only what nothing else holds, and an operator's pause
+not undo each other: a lift resumes only what nothing else holds, and an operator's hold
 outlives it whichever came first.
 
 Every verb here asks `control` of each task it reaches, as `task cancel` does: the task's owner
-holds it, and so does the runner its claim granted. A flow verb refused for any one of its tasks
-is refused whole, naming that task.
+holds it, and so does the runner its claim granted. A `say` refused for any one of its tasks is
+refused whole, naming that task.
 
-With `--scope`, every verb here — the flow verbs, `suspend|resume`, `task cancel|say|vector` and
-the runtime's `/tasks/{id}/pause|resume` — reaches the tasks that scope started and none it merely
-sees. Addressed at baseline's work it refuses and says so,
-so `verse flow cancel --scope me demo.pr.2` never stops baseline's review of that PR by
-accident; drop the flag to address baseline. See [what a scope
-owns](connect.md#what-a-scope-owns).
+With `--scope`, every verb here — `verse flow suspend|resume|say|cancel`, `task cancel|say|vector`
+and the runtime's `/tasks/{id}/pause|resume` — reaches the tasks that scope started and none it
+merely sees. Addressed at baseline's work it refuses and says so, so `verse flow cancel --scope me
+--task review@demo.pr.2` never stops baseline's review of that PR by accident; drop the flag to
+address baseline. See [what a scope owns](connect.md#what-a-scope-owns).
 
 ## Where a task runs is a seam
 

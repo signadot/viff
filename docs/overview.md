@@ -151,7 +151,7 @@ coordination.
 
 ### Observation and control are separate planes
 
-Reads can lag. Steering (`gate approve|deny`, `flow pause/cancel/say`) is out-of-band and
+Reads can lag. Steering (`gate approve|deny`, `flow suspend|resume|say|cancel`) is out-of-band and
 serviced ahead of observation, never riding the change stream. An intervention that queues behind
 a backlog of observations is an intervention defeated, so a runaway flow can always be stopped in
 time. See [deployment and steering](deployment-and-steering.md).

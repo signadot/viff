@@ -139,8 +139,8 @@ scope created — the rules installed into it, the tasks those rules and `task r
 the gates those raised. Everything else it can see is baseline's, read through the overlay: the
 record is there, the live thing is not.
 
-So a control-plane write in a scope — `flow pause|resume|cancel|say`, `task cancel|say|vector`,
-`gate answer|escalate`, `charter -r`, `suspend|resume` — reaches only what the scope created. A
+So a control-plane write in a scope — `flow suspend|resume|say|cancel`, `task cancel|say|vector`,
+`gate answer|escalate`, `charter -r` — reaches only what the scope created. A
 suspension made with `--scope me` covers the rules the scope installed, the tasks and questions
 they started and the tasks run in the scope, and nothing baseline's; one made without covers
 baseline's and every package's, and nothing any scope's. Addressed at an
@@ -148,7 +148,7 @@ inherited object it is **refused**, and the refusal names the scope that holds i
 the unnamed one:
 
 ```
-the live work about demo.pr.1 is baseline's; scope me did not create it — act on it without --scope
+task review@demo.pr.1 is baseline's; scope me did not create it — act on it without --scope
 ```
 
 Refused rather than passed through or copied, because the two halves would part ways: the act

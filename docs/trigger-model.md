@@ -1599,25 +1599,28 @@ that the shape changed and name the trigger, but not what changed.
 A flow is not a stored key. It is a match evaluated over the subjects of *live* tasks:
 
 ```sh
-verse flow pause demo.pr.1      # tasks whose subject matches demo.pr.1
-verse flow pause demo.pr.*      # …the whole kind
+verse flow --subject demo.pr.1      # tasks whose subject matches demo.pr.1
+verse flow --subject 'demo.pr.*'    # …the whole kind
 ```
 
 Relating tasks is what a match *does*, so "relational flows" are not a second primitive to add
-later. They are broader subject-matches. `verse flow` is the distinct subjects with live tasks, and
-steering applies the match and acts on the matched tasks. A query, not a maintained index.
+later. They are broader subject-matches. `verse flow` lists the live tasks a selection names, and
+a verb applies the same selection and acts on what it names. A query, not a maintained index.
+Holding, suspending and cancelling that work is [control](control.md).
 
 ## Suspending
 
-A flow verb acts on the tasks live now, and a rule goes on firing beside it. To stop the work about
-something *and keep it stopped* there is a **suspension**: one record naming a charter (or every
-charter), a rule of it (or all), and a subject (or every subject).
+A suspension is one record naming a charter (or every charter), a rule of it (or all), and a
+subject (or every subject), and it holds the work about that subject in every form until it is
+lifted. What an operator does with one, and how it differs from holding a run, is
+[control](control.md); this is what it does to rules.
 
 ```tony
-# verse.trigger.suspension."verse-dev.drift:*@git.verse.*"
-charter: verse-dev.drift      # an installed charter's address, `.*` for every one beneath; "*" for every charter; absent for baseline's
+# verse.trigger.suspension."verse-dev.drift.**:*@git.*.head"
+charter: verse-dev.drift      # an installed charter's address; "*" for every charter; "" for baseline's
+recursive: true               # …and every charter installed beneath it
 rule: "*"                     # a rule's name in it, or "*"
-subject: git.verse.*          # an address, `.*` for everything beneath; "*" for every subject
+subject: git.*.head           # an address, * open in any segment, covering at or beneath; "*" for every subject
 held:
   user:walter@example.com:
     why: "reading the drift charter's range logic before it runs again"
@@ -1625,61 +1628,43 @@ held:
     occurrence: 41872         # the store revision the hold landed at
 ```
 
-```sh
-verse suspend verse-dev.drift --why "…"                     # a charter, about everything
-verse suspend '*' github.signadot.verse.pr.'"42"' --why "…"  # a subject, for every charter
-verse suspend verse-dev.drift:claim git.verse.head --why "…" # one rule about one subject
-verse suspend :review --why "…"                              # a rule of baseline's charter, which has no address
-verse suspend                                                # what is held, by whom, why, and what moved since
-verse resume verse-dev.drift                                 # the same words lift it
-```
+The record is keyed by what it covers, addresses parsed and rendered by segment, so two spellings
+of one selector are one record, and suspending the same thing twice adds a holder to it.
 
-A lone address is the charter installed there, or every charter about that subject when none is.
-Every charter about every subject is refused, and `why` is required: nothing ends a suspension but
-somebody reading it. The same shape held twice is one record with two holders; a person's resume
-lifts it whoever held it, and the system's removes only the system's hold. Suspensions only add up:
-lifting a pair a wider suspension also covers leaves the pair held, and the answer says by what.
+**A rule about to fire** is asked in three places. At the top of evaluation, before the rule's
+watermark moves, a rule suspended about every subject is skipped; so the revision it skipped is
+still one a re-arm's replay is admitted at. Per subject, a firing about a suspended subject is
+refused before the cycle throttle sees it, so a firing that was not going to happen counts no
+trip; and again on entry to a firing, since a paced firing waits out the throttle first. Every
+spawn and every charter-authored write pass a backstop. Nothing asks in subject selection, which
+is what decides a question has gone moot: a suspension there would moot work rather than hold it,
+and a rule that stops selecting its subject during a suspension ends that firing as it would have.
 
-**A suspended subject is suspended in all respects** — every form of the work about it, by one
-test, the way a standing resolver covers a subject:
+**A firing at its gate** has its question withdrawn — orphaned, with the suspension as its `why`,
+ballots and deadline stamp kept — and waits holding its flight. When the suspension lifts it asks
+the same question under the same id if the rule still selects the subject, with the time its clock
+had left.
 
-| work about the subject | while suspended | when the suspension lifts |
-|---|---|---|
-| a rule about to fire | starts no firing | the rule is armed again |
-| a firing waiting at its gate | its question is withdrawn, ballots kept; the firing waits | it asks the same question again, if the rule still selects the subject |
-| a live task | holds at its next boundary, `heldBy` the suspension | resumes, unless an operator's pause holds it too |
-| a completion hook, or a `seq` step | its writes land; what it would start is parked | the parked launch starts |
-| a deadline on a withdrawn question | its clock stops | it has the time it had left |
-
-A rule suspended about every subject is skipped before its watermark moves, and one suspended
-about some subjects is skipped per subject before the cycle throttle sees the firing. Nothing asks
-in subject selection, which is what decides a question has gone moot: a suspension there would
-moot work rather than hold it, and a rule that stops selecting its subject during a suspension ends
-that firing as it would have.
+**A completion hook or a `seq` step** lands its writes, since recording what a task did is not
+progress, and parks what it would start before a provider selection could be posed, so a hook asks
+nothing while suspended and the engine's reap loop never waits on one.
 
 **A lift is ordered.** The record is deleted, and the suspension drains: new firings about its work
 are still refused while what it held is released — tasks resume, parked launches start in order,
 withdrawn questions are asked again — and only then is it removed and every rule it covered armed
-again, the path an install and a restart take. So a rule acts on the world as it stands when the
-suspension lifts, and nothing that happened meanwhile is replayed: a level rule still matching acts
-once, one whose condition came and went does nothing, and an `on` edge that rose during the
-suspension is not seen. A wide lift is a restart's worth of evaluation.
+again, its watermark first moved below the head, the path an install and a restart take. So a rule
+acts on the world as it stands when the suspension lifts, and nothing that happened meanwhile is
+replayed: a level rule still matching acts once, one whose condition came and went does nothing,
+and an `on` edge that rose during the suspension is not seen, as an install over a verse where the
+predicate already holds sees none.
 
-**Whose it is.** A suspension belongs to the scope it was made in and covers only the work that
-scope created — baseline's and every package's without `--scope`, a scope's own with it — and each
-scope's suspensions are one table in memory, written only by the route that writes their records
-and loaded before the scope's tasks are re-attached or its charter armed. Until it has loaded it
-holds everything. What a suspension covers is decided each time it would apply: a holder covers a
-piece of work while they hold `control` over its charter (a package's address, a rule's own
-record) or at its subject, and a rule the system installed (`by: system:charter` on its record) is
-the system's alone to suspend ([perms](perms.md#suspending)). A wildcard therefore stops covering a
-subject the moment somebody else owns it.
-
-What a suspension does not reach: a task that cannot hold — a scripted task's only boundary is its
-end — keeps running, and only its hooks are held; an answer accepted a moment before a suspension
-lands still acts; a parked launch does not survive a restart; and stored names are references, so a
-package moved or a rule renamed leaves a suspension naming nothing, which the listing marks
-`covers: false`.
+**Whose it is.** Each scope's suspensions are one table in memory, written only by the route that
+writes their records and loaded before the scope's tasks are re-attached or its charter armed;
+until it has loaded it holds everything. A rule `derive` aimed at `verse.trigger.suspension` is
+refused at install, since no table would see it. What a suspension covers is decided each time it
+would apply, against the holder's `control` over the work's charter or at its subject, and a rule
+the system installed (`by: system:charter` on its record) is the system's alone to suspend
+([perms](perms.md#suspending)).
 
 ## Two rules, read out loud
 

@@ -257,38 +257,42 @@ close: through the store rather than through a scheduler, and it is §4.
 
 ### Steering
 
-In-flight work is addressed by the subject it is about, a *flow*, and steering is out-of-band from
-observation, so it never queues behind a backlog of changes:
+In-flight work is addressed by what it is about, and steering is out-of-band from observation, so
+it never queues behind a backlog of changes. There are two ways to stop work without ending it, and
+the fork between them is the whole of this section: **hold one run**, or **suspend the work** about
+a charter and a subject.
 
 ```sh
-verse flow                        # the distinct subjects with live work
-verse flow pause  demo.latch.1    # freeze its tasks at their next boundary
-verse flow resume demo.latch.1
-verse flow say    demo.latch.1 "hurry"
-verse flow cancel demo.latch.1    # stop them (destructive)
-verse flow say 'demo.*.*' "hurry" # the address is a selector: * per segment
+verse flow                                     # the live tasks, and what is suspended
+verse flow --subject 'demo.latch.*'            # …narrowed: * per segment
+verse flow suspend --task <id>                 # hold that run at its next boundary
+verse flow resume  --task <id>
+verse flow say     --subject demo.latch.1 "hurry"
+verse flow cancel  --task <id>                 # end that run (destructive)
 ```
 
-A flow is not a stored thing. It is a query over the subjects of live tasks, so `verse flow` is
-empty until something is running, and each verb reports how many tasks it reached. §4 gives you one
-to steer. See [deployment and steering](deployment-and-steering.md) for why control never rides the
+A flow is not a stored thing. It is a query over live tasks, so `verse flow` lists nothing until
+something is running, and a `say` reports how many tasks it reached. §4 gives you one to steer.
+Every verb is addressed by flags, and none of them means "everything" when left out: `verse flow
+suspend` on its own prints its usage and does nothing. See [control](control.md) for the flags
+whole, and [deployment and steering](deployment-and-steering.md) for why control never rides the
 change stream.
 
-A pause holds what is running now, and the rules keep firing. To stop a rule — or everything about a
-subject — and keep it stopped, suspend it. Against [the seeded demo](#1-start), where `demo-review`
-is holding `demo.pr.1` at a gate:
+Holding a run is forgetful: it holds that task, and the rule that started it goes on firing. To
+stop a rule — or everything about a subject — and keep it stopped, suspend it instead. Against [the
+seeded demo](#1-start), where `demo-review` is holding `demo.pr.1` at a gate:
 
 ```sh
-verse suspend :demo-review --why "reading the review rule"   # baseline's rule: its charter has no address
+verse flow suspend --charter :demo-review --subject '*' --why "reading the review rule"   # baseline's rule: its charter has no address
 verse gate                                   # the question is withdrawn: nobody can answer it now
 verse data demo pr 2 --put '{stage: open}'   # demo-review does not fire
-verse suspend                                # held by you, why, since when, what it holds
-verse resume :demo-review                     # both PRs are asked about, once, as they stand now
+verse flow --charter :demo-review            # held by you, why, since when, what it holds
+verse flow resume --charter :demo-review --subject '*'   # both PRs are asked about, once, as they stand now
 ```
 
 Nothing that happened meanwhile is replayed: the lift arms the rule again, and it acts on the world
 as it is. A task, while its work is suspended, holds at its next boundary and says whose hold it is
-under, so `verse flow resume` will not run it past a suspension.
+under, so `verse flow resume --task` will not run it past a suspension.
 
 ### Where a task runs is a seam
 

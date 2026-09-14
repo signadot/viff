@@ -334,17 +334,18 @@ binding a question is held out to answers it.
 <a id="suspending"></a>
 ## Suspending
 
-`verse suspend` is a control write ([the trigger model](trigger-model.md#suspending)), and who may
-make one is asked twice.
+`verse flow suspend --charter … --subject …` is a control write ([control](control.md)), and who
+may make one is asked twice.
 
 **When it is written**, the writer must hold `control` over the charter it names — a package's
-address, or a rule's own record — or at the subject it names, either; a wildcard is asked at the
-node it stands beneath. A suspension naming neither is refused.
+address, or a rule's own record — or at the subject it names, either; a selector with `*` in it is
+asked at its literal head, the segments before the first open one. A suspension naming neither is
+refused.
 
 **When it applies**, which is what decides what it covers: every time work would make progress, a
 holder's suspension covers that work while the holder holds `control` over the work's charter or at
 its subject, asked of the scope's mirror then. So a wildcard's reach does not grow as owners appear
-beneath it — `verse suspend '*' 'gitlab.*'` by somebody who owns nothing there stops covering
+beneath it — `--charter '*' --subject 'gitlab.*'` by somebody who owns nothing there stops covering
 `gitlab.alice` the moment alice owns it — and a check the mirror cannot answer covers, since work
 that failed open would run what somebody stopped. A rule the system installed (`by: system:charter`)
 is covered only by a system holder, from either side: a place with no owner record holds `control`

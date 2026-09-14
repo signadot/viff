@@ -11,8 +11,9 @@ Everything coordinates through the entity store, but not everything is coordinat
 *Data coordination* is actions writing entities and triggers reacting to them. It flows through
 the store, and it is fine for it to lag: eventual, queued, recoverable.
 
-*Control* is pausing a flow, cancelling it, answering a gate, sliding autonomy, injecting an
-instruction. It does not flow through the store at all.
+*Control* is holding a run, cancelling it, answering a gate, sliding autonomy, injecting an
+instruction. It does not flow through the store at all. What an operator can stop, and for how
+long, is [control](control.md).
 
 "Coordinate through the store, no orchestrator" tempts you to model an intervention as a store
 write, a command entity that something reacts to. Then the intervention rides the one channel it
@@ -66,7 +67,7 @@ so nothing waits on the store answering for a suspension to hold, and a rule wri
 is refused at install because no table would see it. The table loads in the first phase of a
 restart, before tasks are re-attached or the charter restored, and until it has it holds
 everything — a suspension that failed open on a restart would resume what somebody stopped on
-purpose ([the trigger model](trigger-model.md#suspending)).
+purpose ([control](control.md), [the trigger model](trigger-model.md#suspending)).
 
 ## What runs where
 

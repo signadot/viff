@@ -31,6 +31,7 @@ nav:
   - runners.md
   - external-tasks.md
 - Steering:
+  - control.md
   - deployment-and-steering.md
 - Federation:
   - sources.md
