@@ -112,18 +112,6 @@ func (l Levels) Payload() Payload {
 	return o.Payload()
 }
 
-// Everyone is the grantee that names every principal — the unattributed one included, which is
-// what makes an open verse open to a request made from curl with no `user:` behind it.
-const Everyone = "*"
-
-// The principal kinds a grantee may name instead of a principal: every principal listed under
-// `verse.principal.<kind>.*`. The three words are reserved as grantees for that reason, and a
-// person whose email is one of them is not a case any address grammar produces.
-const (
-	RunnerKind = "runner"
-	AgentKind  = "agent"
-)
-
 // Grant is one line of a record's grants: a path the grant covers, and who holds which level
 // there.
 //

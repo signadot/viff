@@ -1417,16 +1417,6 @@ func Note(s Store, kind, principal string) error {
 // is where it becomes data. A runner is the other kind a principal can be, and gets its own.
 const PrincipalSystem = "principal"
 
-// UserKind is the kind of a principal who is a person, identified by email.
-const UserKind = "user"
-
-// GroupKind is the kind of a principal that is a SET: `verse.principal.group.<name>` lists its
-// members, and as a grantee the group's address admits them — the way a binding's address
-// admits whoever acts as the binding. A member is a principal, a kind, everyone, another
-// group's address, or a binding's; membership is read when it is checked, since a group is for
-// changing who is in it without touching every place it is granted.
-const GroupKind = "group"
-
 // MembersField is the field of a group listing its members.
 const MembersField = "members"
 
