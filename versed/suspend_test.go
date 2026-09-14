@@ -668,15 +668,19 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 		t.Fatalf("a suspension of a package nobody installed lists as covering: %+v", s)
 	}
 
-	// THE LISTING IS WHAT AN ACT REACHES: narrowed, it shows the live tasks the selection names
-	// and the suspensions that could hold work it names.
+	// THE LISTING IS WHAT AN ACT REACHES: narrowed, it shows the live tasks a suspension in the
+	// same words would hold, and the one suspension a resume in them would lift — the record the
+	// flags spell, an absent one being `*`, and not a wider one that also holds the work.
 	for _, c := range []struct {
 		sel  api.FlowSelect
 		want string
 	}{
-		{api.FlowSelect{Charter: "*", Subject: "demo.pr.1"}, `by-hand,*:*@demo.pr."1",:review@*,verse-dev.gone:*@*`},
-		{api.FlowSelect{Charter: ":review", Subject: "demo.pr.1"}, `*:*@demo.pr."1",:review@*`},
-		{api.FlowSelect{Subject: "demo.pr.2"}, `:review@*,verse-dev.gone:*@*`},
+		{api.FlowSelect{Charter: "*", Subject: "demo.pr.1"}, `by-hand,*:*@demo.pr."1"`},
+		{api.FlowSelect{Subject: `demo.pr."1"`}, `by-hand,*:*@demo.pr."1"`},
+		{api.FlowSelect{Charter: ":review"}, `:review@*`},
+		{api.FlowSelect{Charter: ":review", Subject: "demo.pr.1"}, ``},
+		{api.FlowSelect{Subject: "demo.pr.2"}, ``},
+		{api.FlowSelect{Charter: "verse-dev.gone"}, `verse-dev.gone:*@*`},
 	} {
 		var got []string
 		for _, row := range flowRows(t, ts, "", c.sel) {

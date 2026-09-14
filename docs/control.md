@@ -33,7 +33,7 @@ answers for everything when no flag narrows it.
 
 ```sh
 verse flow                                           # every live task and every suspension
-verse flow --charter verse-dev.drift                 # what is running and what is held, there
+verse flow --charter verse-dev.drift                 # its live tasks, and its suspension about everything
 verse flow suspend --task review@demo.pr.2           # hold one run at its next boundary
 verse flow resume  --task review@demo.pr.2
 verse flow say     --subject 'demo.pr.*' "hurry"     # to every live task about a PR
@@ -51,12 +51,9 @@ shell and `xargs` both read it back — so what was shown is what an act reaches
 `--task <id>` and a suspension's `--charter … --subject …`, so a grep picks one kind:
 
 ```sh
-verse flow --charter verse-dev.drift --args | xargs -L1 verse flow resume    # lift what is held there
-verse flow --subject demo.pr.2 --args | grep -- --task | xargs -L1 verse flow cancel
+verse flow --args | grep -v -- --task | xargs -L1 verse flow resume              # lift every suspension
+verse flow --subject demo.pr.2 --args | grep -- --task | xargs -L1 verse flow cancel   # end every run about PR 2
 ```
-
-A resume of a run a suspension holds is refused while the suspension stands, so a line of the
-first that names such a run says so and the suspension's own line, which comes after it, lifts it.
 
 The listing answers rows of two kinds. A live task is `{kind: task, task, charter, subject,
 heldBy}`, its charter the rule that spawned it (`verse-dev.drift:claim`, `:review`), and absent
@@ -64,8 +61,14 @@ for a task run by hand. A suspension is `{kind: suspension, id, charter, subject
 covers}`: who holds it, why and since when, how far the store has moved under it, what it is
 holding now — tasks paused, questions withdrawn, launches parked — and whether it names anything
 installed. A suspension is usually holding work that is not running yet, so it is a row of its
-own rather than a field on a task. A suspension row is listed when it could hold something the
-flags name.
+own rather than a field on a task.
+
+A narrowed listing is what an act with the same flags reaches, an absent flag being `*`. Its task
+rows are the live tasks a suspension in those words would hold. Its suspension row is the one a
+resume in them would lift: the record the flags spell, and not a wider one that also holds the
+work — `--subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`, and `--subject
+'demo.pr.*'` lists the suspension spelled that way, not each PR's. What holds a subject's work,
+whatever spells it, is `verse flow show <subject>`.
 
 ## A run's hold
 

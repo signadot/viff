@@ -74,8 +74,10 @@ func readSelection(w http.ResponseWriter, r *http.Request) (api.FlowSelect, bool
 }
 
 // listFlows is `GET /flows`: the live tasks and the suspensions of the request's scope that its
-// selection names — a task by id, or the rows a charter and a subject overlap, everything when
-// nothing narrows it.
+// selection names, everything when nothing narrows it. The rows are what an act with the same
+// flags reaches: a task by id; or, for a charter and a subject — an absent one being `*` — the
+// live tasks a suspension in those words would hold, and the one suspension a resume in them
+// would lift, the record whose id the flags spell.
 func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 	sel := selectionQuery(r)
 	scope := r.URL.Query().Get("scope")
@@ -111,8 +113,13 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 			suspensionError(w, r, errSuspensionsLoading)
 			return
 		}
-		for _, sus := range tbl.List() {
-			if sus.Overlaps(narrow) {
+		switch {
+		case sel.Charter == "" && sel.Subject == "":
+			for _, sus := range tbl.List() {
+				rows = append(rows, s.suspensionRow(sus))
+			}
+		default:
+			if sus, ok := tbl.Get(narrow.ID()); ok {
 				rows = append(rows, s.suspensionRow(sus))
 			}
 		}

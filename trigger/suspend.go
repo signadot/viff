@@ -347,34 +347,6 @@ func (s Suspension) Within(o Suspension) bool {
 	return true
 }
 
-// Overlaps reports whether some work could be named by both: what a listing narrowed by a
-// selection shows a suspension for. It answers by the spellings, as Within does, and a glob
-// inside a segment overlaps whatever stands in that segment.
-func (s Suspension) Overlaps(o Suspension) bool {
-	if !s.charterAll && !o.charterAll {
-		switch {
-		case slices.Equal(s.charter, o.charter):
-		case s.Recursive && atOrBeneath(s.charter, o.charter):
-		case o.Recursive && atOrBeneath(o.charter, s.charter):
-		default:
-			return false
-		}
-	}
-	if s.Rule != Every && o.Rule != Every && s.Rule != o.Rule {
-		return false
-	}
-	if s.subjectAll || o.subjectAll {
-		return true
-	}
-	for i := range min(len(s.subject), len(o.subject)) {
-		a, b := s.subject[i], o.subject[i]
-		if a != b && !strings.Contains(a, Every) && !strings.Contains(b, Every) {
-			return false
-		}
-	}
-	return true
-}
-
 // CharterFlag is the charter side as `--charter` spells it: the address, and `:<rule>` when it
 // names one rule. Baseline's charter is the empty address, so all its rules are `:`.
 func (s Suspension) CharterFlag() string {
