@@ -37,6 +37,9 @@ var seed = []struct {
 	{entity.VerseRef(trigger.CharterSystem, trigger.CharterKind), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(trigger.StrataSystem, trigger.StrataKind), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(trigger.CharterSystem, trigger.PackageKind), entity.OwnerLevel, []string{entity.Everyone}},
+	// A suspension is written by the route that holds its table, as the system; what it holds,
+	// and who holds it, is everybody's to read, so a suspended thing is never a mystery.
+	{entity.VerseRef(trigger.CharterSystem, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(source.System), entity.OwnerLevel, []string{entity.Everyone}},

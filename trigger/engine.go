@@ -194,6 +194,10 @@ type Engine struct {
 	// it doubles per attempt up to armWaitMax. Short in tests.
 	armWait time.Duration
 
+	// susp is the scope's suspension table (suspend.go), asked wherever work would make
+	// progress; nil suspends nothing. Set once, before anything is installed.
+	susp *Suspensions
+
 	// installers holds, by name, who installed each rule of the charter, installed or held — see
 	// InstalledBy. Guarded by trigMu, with the charter it describes.
 	installers map[string]string

@@ -53,6 +53,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	}
 	eng := trigger.New(s.Store, s.Reg)
 	eng.Confine(confine)
+	eng.SetSuspensions(s.susp) // a package is baseline's, and so are the suspensions that hold it
 	if s.tripPaceSet {
 		eng.SetTripPace(s.tripPace)
 	}
@@ -162,6 +163,9 @@ func (s *Server) resumeSelections() error {
 // charter (entity.IsUnread): a load skips what already stands, and an engine is found rather
 // than made, so the second run installs what the first could not read and nothing twice.
 func (s *Server) restorePackages() error {
+	if err := s.awaiting(phaseSuspensions); err != nil {
+		return err
+	}
 	// THE CHARTER LOCK, because versed serves while it restores — that is what /healthz
 	// distinguishes — so an operator's install can arrive in the middle of this and race the
 	// charter it is being installed alongside. Taken here rather than inside the loop: the
@@ -394,6 +398,7 @@ func (s *Server) dropPackageEngine(at string) {
 	key := "at:" + confine.Stamp()
 	if pe, ok := s.scopeEngs[key]; ok {
 		pe.cancel()
+		s.susp.Detach(pe.eng)
 		delete(s.scopeEngs, key)
 	}
 }

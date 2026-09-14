@@ -1235,6 +1235,16 @@ func (a Action) validateDerive() error {
 	if a.Derive == nil {
 		return nil
 	}
+	// A SUSPENSION IS NOT A DERIVATION. The table a suspension holds by is written by the route
+	// that writes its record, and by nothing that observes the store, so a record a rule derived
+	// would suspend nothing while every listing said it did.
+	for _, t := range a.derives() {
+		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == CharterSystem &&
+			(len(segs) == 2 || segs[2] == SuspensionKind) {
+			return fmt.Errorf("action.derive into %s: a suspension is made by `verse suspend`, "+
+				"and a record a rule wrote there would hold nothing", strings.Join(segs, "."))
+		}
+	}
 	// Past the comment wrapper before asking what the shape is — see derives(), which walks the
 	// same block and refused a correctly written rule for the same reason.
 	d := unwrap(a.Derive)

@@ -250,6 +250,40 @@ signature:
 context:
 - tony-format/context
 define:
+  charter: .[string]
+  rule: .[string]
+  subject: .[string]
+  why: .[string]
+signature:
+  name: verse-suspend
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  moved: .[int]
+  occurrence: .[int]
+  since: .[string]
+  why: .[string]
+signature:
+  name: verse-suspension-holder
+---
+context:
+- tony-format/context
+define:
+  charter: .[string]
+  held: .[array(verse-suspension-holder)]
+  id: .[string]
+  rule: .[string]
+  scope: .[string]
+  still: .[array(string)]
+  subject: .[string]
+signature:
+  name: verse-suspension
+---
+context:
+- tony-format/context
+define:
   id: .[string]
   say: .[array(string)]
   verdict: .[string]

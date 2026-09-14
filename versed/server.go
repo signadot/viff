@@ -152,6 +152,12 @@ type Server struct {
 	// routes is the published route table, filled in by Handler as it registers each
 	// route — never maintained separately. See routes.go.
 	routes []api.Route
+
+	// susp is baseline's suspension table, which baseline's engine and every package's ask; a
+	// scope's is beside its engine. suspMu is the one writer's lock: a suspension's record and
+	// its table change under it, in that order (suspend.go).
+	susp   *trigger.Suspensions
+	suspMu sync.Mutex
 }
 
 // SetTripPace sets the cycle throttle's pace D on this server's engines — the baseline one now,
@@ -183,6 +189,8 @@ type scopeEngine struct {
 	// restore runs the scope's durable charter back into eng, exactly once and off the
 	// scope lock — see scopeEngine (the method).
 	restore sync.Once
+	// susp is the scope's suspension table; nil for a package's engine, which asks baseline's.
+	susp *trigger.Suspensions
 }
 
 // NewWithStore assembles the server with the given task driver builder (scripted,
@@ -212,8 +220,12 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	}
 	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
+	// Baseline's suspensions, not loaded until Start's first phase: until then they hold
+	// everything this engine would start.
+	susp := trigger.NewSuspensions()
+	eng.SetSuspensions(susp)
 	taskd := taskd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd,
+	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp,
 		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
@@ -652,6 +664,9 @@ func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error
 // behind a remote runner. Control re-tracking (cancel/say a resumed task) is a
 // follow-on; this keeps the entity truthful.
 func (s *Server) reconcileTasks() error {
+	if err := s.awaiting(phaseSuspensions); err != nil {
+		return err
+	}
 	var resumed []resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
 	tasks := entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System)
@@ -936,7 +951,11 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		scoped := s.Store.Scope(scope)
 		eng := trigger.New(scoped, s.Reg)
 		eng.SetScope(scope) // before anything is installed: it is stamped on what this engine writes
-		if s.tripPaceSet {  // same throttle policy as the baseline it overlays (see SetTripPace)
+		// The scope's own suspensions, which hold the scope's work and nobody else's, loaded
+		// below with the charter and before it arms anything.
+		susp := trigger.NewSuspensions()
+		eng.SetSuspensions(susp)
+		if s.tripPaceSet { // same throttle policy as the baseline it overlays (see SetTripPace)
 			eng.SetTripPace(s.tripPace)
 		}
 		// Scoped agents read file content through the verse (the connect content
@@ -947,7 +966,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
 		eng.ObserveScoped(sctx)
-		se = &scopeEngine{eng: eng, ctx: sctx, cancel: cancel}
+		se = &scopeEngine{eng: eng, ctx: sctx, cancel: cancel, susp: susp}
 		s.scopeEngs[scope] = se
 	}
 	s.scopeMu.Unlock()
@@ -961,10 +980,15 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	// grants through the overlay and the scope's own on top. Until it loads — and if it cannot —
 	// the scope's checks read the store per key, which is right and slower, so a mirror that
 	// did not load is logged rather than fatal, as the charter is.
+	//
+	// The scope's SUSPENSIONS load before the charter arms a rule, and unlike the mirror they
+	// FAIL CLOSED: a table that has not loaded holds everything, so a load that did not happen
+	// is asked again until it does (loadScopeSuspensions) rather than logged and left.
 	se.restore.Do(func() {
 		if err := entity.Track(se.ctx, s.Store.Scope(scope)); err != nil {
 			fmt.Fprintf(os.Stderr, "verse: perms mirror (scope %s): %v\n", scope, err)
 		}
+		s.loadScopeSuspensions(se, scope)
 		s.restoreScopeCharter(se.eng, scope)
 	})
 	return se.eng
@@ -1013,6 +1037,10 @@ func (s *Server) Start(ctx context.Context) {
 	// The perms mirror, loaded and watched, so the check every write and read makes costs no
 	// round trip: on a busy store the per-write read hit its deadline and refused the write.
 	phase(phasePerms, func() error { return entity.Track(ctx, s.Store) })
+	// The suspensions before anything they could hold is re-attached or restored: until they
+	// have loaded they hold everything, and a store that cannot serve them holds every rule and
+	// task, since a suspension that failed open on a restart would resume what somebody stopped.
+	phase(phaseSuspensions, s.restoreSuspensions)
 	phase(phaseTasks, s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
@@ -1048,8 +1076,18 @@ func (s *Server) Start(ctx context.Context) {
 	// Two phases rather than one, so that each is asked again on its own: a rule restored
 	// before its level is held and installs when the level arrives, so the order between the
 	// two holds whichever of them the store answers first.
-	phase(phaseStrata, func() error { return s.loaded(s.Eng.LoadStrata) })
-	phase(phaseCharter, func() error { return s.loaded(s.Eng.LoadCharter) })
+	phase(phaseStrata, func() error {
+		if err := s.awaiting(phaseSuspensions); err != nil {
+			return err
+		}
+		return s.loaded(s.Eng.LoadStrata)
+	})
+	phase(phaseCharter, func() error {
+		if err := s.awaiting(phaseSuspensions); err != nil {
+			return err
+		}
+		return s.loaded(s.Eng.LoadCharter)
+	})
 	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
 	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
 	// waiting for somebody to reconnect. It follows the baseline load because the two split the
@@ -1163,6 +1201,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-steer", one("verse-steered"))
 	rt.handle("POST /flow/say", s.flowSay, "verse-flow-steer", one("verse-steered"))
+	// Suspensions: what is held, by whom and why; holding one, and lifting it (suspend.go).
+	rt.handle("GET /suspensions", s.listSuspensions, "", list("verse-suspension"))
+	rt.handle("POST /suspend", s.suspend, "verse-suspend", one("verse-suspension"))
+	rt.handle("POST /resume", s.resume, "verse-suspend", one("verse-suspension"))
 	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active runner's own tasks
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,

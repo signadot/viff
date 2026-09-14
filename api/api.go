@@ -294,6 +294,51 @@ type FlowSteer struct {
 	By      string `tony:"field=by,omitzero"`
 }
 
+// Suspend names what a suspension covers — a charter (or every charter), a rule of it (or all),
+// a subject (or every subject) — for `POST /suspend` and `POST /resume`. Charter "" is
+// baseline's; "*" is every one. Rule "" and "*" are every rule; subject "" and "*" every
+// subject. An address may end `.*` for everything beneath it.
+//
+// Why is required on a suspend, and read by nothing on a resume.
+//
+//tony:schemagen=verse-suspend,notag
+type Suspend struct {
+	Charter string `tony:"field=charter,omitzero"`
+	Rule    string `tony:"field=rule,omitzero"`
+	Subject string `tony:"field=subject,omitzero"`
+	Why     string `tony:"field=why,omitzero"`
+}
+
+// Suspension is one suspension in force, as `GET /suspensions` lists it and `POST /suspend`
+// answers: what it covers, the scope it was made in, and who holds it and why.
+//
+//tony:schemagen=verse-suspension,notag
+type Suspension struct {
+	ID      string `tony:"field=id"`
+	Charter string `tony:"field=charter,omitzero"`
+	Rule    string `tony:"field=rule"`
+	Subject string `tony:"field=subject"`
+	Scope   string `tony:"field=scope,omitzero"`
+	// Held is every holder, by principal, in order.
+	Held []SuspensionHolder `tony:"field=held"`
+	// Still is what else covers everything this one does — on a resume, the suspensions the
+	// lifted pair is still held by.
+	Still []string `tony:"field=still,omitzero"`
+}
+
+// SuspensionHolder is one party's hold on a suspension.
+//
+//tony:schemagen=verse-suspension-holder,notag
+type SuspensionHolder struct {
+	By    string `tony:"field=by"`
+	Why   string `tony:"field=why"`
+	Since string `tony:"field=since"`
+	// Occurrence is the store revision the hold was written at; Moved is how far the store's
+	// head has moved since, which is how much the suspended work has not seen.
+	Occurrence int64 `tony:"field=occurrence,omitzero"`
+	Moved      int64 `tony:"field=moved,omitzero"`
+}
+
 // Route is one entry of the API's own route table (`GET /api`): a method and path, the
 // signature names of what it accepts and returns, and how many of them come back.
 //

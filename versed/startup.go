@@ -18,15 +18,16 @@ const (
 // The phases of Start, by the name each reports under. Named once, because a phase that
 // follows another names it (awaiting), and status lists them.
 const (
-	phasePerms      = "loaded the perms mirror"
-	phaseTasks      = "reconciled tasks"
-	phaseStrata     = "restored the strata"
-	phaseCharter    = "restored the charter"
-	phasePackages   = "restored packages"
-	phaseSystem     = "installed the system charter"
-	phaseSelections = "resumed selections"
-	phaseDeadlines  = "armed deadlines"
-	phaseSources    = "restored sources"
+	phasePerms       = "loaded the perms mirror"
+	phaseSuspensions = "loaded the suspensions"
+	phaseTasks       = "reconciled tasks"
+	phaseStrata      = "restored the strata"
+	phaseCharter     = "restored the charter"
+	phasePackages    = "restored packages"
+	phaseSystem      = "installed the system charter"
+	phaseSelections  = "resumed selections"
+	phaseDeadlines   = "armed deadlines"
+	phaseSources     = "restored sources"
 )
 
 // phase runs one phase of Start and says how long it took, on stderr with the rest of the
