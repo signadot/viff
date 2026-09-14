@@ -108,9 +108,10 @@ installed, without baseline's underneath them.
 
 To run a baseline rule's behaviour in your scope, install it there. To **replace** one, install
 yours under baseline's name: a scoped install lands in your layer, where it is the only rule of
-that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first —
-`verse c -r rules <a baseline rule> --scope me` answers "no such rule", correctly, since
-the scope holds none of them, and a rule that never ran here needs no hiding.
+that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first,
+and nothing can be: `verse c -r rules <a baseline rule> --scope me` is a write to baseline's
+charter made from a scope, and is refused as one (see [what a scope owns](#what-a-scope-owns)).
+A rule that never ran here needs no hiding.
 
 A scope's charter comes back after a verse restart when the scope's engine is next built —
 that is, when you reconnect. Until something asks for the scope, its engine does not exist and
@@ -120,3 +121,48 @@ a scope's layer is invisible from baseline and nothing registers one.
 *Left to do: a scope is not yet a first-class, listable, durable thing — see
 [scope lifecycle](../roadmap/scope-lifecycle.md). That is the missing piece above: a registry
 would let a restart bring every scope's charter back without waiting for a reconnect.*
+
+<a id="what-a-scope-owns"></a>
+## What a scope owns
+
+A scope has two halves, and they layer differently.
+
+**The world is copied.** Entities under `demo`, `git`, `notes` — whatever the charter is
+about — are logd's copy-on-write: a scoped write lands in the overlay, a scoped read sees the
+overlay on baseline, and baseline never sees the overlay.
+
+**The program is referenced.** Rules, tasks, gates and flows are records in the store, but each
+is also a live thing: a rule is a watch, a task is a handle, a gate is an awaiter, a flow is the
+set of handles about a subject. A live thing runs in exactly one engine, and every scope's engine
+shares one task runtime and one gate registry with baseline. The scope's engine holds what the
+scope created — the rules installed into it, the tasks those rules and `task run --scope` spawned,
+the gates those raised. Everything else it can see is baseline's, read through the overlay: the
+record is there, the live thing is not.
+
+So a control-plane write in a scope — `flow pause|resume|cancel|say`, `task cancel|say|vector`,
+`gate answer|escalate`, `charter -r` — reaches only what the scope created. Addressed at an
+inherited object it is **refused**, and the refusal names the scope that holds it, baseline being
+the unnamed one:
+
+```
+the live work about demo.pr.1 is baseline's; scope me started none of it — steer it without --scope
+```
+
+Refused rather than passed through or copied, because the two halves would part ways: the act
+can only land on the live thing, which is baseline's, while the record it leaves would land in
+the overlay. A gate answered that way would be delivered in baseline and recorded as answered in
+the scope alone, with baseline's record still pending. The rule reads the same from baseline: a
+task a scope spawned is that scope's, and baseline is told which scope to say rather than allowed
+to cancel it unaware.
+
+Creating is what "the scope's own" means, so creation is never refused: `charter -a --scope me`,
+`task run --scope me`, and everything a scoped rule fires. To replace a baseline rule in a scope,
+install yours under its name (above); removing baseline's from the scope is a write to baseline's
+program, and is refused as one.
+
+**Grants are copied, like the world.** A grant is live too — the check reads a mirror rather
+than the store — and a scope is governed by baseline's grants: opening one is not a way around
+them. But a grant has no live half that runs anywhere; the mirror is a cache of records, and it
+layers as records do. A grant made with `--scope me` lands in the overlay and governs the scope's
+writes on top of baseline's, and baseline's checks never see it. [Permissions](../perms.md#scopes)
+has the detail.

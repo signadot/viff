@@ -95,7 +95,9 @@ mirrors the stream into the `verse.task.instance` entity, so durability lives in
 the runner. Which runner runs a given task is a per-spawn binding — `runner: <url>` in the charter
 or spec, like `--driver` — and there is deliberately no in-memory shortcut: `verse task
 cancel/say/pause` go through the same dispatch as a remote one, which forces the contract to be
-complete and keeps local equivalent to remote.
+complete and keeps local equivalent to remote. The dispatch is per scope: with `--scope` it reaches
+a task that scope spawned and refuses one it inherited, naming the scope that holds it (see [what a
+scope owns](reference/connect.md#what-a-scope-owns)).
 
 Verse can mint that URL on its own broker face rather than requiring every runner to stand up a
 service (see "Hosting"). The built-in local supervisor lives at the well-known

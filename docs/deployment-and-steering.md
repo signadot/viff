@@ -52,6 +52,13 @@ runaway flow can be halted no matter how backed up the change stream is. Control
 the loop goroutine, so they serialize with dispatch instead of racing it.
 `TestControlOutranksObservation` pins that one.
 
+At the surface, control is per scope. A live thing runs in one engine, and a scope's engine
+holds only what the scope created, so a steer made with `--scope` reaches the scope's own work
+and nothing inherited — and says which scope holds the work when it cannot, rather than steering
+baseline from a scope or a scope from baseline. What a scope owns, and why a control write
+cannot be copy-on-write the way a world write is, is in
+[connect](reference/connect.md#what-a-scope-owns).
+
 ## What runs where
 
 `verse up` runs the engine, the task runtime, and the HTTP surface in one process, and either

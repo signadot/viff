@@ -324,3 +324,24 @@ binding a question is held out to answers it.
   in the request's scope, not as whoever read the docket.
 - **The system charter**, from `systemCharter:` in the deployment's config, is applied at start
   as `system:charter` after the restore. Its rules are nobody's but the system's.
+
+<a id="scopes"></a>
+## Scopes
+
+A scope is governed by baseline's grants. The check reads a mirror of `verse.perms`, and a
+scope's mirror is loaded from and watched on the scope's own view of the store, which logd
+answers as the overlay on baseline — so every grant standing in baseline stands in the scope,
+and opening a scope is not a way around one.
+
+A grant made in a scope is copy-on-write, like any world write: `verse perms --scope me` and the
+owner record every scoped creation leaves land in the overlay, govern the scope's writes on top
+of baseline's, and are never seen by baseline's mirror. Two devs' scopes therefore hold
+different owners for the same address without either touching baseline's record, and dropping
+the scope drops its grants with everything else it wrote.
+
+This is the world's rule rather than the program's — a task or a gate cannot be acted on from a
+scope that did not create it, a grant can be made in one — because a grant has no live half. A
+task is a handle and a gate is an awaiter, each running in one engine, and an act on it from a
+scope would land on baseline's live thing while its record landed in the overlay. A grant is a
+record that a cache reads, and a cache layers as records do. What a scope owns is in
+[connect](reference/connect.md#what-a-scope-owns).

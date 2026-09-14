@@ -413,6 +413,12 @@ multi-step task: the `llm` driver, whose every tool call is a boundary.
 per action. Why out-of-band matters, and the engine's priority servicing, are in
 [deployment and steering](../deployment-and-steering.md).
 
+With `--scope`, every verb here — the flow verbs and `task cancel|say|vector` — reaches the tasks
+that scope started and none it merely sees. Addressed at baseline's work it refuses and says so,
+so `verse flow cancel --scope me demo.pr.2` never stops baseline's review of that PR by
+accident; drop the flag to address baseline. See [what a scope
+owns](connect.md#what-a-scope-owns).
+
 ## Where a task runs is a seam
 
 Three backends, one handle. `verse task` and
