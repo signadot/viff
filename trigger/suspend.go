@@ -3,8 +3,8 @@ package trigger
 // A SUSPENSION is one record naming a charter (or every charter), a rule of it (or all), and a
 // subject (or every subject), and it covers the work about that subject in every form: a rule
 // starts no firing about it, a task about it holds, a question about it is withdrawn, a hook's
-// launch is parked. docs/working/suspend.md is the design; this file is the record and the
-// table an engine asks.
+// launch is parked. docs/control.md and docs/trigger-model.md#suspending describe it; this file is
+// the record and the table an engine asks.
 //
 // The table is one per scope and written by one writer — the route that also writes the store,
 // in the same order — so it is never fed by a watch that could race that writer.

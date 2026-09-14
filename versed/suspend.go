@@ -17,7 +17,7 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// Suspensions (docs/working/suspend.md): one record per thing suspended, keyed by what it covers,
+// Suspensions (docs/control.md): one record per thing suspended, keyed by what it covers,
 // holding who holds it and why. The records are the durable half and the table — one per scope,
 // baseline's on the server and a scope's beside its engine — is what every engine asks. Only the
 // functions here write either, under one lock and in the same order, so the table never learns
@@ -235,8 +235,8 @@ func (s *Server) suspensionOwnHere(w http.ResponseWriter, r *http.Request, sus t
 
 // maySuspend is the check a suspension or a resume makes of its principal: control over the
 // charter it names or over the subject it names, either. What it covers is decided again each
-// time it applies (docs/working/suspend.md#authority-is-decided-when-it-applies); this refuses a
-// record its writer has no standing for at all.
+// time it applies (docs/perms.md#suspending); this refuses a record its writer has no standing for
+// at all.
 func (s *Server) maySuspend(w http.ResponseWriter, r *http.Request, sus trigger.Suspension, act string) bool {
 	store := s.scopedStore(r)
 	principal := principalOf(r)
