@@ -1,6 +1,8 @@
 # Suspend: implementation plan
 
-Status: plan, nothing built. The design is [suspend.md](suspend.md) (git-issue
+Status: landed on `holds` (2026-09-14), commits 1–13 below; S8 not built, and `y51f9ce5` still
+follows. The status of [the design](suspend.md) lists the commits and what the landing changed.
+Written as: plan, nothing built. The design is [suspend.md](suspend.md) (git-issue
 `xr69yacwh12kr4qamsn0`); this is how it lands, A to Z — prerequisites, the record, every place
 work waits, the surfaces, the docs, the scripts — with what each step must prove and what fails
 before it. Read the design first: this restates its decisions in a line each, not its argument.

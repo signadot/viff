@@ -1,7 +1,17 @@
 # Suspending charters and subjects
 
-Status: proposal, nothing here runs. Design exploration for git-issue `xr69yacwh12kr4qamsn0`,
-"control over subjects and charters". The ask:
+Status: landed on `holds` (2026-09-14), by [the plan](suspend-plan.md): prerequisites `f0695723`
+(control on the flow verbs), `6557f1bd` (a hand-spawned task is a flow), `5470af11` (ids carry the
+charter and the scope), `0dcc1f24` (a rule record carries `by`); then `a24bf9a2` (record, table,
+route, verbs), `22046279` (firings), `250864de` (questions and clocks), `25f9d1af` (tasks),
+`8aa8ebad` (launches), `466f12e5` (the ordered lift), `ba091ac1` (surfaces), `e31f23e6` (docs),
+`df57548d` (smoke and scripts). What the landing changed from this note: the lift's re-arm first
+moves the rule's watermark below the head (below, "the third pass's fixes"); baseline's table
+starts loaded-empty and a restore unloads it, so a server never started holds nothing; a lone
+address on the command line is the charter installed there, else a subject. Not built: automatic
+suspension (the plan's S8), and a scope deleted with its suspensions (git-issue
+`y51f9ce5h12kr2zvmxn0`). Design exploration for git-issue `xr69yacwh12kr4qamsn0`, "control over
+subjects and charters". The ask:
 
 - pause and resume a charter for all subjects;
 - pause and resume a subject for all related charters;
@@ -591,6 +601,11 @@ anything.
   context withdraws on both and re-poses on only one; that a scope's table load inside the Once
   precedes its first `addTrigger`; and that `at` on a task record survives the mirror's first-write
   replacement across a re-run.
+  *Run at landing, as tests (`466f12e5`).* The draining state refuses the firing, but the
+  interleaving broke the re-arm: the sibling's evaluation moved the rule's watermark to the head the
+  replay arrived at, so the replay was refused and the skipped subject never evaluated. The re-arm
+  now moves the watermark below the head first. The per-pose context and the scope's load order
+  held. `at` on a task record is moot: hooks land, so nothing marks a task record.
 
 ### Surface, to resolve later
 
@@ -610,20 +625,20 @@ Read while working this out, and not fixed here. None was verified by a test exc
 - **A system-installed charter's rules have no owner record**, so the seed's `owner: ["*"]` beneath
   `verse.trigger.rule` appears to reach them, and a system-installed package's address is a node
   where everyone holds `control` (`versed/place.go:38`).
-- **The charter transaction's rollback reinstalls a user's rule as the system store**
-  (`versed/charter.go:771`), so after a failed re-apply the old rule may act as the system.
+- ~~**The charter transaction's rollback reinstalls a user's rule as the system store**
+  (`versed/charter.go:771`), so after a failed re-apply the old rule may act as the system.~~ Closed by `0dcc1f24`.
 - **A hook whose spawn needs a provider selection blocks its engine's reap loop** until somebody
   answers (`engine.go:1654`).
-- The flow routes and the runtime's `/tasks/{id}/pause|resume` still check no `control`; only task
+- ~~The flow routes and the runtime's `/tasks/{id}/pause|resume` still check no `control`; only task
   cancel, say and vector do (`versed/server.go:4543`). The ownership check now precedes `control`
-  wherever `control` is asked.
+  wherever `control` is asked.~~ Closed by `f0695723`.
 - `reconcileTasks` calls `AdoptChain` before the charter is loaded, so a surviving task's hooks may
   never be re-attached at restart.
 - **`ResumeSelections` spawns at startup outside any firing or hook** (`trigger/select.go:282`);
   `spawnHooked` is where every spawn converges.
-- **A firing's question id and spawn id carry neither charter address nor scope**
+- ~~**A firing's question id and spawn id carry neither charter address nor scope**
   (`trigger/trigger_api.go:562`, `:344`), and every engine shares one registry, so same-named rules
-  in two engines about one subject share a question.
+  in two engines about one subject share a question.~~ Closed by `5470af11`.
 - **A subtree watch's seed replay carries the store head**, not the slice's last commit — confirmed
   by a throwaway test in the third pass — so a rule armed after unrelated writes sees its backlog at
   a revision above anything it evaluated.
