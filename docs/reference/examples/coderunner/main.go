@@ -4,7 +4,7 @@
 //
 //	go run ./docs/reference/examples/coderunner -config coderunner.tony -addr :9802
 //	verse runner add pool.code http://localhost:9802
-//	verse task run --runner verse.runners.pool.code --environment verse-main --as scott "fix the flaky test"
+//	verse task run --runner verse.runners.pool.code --environment verse-main --as walter@example.com "fix the flaky test"
 //
 // It is the second example on purpose. [examples/runner] is the smallest thing that serves the
 // [task-control] contract, with the two functions you change marked; this is what a real coding

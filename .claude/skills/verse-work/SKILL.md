@@ -11,8 +11,10 @@ executor dials in, does the work, and reports back. You are that executor: this 
 its tools and the user's credentials, is the runtime.
 
 The user is the identity. Everything below carries `--as`, because a claim must be attributable
-and the person at the keyboard is who it is attributable to. Ask for it once if you cannot
-infer it, and reuse the same string for the whole task — see *Never change identity* below.
+and the person at the keyboard is who it is attributable to. It is a principal with its kind —
+their email, which reads as `user:<email>`, not a bare name (`--as scott` is refused, saying the
+grammar). Ask for it once if you cannot infer it, and reuse the same string for the whole task —
+see *Never change identity* below.
 
 ## The loop
 
