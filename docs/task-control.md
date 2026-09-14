@@ -122,7 +122,7 @@ POST   /tasks/{id}/resolve  {id, choice, by, say?, key}      answer a gate: choi
 POST   /tasks/{id}/say      {text, by, key}                  say to it (re-prompt)
 POST   /tasks/{id}/cancel   {by, key}
 POST   /tasks/{id}/pause    {by}
-POST   /tasks/{id}/resume   {by}
+POST   /tasks/{id}/resume   {by}                             409 when a suspension holds the task
 PUT    /tasks/{id}/vector   {vector, by}                     slide autonomy
 POST   /tasks                {id?, prompt, subject, vector, claim?, runner-config}  spawn → {id}
                                (idempotent by id: 201 built it, 200 it was already running)

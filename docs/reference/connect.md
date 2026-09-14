@@ -140,7 +140,10 @@ the gates those raised. Everything else it can see is baseline's, read through t
 record is there, the live thing is not.
 
 So a control-plane write in a scope — `flow pause|resume|cancel|say`, `task cancel|say|vector`,
-`gate answer|escalate`, `charter -r` — reaches only what the scope created. Addressed at an
+`gate answer|escalate`, `charter -r`, `suspend|resume` — reaches only what the scope created. A
+suspension made with `--scope me` covers the rules the scope installed, the tasks and questions
+they started and the tasks run in the scope, and nothing baseline's; one made without covers
+baseline's and every package's, and nothing any scope's. Addressed at an
 inherited object it is **refused**, and the refusal names the scope that holds it, baseline being
 the unnamed one:
 

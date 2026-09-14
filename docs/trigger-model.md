@@ -1607,6 +1607,80 @@ Relating tasks is what a match *does*, so "relational flows" are not a second pr
 later. They are broader subject-matches. `verse flow` is the distinct subjects with live tasks, and
 steering applies the match and acts on the matched tasks. A query, not a maintained index.
 
+## Suspending
+
+A flow verb acts on the tasks live now, and a rule goes on firing beside it. To stop the work about
+something *and keep it stopped* there is a **suspension**: one record naming a charter (or every
+charter), a rule of it (or all), and a subject (or every subject).
+
+```tony
+# verse.trigger.suspension."verse-dev.drift:*@git.verse.*"
+charter: verse-dev.drift      # an installed charter's address, `.*` for every one beneath; "*" for every charter; absent for baseline's
+rule: "*"                     # a rule's name in it, or "*"
+subject: git.verse.*          # an address, `.*` for everything beneath; "*" for every subject
+held:
+  user:walter@example.com:
+    why: "reading the drift charter's range logic before it runs again"
+    since: "2026-09-14T03:10:00Z"
+    occurrence: 41872         # the store revision the hold landed at
+```
+
+```sh
+verse suspend verse-dev.drift --why "…"                     # a charter, about everything
+verse suspend '*' github.signadot.verse.pr.'"42"' --why "…"  # a subject, for every charter
+verse suspend verse-dev.drift:claim git.verse.head --why "…" # one rule about one subject
+verse suspend :review --why "…"                              # a rule of baseline's charter, which has no address
+verse suspend                                                # what is held, by whom, why, and what moved since
+verse resume verse-dev.drift                                 # the same words lift it
+```
+
+A lone address is the charter installed there, or every charter about that subject when none is.
+Every charter about every subject is refused, and `why` is required: nothing ends a suspension but
+somebody reading it. The same shape held twice is one record with two holders; a person's resume
+lifts it whoever held it, and the system's removes only the system's hold. Suspensions only add up:
+lifting a pair a wider suspension also covers leaves the pair held, and the answer says by what.
+
+**A suspended subject is suspended in all respects** — every form of the work about it, by one
+test, the way a standing resolver covers a subject:
+
+| work about the subject | while suspended | when the suspension lifts |
+|---|---|---|
+| a rule about to fire | starts no firing | the rule is armed again |
+| a firing waiting at its gate | its question is withdrawn, ballots kept; the firing waits | it asks the same question again, if the rule still selects the subject |
+| a live task | holds at its next boundary, `heldBy` the suspension | resumes, unless an operator's pause holds it too |
+| a completion hook, or a `seq` step | its writes land; what it would start is parked | the parked launch starts |
+| a deadline on a withdrawn question | its clock stops | it has the time it had left |
+
+A rule suspended about every subject is skipped before its watermark moves, and one suspended
+about some subjects is skipped per subject before the cycle throttle sees the firing. Nothing asks
+in subject selection, which is what decides a question has gone moot: a suspension there would
+moot work rather than hold it, and a rule that stops selecting its subject during a suspension ends
+that firing as it would have.
+
+**A lift is ordered.** The record is deleted, and the suspension drains: new firings about its work
+are still refused while what it held is released — tasks resume, parked launches start in order,
+withdrawn questions are asked again — and only then is it removed and every rule it covered armed
+again, the path an install and a restart take. So a rule acts on the world as it stands when the
+suspension lifts, and nothing that happened meanwhile is replayed: a level rule still matching acts
+once, one whose condition came and went does nothing, and an `on` edge that rose during the
+suspension is not seen. A wide lift is a restart's worth of evaluation.
+
+**Whose it is.** A suspension belongs to the scope it was made in and covers only the work that
+scope created — baseline's and every package's without `--scope`, a scope's own with it — and each
+scope's suspensions are one table in memory, written only by the route that writes their records
+and loaded before the scope's tasks are re-attached or its charter armed. Until it has loaded it
+holds everything. What a suspension covers is decided each time it would apply: a holder covers a
+piece of work while they hold `control` over its charter (a package's address, a rule's own
+record) or at its subject, and a rule the system installed (`by: system:charter` on its record) is
+the system's alone to suspend ([perms](perms.md#suspending)). A wildcard therefore stops covering a
+subject the moment somebody else owns it.
+
+What a suspension does not reach: a task that cannot hold — a scripted task's only boundary is its
+end — keeps running, and only its hooks are held; an answer accepted a moment before a suspension
+lands still acts; a parked launch does not survive a restart; and stored names are references, so a
+package moved or a rule renamed leaves a suspension naming nothing, which the listing marks
+`covers: false`.
+
 ## Two rules, read out loud
 
 ```json

@@ -284,7 +284,12 @@ verse
           demo.pr.* (a kind), demo.*.* (a system) — a flow is a query, not a stored key
           ONE TOKEN, not steps: a flow address is a selector with a `*` per segment, which
           the shell would expand — so quote it. A second positional is refused rather
-          than read as a step
+          than read as a step. resume refuses a task a suspension holds, naming it
+  suspend (suspensions)                      bare: what is suspended, by whom, why, and what it holds
+          [<charter>[:<rule>]] [<subject>] --why <text> [--as <who>]
+                                             hold the work about a charter, a subject, or both:
+                                             verse-dev.drift · '*' demo.pr.1 · :review · a:b c.*
+  resume [<charter>[:<rule>]] [<subject>]    lift the suspension the same words made
   provider (providers)                       the provider registry (provider.<capability>.<id>)
 
   connect [path] [--prompt <t>] [--driver <d>]  federate a tree (own scope): scoped metadata +

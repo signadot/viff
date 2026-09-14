@@ -59,6 +59,15 @@ baseline from a scope or a scope from baseline. What a scope owns, and why a con
 cannot be copy-on-write the way a world write is, is in
 [connect](reference/connect.md#what-a-scope-owns).
 
+A suspension is the one intervention with a durable record, and it still does not take effect by
+being observed. Each scope's suspensions are one table in memory, written only by the route that
+writes their records, under one lock and in the same order: there is no watch to race the route,
+so nothing waits on the store answering for a suspension to hold, and a rule writing the record
+is refused at install because no table would see it. The table loads in the first phase of a
+restart, before tasks are re-attached or the charter restored, and until it has it holds
+everything — a suspension that failed open on a restart would resume what somebody stopped on
+purpose ([the trigger model](trigger-model.md#suspending)).
+
 ## What runs where
 
 `verse up` runs the engine, the task runtime, and the HTTP surface in one process, and either

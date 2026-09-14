@@ -378,7 +378,8 @@ A completion hook (`onDone` and friends) reads that task's own payload: `$status
 
 A *flow* is not a stored thing: it is a query over the subjects of live tasks, which is
 why steering takes an address rather than a ref, and why steering a whole set needs no new
-machinery — it is the same selector at a wider setting.
+machinery — it is the same selector at a wider setting. A task run by hand is a flow too:
+of its `--subject`, or of its own id when it names none.
 
 ```sh
 verse flow                   # the distinct subjects with live work
@@ -413,8 +414,29 @@ multi-step task: the `llm` driver, whose every tool call is a boundary.
 per action. Why out-of-band matters, and the engine's priority servicing, are in
 [deployment and steering](../deployment-and-steering.md).
 
-With `--scope`, every verb here — the flow verbs and `task cancel|say|vector` — reaches the tasks
-that scope started and none it merely sees. Addressed at baseline's work it refuses and says so,
+`pause` is also forgetful: it holds the tasks live now, and the rules go on firing beside them.
+To stop the work about something and keep it stopped — no new firings, questions withdrawn from
+the docket, hooks recording and starting nothing — suspend it instead
+([the trigger model](../trigger-model.md#suspending)):
+
+```sh
+verse suspend '*' demo.pr.2 --why "a person is reviewing it by hand"
+verse flow show demo.pr.2      # heldBy: [<the suspension>] on the live task
+verse flow resume demo.pr.2    # refused, 409: a suspension holds it — `verse resume` lifts that
+verse resume '*' demo.pr.2
+```
+
+A task knows whose hold it is under — `heldBy` on its record and in `flow show` — so the two do
+not undo each other: a lift resumes only what nothing else holds, and an operator's pause
+outlives it whichever came first.
+
+Every verb here asks `control` of each task it reaches, as `task cancel` does: the task's owner
+holds it, and so does the runner its claim granted. A flow verb refused for any one of its tasks
+is refused whole, naming that task.
+
+With `--scope`, every verb here — the flow verbs, `suspend|resume`, `task cancel|say|vector` and
+the runtime's `/tasks/{id}/pause|resume` — reaches the tasks that scope started and none it merely
+sees. Addressed at baseline's work it refuses and says so,
 so `verse flow cancel --scope me demo.pr.2` never stops baseline's review of that PR by
 accident; drop the flag to address baseline. See [what a scope
 owns](connect.md#what-a-scope-owns).

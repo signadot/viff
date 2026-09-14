@@ -183,8 +183,9 @@ since a group is for changing who is in it without touching every place it is gr
 grantee whose meaning moves after the fact, on purpose.
 
 The levels nest: `read` < `read-write` < `owner`. `control` stands beside them — run, cancel,
-pause, resume, say — and is held by an owner (by record or by an `owner` grant) and by
-whoever it is granted to.
+pause, resume, say, suspend — and is held by an owner (by record or by an `owner` grant) and by
+whoever it is granted to. A flow verb asks it of every task it selects, and one task refused
+refuses the whole steer.
 
 **A grant does not reach through an owner record.** Walking up from a node, the grants on each
 record reach it until a record carrying an owner has been passed; the grants *on* that record
@@ -291,6 +292,7 @@ nothing and an operator's edit stands:
 | `verse.gate.question.*` | read | everyone |
 | `verse.principal.*` | read | everyone |
 | `verse.principal.group.*` | owner | everyone |
+| `verse.trigger.suspension.*` | read | everyone |
 
 And one **default** beside them, on `verse.gate.question`, copied onto every question's own
 record at pose: `{read: ["*"], read-write: [user:*, agent:*]}`. A private verse narrows that one
@@ -324,6 +326,32 @@ binding a question is held out to answers it.
   in the request's scope, not as whoever read the docket.
 - **The system charter**, from `systemCharter:` in the deployment's config, is applied at start
   as `system:charter` after the restore. Its rules are nobody's but the system's.
+- **A rule's record** says who installed it (`by`), written by the install and kept through a
+  restore and through a charter file refused part way, which puts a replaced rule back as its
+  installer.
+- **A suspension** is written by the route as the system, and names who holds it under `held`.
+
+<a id="suspending"></a>
+## Suspending
+
+`verse suspend` is a control write ([the trigger model](trigger-model.md#suspending)), and who may
+make one is asked twice.
+
+**When it is written**, the writer must hold `control` over the charter it names — a package's
+address, or a rule's own record — or at the subject it names, either; a wildcard is asked at the
+node it stands beneath. A suspension naming neither is refused.
+
+**When it applies**, which is what decides what it covers: every time work would make progress, a
+holder's suspension covers that work while the holder holds `control` over the work's charter or at
+its subject, asked of the scope's mirror then. So a wildcard's reach does not grow as owners appear
+beneath it — `verse suspend '*' 'gitlab.*'` by somebody who owns nothing there stops covering
+`gitlab.alice` the moment alice owns it — and a check the mirror cannot answer covers, since work
+that failed open would run what somebody stopped. A rule the system installed (`by: system:charter`)
+is covered only by a system holder, from either side: a place with no owner record holds `control`
+out to everyone, so perms alone cannot tell the system's rules apart, and the install can.
+
+A holder whose authority lapses stops covering new work at once; what was already held stays held
+until somebody resumes.
 
 <a id="scopes"></a>
 ## Scopes

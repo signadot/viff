@@ -274,6 +274,22 @@ empty until something is running, and each verb reports how many tasks it reache
 to steer. See [deployment and steering](deployment-and-steering.md) for why control never rides the
 change stream.
 
+A pause holds what is running now, and the rules keep firing. To stop a rule — or everything about a
+subject — and keep it stopped, suspend it. Against [the seeded demo](#1-start), where `demo-review`
+is holding `demo.pr.1` at a gate:
+
+```sh
+verse suspend :demo-review --why "reading the review rule"   # baseline's rule: its charter has no address
+verse gate                                   # the question is withdrawn: nobody can answer it now
+verse data demo pr 2 --put '{stage: open}'   # demo-review does not fire
+verse suspend                                # held by you, why, since when, what it holds
+verse resume :demo-review                     # both PRs are asked about, once, as they stand now
+```
+
+Nothing that happened meanwhile is replayed: the lift arms the rule again, and it acts on the world
+as it is. A task, while its work is suspended, holds at its next boundary and says whose hold it is
+under, so `verse flow resume` will not run it past a suspension.
+
 ### Where a task runs is a seam
 
 It need not run here. The same verbs drive a task hosted on a remote verse (`up --runner <url>`),
