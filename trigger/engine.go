@@ -134,8 +134,16 @@ type Engine struct {
 	// question, its motion channel are all functions of (trigger, subject) — which is what
 	// makes "a second firing about a subject already firing" the SAME firing rather than a new
 	// one to be deduplicated afterwards.
+	//
+	// Each carries what the firing is asking (flight), so a suspension can withdraw a question
+	// from in front of people while the firing keeps its place and waits to ask it again.
 	flightMu sync.Mutex
-	inflight map[string]bool
+	inflight map[string]*flight
+
+	// lifted is closed and replaced whenever a suspension lifts, so a firing waiting on one
+	// wakes and asks whether it is still held (awaitLift). Guarded by liftMu.
+	liftMu sync.Mutex
+	lifted chan struct{}
 
 	// Control plane — steering, serviced with strict priority over observation
 	// (see docs/deployment-and-steering.md). Closures run on the loop goroutine, so
@@ -813,7 +821,8 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
 		return
 	}
-	if !e.claimFlight(t.Name, subj) {
+	fl, ok := e.claimFlight(t.Name, subj)
+	if !ok {
 		return
 	}
 	defer e.releaseFlight(t.Name, subj)
@@ -878,7 +887,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// was merged (docs/working/merge-gate-residual.md).
 			wctx, stop := e.untilMoot(ctx, t, subj)
 			defer stop()
-			res, err := e.resolver.Resolve(wctx, d, task.ToolUse{Name: "verse:trigger:" + t.Name})
+			res, err := e.ask(wctx, fl, t, subj, d)
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
 			if err == nil && res.Proceed {
 				// Answered yes — about a subject the rule may have stopped selecting between

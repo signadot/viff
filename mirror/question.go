@@ -756,3 +756,33 @@ func writeAt(store entity.Store, ref entity.Ref, o entity.Obj) {
 func IsQuestion(ref entity.Ref) bool {
 	return ref.Reserved() && ref.System() == QuestionSystem && ref.Kind() == QuestionKind
 }
+
+// ResumeDeadline gives a question that was withdrawn while it stood the time it had left, from
+// now. A withdrawn question stands in front of nobody, so its clock stopped when it was withdrawn
+// (`orphanedAt`) and starts again when it is asked again: the deadline is moved to now plus what
+// remained. One whose deadline had already passed when it was withdrawn is left as it is, and
+// settles when it is asked. Anything but an orphaned record with a stamped deadline is left alone.
+func ResumeDeadline(store entity.Store, id string, now time.Time) error {
+	e, ok, err := store.Get(QuestionRef(id))
+	if err != nil || !ok {
+		return err
+	}
+	if entity.Str(e.Payload, "status") != QuestionOrphaned {
+		return nil
+	}
+	_, _, at := DeadlineOf(e.Payload)
+	fires, err1 := time.Parse(time.RFC3339Nano, at)
+	withdrawn, err2 := time.Parse(time.RFC3339Nano, entity.Str(e.Payload, "orphanedAt"))
+	if err1 != nil || err2 != nil {
+		return nil
+	}
+	left := fires.Sub(withdrawn)
+	if left <= 0 {
+		return nil
+	}
+	_, _, err = store.Write(entity.Write{
+		At:    QuestionRef(id).At("deadline", "at"),
+		Value: entity.Val(now.Add(left).UTC().Format(time.RFC3339Nano)),
+	})
+	return err
+}

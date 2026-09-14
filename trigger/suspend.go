@@ -10,13 +10,17 @@ package trigger
 // in the same order — so it is never fed by a watch that could race that writer.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
 )
 
 // SuspensionKind is where the records live: verse.trigger.suspension.<id>.
@@ -335,7 +339,17 @@ func (t *Suspensions) Load(records []Suspension) {
 		t.entries[s.ID()] = s
 	}
 	t.loaded = true
+	engines := t.attached()
 	t.mu.Unlock()
+	for _, e := range engines {
+		e.signalLift()
+	}
+}
+
+// attached is the engines asking this table, copied under its lock so they are told of a change
+// after it is released.
+func (t *Suspensions) attached() []*Engine {
+	return append([]*Engine(nil), t.engines...)
 }
 
 // Loaded reports whether the table has loaded.
@@ -365,18 +379,27 @@ func (t *Suspensions) List() []Suspension {
 	return out
 }
 
-// Put records a suspension — new, or with its holders changed — once its record is written.
+// Put records a suspension — new, or with its holders changed — once its record is written, and
+// has every engine asking the table hold what it now covers.
 func (t *Suspensions) Put(s Suspension) {
 	t.mu.Lock()
 	t.entries[s.ID()] = s
+	engines := t.attached()
 	t.mu.Unlock()
+	for _, e := range engines {
+		e.withdrawHeld()
+	}
 }
 
-// Remove drops a suspension once its record is deleted.
+// Remove drops a suspension once its record is deleted, and wakes what it held.
 func (t *Suspensions) Remove(id string) {
 	t.mu.Lock()
 	delete(t.entries, id)
+	engines := t.attached()
 	t.mu.Unlock()
+	for _, e := range engines {
+		e.signalLift()
+	}
 }
 
 // notLoaded is what holds everything while a table has not loaded, named as a suspension would be.
@@ -494,4 +517,106 @@ func recordsCompletion(chain string) bool {
 		}
 	}
 	return false
+}
+
+// SuspendedError is the cause a question is withdrawn with: the suspensions holding the work it
+// is about. The docket renders it as the question's `why`.
+type SuspendedError struct{ IDs []string }
+
+func (err SuspendedError) Error() string {
+	return "withdrawn while " + strings.Join(err.IDs, ", ") + " suspends the work it is about; " +
+		"it is asked again when that lifts"
+}
+
+// ask poses a firing's gate question and waits for its answer, for as long as the work it is
+// about is not suspended. Each pose has a context of its own under the mootness context, so a
+// suspension withdraws the question — the record goes orphaned with the suspension as its `why`
+// and keeps its ballots and its deadline stamp — while the firing keeps its flight and waits for
+// the lift. Then, if the rule still selects the subject, it asks the same question again under
+// the same id, joining what was cast, with the time it had left on its clock. Mootness still ends
+// a suspended firing, since the pose sits under it.
+func (e *Engine) ask(wctx context.Context, fl *flight, t Trigger, subj entity.Ref, d task.GateQuestion) (task.Resolution, error) {
+	tool := task.ToolUse{Name: "verse:trigger:" + t.Name}
+	for withdrawn := false; ; {
+		if !e.awaitLift(wctx, t.Name, subj) {
+			return task.Resolution{By: task.ByCancelled, Question: d}, context.Cause(wctx)
+		}
+		if withdrawn {
+			if !e.stillSelects(t, subj) {
+				err := fmt.Errorf("%s no longer selects %s, so the question it asked is moot", t.Name, subj)
+				return task.Resolution{By: task.ByCancelled, Question: d}, err
+			}
+			e.resumeClock(d.ID)
+		}
+		pctx, cancel := context.WithCancelCause(wctx)
+		done := fl.posing(cancel)
+		// Asked again once the pose is registered: a suspension landing between the wait above and
+		// here has already walked the flights, and would otherwise be missed.
+		if held := e.holding(t.Name, subj); len(held) > 0 {
+			cancel(SuspendedError{held})
+		}
+		res, err := e.resolver.Resolve(pctx, d, tool)
+		done()
+		var susp SuspendedError
+		if err != nil && wctx.Err() == nil && errors.As(context.Cause(pctx), &susp) {
+			cancel(nil)
+			e.tracef("gate %s on %s: %v", d.ID, subj, susp)
+			withdrawn = true
+			continue
+		}
+		cancel(nil)
+		return res, err
+	}
+}
+
+// awaitLift waits until the work is not suspended, or ctx ends; false means it ended.
+func (e *Engine) awaitLift(ctx context.Context, rule string, subj entity.Ref) bool {
+	for {
+		lifted := e.liftSignal() // before the question, so a lift in between still wakes it
+		if len(e.holding(rule, subj)) == 0 {
+			return true
+		}
+		select {
+		case <-lifted:
+		case <-ctx.Done():
+			return false
+		}
+	}
+}
+
+// liftSignal is closed at the next lift.
+func (e *Engine) liftSignal() <-chan struct{} {
+	e.liftMu.Lock()
+	defer e.liftMu.Unlock()
+	if e.lifted == nil {
+		e.lifted = make(chan struct{})
+	}
+	return e.lifted
+}
+
+// signalLift wakes everything waiting on a lift.
+func (e *Engine) signalLift() {
+	e.liftMu.Lock()
+	defer e.liftMu.Unlock()
+	if e.lifted != nil {
+		close(e.lifted)
+	}
+	e.lifted = make(chan struct{})
+}
+
+// withdrawHeld withdraws every question a firing of this engine is asking about work now held.
+func (e *Engine) withdrawHeld() {
+	for _, f := range e.flights() {
+		if held := e.holding(f.rule, f.subj); len(held) > 0 {
+			f.withdraw(SuspendedError{held})
+		}
+	}
+}
+
+// resumeClock gives a withdrawn question the time it had left, from now.
+func (e *Engine) resumeClock(id string) {
+	if err := mirror.ResumeDeadline(e.store, id, time.Now()); err != nil {
+		e.logger.Warn("a withdrawn question's deadline could not be moved to its lift",
+			"question", id, "err", err)
+	}
 }

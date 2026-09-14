@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/signadot/verse/entity"
 )
@@ -228,20 +229,70 @@ func (e *Engine) working(t Trigger, subj entity.Ref) bool {
 	return live
 }
 
-// claimFlight reserves a (trigger, subject) firing, reporting whether it was free. release
-// gives it back when the firing ends.
-func (e *Engine) claimFlight(name string, subj entity.Ref) bool {
+// flight is one (trigger, subject) firing under way, and the questions it has in front of people
+// right now. A suspension that lands withdraws them (withdraw), and the firing, still holding its
+// flight, waits for the lift and asks again.
+type flight struct {
+	rule string
+	subj entity.Ref
+
+	mu    sync.Mutex
+	poses map[int]context.CancelCauseFunc
+	next  int
+}
+
+// posing registers the cancel of one question being asked, until done is called.
+func (f *flight) posing(cancel context.CancelCauseFunc) (done func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.poses == nil {
+		f.poses = map[int]context.CancelCauseFunc{}
+	}
+	n := f.next
+	f.next++
+	f.poses[n] = cancel
+	return func() {
+		f.mu.Lock()
+		delete(f.poses, n)
+		f.mu.Unlock()
+	}
+}
+
+// withdraw takes every question the firing is asking off the docket, with cause as the reason.
+func (f *flight) withdraw(cause error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, cancel := range f.poses {
+		cancel(cause)
+	}
+}
+
+// claimFlight reserves a (trigger, subject) firing, handing back its flight when it was free.
+// release gives it back when the firing ends.
+func (e *Engine) claimFlight(name string, subj entity.Ref) (*flight, bool) {
 	key := name + "\x00" + subj.String()
 	e.flightMu.Lock()
 	defer e.flightMu.Unlock()
 	if e.inflight == nil {
-		e.inflight = map[string]bool{}
+		e.inflight = map[string]*flight{}
 	}
-	if e.inflight[key] {
-		return false
+	if e.inflight[key] != nil {
+		return nil, false
 	}
-	e.inflight[key] = true
-	return true
+	f := &flight{rule: name, subj: subj}
+	e.inflight[key] = f
+	return f, true
+}
+
+// flights is every firing under way.
+func (e *Engine) flights() []*flight {
+	e.flightMu.Lock()
+	defer e.flightMu.Unlock()
+	out := make([]*flight, 0, len(e.inflight))
+	for _, f := range e.inflight {
+		out = append(out, f)
+	}
+	return out
 }
 
 func (e *Engine) releaseFlight(name string, subj entity.Ref) {

@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -259,5 +261,196 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	sus, ok := second.susp.Get(held.ID)
 	if !ok || sus.Held[entity.SystemDefault].Why != "across a restart" {
 		t.Fatalf("after a restart the table has %s = %+v (ok=%v), want it back with its holder", held.ID, sus, ok)
+	}
+}
+
+// questionRecord reads a question's record.
+func questionRecord(t *testing.T, srv *Server, id string) entity.Payload {
+	t.Helper()
+	e, ok, err := srv.Store.Get(mirror.QuestionRef(id))
+	if err != nil || !ok {
+		t.Fatalf("no record for question %s (ok=%v err=%v)", id, ok, err)
+	}
+	return e.Payload
+}
+
+// waitQuestionStatus waits for a question's record to reach a status.
+func waitQuestionStatus(t *testing.T, srv *Server, id, status string) entity.Payload {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		if e, ok, _ := srv.Store.Get(mirror.QuestionRef(id)); ok && entity.Str(e.Payload, "status") == status {
+			return e.Payload
+		}
+		select {
+		case <-deadline:
+			e, _, _ := srv.Store.Get(mirror.QuestionRef(id))
+			t.Fatalf("question %s never became %s; record %v", id, status, e.Payload)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// pendingHas reports whether the registry has a question pending.
+func pendingHas(srv *Server, id string) bool {
+	for _, p := range srv.Reg.Pending() {
+		if p.Question.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// A firing waiting at its gate is withdrawn from in front of people when a suspension lands:
+// the record goes orphaned with the suspension as its why, keeps the ballot already cast, and
+// cannot be answered while withdrawn. Lifted, the same question is on the docket again, joining
+// what was cast, and the next ballot settles it.
+func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
+	srv, ts := startedServer(t)
+	addRule(t, ts, `{
+		name: ship,
+		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		gates: [{name: approvals, need: 2}],
+		action: {patch: {stage: shipped}},
+	}`)
+	subject := entity.RefAt("demo", "release", "1")
+	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	id := waitRuleQuestion(t, srv, "ship", subject.String())
+
+	ballot := func(by string) int {
+		t.Helper()
+		resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: by})
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := ballot("user:alice@example.com"); code != http.StatusAccepted {
+		t.Fatalf("alice's ballot = %d, want it recorded as 1 of 2", code)
+	}
+
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold the release"})
+	if code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	rec := waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
+	if why := entity.Str(rec, "why"); !strings.Contains(why, held.ID) {
+		t.Fatalf("the withdrawn question says why %q, want it to name %s", why, held.ID)
+	}
+	if entity.Get(entity.Get(rec, "ballots"), "user:alice@example.com") == nil {
+		t.Fatalf("the withdrawal lost alice's ballot: %v", rec)
+	}
+	if pendingHas(srv, id) {
+		t.Fatal("the withdrawn question is still pending in the registry")
+	}
+	if code := ballot("user:bob@example.com"); code != http.StatusNotFound {
+		t.Fatalf("a ballot on a withdrawn question = %d, want 404", code)
+	}
+	stays := func() {
+		t.Helper()
+		time.Sleep(200 * time.Millisecond)
+		if e, _, _ := srv.Store.Get(subject); entity.Str(e.Payload, "stage") != "open" {
+			t.Fatalf("the release moved while suspended: %v", e.Payload)
+		}
+	}
+	stays()
+
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+		t.Fatalf("resume = %d %s", code, msg)
+	}
+	rec = waitQuestionStatus(t, srv, id, mirror.QuestionPending)
+	if entity.Get(entity.Get(rec, "ballots"), "user:alice@example.com") == nil || entity.Get(rec, "askedAgain") == nil {
+		t.Fatalf("the question asked again = %v, want alice's ballot on it and askedAgain", rec)
+	}
+	deadline := time.After(3 * time.Second)
+	for !pendingHas(srv, id) {
+		select {
+		case <-deadline:
+			t.Fatal("the lifted question never came back to the registry")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if code := ballot("user:bob@example.com"); code != http.StatusNoContent {
+		t.Fatalf("bob's ballot after the lift = %d, want it to settle the question", code)
+	}
+	deadline = time.After(3 * time.Second)
+	for {
+		if e, _, _ := srv.Store.Get(subject); entity.Str(e.Payload, "stage") == "shipped" {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the release did not ship on the second ballot")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// A withdrawn question's clock stops: one withdrawn with ten minutes left and lifted an hour
+// later has ten minutes left.
+func TestAWithdrawnQuestionsClockStops(t *testing.T) {
+	srv, ts := startedServer(t)
+	addRule(t, ts, `{
+		name: ship,
+		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		gates: [{name: ok, mode: ask, deadline: {within: "10m", default: deny}}],
+		action: {patch: {stage: shipped}},
+	}`)
+	subject := entity.RefAt("demo", "release", "1")
+	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	id := waitRuleQuestion(t, srv, "ship", subject.String())
+
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
+	// An hour ago, with ten minutes left.
+	withdrawn := time.Now().Add(-time.Hour).UTC()
+	if _, _, err := srv.Store.Write(entity.Write{At: mirror.QuestionRef(id).At(), Value: entity.Obj{
+		"orphanedAt": withdrawn.Format(time.RFC3339Nano),
+		"deadline":   entity.Obj{"at": withdrawn.Add(10 * time.Minute).Format(time.RFC3339Nano)},
+	}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+		t.Fatalf("resume = %d %s", code, msg)
+	}
+	rec := waitQuestionStatus(t, srv, id, mirror.QuestionPending)
+	_, _, at := mirror.DeadlineOf(rec)
+	fires, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		t.Fatalf("the question asked again has deadline.at %q: %v", at, err)
+	}
+	if left := time.Until(fires); left < 9*time.Minute || left > 11*time.Minute {
+		t.Fatalf("the question asked again has %s left, want ten minutes", left.Round(time.Second))
+	}
+}
+
+// A rule that stops selecting its subject during a suspension ends its firing: the question is
+// moot, and the lift asks nothing.
+func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
+	srv, ts := startedServer(t)
+	addRule(t, ts, `{
+		name: ship,
+		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		gates: [{name: ok, mode: ask}],
+		action: {patch: {stage: shipped}},
+	}`)
+	subject := entity.RefAt("demo", "release", "1")
+	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	id := waitRuleQuestion(t, srv, "ship", subject.String())
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
+	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "withdrawn"}.Payload())
+	time.Sleep(200 * time.Millisecond)
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.Suspend{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
+		t.Fatalf("resume = %d %s", code, msg)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if pendingHas(srv, id) {
+		t.Fatal("the lift asked a question the rule no longer selects the subject for")
+	}
+	if got := entity.Str(questionRecord(t, srv, id), "status"); got != mirror.QuestionOrphaned {
+		t.Fatalf("the moot question is %s after the lift, want it left orphaned", got)
 	}
 }
