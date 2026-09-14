@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
@@ -28,8 +30,11 @@ import (
 const SuspensionKind = "suspension"
 
 // Every is the wildcard a suspension spells for "every charter", "every rule" and "every
-// subject", and the trailing segment of an address that covers everything beneath it.
+// subject", and a subject's wildcard for one segment.
 const Every = "*"
+
+// Recursive is how a suspension's id spells a charter named with everything beneath it.
+const Recursive = ".**"
 
 // SuspensionRef names the record of one suspension.
 func SuspensionRef(id string) entity.Ref {
@@ -43,21 +48,25 @@ func IsSuspension(r entity.Ref) bool {
 
 // Suspension is one record: what it covers, the scope it was made in, and who holds it.
 type Suspension struct {
-	// Charter is an installed charter's address, "" for baseline's, Every for every charter,
-	// or an address ending `.*` for every charter beneath it.
+	// Charter is an installed charter's address, "" for baseline's, or Every for every charter.
 	Charter string
+	// Recursive names the charter at Charter and every charter beneath it.
+	Recursive bool
 	// Rule is a rule's name in the charter, or Every.
 	Rule string
-	// Subject is an address, Every, or an address ending `.*` for everything beneath it.
+	// Subject is a flow selector: an address with Every in any segment, or Every alone for every
+	// subject — the grammar `verse flow --subject` lists by.
 	Subject string
 	// Scope is the scope the suspension was made in, "" for baseline, as a rule record's.
 	Scope string
 	// Held is who holds it, by principal. A suspension stands while anybody does.
 	Held map[string]Holder
 
-	charter, subject     []string // parsed, without the trailing wildcard
-	charterAll, charterW bool     // Every; beneath charter
-	subjectAll, subjectW bool     // Every; beneath subject
+	charter    []string // parsed
+	charterAll bool     // Every
+	subject    []string // parsed steps, Every where a segment is open
+	subjectM   Match    // the selector the steps read as
+	subjectAll bool     // Every
 }
 
 // Holder is one party's hold on a suspension: why, since when, and the store revision the hold
@@ -68,30 +77,37 @@ type Holder struct {
 	Occurrence int64
 }
 
-// NewSuspension reads the three parts of a suspension into their one spelling, so two spellings
-// of one address are one record: addresses are parsed and rendered by segment, never compared as
+// NewSuspension reads the parts of a suspension into their one spelling, so two spellings of one
+// address are one record: addresses are parsed and rendered by segment, never compared as
 // strings, since a string comparison would let a respelling fail open.
-func NewSuspension(charter, rule, subject string) (Suspension, error) {
-	s := Suspension{}
-	switch {
-	case charter == Every:
+//
+// Nothing is "every" by being left out. Every charter and every subject are Every, said; an empty
+// charter is baseline's, and an empty subject is refused.
+func NewSuspension(charter, rule, subject string, recursive bool) (Suspension, error) {
+	s := Suspension{Recursive: recursive}
+	switch charter {
+	case Every:
+		if recursive {
+			return Suspension{}, fmt.Errorf("charter %q: every charter has nothing beneath it to add", charter)
+		}
 		s.Charter, s.charterAll = Every, true
-	case charter == "":
+	case "":
+		if recursive {
+			return Suspension{}, fmt.Errorf("baseline's charter and everything beneath it is every "+
+				"charter, which is spelled %q", Every)
+		}
 	default:
-		addr, wild := strings.CutSuffix(charter, "."+Every)
-		st, err := ParseAt(addr)
+		if strings.Contains(charter, Every) {
+			return Suspension{}, fmt.Errorf("charter %q: a charter is named by its address, and "+
+				"everything beneath one by recursive — a wildcard inside an address names no place "+
+				"whose owner could stand behind it", charter)
+		}
+		st, err := ParseAt(charter)
 		if err != nil {
 			return Suspension{}, fmt.Errorf("charter %q: %w", charter, err)
 		}
-		if strings.Contains(addr, Every) {
-			return Suspension{}, fmt.Errorf("charter %q: only a trailing .* is a wildcard — a "+
-				"wildcard inside an address names no place whose owner could stand behind it", charter)
-		}
-		s.charter, s.charterW = st.Path(), wild
+		s.charter = st.Path()
 		s.Charter = strings.Join(s.charter, ".")
-		if wild {
-			s.Charter += "." + Every
-		}
 	}
 	switch rule {
 	case "", Every:
@@ -102,34 +118,77 @@ func NewSuspension(charter, rule, subject string) (Suspension, error) {
 		}
 		s.Rule = rule
 	}
-	switch {
-	case subject == "" || subject == Every:
+	steps, m, err := subjectSelector(subject)
+	if err != nil {
+		return Suspension{}, err
+	}
+	s.subject, s.subjectM = steps, m
+	if len(steps) == 0 {
 		s.Subject, s.subjectAll = Every, true
-	default:
-		addr, wild := strings.CutSuffix(subject, "."+Every)
-		segs, err := entity.PathSegs(addr)
-		if err != nil {
-			return Suspension{}, fmt.Errorf("subject %q: %w", subject, err)
-		}
-		if len(segs) == 0 {
-			return Suspension{}, fmt.Errorf("subject %q names no address", subject)
-		}
-		s.subject, s.subjectW = segs, wild
-		s.Subject = entity.JoinSegs(segs)
-		if wild {
-			s.Subject += "." + Every
-		}
+	} else {
+		s.Subject = joinSelector(steps)
 	}
 	return s, nil
 }
 
+// subjectSelector reads a suspension's subject as the flow selector it is (ParseExpr), and the
+// steps its one spelling is rendered from. A trailing open segment of an address the three
+// dimensions hold is the same selector as none, so it is dropped; deeper, a trailing Every asks
+// for the depth, and stays. A payload predicate has no string spelling, and would let an ordinary
+// write take the subject out of the match and so lift the suspension.
+func subjectSelector(subject string) ([]string, Match, error) {
+	if strings.TrimSpace(subject) == "" {
+		return nil, nil, fmt.Errorf("a suspension names its subject: an address, or %q for every subject", Every)
+	}
+	m, err := ParseExpr(subject)
+	if err != nil {
+		return nil, nil, fmt.Errorf("subject %q: %w", subject, err)
+	}
+	if m.HasPredicate() {
+		return nil, nil, fmt.Errorf("subject %q: a suspension's subject has no payload predicate", subject)
+	}
+	steps, err := entity.ExprSegs(strings.TrimSpace(subject))
+	if err != nil {
+		return nil, nil, fmt.Errorf("subject %q: %w", subject, err)
+	}
+	if !m.Deep() {
+		for len(steps) > 0 && steps[len(steps)-1] == Every {
+			steps = steps[:len(steps)-1]
+		}
+	}
+	return steps, m, nil
+}
+
+// joinSelector renders a selector's steps, an open segment bare and every other quoted as an
+// address needs it.
+func joinSelector(steps []string) string {
+	parts := make([]string, len(steps))
+	for i, st := range steps {
+		if st == Every {
+			parts[i] = Every
+			continue
+		}
+		parts[i] = entity.JoinSegs([]string{st})
+	}
+	return strings.Join(parts, ".")
+}
+
 // ID is the record's id: `<charter>:<rule>@<subject>`, the spelling a task id shares
-// (ownerOf), baseline's charter being the empty one.
-func (s Suspension) ID() string { return s.Charter + AtSep + s.Rule + ChainSep + s.Subject }
+// (ownerOf), baseline's charter being the empty one and a recursive charter `<address>.**`.
+func (s Suspension) ID() string {
+	charter := s.Charter
+	if s.Recursive {
+		charter += Recursive
+	}
+	return charter + AtSep + s.Rule + ChainSep + s.Subject
+}
 
 // Payload is the record as it is written, holders included.
 func (s Suspension) Payload() entity.Payload {
 	p := entity.Obj{"charter": s.Charter, "rule": s.Rule, "subject": s.Subject}
+	if s.Recursive {
+		p["recursive"] = true
+	}
 	if s.Scope != "" {
 		p[scopeField] = s.Scope
 	}
@@ -154,7 +213,8 @@ func HolderPayload(h Holder) entity.Payload { return h.payload() }
 
 // SuspensionOf reads a record back.
 func SuspensionOf(p entity.Payload) (Suspension, error) {
-	s, err := NewSuspension(entity.Str(p, "charter"), entity.Str(p, "rule"), entity.Str(p, "subject"))
+	s, err := NewSuspension(entity.Str(p, "charter"), entity.Str(p, "rule"), entity.Str(p, "subject"),
+		recursiveOf(p))
 	if err != nil {
 		return Suspension{}, err
 	}
@@ -165,6 +225,12 @@ func SuspensionOf(p entity.Payload) (Suspension, error) {
 			Occurrence: mirror.OccurrenceOf(h)}
 	}
 	return s, nil
+}
+
+// recursiveOf reads a record's `recursive`, false unless it is true.
+func recursiveOf(p entity.Payload) bool {
+	n := ir.Uncomment(entity.Get(p, "recursive"))
+	return n != nil && n.Type == ir.BoolType && n.Bool
 }
 
 // Holders is who holds it, sorted.
@@ -190,15 +256,15 @@ func (s Suspension) CoversCharter(at []string, rule string) bool {
 	switch {
 	case s.charterAll:
 		return true
-	case s.charterW:
-		return beneath(s.charter, at)
+	case s.Recursive:
+		return atOrBeneath(s.charter, at)
 	default:
-		return segsEqual(s.charter, at)
+		return slices.Equal(s.charter, at)
 	}
 }
 
-// CoversSubject reports whether the suspension names this subject. Work about no subject is
-// named only by a suspension of every subject.
+// CoversSubject reports whether the suspension names this subject, by the selector a flow is
+// listed by. Work about no subject is named only by a suspension of every subject.
 func (s Suspension) CoversSubject(subj entity.Ref) bool {
 	if s.subjectAll {
 		return true
@@ -206,11 +272,7 @@ func (s Suspension) CoversSubject(subj entity.Ref) bool {
 	if subj == (entity.Ref{}) {
 		return false
 	}
-	segs := subj.Segs()
-	if s.subjectW {
-		return beneath(s.subject, segs)
-	}
-	return segsEqual(s.subject, segs)
+	return s.subjectM.MatchRef(subj)
 }
 
 // EverySubject reports whether it names every subject — what a whole rule being held means.
@@ -220,8 +282,8 @@ func (s Suspension) EverySubject() bool { return s.subjectAll }
 func (s Suspension) EveryCharter() bool { return s.charterAll }
 
 // CharterPlace is the node control over the charter side is asked at, when the suspension names
-// one: a package's address (its prefix, for a wildcard), or a baseline rule's own record. A
-// suspension of every charter, or of every rule of baseline's, names none.
+// one: a package's address, or a baseline rule's own record. A suspension of every charter, or of
+// every rule of baseline's, names none.
 func (s Suspension) CharterPlace() (entity.Ref, bool) {
 	switch {
 	case s.charterAll:
@@ -234,28 +296,37 @@ func (s Suspension) CharterPlace() (entity.Ref, bool) {
 	return entity.Ref{}, false
 }
 
-// SubjectPlace is the node control over the subject side is asked at, when the suspension names
-// one: the subject, or the prefix a wildcard stands beneath.
+// SubjectPlace is the node control over the subject side is asked at when the suspension is
+// written: the selector's literal head, the segments before its first open one. A selector open
+// from its first segment names none. What it covers is asked again at each concrete subject.
 func (s Suspension) SubjectPlace() (entity.Ref, bool) {
-	if s.subjectAll {
+	var head []string
+	for _, st := range s.subject {
+		if strings.Contains(st, Every) {
+			break
+		}
+		head = append(head, st)
+	}
+	if len(head) == 0 {
 		return entity.Ref{}, false
 	}
-	return entity.RefAt(s.subject...), true
+	return entity.RefAt(head...), true
 }
 
 // Within reports whether everything s covers, o covers too: what a lift says when the pair it
-// lifted is still held by something wider.
+// lifted is still held by something wider. It answers by the spellings, so a glob inside a
+// segment covers only the same glob; false is "not shown to", never "not covered".
 func (s Suspension) Within(o Suspension) bool {
 	switch {
 	case o.charterAll:
 	case s.charterAll:
 		return false
-	case o.charterW:
-		if !(beneath(o.charter, s.charter) || (s.charterW && segsEqual(o.charter, s.charter))) {
+	case o.Recursive:
+		if !atOrBeneath(o.charter, s.charter) {
 			return false
 		}
 	default:
-		if s.charterW || !segsEqual(o.charter, s.charter) {
+		if s.Recursive || !slices.Equal(o.charter, s.charter) {
 			return false
 		}
 	}
@@ -265,33 +336,20 @@ func (s Suspension) Within(o Suspension) bool {
 	switch {
 	case o.subjectAll:
 		return true
-	case s.subjectAll:
-		return false
-	case o.subjectW:
-		return beneath(o.subject, s.subject) || (s.subjectW && segsEqual(o.subject, s.subject))
-	default:
-		return !s.subjectW && segsEqual(o.subject, s.subject)
-	}
-}
-
-// beneath reports whether segs stands strictly beneath prefix.
-func beneath(prefix, segs []string) bool {
-	if len(segs) <= len(prefix) {
+	case s.subjectAll, len(s.subject) < len(o.subject):
 		return false
 	}
-	return segsEqual(prefix, segs[:len(prefix)])
-}
-
-func segsEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
+	for i, want := range o.subject {
+		if want != Every && want != s.subject[i] {
 			return false
 		}
 	}
 	return true
+}
+
+// atOrBeneath reports whether segs stands at prefix or beneath it.
+func atOrBeneath(prefix, segs []string) bool {
+	return len(segs) >= len(prefix) && slices.Equal(prefix, segs[:len(prefix)])
 }
 
 // Suspensions is one scope's table: the suspensions in force, held in memory and written only by

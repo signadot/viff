@@ -21,7 +21,7 @@ func suspending(t *testing.T, store entity.Store, holder string, shapes ...[3]st
 	tbl.Load(nil)
 	eng.SetSuspensions(tbl)
 	for _, sh := range shapes {
-		s, err := NewSuspension(sh[0], sh[1], sh[2])
+		s, err := NewSuspension(sh[0], sh[1], sh[2], false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,12 +50,108 @@ func stays(t *testing.T, s entity.Store, ref entity.Ref, field, want string) {
 	}
 }
 
+// A suspension's subject is the selector `verse flow --subject` lists by — `*` open in any segment,
+// covering at or beneath — and its charter is one address, or with recursive that address and
+// every charter beneath it. Two spellings of one selector are one record, and nothing is "every"
+// by being left out.
+func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
+	sus := func(charter, rule, subject string, recursive bool) Suspension {
+		t.Helper()
+		s, err := NewSuspension(charter, rule, subject, recursive)
+		if err != nil {
+			t.Fatalf("NewSuspension(%q, %q, %q, %v): %v", charter, rule, subject, recursive, err)
+		}
+		return s
+	}
+	pr1, pr2, issue1 := entity.RefAt("demo", "pr", "1"), entity.RefAt("demo", "pr", "2"), entity.RefAt("demo", "issue", "1")
+	deep := entity.RefAt("github", "signadot", "verse", "pr", "42")
+	for _, c := range []struct {
+		subject string
+		covers  []entity.Ref
+		not     []entity.Ref
+	}{
+		{"demo.pr.1", []entity.Ref{pr1}, []entity.Ref{pr2, issue1}},
+		{"demo.*.1", []entity.Ref{pr1, issue1}, []entity.Ref{pr2}},
+		{"*.pr.*", []entity.Ref{pr1, pr2}, []entity.Ref{issue1}},
+		{"github.*.verse.pr.*", []entity.Ref{deep}, []entity.Ref{pr1, entity.RefAt("github", "signadot", "verse", "pr")}},
+		{"*", []entity.Ref{pr1, deep, {}}, nil},
+	} {
+		s := sus("*", "", c.subject, false)
+		for _, ref := range c.covers {
+			if !s.CoversSubject(ref) {
+				t.Errorf("%s does not cover %s", s.ID(), ref)
+			}
+		}
+		for _, ref := range c.not {
+			if s.CoversSubject(ref) {
+				t.Errorf("%s covers %s", s.ID(), ref)
+			}
+		}
+	}
+
+	for _, same := range [][2]string{{"demo.pr.*", "demo.pr"}, {`demo.pr."1"`, "demo.pr.1"}, {"*.*.*", "*"}} {
+		a, b := sus("*", "", same[0], false), sus("*", "", same[1], false)
+		if a.ID() != b.ID() {
+			t.Errorf("%q and %q are one selector, but two records: %s, %s", same[0], same[1], a.ID(), b.ID())
+		}
+	}
+	if a, b := sus("*", "", "a.b.c.d.*", false), sus("*", "", "a.b.c.d", false); a.ID() == b.ID() {
+		t.Errorf("a.b.c.d.* asks for a depth a.b.c.d does not, but both are %s", a.ID())
+	}
+
+	drift := sus("verse-dev.drift", "", "*", true)
+	if drift.ID() != "verse-dev.drift.**:*@*" {
+		t.Errorf("a recursive charter's id = %s", drift.ID())
+	}
+	for _, at := range [][]string{{"verse-dev", "drift"}, {"verse-dev", "drift", "x"}} {
+		if !drift.CoversCharter(at, "claim") {
+			t.Errorf("%s does not cover the charter at %v", drift.ID(), at)
+		}
+	}
+	if drift.CoversCharter([]string{"verse-dev"}, "claim") || sus("verse-dev.drift", "", "*", false).CoversCharter([]string{"verse-dev", "drift", "x"}, "claim") {
+		t.Error("a charter covers what stands above it, or a charter not recursive covers what is beneath it")
+	}
+	back, err := SuspensionOf(drift.Payload())
+	if err != nil || back.ID() != drift.ID() {
+		t.Errorf("the record read back as %s (%v), want %s", back.ID(), err, drift.ID())
+	}
+	if !sus("verse-dev.drift", "claim", "demo.pr.1", false).Within(drift) || drift.Within(sus("verse-dev.drift", "", "*", false)) {
+		t.Error("Within does not follow recursive")
+	}
+	if !sus("*", "", "demo.pr.1", false).Within(sus("*", "", "demo.*", false)) {
+		t.Error("demo.pr.1 is not within demo.*")
+	}
+
+	if place, ok := sus("*", "", "demo.*.1", false).SubjectPlace(); !ok || place != entity.RefAt("demo") {
+		t.Errorf("demo.*.1's subject place = %s %v, want its literal head demo", place, ok)
+	}
+	if _, ok := sus("*", "", "*.pr.1", false).SubjectPlace(); ok {
+		t.Error("a selector open from its first segment names a subject place")
+	}
+
+	for _, bad := range []struct {
+		charter, subject string
+		recursive        bool
+	}{
+		{"verse-dev.drift", "", false},          // an empty subject is not every subject
+		{"verse-dev.*", "*", false},             // beneath is recursive, not a wildcard
+		{"", "*", true},                         // baseline and beneath is every charter
+		{"*", "*", true},                        // every charter has nothing beneath it
+		{"*", "demo.pr.1[0]", false},            // an element of a payload is not a subject
+		{"*", "demo.pr.1 {stage: open}", false}, // nor is a predicate over one
+	} {
+		if s, err := NewSuspension(bad.charter, "", bad.subject, bad.recursive); err == nil {
+			t.Errorf("NewSuspension(%q, %q, recursive %v) accepted as %s", bad.charter, bad.subject, bad.recursive, s.ID())
+		}
+	}
+}
+
 // A rule suspended whole does not fire, and its commit is skipped before its watermark moves, so
 // the replay a lift opens at the head is still admitted. A rule suspended about one subject fires
 // about the others.
 func TestASuspendedRuleIsSkippedBeforeItsWatermark(t *testing.T) {
 	store := entitytest.Store(t)
-	eng, tbl := suspending(t, store, "user:tester", [3]string{"", "review", ""}, [3]string{"", "triage", "demo.pr.1"})
+	eng, tbl := suspending(t, store, "user:tester", [3]string{"", "review", "*"}, [3]string{"", "triage", "demo.pr.1"})
 	if err := eng.AddTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"})); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +176,7 @@ func TestASuspendedRuleIsSkippedBeforeItsWatermark(t *testing.T) {
 	if seen != 0 {
 		t.Fatalf("review's watermark moved to %d while it was suspended whole", seen)
 	}
-	s, _ := NewSuspension("", "review", "")
+	s, _ := NewSuspension("", "review", "*", false)
 	tbl.Lift(s.ID())
 	if !eng.firstSight("review", store.Rev()) {
 		t.Fatal("the head is not a first sight for review once lifted: its replay would be refused")
@@ -210,7 +306,7 @@ func TestOnlyTheSystemSuspendsTheSystemsRule(t *testing.T) {
 	if held := eng.holding("review", pr2); len(held) != 0 {
 		t.Fatalf("bob's suspension holds the system's rule: %v", held)
 	}
-	s, _ := NewSuspension("*", "", "demo.pr.2")
+	s, _ := NewSuspension("*", "", "demo.pr.2", false)
 	s.Held = map[string]Holder{"user:bob@example.com": {Why: "mine"}, "system:throttle": {Why: "the system's"}}
 	tbl.Put(s)
 	if held := eng.holding("review", pr2); len(held) != 1 {
@@ -333,7 +429,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 	pick := sp.wait(t, "pick@demo.pr.2")
 
 	for _, subj := range []string{"demo.pr.1", "demo.pr.2"} {
-		s, _ := NewSuspension("*", "", subj)
+		s, _ := NewSuspension("*", "", subj, false)
 		s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
 		tbl.Put(s)
 	}
@@ -356,7 +452,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 		t.Fatalf("a hook under a suspension posed a selection: %+v", p)
 	}
 
-	s, _ := NewSuspension("*", "", "demo.pr.1")
+	s, _ := NewSuspension("*", "", "demo.pr.1", false)
 	tbl.Lift(s.ID())
 	sp.wait(t, "review.onDone@demo.pr.1")
 	if n := eng.Parked(); n != 1 {
@@ -414,7 +510,7 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	review := sp.wait(t, "review@demo.pr.1")
-	s, _ := NewSuspension("*", "", "demo.pr.1")
+	s, _ := NewSuspension("*", "", "demo.pr.1", false)
 	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
 	tbl.Put(s)
 	review.finish()
@@ -481,7 +577,7 @@ func TestAPoseIsWithdrawnByEitherAndAskedAgainAfterOne(t *testing.T) {
 	}
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	asked := waitPending(1)[0]
-	s, _ := NewSuspension("*", "", "demo.pr.1")
+	s, _ := NewSuspension("*", "", "demo.pr.1", false)
 	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
 
 	tbl.Put(s)
@@ -510,7 +606,7 @@ func TestAPoseIsWithdrawnByEitherAndAskedAgainAfterOne(t *testing.T) {
 // meanwhile is not seen.
 func TestALiftActsOnTheWorldAsItStands(t *testing.T) {
 	store := entitytest.Store(t)
-	eng, tbl := suspending(t, store, "user:tester", [3]string{"", "review", ""}, [3]string{"", "start", ""})
+	eng, tbl := suspending(t, store, "user:tester", [3]string{"", "review", "*"}, [3]string{"", "start", "*"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.ObserveScoped(ctx)
@@ -541,7 +637,7 @@ func TestALiftActsOnTheWorldAsItStands(t *testing.T) {
 	stays(t, store, prRef("1"), "stage", "open")
 
 	for _, rule := range []string{"review", "start"} {
-		s, _ := NewSuspension("", rule, "")
+		s, _ := NewSuspension("", rule, "*", false)
 		tbl.Lift(s.ID())
 	}
 	waitStage(t, store, prRef("1"), "reviewed")

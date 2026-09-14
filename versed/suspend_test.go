@@ -111,7 +111,7 @@ func TestASuspensionIsOneRecordPerThingItCovers(t *testing.T) {
 func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 	srv, ts := startedServer(t)
 	const throttle = "system:throttle"
-	sus, err := trigger.NewSuspension("", "loop", "")
+	sus, err := trigger.NewSuspension("", "loop", "*", false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -217,7 +217,11 @@ func suspensionOf(w http.ResponseWriter, r *http.Request) (api.Suspend, trigger.
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return body, trigger.Suspension{}, false
 	}
-	sus, err := trigger.NewSuspension(body.Charter, body.Rule, body.Subject)
+	subject := body.Subject
+	if subject == "" {
+		subject = trigger.Every
+	}
+	sus, err := trigger.NewSuspension(body.Charter, body.Rule, subject, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return body, trigger.Suspension{}, false
