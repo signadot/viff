@@ -30,7 +30,7 @@ control route does a different wrong thing:
 | `POST /entity`, `DELETE /entity` | already refused for `verse.*` by `reservedWrite` (`server.go:1843`), scope or not — nothing to do |
 
 **The rule.** A control-plane write may name a scope only for an object that scope created. Named
-for an inherited object it is REFUSED with a message saying which plane owns it, so the caller
+for an inherited object it is REFUSED with a message saying which scope holds it, so the caller
 re-addresses (drops `--scope`, or names the scope's own object). Nothing passes through, nothing
 is copied. Symmetrically, baseline acting on a scope's object is refused with a pointer to the
 scope when the server can tell (taskd knows `Launch.Scope`), and not-found otherwise (baseline
@@ -63,7 +63,7 @@ No test covers scoped perms.
 **Ownership is decidable from what exists**, no new state: a rule by the engine that `Knows` it;
 a task or question by which store holds its record (the record is written into the spawning
 store and "the store it lands in already says which federation it belongs to", `task/vector.go:80`);
-a flow by which engine's live map holds handles about the subject. Packages are baseline's plane
+a flow by which engine's live map holds handles about the subject. Packages are baseline's
 (`restorePackages`), not scopes.
 
 ## Plan
@@ -74,7 +74,7 @@ a flow by which engine's live map holds handles about the subject. Packages are 
   World by copy; program by reference; a scope's engine holds only what it created; the refusal
   rule and its one-line rationale (the live thing and the record would otherwise part ways).
   Remove the tombstone claim; say a shadow is an install under the inherited name.
-- `docs/deployment-and-steering.md`, under "Where it is enforced": control is per plane —
+- `docs/deployment-and-steering.md`, under "Where it is enforced": control is per scope —
   a scoped control write reaches only what that scope created, and says so when it cannot.
 - `docs/task-control.md` / `docs/reference/tasks.md`: one sentence each where `--scope` on
   cancel/say/vector/answer could be read as "in the overlay".
@@ -82,16 +82,15 @@ a flow by which engine's live map holds handles about the subject. Packages are 
   in a scope is copy-on-write, governs the scope's writes layered on baseline's, never baseline's;
   why perms take the world's rule while gates take the program's (no live half to copy).
 
-### 2. One ownership answer on the server (`versed/plane.go`, new)
+### 2. One ownership answer on the server (`versed/owns.go`, new)
 
 ```go
-type plane int // planeNone, planeBaseline, planeScope
-// planeOf says which plane holds a program record relative to the request's scope:
-// baseline's store has it → baseline (packages included); else the scope's overlay has it → scope.
-func (s *Server) planeOf(scope string, ref entity.Ref) (plane, error)
-// notThisPlane writes the refusal: "<ref> is baseline's; scope me did not create it —
+// scopeOf says which scope holds a program record: "" for baseline (packages included),
+// the name of the overlay that has it otherwise; found is false when neither does.
+func (s *Server) scopeOf(ref entity.Ref, asked string) (scope string, found bool, err error)
+// inherited writes the refusal: "<ref> is baseline's; scope me did not create it —
 // act on it without --scope" / "<ref> is scope me's — say --scope me". Status 409.
-func notThisPlane(w, ref, have, want) 
+func inherited(w, ref, holder, asked string) 
 ```
 
 - An UNREADABLE record refuses the write (`unreadable(w, r, err)`), never falls through to
@@ -108,23 +107,23 @@ One `steer(w, r, verb, func(*trigger.Engine, trigger.Match) int)`:
 - no scope: sum the verb over `flowEngines("")`. `Affected` is already a task count, so a subject
   busy in baseline and a package sums correctly.
 - scope: the scope engine's own handles only. If it holds NONE for the subject and
-  `flowEngines("")` holds some → `notThisPlane` (409). A subject busy in both planes steers the
+  `flowEngines("")` holds some → `inherited` (409). A subject busy in both steers the
   scope's own and reports that count (that write is legitimately the scope's).
 - an unopened scope: no engine, `affected: 0` (never create an engine on a steer).
 
 ### 4. Task control by id — `taskControl` (`server.go:4501`)
 
-Before `SnapshotOf`/`attach`: `planeOf(scope, mirror.Ref(id))`; refuse on mismatch. For a
+Before `SnapshotOf`/`attach`: `scopeOf(mirror.Ref(id), scope)`; refuse on mismatch. For a
 local task, taskd can also say the launch scope — add `Daemon.ScopeOf(id) (string, bool)`
 (`task/taskd/daemon.go`, it already threads `l.Scope` to `onDrop`) so baseline refusing a
 scope's task can name the scope instead of 404.
 
 ### 5. Gates — `answerQuestion` (`server.go:2455`) and `escalateGate` (`:2399`)
 
-After the `by/choice` validation and before `entity.Check`: `planeOf(scope, mirror.QuestionRef(id))`;
+After the `by/choice` validation and before `entity.Check`: `scopeOf(mirror.QuestionRef(id), scope)`;
 refuse on mismatch. Fixes the split (delivery to baseline's awaiter + record in the overlay).
 `/tasks/{id}/resolve` goes through the same function, so it is covered. `settleByDeadline` and
-the docket's own settles run with the store of the question's plane already (`storeForScope`),
+the docket's own settles run with the store of the question's own scope already (`storeForScope`),
 untouched.
 
 ### 6. Charter removal in a scope — `deleteCharterItem`, `deleteCharterAt` (`charter.go`)
@@ -149,13 +148,13 @@ tombstone sentence). `versed/scopecharter_test.go:144` comment: state the shadow
   refuses checks as unread (`Unread`), the way baseline's does — never falls open.
 - `invalidate` and `apply` act on the attribution the view carries, so a scoped write repairs the
   scope's mirror and nobody else's.
-- Order in every control route: plane check (§2) first, then `entity.Check`: "not yours to
+- Order in every control route: ownership check (§2) first, then `entity.Check`: "not yours to
   address" precedes "not allowed".
 
 ### 7. Tests (`versed/`)
 
 - `flows_test.go`: give `idleHandle` per-verb counters. New
-  `TestFlowSteeringActsOnItsPlane`: package task → each verb reaches 1 and the package's handle
+  `TestFlowSteeringActsOnItsOwn`: package task → each verb reaches 1 and the package's handle
   counts it; baseline adopts the same subject → 2; `?scope=me` with only baseline busy → 409,
   no handle touched; the scope's own adopted task → 1 and only it counted; `?scope=nobody` → 0.
 - new `scopedcontrol_test.go` (helpers exist: `spawnScoped`, `questionsIn`, `firingQuestions`
@@ -179,7 +178,7 @@ tombstone sentence). `versed/scopecharter_test.go:144` comment: state the shadow
 ### 8. Commits, by path, in this order (each `Tier: change`)
 
 1. docs: the model (§1).
-2. plane helper + flow steering + flows test (§2, §3, §7a). Links h7wwzxtn.
+2. ownership helper + flow steering + flows test (§2, §3, §7a). Links h7wwzxtn.
 3. task control + gates + tests (§4, §5, §7b).
 4. charter removal refusal + CLI message + test comment (§6, §7b last case). Carries a `Notice:`
    line: `--scope` control writes on inherited objects now refuse instead of acting on baseline.
@@ -202,11 +201,11 @@ Then `git issue` link the commit and close h7wwzxtn with a note pointing at the 
 
 ## Decisions taken (say otherwise)
 
-- Refusal status is **409 Conflict** with a text body, not 403: it is "wrong plane", not
+- Refusal status is **409 Conflict** with a text body, not 403: it is "not this scope's", not
   "not allowed". `refused()` stays for perms.
 - Baseline acting on a scope's object: refused with a pointer when taskd knows the launch scope,
   not-found otherwise. Not silently done.
-- A subject busy in both planes under `--scope me` steers the scope's own only, no refusal.
+- A subject busy in both baseline and the scope under `--scope me` steers the scope's own only, no refusal.
 - Out of scope, noted not fixed: a hand-spawned task (`POST /tasks`) is tracked in no engine's
-  live map, so it is not a flow on any plane; resolver verdict/position routes; `deleteScope`
+  live map, so it is not a flow in any scope; resolver verdict/position routes; `deleteScope`
   does not cancel the scope's live tasks; the `flow show` residual from vp67q7ha.
