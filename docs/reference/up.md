@@ -169,9 +169,9 @@ login — and `--as` overrides it on the commands that take one, which is also w
 no longer insist on the flag when the config names a user. Env: `VERSE_USER`. `agent` names an
 operator agent instead — a harness driving verse through the api, which is a principal of its
 own kind rather than the person whose terminal it runs in; when set, every request is
-`agent:<name>` and `--as` still names somebody else. Env: `systemCharter` is server-side: the path of a charter file `verse up` installs
-at start as `system:charter`, the rules the deployment itself stands behind, since a request cannot
-be made as the system. Env: `VERSE_SYSTEM_CHARTER`. `perms: {default: {…}}` is server-side too:
+`agent:<name>` and `--as` still names somebody else. Env: `VERSE_AGENT`. `systemCharter` is
+server-side: the path of a charter file `verse up` installs at start as `system:charter`, the rules
+the deployment itself stands behind, since a request cannot be made as the system. Env: `VERSE_SYSTEM_CHARTER`. `perms: {default: {…}}` is server-side too:
 the root's default, what a node created with no default above it holds out — `{read: ["*"]}`
 when unset, and `{}` for a verse where what anybody creates is theirs alone. See
 [perms.md](../perms.md). The `llm`
