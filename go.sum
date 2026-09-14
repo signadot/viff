@@ -84,8 +84,8 @@ github.com/segmentio/encoding v0.3.4 h1:WM4IBnxH8B9TakiM2QD5LyNl9JSndh88QbHqVC+P
 github.com/segmentio/encoding v0.3.4/go.mod h1:n0JeuIqEQrQoPDGsjo8UNd1iA0U8d8+oHAA4E3G3OxM=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/signadot/tony-format/go-tony v0.0.218 h1:gMJyGIH57aqCfCg/sODSd4+ZTUIB/4ydGhLA622zFO4=
-github.com/signadot/tony-format/go-tony v0.0.218/go.mod h1:Pkb3zoFAkyUGDOacFLbw6PRTCuALLjTZUYFSxB2P1y8=
+github.com/signadot/tony-format/go-tony v0.0.219 h1:Oobk4lYyosL+1B0x4jX2OkeNeAfE2LgYIws4EE25GFI=
+github.com/signadot/tony-format/go-tony v0.0.219/go.mod h1:Pkb3zoFAkyUGDOacFLbw6PRTCuALLjTZUYFSxB2P1y8=
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/skeema/knownhosts v1.3.1 h1:X2osQ+RAjK76shCbvhHHHVl3ZlgDm8apHEHFqRjnBY8=
 github.com/skeema/knownhosts v1.3.1/go.mod h1:r7KTdC8l4uxWRyK2TpQZ/1o5HaSzh06ePQNxPwTcfiY=
