@@ -50,6 +50,15 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	if c.Rev <= 0 {
 		return // a synthesized commit with no revision cannot be asked "and as of when?"
 	}
+	// A RULE SUSPENDED WHOLE is skipped BEFORE its watermark moves, so the replay a lift opens
+	// at the head is admitted whether or not the lift wrote a commit. Placed after, the skip
+	// would burn the revision, and a re-arm whose seed lands at that same head — a scope's rules
+	// armed before its table loaded, a rule installed during a restore — would be refused and
+	// never evaluate its backlog. A suspension of some subjects is asked per subject below.
+	if held := e.holdingRule(t.Name); len(held) > 0 {
+		e.tracef("%s: suspended (%s); not evaluated at rev %d", t.Name, strings.Join(held, ", "), c.Rev)
+		return
+	}
 	// One verdict per (trigger, commit). A trigger reading several subtrees is delivered the
 	// same commit once per subtree it watches, and the rule is a function of the commit — so
 	// without this it would reach the same verdict twice and fire twice for it.

@@ -90,14 +90,14 @@ func TestAWriteOutsideTheConfinementIsRefusedAtTheWrite(t *testing.T) {
 	// The direct proof, at the level the guarantee lives: whatever a template resolves to, the
 	// write goes through here.
 	inside := entity.RefAt("drift", "finding", "x")
-	if err := eng.patchEntity("t", 0, inside, entity.Obj{"ok": true}.Payload()); err != nil {
+	if err := eng.patchEntity("t", 0, inside, inside, entity.Obj{"ok": true}.Payload()); err != nil {
 		t.Fatalf("a write inside the confinement was refused: %v", err)
 	}
 	if _, ok, _ := store.Get(inside); !ok {
 		t.Fatal("the write inside did not land")
 	}
 	outside := entity.RefAt("other", "thing", "x")
-	err := eng.patchEntity("t", 0, outside, entity.Obj{"ok": true}.Payload())
+	err := eng.patchEntity("t", 0, outside, outside, entity.Obj{"ok": true}.Payload())
 	if err == nil {
 		t.Fatal("a write outside the confinement landed")
 	}

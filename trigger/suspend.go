@@ -378,3 +378,120 @@ func (t *Suspensions) Remove(id string) {
 	delete(t.entries, id)
 	t.mu.Unlock()
 }
+
+// notLoaded is what holds everything while a table has not loaded, named as a suspension would be.
+const notLoaded = "the suspensions have not loaded"
+
+// covering is the suspensions naming (at, rule, subject) — or, for whole, naming the rule about
+// every subject — and whether the table has loaded. Copied out under the read lock, so a caller
+// asking who may hold them never holds the table while it asks.
+func (t *Suspensions) covering(at []string, rule string, subj entity.Ref, whole bool) (bool, []Suspension) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if !t.loaded {
+		return false, nil
+	}
+	var out []Suspension
+	for _, s := range t.entries {
+		if !s.CoversCharter(at, rule) {
+			continue
+		}
+		if whole && !s.EverySubject() {
+			continue
+		}
+		if !whole && !s.CoversSubject(subj) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return true, out
+}
+
+// holding is the ids of the suspensions holding the work a rule does about a subject in this
+// engine now — rule "" for work no rule started, a zero subject for work about none. Empty is
+// "not suspended". Asked wherever work would make progress; never in subject selection, which is
+// what decides a question has gone moot, so a suspension there would moot work rather than hold it.
+func (e *Engine) holding(rule string, subj entity.Ref) []string {
+	return e.held(rule, subj, false)
+}
+
+// holdingRule is holding for the rule about every subject: what the top of evaluate asks, before
+// the rule's watermark moves, since no subject has been selected there to ask about.
+func (e *Engine) holdingRule(rule string) []string {
+	return e.held(rule, entity.Ref{}, true)
+}
+
+func (e *Engine) held(rule string, subj entity.Ref, whole bool) []string {
+	if e.susp == nil {
+		return nil
+	}
+	loaded, cands := e.susp.covering(e.atSegs(), rule, subj, whole)
+	if !loaded {
+		return []string{notLoaded}
+	}
+	var out []string
+	for _, s := range cands {
+		for _, who := range s.Holders() {
+			if e.mayHold(who, rule, subj) {
+				out = append(out, s.ID())
+				break
+			}
+		}
+	}
+	return out
+}
+
+// mayHold reports whether a holder's suspension covers this work, asked NOW rather than when the
+// suspension was written, so a wildcard's reach does not grow as owners appear beneath it: from
+// the charter side, control over the charter; from the subject side, control at the subject. A
+// rule the system installed is the system's to suspend, from either side. A check the mirror
+// cannot answer covers, as a perms check that cannot be answered refuses: the work stays held.
+func (e *Engine) mayHold(holder, rule string, subj entity.Ref) bool {
+	if entity.IsSystem(holder) {
+		return true
+	}
+	if rule != "" && entity.IsSystem(e.InstalledBy(rule)) {
+		return false
+	}
+	if entity.PolicyOf(e.store) == nil {
+		return true // a store that attributes nothing has nobody to refuse
+	}
+	holds := func(ref entity.Ref) bool {
+		ok, err := entity.Holds(e.store, holder, entity.Control, ref)
+		return err != nil || ok
+	}
+	if rule != "" && holds(e.charterPlace(rule)) {
+		return true
+	}
+	return subj != (entity.Ref{}) && holds(subj)
+}
+
+// charterPlace is the node control over a rule's charter is held at: a package's address, or a
+// baseline or scope rule's own record.
+func (e *Engine) charterPlace(rule string) entity.Ref {
+	if e.confine.confined() {
+		return entity.RefAt(e.confine.Path()...)
+	}
+	return CharterRef(rule)
+}
+
+// atSegs is this engine's charter address as segments, none for an unaddressed charter.
+func (e *Engine) atSegs() []string {
+	if !e.confine.confined() {
+		return nil
+	}
+	return e.confine.Path()
+}
+
+// recordsCompletion reports whether a chain is a completion hook's or a sequence step's: work
+// that records what a task did, whose writes land under a suspension while its launches park.
+func recordsCompletion(chain string) bool {
+	segs := strings.FieldsFunc(chain, func(r rune) bool { return r == '.' || r == '[' || r == ']' })
+	for _, seg := range segs[min(1, len(segs)):] { // past the rule's own name
+		switch seg {
+		case "onDone", "onFailed", "onCancelled", "onOrphaned", seqField:
+			return true
+		}
+	}
+	return false
+}

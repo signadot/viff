@@ -799,7 +799,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		// no engine-caused cause — a completion hook, whose event comes off a task finishing
 		// (taskEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
 		// the chain starts again. See causal.go.
-		if err := e.patchEntity(chain, oc.parent, subj, patch); err != nil {
+		if err := e.patchEntity(chain, oc.parent, subj, subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a task started about
 			// a state the trigger FAILED to establish is worse than no task at all, and it
 			// would be the harder failure to read afterwards.
@@ -852,7 +852,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 					return nil, err
 				}
-				if err := e.patchEntity(chain, oc.parent, ref, payload); err != nil {
+				if err := e.patchEntity(chain, oc.parent, subj, ref, payload); err != nil {
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 					return nil, err
 				}
@@ -902,7 +902,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		// level. Losing it would not loosen the throttle's bound — a chain never returns to a
 		// stratum it has left, so a per-segment count still trips — but it would truncate the
 		// report, which names the rules that looped by walking back parents (causal.go).
-		if err := e.patchEntity(chain, oc.parent, ref, payload); err != nil {
+		if err := e.patchEntity(chain, oc.parent, subj, ref, payload); err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err
 		}

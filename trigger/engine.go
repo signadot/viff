@@ -762,6 +762,12 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
 		// either way. See occasion.
 		oc := occasion{commit: c, parent: parent, snap: &snapCache{}, reader: e.reader(t.Name)}
+		// Before the throttle, which counts the trip and marks the chain reported: a firing a
+		// suspension holds is not one the throttle should have seen.
+		if held := e.holding(t.Name, subj); len(held) > 0 {
+			e.tracef("%s: %s is suspended (%s); not firing", t.Name, subj, strings.Join(held, ", "))
+			continue
+		}
 		if e.throttled(t, subj, parent) {
 			if e.tripPace <= 0 {
 				continue // no pace configured: refuse outright, and the chain ends here
@@ -798,6 +804,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// exactly what has not happened yet. Neither check changes what RUNS — spawnHooked already
 	// refuses a second task under a live id — but together they stop a firing for work
 	// already under way from posing a question and spending budget before being told so.
+	// And again here, because a paced firing waits out the throttle before it arrives.
+	if held := e.holding(t.Name, subj); len(held) > 0 {
+		e.tracef("%s: %s is suspended (%s); not firing", t.Name, subj, strings.Join(held, ", "))
+		return
+	}
 	if e.working(t, subj) {
 		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
 		return
@@ -1231,6 +1242,13 @@ func (e *Engine) Spawn(id string, spec launch.Spec) task.Handle {
 func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) task.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
+		return nil
+	}
+	// THE BACKSTOP every spawn passes through: a provider selection resumed at restart reaches
+	// here with no firing and no hook above it, and a suspended subject starts nothing.
+	subj, _ := entity.ParseAddr(spec.Subject)
+	if held := e.holding(mirror.TriggerOf(chain), subj); len(held) > 0 {
+		e.tracef("spawn %s: suspended (%s); not spawning", id, strings.Join(held, ", "))
 		return nil
 	}
 	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
@@ -1779,7 +1797,18 @@ func proceedWord(ok bool) string {
 // of the commit that woke it — 0 when nothing this engine wrote did, which is how a chain
 // begins. Every other write the engine makes goes through e.store and stays outside every
 // chain; see modifyOn for why that is the right cut rather than an omission.
-func (e *Engine) patchEntity(chain string, parent int64, ref entity.Ref, patch entity.Payload) error {
+func (e *Engine) patchEntity(chain string, parent int64, subj, ref entity.Ref, patch entity.Payload) error {
+	// THE OTHER BACKSTOP: every charter-authored write passes here, so a firing's write about a
+	// suspended subject is refused even when the firing began before the suspension landed. A
+	// completion hook's writes and a sequence step's are not: they record what a task did, and
+	// recording is not progress — what they wake is itself held.
+	if !recordsCompletion(chain) {
+		if held := e.holding(mirror.TriggerOf(chain), subj); len(held) > 0 {
+			err := fmt.Errorf("%s is suspended (%s)", subj, strings.Join(held, ", "))
+			e.tracef("%s: write to %s refused: %v", chain, ref, err)
+			return err
+		}
+	}
 	// THE CONFINEMENT, at the moment of the write. A static check at install cannot be the
 	// whole answer while a derive's address can be templated, and this is the one place every
 	// charter-authored write passes through — which is what lets it be a promise rather than a

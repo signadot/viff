@@ -289,7 +289,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // place for a chain to end.
 func (e *Engine) publishSeq(chain string, parent int64, subj entity.Ref, fields entity.Obj) {
 	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
-	if err := e.patchEntity(chain, parent, subj, patch); err != nil {
+	if err := e.patchEntity(chain, parent, subj, subj, patch); err != nil {
 		e.tracef("seq %s: publishing progress on %s failed: %v", chain, subj, err)
 	}
 }

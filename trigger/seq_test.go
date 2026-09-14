@@ -279,7 +279,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 	if eng.seqConcluded("review", ref, shape) {
 		t.Error("an untouched subject reads as already done")
 	}
-	if err := eng.patchEntity("review", 0, ref, entity.Obj{
+	if err := eng.patchEntity("review", 0, ref, ref, entity.Obj{
 		VerseRoot: entity.Obj{CharterKey: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}}},
 	}.Payload()); err != nil {
 		t.Fatalf("seed: %v", err)
