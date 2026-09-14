@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -73,12 +76,97 @@ func (s *Server) flowHolders(asked string, m trigger.Match) []string {
 	return out
 }
 
-// inherited refuses a control write addressed, from asked, at work another scope holds. 409:
+// scopeOf says which scope holds a program record — a task's, a question's: "" for baseline,
+// else the name of the scope whose overlay has it — and whether any does. Asked from a scope,
+// that scope's overlay is looked in after baseline; from anywhere, the open scopes are, so a
+// refusal from baseline can say WHICH scope's the thing is rather than "no such".
+//
+// The record decides because the record is where a scope's creation lands: a task's instance
+// and its questions are written into the store that spawned it, and the store they land in is
+// what says whose they are (task.GateQuestion.Scope). Baseline first, since a scoped read sees
+// baseline's records through the overlay and would claim them.
+//
+// A read that did not happen is an error, not an absence: the caller refuses the write rather
+// than concluding the thing is nobody's.
+func (s *Server) scopeOf(ref entity.Ref, asked string) (holder string, found bool, err error) {
+	if _, ok, err := s.Store.Get(ref); err != nil {
+		return "", false, err
+	} else if ok {
+		return "", true, nil
+	}
+	if asked != "" {
+		if _, ok, err := s.Store.Scope(asked).Get(ref); err != nil {
+			return "", false, err
+		} else if ok {
+			return asked, true, nil
+		}
+	}
+	for name := range s.scopeEngines() {
+		if name == asked {
+			continue
+		}
+		if _, ok, err := s.Store.Scope(name).Get(ref); err != nil {
+			return "", false, err
+		} else if ok {
+			return name, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// taskScope is scopeOf for a task by id, asking the runtime as well: a task hosted here knows
+// the scope it was launched in (task.Launch.Scope) whether or not its scope has an engine open
+// or its record has landed yet.
+func (s *Server) taskScope(id, asked string) (holder string, found bool, err error) {
+	if holder, found, err = s.scopeOf(mirror.Ref(id), asked); found || err != nil {
+		return holder, found, err
+	}
+	if sc, ok := s.Taskd.ScopeOf(id); ok {
+		return sc, true, nil
+	}
+	return "", false, nil
+}
+
+// questionScope is scopeOf for a question by id. One the registry posted a moment ago may
+// have no record yet, and then the registry knows: a firing's gate carries its scope on the
+// question, and a task's gate is its task's.
+func (s *Server) questionScope(id, asked string) (holder string, found bool, err error) {
+	if holder, found, err = s.scopeOf(mirror.QuestionRef(id), asked); found || err != nil {
+		return holder, found, err
+	}
+	for _, p := range s.Reg.Pending() {
+		if p.Question.ID == id {
+			return p.Question.Scope, true, nil
+		}
+	}
+	if i := strings.Index(id, task.GateSep); i >= 0 {
+		if sc, ok := s.Taskd.ScopeOf(id[:i]); ok {
+			return sc, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// ownHere is the check every control write makes first: that what it addresses is the
+// request's scope's own. Anything else is refused (inherited), having written the response;
+// a read that failed is refused as unreadable. True means go on.
+func (s *Server) ownHere(w http.ResponseWriter, r *http.Request, what string, holder string, found bool, err error) bool {
+	if unreadable(w, r, err) {
+		return false
+	}
+	asked := r.URL.Query().Get("scope")
+	if found && holder != asked {
+		inherited(w, r, what, asked, []string{holder})
+		return false
+	}
+	return true
+}
+
+// inherited refuses a control write addressed, from asked, at what another scope holds. 409:
 // the request is well formed and permitted, and conflicts with where the thing is.
 //
 // The message says what to do instead, since the fix is always to re-address: drop `--scope`
-// for baseline's, say the scope's name for a scope's. "steer" is the verb family, and the
-// refusal is the same sentence for every verb in it.
+// for baseline's, say the scope's name for a scope's. One sentence for every control verb.
 func inherited(w http.ResponseWriter, r *http.Request, what, asked string, holders []string) {
 	names := make([]string, 0, len(holders))
 	for _, h := range holders {
@@ -101,14 +189,14 @@ func inherited(w http.ResponseWriter, r *http.Request, what, asked string, holde
 	case asked == "":
 		redo = "say --scope for the one you mean"
 	case len(holders) == 1 && holders[0] == "":
-		redo = "steer it without --scope"
+		redo = "act on it without --scope"
 	default:
-		redo = "address it from the scope that holds it"
+		redo = "act on it from the scope that holds it"
 	}
 	from := "baseline"
 	if asked != "" {
 		from = "scope " + asked
 	}
 	codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
-		"%s is %s; %s started none of it — %s", what, whose, from, redo))
+		"%s is %s; %s did not create it — %s", what, whose, from, redo))
 }

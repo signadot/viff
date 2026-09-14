@@ -2406,6 +2406,13 @@ func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id and by are required: an escalation names the question and who handed it on", http.StatusBadRequest)
 		return
 	}
+	// The scope's own, first, as an answer is (answerQuestion): a handover written from a scope
+	// that did not pose the question would re-own the overlay's copy of a record baseline's
+	// docket keeps working.
+	holder, found, err := s.questionScope(body.ID, r.URL.Query().Get("scope"))
+	if !s.ownHere(w, r, "question "+body.ID, holder, found, err) {
+		return
+	}
 	store := s.scopedStore(r)
 	if refused(w, entity.Check(store, principalOf(r), entity.ReadWrite, mirror.QuestionRef(body.ID), "escalating it")) {
 		return
@@ -2472,6 +2479,15 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res := task.Choose(body.Choice, body.By)
 	res.Steer = body.Say
 
+	// THE SCOPE'S OWN, first. The awaiter is delivered to out-of-band and the record is written
+	// through `store` afterwards, and the two are in different scopes the moment a question is
+	// answered from a scope that did not pose it: delivered to baseline's awaiter, recorded as
+	// answered in the overlay, baseline's record still pending. A scope owns what it creates
+	// (owns.go), so that answer is refused naming whose the question is.
+	holder, found, err := s.questionScope(body.ID, r.URL.Query().Get("scope"))
+	if !s.ownHere(w, r, "question "+body.ID, holder, found, err) {
+		return
+	}
 	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID), "answering it")) {
 		return
 	}
@@ -4500,6 +4516,14 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 // to refuse.
 func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
 	id := r.PathValue("id")
+	// THE SCOPE'S OWN, first: the runtime below hosts baseline's tasks and every scope's, and
+	// found by id, a task is reached whatever scope asked. A scope owns what it creates
+	// (owns.go), so a control write addressed from the wrong scope is refused naming the right
+	// one, before anything is relayed and before whether the asker may control it is asked.
+	holder, found, err := s.taskScope(id, r.URL.Query().Get("scope"))
+	if !s.ownHere(w, r, "task "+id, holder, found, err) {
+		return
+	}
 	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id), "controlling it")) {
 		return
 	}

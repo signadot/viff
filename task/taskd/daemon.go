@@ -90,6 +90,10 @@ type hosted struct {
 	// occurrence is which run this is (see task.Launch.Occurrence), retained so the snapshot
 	// can say so: the process, and not only the entity, knows which run it is.
 	occurrence int64
+	// scope is the federation the task was launched in (task.Launch.Scope), retained so the
+	// runtime can say whose a task is: one runtime hosts baseline's and every scope's, and a
+	// control write from the wrong scope is refused by asking, not by reaching the task.
+	scope string
 
 	mu     sync.Mutex
 	status task.Status
@@ -209,7 +213,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	tk.SetRetain(l.Retain)    // how much of its read plane a resuming reader can still see
 	tk.SetBoundTo(l.Resolver) // who owns the questions it raises
 	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver,
-		occurrence: l.Occurrence, status: task.Running}
+		occurrence: l.Occurrence, scope: l.Scope, status: task.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
@@ -364,6 +368,18 @@ func (d *Daemon) Snapshots() []task.Instance {
 }
 
 // SnapshotOf returns one hosted task's snapshot, or false if this daemon doesn't host it.
+// ScopeOf is the scope a hosted task was launched in — "" for baseline — and whether id is
+// hosted here at all.
+func (d *Daemon) ScopeOf(id string) (string, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	h := d.tasks[id]
+	if h == nil {
+		return "", false
+	}
+	return h.scope, true
+}
+
 func (d *Daemon) SnapshotOf(id string) (task.Instance, bool) {
 	d.mu.Lock()
 	h := d.tasks[id]

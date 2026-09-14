@@ -145,7 +145,7 @@ inherited object it is **refused**, and the refusal names the scope that holds i
 the unnamed one:
 
 ```
-the live work about demo.pr.1 is baseline's; scope me started none of it — steer it without --scope
+the live work about demo.pr.1 is baseline's; scope me did not create it — act on it without --scope
 ```
 
 Refused rather than passed through or copied, because the two halves would part ways: the act
