@@ -14,9 +14,10 @@ rest of verse. It rests on a reading of the engine at `ead39d3d`, on how eleven 
 model the same thing ([prior art](#prior-art)), and on two adversarial passes against the code that
 broke the drafts before this one ([how this was checked](#how-this-was-checked)). Those drafts each
 exempted work already running, and the exemption was where they kept breaking; this one covers the
-work about a subject in every form, the way a standing resolver does. It takes the scope model of
-`docs/working/scope-owns-plan.md` as given: a suspension is a control write, and belongs to the
-scope it was made in ([below](#a-suspension-belongs-to-the-scope-it-was-made-in)).
+work about a subject in every form, the way a standing resolver does. It takes verse's scope model
+as given ([what a scope owns](../reference/connect.md#what-a-scope-owns)): a suspension is a control
+write, and belongs to the scope it was made in
+([below](#a-suspension-belongs-to-the-scope-it-was-made-in)).
 
 ## The design in one paragraph
 
@@ -125,9 +126,9 @@ move on unwatched.
 **A running task** is held at its next boundary by the pause every runtime already implements —
 local, remote and brokered alike (`task.Handle.Pause`). The effect is derived from the record, not
 stored on the task: a task re-attached after a restart is held the moment it is seen, because the
-table covers it. Tasks are found through the plan's `flowEngines` for the scope; a task spawned by
-hand is in no engine's live map today, which the plan notes and leaves, so holding it needs it found
-by its record's `flow` ([what it costs](#what-it-costs-to-build)).
+table covers it. Tasks are found through `flowEngines` for the scope (`versed/owns.go:34`); a task
+spawned by hand is in no engine's live map today, which the scope-owns work noted and left, so
+holding it needs it found by its record's `flow` ([what it costs](#what-it-costs-to-build)).
 
 **A hook** is where a charter records what a task did, so holding it is only safe because the rule
 the hook would feed is suspended too: nothing about the subject re-fires while the hook waits, and
@@ -177,12 +178,13 @@ replays because it is a log whose every record must be processed, which a charte
 
 ### A suspension belongs to the scope it was made in
 
-`docs/working/scope-owns-plan.md` (for git-issue `h7wwzxtnh12ksc4yh5n0`) settles what a scope owns,
-and a suspension takes its model whole. A scope's **world half** is copy-on-write; its **program
-half** — rules, tasks, gates, flows, the things with a live half that cannot be copied — it reads by
-reference, and a control write may name a scope only for work that scope created. Named for
-inherited work it is refused, 409, saying which scope holds it; baseline acting on a scope's work is
-refused the same way. Perms take the world's rule instead, because a grant has no live half.
+[What a scope owns](../reference/connect.md#what-a-scope-owns), landed for git-issue
+`h7wwzxtnh12ksc4yh5n0` (`docs/working/scope-owns-plan.md`), settles it, and a suspension takes the
+model whole. A scope's **world half** is copy-on-write; its **program half** — rules, tasks, gates,
+flows, the things with a live half that cannot be copied — it reads by reference, and a control
+write may name a scope only for work that scope created. Named for inherited work it is refused,
+409, saying which scope holds it; baseline acting on a scope's work is refused the same way. Perms
+take the world's rule instead, because a grant has no live half.
 
 A suspension holds live things, so it is a control write on the program half:
 
@@ -190,16 +192,17 @@ A suspension holds live things, so it is a control write on the program half:
   installed, the tasks and questions they spawned, and the tasks spawned in that scope. Made
   without, it covers baseline's and every package's, since packages are baseline's. A baseline
   suspension does not reach into a scope, and a scope's does not reach baseline; naming another
-  scope's charter is refused 409 before `control` is asked, which is the order the plan fixes for
-  every control route;
-- **its coverage is decided the way the plan decides ownership**, with no logic of its own: a rule
-  by the engine that `Knows` it, a task or question by which store holds its record (`scopeOf`), a
-  flow by the engines of the scope (`flowEngines`);
+  scope's charter is refused 409 before `control` is asked, which is the order every control route
+  now keeps, for every control route;
+- **its coverage is decided the way ownership already is** (`versed/owns.go`), with no logic of its
+  own: a rule by the engine that `Knows` it, a task or question by which store holds its record
+  (`scopeOf`), a flow by the engines of the scope (`flowEngines`);
 - **its record is stored in its scope and stamped with it**, as a rule record is, and restored by
   the stamp the way `ownRecord` restores a scope's rules (`trigger/charter.go:126`);
 - **its table is its scope's**: baseline's loads first at startup; a scope's loads when the scope's
-  engine opens, beside `restoreScopeCharter` and the scope's perms mirror (the plan's §6b), under
-  the same `sync.Once`, and goes with the scope in `deleteScope`;
+  engine opens, beside `restoreScopeCharter` and the scope's own perms mirror (the attribution's
+  `children`, `entity/attribution.go:95`), under the same `sync.Once`, and goes with the scope in
+  `deleteScope`;
 - **its authority is read from its scope's mirror**: a scope's suspension against the scope's
   layered mirror, baseline's grants and the scope's own; baseline's against baseline's.
 
@@ -210,7 +213,7 @@ Tonight's ship is the evidence: for minutes after the wipe the store answered pa
 deadlines under the sources' first pass, and the drift charter's claim missed the head moving in
 that window. So a suspension does not take effect by being observed.
 
-There is **one table per scope**, as the plan keeps one perms mirror per scope, and **only the route
+There is **one table per scope**, as there is now one perms mirror per scope, and **only the route
 writes it** — under one lock, together with the store write, so the table and the store change in
 the same order. There is no watch to race the route, so no revision ordering and no tombstones are
 needed. An automatic suspension is made by calling the same function in the process, not by a rule
@@ -255,8 +258,8 @@ anything beneath `gitlab` — everyone holds `control` at a world node with no o
 every charter about her repositories is suspended by somebody she never consented to. Checked at
 application time, bob's holder no longer covers alice's subjects the moment she owns them; the
 record stands, and the listing says it covers less. The walk costs no read: the scope's mirror is in
-memory once loaded, and the routes refuse until it is (`attribution.go:894`; per scope, the plan's
-§6b).
+memory once loaded, and the routes refuse until it is (`attribution.go:894`, and per scope its
+child's).
 
 **System rules are marked by how they were installed, not by perms.** A rule resolves to
 `system:default` whenever its record has no owner record (`attribution.go:1096`), which includes a
@@ -379,9 +382,9 @@ out.
   Kubernetes stops a paused Deployment's progress deadline; doing the same here is an open question
   below.
 - **An `on` edge during a suspension**, for a firing it had not started.
-- **A scope deleted while one of its suspensions holds work.** The plan leaves `deleteScope` not
-  cancelling a scope's live tasks; a suspension removed with its scope has to release or cancel what
-  it held, and follows whatever `deleteScope` becomes.
+- **A scope deleted while one of its suspensions holds work.** `deleteScope` stops a scope's engine
+  but does not cancel its live tasks; a suspension removed with its scope has to release or cancel
+  what it held, and follows whatever `deleteScope` becomes.
 - **A layered charter suspended one level at a time.** A suspended lower rule stops deriving, and
   rules about the rows it derived act on its last ones. Suspending the package is the whole answer.
 
@@ -393,26 +396,22 @@ out.
 - **Firings.** One predicate with the per-holder authority check at three call sites; a waiting
   firing whose question is withdrawn keeps waiting and re-poses on resume; `reArm(rule)`, which is
   `stopWatchers` and `armTriggerSubtree` together.
-- **Tasks.** Reaching every engine's tasks, and knowing which scope holds one, is the scope-owns
-  plan's `flowEngines` and `scopeOf` (§2–§4), built first. What a suspension adds: a task record
-  carries the charter address it was spawned under, which it does not today (`flow`, `trigger` and
-  `chain` are there, the package is not); and a task spawned by hand, which is in no engine's live
-  map, is found by its record's `flow`.
+- **Tasks.** Reaching every engine's tasks, and knowing which scope holds one, is already there:
+  `flowEngines` and `scopeOf` (`versed/owns.go`). What a suspension adds: a task record carries the
+  charter address it was spawned under, which it does not today (`flow`, `trigger` and `chain` are
+  there, the package is not); and a task spawned by hand, which is in no engine's live map, is found
+  by its record's `flow`.
 - **Hooks and `seq` steps.** Held in the engine, and marked on the task record so a restart during a
   suspension finds them — `flowTask.chain` is already "what a reader (or, later, a resume) can
   navigate back to the action that owns it". This is the largest piece, and it closes an existing
   gap: today a hook due while verse restarts is lost too.
 - **Questions and deadlines.** Withdraw on suspend with ballots kept, re-arm on lift, each through
-  the store of the question's own scope (the plan's §5); fix `clearPriorAnswer` first ([found along
-  the way](#found-along-the-way)).
+  the store of the question's own scope, as answering one already is; fix `clearPriorAnswer` first
+  ([found along the way](#found-along-the-way)).
 - **Resume.** The five-step order, under the table's lock.
 - **Surfaces and docs.** The CLI pair; census, status and `flow show` fields; a section of the
-  trigger model beside flows, the perms table, the CLI reference, and a line in the plan's "What a
-  scope owns" section of `docs/reference/connect.md`.
-
-**Order.** The scope-owns plan's commits 1–4 first (the model, the ownership helper and flow
-steering, task control and gates, charter removal), then its §6b (a perms mirror per scope), which a
-scope's suspension authorises against. Baseline suspensions need only 1–3.
+  trigger model beside flows, the perms table, the CLI reference, and a line in "What a scope owns"
+  in `docs/reference/connect.md`.
 
 ## What adopting it does to the rest of verse
 
@@ -443,10 +442,9 @@ covered. On a verse with many rules over busy slices that is a restart's worth o
 an operator chose; it must never run automatically in a loop.
 
 **6. It adds no ownership logic of its own.** Which rules, tasks and questions a suspension may
-touch is the scope-owns plan's answer, reached through the same `scopeOf` and `flowEngines`, refused
-as not this scope's with the same 409. A later change to what a scope owns changes what a suspension
-covers with it, and needs no second edit; the cost is that a suspension cannot be built before that
-plan.
+touch is the answer every control route already gets, through the same `scopeOf` and `flowEngines`,
+refused as not this scope's by the same `inherited` refusal (`versed/owns.go:214`). A later change
+to what a scope owns changes what a suspension covers with it, and needs no second edit.
 
 **7. `control` gets a consistent use.** Suspensions check it on every application. Today only task
 cancel, say and vector check it; the flow routes and the runtime's task pause and resume do not,
@@ -511,11 +509,9 @@ Read while working this out, and not fixed here. None was verified by a test exc
   (`versed/charter.go:771`), so after a failed re-apply the old rule may act as the system.
 - **A hook whose spawn needs a provider selection blocks its engine's reap loop** until somebody
   answers (`engine.go:1654`).
-- `verse flow pause|resume|cancel|say` act only on the baseline engine's tasks, though `verse flow`
-  lists every engine's — the scope-owns plan fixes this (§3).
-- The flow routes and the runtime's `/tasks/{id}/pause|resume` check no `control`; the plan orders
-  the ownership check before `control` on every control route, and the missing checks are still to
-  add.
+- The flow routes and the runtime's `/tasks/{id}/pause|resume` still check no `control`; only task
+  cancel, say and vector do (`versed/server.go:4543`). The ownership check now precedes `control`
+  wherever `control` is asked.
 - `reconcileTasks` calls `AdoptChain` before the charter is loaded, so a surviving task's hooks may
   never be re-attached at restart.
 - The cycle throttle's documented "aborts if its chain breaks" is wired only through the dormant
