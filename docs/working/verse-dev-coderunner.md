@@ -472,7 +472,7 @@ export VERSE_ADDR=localhost:19797
 several runs. Without a contract the loop's only definition of finished is the model declining to
 call another tool — which is also what a model narrating its next step looks like. Observed twice:
 a run ended mid-verification with a page of ✓ marks as its `result`, and `done` on the read plane.
-[docs-drift.answer](verse-dev/docs-drift.answer) says exactly this in its own header, which is
+`verse-dev/docs-drift.answer` says exactly this in its own header, which is
 what makes the omission worth recording rather than just fixing.
 
 **One file per task**, named where the command runs. That is not a shortcut, it is the fix for
@@ -570,7 +570,7 @@ doing the work here.
 
 ### Then the charter
 
-[verse-dev/docs-drift.tony](verse-dev/docs-drift.tony) fires on a commit landing on `main`, and
+`verse-dev/docs-drift.tony` fires on a commit landing on `main`, and
 is deliberately **not installed yet**. It conditions on nothing about trailers: the loop is the
 experiment, not a thing to prevent — and since the runaway guard correctly does not engage across
 a paced hop, the bound during the experiment is a person.

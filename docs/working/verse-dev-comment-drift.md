@@ -73,7 +73,7 @@ copy the fact into a slice it owns and latch there — which means `derive`, whi
 nothing says it: sources.md and trigger-model.md are each correct, and the consequence lives
 between them.
 
-The charter already in the tree is the evidence. [`verse-dev/docs-drift.tony`](verse-dev/docs-drift.tony)
+The charter already in the tree is the evidence. `verse-dev/docs-drift.tony`
 is a spawn on `git:commit` with no latch, marked `NOT installed yet on purpose`. It could not
 have been installed:
 

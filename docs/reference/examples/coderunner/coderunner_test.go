@@ -459,18 +459,12 @@ func TestDestinationsAreCheckedWhenTheConfigIsRead(t *testing.T) {
 	}
 }
 
-// The DEPLOYED config loads, and every check this runner makes at startup passes on it.
-//
-// It is a different file from the one beside this program and it is the one that matters: the
-// example is read, the deployment is run. Nothing checked it, and every check added here fails
-// the same way — the runner refuses to start rather than accepting work it cannot do, so a
-// config that does not load is a pod that crashloops and a drive that stops with no charter to
-// blame. Cheaper to find here.
-//
-// Read out of the ConfigMap by hand rather than through a yaml library, because the whole of
+// deployedConfig is the runner config the deployment ships, written out of its ConfigMap to a
+// file LoadConfig can read. By hand rather than through a yaml library, because the whole of
 // what is needed is "the block under this key, dedented", and adding a dependency to this
 // example to get it would be the larger change.
-func TestTheDeployedConfigLoads(t *testing.T) {
+func deployedConfig(t *testing.T) string {
+	t.Helper()
 	blob, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "deploy", "coderunner", "coderunner.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -496,6 +490,18 @@ func TestTheDeployedConfigLoads(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return path
+}
+
+// The DEPLOYED config loads, and every check this runner makes at startup passes on it.
+//
+// It is a different file from the one beside this program and it is the one that matters: the
+// example is read, the deployment is run. Nothing checked it, and every check added here fails
+// the same way — the runner refuses to start rather than accepting work it cannot do, so a
+// config that does not load is a pod that crashloops and a drive that stops with no charter to
+// blame. Cheaper to find here.
+func TestTheDeployedConfigLoads(t *testing.T) {
+	path := deployedConfig(t)
 	c, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("the deployed config does not load: %v", err)
@@ -893,12 +899,12 @@ func TestToolFloorIsCheckedAtStartup(t *testing.T) {
 	}
 }
 
-// The drive's own environment withholds the shell, which is the property that made this
-// runner safe to point at a real checkout again.
-func TestDriveEnvironmentOffersNoShell(t *testing.T) {
-	c, err := LoadConfig("../../../working/verse-dev/coderunner.tony")
+// The deployed runner's default environment withholds the shell, which is the property that
+// makes it safe to point at a real checkout.
+func TestTheDeployedEnvironmentOffersNoShell(t *testing.T) {
+	c, err := LoadConfig(deployedConfig(t))
 	if err != nil {
-		t.Skipf("drive config not readable from here: %v", err)
+		t.Fatal(err)
 	}
 	e, err := c.Environment("")
 	if err != nil {
