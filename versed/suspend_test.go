@@ -571,3 +571,60 @@ func TestATaskTrackedUnderASuspensionIsHeld(t *testing.T) {
 		t.Fatalf("flow show does not say what holds the task:\n%s", body)
 	}
 }
+
+// A scope's suspensions load before its charter arms a rule. Across a restart, the scope's own
+// review is restored when the dev reconnects, into an engine whose table already holds the
+// scope's suspension of it — so its opening replay does not act on the PR waiting for it — and
+// the scope's resume is what lets it act.
+func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
+	addr := entitytest.Addr(t)
+	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	firstCtx, down := context.WithCancel(t.Context())
+	first.Start(firstCtx)
+	firstHTTP := httptest.NewServer(first.Handler())
+	addScopedRule(t, firstHTTP, "me", `{
+		name: scoped-review,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {patch: {stage: reviewed}},
+	}`)
+	if code, _, msg := suspendAs(t, firstHTTP, "suspend", "", "me", api.Suspend{Rule: "scoped-review", Why: "reading it"}); code != http.StatusOK {
+		t.Fatalf("suspend --scope me = %d %s", code, msg)
+	}
+	firstHTTP.Close()
+	down()
+	first.stopAllSources()
+
+	store := entitytest.StoreAt(t, addr)
+	second := NewWithStore(ScriptedBuilder, store)
+	second.Start(t.Context())
+	ts := httptest.NewServer(second.Handler())
+	defer ts.Close()
+	ref := entity.RefAt("demo", "pr", "1")
+	entitytest.Set(t, store.Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
+	addScopedRule(t, ts, "me", `{
+		name: connect-probe,
+		condition: {subject: {path: [never, never, *]}},
+		action: {patch: {seen: true}},
+	}`)
+	if !second.engFor("me").Knows("scoped-review") {
+		t.Fatal("the scope's charter was not restored")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if e, _, _ := store.Scope("me").Get(ref); entity.Str(e.Payload, "stage") != "open" {
+		t.Fatalf("the restored rule acted on a PR its scope's suspension holds: %v", e.Payload)
+	}
+	if code, _, msg := suspendAs(t, ts, "resume", "", "me", api.Suspend{Rule: "scoped-review"}); code != http.StatusOK {
+		t.Fatalf("resume --scope me = %d %s", code, msg)
+	}
+	deadline := time.After(3 * time.Second)
+	for {
+		if e, _, _ := store.Scope("me").Get(ref); entity.Str(e.Payload, "stage") == "reviewed" {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the lifted scope rule did not act on the PR")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}

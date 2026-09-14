@@ -300,12 +300,15 @@ type Suspensions struct {
 	mu      sync.RWMutex
 	loaded  bool
 	entries map[string]Suspension
-	engines []*Engine
+	// draining is the suspensions being lifted: still refusing new firings while what they held
+	// is released (Lift).
+	draining map[string]bool
+	engines  []*Engine
 }
 
 // NewSuspensions is an empty table that has not loaded.
 func NewSuspensions() *Suspensions {
-	return &Suspensions{entries: map[string]Suspension{}}
+	return &Suspensions{entries: map[string]Suspension{}, draining: map[string]bool{}}
 }
 
 // SetSuspensions gives the engine its scope's table, which it asks wherever work would make
@@ -341,10 +344,13 @@ func (t *Suspensions) Load(records []Suspension) {
 	t.loaded = true
 	engines := t.attached()
 	t.mu.Unlock()
+	// What the table held while it had not loaded, it releases now: every rule it skipped is
+	// armed again, since nothing recorded which.
 	for _, e := range engines {
 		e.releaseTasks()
 		e.releaseLaunches()
 		e.signalLift()
+		e.reArm(func(string) bool { return true })
 	}
 }
 
@@ -403,10 +409,26 @@ func (t *Suspensions) Put(s Suspension) {
 	}
 }
 
-// Remove drops a suspension once its record is deleted, and releases what it held.
-func (t *Suspensions) Remove(id string) {
+// Lift releases a suspension once its record is deleted, IN ORDER, since releasing everything at
+// once would let a rule see its subject in the state a hook left it in, with the task that hook
+// was about to start not yet live, and start one of its own:
+//
+//  1. the entry is marked draining, so new firings about its work are still refused;
+//  2. what it held is released — tasks it paused resume, parked launches start in order,
+//     withdrawn questions are asked again with the time they had left;
+//  3. the entry is removed;
+//  4. the rules it covered are armed again, so each acts on the world as it stands now, the path
+//     an install and a restart take.
+//
+// A wide lift is a restart's worth of evaluation, at a moment an operator chose.
+func (t *Suspensions) Lift(id string) {
 	t.mu.Lock()
-	delete(t.entries, id)
+	s, ok := t.entries[id]
+	if !ok {
+		t.mu.Unlock()
+		return
+	}
+	t.draining[id] = true
 	engines := t.attached()
 	t.mu.Unlock()
 	for _, e := range engines {
@@ -414,22 +436,34 @@ func (t *Suspensions) Remove(id string) {
 		e.releaseLaunches()
 		e.signalLift()
 	}
+	t.mu.Lock()
+	delete(t.entries, id)
+	delete(t.draining, id)
+	t.mu.Unlock()
+	for _, e := range engines {
+		at := e.atSegs()
+		e.reArm(func(rule string) bool { return s.CoversCharter(at, rule) })
+	}
 }
 
 // notLoaded is what holds everything while a table has not loaded, named as a suspension would be.
 const notLoaded = "the suspensions have not loaded"
 
 // covering is the suspensions naming (at, rule, subject) — or, for whole, naming the rule about
-// every subject — and whether the table has loaded. Copied out under the read lock, so a caller
-// asking who may hold them never holds the table while it asks.
-func (t *Suspensions) covering(at []string, rule string, subj entity.Ref, whole bool) (bool, []Suspension) {
+// every subject — and whether the table has loaded; settled leaves out the ones being lifted.
+// Copied out under the read lock, so a caller asking who may hold them never holds the table
+// while it asks.
+func (t *Suspensions) covering(at []string, rule string, subj entity.Ref, whole, settled bool) (bool, []Suspension) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if !t.loaded {
 		return false, nil
 	}
 	var out []Suspension
-	for _, s := range t.entries {
+	for id, s := range t.entries {
+		if settled && t.draining[id] {
+			continue
+		}
 		if !s.CoversCharter(at, rule) {
 			continue
 		}
@@ -448,21 +482,31 @@ func (t *Suspensions) covering(at []string, rule string, subj entity.Ref, whole 
 // engine now — rule "" for work no rule started, a zero subject for work about none. Empty is
 // "not suspended". Asked wherever work would make progress; never in subject selection, which is
 // what decides a question has gone moot, so a suspension there would moot work rather than hold it.
+//
+// A suspension being lifted still counts here: until the lift has released what it held, a new
+// firing about its work would run beside the launch a hook parked rather than after it.
 func (e *Engine) holding(rule string, subj entity.Ref) []string {
-	return e.held(rule, subj, false)
+	return e.held(rule, subj, false, false)
 }
 
 // holdingRule is holding for the rule about every subject: what the top of evaluate asks, before
 // the rule's watermark moves, since no subject has been selected there to ask about.
 func (e *Engine) holdingRule(rule string) []string {
-	return e.held(rule, entity.Ref{}, true)
+	return e.held(rule, entity.Ref{}, true, false)
 }
 
-func (e *Engine) held(rule string, subj entity.Ref, whole bool) []string {
+// settled is holding without the suspensions being lifted: what the paths a lift releases ask —
+// a paused task resuming, a parked launch starting, a withdrawn question asked again — so they
+// go ahead while new firings are still refused.
+func (e *Engine) settled(rule string, subj entity.Ref) []string {
+	return e.held(rule, subj, false, true)
+}
+
+func (e *Engine) held(rule string, subj entity.Ref, whole, settled bool) []string {
 	if e.susp == nil {
 		return nil
 	}
-	loaded, cands := e.susp.covering(e.atSegs(), rule, subj, whole)
+	loaded, cands := e.susp.covering(e.atSegs(), rule, subj, whole, settled)
 	if !loaded {
 		return []string{notLoaded}
 	}
@@ -566,7 +610,7 @@ func (e *Engine) ask(wctx context.Context, fl *flight, t Trigger, subj entity.Re
 		done := fl.posing(cancel)
 		// Asked again once the pose is registered: a suspension landing between the wait above and
 		// here has already walked the flights, and would otherwise be missed.
-		if held := e.holding(t.Name, subj); len(held) > 0 {
+		if held := e.settled(t.Name, subj); len(held) > 0 {
 			cancel(SuspendedError{held})
 		}
 		res, err := e.resolver.Resolve(pctx, d, tool)
@@ -587,7 +631,7 @@ func (e *Engine) ask(wctx context.Context, fl *flight, t Trigger, subj entity.Re
 func (e *Engine) awaitLift(ctx context.Context, rule string, subj entity.Ref) bool {
 	for {
 		lifted := e.liftSignal() // before the question, so a lift in between still wakes it
-		if len(e.holding(rule, subj)) == 0 {
+		if len(e.settled(rule, subj)) == 0 {
 			return true
 		}
 		select {
@@ -621,7 +665,7 @@ func (e *Engine) signalLift() {
 // withdrawHeld withdraws every question a firing of this engine is asking about work now held.
 func (e *Engine) withdrawHeld() {
 	for _, f := range e.flights() {
-		if held := e.holding(f.rule, f.subj); len(held) > 0 {
+		if held := e.settled(f.rule, f.subj); len(held) > 0 {
 			f.withdraw(SuspendedError{held})
 		}
 	}
@@ -674,7 +718,7 @@ func (e *Engine) recordHold(fp flowTask) {
 // next boundary.
 func (e *Engine) holdTasks() {
 	for _, fp := range e.liveTasks() {
-		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 		if len(held) == 0 || len(fp.suspended) > 0 {
 			continue
 		}
@@ -696,7 +740,7 @@ func (e *Engine) releaseTasks() {
 		if len(fp.suspended) == 0 {
 			continue
 		}
-		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.suspended = held })
 		if !ok || len(held) > 0 {
 			continue
@@ -752,7 +796,7 @@ func (e *Engine) releaseLaunches() {
 	e.parkMu.Unlock()
 	var kept []parkedLaunch
 	for _, l := range all {
-		if len(e.holding(mirror.TriggerOf(l.chain), l.subj)) > 0 {
+		if len(e.settled(mirror.TriggerOf(l.chain), l.subj)) > 0 {
 			kept = append(kept, l)
 			continue
 		}
@@ -771,5 +815,42 @@ func (e *Engine) releaseLaunches() {
 		e.parkMu.Lock()
 		e.parked = append(kept, e.parked...)
 		e.parkMu.Unlock()
+	}
+}
+
+// reArm arms again every installed rule covers names, so each replays the world as it stands:
+// a subtree watch opened again replays its opening state as a commit, and a root-loop engine
+// evaluates the rule at the head.
+//
+// The rule's watermark is first moved below the head. A skip before firstSight leaves it where it
+// was for a rule suspended whole, but a rule suspended about some subjects goes on evaluating the
+// others, and a sibling's commit landing while a lift drains moves the watermark to the head the
+// replay would arrive at — refusing the one evaluation that sees the subject it skipped.
+func (e *Engine) reArm(covers func(rule string) bool) {
+	e.trigMu.Lock()
+	trigs := make([]Trigger, 0, len(e.triggers))
+	for _, t := range e.triggers {
+		if covers(t.Name) {
+			trigs = append(trigs, t)
+		}
+	}
+	e.trigMu.Unlock()
+	if len(trigs) == 0 || e.bgctx == nil {
+		return // not observing yet: arming the rule is what starting does
+	}
+	head := e.store.Rev()
+	for _, t := range trigs {
+		e.seenMu.Lock()
+		if e.seen != nil && e.seen[t.Name] >= head {
+			e.seen[t.Name] = head - 1
+		}
+		e.seenMu.Unlock()
+		if e.subtree {
+			if err := e.armTriggerSubtree(t); err != nil {
+				e.logger.Warn("a lifted rule could not be armed again", "trigger", t.Name, "err", err)
+			}
+			continue
+		}
+		go e.evaluate(e.bgctx, t, entity.Commit{Rev: head})
 	}
 }

@@ -204,7 +204,7 @@ func (s *Server) release(scope, id, by string) (rest trigger.Suspension, lifted 
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		return trigger.Suspension{}, false, err
 	}
-	tbl.Remove(id)
+	tbl.Lift(id)
 	return cur, true, nil
 }
 

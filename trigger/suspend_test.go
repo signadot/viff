@@ -81,7 +81,7 @@ func TestASuspendedRuleIsSkippedBeforeItsWatermark(t *testing.T) {
 		t.Fatalf("review's watermark moved to %d while it was suspended whole", seen)
 	}
 	s, _ := NewSuspension("", "review", "")
-	tbl.Remove(s.ID())
+	tbl.Lift(s.ID())
 	if !eng.firstSight("review", store.Rev()) {
 		t.Fatal("the head is not a first sight for review once lifted: its replay would be refused")
 	}
@@ -357,9 +357,197 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 	}
 
 	s, _ := NewSuspension("*", "", "demo.pr.1")
-	tbl.Remove(s.ID())
+	tbl.Lift(s.ID())
 	sp.wait(t, "review.onDone@demo.pr.1")
 	if n := eng.Parked(); n != 1 {
 		t.Fatalf("%d launches parked after demo.pr.1's lift, want demo.pr.2's still held", n)
+	}
+}
+
+// holdSpawner is spawned with one id held at the spawner until release is closed, and reports
+// through entered when it gets there: a lift stopped in the middle of starting a parked launch.
+func holdSpawner(sp *spawned, id string, entered, release chan struct{}) Spawner {
+	return func(got string, spec launch.Spec) task.Handle {
+		if got == id {
+			close(entered)
+			<-release
+		}
+		return sp.spawn(got, spec)
+	}
+}
+
+// THE INTERLEAVING A LIFT IS ORDERED FOR. A task about a suspended PR finishes, its hook marks the
+// PR reviewed and parks the notification it would start. The lift is caught starting that launch:
+// the suspension is draining, so when a sibling PR's commit re-evaluates the merge rule, the rule
+// fires about the sibling and is refused about the PR whose launch is not yet live. Once the lift
+// has removed the entry and armed the rule again, it acts on the PR — even though the sibling's
+// evaluation moved its watermark to the head its replay arrives at.
+func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, tbl := suspending(t, store, "user:tester")
+	sp := &spawned{by: map[string]*heldHandle{}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	eng.SetSpawner(holdSpawner(sp, "review.onDone@demo.pr.1", entered, release))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	for _, trig := range []Trigger{
+		{
+			Name:      "review",
+			Condition: Condition{Subject: prSubject("open")},
+			Action: Action{
+				Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
+				Spawn:  &launch.Spec{Prompt: "review"},
+				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Prompt: "notify"}},
+			},
+		},
+		{
+			Name:      "merge",
+			Condition: Condition{Subject: prSubject("reviewed")},
+			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Prompt: "merge"}},
+		},
+	} {
+		if err := eng.AddTrigger(trig); err != nil {
+			t.Fatalf("AddTrigger %s: %v", trig.Name, err)
+		}
+	}
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	review := sp.wait(t, "review@demo.pr.1")
+	s, _ := NewSuspension("*", "", "demo.pr.1")
+	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
+	tbl.Put(s)
+	review.finish()
+	waitStage(t, store, prRef("1"), "reviewed")
+	stays(t, store, prRef("1"), "stage", "reviewed") // merge is refused about it while suspended
+
+	lifted := make(chan struct{})
+	go func() { tbl.Lift(s.ID()); close(lifted) }()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the lift never started the parked launch")
+	}
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "reviewed"}.Payload())
+	sp.wait(t, "merge@demo.pr.2")
+	time.Sleep(200 * time.Millisecond)
+	if sp.get("merge@demo.pr.1") != nil {
+		t.Fatal("merge fired about the PR whose parked launch was still starting")
+	}
+	close(release)
+	<-lifted
+	sp.wait(t, "review.onDone@demo.pr.1")
+	sp.wait(t, "merge@demo.pr.1")
+}
+
+// A firing's question is posed under a context of its own beneath the mootness context: a
+// suspension withdraws it and the lift asks it again under the same id, and when the rule stops
+// selecting the subject during a suspension the firing ends and the lift asks nothing.
+func TestAPoseIsWithdrawnByEitherAndAskedAgainAfterOne(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, tbl := suspending(t, store, "user:tester")
+	reg := eng.resolver.(*task.Registry)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(Trigger{
+		Name:      "ship",
+		Condition: Condition{Subject: prSubject("open")},
+		Gates:     []Gate{{Name: "ok", Mode: "ask"}},
+		Action:    Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pending := func() []string {
+		var ids []string
+		for _, p := range reg.Pending() {
+			ids = append(ids, p.Question.ID)
+		}
+		return ids
+	}
+	waitPending := func(n int) []string {
+		t.Helper()
+		deadline := time.After(3 * time.Second)
+		for {
+			if ids := pending(); len(ids) == n {
+				return ids
+			}
+			select {
+			case <-deadline:
+				t.Fatalf("pending = %v, want %d", pending(), n)
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	asked := waitPending(1)[0]
+	s, _ := NewSuspension("*", "", "demo.pr.1")
+	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
+
+	tbl.Put(s)
+	waitPending(0)
+	tbl.Lift(s.ID())
+	if again := waitPending(1)[0]; again != asked {
+		t.Fatalf("the lift asked %s, want the same question %s", again, asked)
+	}
+
+	tbl.Put(s)
+	waitPending(0)
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "closed"}.Payload())
+	time.Sleep(200 * time.Millisecond)
+	tbl.Lift(s.ID())
+	time.Sleep(300 * time.Millisecond)
+	if ids := pending(); len(ids) != 0 {
+		t.Fatalf("the lift asked %v about a subject the rule no longer selects", ids)
+	}
+	if n := eng.Fired(); n != 0 {
+		t.Fatalf("the moot firing acted %d times", n)
+	}
+}
+
+// A resumed rule sees what an install sees: a level rule still matching acts once, one whose
+// condition came and went during the suspension does nothing, and an `on` edge that rose
+// meanwhile is not seen.
+func TestALiftActsOnTheWorldAsItStands(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, tbl := suspending(t, store, "user:tester", [3]string{"", "review", ""}, [3]string{"", "start", ""})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	rel := entity.RefAt("ci", "status", "release")
+	job := entity.RefAt("demo", "job", "1")
+	entitytest.Set(t, store, rel, entity.Obj{"state": "red"}.Payload())
+	for _, trig := range []Trigger{
+		reviewRule("review", entity.Obj{"stage": "reviewed"}),
+		{
+			Name: "start",
+			Condition: Condition{
+				On:      MatchWhen(Match{"system": "ci", "kind": "status", "id": "release", "value": map[string]any{"state": "green"}}),
+				Subject: Match{"system": "demo", "kind": "job", "value": map[string]any{"stage": "waiting"}},
+			},
+			Action: Action{Patch: entity.Obj{"stage": "started"}.Payload()},
+		},
+	} {
+		if err := eng.AddTrigger(trig); err != nil {
+			t.Fatalf("AddTrigger %s: %v", trig.Name, err)
+		}
+	}
+
+	entitytest.Set(t, store, job, entity.Obj{"stage": "waiting"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, rel, entity.Obj{"state": "green"}.Payload())
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "closed"}.Payload())
+	stays(t, store, prRef("1"), "stage", "open")
+
+	for _, rule := range []string{"review", "start"} {
+		s, _ := NewSuspension("", rule, "")
+		tbl.Lift(s.ID())
+	}
+	waitStage(t, store, prRef("1"), "reviewed")
+	stays(t, store, prRef("2"), "stage", "closed")
+	stays(t, store, job, "stage", "waiting")
+	if n := eng.Fired(); n != 1 {
+		t.Fatalf("the lift acted %d times, want once — for the PR still open", n)
 	}
 }

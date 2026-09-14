@@ -930,7 +930,7 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entit
 	// recording is not progress — and what it would start is parked here, before a provider
 	// selection could be posed: a selection asked from the reap goroutine under a suspension
 	// would wait for the lift with every completion in the engine behind it. The lift starts it.
-	if held := e.holding(mirror.TriggerOf(chain), subj); len(held) > 0 {
+	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
 		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil

@@ -1280,7 +1280,7 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 	// THE BACKSTOP every spawn passes through: a provider selection resumed at restart reaches
 	// here with no firing and no hook above it, and a suspended subject starts nothing.
 	subj, _ := entity.ParseAddr(spec.Subject)
-	if held := e.holding(mirror.TriggerOf(chain), subj); len(held) > 0 {
+	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
 		e.tracef("spawn %s: suspended (%s); not spawning", id, strings.Join(held, ", "))
 		return nil
 	}
@@ -1308,7 +1308,7 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 // is held as it is tracked — a task re-attached after a restart, or one run by hand about a
 // suspended subject — since nothing else will pause it.
 func (e *Engine) track(fp flowTask) {
-	held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+	held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 	fp.suspended = held
 	e.liveMu.Lock()
 	e.live[fp.id] = fp
@@ -1696,7 +1696,7 @@ func (e *Engine) PauseFlow(m Match) int {
 func (e *Engine) ResumeFlow(m Match) int {
 	ps := e.matchFlow(m)
 	for _, fp := range ps {
-		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.operator, fp.suspended = false, held })
 		if !ok {
 			continue
