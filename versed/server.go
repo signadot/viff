@@ -723,7 +723,12 @@ func (s *Server) reconcileTasks() error {
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
-				s.Eng.AdoptChain(subject, ent.Ref.ID(), chain, h)
+				// A task about no subject is the flow of its own id, as at spawn.
+				flow := subject
+				if flow == "" {
+					flow = ent.Ref.ID()
+				}
+				s.Eng.AdoptChain(flow, ent.Ref.ID(), chain, h)
 				resumed = append(resumed, resumedRun{subject: subject, chain: chain})
 				continue
 			}
@@ -900,6 +905,15 @@ func (s *Server) engFor(scope string) *trigger.Engine {
 		return se.eng
 	}
 	return nil
+}
+
+// engineOf is the engine that holds a scope's live work: baseline's for the empty scope, the
+// scope's own otherwise, opened if nobody has yet.
+func (s *Server) engineOf(scope string) *trigger.Engine {
+	if scope == "" {
+		return s.Eng
+	}
+	return s.scopeEngine(scope)
 }
 
 // scopeEngine returns the engine for a scope, creating and starting it on first use.
@@ -4029,6 +4043,15 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	if dials(store, body.Resolver) {
 		mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
 	}
+	// A FLOW, like a rule's task: tracked by the engine of the scope that spawned it, so `verse
+	// flow` lists it, the flow verbs reach it, and what holds a subject's work holds this too. A
+	// flow is a query over live tasks' subjects, and a task about no subject is the flow of its
+	// own id, the one address it has.
+	flow := body.Subject
+	if flow == "" {
+		flow = id
+	}
+	s.engineOf(scope).Adopt(flow, id, h)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 

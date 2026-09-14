@@ -317,3 +317,73 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 			alices.count("cancel"), open.count("cancel"))
 	}
 }
+
+// A task somebody runs by hand is a flow, as a rule's is: `task run --subject demo.pr.1` is
+// listed by `verse flow` and reached by `flow pause demo.pr.1`, in baseline and in a scope,
+// each from its own scope. One about no subject is the flow of its own id.
+func TestAHandSpawnedTaskIsAFlow(t *testing.T) {
+	srv := askingServer(t) // each run blocks on its first action, so it is live while this looks
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	run := func(id, subject, scope string) {
+		t.Helper()
+		url := ts.URL + "/tasks"
+		if scope != "" {
+			url += "?scope=" + scope
+		}
+		body := map[string]any{"id": id, "prompt": "true"}
+		if subject != "" {
+			body["subject"] = subject
+		}
+		resp := postTony(t, url, body)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			raw, _ := io.ReadAll(resp.Body)
+			t.Fatalf("task run %s: %s %s", id, resp.Status, raw)
+		}
+	}
+	flows := func(scope string) []string {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/flows?scope=" + scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		decodeResp(t, resp, &out)
+		return out
+	}
+	pause := func(subject, scope string) int {
+		t.Helper()
+		code, msg := control(t, ts, "/flow/pause", scope, map[string]any{"subject": subject})
+		if code != http.StatusOK {
+			t.Fatalf("flow pause %s --scope %q = %d %s", subject, scope, code, msg)
+		}
+		var got api.Steered
+		if err := codec.Decode(strings.NewReader(msg), &got, codec.Tony); err != nil {
+			t.Fatal(err)
+		}
+		return got.Affected
+	}
+
+	run("base-run", "demo.pr.1", "")
+	run("mine-run", "demo.pr.2", "me")
+	run("loose-run", "", "")
+
+	if got := flows(""); strings.Join(got, ",") != "demo.pr.1,loose-run" {
+		t.Fatalf("flows = %v, want the subject run by hand and the subjectless run's id", got)
+	}
+	if got := flows("me"); strings.Join(got, ",") != "demo.pr.2" {
+		t.Fatalf("flows --scope me = %v, want the scope's run", got)
+	}
+	if n := pause("demo.pr.1", ""); n != 1 {
+		t.Fatalf("flow pause demo.pr.1 reached %d, want the task run about it", n)
+	}
+	if n := pause("demo.pr.2", "me"); n != 1 {
+		t.Fatalf("flow pause demo.pr.2 --scope me reached %d, want the scope's task", n)
+	}
+	if n := pause("loose-run", ""); n != 1 {
+		t.Fatalf("flow pause loose-run reached %d, want the subjectless task by its id", n)
+	}
+}
