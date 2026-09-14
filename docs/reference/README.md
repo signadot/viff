@@ -348,7 +348,7 @@ seeds.
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
 | `./scripts/seed-entities.sh` | a dozen entities across three systems, and nothing that reacts to them ([tutorial §2](../tutorial.md#2-entities)) |
-| `./scripts/charter-shapes.sh` | the coarse shapes a rule comes in, one command each ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
+| `./scripts/charter-shapes.sh` | the coarse shapes a rule comes in, one command each — and `suspend`/`resume` one to watch it hold and act on the world as it stands ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
 | `./scripts/lineage.sh` | a commit becomes a PR becomes a release: how ids from three systems correlate without a fourth being minted, and the two edges of doing it that way |
 
 All four take `--scope <name>` and undo themselves (`--clean`, or `clean`). `./smoke.sh` is

@@ -21,6 +21,9 @@ func TestSuspendReadsItsWords(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/charter":
+			if r.URL.Query().Get("scope") != "" {
+				t.Errorf("a package was looked for in scope %q; packages are baseline's", r.URL.Query().Get("scope"))
+			}
 			if r.URL.Query().Get("at") == "verse-dev.drift" {
 				w.Write([]byte(`{writes: "verse-dev.drift.*"}`))
 				return
@@ -69,6 +72,14 @@ func TestSuspendReadsItsWords(t *testing.T) {
 			t.Fatalf("verse resume %v sent %+v, want %+v", c.args, got, c.want)
 		}
 	}
+	t.Setenv("VERSE_SCOPE", "me")
+	if _, err := runCLI(t, "suspend", "verse-dev.drift", "--why", "from a scope"); err != nil {
+		t.Fatalf("verse --scope me suspend verse-dev.drift: %v", err)
+	}
+	if got.Charter != "verse-dev.drift" {
+		t.Fatalf("from a scope, a package's address sent %+v, want it read as the charter", got)
+	}
+	t.Setenv("VERSE_SCOPE", "")
 	if _, err := runCLI(t, "suspend", "verse-dev.drift"); err == nil || !strings.Contains(err.Error(), "--why") {
 		t.Fatalf("suspend with no --why: %v", err)
 	}

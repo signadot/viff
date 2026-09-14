@@ -13,6 +13,8 @@
 #   ./scripts/charter-shapes.sh install <shape>   install it (idempotent: it re-installs)
 #   ./scripts/charter-shapes.sh drive   <shape>   write the entity that makes it fire
 #   ./scripts/charter-shapes.sh run     <shape>   install, then drive
+#   ./scripts/charter-shapes.sh suspend <shape>   suspend it: it fires on nothing until resumed
+#   ./scripts/charter-shapes.sh resume  <shape>   lift that, and watch it act on the world as it stands
 #   ./scripts/charter-shapes.sh remove  [shape]   uninstall one, or all of them
 #   ./scripts/charter-shapes.sh clean             uninstall all, and delete the entities they acted on
 #
@@ -300,7 +302,7 @@ case "$cmd" in
 list)
 	printf '\nthe shapes a rule comes in:\n\n'
 	for s in "${SHAPES[@]}"; do printf '  \033[1m%-7s\033[0m %s\n' "$s" "$(describe "$s")"; done
-	printf '\n  %s show <shape> · install <shape> · drive <shape> · run <shape> · remove [shape]\n\n' "$0"
+	printf '\n  %s show <shape> · install <shape> · drive <shape> · run <shape> · suspend <shape> · resume <shape> · remove [shape]\n\n' "$0"
 	;;
 show)
 	need_shape "${1:-}"
@@ -327,6 +329,22 @@ run)
 	step "drive"
 	drive_shape "$1"
 	next_steps "$1"
+	;;
+suspend)
+	# The rule is baseline's, whose charter has no address — so it is spelled `:<rule>`.
+	# Driving it now fires nothing, and nothing it would have done is replayed on the resume.
+	need_shape "${1:-}"
+	up_or_die
+	step "suspend"
+	v suspend ":shape-$1" --why "charter-shapes: holding shape-$1" >/dev/null || die "suspending shape-$1 failed"
+	ok "suspended shape-$1 — drive it: nothing fires until \`$0 resume $1\`"
+	;;
+resume)
+	need_shape "${1:-}"
+	up_or_die
+	step "resume"
+	v resume ":shape-$1" >/dev/null || die "resuming shape-$1 failed"
+	ok "resumed shape-$1 — it acts once on what matches it now"
 	;;
 remove)
 	up_or_die

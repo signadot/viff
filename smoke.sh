@@ -430,6 +430,57 @@ has "$rec" "user:alice" && has "$rec" "user:bob" || die "the settled record does
 haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
 ok "the question is settled with both ballots on the record"
 
+# ── suspend: a charter holds, and a resume acts once on the world as it stands ──
+# A package, so the charter has an address to suspend by: a level rule and a gated one. While it
+# is suspended, a write that would fire the one fires nothing and the other asks nobody; resumed,
+# each acts on what matches it now, once.
+step "suspend: a suspended charter fires nothing; resuming acts on the world as it stands"
+v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a failed"
+- name: settle
+  condition:
+    subject: {path: [smoke-susp, level, *], value: {stage: open}}
+  action:
+    patch: {stage: settled}
+- name: approve
+  condition:
+    subject: {path: [smoke-susp, gated, *], value: {stage: open}}
+  gates:
+  - {name: ok, mode: ask}
+  action:
+    patch: {stage: approved}
+TONY
+v suspend smoke-susp --why "smoke: hold the package" >/dev/null || die "verse suspend smoke-susp failed"
+has "$(v suspend)" 'smoke: hold the package' || die "the listing does not say why it is held"
+ok "suspended the charter at smoke-susp, and the listing says why"
+v data smoke-susp level 1 --put '{stage: open}' >/dev/null || die "data --put failed"
+v data smoke-susp gated 1 --put '{stage: open}' >/dev/null || die "data --put failed"
+sleep 1
+haskv "$(v data smoke-susp level 1)" stage open || die "a suspended level rule fired"
+has "$(v gate)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
+haskv "$(v status)" suspensions 1 || die "status does not count the suspension"
+ok "nothing fired, nothing was asked, and status counts suspensions: 1"
+v resume smoke-susp >/dev/null || die "verse resume smoke-susp failed"
+settled=
+for _ in $(seq 1 100); do
+	if haskv "$(v data smoke-susp level 1 2>/dev/null || true)" stage settled; then
+		settled=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$settled" ] || die "the resumed level rule did not act on what matches it"
+asked=
+for _ in $(seq 1 100); do
+	if has "$(v gate)" 'smoke-susp'; then
+		asked=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$asked" ] || die "the resumed gated rule did not ask"
+has "$(v suspend)" 'smoke-susp' && die "the lifted suspension is still listed"
+ok "resumed: settle acted, approve asked, and nothing is suspended"
+
 # ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
 # The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
 # live task to exercise the control surfaces against (and observe the slide on).
@@ -529,6 +580,12 @@ sleep 3
 after=$(v --scope "$SCOPE" data --paths verse task | grep -c . || true)
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
 ok "a validated file is not validated again ($after tasks)"
+
+# A suspension is a control write, and a scope owns what it creates: from the scope, baseline's
+# package is refused with the sentence every control write refuses in.
+out=$(v --scope "$SCOPE" suspend smoke-susp --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
+has "$out" "baseline's" || die "the scope's refusal does not say whose the charter is: $out"
+ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
 
 kill -INT "$CONN" 2>/dev/null || true # ctrl-c tears the scope down
 wait "$CONN" 2>/dev/null || true

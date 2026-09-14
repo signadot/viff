@@ -145,11 +145,19 @@ func splitCharter(s string) (charter, rule string) {
 
 // isCharter asks whether a charter is installed at an address: its node in the charter tree
 // says what the charter there writes, and a place with no charter says nothing of the kind.
+//
+// BASELINE IS ASKED, whatever --scope says. A charter at an address is a package, and packages
+// are baseline's; a scope's charter has no address, and the scoped route answers with it
+// whatever address is asked. So from a scope, a package's address still reads as its charter,
+// and the route refuses it as baseline's rather than suspending a subject by that name.
 func isCharter(at string) (bool, error) {
 	if strings.HasSuffix(at, ".*") || at == "*" {
 		return false, nil
 	}
+	scope := g.Scope
+	g.Scope = ""
 	resp, err := httpGet("/charter", url.Values{"at": {at}, "depth": {"0"}})
+	g.Scope = scope
 	if err != nil {
 		return false, fmt.Errorf("suspend: asking whether %s is a charter: %w", at, err)
 	}
