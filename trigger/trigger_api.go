@@ -179,6 +179,7 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 			return err
 		}
 		e.pending = append(e.pending, t)
+		e.installers[t.Name] = e.installer(as)
 		e.trigMu.Unlock()
 		if durable {
 			if err := e.persist(t, as); err != nil {
@@ -207,6 +208,7 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 		return err
 	}
 	e.triggers = append(e.triggers, t)
+	e.installers[t.Name] = e.installer(as)
 	e.trigMu.Unlock()
 	// Persist before observing: in subtree mode the watch is what makes the trigger fire,
 	// so a rule that cannot be made durable never starts. (In baseline mode the dispatch
@@ -278,6 +280,9 @@ func (e *Engine) RemoveTrigger(name string) bool {
 		np = append(np, t)
 	}
 	e.pending = np
+	if found {
+		delete(e.installers, name)
+	}
 	e.trigMu.Unlock()
 	if found {
 		e.forget(name) // the durable copy — off the charter lock, since it is a store write

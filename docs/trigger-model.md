@@ -273,6 +273,11 @@ Installing a trigger writes it into the verse as `verse.trigger.rule.<name>`, or
 deletes that entity, and a start reads them back before anything observes. So the program a verse
 comes back up running is the one it went down with.
 
+The record holds the rule as `spec`, the `scope` and the package address `at` it was installed in
+when it has them, and `by`: who installed it — the principal the install acted as, and
+`system:charter` for the charter the deployment names. A restore reinstalls the rule as `by`, and a
+charter file refused part way puts a replaced rule back as its installer rather than as the system.
+
 Everything else a restart needs is durable in the same way. A task is mirrored, a sequence's
 position is a fact on its subject, a claim is a lease in the store, an open question is a record
 with its ballots on it and an open selection a channel with its beside it, and resume re-poses the

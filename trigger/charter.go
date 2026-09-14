@@ -116,6 +116,13 @@ const atField = "at"
 // bring every package back at a restart.
 const AtField = atField
 
+// byField is WHO INSTALLED a rule: the principal the install acted as, `system:charter` for the
+// charter the deployment names. Written by the install and read back by the restore, because the
+// engine is the only party that knows it — a record with no owner record resolves to the system
+// whether the system installed it or an owner write failed, so perms cannot tell the system's
+// rules apart, and a suspension has to.
+const byField = "by"
+
 // ownRecord reports whether a charter record belongs to THIS engine's federation: the scope
 // stamped on it is the scope the engine acts in.
 //
@@ -129,8 +136,9 @@ func (e *Engine) ownRecord(ent entity.Entity) bool {
 }
 
 // record builds a declaration's durable payload: the spec, plus the scope when this engine
-// acts in one. One builder, so a rule and a stratum cannot drift on either.
-func (e *Engine) record(doc *ir.Node) entity.Payload {
+// acts in one, and who installed it when that is known. One builder, so a rule and a stratum
+// cannot drift on any of them.
+func (e *Engine) record(doc *ir.Node, by string) entity.Payload {
 	p := entity.Obj{specField: entity.Raw(doc)}
 	if e.scope != "" {
 		p[scopeField] = e.scope
@@ -138,7 +146,28 @@ func (e *Engine) record(doc *ir.Node) entity.Payload {
 	if at := e.confine.stamp(); at != "" {
 		p[atField] = at
 	}
+	if by != "" {
+		p[byField] = by
+	}
 	return p.Payload()
+}
+
+// installer is who an install acting as `as` is by: `as`, or the principal the engine's own
+// store writes as when the install names none — which is who the record is then written as.
+func (e *Engine) installer(as string) string {
+	if as != "" {
+		return as
+	}
+	return entity.PrincipalOf(e.store)
+}
+
+// InstalledBy is the principal who installed the rule by this name, installed or held: the
+// install's own, or the one its record carried at restore. "" for a rule this engine does not
+// hold, or one whose installer was never written down.
+func (e *Engine) InstalledBy(name string) string {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	return e.installers[name]
 }
 
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
@@ -161,7 +190,7 @@ func (e *Engine) persist(t Trigger, as string) error {
 	ref := CharterRefAt(e.confine.stamp(), t.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:        ref.At(),
-		Value:     e.record(doc),
+		Value:     e.record(doc, e.installer(as)),
 		Principal: as,
 	}); err != nil {
 		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
@@ -232,8 +261,8 @@ func (e *Engine) LoadCharter() error {
 		}
 		// durable=false: it is already durable — that is where it came from. Re-writing it
 		// would be a no-op with a revision attached, and a charter subtree watch would see
-		// every restart as a charter change.
-		if err := e.addTrigger(t, false, ""); err != nil {
+		// every restart as a charter change. As whoever installed it, which the record says.
+		if err := e.addTrigger(t, false, entity.Str(ent.Payload, byField)); err != nil {
 			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
 		}
 	}

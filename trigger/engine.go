@@ -194,6 +194,10 @@ type Engine struct {
 	// it doubles per attempt up to armWaitMax. Short in tests.
 	armWait time.Duration
 
+	// installers holds, by name, who installed each rule of the charter, installed or held — see
+	// InstalledBy. Guarded by trigMu, with the charter it describes.
+	installers map[string]string
+
 	// shapes fingerprints each installed sequence by its carrier's chain, so a running
 	// sequence can tell that the charter moved under it. Recorded at install (see
 	// recordShapes) because hashing an action mutates its nodes.
@@ -205,15 +209,16 @@ type Engine struct {
 func New(store entity.Store, resolver task.Resolver) *Engine {
 	return &Engine{
 		store: store, resolver: resolver, logger: slog.Default(),
-		control:  make(chan func(), 64),
-		stopped:  make(chan struct{}),
-		live:     map[string]flowTask{},
-		causes:   map[int64]link{},
-		tripPace: DefaultTripPace,
-		shapes:   map[string]string{},
-		watchers: map[string]func(){},
-		arming:   map[string]bool{},
-		armWait:  time.Second,
+		control:    make(chan func(), 64),
+		stopped:    make(chan struct{}),
+		live:       map[string]flowTask{},
+		causes:     map[int64]link{},
+		tripPace:   DefaultTripPace,
+		shapes:     map[string]string{},
+		watchers:   map[string]func(){},
+		arming:     map[string]bool{},
+		installers: map[string]string{},
+		armWait:    time.Second,
 	}
 }
 

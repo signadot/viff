@@ -770,13 +770,16 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Rule(t.Name)
+	// And WHO stood behind it: putting a rule back as the system store would hand its record,
+	// and every firing of it, to the system rather than to whoever installed it.
+	oldBy := eng.InstalledBy(t.Name)
 	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
 		eng.RemoveTrigger(t.Name)
 		if had {
-			return eng.AddTrigger(old)
+			return eng.InstallTriggerAs(oldBy, old)
 		}
 		return nil
 	})
