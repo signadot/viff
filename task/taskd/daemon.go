@@ -367,7 +367,6 @@ func (d *Daemon) Snapshots() []task.Instance {
 	return out
 }
 
-// SnapshotOf returns one hosted task's snapshot, or false if this daemon doesn't host it.
 // ScopeOf is the scope a hosted task was launched in — "" for baseline — and whether id is
 // hosted here at all.
 func (d *Daemon) ScopeOf(id string) (string, bool) {
@@ -380,6 +379,7 @@ func (d *Daemon) ScopeOf(id string) (string, bool) {
 	return h.scope, true
 }
 
+// SnapshotOf returns one hosted task's snapshot, or false if this daemon doesn't host it.
 func (d *Daemon) SnapshotOf(id string) (task.Instance, bool) {
 	d.mu.Lock()
 	h := d.tasks[id]
