@@ -216,7 +216,9 @@ question_id() {
 	done
 }
 
-field() { v data verse gate question "$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p"; }
+# A field of the question, and nothing for one that is absent or null: a question handed up to ⊤
+# says `resolver: null`, and the word would otherwise read as a binding's name.
+field() { v data verse gate question "$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p" | grep -vx null || true; }
 
 state() {
 	step "the bindings — who may answer, and for what"
@@ -267,7 +269,7 @@ instance_of() {
 # invisibly — which is a claim worth seeing rather than being told.
 #
 #   {kind: pending,  id: …~d1, mode: ASK, tool: run_bash}
-#   {kind: decision, by: verse.resolvers.security.reviewer, proceed: true}
+#   {kind: decision, by: via:verse.resolvers.security.reviewer, proceed: true}
 #   {kind: exec,     tool: run_bash, text: reviewing}
 #   {kind: status,   text: done}
 attach() {
@@ -349,8 +351,8 @@ run_act() {
 			"$0 state" "reownedWhy: overdue, and the clock cleared for its new owner"
 		;;
 	exclusive)
-		next "$BIN gate y $q --as user:you" "refused, and told who owns it" \
-			"$BIN gate y $q --as user:you --override" "accepted, and the record names you both" \
+		next "$BIN gate y $q" "refused, and told who owns it — as you, whose run it is" \
+			"$BIN gate y $q --override" "accepted, and the record names you both" \
 			"$0 state" "overrode: beside by:"
 		;;
 	esac
@@ -369,7 +371,7 @@ clean() {
 	local run
 	run=$(run_id)
 	[ -n "$run" ] && v task cancel "$run" >/dev/null 2>&1 || true
-	for kn in security:reviewer security:payments-review; do
+	for kn in security.reviewer security.payments-review; do
 		v resolver remove "$kn" >/dev/null 2>&1 || true
 	done
 	# shellcheck disable=SC2086
