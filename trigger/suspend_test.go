@@ -2,11 +2,13 @@ package trigger
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
 )
 
@@ -213,5 +215,151 @@ func TestOnlyTheSystemSuspendsTheSystemsRule(t *testing.T) {
 	tbl.Put(s)
 	if held := eng.holding("review", pr2); len(held) != 1 {
 		t.Fatalf("the system's suspension does not hold the system's rule: %v", held)
+	}
+}
+
+// heldHandle is a task that runs until it is told to finish, counting the holds it is sent.
+type heldHandle struct {
+	ch     chan task.Frame
+	mu     sync.Mutex
+	pauses int
+}
+
+func (h *heldHandle) Subscribe() (<-chan task.Frame, func())           { return h.ch, func() {} }
+func (h *heldHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
+func (h *heldHandle) Pause() error                                     { h.mu.Lock(); h.pauses++; h.mu.Unlock(); return nil }
+func (h *heldHandle) Resume() error                                    { return nil }
+func (h *heldHandle) Cancel(string) error                              { return nil }
+func (h *heldHandle) Steer(string, string) error                       { return nil }
+func (h *heldHandle) SetVector(*task.Vector, string) error             { return nil }
+func (h *heldHandle) Result() string                                   { return "" }
+func (h *heldHandle) Err() string                                      { return "" }
+
+// finish ends the task done.
+func (h *heldHandle) finish() { h.ch <- task.Frame{Kind: task.EvStatus, Text: string(task.Done)} }
+
+// spawned is a spawner of heldHandles that remembers them by id.
+type spawned struct {
+	mu sync.Mutex
+	by map[string]*heldHandle
+}
+
+func (s *spawned) spawn(id string, _ launch.Spec) task.Handle {
+	h := &heldHandle{ch: make(chan task.Frame, 1)}
+	s.mu.Lock()
+	s.by[id] = h
+	s.mu.Unlock()
+	return h
+}
+
+func (s *spawned) get(id string) *heldHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.by[id]
+}
+
+func (s *spawned) wait(t *testing.T, id string) *heldHandle {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		if h := s.get(id); h != nil {
+			return h
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("%s never spawned", id)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// A task finishing under a suspension lands its hook — the hook's patch is on the subject — and
+// parks what the hook would start, without a selection posed for it and without the engine's reap
+// loop waiting on it: another task in the engine finishes and hooks meanwhile. The lift starts the
+// parked launch.
+func TestAHookLandsAndItsLaunchParks(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, tbl := suspending(t, store, "user:tester")
+	sp := &spawned{by: map[string]*heldHandle{}}
+	eng.SetSpawner(sp.spawn)
+	reg := eng.resolver.(*task.Registry)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	for _, trig := range []Trigger{
+		{
+			Name:      "review",
+			Condition: Condition{Subject: prSubject("open")},
+			Action: Action{
+				Patch: entity.Obj{"stage": "reviewing"}.Payload(),
+				Spawn: &launch.Spec{Prompt: "review"},
+				OnDone: &Action{
+					Patch: entity.Obj{"stage": "reviewed"}.Payload(),
+					Spawn: &launch.Spec{Prompt: "merge"},
+				},
+			},
+		},
+		{
+			Name:      "pick",
+			Condition: Condition{Subject: prSubject("picking")},
+			Action: Action{
+				Patch: entity.Obj{"stage": "picked"}.Payload(),
+				Spawn: &launch.Spec{Prompt: "pick", Grant: "read-only"},
+				OnDone: &Action{
+					Patch: entity.Obj{"stage": "chosen"}.Payload(),
+					Spawn: &launch.Spec{Prompt: "act", Grant: "read-only",
+						Provider: &launch.Provider{Select: "ask", Eligible: []string{"a", "b"}}},
+				},
+			},
+		},
+		{
+			Name:      "triage",
+			Condition: Condition{Subject: Match{"system": "demo", "kind": "issue", "value": map[string]any{"stage": "open"}}},
+			Action: Action{
+				Patch:  entity.Obj{"stage": "triaging"}.Payload(),
+				Spawn:  &launch.Spec{Prompt: "triage"},
+				OnDone: &Action{Patch: entity.Obj{"stage": "triaged"}.Payload()},
+			},
+		},
+	} {
+		if err := eng.AddTrigger(trig); err != nil {
+			t.Fatalf("AddTrigger %s: %v", trig.Name, err)
+		}
+	}
+
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "picking"}.Payload())
+	review := sp.wait(t, "review@demo.pr.1")
+	pick := sp.wait(t, "pick@demo.pr.2")
+
+	for _, subj := range []string{"demo.pr.1", "demo.pr.2"} {
+		s, _ := NewSuspension("*", "", subj)
+		s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
+		tbl.Put(s)
+	}
+	review.finish()
+	pick.finish()
+	waitStage(t, store, prRef("1"), "reviewed")
+	waitStage(t, store, prRef("2"), "chosen")
+
+	entitytest.Set(t, store, entity.RefAt("demo", "issue", "1"), entity.Obj{"stage": "open"}.Payload())
+	sp.wait(t, "triage@demo.issue.1").finish()
+	waitStage(t, store, entity.RefAt("demo", "issue", "1"), "triaged")
+
+	if sp.get("review.onDone@demo.pr.1") != nil {
+		t.Fatal("a hook's spawn about a suspended subject started")
+	}
+	if n := eng.Parked(); n != 2 {
+		t.Fatalf("%d launches parked, want the two hooks'", n)
+	}
+	if p := reg.Pending(); len(p) != 0 {
+		t.Fatalf("a hook under a suspension posed a selection: %+v", p)
+	}
+
+	s, _ := NewSuspension("*", "", "demo.pr.1")
+	tbl.Remove(s.ID())
+	sp.wait(t, "review.onDone@demo.pr.1")
+	if n := eng.Parked(); n != 1 {
+		t.Fatalf("%d launches parked after demo.pr.1's lift, want demo.pr.2's still held", n)
 	}
 }

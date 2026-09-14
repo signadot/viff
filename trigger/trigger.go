@@ -21,6 +21,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
 
@@ -924,6 +925,21 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 // root is what $references read (the cause's payload for a hook, the subject's own
 // otherwise); occurrence is the store revision this run is about, 0 when nothing caused it.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entity.Payload,
+	occurrence int64) (task.Handle, error) {
+	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
+	// recording is not progress — and what it would start is parked here, before a provider
+	// selection could be posed: a selection asked from the reap goroutine under a suspension
+	// would wait for the lift with every completion in the engine behind it. The lift starts it.
+	if held := e.holding(mirror.TriggerOf(chain), subj); len(held) > 0 {
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence})
+		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
+		return nil, nil
+	}
+	return e.launch(a, chain, subj, root, occurrence)
+}
+
+// launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
+func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Payload,
 	occurrence int64) (task.Handle, error) {
 	spec := a.Spawn.Bind(bindingFor(root, subj))
 	// The subject is the engine's to set, not the charter's: a task is about exactly

@@ -343,6 +343,7 @@ func (t *Suspensions) Load(records []Suspension) {
 	t.mu.Unlock()
 	for _, e := range engines {
 		e.releaseTasks()
+		e.releaseLaunches()
 		e.signalLift()
 	}
 }
@@ -410,6 +411,7 @@ func (t *Suspensions) Remove(id string) {
 	t.mu.Unlock()
 	for _, e := range engines {
 		e.releaseTasks()
+		e.releaseLaunches()
 		e.signalLift()
 	}
 }
@@ -715,4 +717,59 @@ func (e *Engine) liveTasks() []flowTask {
 		out = append(out, fp)
 	}
 	return out
+}
+
+// parkedLaunch is launchSpawn's arguments, held until the work they are about is released.
+type parkedLaunch struct {
+	a          Action
+	chain      string
+	subj       entity.Ref
+	root       entity.Payload
+	occurrence int64
+}
+
+// park holds a launch.
+func (e *Engine) park(l parkedLaunch) {
+	e.parkMu.Lock()
+	e.parked = append(e.parked, l)
+	e.parkMu.Unlock()
+}
+
+// Parked is how many launches this engine is holding.
+func (e *Engine) Parked() int {
+	e.parkMu.Lock()
+	defer e.parkMu.Unlock()
+	return len(e.parked)
+}
+
+// releaseLaunches starts, in the order they were parked, every launch nothing holds now, and keeps
+// the rest. One that will pose a provider selection is started on a goroutine of its own, since it
+// waits for somebody to answer and the lift does not.
+func (e *Engine) releaseLaunches() {
+	e.parkMu.Lock()
+	all := e.parked
+	e.parked = nil
+	e.parkMu.Unlock()
+	var kept []parkedLaunch
+	for _, l := range all {
+		if len(e.holding(mirror.TriggerOf(l.chain), l.subj)) > 0 {
+			kept = append(kept, l)
+			continue
+		}
+		start := func() {
+			if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.occurrence); err != nil {
+				e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
+			}
+		}
+		if p := l.a.Spawn.Provider; p != nil && p.Select != "" && p.Select != "auto" {
+			go start()
+			continue
+		}
+		start()
+	}
+	if len(kept) > 0 {
+		e.parkMu.Lock()
+		e.parked = append(kept, e.parked...)
+		e.parkMu.Unlock()
+	}
 }

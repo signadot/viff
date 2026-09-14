@@ -158,6 +158,12 @@ type Engine struct {
 	flightMu sync.Mutex
 	inflight map[string]*flight
 
+	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
+	// a hook's or a sequence step's spawn about suspended work — each started when nothing
+	// holds it. It does not survive a restart. Guarded by parkMu.
+	parkMu sync.Mutex
+	parked []parkedLaunch
+
 	// lifted is closed and replaced whenever a suspension lifts, so a firing waiting on one
 	// wakes and asks whether it is still held (awaitLift). Guarded by liftMu.
 	liftMu sync.Mutex
