@@ -26,10 +26,10 @@ subject (or every subject); the issue's three cases are the three shapes of it. 
 about a subject** the way a standing resolver does — every form of it, by one test — and a suspended
 subject is suspended in all respects: a rule starts no firing about it, a task about it holds at its
 next boundary, a question about it is withdrawn from in front of people, and a hook or `seq` step
-about it does not land. When the suspension lifts, each of those is released in the order that keeps
-them consistent — tasks resume, held hooks land, then the covered rules are re-armed, the path an
-install and a restart already take — so a rule acts on the world as it stands when the suspension
-lifts, and nothing that happened meanwhile is replayed. A suspension belongs to the scope it was
+about it records what happened and starts nothing. When the suspension lifts, each of those is
+released in the order that keeps them consistent — tasks resume, parked launches start, then the
+covered rules are re-armed, the path an install and a restart already take — so a rule acts on the
+world as it stands when the suspension lifts, and nothing that happened meanwhile is replayed. A suspension belongs to the scope it was
 made in, baseline being the empty scope, and covers only the work that scope created. The
 suspensions in force are one in-memory table per scope, written only by the route that also writes
 the store, and loaded before that scope's tasks are re-attached or its charter restored.
@@ -44,6 +44,7 @@ held:
   user:walter@example.com:
     why: "reviewing the drift charter's range logic before it runs again"
     since: "2026-09-14T03:10:00Z"
+    occurrence: 41872              # the store revision it was written at, as a run record's
 ```
 
 ```sh
@@ -76,6 +77,14 @@ reasons. The issue's semantics are kept: a `resume` by anyone entitled to make i
 suspension whoever held it. One asymmetry is kept too: a resume made by the system removes only the
 system's own holder, so an automatic suspension lifting itself never lifts a person's.
 
+Each holder also records the store revision its suspension was written at — `occurrence`, the run
+record's spelling for "the revision this is about" — beside the wall-clock `since`. The write
+returns it, so it costs nothing, and it is the anchor the store side needs: the listing compares
+it with the head to say how much has moved under a cover, `verse data --since` reads from it to
+show what a suspended rule did not see, and it is the number a task record's `occurrence` and
+status's `storeRev` are compared against. Nothing is replayed from it; resume stays a current-state
+replay ([below](#resume-is-ordered)).
+
 **Suspensions only add up.** Work is suspended if any record covers it. No record exempts a subject
 from a wider suspension, and resuming `verse-dev.drift git.verse.head` while `verse-dev.drift`
 stands lifts that record and says the pair is still covered, and by what. Argo CD's allow and deny
@@ -104,8 +113,8 @@ already has a way to wait:
 | a firing waiting at its gate | its question is withdrawn, ballots kept; the firing waits for the lift | it poses the same question again, if the rule still selects the subject |
 | a running task | holds at its next boundary, by the pause `flow pause` uses, marked as the suspension's | resumes, if only the suspension held it |
 | a task's own question | withdrawn by the task's pause, as today | asked again by the task, as today |
-| a completion hook, or a `seq` step | is parked, and marked on the task record | lands, before the rules are re-armed |
-| a deadline on a covered question | does not settle | re-armed; one already past settles then |
+| a completion hook, or a `seq` step | its writes land; its spawn is parked before any selection is posed | the parked launch starts, before the rules are re-armed |
+| a deadline on a covered question | its clock stops | re-armed with the time it had left |
 
 **A rule about to fire** is asked at the three places a firing can begin, and at the two places
 every spawn and every charter write converge. First at the top of `evaluate`, **before
@@ -138,8 +147,15 @@ the rule still selects the subject (`stillSelects`), it poses the same determini
 joining what was cast, and `askedAgain` says so. Mootness still ends a suspended firing, since the
 per-pose context sits under it. Nobody can answer a question about suspended work, so no answer is
 ever given and then held; and `settleByDeadline` ignores an orphaned question
-(`versed/server.go:2709`), so a clock that lapses meanwhile settles when the question is re-posed
-and re-armed against its standing stamp.
+(`versed/server.go:2709`), so nothing settles while it is withdrawn.
+
+**A withdrawn question's clock stops.** A deadline bounds how long a question stands in front of
+people, and a withdrawn one stands in front of nobody; Kubernetes stops a paused Deployment's
+progress deadline for the same reason. Nothing new is recorded for it: `DropQuestion` already stamps
+`orphanedAt` (`mirror/question.go:578`) and the deadline stands as an absolute `deadline.at`, so the
+time the question had left is one subtraction, and the re-pose re-arms it at the lift plus that
+remainder. A deadline that had already lapsed when the suspension landed settles on the re-pose, as
+it would have.
 
 **A running task** is held at its next boundary by the pause every runtime already implements —
 local, remote and brokered alike (`task.Handle.Pause`) — with one distinction the runtime lacks:
@@ -153,41 +169,50 @@ covers it; tasks are found through `flowEngines` for the scope (`versed/owns.go:
 by hand is in no engine's live map, which the scope-owns work noted and left; holding it needs a
 handle attached through its runner, as `reconcileTasks` attaches a survivor's.
 
-**A hook** is where a charter records what a task did, so holding it is only safe because the rule
-the hook would feed is suspended too: nothing about the subject re-fires while the hook waits, and
-on resume the hook lands before the rule is re-armed. That is the uniformity paying for itself —
-earlier drafts refused to hold hooks because a resumed rule would have re-spawned the task the hook
-had not yet recorded.
+**A hook lands; its launch is parked.** A hook is where a charter records what a task did, and
+recording is not progress: the hook's patches and derives land at once, and what they wake is
+already covered — the rule that reads the latch is refused before its watermark moves, and the
+re-arm on lift replays the world as it then stands. Earlier drafts held the hook itself, because a
+resumed rule would otherwise re-spawn the task the hook had not yet recorded; letting it record
+removes that hazard rather than engineering around it, and with it the parked-hook list, the mark on
+the task record and the restart sweep that re-parked from it.
 
-It is **parked, never blocked on.** Every completion path — `reap`, `reapLoop`, `reapOnDone`
-(`engine.go:1633`, `1659`, `1318`) — retires the task and calls `applyHook` (`engine.go:1353`) on
-the engine's one reap goroutine, and `seq` steps are reached only from it (`resumeSeq`, `stopSeq`,
-`engine.go:1384`). A hook that blocked there would stall every completion in the engine for the life
-of the suspension, the defect a provider selection inside a hook already has (`engine.go:1654`). So
-`applyHook` on a covered subject records what it was handed — the retired `flowTask`, the status,
-the event — in a per-engine list, writes a mark on the task record (as `recordHookFailure` annotates
-one, `engine.go:1443`), and returns; the lift re-enters `applyHook` for each. The mark is what a
-restart finds: a sweep after the package phase, over terminal task records carrying it, re-parks
-each in the engine whose charter address the record names — which is why a task record has to gain
-`at` beside `flow`, `trigger` and `chain` ([what it costs](#what-it-costs-to-build)).
-`reconcileTasks` skips terminal records and `AdoptChain` targets baseline's engine only
-(`versed/server.go:679`, `726`), so neither serves.
+What a hook must not do is **start** something. Its spawn is parked at the entry of `launchSpawn`
+(`trigger/trigger.go:926`) — after the writes, and before `selectProvider`, which for `select: ask`
+blocks on the resolver (`select.go:85`). That placement is forced: every completion path — `reap`,
+`reapLoop`, `reapOnDone` (`engine.go:1633`, `1659`, `1318`) — retires the task and calls
+`applyHook` (`engine.go:1353`) on the engine's one reap goroutine, `seq` steps are reached only
+from it (`resumeSeq`, `stopSeq`, `engine.go:1384`), and a selection posed from there under a
+suspension would be withdrawn and wait for the lift with every completion in the engine behind it,
+the defect a selection inside a hook already has. A hook poses no gate of its own — gates are the
+rule's, posed in `fireOne` before its action (`engine.go:811`) — so the selection is the only
+question a hook can ask, and parking before it means a hook asks nothing while suspended. What is
+parked is `launchSpawn`'s argument list — the action, the chain, the subject, the root payload and
+the occurrence — in a per-engine list, and the lift re-enters `launchSpawn` with each, which is the
+move `ResumeSelections` already makes after a restart and the reason that function stands alone.
+The `spawnHooked` backstop stays for the one caller that reaches it with no firing and no hook
+above it, a resumed selection.
+
+A parked launch does not survive a restart. A hook's spawn due during a suspension that spans one
+is lost — which is what a hook due during a restart does today, and the gap this note no longer
+claims to close.
 
 ### Resume is ordered
 
-Releasing everything at once would let a rule see its subject in the state that spawned a task whose
-`onDone` has not landed yet, and spawn it again — and not only a re-armed rule. A covered rule's own
-watch keeps delivering throughout, so the moment the table stops refusing its firings, any commit
-under what it reads re-evaluates it; `working` is false because `retire` already dropped the task
-from the live map (`engine.go:1327`), and `spawnHooked` finds no live id. So the table entry is the
-**last** thing to go, and a lift proceeds:
+Releasing everything at once would let a rule see its subject in the state a hook left it in, with
+the task that hook was about to start not yet live, and start one of its own — and not only a
+re-armed rule. A covered rule's own watch keeps delivering throughout, so the moment the table stops
+refusing its firings, any commit under what it reads re-evaluates it; `working` is false because
+`retire` already dropped the finished task from the live map (`engine.go:1327`), and `spawnHooked`
+finds no live id until the parked launch has started. So the table entry is the **last** thing to
+go, and a lift proceeds:
 
 1. **the record is deleted** in the store, so the lift is a commit and the head moves;
 2. **the entry is marked draining**: firings are still refused, and everything held is released —
-   **tasks** the suspension paused resume from their boundary; **parked hooks and `seq` steps**
-   land, in order, until the engine's list is empty, advancing the latches their rules read;
-   **withdrawn questions** are posed again by the firings waiting on them, and their deadlines
-   re-armed;
+   **tasks** the suspension paused resume from their boundary; **parked launches** — a hook's or a
+   `seq` step's spawn — start, in order, until the engine's list is empty; **withdrawn questions**
+   are posed again by the firings waiting on them, and their deadlines re-armed with the time they
+   had left;
 3. **the entry is removed** from the table;
 4. **the covered rules are re-armed**: `armTriggerSubtree` opens each rule's watches again — the
    predecessor is cancelled by `registerWatchers` (`engine.go:494`), and in-flight firings run on
@@ -356,9 +381,9 @@ added as a field later.
 
 What is spent instead:
 
-- `verse suspend` lists every suspension with its holders, reasons, age, what it is holding now —
-  firings not started, tasks held, questions withdrawn, hooks waiting — and whether it still covers
-  anything;
+- `verse suspend` lists every suspension with its holders, reasons, age, how much has moved under
+  it since (its `occurrence` against the head), what it is holding now — firings not started, tasks
+  held, questions withdrawn, launches parked — and whether it still covers anything;
 - a withdrawn question says which suspension withdrew it, and a held task's record says what holds
   it;
 - `verse status` counts suspensions, and the charter census marks a rule a suspension covers whole;
@@ -450,17 +475,14 @@ out.
 - **A charter re-applied while one of its firings waits.** The firing re-poses and acts with the
   rule it started under. True today of any unanswered question; a suspension makes "fix it,
   re-apply, resume" a natural sequence, so it will be met more often.
-- **A deadline that lapses during a suspension** settles on its default when the suspension lifts.
-  Kubernetes stops a paused Deployment's progress deadline; doing the same here is an open question
-  below.
 - **An `on` edge during a suspension**, for a firing it had not started.
 - **A scope deleted while one of its suspensions holds work.** `deleteScope` stops a scope's engine
   but does not cancel its live tasks; a suspension removed with its scope has to release or cancel
   what it held, and follows whatever `deleteScope` becomes.
 - **A layered charter suspended one level at a time.** A suspended lower rule stops deriving, and
   rules about the rows it derived act on its last ones. Suspending the package is the whole answer.
-- **A crash between a parked hook landing and its mark clearing** lands the hook twice on the next
-  start. Today the same window loses the hook.
+- **A parked launch across a restart** is lost: a hook's spawn due while suspended, when verse
+  restarts before the lift, does not start. A hook due during a restart is lost the same way today.
 - **A holder whose authority lapses** leaves what was already held, held, until somebody resumes
   ([authority](#authority-is-decided-when-it-applies)).
 
@@ -479,18 +501,17 @@ out.
 - **Rule records.** `by`, written at install, read at restore, kept through a rollback.
 - **Tasks.** Reaching every engine's tasks, and knowing which scope holds one, is already there:
   `flowEngines` and `scopeOf` (`versed/owns.go`). What a suspension adds: `heldBy` on `flowTask`,
-  and `flow resume` refusing a covered task; a task record carrying the charter address it was
-  spawned under, which it does not today (`flow`, `trigger` and `chain` are there, the package is
-  not); a pause at `track` for a re-attached task; and a handle for a hand-spawned task, attached
-  through its runner.
-- **Hooks and `seq` steps.** Parked in `applyHook` — values kept in a per-engine list, a mark
-  written on the task record, return — and a sweep after the package phase over terminal records
-  carrying the mark, routed by the record's new `at`. This is the largest piece, and it closes an
-  existing gap: today a hook due while verse restarts is lost too.
+  and `flow resume` refusing a covered task; a pause at `track` for a re-attached task; and a
+  handle for a hand-spawned task, attached through its runner.
+- **Hooks and `seq` steps.** A check at the entry of `launchSpawn`, after a hook's writes and
+  before a selection can be posed, that parks its arguments in a per-engine list; the lift
+  re-enters `launchSpawn` with each, as `ResumeSelections` does. No mark on the task record, no
+  restart sweep, and no `at` on the task record to route one by.
 - **Questions and deadlines.** Nothing new in the docket: a withdrawn question is orphaned with a
-  `why`, keeps its ballots and its stamp, and is re-posed under the same id, as after a restart. The
-  `clearPriorAnswer` defect ([found along the way](#found-along-the-way)) is on the *answered*
-  re-pose path and does not gate this.
+  `why`, keeps its ballots and its stamp, and is re-posed under the same id, as after a restart,
+  with its deadline re-armed at the lift plus the time it had left, from `orphanedAt` and
+  `deadline.at`. The `clearPriorAnswer` defect ([found along the way](#found-along-the-way)) is on
+  the *answered* re-pose path and does not gate this.
 - **Resume.** The ordered lift above, with the entry draining rather than locked.
 - **Surfaces and docs.** The CLI pair; census, status and `flow show` fields; a section of the
   trigger model beside flows, the perms table, the CLI reference, and a line in "What a scope owns"
@@ -557,13 +578,11 @@ resolver already does removes that decision entirely. What is left reuses existi
 nearly every step: a task's pause, the docket's orphan-and-re-pose path a restart already takes, the
 install path for resume, `Track`'s shape for the table, `awaiting` for startup, and `control` for
 authority. The genuinely new mechanisms are three, and each is small: a gate goroutine that can
-withdraw and re-pose, a pause that knows whose it is, and a parked hook that survives a restart —
-which closes a gap verse has anyway.
+withdraw and re-pose, a pause that knows whose it is, and a launch parked before it can ask
+anything.
 
 ## Open questions
 
-- **Deadlines during a suspension.** Settle on lift (this design), or extend by the time suspended,
-  which needs the suspension's start on the question.
 - **Suspending the system charter from outside.** Only the system can, which means editing the file.
   An operator in an incident may want more.
 - **The third pass's fixes have not been re-read.** The checks to run next: that the draining state
