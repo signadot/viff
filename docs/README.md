@@ -75,7 +75,7 @@ drive a local agent, a remote one, and a human.
 | | [reference/examples/source](reference/examples/source/main.go) — a source you can copy and change; it compiles with the tree |
 | | [External tasks](external-tasks.md) — how the seam was chosen |
 | ahead | [Attached resolvers: what is left](working/attached-resolvers-residual.md) — the drivers, and a `by` nobody verifies |
-| ahead | [One gate record: what is left](working/gate-unify-residual.md) — the runtime vector gate, where the record lives, two clocks on one record |
+| | [One gate record: what is left](working/gate-unify-residual.md) — the runtime vector gate, where the record lives, two clocks on one record |
 | | [Runners: what is left](working/runners-residual.md) — how control is applied is convention rather than contract, and whether `local` should be nameable |
 | | [A runner descriptor](working/runner-descriptor.md) — `GET /runner`: how control is applied, and isolation as ordered classes verse compares and does not interpret |
 | | [comment-drift, and the merge gate](working/comment-drift-drive.md) — what the drive built, what it took, and what it found |
@@ -100,7 +100,8 @@ intervention defeated.
 |---|---|
 | walk | [§3 steering](tutorial.md#steering) |
 | read | [Control](control.md) — what an operator stops and for how long: a run's hold and a durable suspension, whose hold it is, who may, and what each reaches |
-| read | [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs a cursor rather than a buffer |
+| | [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs a cursor rather than a buffer |
+| ahead | [Suspending: what is left](working/suspend-residual.md) — automatic suspension, a scope deleted with its suspensions, a parked launch and an operator's hold across a restart |
 
 ### Federation: bringing the outside in
 
