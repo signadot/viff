@@ -1572,6 +1572,17 @@ func (e *Engine) matchFlow(m Match) []flowTask {
 // which engine does rather than answering zero over work that is running elsewhere.
 func (e *Engine) FlowCount(m Match) int { return len(e.matchFlow(m)) }
 
+// FlowTasks is the ids of the live tasks the address selects, sorted, signalling none of them:
+// what a steer asks control over before it acts on any.
+func (e *Engine) FlowTasks(m Match) []string {
+	ps := e.matchFlow(m)
+	out := make([]string, len(ps))
+	for i, fp := range ps {
+		out[i] = fp.id
+	}
+	return out
+}
+
 // CancelFlow cancels every task the address selects (out-of-band control, honored at
 // each task's next boundary — never a store write). Returns how many were signalled.
 func (e *Engine) CancelFlow(m Match) int {

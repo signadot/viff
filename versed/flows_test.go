@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
 
@@ -267,5 +268,52 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// A scope nobody has opened, over a subject nobody is working: a normal zero.
 	if code, got, msg := steer("pause", "?scope=nobody", "demo.pr.99"); code != 200 || got.Affected != 0 {
 		t.Fatalf("flow pause --scope nobody = %d %+v %s, want a plain 0", code, got, msg)
+	}
+}
+
+// A steer asks control over every task it selects, as `task cancel` does of one: a stranger's
+// `flow cancel` over somebody else's work is refused, 403, and no handle is signalled — not
+// even the tasks beside it that the stranger could have stopped — while the owner's reaches.
+func TestFlowSteeringAsksControl(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	subject := entity.RefAt("demo", "pr", "1").String()
+	// alice's task, with the record that says it is hers, and one nobody's record claims.
+	alices := newIdleHandle(t)
+	if _, _, err := entity.As(srv.Store, "user:alice@example.com").Write(entity.Write{
+		At: mirror.Ref("alice-run").At(), Value: entity.Obj{"status": "running", "flow": subject}.Payload(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv.Eng.Adopt(subject, "alice-run", alices)
+	open := newIdleHandle(t)
+	srv.Eng.Adopt(subject, "open-run", open)
+
+	steer := func(as, verb string) (int, string) {
+		t.Helper()
+		resp := postAs(t, as, ts.URL+"/flow/"+verb, "application/tony", `{subject: "demo.pr.*", text: "hurry"}`)
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, strings.TrimSpace(string(raw))
+	}
+	for _, verb := range []string{"pause", "resume", "say", "cancel"} {
+		code, msg := steer("bob@example.com", verb)
+		if code != http.StatusForbidden || !strings.Contains(msg, "alice-run") {
+			t.Fatalf("bob's flow %s = %d %q, want 403 naming alice's task", verb, code, msg)
+		}
+		if alices.count(verb)+open.count(verb) != 0 {
+			t.Fatalf("bob's refused flow %s reached alice's task %d times and the open one %d",
+				verb, alices.count(verb), open.count(verb))
+		}
+	}
+	if code, msg := steer("alice@example.com", "cancel"); code != http.StatusOK {
+		t.Fatalf("alice's flow cancel = %d %q, want 200", code, msg)
+	}
+	if alices.count("cancel") != 1 || open.count("cancel") != 1 {
+		t.Fatalf("alice's cancel reached hers %d and the open one %d; want both once",
+			alices.count("cancel"), open.count("cancel"))
 	}
 }

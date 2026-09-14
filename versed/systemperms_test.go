@@ -106,6 +106,21 @@ func TestControlIsHeldByTheTasksOwner(t *testing.T) {
 	if code := say("alice@example.com"); code != http.StatusNoContent {
 		t.Fatalf("the owner could not steer their task: %d", code)
 	}
+	// Pause and resume are control verbs like say: the runtime mount serves them only after
+	// the same check.
+	verb := func(as, op string) int {
+		resp := postAs(t, as, ts.URL+"/tasks/run-1/"+op, "application/tony", "")
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for _, op := range []string{"pause", "resume"} {
+		if code := verb("bob@example.com", op); code != http.StatusForbidden {
+			t.Fatalf("a stranger's %s of the task: %d, want 403", op, code)
+		}
+		if code := verb("alice@example.com", op); code/100 != 2 {
+			t.Fatalf("the owner's %s of their task: %d", op, code)
+		}
+	}
 	if ok, _ := entity.Holds(srv.Store, "user:bob@example.com", entity.Control, mirror.Ref("run-1")); ok {
 		t.Fatal("bob holds control")
 	}

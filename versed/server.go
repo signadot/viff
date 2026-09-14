@@ -1169,6 +1169,14 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "say")
 	}, "verse-say", nothing)
+	// pause/resume the same way: held at the task's next boundary wherever it runs, and asked
+	// of the task's scope and of control first, as every control verb is.
+	rt.handle("POST /tasks/{id}/pause", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "pause")
+	}, "", nothing)
+	rt.handle("POST /tasks/{id}/resume", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "resume")
+	}, "", nothing)
 	// Answering is the ONE path (answerQuestion), not a case of taskControl: this route
 	// differs from `/gate/resolve` only in being TOLD which task holds the question
 	// instead of working it out. Everything that follows — attribution, delivery, the record,
@@ -4563,6 +4571,10 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		return
 	}
 	switch op {
+	case "pause":
+		h.Pause()
+	case "resume":
+		h.Resume()
 	case "cancel":
 		h.Cancel("")
 	case "say":
@@ -4680,6 +4692,11 @@ func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (t
 // the work is not stopped, and the reader is told there is none. The same from baseline: a
 // scope's work is not baseline's to stop unaware. Nothing anywhere is a normal zero.
 //
+// CONTROL IS HELD over every task the address selects, as it is for `task cancel`: asked after
+// the ownership check, of each task's record, before any handle is signalled. A steer is one
+// act, so one task refused refuses the whole of it, naming that task, rather than stopping the
+// tasks the asker holds and leaving the rest running under an answer that counts only those.
+//
 // Serviced with priority over observation by each engine's control plane (see
 // docs/deployment-and-steering.md); the engine's verbs are out-of-band and never store writes.
 func (s *Server) steer(w http.ResponseWriter, r *http.Request, verb string, act func(*trigger.Engine, trigger.Match, api.FlowSteer) int) {
@@ -4694,13 +4711,19 @@ func (s *Server) steer(w http.ResponseWriter, r *http.Request, verb string, act 
 	}
 	scope := r.URL.Query().Get("scope")
 	engines := s.flowEngines(scope)
-	held := 0
+	var ids []string
 	for _, eng := range engines {
-		held += eng.FlowCount(m)
+		ids = append(ids, eng.FlowTasks(m)...)
 	}
-	if held == 0 {
+	if len(ids) == 0 {
 		if holders := s.flowHolders(scope, m); len(holders) > 0 {
 			inherited(w, r, "the live work about "+b.Subject, scope, holders)
+			return
+		}
+	}
+	store := s.scopedStore(r)
+	for _, id := range ids {
+		if refused(w, entity.Check(store, principalOf(r), entity.Control, mirror.Ref(id), "steering it")) {
 			return
 		}
 	}
