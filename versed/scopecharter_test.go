@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"github.com/signadot/verse/api"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -142,9 +143,11 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 	}
 }
 
-// A scope may SHADOW a baseline rule: remove it here, install its own under that name. The
-// removal is a copy-on-write tombstone and the install lands in the scope's own layer, so
-// after a restart the scope restores its own and baseline still holds its.
+// A scope may SHADOW a baseline rule: install its own under that name. The inherited one is
+// not removed first and cannot be — a removal from the scope is refused as baseline's
+// (owns.go) — and needs no removing, since the scope's engine holds none of baseline's. The
+// install lands in the scope's own layer, so after a restart the scope restores its own and
+// baseline still holds its.
 func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
@@ -158,7 +161,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
 		action: {patch: {stage: baseline-said-so}},
 	}`)
-	// The dev's move: drop the inherited rule here, then write their own under its name.
+	// The dev's first move, refused: the inherited rule is baseline's, not the scope's to drop.
 	resp, err := http.NewRequest(http.MethodDelete, firstHTTP.URL+"/charter/review?scope=me", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +171,12 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scoped remove: %v", err)
 	}
+	msg, _ := io.ReadAll(del.Body)
 	del.Body.Close()
+	if del.StatusCode != http.StatusConflict || !strings.Contains(string(msg), "baseline's") {
+		t.Fatalf("removing an inherited rule from a scope = %s %q, want 409 naming baseline", del.Status, msg)
+	}
+	// The dev's move: write their own under its name.
 	addScopedRule(t, firstHTTP, "me", `{
 		name: review,
 		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},

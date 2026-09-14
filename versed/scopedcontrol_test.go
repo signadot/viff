@@ -115,3 +115,70 @@ func TestControlWritesActOnTheirOwnScope(t *testing.T) {
 		t.Fatalf("cancel of baseline's own task = %d %q, want 204", code, msg)
 	}
 }
+
+// A charter removal is a control write like the others: from a scope it reaches the scope's
+// own rules and is refused at an inherited one, naming baseline; from baseline it is refused
+// at a scope's, naming the scope. Neither is "no such rule", which the asking engine could
+// say truthfully and the verse could not.
+func TestCharterRemovalActsOnItsOwnScope(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	addRule(t, ts, `{
+		name: review,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {patch: {stage: reviewed}},
+	}`)
+	addScopedRule(t, ts, "me", `{
+		name: only-mine,
+		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		action: {patch: {stage: mine}},
+	}`)
+	remove := func(path, scope string) (int, string) {
+		t.Helper()
+		url := ts.URL + path
+		if scope != "" {
+			if strings.Contains(path, "?") {
+				url += "&scope=" + scope
+			} else {
+				url += "?scope=" + scope
+			}
+		}
+		req, err := http.NewRequest(http.MethodDelete, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("remove %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, strings.TrimSpace(string(raw))
+	}
+
+	for _, path := range []string{"/charter/review", "/charter?path=rules.review"} {
+		if code, msg := remove(path, "me"); code != http.StatusConflict || !strings.Contains(msg, "baseline's") || !strings.Contains(msg, "without --scope") {
+			t.Fatalf("DELETE %s --scope me = %d %q, want 409 naming baseline", path, code, msg)
+		}
+	}
+	if code, msg := remove("/charter/only-mine", ""); code != http.StatusConflict || !strings.Contains(msg, "scope me's") || !strings.Contains(msg, "--scope me") {
+		t.Fatalf("DELETE /charter/only-mine from baseline = %d %q, want 409 naming scope me", code, msg)
+	}
+	if !srv.Eng.Knows("review") || !srv.engFor("me").Knows("only-mine") {
+		t.Fatal("a refused removal removed something")
+	}
+	if code, msg := remove("/charter/nobody-has-this", "me"); code != http.StatusNotFound {
+		t.Fatalf("DELETE of a rule nobody holds = %d %q, want 404", code, msg)
+	}
+
+	// Each scope's own, from itself: removed.
+	if code, msg := remove("/charter/only-mine", "me"); code != http.StatusNoContent {
+		t.Fatalf("DELETE /charter/only-mine --scope me = %d %q, want 204", code, msg)
+	}
+	if code, msg := remove("/charter/review", ""); code != http.StatusNoContent {
+		t.Fatalf("DELETE /charter/review = %d %q, want 204", code, msg)
+	}
+}

@@ -147,6 +147,50 @@ func (s *Server) questionScope(id, asked string) (holder string, found bool, err
 	return "", false, nil
 }
 
+// charterHolders is the scopes, other than the one asked, whose charter carries a rule or a
+// level by this name — "" for baseline, its packages included. A rule is held by the engine
+// that Knows it (installed or held for its stratum), which is the engine that would run it;
+// the store is not asked, since a scoped read sees baseline's records through the overlay.
+func (s *Server) charterHolders(asked, name string) []string {
+	holds := func(eng *trigger.Engine) bool {
+		if eng.Knows(name) {
+			return true
+		}
+		_, ok := eng.Stratum(name)
+		return ok
+	}
+	var out []string
+	if asked != "" {
+		for _, eng := range s.flowEngines("") {
+			if holds(eng) {
+				out = append(out, "")
+				break
+			}
+		}
+	}
+	for scope, eng := range s.scopeEngines() {
+		if scope != asked && holds(eng) {
+			out = append(out, scope)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// charterNotHere answers a removal that found nothing to remove in the asking scope's
+// charter: refused naming the scope whose charter holds the name, or not found when none
+// does. A scope's removal of an inherited rule is a write to baseline's charter made from a
+// scope, and baseline's removal of a scope's rule is the same the other way; neither is
+// "no such rule", which is true of the asking engine and false of the verse.
+func (s *Server) charterNotHere(w http.ResponseWriter, r *http.Request, name string, notFound func()) {
+	asked := r.URL.Query().Get("scope")
+	if holders := s.charterHolders(asked, name); len(holders) > 0 {
+		inherited(w, r, "the rule or level "+name, asked, holders)
+		return
+	}
+	notFound()
+}
+
 // ownHere is the check every control write makes first: that what it addresses is the
 // request's scope's own. Anything else is refused (inherited), having written the response;
 // a read that failed is refused as unreadable. True means go on.

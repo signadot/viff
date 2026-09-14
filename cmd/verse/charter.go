@@ -564,7 +564,8 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 	}
 	// WHAT WENT is said back, because the path said it and a path is easy to mistype. The two
 	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
-	// in a SCOPE is a tombstone over an inherited one rather than the rule going away.
+	// in a SCOPE was the scope's own — an inherited one is refused as baseline's — so baseline
+	// holds what it held.
 	name, kind, item := lastItem(steps)
 	switch {
 	case item && g.Scope != "":

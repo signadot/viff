@@ -346,11 +346,12 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	name := r.PathValue("name")
 	if eng == nil {
-		http.NotFound(w, r)
+		// A scope nobody has opened holds nothing — and the name may still be baseline's.
+		s.charterNotHere(w, r, name, func() { http.NotFound(w, r) })
 		return
 	}
-	name := r.PathValue("name")
 	if eng.RemoveTrigger(name) {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -359,7 +360,10 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, trigger.ErrNoStratum):
-		http.NotFound(w, r)
+		// Not in this scope's charter. A scope owns what it creates (owns.go): an inherited
+		// rule is baseline's to remove, and is said to be, rather than "not found" over a rule
+		// the same scope lists through the overlay.
+		s.charterNotHere(w, r, name, func() { http.NotFound(w, r) })
 	default:
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
@@ -903,8 +907,18 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Not in this charter: at an address, that is the package's not-found; at the verse itself,
+	// it may be another scope's to remove (owns.go), and is said to be.
+	notHere := func() {
+		notFound := func() { http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound) }
+		if at != "" {
+			notFound()
+			return
+		}
+		s.charterNotHere(w, r, name, notFound)
+	}
 	if eng == nil {
-		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		notHere() // a scope nobody has opened holds nothing — and the name may be baseline's
 		return
 	}
 	if kind == "rules" {
@@ -912,14 +926,14 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		notHere()
 		return
 	}
 	switch err := eng.RemoveStratum(name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, trigger.ErrNoStratum):
-		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		notHere()
 	default:
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
