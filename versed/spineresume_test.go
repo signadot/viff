@@ -1,7 +1,6 @@
 package versed
 
 import (
-	"bufio"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -71,36 +70,23 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	qid := waitAnyQuestion(t, srv)
 
 	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(entity.RefAt("change", "pr", "1"))).ID()
-	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet,
-		ts.URL+"/resolvers/instance/"+inst+"/events?since=1", nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("events: %v", err)
-	}
-	defer resp.Body.Close()
+	_, lines, stop := sseData(t, http.DefaultClient, ts.URL+"/resolvers/instance/"+inst+"/events?since=1")
+	defer stop()
 
 	var gap, sawQuestion bool
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			line := sc.Text()
-			if !strings.HasPrefix(line, "data: ") {
-				continue
+	deadline := time.After(3 * time.Second)
+read:
+	for !sawQuestion {
+		select {
+		case d, ok := <-lines:
+			if !ok {
+				break read
 			}
-			if strings.Contains(line, "gap:") {
-				gap = true
-			}
-			if strings.Contains(line, qid) {
-				sawQuestion = true
-				return
-			}
+			gap = gap || strings.Contains(d, "gap:")
+			sawQuestion = strings.Contains(d, qid)
+		case <-deadline:
+			break read
 		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
 	}
 
 	if !gap {

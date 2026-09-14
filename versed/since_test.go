@@ -1,12 +1,10 @@
 package versed
 
 import (
-	"bufio"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -28,22 +26,8 @@ import (
 // the REPLAY — everything the server had to say about the past before it started waiting.
 func frames(t *testing.T, url string) []task.Frame {
 	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("attach %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-
-	lines := make(chan string, 1024)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
+	_, lines, stop := sseData(t, http.DefaultClient, url)
+	defer stop()
 
 	// The stop condition is the task's own terminal frame, not a stopwatch. Every drive
 	// here finishes, so "the replay is complete" is a fact the stream states rather than one

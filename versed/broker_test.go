@@ -1,7 +1,6 @@
 package versed
 
 import (
-	"bufio"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,25 +70,12 @@ func TestBrokeredAttachStreams(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Get(ts.URL + "/tasks/bp1/events")
-	if err != nil {
-		t.Fatalf("attach: %v", err)
-	}
-	defer resp.Body.Close()
+	resp, lines, stop := sseData(t, ts.Client(), ts.URL+"/tasks/bp1/events")
+	defer stop()
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content-type=%q, want text/event-stream", ct)
 	}
 
-	lines := make(chan string, 8)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if d, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				lines <- d
-			}
-		}
-		close(lines)
-	}()
 	deadline := time.After(2 * time.Second)
 	for {
 		select {
