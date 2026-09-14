@@ -61,9 +61,12 @@ type FlowNode struct {
 	Err string `tony:"field=err,omitzero"`
 	// Pending, Gate and LastAction are the live detail, present only while a task is
 	// in flight.
-	Gate       string     `tony:"field=gate,omitzero"`
-	LastAction string     `tony:"field=lastAction,omitzero"`
-	Children   []FlowNode `tony:"field=children,omitzero"`
+	Gate       string `tony:"field=gate,omitzero"`
+	LastAction string `tony:"field=lastAction,omitzero"`
+	// HeldBy is who holds a live task at its boundary: `operator` for a `flow pause`, and the
+	// suspensions that paused it.
+	HeldBy   []string   `tony:"field=heldBy,omitzero"`
+	Children []FlowNode `tony:"field=children,omitzero"`
 }
 
 // Statuses a node carries that no task ever reports: a position in the charter that has
@@ -338,6 +341,7 @@ func (e *Engine) nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 		Status:     str("status"),
 		Gate:       e.gateNameOf(str("pending")),
 		LastAction: str("lastAction"),
+		HeldBy:     e.HeldBy(ent.Ref.ID()),
 	}
 	if n.Status == "" {
 		n.Status = string(task.Running)

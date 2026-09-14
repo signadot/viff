@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/signadot/verse/api"
@@ -420,4 +421,12 @@ func suspensionError(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		codec.HTTPError(w, r, http.StatusBadGateway, err.Error())
 	}
+}
+
+// heldBySuspension refuses resuming work a suspension holds, 409, naming the suspensions and the
+// verb that lifts them.
+func heldBySuspension(w http.ResponseWriter, r *http.Request, what string, by []string) {
+	codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
+		"%s is held by %s; resuming it would run what that suspends — `verse resume` lifts a suspension, "+
+			"and `verse suspend` lists them", what, strings.Join(by, ", ")))
 }

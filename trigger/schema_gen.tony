@@ -53,6 +53,7 @@ define:
   children: .[array(verse-flow-node)]
   err: .[string]
   gate: .[string]
+  heldBy: .[array(string)]
   id: .[string]
   kind: .[string]
   lastAction: .[string]

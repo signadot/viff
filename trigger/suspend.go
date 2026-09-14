@@ -342,6 +342,7 @@ func (t *Suspensions) Load(records []Suspension) {
 	engines := t.attached()
 	t.mu.Unlock()
 	for _, e := range engines {
+		e.releaseTasks()
 		e.signalLift()
 	}
 }
@@ -350,6 +351,15 @@ func (t *Suspensions) Load(records []Suspension) {
 // after it is released.
 func (t *Suspensions) attached() []*Engine {
 	return append([]*Engine(nil), t.engines...)
+}
+
+// Unload forgets the table's suspensions and holds everything until the next Load: what a restore
+// does first, since the records it is about to read are the only account of what is suspended.
+func (t *Suspensions) Unload() {
+	t.mu.Lock()
+	t.entries = map[string]Suspension{}
+	t.loaded = false
+	t.mu.Unlock()
 }
 
 // Loaded reports whether the table has loaded.
@@ -388,16 +398,18 @@ func (t *Suspensions) Put(s Suspension) {
 	t.mu.Unlock()
 	for _, e := range engines {
 		e.withdrawHeld()
+		e.holdTasks()
 	}
 }
 
-// Remove drops a suspension once its record is deleted, and wakes what it held.
+// Remove drops a suspension once its record is deleted, and releases what it held.
 func (t *Suspensions) Remove(id string) {
 	t.mu.Lock()
 	delete(t.entries, id)
 	engines := t.attached()
 	t.mu.Unlock()
 	for _, e := range engines {
+		e.releaseTasks()
 		e.signalLift()
 	}
 }
@@ -619,4 +631,88 @@ func (e *Engine) resumeClock(id string) {
 		e.logger.Warn("a withdrawn question's deadline could not be moved to its lift",
 			"question", id, "err", err)
 	}
+}
+
+// subjectOf is a live task's subject as an address; zero for a task about none.
+func subjectOf(s string) entity.Ref {
+	ref, _ := entity.ParseAddr(s)
+	return ref
+}
+
+// setHold changes a live task's hold under the registry lock and hands back the task as it now
+// stands; false when the task is no longer live.
+func (e *Engine) setHold(id string, fn func(*flowTask)) (flowTask, bool) {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	fp, ok := e.live[id]
+	if !ok {
+		return flowTask{}, false
+	}
+	fn(&fp)
+	e.live[id] = fp
+	return fp, true
+}
+
+// recordHold writes who holds a task onto its record, and removes it when nothing does. Only onto
+// a record that exists: a task this engine adopted with no record gets none invented for it.
+func (e *Engine) recordHold(fp flowTask) {
+	ref := mirror.Ref(fp.id)
+	var v entity.Payload
+	if by := fp.heldBy(); len(by) > 0 {
+		v = entity.Val(by)
+	}
+	_, _, _ = e.store.Write(entity.Write{
+		At:    ref.At(mirror.HeldByField),
+		Value: v,
+		When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}},
+	})
+}
+
+// holdTasks holds every live task a suspension now covers that no suspension holds yet, at its
+// next boundary.
+func (e *Engine) holdTasks() {
+	for _, fp := range e.liveTasks() {
+		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		if len(held) == 0 || len(fp.suspended) > 0 {
+			continue
+		}
+		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.suspended = held })
+		if !ok {
+			continue
+		}
+		if !fp.operator {
+			fp.h.Pause()
+		}
+		e.recordHold(fp)
+	}
+}
+
+// releaseTasks resumes every live task a suspension held that none holds now, unless an operator
+// holds it too: a lift resumes only what the suspension paused.
+func (e *Engine) releaseTasks() {
+	for _, fp := range e.liveTasks() {
+		if len(fp.suspended) == 0 {
+			continue
+		}
+		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.suspended = held })
+		if !ok || len(held) > 0 {
+			continue
+		}
+		if !fp.operator {
+			fp.h.Resume()
+		}
+		e.recordHold(fp)
+	}
+}
+
+// liveTasks is every live task, copied out of the registry.
+func (e *Engine) liveTasks() []flowTask {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	out := make([]flowTask, 0, len(e.live))
+	for _, fp := range e.live {
+		out = append(out, fp)
+	}
+	return out
 }

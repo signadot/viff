@@ -220,9 +220,11 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	}
 	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
-	// Baseline's suspensions, not loaded until Start's first phase: until then they hold
-	// everything this engine would start.
+	// Baseline's suspensions. A server that has not begun its restore has none to restore, so
+	// the table starts empty and loaded; Start unloads it before anything else and its first
+	// phase reads it back, and until then it holds everything this engine would start.
 	susp := trigger.NewSuspensions()
+	susp.Load(nil)
 	eng.SetSuspensions(susp)
 	taskd := taskd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp,
@@ -375,7 +377,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
-	eng.SetSpawner(s.spawnerFor(store, "", nil, eng.Principal))
+	eng.SetSpawner(s.spawnerFor(store, "", nil, eng))
 	return s
 }
 
@@ -494,12 +496,12 @@ func mintNonce() string {
 // derived from st because a task must be able to say where it lives before it exists —
 // see task.Launch.Scope, and git-issue kwxxm8cth12ksn99fhn0 for what publishing without
 // it cost.
-func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader, principal func(chain string) string) trigger.Spawner {
+func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader, eng *trigger.Engine) trigger.Spawner {
 	return func(id string, spec launch.Spec) task.Handle {
 		// WHO THIS SPAWN IS BY: the rule that fired, as the engine spells it. Every record of
 		// the task is written as the rule, so the task is owned by whoever owns the rule, and
 		// the runner is told the same name as the caller it is working for.
-		by := principal(spec.Chain)
+		by := eng.Principal(spec.Chain)
 		st := entity.As(st, by)
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
@@ -520,6 +522,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			Chain: spec.Chain, Prompt: spec.Prompt, Occurrence: spec.Occurrence,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
 			Resolver: spec.Resolver, Gates: spec.Gates,
+			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
 		if why := ghostResolver(st, spec.Resolver); why != "" {
 			// The same shape as an envelope this build does not have, below: a spawn that
@@ -735,6 +738,7 @@ func (s *Server) reconcileTasks() error {
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Resolver:  entity.Str(ent.Payload, "resolver"),
+					HeldBy:    func() []string { return s.Eng.HeldBy(ent.Ref.ID()) },
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
@@ -961,7 +965,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		// Scoped agents read file content through the verse (the connect content
 		// controller), so a validator isn't tied to the machine holding the files.
 		content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
-		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng.Principal))
+		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng))
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
@@ -1024,11 +1028,17 @@ func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
 // while an operator (and the probe) gets an answer instead of a refused connection.
 func (s *Server) StartServing(ctx context.Context) {
 	s.ctx = ctx
+	s.susp.Unload() // before the first request can be served, which Start's goroutine is not
 	go s.Start(ctx)
 }
 
 func (s *Server) Start(ctx context.Context) {
 	s.ctx = ctx // scoped engines (created later, per federation) start under this
+	// Nothing is suspended that the records do not say, and nothing runs until they have been
+	// read: the table holds everything from here until phaseSuspensions loads it.
+	if s.susp.Loaded() {
+		s.susp.Unload()
+	}
 	// WHERE THE TIME GOES, said out loud, and A READ THAT DID NOT HAPPEN IS ASKED AGAIN: each
 	// phase reads the store, and one whose read hit its deadline says so and is retried until
 	// it answers, rather than restoring nothing for good (startup.go).
@@ -4073,9 +4083,11 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// fired — see launchOf.
 		Provenance: task.Provenance{Principal: body.Principal, Subject: body.Subject},
 	}, nil)
+	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
 		Subject: body.Subject, Resolver: body.Resolver, Gates: body.Gates,
+		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
 		// Store.Rev() here looked obvious and is a store ROUND TRIP — it opens a watch when
@@ -4093,7 +4105,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	if flow == "" {
 		flow = id
 	}
-	s.engineOf(scope).Adopt(flow, id, h)
+	eng.Adopt(flow, id, h)
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
@@ -4616,6 +4628,14 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	if refused(w, entity.Check(s.scopedStore(r), principalOf(r), entity.Control, mirror.Ref(id), "controlling it")) {
 		return
 	}
+	if op == "resume" {
+		for _, eng := range s.flowEngines(holder) {
+			if by := eng.TaskSuspended(id); len(by) > 0 {
+				heldBySuspension(w, r, "task "+id, by)
+				return
+			}
+		}
+	}
 	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
@@ -4790,6 +4810,16 @@ func (s *Server) steer(w http.ResponseWriter, r *http.Request, verb string, act 
 	for _, id := range ids {
 		if refused(w, entity.Check(store, principalOf(r), entity.Control, mirror.Ref(id), "steering it")) {
 			return
+		}
+	}
+	// A SUSPENDED TASK IS NOT THE OPERATOR'S TO RESUME: `flow resume` of work a suspension holds
+	// would run what the suspension covers, so it is refused whole, naming what holds it.
+	if verb == "resume" {
+		for _, eng := range engines {
+			if id, by := eng.FlowSuspended(m); id != "" {
+				heldBySuspension(w, r, "task "+id, by)
+				return
+			}
 		}
 	}
 	n := 0

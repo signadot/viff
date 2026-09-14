@@ -47,7 +47,25 @@ type flowTask struct {
 	// what makes a hook's spawn id distinct and deterministic, and what a reader (or, later,
 	// a resume) can navigate back to the action that owns it.
 	chain string
+	// WHOSE HOLD it is at its boundary, since a pause is one bool in the runtime and two parties
+	// take it: an operator's `flow pause` (operator), and the suspensions that paused it
+	// (suspended). A lift resumes only what nothing else holds, and `flow resume` does not
+	// resume what a suspension holds. See heldBy.
+	operator  bool
+	suspended []string
 }
+
+// heldBy is who holds the task, the operator first: empty when nothing does.
+func (fp flowTask) heldBy() []string {
+	var out []string
+	if fp.operator {
+		out = append(out, HeldByOperator)
+	}
+	return append(out, fp.suspended...)
+}
+
+// HeldByOperator is how a task's `heldBy` names an operator's `flow pause`.
+const HeldByOperator = "operator"
 
 // Engine runs the ECA loop over an entity-verse.
 //
@@ -1280,11 +1298,19 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 	return h
 }
 
-// track registers a live task and arms its lifecycle-driven reaper.
+// track registers a live task and arms its lifecycle-driven reaper. A task a suspension covers
+// is held as it is tracked — a task re-attached after a restart, or one run by hand about a
+// suspended subject — since nothing else will pause it.
 func (e *Engine) track(fp flowTask) {
+	held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+	fp.suspended = held
 	e.liveMu.Lock()
 	e.live[fp.id] = fp
 	e.liveMu.Unlock()
+	if len(held) > 0 {
+		fp.h.Pause()
+		e.recordHold(fp)
+	}
 	go e.reapOnDone(fp) // retire it when it ends
 }
 
@@ -1645,22 +1671,65 @@ func (e *Engine) SteerFlow(m Match, text, by string) int {
 // control, honored at the boundary, never a store write. Lift it with ResumeFlow.
 // Returns how many were signalled. (This is per-flow; it does not pause the engine's
 // dispatch loop — other flows keep reacting.)
+//
+// The hold is the operator's, and says so on the task (heldBy): a suspension's lift leaves it.
 func (e *Engine) PauseFlow(m Match) int {
 	ps := e.matchFlow(m)
 	for _, fp := range ps {
-		fp.h.Pause()
+		if fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.operator = true }); ok {
+			fp.h.Pause()
+			e.recordHold(fp)
+		}
 	}
 	return len(ps)
 }
 
-// ResumeFlow lifts a PauseFlow, releasing each task to run from its held
-// boundary. Returns how many were signalled.
+// ResumeFlow lifts a PauseFlow, releasing each task to run from its held boundary — unless a
+// suspension holds it too, when the operator's hold is lifted and the task stays held; the steer
+// route refuses that case before it gets here (FlowSuspended). Returns how many were signalled.
 func (e *Engine) ResumeFlow(m Match) int {
 	ps := e.matchFlow(m)
 	for _, fp := range ps {
-		fp.h.Resume()
+		held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.operator, fp.suspended = false, held })
+		if !ok {
+			continue
+		}
+		if len(held) == 0 {
+			fp.h.Resume()
+		}
+		e.recordHold(fp)
 	}
 	return len(ps)
+}
+
+// FlowSuspended is the first live task the address selects that a suspension holds, and what
+// holds it: what `flow resume` is refused naming, since resuming it would run covered work.
+func (e *Engine) FlowSuspended(m Match) (id string, by []string) {
+	for _, fp := range e.matchFlow(m) {
+		if held := e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject)); len(held) > 0 {
+			return fp.id, held
+		}
+	}
+	return "", nil
+}
+
+// TaskSuspended is FlowSuspended for one live task by id.
+func (e *Engine) TaskSuspended(id string) []string {
+	e.liveMu.Lock()
+	fp, ok := e.live[id]
+	e.liveMu.Unlock()
+	if !ok {
+		return nil
+	}
+	return e.holding(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
+}
+
+// HeldBy is who holds a live task, empty when nothing does or the task is not live here.
+func (e *Engine) HeldBy(id string) []string {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	return e.live[id].heldBy()
 }
 
 // reap retires a task when its reflected entity reaches a terminal status, so

@@ -36,6 +36,10 @@ const InstanceKind = "instance"
 // Ref is the entity that mirrors task id.
 func Ref(id string) entity.Ref { return entity.VerseRef(System, InstanceKind, id) }
 
+// HeldByField is who holds a task at its boundary, on its record: `operator` for a `flow pause`,
+// and the ids of the suspensions that paused it. Absent when nothing does.
+const HeldByField = "heldBy"
+
 // RunKind is the kind ONE RUN lives under, as against the id's latest state.
 //
 // `task:instance:<id>` is a live view keyed by the work: an id names the chain and the
@@ -143,6 +147,10 @@ type Meta struct {
 	// task, and writes every report as it. Empty for a local task, whose mirror is the
 	// system's, and for a brokered one, which learns its worker at the claim.
 	As string
+	// HeldBy says who holds the task at its boundary — `operator` for a `flow pause`, and the
+	// suspensions that paused it — asked at every write, since the engine holding the task is
+	// who knows and this record is replaced whole at each one. Nil holds nothing.
+	HeldBy func() []string
 	// Gates are the spawn's own gates, the policy a task's questions are posed under. A gate a
 	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
 	// the frame says: that gate is the charter's, and the runner does not get to soften it.
@@ -214,6 +222,7 @@ var RecordFields = map[string]bool{
 	"paused": true, "pending": true, "prompt": true, "resolver": true, "result": true,
 	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "tools": true, "trigger": true, "vector": true, "vectorBy": true,
+	HeldByField: true,
 }
 
 func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
@@ -309,7 +318,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	//
 	// Only the FIRST write: the rest are this run's own transitions, and each is meant to land
 	// on what it wrote a moment ago.
-	if rev := write(store, id, st); m.Occurrence == 0 && rev > 0 {
+	if rev := project(store, id, st, m); m.Occurrence == 0 && rev > 0 {
 		st["occurrence"] = rev
 	}
 	writeRun(store, id, occurrenceOf(st), st)
@@ -347,7 +356,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 			// Said BEFORE the wait, not after it: a reader asking during the outage is
 			// exactly the reader who needs to know the index is not current.
 			st["observed"] = false
-			write(store, id, st)
+			project(store, id, st, m)
 			time.Sleep(backoff(attempt))
 			attempt++
 			since, _ := st["cursor"].(int64)
@@ -443,7 +452,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					// meant removal — since baa0c459 it is data, so it was writing
 					// `observed: null` where it meant to write nothing at all.
 					delete(st, "observed")
-					write(store, id, st)
+					project(store, id, st, m)
 				}
 			}
 			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
@@ -524,7 +533,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						if e := h.Err(); e != "" { // status says only THAT it ended, never why
 							st["err"] = e
 						}
-						write(store, id, st)
+						project(store, id, st, m)
 						// And the run's own record, which the next run does not overwrite.
 						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
@@ -535,7 +544,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						return true, heard // the TASK ended; the entity remains, terminal
 					}
 				}
-				write(store, id, st)
+				project(store, id, st, m)
 				continue
 			case task.EvVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
@@ -545,7 +554,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}
-			write(store, id, st) // the payload is cloned on the way out; safe to reuse st
+			project(store, id, st, m) // the payload is cloned on the way out; safe to reuse st
 		}
 	}
 	return false, heard
@@ -688,6 +697,19 @@ func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64
 		return 0
 	}
 	return rev
+}
+
+// project is write for a live task's record, with who holds the task asked as it is written:
+// the record is replaced whole, so a hold not carried on every write is a hold forgotten.
+func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
+	if m.HeldBy != nil {
+		if by := m.HeldBy(); len(by) > 0 {
+			st[HeldByField] = by
+		} else {
+			delete(st, HeldByField)
+		}
+	}
+	return write(store, id, st)
 }
 
 // ParseResult is the structured face of a driver's final answer: the answer document

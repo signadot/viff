@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -215,19 +216,24 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	}
 }
 
-// The table is loaded before anything it could hold is re-attached or restored: until Start's
-// first phase has read the records a server's table has not loaded, a suspend is refused rather
-// than written over records the table does not know, and the phases that follow wait for it. A
-// restart brings every suspension back.
+// The table is loaded before anything it could hold is re-attached or restored: from the moment a
+// restore begins until its first phase has read the records, the table has not loaded, a suspend
+// is refused rather than written over records the table does not know, and the phases that follow
+// wait for it. A restart brings every suspension back.
 func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	if first.susp.Loaded() {
-		t.Fatal("a server nobody started has its suspensions loaded")
-	}
+	first.susp.Unload() // where a restore begins
 	ts := httptest.NewServer(first.Handler())
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "verse-dev.drift", Why: "early"}); code != http.StatusServiceUnavailable {
 		t.Fatalf("a suspend before the table loaded = %d %s, want 503", code, msg)
+	}
+	// Work that arrives in the window — a task run by hand while the restore reads — is held,
+	// and released when the table has loaded and holds nothing of it.
+	early := newIdleHandle(t)
+	first.Eng.Adopt("demo.pr.1", "early", early)
+	if early.count("pause") != 1 {
+		t.Fatalf("a task tracked before the suspensions loaded was paused %d times, want once", early.count("pause"))
 	}
 	first.waitMu.Lock()
 	first.waiting = map[string]bool{phaseSuspensions: true}
@@ -247,6 +253,9 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	first.Start(ctx)
 	if !first.susp.Loaded() {
 		t.Fatal("Start did not load the suspensions")
+	}
+	if early.count("resume") != 1 {
+		t.Fatalf("the task held while the suspensions loaded was resumed %d times once they had, want once", early.count("resume"))
 	}
 	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "verse-dev.drift", Why: "across a restart"})
 	if code != http.StatusOK {
@@ -452,5 +461,113 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 	}
 	if got := entity.Str(questionRecord(t, srv, id), "status"); got != mirror.QuestionOrphaned {
 		t.Fatalf("the moot question is %s after the lift, want it left orphaned", got)
+	}
+}
+
+// flowVerb posts a flow steer about a subject and hands back the status and the body's text.
+func flowVerb(t *testing.T, ts *httptest.Server, verb, subject string) (int, string) {
+	t.Helper()
+	resp, err := http.Post(ts.URL+"/flow/"+verb, "application/tony", strings.NewReader(`{subject: "`+subject+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(raw))
+}
+
+// A task knows whose hold it is under. An operator's pause and a suspension's are two holds: a
+// `flow resume` of a task a suspension holds is refused, naming it, and leaves it held; the lift
+// resumes only what nothing else holds, so an operator's pause outlives it whichever came first.
+func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
+	srv, ts := startedServer(t)
+	suspend := api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "hold it"}
+	lift := api.Suspend{Charter: "*", Subject: "demo.pr.1"}
+	heldBy := func(id string) []string { return srv.Eng.HeldBy(id) }
+
+	// flow pause, suspend, flow resume → refused; lift → still held by the operator.
+	first := newIdleHandle(t)
+	srv.Eng.Adopt("demo.pr.1", "first", first)
+	if code, msg := flowVerb(t, ts, "pause", "demo.pr.1"); code != http.StatusOK {
+		t.Fatalf("flow pause = %d %s", code, msg)
+	}
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", suspend)
+	if code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	if got := heldBy("first"); len(got) != 2 || got[0] != trigger.HeldByOperator || got[1] != held.ID {
+		t.Fatalf("the paused task under a suspension is held by %v, want the operator and %s", got, held.ID)
+	}
+	code, msg = flowVerb(t, ts, "resume", "demo.pr.1")
+	if code != http.StatusConflict || !strings.Contains(msg, held.ID) {
+		t.Fatalf("flow resume of a suspended task = %d %q, want 409 naming %s", code, msg, held.ID)
+	}
+	if code, msg := control(t, ts, "/tasks/first/resume", "", nil); code != http.StatusConflict || !strings.Contains(msg, held.ID) {
+		t.Fatalf("task resume of a suspended task = %d %q, want 409 naming %s", code, msg, held.ID)
+	}
+	if first.count("resume") != 0 {
+		t.Fatal("a refused resume resumed the task")
+	}
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", lift); code != http.StatusOK {
+		t.Fatalf("resume = %d %s", code, msg)
+	}
+	if got := heldBy("first"); len(got) != 1 || got[0] != trigger.HeldByOperator || first.count("resume") != 0 {
+		t.Fatalf("after the lift the task is held by %v and resumed %d times, want the operator's hold standing",
+			got, first.count("resume"))
+	}
+	if code, msg := flowVerb(t, ts, "resume", "demo.pr.1"); code != http.StatusOK || first.count("resume") != 1 {
+		t.Fatalf("flow resume once nothing suspends it = %d %s, resumed %d", code, msg, first.count("resume"))
+	}
+	close(first.ch)
+	first.ch = make(chan task.Frame)
+
+	// suspend, flow pause, lift → still held.
+	second := newIdleHandle(t)
+	srv.Eng.Adopt("demo.pr.1", "second", second)
+	if code, _, msg := suspendAs(t, ts, "suspend", "", "", suspend); code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	if second.count("pause") != 1 {
+		t.Fatalf("the suspension paused the task %d times, want once", second.count("pause"))
+	}
+	if code, msg := flowVerb(t, ts, "pause", "demo.pr.1"); code != http.StatusOK {
+		t.Fatalf("flow pause = %d %s", code, msg)
+	}
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", lift); code != http.StatusOK {
+		t.Fatalf("resume = %d %s", code, msg)
+	}
+	if got := heldBy("second"); len(got) != 1 || got[0] != trigger.HeldByOperator || second.count("resume") != 0 {
+		t.Fatalf("after the lift the task is held by %v and resumed %d times, want the operator's hold standing",
+			got, second.count("resume"))
+	}
+}
+
+// A task tracked while a suspension covers it — re-attached after a restart, or run by hand
+// about a suspended subject — is held as it is tracked, and says so on its record and its flow.
+func TestATaskTrackedUnderASuspensionIsHeld(t *testing.T) {
+	srv, ts := startedServer(t)
+	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.Suspend{Charter: "*", Subject: "demo.pr.1", Why: "hold it"})
+	if code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("resumed").At(),
+		Value: entity.Obj{"status": "running", "flow": "demo.pr.1"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	h := newIdleHandle(t)
+	srv.Eng.AdoptChain("demo.pr.1", "resumed", "", h)
+	if h.count("pause") != 1 {
+		t.Fatalf("the task tracked under a suspension was paused %d times, want once", h.count("pause"))
+	}
+	e, _, _ := srv.Store.Get(mirror.Ref("resumed"))
+	if got := entity.Strs(e.Payload, mirror.HeldByField); len(got) != 1 || got[0] != held.ID {
+		t.Fatalf("the task record says heldBy %v, want %s", got, held.ID)
+	}
+	resp, err := http.Get(ts.URL + "/flow/tree?subject=demo.pr.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, held.ID) {
+		t.Fatalf("flow show does not say what holds the task:\n%s", body)
 	}
 }

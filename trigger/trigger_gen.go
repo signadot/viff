@@ -62,6 +62,15 @@ func (s *FlowNode) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["lastAction"] = ir.FromString(string(s.LastAction))
 	}
 
+	// Field: HeldBy
+	if len(s.HeldBy) > 0 {
+		slice := make([]*ir.Node, len(s.HeldBy))
+		for i, v := range s.HeldBy {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["heldBy"] = ir.FromSlice(slice)
+	}
+
 	// Field: Children
 	if len(s.Children) > 0 {
 		slice := make([]*ir.Node, len(s.Children))
@@ -156,6 +165,23 @@ func (s *FlowNode) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "lastAction", fieldNodeUnwrapped.Type)
 			}
 			s.LastAction = string(fieldNodeUnwrapped.String)
+		case "heldBy":
+			// Field: HeldBy
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.HeldBy = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"heldBy\"", fieldNodeUnwrapped.Type)
+			}
 		case "children":
 			// Field: Children
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
