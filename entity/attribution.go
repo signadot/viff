@@ -39,8 +39,16 @@ var ErrForbidden = errors.New("refused")
 
 // Attribution is what an attributed store shares across the views derived from it: the perms
 // records this process has read, which nodes it has settled the owner of, what each place
-// acting resolves to, and what it has refused. One per underlying store; As derives
-// a per-principal view over it.
+// acting resolves to, and what it has refused. One per underlying store AND PER SCOPE; As
+// derives a per-principal view over it, and Scope a child over the scope's overlay.
+//
+// A SCOPE'S MIRROR IS ITS OWN, layered as the store is. A grant is a record, and a scoped
+// write of one lands in the overlay like any world write; a scope's checks read baseline's
+// grants through the overlay and its own on top, and baseline's checks never see the overlay
+// (docs/perms.md#scopes). One mirror for all of them was wrong both ways: a scoped grant read
+// back into it governed baseline's writes in this process, and a restart, loading from
+// baseline, forgot every owner a scope's creations had. The child is loaded from and watched
+// on the scoped store, which answers overlaid, so it needs no fallback to its parent.
 //
 // The cache is an optimisation and not the truth. The owner record is written under an
 // absence precondition, so a process that has forgotten (a restart, a second replica) costs
@@ -81,6 +89,36 @@ type Attribution struct {
 	// apart again, since it is neither a refusal nor the store; said names what has been logged.
 	unparsed int
 	said     map[string]bool
+	// parent is baseline's attribution for a scope's, nil for baseline's own: what a scope
+	// refuses, could not read or hid is counted there too, so /status reads the verse.
+	parent *Attribution
+	// children is one attribution per scope opened through this one, by name, for as long as
+	// the scope stands (DropScope).
+	children map[string]*Attribution
+}
+
+// scope is the attribution for a scope opened through this one, made on first use with this
+// one's root default, and the same one thereafter.
+func (a *Attribution) scope(name string) *Attribution {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if c, ok := a.children[name]; ok {
+		return c
+	}
+	if a.children == nil {
+		a.children = map[string]*Attribution{}
+	}
+	c := &Attribution{rootDefault: a.rootDefault, parent: a}
+	a.children[name] = c
+	return c
+}
+
+// DropScope forgets a scope's attribution: what the scope's overlay held is going with the
+// scope (LogdStore.DeleteScope), and a mirror of it would be a mirror of nothing.
+func (a *Attribution) DropScope(name string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.children, name)
 }
 
 // permsRecord is one perms record as the check reads it.
@@ -138,8 +176,15 @@ func PolicyOf(s Store) *Attribution {
 // is nothing: a verse where what anybody creates is theirs and their grantees' alone.
 func (a *Attribution) SetRootDefault(l Levels) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	children := make([]*Attribution, 0, len(a.children))
+	for _, c := range a.children {
+		children = append(children, c)
+	}
 	a.rootDefault = l
+	a.mu.Unlock()
+	for _, c := range children { // a scope's is baseline's: the root has no record anywhere
+		c.SetRootDefault(l)
+	}
 }
 
 // RootDefault reports what a node created with no default above it holds out.
@@ -239,9 +284,15 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 }
 
 // Scope re-wraps rather than delegating, so a scoped write off an attributed store keeps its
-// principal; the embedded Store's Scope would hand back the inner store and lose it.
+// principal; the embedded Store's Scope would hand back the inner store and lose it. The view
+// carries the SCOPE's attribution (Attribution.scope): its checks read the scope's mirror,
+// which holds baseline's grants and the scope's own, and its writes repair that mirror and
+// nobody else's. The empty scope is this store.
 func (a *attributed) Scope(name string) Store {
-	return &attributed{Store: a.Store.Scope(name), attr: a.attr, principal: a.principal}
+	if name == "" {
+		return a
+	}
+	return &attributed{Store: a.Store.Scope(name), attr: a.attr.scope(name), principal: a.principal}
 }
 
 // Check is the decision the store makes ahead of a write, asked ahead of something else: does
@@ -473,13 +524,21 @@ func (a *Attribution) noteUnparsed(at, name string, err error) {
 	if first {
 		slog.Warn("perms: a grantee the grammar does not read admits nobody", "record", at, "grantee", name, "err", err)
 	}
+	if a.parent != nil { // counted at baseline too, said once here
+		a.parent.mu.Lock()
+		a.parent.unparsed++
+		a.parent.mu.Unlock()
+	}
 }
 
 // noteHidden counts an entity a listing withheld.
 func (a *Attribution) noteHidden() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.hidden++
+	a.mu.Unlock()
+	if a.parent != nil {
+		a.parent.noteHidden()
+	}
 }
 
 func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
@@ -742,18 +801,24 @@ func refusal(need Level, act, principal string, ref Ref, acc access) error {
 // noteRefusal counts a refusal, by the level wanted.
 func (a *Attribution) noteRefusal(need Level) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.refused == nil {
 		a.refused = map[Level]int{}
 	}
 	a.refused[need]++
+	a.mu.Unlock()
+	if a.parent != nil {
+		a.parent.noteRefusal(need)
+	}
 }
 
 // noteUnreadable counts a check the mirror could not answer.
 func (a *Attribution) noteUnreadable() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.unreadable++
+	a.mu.Unlock()
+	if a.parent != nil {
+		a.parent.noteUnreadable()
+	}
 }
 
 // record settles the owner of ref, once: the principal that held `owner` there when it was

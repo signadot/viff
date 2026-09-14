@@ -178,6 +178,7 @@ func (s *Server) SetTripPace(d time.Duration) {
 // scopeEngine is a per-scope engine plus the cancel that stops it (on scope delete).
 type scopeEngine struct {
 	eng    *trigger.Engine
+	ctx    context.Context // the scope's lifetime: what its watches, and its perms mirror, run under
 	cancel context.CancelFunc
 	// restore runs the scope's durable charter back into eng, exactly once and off the
 	// scope lock — see scopeEngine (the method).
@@ -932,7 +933,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
 		eng.ObserveScoped(sctx)
-		se = &scopeEngine{eng: eng, cancel: cancel}
+		se = &scopeEngine{eng: eng, ctx: sctx, cancel: cancel}
 		s.scopeEngs[scope] = se
 	}
 	s.scopeMu.Unlock()
@@ -940,7 +941,18 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	// work — and holding scopeMu across it would stall every other scope's lookup behind one
 	// dev connecting. The sync.Once is what makes that safe to do unlocked: a second caller
 	// arriving mid-restore waits for the first rather than installing the charter twice.
-	se.restore.Do(func() { s.restoreScopeCharter(se.eng, scope) })
+	//
+	// The scope's PERMS MIRROR is loaded and watched here too, on the scope's own view of the
+	// store: a scope's checks read its own mirror (entity.Attribution), which holds baseline's
+	// grants through the overlay and the scope's own on top. Until it loads — and if it cannot —
+	// the scope's checks read the store per key, which is right and slower, so a mirror that
+	// did not load is logged rather than fatal, as the charter is.
+	se.restore.Do(func() {
+		if err := entity.Track(se.ctx, s.Store.Scope(scope)); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: perms mirror (scope %s): %v\n", scope, err)
+		}
+		s.restoreScopeCharter(se.eng, scope)
+	})
 	return se.eng
 }
 
@@ -1343,6 +1355,10 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 		delete(s.scopeEngs, name)
 	}
 	s.scopeMu.Unlock()
+	// And its perms mirror: the grants the overlay held go with it.
+	if p := entity.PolicyOf(s.Store); p != nil {
+		p.DropScope(name)
+	}
 	if err := s.Store.DeleteScope(name); err != nil {
 		http.Error(w, "scope delete: "+err.Error(), http.StatusInternalServerError)
 		return

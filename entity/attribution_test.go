@@ -317,3 +317,31 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 		t.Fatalf("after the rule has an owner, its creation is owned by %q, want the installer", o)
 	}
 }
+
+// A scope has an attribution of its own — one per name, the same one twice, baseline's for the
+// empty name — and a view re-derived for another principal keeps it. What a scope's checks
+// read is then the scope's mirror, layered as the store is, and never baseline's cache
+// (docs/perms.md#scopes).
+func TestAScopeHasAnAttributionOfItsOwn(t *testing.T) {
+	base := entity.As(entitytest.Store(t), "user:a")
+	me := base.Scope("me")
+	if entity.PolicyOf(me) == entity.PolicyOf(base) {
+		t.Fatal("a scoped view shares baseline's attribution")
+	}
+	if entity.PolicyOf(base.Scope("me")) != entity.PolicyOf(me) {
+		t.Fatal("opening the same scope twice gave two attributions")
+	}
+	if entity.PolicyOf(base.Scope("you")) == entity.PolicyOf(me) {
+		t.Fatal("two scopes share one attribution")
+	}
+	if entity.PolicyOf(base.Scope("")) != entity.PolicyOf(base) {
+		t.Fatal("the empty scope is not baseline")
+	}
+	if entity.PolicyOf(entity.As(me, "user:b")) != entity.PolicyOf(me) {
+		t.Fatal("re-deriving a scoped view for another principal lost the scope's attribution")
+	}
+	entity.PolicyOf(base).DropScope("me")
+	if entity.PolicyOf(base.Scope("me")) == entity.PolicyOf(me) {
+		t.Fatal("a dropped scope's attribution came back")
+	}
+}
