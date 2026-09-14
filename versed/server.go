@@ -4560,31 +4560,21 @@ func (s *Server) listFlows(w http.ResponseWriter, r *http.Request) {
 // the number `status` counts, through one function so that the two are the same answer rather
 // than two that agree.
 //
-// EVERY ENGINE ON THIS PLANE, for the reason firedTotal adds every engine's counter: a live
-// task is tracked by the engine that spawned it (Engine.track) and a package's charter runs in
-// an engine of its own, so baseline's registry alone is blind to the work a packaged rule
-// started — on staging, where the whole charter sits under `verse-dev`, that is all of it.
-//
-// A SCOPE ANSWERS FOR ITSELF: a federation is a plane of its own — its own engine over its own
-// store overlay — so a named scope is that engine's registry and nothing else, which is what
-// this route already meant by it. One nobody has opened has no engine and no live work, and
-// says so with an empty list rather than baseline's. Packages belong to baseline's plane,
-// which is where restorePackages puts them.
+// EVERY ENGINE THE SCOPE MAY SEE (flowEngines), for the reason firedTotal adds every engine's
+// counter: a live task is tracked by the engine that spawned it (Engine.track) and a package's
+// charter runs in an engine of its own, so baseline's registry alone is blind to the work a
+// packaged rule started — on staging, where the whole charter sits under `verse-dev`, that is
+// all of it. A named scope answers for itself: its own engine's registry and nothing else, and
+// one nobody has opened has no live work and says so with an empty list rather than baseline's.
 //
 // Deduped, because a subject is a QUESTION ("what is happening to this entity") and two
 // engines with work about the same one are one busy subject, not two. Sorted for the reason
 // Engine.Flows sorts: a listing an operator diffs against the last one.
 func (s *Server) flowSubjects(scope string) []string {
-	engines := []*trigger.Engine{s.engFor(scope)}
-	if scope == "" {
-		engines = append(engines, s.packageEngines()...)
-	}
+	engines := s.flowEngines(scope)
 	seen := map[string]bool{}
 	out := make([]string, 0, len(engines))
 	for _, eng := range engines {
-		if eng == nil {
-			continue // a scope nobody has opened
-		}
 		for _, subj := range eng.Flows() {
 			if !seen[subj] {
 				seen[subj] = true
@@ -4639,47 +4629,63 @@ func flowAddress(w http.ResponseWriter, r *http.Request, body *api.FlowSteer) (t
 	return m, true
 }
 
-// flowPause/flowResume hold the addressed tasks at their next boundary — serviced with
-// priority over observation by the engine's control plane (see
-// docs/deployment-and-steering.md).
-func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
+// steer is the one shape of a flow verb: decode the address, act on every engine the request's
+// scope may see (flowEngines), and answer with how many tasks that reached — a task count, so a
+// subject busy in baseline and in a package sums to what was signalled.
+//
+// A SCOPE STEERS ITS OWN. Its engine holds what it started and nothing inherited, so the verb
+// runs there alone; when that reaches nothing and another scope's engine holds work about the
+// subject — baseline's, typically, read through the overlay — the steer is refused naming it
+// (inherited), since answering `affected: 0` over work that is running would be wrong twice:
+// the work is not stopped, and the reader is told there is none. The same from baseline: a
+// scope's work is not baseline's to stop unaware. Nothing anywhere is a normal zero.
+//
+// Serviced with priority over observation by each engine's control plane (see
+// docs/deployment-and-steering.md); the engine's verbs are out-of-band and never store writes.
+func (s *Server) steer(w http.ResponseWriter, r *http.Request, verb string, act func(*trigger.Engine, trigger.Match, api.FlowSteer) int) {
 	var b api.FlowSteer
 	m, ok := flowAddress(w, r, &b)
 	if !ok {
 		return
 	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "pause", Affected: s.Eng.PauseFlow(m)})
-}
-
-func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
-	var b api.FlowSteer
-	m, ok := flowAddress(w, r, &b)
-	if !ok {
-		return
-	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "resume", Affected: s.Eng.ResumeFlow(m)})
-}
-
-func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
-	var b api.FlowSteer
-	m, ok := flowAddress(w, r, &b)
-	if !ok {
-		return
-	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "cancel", Affected: s.Eng.CancelFlow(m)})
-}
-
-func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
-	var b api.FlowSteer
-	m, ok := flowAddress(w, r, &b)
-	if !ok {
-		return
-	}
-	if b.Text == "" {
+	if verb == "say" && b.Text == "" {
 		http.Error(w, "text required", http.StatusBadRequest)
 		return
 	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "say", Affected: s.Eng.SteerFlow(m, b.Text, b.By)})
+	scope := r.URL.Query().Get("scope")
+	engines := s.flowEngines(scope)
+	held := 0
+	for _, eng := range engines {
+		held += eng.FlowCount(m)
+	}
+	if held == 0 {
+		if holders := s.flowHolders(scope, m); len(holders) > 0 {
+			inherited(w, r, "the live work about "+b.Subject, scope, holders)
+			return
+		}
+	}
+	n := 0
+	for _, eng := range engines {
+		n += act(eng, m, b)
+	}
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: verb, Affected: n})
+}
+
+// flowPause/flowResume hold the addressed tasks at their next boundary and release them.
+func (s *Server) flowPause(w http.ResponseWriter, r *http.Request) {
+	s.steer(w, r, "pause", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.PauseFlow(m) })
+}
+
+func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
+	s.steer(w, r, "resume", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.ResumeFlow(m) })
+}
+
+func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
+	s.steer(w, r, "cancel", func(eng *trigger.Engine, m trigger.Match, _ api.FlowSteer) int { return eng.CancelFlow(m) })
+}
+
+func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
+	s.steer(w, r, "say", func(eng *trigger.Engine, m trigger.Match, b api.FlowSteer) int { return eng.SteerFlow(m, b.Text, b.By) })
 }
 
 // eventWire is gone: an Event is written as itself. It used to be rebuilt field by field

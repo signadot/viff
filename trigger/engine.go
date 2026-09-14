@@ -1567,6 +1567,11 @@ func (e *Engine) matchFlow(m Match) []flowTask {
 	return out
 }
 
+// FlowCount is how many live tasks the address selects, signalling none of them: the question
+// a steer asks before it acts, so that a scope which holds no work about a subject can be told
+// which engine does rather than answering zero over work that is running elsewhere.
+func (e *Engine) FlowCount(m Match) int { return len(e.matchFlow(m)) }
+
 // CancelFlow cancels every task the address selects (out-of-band control, honored at
 // each task's next boundary — never a store write). Returns how many were signalled.
 func (e *Engine) CancelFlow(m Match) int {

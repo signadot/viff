@@ -1,10 +1,15 @@
 package versed
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
@@ -12,22 +17,41 @@ import (
 
 // idleHandle is a task that is running and does nothing: the engine holds a flow open around
 // it until its bus closes, which is what makes "there is live work about this subject" a state
-// a test can stand in rather than race against.
-type idleHandle struct{ ch chan task.Frame }
+// a test can stand in rather than race against. It counts each control verb it is sent, so a
+// test can say WHICH task a steer reached rather than only how many.
+type idleHandle struct {
+	ch    chan task.Frame
+	mu    sync.Mutex
+	verbs map[string]int
+}
 
 func newIdleHandle(t *testing.T) *idleHandle {
-	h := &idleHandle{ch: make(chan task.Frame)}
+	h := &idleHandle{ch: make(chan task.Frame), verbs: map[string]int{}}
 	t.Cleanup(func() { close(h.ch) }) // the reaper exits with the test rather than the process
 	return h
 }
 
+func (h *idleHandle) got(verb string) error {
+	h.mu.Lock()
+	h.verbs[verb]++
+	h.mu.Unlock()
+	return nil
+}
+
+// count is how many times the handle was sent verb.
+func (h *idleHandle) count(verb string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.verbs[verb]
+}
+
 func (h *idleHandle) Subscribe() (<-chan task.Frame, func())           { return h.ch, func() {} }
 func (h *idleHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
-func (h *idleHandle) Pause() error                                     { return nil }
-func (h *idleHandle) Resume() error                                    { return nil }
-func (h *idleHandle) Cancel(string) error                              { return nil }
-func (h *idleHandle) Steer(string, string) error                       { return nil }
-func (h *idleHandle) SetVector(*task.Vector, string) error             { return nil }
+func (h *idleHandle) Pause() error                                     { return h.got("pause") }
+func (h *idleHandle) Resume() error                                    { return h.got("resume") }
+func (h *idleHandle) Cancel(string) error                              { return h.got("cancel") }
+func (h *idleHandle) Steer(string, string) error                       { return h.got("say") }
+func (h *idleHandle) SetVector(*task.Vector, string) error             { return h.got("vector") }
 func (h *idleHandle) Result() string                                   { return "" }
 func (h *idleHandle) Err() string                                      { return "" }
 
@@ -119,5 +143,129 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 	}
 	if n := statusFlows("?scope=nobody"); n != 0 {
 		t.Fatalf("status flows = %d in a scope with no live work", n)
+	}
+}
+
+// A steer reaches every engine its scope may see, and only those: a scope owns what it creates
+// (docs/reference/connect.md#what-a-scope-owns). Baseline's verbs reach baseline's work and a
+// package's, summed; a scope's reach the scope's own; and a scope asked to steer work it merely
+// sees through the overlay is refused naming whose it is, rather than answering `affected: 0`
+// over work that keeps running — or, worse, stopping baseline's work from a scope.
+func TestFlowSteeringActsOnItsOwn(t *testing.T) {
+	srv := testServer(t)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	steer := func(verb, q, subject string) (int, api.Steered, string) {
+		t.Helper()
+		body := `{subject: "` + subject + `", text: "hurry", by: "user:tester"}`
+		resp, err := http.Post(ts.URL+"/flow/"+verb+q, "application/tony", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("flow %s: %v", verb, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			msg, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return resp.StatusCode, api.Steered{}, strings.TrimSpace(string(msg))
+		}
+		var out api.Steered
+		decodeResp(t, resp, &out)
+		return resp.StatusCode, out, ""
+	}
+	verbs := []string{"pause", "resume", "say", "cancel"}
+
+	// A package's task, live, and nothing in baseline: the deployment this is about.
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing a package = %d: %s", code, msg)
+	}
+	pkg := srv.packageEngineIfRunning("notes")
+	if pkg == nil {
+		t.Fatal("the package installed and is running in no engine")
+	}
+	subject := entity.RefAt("notes", "seen", "head").String()
+	packaged := newIdleHandle(t)
+	pkg.Adopt(subject, "note-the-head-run", packaged)
+
+	// Baseline's steer reaches the package's task: the row `verse flow` lists is steerable.
+	for _, verb := range verbs {
+		code, got, msg := steer(verb, "", subject)
+		if code != 200 || got.Affected != 1 {
+			t.Fatalf("flow %s = %d %+v %s, want affected 1 over a package's task", verb, code, got, msg)
+		}
+		if packaged.count(verb) != 1 {
+			t.Fatalf("flow %s reached %d packaged tasks, want the one", verb, packaged.count(verb))
+		}
+	}
+
+	// Busy in baseline too: the count is of tasks reached, so two.
+	base := newIdleHandle(t)
+	srv.Eng.Adopt(subject, "baseline-run", base)
+	if code, got, msg := steer("pause", "", subject); code != 200 || got.Affected != 2 {
+		t.Fatalf("flow pause = %d %+v %s, want 2 over one subject busy in two engines", code, got, msg)
+	}
+	if base.count("pause") != 1 || packaged.count("pause") != 2 {
+		t.Fatalf("pause reached baseline %d, package %d; want 1 and 2", base.count("pause"), packaged.count("pause"))
+	}
+
+	// A SCOPE SEES BASELINE'S WORK AND MAY NOT STEER IT. Refused, naming whose it is, and no
+	// handle is touched — the bug this pins is `--scope me` cancelling baseline's work.
+	for _, verb := range verbs {
+		code, got, msg := steer(verb, "?scope=me", subject)
+		if code != http.StatusConflict {
+			t.Fatalf("flow %s --scope me = %d %+v %s, want 409 over work the scope did not start", verb, code, got, msg)
+		}
+		if !strings.Contains(msg, "baseline's") || !strings.Contains(msg, "without --scope") {
+			t.Fatalf("flow %s --scope me refused with %q, want it to name baseline and say how to re-address", verb, msg)
+		}
+	}
+	if base.count("cancel") != 0 || packaged.count("cancel") != 1 {
+		t.Fatalf("a scoped steer reached baseline's task (%d) or the package's (%d) — a scope steered baseline",
+			base.count("cancel"), packaged.count("cancel"))
+	}
+
+	// The scope's own task, about the same subject: the scope's steer reaches it and it alone.
+	mine := newIdleHandle(t)
+	srv.scopeEngine("me").Adopt(subject, "me-run", mine)
+	if code, got, msg := steer("say", "?scope=me", subject); code != 200 || got.Affected != 1 {
+		t.Fatalf("flow say --scope me = %d %+v %s, want 1 over the scope's own task", code, got, msg)
+	}
+	if mine.count("say") != 1 || base.count("say") != 0 || packaged.count("say") != 1 {
+		t.Fatalf("say --scope me reached mine %d, baseline %d, package %d; want 1, 0, 1",
+			mine.count("say"), base.count("say"), packaged.count("say"))
+	}
+
+	// And baseline may not steer the scope's: once baseline's own work is gone, its steer over
+	// the subject is refused naming the scope rather than answering zero.
+	close(base.ch)
+	close(packaged.ch)
+	base.ch, packaged.ch = make(chan task.Frame), make(chan task.Frame) // the cleanups close these
+	for i := 0; ; i++ {
+		if len(srv.Eng.Flows()) == 0 && len(pkg.Flows()) == 0 {
+			break
+		}
+		if i > 200 {
+			t.Fatal("baseline's tasks were not reaped after their buses closed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	code, got, msg := steer("cancel", "", subject)
+	if code != http.StatusConflict || !strings.Contains(msg, "scope me's") || !strings.Contains(msg, "--scope me") {
+		t.Fatalf("flow cancel from baseline = %d %+v %q, want 409 naming scope me", code, got, msg)
+	}
+	if mine.count("cancel") != 0 {
+		t.Fatal("baseline's steer cancelled the scope's task")
+	}
+
+	// A scope nobody has opened, over a subject nobody is working: a normal zero.
+	if code, got, msg := steer("pause", "?scope=nobody", "demo.pr.99"); code != 200 || got.Affected != 0 {
+		t.Fatalf("flow pause --scope nobody = %d %+v %s, want a plain 0", code, got, msg)
 	}
 }
