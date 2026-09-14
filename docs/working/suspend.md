@@ -61,11 +61,11 @@ held:
 ```
 
 ```sh
-verse flow suspend --charter verse-dev.drift --why "…"                            # a charter, about everything
-verse flow suspend --subject github.signadot.verse.pr.'"42"' --why "…"            # a subject, for every charter
+verse flow suspend --charter verse-dev.drift --subject '*' --why "…"             # a charter, about everything
+verse flow suspend --charter '*' --subject github.signadot.verse.pr.'"42"' --why "…"  # a subject, for every charter
 verse flow suspend --charter verse-dev.drift:claim --subject git.verse.head --why "…"
 verse flow --charter verse-dev.drift                                              # what is running and what is held, there
-verse flow resume --charter verse-dev.drift                                       # the same flags lift it
+verse flow resume --charter verse-dev.drift --subject '*'                         # the same flags lift it
 ```
 
 *Superseded 2026-09-15:* this block read `verse suspend verse-dev.drift`, `verse suspend '*'
@@ -432,17 +432,24 @@ listing is exactly what an act with the same flags would reach now: `verse flow 
 
 - `--charter <address>[:<rule>]` — an installed charter's address, and one rule of it after the
   colon. Baseline's charter has no address, so its rule is the suffix alone: `--charter :review`.
-  Absent, every charter. `-r` makes it the charter at the address *and* every charter beneath it,
+  Every charter is `--charter '*'`, said. `-r` makes it the charter at the address *and* every charter beneath it,
   which replaces the trailing `.*` (strictly beneath) the landing spelled; the record carries
   `recursive: true` beside `charter`, and its id spells it `<address>.**`. Baseline's whole
   charter remains unnameable by a person: nobody holds `control` over "every rule of baseline's".
-- `--subject <address>` — an address with `*` in any segment. Absent, every subject. **No payload
+- `--subject <address>` — an address with `*` in any segment; every subject is `--subject '*'`,
+  said. **No payload
   predicate.** For `suspend`, a predicate would let an ordinary write take the subject out of the
   match and so lift the suspension — failing open by a write, which keying the record by what it
   covers exists to prevent — and one grammar for the flag across every verb is simpler than a
   wider one for the listing.
 - `--task <id>` — **that run only**. It combines with neither of the others, so the flags alone
   say whether an act is about one run or is durable.
+
+**No flag defaults to "every"** (amended 2026-09-15). An absent flag meaning everything is how
+somebody typing a verb to see its usage suspends the verse. So an act is narrowed or refused:
+`suspend` and `resume` take `--task`, or both `--charter` and `--subject`, and "every" is spelled
+`'*'`; `say` takes at least one flag; `cancel` takes `--task`; a bare verb prints its usage and does
+nothing. Only the listing, a read, answers for everything when no flag narrows it.
 
 **The verbs.**
 
@@ -452,10 +459,10 @@ listing is exactly what an act with the same flags would reach now: `verse flow 
   hang on. `--args` prints each row as the flags that name it, one per line and quoted to survive
   xargs as well as a shell, so `verse flow --args … | xargs -L1 verse flow resume` lifts what was
   shown.
-- `verse flow suspend` — at least one flag, and `--why`. With `--task`, the run is held at its next
+- `verse flow suspend` — `--task`, or `--charter` and `--subject`; and `--why`. With `--task`, the run is held at its next
   boundary until `verse flow resume --task`: not durable, `heldBy: operator`, and the rule may fire
-  about the subject again once the run has ended. With `--charter` and/or `--subject`, the durable
-  record this note describes. Every charter about every subject is refused, as before.
+  about the subject again once the run has ended. With `--charter` and `--subject`, the durable
+  record this note describes. `--charter '*' --subject '*'` is refused, as before.
 - `verse flow resume` — the same flags. `--task` lifts the operator's hold, refused (409) while a
   suspension holds the run; `--charter`/`--subject` lift the suspension those words name.
 - `verse flow say` — to every live task the flags select, any of them.
@@ -468,8 +475,9 @@ listing is exactly what an act with the same flags would reach now: `verse flow 
 positional subject. On the wire, `GET /suspensions` and `POST /suspend|/resume|/flow/pause` go;
 `GET /flows` answers rows rather than subjects and takes the flags as query parameters; the flow
 verbs take `{task, charter, subject, recursive}` beside `why` or `text`. The runtime's
-`/tasks/{id}/pause|resume` stay, as the route `--task` reaches. What `status` counts beside
-`suspensions` — live tasks, or subjects as `flows` counts today — is open.
+`/tasks/{id}/pause|resume` stay, as the route `--task` reaches. `status` counts both kinds of live
+work (amended 2026-09-15): `flows: {tasks, subjects}` — live tasks, and the distinct subjects they
+are about — beside `suspensions`.
 
 **The docs** gain a dedicated section on control — what an operator stops, for how long, whose
 hold it is, who may, and what each act reaches — which the trigger model's Suspending section, the
