@@ -10,7 +10,10 @@ moves the rule's watermark below the head (below, "the third pass's fixes"); bas
 starts loaded-empty and a restore unloads it, so a server never started holds nothing; a lone
 address on the command line is the charter installed there, else a subject. Not built: automatic
 suspension (the plan's S8), and a scope deleted with its suspensions (git-issue
-`y51f9ce5h12kr2zvmxn0`). Design exploration for git-issue `xr69yacwh12kr4qamsn0`, "control over
+`y51f9ce5h12kr2zvmxn0`). **The command surface is being reworked** (2026-09-15, [the
+surface](#the-surface)): `verse suspend`, `verse resume` and `verse flow pause` as landed are
+superseded by verbs of `verse flow` addressed by `--task`, `--charter` and `--subject`. Design
+exploration for git-issue `xr69yacwh12kr4qamsn0`, "control over
 subjects and charters". The ask:
 
 - pause and resume a charter for all subjects;
@@ -58,12 +61,16 @@ held:
 ```
 
 ```sh
-verse suspend verse-dev.drift --why "…"                     # a charter, about everything
-verse suspend '*' github.signadot.verse.pr.'"42"' --why "…"  # a subject, for every charter
-verse suspend verse-dev.drift:claim git.verse.head --why "…"
-verse suspend                                                # what is suspended, by whom, why, since when, what it has held
-verse resume  verse-dev.drift                                # the same words lift it
+verse flow suspend --charter verse-dev.drift --why "…"                            # a charter, about everything
+verse flow suspend --subject github.signadot.verse.pr.'"42"' --why "…"            # a subject, for every charter
+verse flow suspend --charter verse-dev.drift:claim --subject git.verse.head --why "…"
+verse flow --charter verse-dev.drift                                              # what is running and what is held, there
+verse flow resume --charter verse-dev.drift                                       # the same flags lift it
 ```
+
+*Superseded 2026-09-15:* this block read `verse suspend verse-dev.drift`, `verse suspend '*'
+<subject>` and `verse suspend verse-dev.drift:claim git.verse.head`, which is what landed. A lone
+address could not say whether it named a charter or a subject; see [the surface](#the-surface).
 
 ## What it rests on
 
@@ -391,7 +398,7 @@ added as a field later.
 
 What is spent instead:
 
-- `verse suspend` lists every suspension with its holders, reasons, age, how much has moved under
+- bare `verse flow` lists every suspension with its holders, reasons, age, how much has moved under
   it since (its `occurrence` against the head), what it is holding now — firings not started, tasks
   held, questions withdrawn, launches parked — and whether it still covers anything;
 - a withdrawn question says which suspension withdrew it, and a held task's record says what holds
@@ -407,8 +414,66 @@ its stratum is *held*, and `hold` is an alias of the gate mode `park`. "Disable"
 alternative, reads as uninstall. **Suspend** is free in the code and is what Kubernetes and Flux
 call a durable stop.
 
-Whether `verse flow pause` stays beside it is a surface question, [left for
-later](#surface-to-resolve-later).
+Whether `verse flow pause` stays beside it was a surface question, left for later; it is answered
+[below](#the-surface): it does not, and suspend is a verb of `verse flow`.
+
+## The surface
+
+Settled in conversation on 2026-09-15, after the landing, replacing `verse suspend|resume` and
+`verse flow pause|resume|cancel <subject>`.
+
+**One noun.** A flow is a query over the work in flight; a suspension is a query over the work
+from now on, and it names the same three coordinates a live task carries — a charter, a rule of
+it, a subject. So both are `verse flow`, with one grammar of flags for listing and acting, and the
+listing is exactly what an act with the same flags would reach now: `verse flow --subject
+'demo.pr.*'` shows what `verse flow suspend --subject 'demo.pr.*'` would hold.
+
+**The flags.**
+
+- `--charter <address>[:<rule>]` — an installed charter's address, and one rule of it after the
+  colon. Baseline's charter has no address, so its rule is the suffix alone: `--charter :review`.
+  Absent, every charter. `-r` makes it the charter at the address *and* every charter beneath it,
+  which replaces the trailing `.*` (strictly beneath) the landing spelled; the record carries
+  `recursive: true` beside `charter`, and its id spells it `<address>.**`. Baseline's whole
+  charter remains unnameable by a person: nobody holds `control` over "every rule of baseline's".
+- `--subject <address>` — an address with `*` in any segment. Absent, every subject. **No payload
+  predicate.** For `suspend`, a predicate would let an ordinary write take the subject out of the
+  match and so lift the suspension — failing open by a write, which keying the record by what it
+  covers exists to prevent — and one grammar for the flag across every verb is simpler than a
+  wider one for the listing.
+- `--task <id>` — **that run only**. It combines with neither of the others, so the flags alone
+  say whether an act is about one run or is durable.
+
+**The verbs.**
+
+- `verse flow` (bare) lists rows of two kinds, both narrowed by the flags: a live task,
+  `{task, charter, subject, heldBy}`, and a suspension, `{charter, subject, held, holding,
+  covers}` — a suspension is usually holding work that is not running yet, so it has no task to
+  hang on. `--args` prints each row as the flags that name it, one per line and quoted to survive
+  xargs as well as a shell, so `verse flow --args … | xargs -L1 verse flow resume` lifts what was
+  shown.
+- `verse flow suspend` — at least one flag, and `--why`. With `--task`, the run is held at its next
+  boundary until `verse flow resume --task`: not durable, `heldBy: operator`, and the rule may fire
+  about the subject again once the run has ended. With `--charter` and/or `--subject`, the durable
+  record this note describes. Every charter about every subject is refused, as before.
+- `verse flow resume` — the same flags. `--task` lifts the operator's hold, refused (409) while a
+  suspension holds the run; `--charter`/`--subject` lift the suspension those words name.
+- `verse flow say` — to every live task the flags select, any of them.
+- `verse flow cancel` — `--task` required, and the refusal says why. Cancelling everything a charter
+  or a subject selects has no spelling; a suspension, then a cancel per task, is the case it served.
+- `verse flow show <subject>` — as before, plus `suspended:` at the top of the tree when a
+  suspension covers the subject.
+
+**Retired:** `verse suspend`, `verse resume`, `verse flow pause`, and the flow verbs addressed by a
+positional subject. On the wire, `GET /suspensions` and `POST /suspend|/resume|/flow/pause` go;
+`GET /flows` answers rows rather than subjects and takes the flags as query parameters; the flow
+verbs take `{task, charter, subject, recursive}` beside `why` or `text`. The runtime's
+`/tasks/{id}/pause|resume` stay, as the route `--task` reaches. What `status` counts beside
+`suspensions` — live tasks, or subjects as `flows` counts today — is open.
+
+**The docs** gain a dedicated section on control — what an operator stops, for how long, whose
+hold it is, who may, and what each act reaches — which the trigger model's Suspending section, the
+tasks reference and the tutorial's steering point to, rather than each describing the verbs.
 
 ## Alternatives ruled out
 
@@ -471,7 +536,10 @@ out.
 
 **Expiry.** [Above](#loud-not-self-expiring). Deferred, not ruled out.
 
-**Per-segment globs.** `demo.*.1` has no node whose owners could authorise it.
+**Per-segment globs.** `demo.*.1` has no node whose owners could authorise it. *Ruled back in by
+[the surface](#the-surface):* authority is asked per concrete subject each time a suspension
+applies, so no node has to authorise the pattern; the check made when the record is written asks
+at the node the pattern's literal head stands at (`demo`).
 
 ## What it does not solve
 
@@ -609,10 +677,13 @@ anything.
 
 ### Surface, to resolve later
 
+*Both resolved by [the surface](#the-surface).*
+
 - **`verse flow pause`.** Keep it as the forgetful, quick spelling, or retire it into `verse suspend
-  '*' <subject>`.
+  '*' <subject>`. *Retired; a run's own hold is `verse flow suspend --task`.*
 - **Baseline's spelling as a charter.** It has no address. `charter: ""` reads badly on a command
-  line, and `baseline` could collide with a package installed there.
+  line, and `baseline` could collide with a package installed there. *A rule of it is `--charter
+  :<rule>`, and no flag is every charter.*
 
 ## Found along the way
 
