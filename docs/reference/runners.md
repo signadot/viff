@@ -24,7 +24,7 @@ verse runner                              what is installed, with running/total/
 verse runner add <kind>.<name> <url>       install one, probing the url first
        add [--file <f>] | [file] | stdin   …or as a document (.tony/.json/.yaml)
            [--no-probe]                    install without asking the url what it is
-           [--identity <who>]              the principal it acts as (default: its name)
+           [--identity <id>]               it acts as runner:<id> (default: its name)
        show <ref>                          the entity
        check <ref>                         ask this runner what it is, right now
        remove <ref>                        take it away; refused if work is running on it

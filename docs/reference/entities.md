@@ -232,8 +232,8 @@ question's ballots live on its record (`gate.question.<id>.ballots.<who>`), writ
 answer path that tallies them.
 
 Two more are about who: `principal.<kind>.<name>` lists every principal that has presented
-itself, by kind — `user` for a person by email, `runner` for a worker that claimed work,
-`agent` for an operator agent — and `perms.node.<address>` is the perms mirror: a record
+itself, by the kind its name carries — `user` for a person by email, `runner` for a worker
+that claimed work, `agent` for an operator agent — and `perms.node.<address>` is the perms mirror: a record
 wherever ownership changes down the tree, keyed by the node's own address spelled as one
 segment, holding `owner`, the `grants` its owner holds out, and for a question `under`, the
 address of what posed it. The owner of any node is the nearest record up its address, and the

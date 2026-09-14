@@ -30,8 +30,8 @@ exclusive: true
 | `byRef` | optional | may be named by a spawn's `resolver:` or a rule's `gating.resolver` |
 | `method.driver` | required | who answers: `url`, a service; `person`, one principal, from the docket; `group`, a group's members, each as themselves |
 | `method.url` | | for `url`: where the service is. Verse never posts to it — the service dials in |
-| `method.who` | | for `person`: the principal the question is held out to |
-| `method.group` | | for `group`: the group's address, `verse.principal.group.<name>` |
+| `method.who` | | for `person`: the principal the question is held out to — `user:<email>`, or the bare email ([grammar](../perms.md#principals-and-grantees)) |
+| `method.group` | | for `group`: the group, `group:<name>` |
 | `method.vector` `.tools` `.grant` | optional | bound whatever the driver runs; inert for `url` |
 | `deadline.within` | optional | a **quoted** duration (`"4h"`, `"30m"`). Unquoted `4h` is the number `4` beside a key `h`, and is refused |
 | `deadline.then` | optional | `escalate` (the default and the only value today) |

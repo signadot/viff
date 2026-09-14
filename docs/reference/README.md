@@ -254,15 +254,15 @@ verse
           cancel <id> · say <id> <text…>
           vector <id> auto|ask|park [--as <who>] · vector <id> --file <f>
           approve|deny <id> <decision> [--say <text>]    (also y|yes, n|no)
-          do complete|fail|note <id> [text] --as <identity>   executor vantage (dial in):
-          do gate <id> <name> --as <identity> [--to <who>,…] [--reason <t>] [--wait]   raise a gate up
+          do complete|fail|note <id> [text] --as runner:<identity>   executor vantage (dial in):
+          do gate <id> <name> --as runner:<identity> [--to <who>,…] [--reason <t>] [--wait]   raise a gate up
                   [--options id[:need],…] [--deadline within[:default]]  …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [--probe]                 where work can run
           add <kind>.<name> <url> [--no-probe] · add [--file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [--cancel "<why>" | --leave]   what becomes of the work still on it
-  group (groups)                             named sets of principals, granted by address
+  group (groups)                             named sets of grantees, granted as group:<name>
           add <name> <member>… · show <name> · remove <name>
   perms [--if <pattern>] [--trim <match>]    the records of every node you may read: who
                                              owns what you can see, and what it holds out
@@ -297,7 +297,9 @@ verse
            --color auto|always|never   colorize (auto = a terminal only)
 ```
 
-Flags may appear before or after positionals (`gate approve <id> --as you --say ok` works).
+Flags may appear before or after positionals (`gate approve <id> --as you@example.com --say ok`
+works). A `<who>` is a principal in the [grammar](../perms.md#principals-and-grantees):
+`user:<email>` or the bare email, `agent:<name>`, `runner:<identity>`.
 
 ## Selecting by what an entity says
 

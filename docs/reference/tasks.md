@@ -17,7 +17,7 @@ verse task run --gates gates.tony "…"    # …under gates of its own, each wit
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"
-verse task vector <id> ask --as human:scott
+verse task vector <id> ask --as walter@example.com
 verse task vector <id> --file vector.tony
 verse task cancel <id>
 ```
@@ -149,7 +149,7 @@ verse gate                                  # task gates, and engine gates that 
 #   reason: "verb write"
 #   tool: write_file
 #   where: task
-verse gate approve run-f3e31ed0390f~d1 --as human:you   # or: task approve run-… run-…~d1
+verse gate approve run-f3e31ed0390f~d1 --as you@example.com   # or: task approve run-… run-…~d1
 ```
 
 **Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
@@ -170,7 +170,7 @@ a question whose options are the eligible doers, each carrying the envelope it w
 and `chain` naming the action it holds up. It is answered by option:
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as human:you
+verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as you@example.com
 ```
 
 `within` is its deadline with no default: the clock passing with no pick settles it on `none`,
@@ -222,7 +222,7 @@ takes, `autonomous` lets the child and its subtree answer their own gates within
 scope, and `deny` spawns nothing. Answer by option, as any question with options is answered:
 
 ```sh
-verse gate run-f3e31ed0390f~d2 --answer careful --as human:you
+verse gate run-f3e31ed0390f~d2 --answer careful --as you@example.com
 ```
 
 A gate that wrote `options` of its own over a delegation keeps them; `need` on one is the
@@ -269,7 +269,7 @@ payload:
   runner: local
   status: done
   vector: ASK
-  vectorBy: human:scott
+  vectorBy: user:walter@example.com
 ```
 
 `observed: false` appears while the mirror cannot reach the runner holding the task. The
@@ -351,7 +351,7 @@ whether the party who must act on it knows. It clears on the worker's acknowledg
 verse data --if '{delivered: false}' gate             # answers still in flight
 ```
 
-Every answer names its answerer — `verse gate approve <id> --as human:you` — and two people
+Every answer names its answerer — `verse gate approve <id> --as you@example.com` — and two people
 answering at once is normal rather than exceptional. Exactly one applies; the other is
 recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only
 the winner cannot show that a question was contested. Answering an id nobody asked about is a
@@ -451,11 +451,11 @@ verse task
 #   prompt: "review the auth change"
 ```
 
-You are the executor. Every action takes `--as <identity>`, because a claim must be
+You are the executor. Every action takes `--as runner:<identity>`, because a claim must be
 attributable, and the first act claims it (`task get` then reads `status: running`):
 
 ```sh
-verse task do note "$ID" "reviewing the auth change" --as human:scott
+verse task do note "$ID" "reviewing the auth change" --as runner:scott
 ```
 
 Mid-work you reach a decision you should not make alone. Raise it *up* to verse rather than
@@ -463,12 +463,12 @@ deciding — the verse governs who resolves it, and the executor never resolves 
 `--wait` blocks for the outcome:
 
 ```sh
-verse task do gate "$ID" deploy-approval --as human:scott --reason prod --wait
-verse task do gate "$ID" unsure --as human:scott --to peggy@example.com --reason "which region?"
+verse task do gate "$ID" deploy-approval --as runner:scott --reason prod --wait
+verse task do gate "$ID" unsure --as runner:scott --to peggy@example.com --reason "which region?"
 # gate raised: deploy-approval-a1b2c3d4
 # awaiting resolution…
-verse task approve "$ID" deploy-approval-a1b2c3d4 --as human:lead   # …from someone with the authority
-verse task do complete "$ID" "LGTM — one nit on the token TTL" --as human:scott
+verse task approve "$ID" deploy-approval-a1b2c3d4 --as lead@example.com   # …from someone with the authority
+verse task do complete "$ID" "LGTM — one nit on the token TTL" --as runner:scott
 ```
 
 `--to` is who a worker-raised question is held out to — a person, a group's address, a kind —
@@ -480,8 +480,8 @@ A gate raised this way is the same record a charter gate poses, so it can take o
 own, a threshold per outcome, and a clock:
 
 ```sh
-verse task do gate "$ID" rollout --as human:scott --options canary,full:2,abort --deadline 4h:abort --wait
-verse gate <id> --answer canary --as human:lead
+verse task do gate "$ID" rollout --as runner:scott --options canary,full:2,abort --deadline 4h:abort --wait
+verse gate <id> --answer canary --as lead@example.com
 # rollout-… settled on canary
 ```
 

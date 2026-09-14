@@ -70,8 +70,8 @@ somewhere its result goes, plus which driver runs the work, which tools exist, a
 may reach — and a spawn names one:
 
 ```sh
-verse runner add pool.coderunner http://localhost:9802 --identity coderunner   # what its reports are written as
-verse task run --runner verse.runners.pool.coderunner --environment local --as "$USER" "add a test for firstLine"
+verse runner add pool.coderunner http://localhost:9802 --identity coderunner   # its reports are written as runner:coderunner
+verse task run --runner verse.runners.pool.coderunner --environment local --as "$USER@example.com" "add a test for firstLine"
 ```
 
 ### A workspace per task
@@ -233,7 +233,7 @@ The commit carries what verse told the runner:
 
 ```
 Verse-Task: run-8f30…
-Verse-Principal: scott
+Verse-Principal: user:walter@example.com
 Verse-Subject: demo.pr.1
 Verse-Chain: review
 ```

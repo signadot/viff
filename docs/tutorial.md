@@ -188,7 +188,7 @@ verse task run --driver scripted --wait "echo done"            # …and block fo
 verse task
 verse task get <id>                # status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"        # re-prompt the agent mid-run
-verse task vector <id> ask --as human:scott        # slide its autonomy (auto|ask|park)
+verse task vector <id> ask --as walter@example.com        # slide its autonomy (auto|ask|park)
 verse task cancel <id>
 ```
 
@@ -220,7 +220,7 @@ verse gate
 #   reason: "verb write"
 #   tool: write_file
 #   where: task
-verse gate approve run-f3e31ed0390f~d1 --as human:you
+verse gate approve run-f3e31ed0390f~d1 --as you@example.com
 ```
 
 `run --attach` spawns *and* streams the transcript, prompting you inline on a terminal
@@ -249,7 +249,7 @@ payload:
   runner: local
   status: done
   vector: ASK
-  vectorBy: human:scott
+  vectorBy: user:walter@example.com
 ```
 
 Because a completion is an entity change, a *rule* can react to it. That is how multi-step flows
@@ -398,7 +398,7 @@ verse gate
 #   reason: "trigger shape-ask gate approval on demo.ask.1"
 #   spawns: shape-ask@demo.ask.1
 #   subject: demo.ask.1
-verse gate approve trigger.shape-ask.approval~093e7c94 --as human:you
+verse gate approve trigger.shape-ask.approval~093e7c94 --as you@example.com
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about, and
@@ -650,9 +650,9 @@ The rule fired and the action is waiting, not on a person but on a tally. Answer
 naming its answerer, since a question is settled attributably:
 
 ```sh
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as alice
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as alice@example.com
 # verse.trigger.shape-vote.approvals~e23d0b21: recorded: 1 of 2 for proceed
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as bob
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as bob@example.com
 # approved verse.trigger.shape-vote.approvals~e23d0b21
 verse data demo vote 1              # stage: merged
 ```
@@ -666,7 +666,7 @@ asked, and so does anyone the gate names:
 
 ```tony
   gates:
-  - { name: approvals, need: 2, answerers: [oscar@example.com, verse.principal.group.payments] }
+  - { name: approvals, need: 2, answerers: [oscar@example.com, group:payments] }
 ```
 
 Ana, not named, is refused, and told so. A gate that names nobody is held out to every person,

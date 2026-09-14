@@ -6,42 +6,85 @@ is how it runs: where the owner is recorded, what a grant is, what the check con
 new node holds out by default, and the one rule that makes a fresh verse usable by everybody
 until somebody takes a place of their own.
 
-The surface is small. A request names who makes it (`user:` in the CLI's config, or `--as`); a
+The surface is small. A request names who makes it (`user:` in the CLI's config, or `--as`), in
+the [grammar](#principals-and-grantees) every name in this model is written in; a
 refused write or read is a 403 that says who wanted what and which record decided; `verse
 status` counts the refusals; `verse perms <path>` is how an owner reads and sets their own
 record; and the records live at `verse.perms.node.<address>`, written by versed alone. [reference/entities.md](reference/entities.md#two-halves-one-tree) has the
-spellings; [reference/up.md](reference/up.md#config) the config. [perms-guide.md](perms-guide.md)
+spellings; [reference/up.md](reference/up.md#configuration) the config. [perms-guide.md](perms-guide.md)
 walks the same model in the order a person meets it, from an entity of their own to a gate a
 resolver answers.
 
-## Principals
+## Principals and grantees
 
-A principal is a string, and there are four kinds of party behind one:
+A principal is a name with its kind before the colon, and a grantee is a principal or a set of
+them. One grammar says both, and every surface that takes a name — `--as`, the config's `user:`,
+a grant line, a default, a group's members, a gate's `answerers`, a binding's `who` and `group` —
+reads it and refuses what it does not:
 
-- **a person**, by email — `walter@example.com`. The CLI sends it on every request
+```
+principal ::= user:<email>          # a person
+            | agent:<name>          # an operator agent
+            | runner:<identity>     # a runner
+            | system:<part>         # versed itself
+            | via:<address>         # a rule, a source, a binding: whoever acts through it
+grantee   ::= principal
+            | *                     # everyone, the unattributed request included
+            | <kind>:*              # every principal of the kind
+            | group:<name>          # the group's members, each as themselves
+            | <email>               # shorthand for user:<email>, at the keyboard only
+```
+
+A bare email is read as `user:<email>` and stored with its kind, so one form comes back from
+every read. Any other bare word names nothing — `user`, `coderunner` and a group's address
+among them — and neither does a bare `verse.…` address, which is never a person.
+
+- **a person**, `user:walter@example.com`. The CLI sends it on every request
   (`Verse-Principal`) from its config's `user:`, and the server lists it under
   `verse.principal.user.<email>` the first time it presents itself.
-- **a runner**, under its own name — `coderunner`. A worker names itself when it claims
-  brokered work, and the claim lists it under `verse.principal.runner.<name>`. A runner acts
-  as itself, not as whoever installed it; and a name that has claimed work is a runner's even
-  when it turns up on the api, so it is never listed as a user too.
-- **an operator agent** — a harness driving verse from outside through the api, with the
-  whole verse as its tool surface. It is a principal of its own, not the person whose terminal
-  it runs in: `agent:` in the CLI's config makes every request the agent's, under its own kind
-  (`Verse-Principal-Kind: agent`, listed under `verse.principal.agent.<name>`). Today it is
-  granted what a person is; the name is what its grants narrow against later.
-- **the system**, versed itself: `system`. It owns the root of the tree and every kind-rooted
-  node under it, co-owns everything beneath, and is what a mirror's projection, a posed
-  question and the seed are written as. A request cannot be made as it — a header saying
-  `system` is refused at the door — and the charter the system stands behind is installed from
-  the file the deployment names, not over the api.
+- **a runner**, `runner:coderunner`. A worker claims brokered work as `--as runner:<identity>`,
+  and a runner reached by url acts as `runner:` the `identity` on its entity, or its name. The
+  claim lists it under `verse.principal.runner.<identity>`. A runner acts as itself, not as
+  whoever installed it; and since the kind is in the name, `runner:coderunner` and
+  `user:coderunner` are two principals that nothing has to tell apart.
+- **an operator agent**, `agent:<name>` — a harness driving verse from outside through the api,
+  with the whole verse as its tool surface. It is a principal of its own, not the person whose
+  terminal it runs in: `agent:` in the CLI's config makes every request the agent's, listed
+  under `verse.principal.agent.<name>`. Today it is granted what a person is; the name is what
+  its grants narrow against later.
+- **the system**, versed itself, as the part of it that wrote: `system:docket` poses, settles,
+  escalates and hands on a question and releases a binding; `system:mirror` projects a task and
+  grants the worker that claimed it; `system:perms` writes the mirror's records and who has been
+  met; `system:seed` writes the seed; `system:charter` installs the charter the deployment
+  stands behind; `system:default` is the restore at start and whatever else names no part. The
+  parts are attribution, not authority. Any of them owns the root, co-owns everything beneath
+  and passes every check; they are one owner, so a part creating beneath another writes no
+  record; and nothing grants to one part rather than another.
 
-A charter and a source have no identity of their own. Each is a node with an owner, and each
-acts **as the address of its record**: a firing writes as `verse.trigger.rule.<pkg:name>`, a
-reflector as `verse.sources.<system>.<name>`, and the check resolves the address to the
-record's owner. The write says who acted; the owner is who is answerable. A rule whose record
-has no owner yet — installed before its charter was re-applied — acts as the nearest owner
-above it, the system, and never as an address: an address is not a party.
+A charter, a source and a binding have no identity of their own. Each is a node with an owner,
+and each acts **via the address of its record**: a firing writes as
+`via:verse.trigger.rule.<pkg:name>`, a reflector as `via:verse.sources.<system>.<name>`, a
+binding's verdict as `via:verse.resolvers.<kind>.<name>`, and the check resolves the address to
+the record's owner. The write says who acted; the owner is who is answerable. A rule whose
+record has no owner yet — installed before its charter was re-applied — acts as the nearest
+owner above it, the system, and never as an address: an address is not a party. A `via:` naming
+somewhere nothing acts through is refused where it is written: a runner has an address, and acts
+as `runner:<identity>` instead.
+
+**A request presents `user:`, `agent:` or `runner:`.** `via:` and `system:` are names versed
+makes — when a rule fires, a source reflects, a binding answers, versed acts — and a request
+carrying one is refused 400 at the door, as is one carrying a name the grammar does not read.
+The charter the system stands behind is installed from the file the deployment names, not over
+the api.
+
+**A grantee matches by what it is.** `<kind>:<id>` admits the principal named exactly that, or
+whose owner resolves to it, so a grant to `user:ana@example.com` reaches what ana owns acting as
+itself. `<kind>:*` admits any principal whose name, or whose owner's, carries the kind.
+`via:<address>` admits the place acting as that address and nothing else — not its owner, since
+the address is the identity — and a trailing `*` covers what acts beneath it
+(`via:verse.sources.*`). `group:<name>` admits the group's members. `*` admits everyone. A name
+already stored that the grammar does not read admits nobody; nothing rewrites it, `verse status`
+counts every check that meets one under `perms.unparsed`, and versed logs it once per record.
 
 Self-asserted, all of it. There is no login, and the server trusts a principal no harder than
 it trusts `--as`. What the model buys is that every write names a party the check can hold
@@ -51,10 +94,11 @@ carry — so that when a principal is verified, nothing else has to change.
 ## Ownership
 
 **The owner of a node is the nearest record at or above it in the mirror**, and the root is
-the system's. The mirror records exactly the changes of ownership down the tree: a task under
-`verse.task.instance` gets one small record naming the person who ran it, and a charter
-package's address gets one naming its installer, taken when the package is installed — so the
-rows its rules derive beneath it are owned through the address and need none of their own.
+the system's, whichever part of it writes. The mirror records exactly the changes of ownership
+down the tree: a task under `verse.task.instance` gets one small record naming the person who
+ran it, and a charter package's address gets one naming its installer, taken when the package
+is installed — so the rows its rules derive beneath it are owned through the address and need
+none of their own.
 Installing at an address somebody else owns is refused, with the check's words.
 
 **A source takes the nodes its claims name, the same way.** A claim in a source's `owns` names
@@ -69,10 +113,10 @@ share an installer.
 
 ```tony
 # verse.perms.node."verse.task.instance.run-1"
-owner: walter@example.com
+owner: user:walter@example.com
 grants:
-- read-write: [coderunner]        # about the node the record is on
-  control: [coderunner]
+- read-write: [runner:coderunner] # about the node the record is on
+  control: [runner:coderunner]
 ```
 
 **Ownership changes only by create and delete.** There is no transfer; to hand something over,
@@ -88,7 +132,7 @@ creates the node too, and it is the node's owner's: a file a grantee writes into
 slice belongs to whoever shares it. Holding neither, the write is refused.
 
 **Questions stand at their own address and are co-owned through what posed them.** A question
-lives at `verse.gate.question.<id>` and its record — the system's, an owner record of its own —
+lives at `verse.gate.question.<id>` and its record — `system:docket`'s, an owner record of its own —
 carries `under`, the address of the task or the rule that asked; the check follows that link
 for ownership and for nothing else. So the task's owner, or the charter's, answers what their
 own work asked, exactly as if the question stood beneath them, and a runner's grant on its task
@@ -99,9 +143,9 @@ executor may not resolve its own gate, and nothing special-cases it.
 question is posed: the gate's `answerers` when it named them; for a gate a worker raises, the
 spawn's gate of that name when it names answerers, else whom the worker named (`task do gate
 --to`), a worker asking somebody; else the default on `verse.gate.question` — the docket's
-openness, `read-write: [user, agent]` in the seed. Binding
-the question to a resolver replaces that line with whoever answers as the binding (its address
-for a service, the person or the group behind it otherwise), unbinding gives it back to the
+openness, `read-write: [user:*, agent:*]` in the seed. Binding
+the question to a resolver replaces that line with whoever answers as the binding (`via:` its
+address for a service, the person or the group behind it otherwise), unbinding gives it back to the
 default, and `read` stays as the default gave it. `need` over the answerers is one-or-many:
 one ballot each. Whoever may answer may hand the question on, `verse gate escalate`, to the
 next binding covering its subject by name, and to the docket when there is none.
@@ -113,11 +157,11 @@ A grant is a line on a record: who holds which level, and where.
 ```tony
 # verse.perms.node."spaces.walter@example.com"
 grants:
-- read: [ana@example.com]                    # this node, and everything beneath it
+- read: [user:ana@example.com]               # this node, and everything beneath it
 - below: true                                # the children and beneath, not the node
-  read-write: [user]
+  read-write: [user:*]
 - at: [spaces, walter@example.com, shared, "*"]  # another path, with at most a trailing *
-  read-write: [ana@example.com, user]
+  read-write: [user:ana@example.com, group:payments]
 ```
 
 A line says no `at` when it is about the node the record is on, which nearly every line is —
@@ -125,15 +169,16 @@ the default copied at creation, a runner's grant on its task, a question's answe
 record does not repeat its own address per line; `below: true` on such a line covers the
 children and beneath, which is what a grant about *creating* needs, and not the node. `at`
 names any other path, with at most a trailing `*` for the same meaning: the claim grammar,
-refused elsewhere for the reason a claim refuses it. A grantee is a
-principal by the name it acts under or the owner it resolves to, `*` for everyone (the
-unattributed request included), a kind — `user`, `runner`, `agent` — meaning whoever is listed
-under it, or a **group's address**, meaning its members.
+refused elsewhere for the reason a claim refuses it. Each grantee is a name in the
+[grammar](#principals-and-grantees), and a line naming one it does not read is refused where it
+is written.
 
 **A group** is a named set with an owner: `verse group add payments oscar@example.com
-ana@example.com` writes `verse.principal.group.payments`, its maker's to change. A member is a
-principal, a kind, `*`, another group's address or a binding's, walked to a bounded depth so a
-group of groups is walked and a cycle admits nobody. Membership is read when it is checked,
+ana@example.com` writes `verse.principal.group.payments`, its maker's to change, and
+`group:payments` is the grantee that admits its members. A member is any grantee — a principal,
+`<kind>:*`, `*`, a place acting, or another `group:` — and the members are walked exactly: a
+group already met on the walk is skipped, so a group of groups nested any depth admits its
+members and a cycle admits nobody because the walk ends. Membership is read when it is checked,
 since a group is for changing who is in it without touching every place it is granted — the one
 grantee whose meaning moves after the fact, on purpose.
 
@@ -150,12 +195,13 @@ its runner writes it. And a question, standing elsewhere, is reached by no grant
 ## The check
 
 Every write verse makes on anybody's behalf goes through one view of the store, acting as a
-principal: a request's, a firing's (the rule's address), a source's, the mirror's. The view
+principal: a request's, a firing's (via the rule's address), a source's, the mirror's. The view
 resolves the principal, walks the node's prefixes reading records, and refuses or admits **in
 the store**, so the compare-and-swap writes and the mirror's projections are checked without
 any call site knowing. A refusal is `entity.ErrForbidden`, a 403 at the api with the check's own
-words — *bob holds read at demo.pr.1 and writing it needs read-write; the nearest owner on
-record is alice at demo.pr.1* — and a count on `verse status` under `perms`.
+words — *user:bob@example.com holds read at demo.pr.1 and writing it needs read-write; the
+nearest owner on record is user:alice@example.com at demo.pr.1* — and a count on `verse status`
+under `perms`.
 
 Reads go through the same view. A `Get` of what may not be read is refused as a write is; a
 listing, a replay, a live watch and a snapshot **leave out** what may not be seen, so one
@@ -188,7 +234,7 @@ later touches nothing that exists.
 
 ```tony
 # verse.perms.node."spaces.walter@example.com"
-owner: walter@example.com
+owner: user:walter@example.com
 grants: []                 # the place itself holds out nothing
 default: {}                # and nothing created beneath it does either
 ```
@@ -199,7 +245,7 @@ grants field at all is from before defaults existed and reads as holding out the
 
 **The root's default is the one that is not data**, since the root has no record: `read:
 ["*"]`, so whatever anybody creates is readable by everyone until a default beneath says
-otherwise. It is set in the server's config (`perms: {default: {…}}`, [reference/up.md](reference/up.md#config)),
+otherwise. It is set in the server's config (`perms: {default: {…}}`, [reference/up.md](reference/up.md#configuration)),
 and `{}` there is a verse where what anybody creates is theirs and their grantees' alone.
 
 **The world's half is open to write until a record says otherwise.** Everyone holds `owner`
@@ -233,7 +279,7 @@ by name, since that record holds out the read it was created with. `verse perms 
 
 ## The seed
 
-What the system holds out, written at start under an absence precondition, so a restart writes
+What the system holds out, written at start by `system:seed` under an absence precondition, so a restart writes
 nothing and an operator's edit stands:
 
 | at | level | to |
@@ -241,13 +287,13 @@ nothing and an operator's edit stands:
 | `verse.task.instance.*`, `verse.task.run.*`, `verse.task.claim.*` | owner | everyone |
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | owner | everyone |
 | `verse.sources.*`, `verse.runners.*`, `verse.resolvers.*` | owner | everyone |
-| `verse.gate.question.*` | read-write | `user`, `agent` |
+| `verse.gate.question.*` | read-write | `user:*`, `agent:*` |
 | `verse.gate.question.*` | read | everyone |
 | `verse.principal.*` | read | everyone |
 | `verse.principal.group.*` | owner | everyone |
 
 And one **default** beside them, on `verse.gate.question`, copied onto every question's own
-record at pose: `{read: ["*"], read-write: [user, agent]}`. A private verse narrows that one
+record at pose: `{read: ["*"], read-write: [user:*, agent:*]}`. A private verse narrows that one
 default to close the docket.
 
 A question is the one row that is not everyone's: it is posed by versed and answered by
@@ -257,24 +303,24 @@ binding a question is held out to answers it.
 
 ## What the acts write
 
-- **A spawn** writes the task as its requester — the person, or the rule's address for a
+- **A spawn** writes the task as its requester — the person, or via the rule's address for a
   firing, which resolves to the charter's owner — so the task is theirs.
 - **A claim** is the assignment the model calls the owner's act: when a worker claims a
-  brokered task, versed writes `read-write` and `control` for the claimant on the task's record
+  brokered task, `system:mirror` writes `read-write` and `control` for the claimant on the task's record
   and on this run's, and the mirror writes every report from then on **as the claimant**. A
   runner reached by url is known at spawn, so the same happens at the first reflection, for
-  the `identity` on its entity (its name by default). A question the task raises is posed and
-  settled as the system whoever is working the task.
+  `runner:` the `identity` on its entity (its name by default). A question the task raises is
+  posed and settled as `system:docket` whoever is working the task.
 - **A binding** is a grant: when a question is bound to a resolver, the question's record holds
-  out `read-write` to whoever answers as the binding — its address for a service, the person or
-  the group behind it otherwise — replaced when the question changes hands and given back to
+  out `read-write` to whoever answers as the binding — `via:` its address for a service, the
+  person or the group behind it otherwise — replaced when the question changes hands and given back to
   the default when it is unbound. A verdict through an instance, an escalation and a position
-  are made as the binding; a person answers and escalates from the docket.
+  are made via the binding; a person answers and escalates from the docket.
 - **A person answering** holds it by co-owning the question — their task, their charter — or
   by the seed's row. An `exclusive` binding still decides whose answer *counts*; it is not a
   security boundary and never was.
 - **Versed's own acts** on a question — the clock settling an overdue one, the layer rule
-  handing one on when a reader arrives or a binding is removed — are written as the system in
-  the request's scope, not as whoever read the docket.
+  handing one on when a reader arrives or a binding is removed — are written as `system:docket`
+  in the request's scope, not as whoever read the docket.
 - **The system charter**, from `systemCharter:` in the deployment's config, is applied at start
-  as the system after the restore. Its rules are nobody's but the system's.
+  as `system:charter` after the restore. Its rules are nobody's but the system's.

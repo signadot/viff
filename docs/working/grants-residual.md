@@ -78,10 +78,10 @@ walking every standing binding in name order, and groups. Not built:
   service does, when a reader arrives; nothing wakes them first.
 - **Carrying gating through derivations**, the issue's second paragraph: a derived entity
   inheriting the answerers of what it was derived from. A question about `derive`.
-- **A group's cost.** Membership is a read per check, bounded by depth three; a group of
-  service bindings mints an instance per service per question — which nothing does yet, since a
-  service member of a group is admitted by the grant but is minted no instance to read the run
-  through. A service that must read the run is bound directly.
+- **A group of services.** A group of service bindings would mint an instance per service per
+  question — which nothing does yet, since a service member of a group is admitted by the grant
+  but is minted no instance to read the run through. A service that must read the run is bound
+  directly.
 
 ## 7. Where the question stands
 

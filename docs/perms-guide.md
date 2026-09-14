@@ -33,25 +33,28 @@ above it, the system at the top.
 
 ```sh
 verse data spaces scott notes --put '{todo: [buy milk]}'
-verse perms spaces scott notes | grep owner             # owner: walter@example.com
+verse perms spaces scott notes | grep owner             # owner: user:walter@example.com
 VERSE_USER=ana@example.com verse perms spaces scott notes | grep owner   # the same record, read as ana
 ```
 
-A person is an email. A harness driving verse from outside sets `agent:` instead, and every
-request is then the agent's under its own kind; a runner names itself when it claims work
-(`--identity` on its entity, or `--as` on `task do`). The name is self-asserted — there is no
-login — and everything below is about what a name may do, not about proving who holds it.
+A name carries its kind before the colon, and a request presents one of three:
+`user:walter@example.com` for a person, which a bare email in `user:` or `--as` is read as;
+`agent:<name>` for a harness driving verse from outside, which sets `agent:` in its config
+instead; and `runner:<identity>` for a worker, which claims work as `--as runner:<identity>` (a
+runner reached by url acts as the `--identity` on its entity). A bare word such as
+`--as coderunner` is refused, saying the grammar ([perms.md](perms.md#principals-and-grantees)
+has it whole). The name is self-asserted — there is no login — and everything below is about
+what a name may do, not about proving who holds it.
 
 Three things to know before the first step, because each is a reasonable guess that is wrong:
 
-- **A group is not a principal.** `verse.principal.group.<name>` is an address that may stand
-  where a grantee stands — on a grant line, in a gate's `answerers`, behind a binding — and it
-  admits the group's members, each acting as themselves. Nothing ever acts *as* a group, no
-  request can present one, and a group owns nothing.
+- **A group is not a principal.** `group:<name>` is a grantee — on a grant line, in a gate's
+  `answerers`, behind a binding — and it admits the group's members, each acting as themselves.
+  Nothing ever acts *as* a group, no request can present one, and a group owns nothing.
 - **The `agent` principal exists and nothing motivates it yet.** A harness driving verse from
   outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
   own kind, and today it is granted exactly what a person is. It is a name that grants can
-  narrow against later; until they do, read `[user, agent]` as "people".
+  narrow against later; until they do, read `[user:*, agent:*]` as "people".
 - **Identity is self-asserted.** A request is whoever the config, `VERSE_USER` or `--as` says,
   and the server trusts it as far as that. The check holds every write to what its place
   permits *for that name*; who is behind the name is a different question, not yet asked.
@@ -71,7 +74,7 @@ verse perms spaces scott notes
 at: spaces.scott.notes
 grants:
 - read: ["*"]
-owner: walter@example.com
+owner: user:walter@example.com
 ```
 
 Two rules made that record. The world's half is open to *create* until a record says
@@ -82,8 +85,8 @@ alone. Another user is refused the write and told why:
 
 ```
 VERSE_USER=ana@example.com verse data spaces scott notes --put '{todo: []}'
-→ 403 refused: ana@example.com holds read at spaces.scott.notes and writing it needs read-write;
-  the nearest owner on record is walter@example.com at spaces.scott.notes
+→ 403 refused: user:ana@example.com holds read at spaces.scott.notes and writing it needs
+  read-write; the nearest owner on record is user:walter@example.com at spaces.scott.notes
 ```
 
 The refusal is the check's own words, and it always says three things: what the requester
@@ -133,8 +136,8 @@ records follow it. Reads of the task go by the default it was created with — e
 writes to it are yours and the runtime's.
 
 **The runner working it holds the task and nothing else.** When a worker claims the task —
-a brokered claim naming its identity, or a runner reached by url acting as the `identity` on
-its entity — versed grants it `read-write` and `control` on the task and on this run, and every
+a brokered claim as `runner:<identity>`, or a runner reached by url acting as `runner:` the
+`identity` on its entity — versed grants it `read-write` and `control` on the task and on this run, and every
 report from then on is written as it. That grant stops at the task's record. A question the
 task raises stands at its own address, `verse.gate.question.<id>`, and a grant on the task does
 not reach through the task's record to it, so the executor may not answer its own gate. Nothing
@@ -157,8 +160,8 @@ special-cases this; it is what "a grant does not reach through an owner record" 
   ```
 
   `answerers` is *who* may answer: it becomes the question's `read-write` line when the
-  question is posed, in place of the docket's default. Left off, the default stands — `[user,
-  agent]` in the seed, which is any person.
+  question is posed, in place of the docket's default. Left off, the default stands — `[user:*,
+  agent:*]` in the seed, which is any person.
 - `--resolver <binding>` hands the run's questions to a binding instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
 - `--as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
 
@@ -173,22 +176,22 @@ named; whoever is named on the line answers too; the runner is refused. Try it a
 and read the refusal:
 
 ```
-VERSE_USER=x verse gate <id> --answer proceed
-→ 403 refused: x holds read at verse.gate.question."<id>" and answering it needs read-write;
-  the nearest owner on record is system at verse.gate.question."<id>"
+VERSE_USER=x@example.com verse gate <id> --answer proceed
+→ 403 refused: user:x@example.com holds read at verse.gate.question."<id>" and answering it
+  needs read-write; the nearest owner on record is system:docket at verse.gate.question."<id>"
 ```
 
 `x` holds `read` because the docket's default gave every question `read: ["*"]`; it does not
 hold `read-write` because it is not on the line. A worker that hits something the task cannot
 decide raises a gate up itself, and may say to whom: `verse task do gate <id> <name> --as
-<identity> --to ana@example.com`. The spawn's own gate of that name, when it names answerers,
+runner:<identity> --to ana@example.com`. The spawn's own gate of that name, when it names answerers,
 stands over what the worker says.
 
 ## Step 3: a charter, and what it owns
 
-A rule has no identity of its own. It acts **as the address of its record**,
-`verse.trigger.rule.<package>:<name>`, and the check resolves that to the record's owner — the
-person who installed the charter. Everything follows from that one resolution:
+A rule has no identity of its own. It acts **via the address of its record**,
+`via:verse.trigger.rule.<package>:<name>`, and the check resolves that to the record's owner —
+the person who installed the charter. Everything follows from that one resolution:
 
 - **Its writes are the installer's.** A `patch` or `derive` a firing makes is written as the
   rule, admitted or refused as the installer would be. Install a charter that patches a place
@@ -222,7 +225,7 @@ verse perms verse trigger rule 'verse-dev.merge:train-run'
 ```
 
 ```tony
-owner: walter@example.com
+owner: user:walter@example.com
 grants:
 - read: ["*"]
 ```
@@ -240,10 +243,10 @@ verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
 ```
 
 ```tony
-owner: system
+owner: system:docket
 grants:
 - read: ["*"]
-  read-write: [user, agent]
+  read-write: [user:*, agent:*]
 ```
 
 Read it as three questions:
@@ -253,7 +256,7 @@ Read it as three questions:
   is on, which is what nearly every line is.
 - **Who may answer it?** The `read-write` line. This gate named no `answerers:`, so it took
   the default too: any person, any agent. A runner is not on it and is refused.
-- **Who owns it?** The system, and — through `under`, which `verse perms` does not print but
+- **Who owns it?** The system — `system:docket`, which posed it — and, through `under`, which `verse perms` does not print but
   the check follows — the `train-run` rule's owner. Owners answer, and owners alone hold
   `control`: cancelling, or escalating as the owner rather than as an answerer.
 
@@ -264,14 +267,15 @@ file; the questions posed from then on carry that line instead of the default:
   gates:
   - name: merge-to-main
     mode: ask
-    answerers: [walter@example.com, verse.principal.group.release]
+    answerers: [walter@example.com, group:release]
     need: 2
     deadline: {within: "24h", default: deny}
 ```
 
 `need` over the answerers is what one-or-many means: one ballot per answerer, `need: 1` a
 race, `need` equal to their number all of them. The install refuses a gate nobody could settle
-— a threshold above the answerers named, an address that names nobody — so a misspelling is
+— a threshold above the answerers named, a name outside the grammar, a group that does not
+stand — so a misspelling is
 caught there rather than by a question standing unanswerable for a day. A re-install re-poses
 nothing: a question already on the docket keeps the record it was posed with.
 
@@ -280,7 +284,7 @@ nothing: a question already on the docket keeps the record it was posed with.
 
 ```sh
 verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
-  --grants '[{read: ["*"], read-write: [walter@example.com]}]'
+  --grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
 ```
 
 **To close the docket for a whole verse,** narrow the default on `verse.gate.question` — it is
@@ -310,12 +314,13 @@ condition:
 method: {driver: person, who: peggy@example.com}
 deadline: {within: "4h", then: escalate}
 EOF
-verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 --as walter@example.com
+verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 --as user:walter@example.com
 ```
 
-Binding **replaces the `read-write` line** with whoever answers as the binding: the binding's
-address for a `url` service, whose instance answers as it; the person for `person`; the
-group's members for `group`, each as themselves. The default `[user, agent]` line goes with it,
+Binding **replaces the `read-write` line** with whoever answers as the binding: `via:` the
+binding's address for a `url` service, whose instance answers as it; the person for `person`;
+`group:<name>` for `group`, its members each as themselves. The default `[user:*, agent:*]` line
+goes with it,
 so nobody outside the binding answers any more — except the co-owners, who hold it by
 ownership and not by the line. `read` stays as the default gave it. Unbinding, when the
 binding is removed or the ladder runs out, gives the default line back.
@@ -329,20 +334,31 @@ Both are on the record, and the earlier fires first.
 
 **What a service holds.** A `url` binding is answered through an instance,
 `verse.resolvers.instance.<name>@<origin>`, and the instance acts as the binding: its verdict,
-its escalation and its position are written as `verse.resolvers.<kind>.<name>`, and that address
-is what the question's line holds. The service says what it decided and never who it is —
-`by` on the decision frame is the binding, stamped by verse. `exclusive` on a binding decides
+its escalation and its position are written as `via:verse.resolvers.<kind>.<name>`, and that
+name is what the question's line holds. The service says what it decided and never who it is —
+`by` on the decision frame is the binding's name, stamped by verse. An instance's own address is
+no principal: as a grantee it is refused, and never read as a person's email. `exclusive` on a binding decides
 whose answer *counts* when several may answer, and is not a security boundary: the line is.
 
-**Groups, here and on a gate.** `verse group add release walter@example.com ana@example.com`
-writes `verse.principal.group.release`, its maker's to change. Membership is read when it is
-checked, never copied, which is the one grantee whose meaning moves after the fact — on
-purpose: change who is in the group and every line that names it follows. A member may be a
-principal, a kind, `*`, another group or a binding's address, walked to a bounded depth; a
-cycle admits nobody. A group binding, `method: {driver: group, group:
-verse.principal.group.release}`, and a gate's `answerers: [verse.principal.group.release]` hold
-a question out to the same people; the difference is that the binding is a rung on the ladder
-and the gate's line is not.
+**Groups, here and on a gate.** A group is a named set of grantees, and `group:<name>` is how
+anything names it:
+
+```sh
+verse group add release walter@example.com group:qa 'runner:*'   # stored at verse.principal.group.release
+```
+
+A member is any grantee: a person (`user:<email>`, or the bare email), an agent, a runner, a
+place acting (`via:<address>`), a whole kind (`user:*`), everyone (`*`), or another group
+(`group:qa`). `verse group add` refuses a member it cannot read — a group's address, a bare
+word — saying the grammar. The group is its maker's to change, and membership is read when it
+is checked, never copied, which makes it the one grantee whose meaning moves after the fact — on
+purpose: change who is in the group and every line that names it follows. The members are
+walked exactly: a group already met on the walk is skipped, so a group nested in a group nested
+in a group admits its members however deep, and a cycle admits nobody because the walk ends.
+
+A group binding, `method: {driver: group, group: group:release}`, and a gate's
+`answerers: [group:release]` hold a question out to the same people; the difference is that the
+binding is a rung on the ladder and the gate's line is not.
 
 ## What to check when something surprises you
 
@@ -352,7 +368,9 @@ and the gate's line is not.
   remember the runner is refused there by design.
 - **A rule acts as its installer.** A firing refused, or a rule that never wakes, is usually the
   installer's own grants seen through the rule.
-- **`verse status` counts.** `perms: {refused, unreadable, hidden}` is the check's census since
-  the process started: refusals, checks the mirror could not answer, and what listings withheld.
-- **`[user, agent]` means people.** Until the agent principal is given a life of its own, a
+- **`verse status` counts.** `perms: {refused, unreadable, hidden, unparsed}` is the check's
+  census since the process started: refusals, checks the mirror could not answer, what listings
+  withheld, and grantee names on a record the grammar does not read — each admitting nobody,
+  and logged by versed once per record. On a verse wiped since the grammar, `unparsed` is zero.
+- **`[user:*, agent:*]` means people.** Until the agent principal is given a life of its own, a
   line holding both is the docket's openness, no more.

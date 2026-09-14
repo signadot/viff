@@ -218,7 +218,7 @@ verse gate
 ```
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as alice   # 1 of 2 for fixer
+verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as alice@example.com   # 1 of 2 for fixer
 ```
 
 A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary by

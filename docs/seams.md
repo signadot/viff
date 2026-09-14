@@ -195,7 +195,7 @@ sequenceDiagram
 
   V->>B: spawn — in task, because the broker IS verse's runner here
   Note over B: status: unclaimed
-  W->>B: POST /tasks/{id}/claim  (--as who)
+  W->>B: POST /tasks/{id}/claim  (--as runner:<who>)
   B-->>W: claim accepted — an epoch is minted
   Note over B: a later claim fences this one
   loop while running
