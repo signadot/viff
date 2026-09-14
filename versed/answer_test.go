@@ -147,9 +147,8 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	}
 }
 
-// Attribution is required rather than defaulted. The server used to fill in `human:cli`,
-// which put a name on the record belonging to nobody — and the record is durable now, so an
-// unattributable answer is a permanent one.
+// Attribution is required rather than defaulted: a default puts a name on the record belonging
+// to nobody, and the record is durable, so an unattributable answer is a permanent one.
 func TestAnAnswerMustNameItsAnswerer(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())

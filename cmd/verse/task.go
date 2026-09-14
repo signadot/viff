@@ -914,8 +914,12 @@ func (cfg *taskSayConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: task say wants an id and text", cli.ErrUsage)
 	}
 	id, text := args[0], strings.Join(args[1:], " ")
+	by, err := principal("")
+	if err != nil {
+		return err
+	}
 	return noContent(cc, "task say", "/tasks/"+id+"/say",
-		api.Say{Instruction: text}, id)
+		api.Say{Instruction: text, By: by}, id)
 }
 
 // ── vector (slide autonomy on a running task — the re-vector surface) ──────

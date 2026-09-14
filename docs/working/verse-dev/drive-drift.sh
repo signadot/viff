@@ -87,21 +87,21 @@ review() {
 	local to=$1 sym=${2:-pkg.Thing}
 	v task do complete "$(task_for "$to")" \
 		"{files: 1, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $to, proposedAt: $to}]}" \
-		--as human:drive >/dev/null 2>&1
+		>/dev/null 2>&1
 }
 # review_carrying <to> — answer with the standing set repeated verbatim and nothing new
 review_verbatim() {
 	local to=$1 sym=$2
 	v task do complete "$(task_for "$to")" \
 		"{files: 0, findings: [{symbol: $sym, status: open, says: \"a comment disagrees with its code\", at: $to, proposedAt: $to}]}" \
-		--as human:drive >/dev/null 2>&1
+		>/dev/null 2>&1
 }
 # resolve <to> <symbol> — the fix landed, so the carried finding is right in this tree now
 resolve() {
 	local to=$1 sym=$2
 	v task do complete "$(task_for "$to")" \
 		"{files: 1, findings: [{symbol: $sym, status: resolved, says: \"the comment agrees with the code now\", at: $to, proposedAt: $to}]}" \
-		--as human:drive >/dev/null 2>&1
+		>/dev/null 2>&1
 }
 waitfor() { local end=$((SECONDS+$2)); while [ $SECONDS -lt $end ]; do eval "$1" && return 0; sleep 0.3; done; return 1; }
 has()     { case "$1" in *"$2"*) return 0;; esac; return 1; }
@@ -182,7 +182,7 @@ has "$(range 7777aaaa)" "outstanding: []" \
 	|| bad "outstanding on 7777aaaa: $(sed -n '/^outstanding:/,/^[a-z]/p' <<<"$(range 7777aaaa)" | tr '\n' ' ')"
 
 step "5. a review that FAILS stops the chain where it broke"
-v task do fail "$(task_for 7777aaaa)" "the runner had nowhere to put it" --as human:drive >/dev/null 2>&1
+v task do fail "$(task_for 7777aaaa)" "the runner had nowhere to put it" >/dev/null 2>&1
 waitfor 'has "$(range 7777aaaa)" "status: failed"' 20 && ok "the range is failed" || bad "the range did not fail"
 sleep 2
 [ "$(at)" != 7777aaaa ] && ok "the cursor did not step past it: still at $(at)" \

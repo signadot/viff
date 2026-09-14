@@ -2458,10 +2458,9 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
 		return
 	}
-	// Attribution is required, not defaulted. The server used to fill in `human:cli`, which
-	// put a name on the record that belongs to nobody — and now that an answer is a durable
-	// entry on the question, an unattributable one is a permanent unattributable one. A
-	// decision is an act; acts have actors.
+	// Attribution is required, not defaulted: a default is a name on the record that belongs to
+	// nobody, and an answer is a durable entry on the question, so an unattributable one is a
+	// permanent unattributable one. A decision is an act; acts have actors.
 	if body.By == "" {
 		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
 		return
@@ -4680,11 +4679,7 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "text required", http.StatusBadRequest)
 		return
 	}
-	by := b.By
-	if by == "" {
-		by = "human:cli"
-	}
-	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "say", Affected: s.Eng.SteerFlow(m, b.Text, by)})
+	writeOut(w, r, http.StatusOK, api.Steered{Subject: b.Subject, Verb: "say", Affected: s.Eng.SteerFlow(m, b.Text, b.By)})
 }
 
 // eventWire is gone: an Event is written as itself. It used to be rebuilt field by field

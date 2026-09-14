@@ -479,12 +479,8 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 		decision = body.DecisionID
 	}
 	proceed := body.Approve || body.Proceed || body.Choice == task.Proceed
-	by := body.By
-	if by == "" {
-		by = "human:daemon"
-	}
 	res := task.Resolution{
-		Choice: body.Choice, Proceed: proceed, By: by,
+		Choice: body.Choice, Proceed: proceed, By: body.By,
 		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
 	}
 	if !h.reg.Answer(decision, res) {
@@ -508,11 +504,7 @@ func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "instruction required", http.StatusBadRequest)
 		return
 	}
-	by := body.By
-	if by == "" {
-		by = "human:cli"
-	}
-	h.task.Steer(body.Instruction, by)
+	h.task.Steer(body.Instruction, body.By) // empty is an unattributed caller, said as such
 	w.WriteHeader(http.StatusNoContent)
 }
 

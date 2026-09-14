@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -49,5 +52,34 @@ func TestABareWordIsNotAPrincipal(t *testing.T) {
 	t.Setenv("VERSE_USER", "smoke")
 	if _, err := runCLI(t, "data", "demo", "pr", "1"); err == nil || !strings.Contains(err.Error(), "config user") {
 		t.Fatalf("a bare word as the configured user: %v", err)
+	}
+}
+
+// A steer is attributed to whoever makes it: `task say` and `flow say` send the principal as
+// `by`, so no server has a name to invent.
+func TestASayCarriesItsSpeaker(t *testing.T) {
+	bodies := map[string]string{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies[r.URL.Path] = string(b)
+		if r.URL.Path == "/flow/say" {
+			w.Write([]byte(`{subject: demo.pr.1, verb: say}`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+	t.Setenv("VERSE_USER", "ana@example.com")
+	if _, err := runCLI(t, "task", "say", "t1", "carry", "on"); err != nil {
+		t.Fatalf("task say: %v", err)
+	}
+	if _, err := runCLI(t, "flow", "say", "demo.pr.1", "carry", "on"); err != nil {
+		t.Fatalf("flow say: %v", err)
+	}
+	for _, path := range []string{"/tasks/t1/say", "/flow/say"} {
+		if !strings.Contains(bodies[path], "user:ana@example.com") {
+			t.Errorf("%s was sent without its speaker: %s", path, bodies[path])
+		}
 	}
 }

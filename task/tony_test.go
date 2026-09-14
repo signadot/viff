@@ -31,7 +31,7 @@ func TestTonyRoundTrip(t *testing.T) {
 
 		{"frame", Frame{
 			Kind: EvDecision, Task: "run-1", Cursor: 3, ID: "d1",
-			Gate: "shell", Mode: "ask", By: "human:cli", Proceed: true, Text: "ok",
+			Gate: "shell", Mode: "ask", By: "user:walter@example.com", Proceed: true, Text: "ok",
 		}, func() any { return &Frame{} }},
 
 		{"vector", Vector{Default: Ask, Gates: []Gate{{

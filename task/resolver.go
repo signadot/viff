@@ -21,7 +21,7 @@ type Resolution struct {
 	// happened to be named proceed. Chosen reads whichever was set.
 	Choice   string
 	Proceed  bool
-	By       string // who resolved: "auto", "human:scott", "verse:task:ci", ...
+	By       string // who resolved: "auto", "user:walter@example.com", "via:verse.resolvers.security.review", ...
 	Note     string
 	Question GateQuestion
 	// ChildMode: for a CallAgent ASK, how the child is supervised (default

@@ -647,7 +647,7 @@ func fold(m convMsg) string {
 }
 
 // who names the speaker when there is one, and falls back to what they are when there is not.
-// `by` is an identity like `human:scott`, which is worth showing: a run steered by a person and
+// `by` is an identity like `user:walter@example.com`, which is worth showing: a run steered by a person and
 // a run steered by a service are different things to be told.
 func who(by, fallback string) string {
 	if by == "" {

@@ -924,11 +924,8 @@ func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done
 // reason: a select motion's choice is an arbitrary option id (a provider name), an OPEN set,
 // which is data — and data is a flag's value. A gate's answer is a closed binary, which is
 // grammar.
-// --as is optional here, where a ballot's is required, and the difference is real rather
-// than an oversight: a ballot is meaningless without its voter (a tally of anonymous votes
-// governs nothing), while an approval is an act that happens whether or not it is signed.
-// Unset, the server records "human:cli" — which is what it recorded for EVERY approval
-// before this flag existed, so the dial only ever adds attribution.
+// --as may be left off when the config names a user, who is then the answerer (requireAs);
+// with neither, the answer is refused, since a decision names who made it.
 type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`

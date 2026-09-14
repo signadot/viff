@@ -120,9 +120,9 @@ type Resolve struct {
 	// By is who answered. It rides the wire the same way FlowSteer.By and a say's By do,
 	// and for the same reason: a resolution is an act, and an act has an actor.
 	//
-	// REQUIRED. The server used to default it to "human:cli", which published a name
-	// belonging to nobody; now that an answer is a durable entry on the question record, an
-	// unattributable one would be permanent. Same rule as a ballot's --as, and for the same
+	// REQUIRED, and never defaulted: a default publishes a name belonging to nobody, and an
+	// answer is a durable entry on the question record, so an unattributable one would be
+	// permanent. Same rule as a ballot's --as, and for the same
 	// reason — a decision has no meaning without whoever made it.
 	By string `tony:"field=by"`
 	// Say rides along with the answer as steering — "yes, but do it this way". It is a
@@ -262,7 +262,7 @@ type Position struct {
 //tony:schemagen=verse-say,notag
 type Say struct {
 	Instruction string `tony:"field=instruction"`
-	By          string `tony:"field=by,omitzero"` // attribution; empty → human:cli
+	By          string `tony:"field=by,omitzero"` // attribution; empty is an unattributed caller
 }
 
 // SetVector slides a running task's gate vector — the autonomy dial — applied at its

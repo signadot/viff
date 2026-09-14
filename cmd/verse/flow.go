@@ -120,7 +120,11 @@ func (cfg *flowSayConfig) run(cc *cli.Context, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("%w: flow say wants a subject and text", cli.ErrUsage)
 	}
-	resp, err := httpPost("/flow/say", api.FlowSteer{Subject: args[0], Text: strings.Join(args[1:], " ")})
+	by, err := principal("")
+	if err != nil {
+		return err
+	}
+	resp, err := httpPost("/flow/say", api.FlowSteer{Subject: args[0], Text: strings.Join(args[1:], " "), By: by})
 	if err != nil {
 		return fmt.Errorf("flow say: %w", err)
 	}
