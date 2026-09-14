@@ -61,7 +61,7 @@ func TestResumeReEntersASelection(t *testing.T) {
 	// The subject as the interrupted firing left it: past its latch, so nothing re-fires the
 	// rule and the question below is the only thing standing between the answer and the work.
 	entitytest.Set(t, store, subj, entity.Obj{"stage": "reviewing"}.Payload())
-	id := selectID("review", subj, spawn.Provider)
+	id := selectID("", "review", subj, spawn.Provider)
 	posed(t, store, id, entity.Obj{
 		"id": id, "status": mirror.QuestionPending, "subject": subj.String(), "chain": "review",
 		"options": []any{

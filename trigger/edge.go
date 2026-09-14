@@ -212,7 +212,7 @@ func (e *Engine) working(t Trigger, subj entity.Ref) bool {
 	if t.Action.Spawn == nil {
 		return false // nothing it starts could still be running
 	}
-	id := spawnID(chainID(t.Name), subj)
+	id := spawnID(e.idOwner(), chainID(t.Name), subj)
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
 	_, live := e.live[id]

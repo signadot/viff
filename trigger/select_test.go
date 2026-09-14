@@ -81,7 +81,7 @@ func TestSelectProviderVotePosesTheDoers(t *testing.T) {
 	subj := entity.RefAt("change", "pr", "2")
 
 	frag, ok, q := selecting(t, eng, reg, spawn, subj)
-	if q.ID != selectID("review", subj, p) || q.Chain != "review" || q.Mode != task.Ask {
+	if q.ID != selectID("", "review", subj, p) || q.Chain != "review" || q.Mode != task.Ask {
 		t.Fatalf("posed %+v, want the derived id, the chain and ask", q)
 	}
 	if ids := strings.Join(task.OptionIDs(q.Options), ","); ids != "gpt,claude" {
@@ -237,9 +237,9 @@ func TestSelectIDIsStableAndDistinct(t *testing.T) {
 			Match:      map[string]any{"tier": "premium", "region": "eu"},
 		}
 	}
-	first := selectID("review", subj, spec())
+	first := selectID("", "review", subj, spec())
 	for i := range 5 {
-		if got := selectID("review", subj, spec()); got != first {
+		if got := selectID("", "review", subj, spec()); got != first {
 			t.Fatalf("call %d differs — a re-fire would pose a NEW question:\n %s\n %s", i+1, first, got)
 		}
 	}
@@ -248,13 +248,13 @@ func TestSelectIDIsStableAndDistinct(t *testing.T) {
 	}
 	other := spec()
 	other.Eligible = []string{"gpt"}
-	if selectID("review", subj, other) == first {
+	if selectID("", "review", subj, other) == first {
 		t.Error("a different eligibility set produced the same id")
 	}
-	if selectID("review", entity.RefAt("demo", "pr", "2"), spec()) == first {
+	if selectID("", "review", entity.RefAt("demo", "pr", "2"), spec()) == first {
 		t.Error("a different subject produced the same id")
 	}
-	if selectID("review.onDone", subj, spec()) == first {
+	if selectID("", "review.onDone", subj, spec()) == first {
 		t.Error("a different action produced the same id")
 	}
 }

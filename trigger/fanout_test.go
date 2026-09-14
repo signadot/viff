@@ -496,15 +496,15 @@ func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Driver: "scripted"}}}
 
 	for _, ref := range refs {
-		announced := spawnLabel(trig, []entity.Ref{ref})
-		if want := spawnID(trig.Name, ref); announced != want {
+		announced := New(nil, nil).spawnLabel(trig, []entity.Ref{ref})
+		if want := spawnID("", trig.Name, ref); announced != want {
 			t.Errorf("gate announced %q but apply will spawn %q", announced, want)
 		}
 	}
 
 	// A set-only action starts nothing, and must not invent an id for a task that will
 	// never exist.
-	if got := spawnLabel(Trigger{Name: "reviewed"}, refs); got != "" {
+	if got := New(nil, nil).spawnLabel(Trigger{Name: "reviewed"}, refs); got != "" {
 		t.Errorf("a set-only trigger announced a spawn: %q", got)
 	}
 

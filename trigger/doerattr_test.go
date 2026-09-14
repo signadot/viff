@@ -66,7 +66,7 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	// The mirror half: the task says WHICH doer was selected, beside the driver that ran it.
-	taskRef := mirror.Ref(spawnID(chainID("review"), prRef("1")))
+	taskRef := mirror.Ref(spawnID("", chainID("review"), prRef("1")))
 	waitFor(t, store, taskRef, func(p entity.Payload) bool {
 		return entity.Str(p, "doer") == "provider.review.careful"
 	}, `doer = provider.review.careful`)

@@ -247,7 +247,7 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	eng.claimRun("review", prRef("1"))
 	time.Sleep(150 * time.Millisecond) // give a dispatch, if one were coming, time to arrive
 	// the claim entity exists…
-	if _, ok, _ := store.Get(mirror.ClaimRef(spawnID("review", prRef("1")))); !ok {
+	if _, ok, _ := store.Get(mirror.ClaimRef(spawnID("", "review", prRef("1")))); !ok {
 		t.Fatal("claim not written")
 	}
 	// …and nothing reacted to it
@@ -321,7 +321,7 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 	waitField(t, store, ref, "note", "failed")
 
 	// The claim is back. It is a MECHANISM for exclusion, and there is nothing left to exclude.
-	claim := mirror.ClaimRef(spawnID("review", ref))
+	claim := mirror.ClaimRef(spawnID("", "review", ref))
 	for range 100 {
 		if _, held, _ := store.Get(claim); !held {
 			break

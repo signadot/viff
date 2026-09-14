@@ -183,8 +183,8 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	})
 	a := entity.RefAt("demo", "pr", "1")
 	b := entity.RefAt("demo", "pr", "2")
-	eng.Spawn(spawnID("review", a), launch.Spec{Subject: a.String()})
-	eng.Spawn(spawnID("review", b), launch.Spec{Subject: b.String()})
+	eng.Spawn(spawnID("", "review", a), launch.Spec{Subject: a.String()})
+	eng.Spawn(spawnID("", "review", b), launch.Spec{Subject: b.String()})
 
 	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 2 {
 		t.Fatalf("two subjects yielded %d live tasks, want 2", n)

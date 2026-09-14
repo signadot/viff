@@ -736,11 +736,11 @@ func (e *Engine) countFire() {
 // id for one would be worse than saying nothing. Note the id is what the task WILL be
 // called — the gate may be denied, or a provider selection may fail to resolve a doer, and
 // then nothing by that name is ever created.
-func spawnLabel(t Trigger, subjects []entity.Ref) string {
+func (e *Engine) spawnLabel(t Trigger, subjects []entity.Ref) string {
 	if t.Action.Spawn == nil || len(subjects) == 0 {
 		return ""
 	}
-	return spawnID(t.Name, subjects[0])
+	return spawnID(e.idOwner(), t.Name, subjects[0])
 }
 
 // fireSubjects starts one firing per selected member, settling first what each one's causal
@@ -818,12 +818,12 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			gname = t.Name
 		}
 		d := task.GateQuestion{
-			ID: gateID(t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
+			ID: gateID(e.idOwner(), t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
 			// What the approver is deciding about, and what saying yes starts. One subject,
 			// named exactly: the question is about this entity and no other.
 			Subject: subj.String(),
-			Spawns:  spawnLabel(t, subjects),
+			Spawns:  e.spawnLabel(t, subjects),
 			// The named layer for a FIRING's gates, which a spawn has had all along and a
 			// rule did not. Empty leaves the question to the standing layer, and then to
 			// the docket a person reads.

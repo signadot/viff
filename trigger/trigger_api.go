@@ -334,15 +334,83 @@ func (e *Engine) Triggers() []Trigger {
 // Go field name), so the FIRST '@' is always the boundary, whatever the address carries.
 const ChainSep = "@"
 
+// AtSep and ScopeSep bound WHICH ENGINE minted an id from the chain it was minted for, in every
+// id a firing mints — its task, its gate question, its provider selection. A rule is (scope,
+// charter address, name), and names are unique only within an engine, while every engine of a
+// verse shares one runtime and one question registry: without the two, baseline's `review` and
+// a package's `review` about one subject would spawn under one task id and wait on one question.
+//
+//	review.onDone@demo.pr.1                 baseline's rule
+//	verse-dev.drift:claim@git.verse.head    a package's, at its address
+//	me::review@demo.pr.1                    scope me's
+//
+// Each is absent when empty, so baseline's ids read as they always have. Neither character can
+// stand in a chain (validTriggerName refuses ':' and a descent appends a Go field name), and the
+// scope and the address are rendered as tokens with none of ':', '@' or '~' (ownerToken), so the
+// first "::" bounds the scope, the next ':' the address, and the first '@' the chain: the
+// composition is injective, and the spellings `verse suspend` reads share it.
+const (
+	AtSep    = ":"
+	ScopeSep = "::"
+)
+
+// ownerOf is the prefix naming the engine an id is minted in: the scope's token and ScopeSep,
+// then the charter address's token and AtSep, each only when there is one.
+func ownerOf(scope string, at []string) string {
+	var b strings.Builder
+	if scope != "" {
+		b.WriteString(ownerToken([]string{scope}))
+		b.WriteString(ScopeSep)
+	}
+	if len(at) > 0 {
+		b.WriteString(ownerToken(at))
+		b.WriteString(AtSep)
+	}
+	return b.String()
+}
+
+// idOwner is ownerOf for this engine.
+func (e *Engine) idOwner() string {
+	var at []string
+	if e.confine.confined() {
+		at = e.confine.Path()
+	}
+	return ownerOf(e.scope, at)
+}
+
+// ownerToken is entity.SegToken with ':' and '@' rewritten too, since both bound an id's parts
+// here; the hash over the original segments keeps a rewrite from merging two names.
+func ownerToken(segs []string) string {
+	safe := make([]string, len(segs))
+	lossy := false
+	for i, sg := range segs {
+		safe[i] = strings.Map(func(r rune) rune {
+			if r == ':' || r == '@' {
+				return '_'
+			}
+			return r
+		}, entity.SafeSeg(sg))
+		if safe[i] != sg || strings.Contains(sg, ".") {
+			lossy = true
+		}
+	}
+	out := strings.Join(safe, ".")
+	if lossy {
+		out += entity.HashSep + entity.SegHash(segs)
+	}
+	return out
+}
+
 // spawnID makes a legible, collision-resistant, URL- and shell-safe task id from a
 // CHAIN (the kpath of the spawning action inside its trigger — "review", "review.onDone",
 // "review.onDone.onFailed") and the whole address the firing is about. It routes through
 // /tasks/{id} (one path segment), so it must not contain path-breaking characters, and it gets
 // pasted back onto a command line, so it must not contain shell globs either.
 //
-// It keys off the whole address (not just the last segment, so demo.pr.1 and other.pr.1 differ).
-func spawnID(chain string, ref entity.Ref) string {
-	return chain + ChainSep + entity.SegToken(ref.Segs())
+// It keys off the whole address (not just the last segment, so demo.pr.1 and other.pr.1 differ),
+// and it leads with the engine that minted it (ownerOf).
+func spawnID(owner, chain string, ref entity.Ref) string {
+	return owner + chain + ChainSep + entity.SegToken(ref.Segs())
 }
 
 // namedSegs is where an author-NAMED derive writes: the key alone, with none of the
@@ -506,6 +574,9 @@ func deriveSegs(chain string, ref entity.Ref) []string {
 // half IS exact, which is what reads a task's position in its trigger's action tree.
 func chainOf(id string) (chain string, rest string, ok bool) {
 	chain, rest, ok = strings.Cut(id, ChainSep)
+	if i := strings.LastIndex(chain, AtSep); i >= 0 { // the engine that minted it, not the chain
+		chain = chain[i+len(AtSep):]
+	}
 	return chain, rest, ok
 }
 
@@ -532,10 +603,11 @@ func validTriggerName(name string) error {
 			"addresses the action inside a trigger (review.onDone), so the root cannot "+
 			"contain '.', brackets, or anything needing quotes", name)
 	}
-	if i := strings.IndexAny(name, ChainSep+entity.HashSep+"*?[]{}()\\ \t"); i >= 0 {
+	if i := strings.IndexAny(name, ChainSep+AtSep+entity.HashSep+"*?[]{}()\\ \t"); i >= 0 {
 		return fmt.Errorf("trigger name %q contains %q, which a task id built on it "+
-			"would spend as punctuation — %q bounds the subject, %q marks a hash, and the "+
-			"rest are shell globs that make an id unpasteable", name, name[i], ChainSep, entity.HashSep)
+			"would spend as punctuation — %q bounds the subject, %q the charter's address, %q "+
+			"marks a hash, and the rest are shell globs that make an id unpasteable",
+			name, name[i], ChainSep, AtSep, entity.HashSep)
 	}
 	return nil
 }
@@ -559,7 +631,7 @@ func validTriggerName(name string) error {
 // id that tracks the spelling changes when the spelling does. The subjects are flattened into
 // one vector with a NUL between each segment AND between each subject, so nothing about where
 // one address ends is lost to the hash.
-func gateID(trigger, gate string, subjects []entity.Ref) string {
+func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
 	segs := make([]string, 0, len(subjects)*entity.Depth)
 	for _, s := range subjects {
 		segs = append(segs, s.Segs()...)
@@ -568,7 +640,7 @@ func gateID(trigger, gate string, subjects []entity.Ref) string {
 	// Dotted, like every other address-shaped name: it is not parsed back as one, but a
 	// question id that reads as an address in a spelling nothing else uses is a second grammar
 	// growing where nobody meant to plant one.
-	return fmt.Sprintf("%s.trigger.%s.%s%s%s", entity.VerseRoot,
+	return fmt.Sprintf("%s%s.trigger.%s.%s%s%s", owner, entity.VerseRoot,
 		entity.SafeSeg(trigger), entity.SafeSeg(gate), task.GateSep, entity.SegHash(segs))
 }
 

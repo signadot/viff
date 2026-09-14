@@ -19,16 +19,16 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 	b := []entity.Ref{entity.RefAt("demo", "pr", "2")}
 	both := []entity.Ref{a[0], b[0]}
 
-	if gateID("ship", "ok", a) != gateID("ship", "ok", a) {
+	if gateID("", "ship", "ok", a) != gateID("", "ship", "ok", a) {
 		t.Fatal("the same firing produced two ids")
 	}
 	// A pair of ids, not a Subtree: this is about gate ids colliding, and it borrowed a
 	// three-string type that has since become an address.
 	for _, pair := range [][2]string{
-		{gateID("ship", "ok", a), gateID("ship", "ok", b)},    // subject
-		{gateID("ship", "ok", a), gateID("hold", "ok", a)},    // trigger
-		{gateID("ship", "ok", a), gateID("ship", "sec", a)},   // gate
-		{gateID("ship", "ok", a), gateID("ship", "ok", both)}, // one subject vs two
+		{gateID("", "ship", "ok", a), gateID("", "ship", "ok", b)},    // subject
+		{gateID("", "ship", "ok", a), gateID("", "hold", "ok", a)},    // trigger
+		{gateID("", "ship", "ok", a), gateID("", "ship", "sec", a)},   // gate
+		{gateID("", "ship", "ok", a), gateID("", "ship", "ok", both)}, // one subject vs two
 	} {
 		if pair[0] == pair[1] {
 			t.Fatalf("distinct firings collided on %q", pair[0])
@@ -36,7 +36,7 @@ func TestGateIDIsDeterministicInTheSubjects(t *testing.T) {
 	}
 	// The id still splits back to its owner on GateSep, exactly once — that is how an answer
 	// finds what posed it (task.GateSep).
-	id := gateID("ship", "ok", both)
+	id := gateID("", "ship", "ok", both)
 	owner, rest, ok := strings.Cut(id, task.GateSep)
 	if !ok || owner == "" || strings.Contains(rest, task.GateSep) {
 		t.Fatalf("gate id %q does not split cleanly on %q", id, task.GateSep)

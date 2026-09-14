@@ -71,10 +71,10 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	d := task.GateQuestion{
 		// Derived from the spec and the action, so a re-fire — and a restart — re-poses the
 		// same question and joins the ballots already cast on it.
-		ID: selectID(spawn.Chain, subject, p), Origin: origin, Mode: task.Ask, Gate: "provider",
+		ID: selectID(e.idOwner(), spawn.Chain, subject, p), Origin: origin, Mode: task.Ask, Gate: "provider",
 		Reason:  fmt.Sprintf("select a doer for %s on %s", spawn.Chain, subject),
 		Subject: subject.String(),
-		Spawns:  spawnID(chainID(spawn.Chain), subject),
+		Spawns:  spawnID(e.idOwner(), chainID(spawn.Chain), subject),
 		BoundTo: spawn.Resolver, Scope: e.scope, At: e.At(),
 		Options: opts, Deadline: deadline, Chain: spawn.Chain,
 	}
@@ -102,8 +102,8 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 
 // selectID is the question a selection poses, derived so a re-fire joins it: the rule, the
 // action, the subject and the eligibility spec, hashed together.
-func selectID(chain string, subject entity.Ref, p *launch.Provider) string {
-	return fmt.Sprintf("%s.trigger.%s.provider%s%s", entity.VerseRoot,
+func selectID(owner, chain string, subject entity.Ref, p *launch.Provider) string {
+	return fmt.Sprintf("%s%s.trigger.%s.provider%s%s", owner, entity.VerseRoot,
 		entity.SafeSeg(mirror.TriggerOf(chain)), task.GateSep,
 		seedHash(chain+"|"+providerSpecSeed(subject, p)))
 }

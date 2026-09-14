@@ -135,13 +135,13 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 // distinct entities never share a task id (which would cross-wire control).
 func TestSpawnIDDistinguishesRefs(t *testing.T) {
 	// same id, different system: must differ (not just ref.ID keyed)
-	if a, b := spawnID("r", entity.RefAt("demo", "pr", "1")),
-		spawnID("r", entity.RefAt("other", "pr", "1")); a == b {
+	if a, b := spawnID("", "r", entity.RefAt("demo", "pr", "1")),
+		spawnID("", "r", entity.RefAt("other", "pr", "1")); a == b {
 		t.Fatalf("same spawn id for different refs: %q", a)
 	}
 	// ids that collapse under safeSeg (a/b vs a_b) stay distinct via the hash
-	if c, d := spawnID("r", entity.RefAt("local", "file", "a/b")),
-		spawnID("r", entity.RefAt("local", "file", "a_b")); c == d {
+	if c, d := spawnID("", "r", entity.RefAt("local", "file", "a/b")),
+		spawnID("", "r", entity.RefAt("local", "file", "a_b")); c == d {
 		t.Fatalf("safeSeg collision not disambiguated: %q", c)
 	}
 }
@@ -153,13 +153,13 @@ func TestSpawnIDDistinguishesRefs(t *testing.T) {
 // convention nobody enforces. The hash still keeps the rewritten ids distinct.
 func TestSpawnIDNeverContainsGateSep(t *testing.T) {
 	dirty := entity.RefAt("local", "file", "a"+task.GateSep+"b")
-	id := spawnID("r", dirty)
+	id := spawnID("", "r", dirty)
 	if strings.Contains(id, task.GateSep) {
 		t.Errorf("spawnID(%s) = %q contains GateSep %q — a gate id built on it would split "+
 			"inside the owner", dirty, id, task.GateSep)
 	}
 	// and the rewrite stays lossless in the way that matters: a_b must not collide with a~b
-	if other := spawnID("r", entity.RefAt("local", "file", "a_b")); id == other {
+	if other := spawnID("", "r", entity.RefAt("local", "file", "a_b")); id == other {
 		t.Errorf("GateSep rewrite collided with a literal underscore: both %q", id)
 	}
 }

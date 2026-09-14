@@ -16,7 +16,7 @@ import (
 func TestChainIsAKPath(t *testing.T) {
 	ref := entity.RefAt("demo", "pr", "1")
 	for _, chain := range []string{"review", "review.onDone", "review.onDone.onFailed"} {
-		id := spawnID(chain, ref)
+		id := spawnID("", chain, ref)
 		got, rest, ok := chainOf(id)
 		if !ok || got != chain || rest != ref.Token() {
 			t.Errorf("chainOf(%q) = (%q, %q, %v); want (%q, %q, true)",
@@ -64,9 +64,9 @@ func TestChainPrefixMatching(t *testing.T) {
 func TestSpawnIDIsPasteSafe(t *testing.T) {
 	const globs = `*?[]{}()~!$&;'"<>|` + "`\\"
 	ids := []string{
-		spawnID("review", entity.RefAt("demo", "pr", "1")),
-		spawnID("review.onDone.onFailed", entity.RefAt("demo", "pr", "hotfix-1")),
-		spawnID("review", entity.RefAt("local", "file", "a/b c")),
+		spawnID("", "review", entity.RefAt("demo", "pr", "1")),
+		spawnID("", "review.onDone.onFailed", entity.RefAt("demo", "pr", "hotfix-1")),
+		spawnID("", "review", entity.RefAt("local", "file", "a/b c")),
 	}
 	for _, id := range ids {
 		if i := strings.IndexAny(id, globs); i >= 0 {
@@ -144,7 +144,7 @@ func TestTriggerNameValidation(t *testing.T) {
 // that.
 func TestDashInTriggerNameStillDecodes(t *testing.T) {
 	ref := entity.RefAt("demo", "pr", "hotfix-1")
-	id := spawnID("ship-reviewed", ref)
+	id := spawnID("", "ship-reviewed", ref)
 	chain, rest, ok := chainOf(id)
 	if !ok || chain != "ship-reviewed" || rest != ref.Token() {
 		t.Fatalf("chainOf(%q) = (%q, %q, %v); want (\"ship-reviewed\", %q, true)",

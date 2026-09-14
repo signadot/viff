@@ -417,7 +417,7 @@ func chainUnder(prefix, target string) bool {
 // It is held for the WHOLE sequence, not per element, which is what closes the gap between
 // elements where no task is live and the registry therefore had nothing to say.
 func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
-	ref := mirror.ClaimRef(spawnID(chainID(chain), subj))
+	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
 	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()
 	won, _, err := e.store.Write(entity.Write{At: ref.At(), Value: payload, When: []entity.Require{entity.Created()}})
 	if err != nil {
@@ -430,5 +430,5 @@ func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
 // releaseRun drops the claim when a sequence ends, however it ends. A claim that outlives its
 // run would block the next one forever, so every exit path releases.
 func (e *Engine) releaseRun(chain string, subj entity.Ref) {
-	e.write(mirror.ClaimRef(spawnID(chainID(chain), subj)).At(), nil) // nil removes it
+	e.write(mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj)).At(), nil) // nil removes it
 }

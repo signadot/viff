@@ -973,5 +973,5 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entit
 	// fire when it reaches a terminal status. chain is this action's kpath, so a hook's own
 	// spawn — or a sequence's next element — gets a distinct, deterministic id.
 	hooks := a
-	return e.spawnHooked(spawnID(chainID(chain), subj), spec, &hooks, chain), nil
+	return e.spawnHooked(spawnID(e.idOwner(), chainID(chain), subj), spec, &hooks, chain), nil
 }

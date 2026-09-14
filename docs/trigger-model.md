@@ -1515,6 +1515,19 @@ dotted form is lossless because `Action`'s field set is closed — a segment aft
 element, a segment matching a hook name is a field. The join is `@` rather than `-`, which could
 not be decoded back, because trigger names spend `-` too.
 
+A rule is its scope, its charter's address and its name — names are unique only within one charter
+— and every charter in a verse shares one task runtime and one docket. So every id a firing mints
+leads with the charter that minted it: a package's address and `:`, a scope's name and `::`, and
+nothing for baseline's. The task, its gate questions and its provider selection all carry it:
+
+| the charter | task id | gate question id |
+|---|---|---|
+| baseline's | `review@demo.pr.1` | `verse.trigger.review.ok~…` |
+| the package at `verse-dev.drift` | `verse-dev.drift:review@demo.pr.1` | `verse-dev.drift:verse.trigger.review.ok~…` |
+| scope `me`'s | `me::review@demo.pr.1` | `me::verse.trigger.review.ok~…` |
+
+A rule's name therefore may not contain `:`, as it may not contain `@`.
+
 ### Progress facts
 
 A parallel branch is woken by a condition, and a condition matches facts, so a sequence publishes
