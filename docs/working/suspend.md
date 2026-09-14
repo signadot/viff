@@ -261,10 +261,8 @@ its stratum is *held*, and `hold` is an alias of the gate mode `park`. "Disable"
 alternative, reads as uninstall. **Suspend** is free in the code and is what Kubernetes and Flux
 call a durable stop.
 
-It also says what `verse flow pause` becomes. A flow pause holds the running tasks about a subject,
-in memory, on one engine; a suspension of that subject holds them, and everything else about it,
-durably, on every engine. The flow verbs can stay as the quick, forgetful spelling — or be retired
-into `verse suspend '*' <subject>`, which is the question below.
+Whether `verse flow pause` stays beside it is a surface question, [left for
+later](#surface-to-resolve-later).
 
 ## Alternatives ruled out
 
@@ -432,12 +430,8 @@ genuinely new mechanism is holding a hook durably, and it closes a gap verse has
 
 ## Open questions
 
-- **`verse flow pause`.** Keep it as the forgetful, quick spelling, or retire it into `verse suspend
-  '*' <subject>`.
 - **Deadlines during a suspension.** Settle on lift (this design), or extend by the time suspended,
   which needs the suspension's start on the question.
-- **Baseline's spelling as a charter.** It has no address. `charter: ""` reads badly on a command
-  line, and `baseline` could collide with a package installed there.
 - **Suspending the system charter from outside.** Only the system can, which means editing the file.
   An operator in an incident may want more.
 - **Suspensions in a scope.** Stored in baseline with their `scope:`; whether a scope's owner may
@@ -447,6 +441,13 @@ genuinely new mechanism is holding a hook durably, and it closes a gap verse has
   firing can withdraw its question and keep waiting without `untilMoot` reading the withdrawal as
   moot; that the release order holds when a task resumes and finishes before its held hook lands;
   and that a task re-attached at restart is held before its first report is projected.
+
+### Surface, to resolve later
+
+- **`verse flow pause`.** Keep it as the forgetful, quick spelling, or retire it into `verse suspend
+  '*' <subject>`.
+- **Baseline's spelling as a charter.** It has no address. `charter: ""` reads badly on a command
+  line, and `baseline` could collide with a package installed there.
 
 ## Found along the way
 
