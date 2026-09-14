@@ -376,7 +376,7 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 
 	for _, argv := range [][]string{
 		{"flow", "show", "demo", "seq", "1"},
-		{"flow", "pause", "demo", "seq", "1"},
+		{"flow", "resume", "demo", "seq", "1"},
 		{"trigger", "show", "a", "b"},
 		{"stratum", "remove", "a", "b"},
 		{"runner", "show", "pool", "code"},
