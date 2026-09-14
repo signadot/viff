@@ -80,7 +80,7 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 
 	work := httptest.NewServer(first.BrokerHandler())
 	defer work.Close()
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:worker"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "runner:worker"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
@@ -303,7 +303,7 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "human:w"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}

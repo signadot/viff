@@ -11,11 +11,6 @@ import (
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// SystemPrincipal is versed itself: the principal of a write nothing outside verse asked for
-// — a mirror's projection, a question posed, the charter restored at start. It owns the root
-// of the tree and every kind-rooted node under it, and it co-owns everything below.
-const SystemPrincipal = "system"
-
 // PermsSystem is the kind under verse's root that holds the perms mirror: one record per node
 // whose owner is on record, keyed by the node's own address.
 const PermsSystem = "perms"
@@ -42,8 +37,8 @@ func PermsRef(of Ref) Ref { return VerseRef(PermsSystem, PermsKind, of.String())
 var ErrForbidden = errors.New("refused")
 
 // Attribution is what an attributed store shares across the views derived from it: the perms
-// records this process has read, which nodes it has settled the owner of, what each address-
-// shaped principal resolves to, and what it has refused. One per underlying store; As derives
+// records this process has read, which nodes it has settled the owner of, what each place
+// acting resolves to, and what it has refused. One per underlying store; As derives
 // a per-principal view over it.
 //
 // The cache is an optimisation and not the truth. The owner record is written under an
@@ -61,12 +56,9 @@ type Attribution struct {
 	// decided is every node this process has settled the owner record of: written it, found
 	// it standing, or found nothing to write because the node above owns it already.
 	decided map[Ref]struct{}
-	// owners memoises resolve: an address-shaped principal to the principal that owns it. A
+	// owners memoises resolve: a place acting, `via:<address>`, to the principal that owns it. A
 	// miss is not kept, since the record it would have found can appear at any install.
 	owners map[string]string
-	// kinds memoises a principal being listed under a kind; only a listing is kept, since a
-	// principal noted stays noted.
-	kinds map[string]bool
 	// groups memoises a group's members, dropped when the group is written through this
 	// process, since membership is meant to move.
 	groups map[string][]string
@@ -362,8 +354,8 @@ func CheckInto(s Store, principal string, ref Ref) error {
 // otherwise, which is the open verse the model describes, and the one grant that is not data.
 func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	who := a.resolve(principal)
-	acc := access{who: who, nearest: SystemPrincipal + " (the root)"}
-	if who == SystemPrincipal {
+	acc := access{who: who, nearest: SystemDefault + " (the root)"}
+	if IsSystem(who) {
 		acc.level, acc.control = OwnerLevel, true
 		return acc, nil
 	}
@@ -435,7 +427,7 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 // mirror's own records, which no listing of verse's half may show a person. What is withheld
 // is counted apart (Hidden).
 func (a *attributed) keep(ref Ref) (bool, error) {
-	if a.principal == SystemPrincipal {
+	if IsSystem(a.principal) {
 		return true, nil
 	}
 	acc, err := a.accessOf(a.principal, ref)
@@ -458,7 +450,7 @@ func (a *Attribution) noteHidden() {
 }
 
 func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
-	if a.principal == SystemPrincipal {
+	if IsSystem(a.principal) {
 		return ents, nil
 	}
 	out := ents[:0:0]
@@ -485,14 +477,14 @@ func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
 // record standing for a node whose write then failed makes the next creator there not its
 // owner — so the window stays, and is one commit wide.
 func (a *attributed) narrow(c Commit) Commit {
-	if a.principal == SystemPrincipal {
+	if IsSystem(a.principal) {
 		return c
 	}
 	return c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
 }
 
 func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
-	if a.principal == SystemPrincipal {
+	if IsSystem(a.principal) {
 		return in
 	}
 	out := make(chan Commit)
@@ -506,7 +498,7 @@ func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
 }
 
 func (a *attributed) Get(ref Ref) (Entity, bool, error) {
-	if a.principal != SystemPrincipal {
+	if !IsSystem(a.principal) {
 		if _, err := a.check(a.principal, Read, ref, "reading it"); err != nil {
 			return Entity{}, false, err
 		}
@@ -526,7 +518,7 @@ func (a *attributed) ListAt(at []string, depth int, pred func(Ref) bool) []Entit
 
 func (a *attributed) Since(from int64, at ...string) ([]Commit, error) {
 	commits, err := a.Store.Since(from, at...)
-	if a.principal == SystemPrincipal {
+	if IsSystem(a.principal) {
 		return commits, err
 	}
 	for i := range commits {
@@ -550,7 +542,7 @@ func (a *attributed) WatchSubtree(depth int, prefix ...string) (<-chan Commit, f
 
 func (a *attributed) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	snap, err := a.Store.AsOf(rev, within...)
-	if err != nil || a.principal == SystemPrincipal {
+	if err != nil || IsSystem(a.principal) {
 		return snap, err
 	}
 	return narrowed{Snapshot: snap, a: a}, nil
@@ -620,9 +612,9 @@ func (a *attributed) coOwns(who, addr string, hops int) (bool, error) {
 }
 
 // named reports whether a grantee list names the principal: by the name it acts under or the
-// owner it resolves to, as everyone, or as a kind the principal is listed under. Both names,
-// because a grant to a binding's address means "whoever acts as that binding" and a grant to
-// a person means them and everything of theirs acting as itself.
+// owner it resolves to, as everyone, or as a kind its name carries. Both names, because a grant
+// to a binding means "whoever acts as that binding" and a grant to a person means them and
+// everything of theirs acting as itself.
 func (a *attributed) named(names []string, principal, who string) bool {
 	return a.namedWithin(names, principal, who, 3)
 }
@@ -630,7 +622,7 @@ func (a *attributed) named(names []string, principal, who string) bool {
 // namedWithin is named, following a group's members to a bounded depth: a group of groups is
 // walked, and a cycle admits nobody rather than everybody.
 func (a *attributed) namedWithin(names []string, principal, who string, depth int) bool {
-	for _, n := range names {
+	for _, n := range Canonical(names) {
 		switch n {
 		case who, Everyone:
 			return true
@@ -638,11 +630,11 @@ func (a *attributed) namedWithin(names []string, principal, who string, depth in
 			if principal != "" {
 				return true
 			}
-		case UserKind, RunnerKind, AgentKind:
-			if who != "" && a.listedAs(n, who) {
+		default:
+			if kind, id, _ := strings.Cut(n, ":"); id == Everyone && who != "" &&
+				(KindOf(who) == kind || KindOf(principal) == kind) {
 				return true
 			}
-		default:
 			if depth > 0 && who != "" {
 				if ref, err := ParseAddr(n); err == nil && IsGroup(ref) {
 					if a.namedWithin(a.members(ref), principal, who, depth-1) {
@@ -678,28 +670,6 @@ func (a *attributed) members(ref Ref) []string {
 	a.attr.groups[key] = ms
 	a.attr.mu.Unlock()
 	return ms
-}
-
-// listedAs reports whether who is listed under `verse.principal.<kind>`.
-func (a *attributed) listedAs(kind, who string) bool {
-	key := kind + "/" + who
-	a.attr.mu.Lock()
-	yes := a.attr.kinds[key]
-	a.attr.mu.Unlock()
-	if yes {
-		return true
-	}
-	_, ok, err := a.Store.Get(PrincipalRef(kind, who))
-	if err != nil || !ok {
-		return false
-	}
-	a.attr.mu.Lock()
-	if a.attr.kinds == nil {
-		a.attr.kinds = map[string]bool{}
-	}
-	a.attr.kinds[key] = true
-	a.attr.mu.Unlock()
-	return true
 }
 
 // refusal spells a refused write: who wanted what, where, and what decided it.
@@ -767,7 +737,11 @@ func (a *attributed) record(ref Ref, owner string) {
 		a.decide(ref, known)
 		return
 	}
-	if owner == a.ownerAbove(ref) {
+	// THE SYSTEM IS ONE OWNER, whichever part wrote: a part is attribution on the write, not a
+	// change of ownership, so the docket creating a question beneath the system's root records
+	// nothing — and the question's own record, written next under an absence precondition
+	// (Establish), is not refused by one this wrote first.
+	if above := a.ownerAbove(ref); owner == above || IsSystem(owner) && IsSystem(above) {
 		a.decide(ref, nil)
 		return
 	}
@@ -784,7 +758,7 @@ func (a *attributed) record(ref Ref, owner string) {
 		At:        PermsRef(ref).At(),
 		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 		When:      []Require{Created()},
-		Principal: SystemPrincipal,
+		Principal: SystemPerms,
 	})
 	if err != nil {
 		return
@@ -845,7 +819,7 @@ func (a *attributed) decide(ref Ref, rec *permsRecord) {
 		if a.attr.owners == nil {
 			a.attr.owners = map[string]string{}
 		}
-		a.attr.owners[key] = rec.owner
+		a.attr.owners[ViaKind+":"+key] = rec.owner // what the node confers when it acts (resolve)
 	}
 	a.attr.mu.Unlock()
 }
@@ -860,7 +834,7 @@ func (a *attributed) ownerAbove(ref Ref) string {
 			return rec.owner
 		}
 	}
-	return SystemPrincipal
+	return SystemDefault
 }
 
 // recordAt reads the perms record at an address, nil when the mirror holds none, through the
@@ -927,7 +901,7 @@ func (a *attributed) invalidate(key string) {
 // listing it, which costs the mirror's size once per whole delete.
 func (a *attributed) forget(ref Ref) {
 	a.invalidate(ref.String())
-	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPrincipal})
+	_, _, _ = a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPerms})
 	prefix := ref.String() + "."
 	var beneath []string
 	a.attr.mu.Lock()
@@ -949,7 +923,7 @@ func (a *attributed) forget(ref Ref) {
 		}
 	}
 	for _, key := range beneath {
-		_, _, _ = a.Store.Write(Write{At: VerseRef(PermsSystem, PermsKind, key).At(), Principal: SystemPrincipal})
+		_, _, _ = a.Store.Write(Write{At: VerseRef(PermsSystem, PermsKind, key).At(), Principal: SystemPerms})
 		a.invalidate(key)
 	}
 }
@@ -1056,46 +1030,42 @@ func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 	return rec
 }
 
-// resolve is the owner a principal confers: itself, unless it is the address of a node in
-// verse's own half — a rule, a source — in which case the owner of that node: the nearest
-// record at or above it, and the system where none stands, since the system owns every
-// kind-rooted node. A rule installed before its record had an owner therefore acts as the
-// system until the charter is re-applied, and not as an address, because an address is not a
-// party and cannot be answerable for anything. A user's email is not in verse's half and
-// resolves to itself, which is what makes one string serve both.
+// resolve is the owner a principal confers: itself, unless it is a place acting — `via:` a
+// rule, a source, a binding — in which case the owner of that node: the nearest record at or
+// above it, and the system where none stands, since the system owns every kind-rooted node. A
+// rule installed before its record had an owner therefore acts as the system until the charter
+// is re-applied, and not as an address, because an address is not a party and cannot be
+// answerable for anything. An owner on record is always a principal that resolved already, so
+// one record is the whole walk.
 //
 // Only a resolution that found a record is kept: the record can arrive at any install, and a
 // miss remembered would leave every entity the rule creates the system's for the life of the
 // process. A record this process writes is what the next resolution reads (decide).
 func (a *attributed) resolve(principal string) string {
+	if KindOf(principal) != ViaKind {
+		return principal
+	}
 	a.attr.mu.Lock()
 	if o, ok := a.attr.owners[principal]; ok {
 		a.attr.mu.Unlock()
 		return o
 	}
 	a.attr.mu.Unlock()
-	ref, err := ParseAddr(principal)
-	if err != nil || !ref.Reserved() {
-		return principal
+	ref, err := ParseAddr(strings.TrimPrefix(principal, ViaKind+":"))
+	if err != nil {
+		return principal // a via that names no one place acts as nobody's
 	}
-	p, found := principal, false
-	for hop := 0; hop < 4; hop++ {
-		rec, err := a.recordAt(p, false)
-		if err != nil || rec == nil || rec.owner == "" || rec.owner == p {
-			break
-		}
-		p, found = rec.owner, true
-	}
-	if !found {
+	rec, err := a.recordAt(ref.String(), false)
+	if err != nil || rec == nil || rec.owner == "" {
 		return a.ownerAbove(ref)
 	}
 	a.attr.mu.Lock()
 	if a.attr.owners == nil {
 		a.attr.owners = map[string]string{}
 	}
-	a.attr.owners[principal] = p
+	a.attr.owners[principal] = rec.owner
 	a.attr.mu.Unlock()
-	return p
+	return rec.owner
 }
 
 // AddGrant appends a grant to the perms record of ref, as the system. The mirror is versed's
@@ -1127,7 +1097,7 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 			At:        rec.At(),
 			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 			When:      []Require{when},
-			Principal: SystemPrincipal,
+			Principal: SystemPerms,
 		})
 		if err != nil {
 			return fmt.Errorf("granting at %s: %w", ref, err)
@@ -1149,7 +1119,7 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 		return nil
 	}
 	value := Obj{GrantsField: GrantsPayload(ref.Segs(), gs)}
-	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
+	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPerms})
 	if err != nil {
 		return fmt.Errorf("granting at %s: %w", ref, err)
 	}
@@ -1179,7 +1149,7 @@ func SetDefault(s Store, ref Ref, levels Levels) error {
 		}
 		value[DefaultField] = d
 	}
-	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPrincipal})
+	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPerms})
 	if err != nil {
 		return fmt.Errorf("setting the default at %s: %w", ref, err)
 	}
@@ -1213,7 +1183,7 @@ func Claim(s Store, ref Ref, principal string) error {
 		At:        PermsRef(ref).At(),
 		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
 		When:      []Require{Created()},
-		Principal: SystemPrincipal,
+		Principal: SystemPerms,
 	})
 	if err != nil {
 		return fmt.Errorf("claiming %s: %w", ref, err)
@@ -1268,7 +1238,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 			At:        rec.At(),
 			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), kept)}.Payload(),
 			When:      []Require{{Pattern: Unchanged(cur.Payload)}},
-			Principal: SystemPrincipal,
+			Principal: SystemPerms,
 		})
 		if err != nil {
 			return fmt.Errorf("revoking at %s: %w", ref, err)
@@ -1310,7 +1280,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 		rec[UnderField] = under.String()
 	}
 	_, _, err := a.Store.Write(Write{
-		At: PermsRef(ref).At(), Value: rec.Payload(), When: []Require{Created()}, Principal: SystemPrincipal,
+		At: PermsRef(ref).At(), Value: rec.Payload(), When: []Require{Created()}, Principal: SystemPerms,
 	})
 	if err != nil {
 		return fmt.Errorf("establishing %s: %w", ref, err)
@@ -1369,7 +1339,7 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 			out = append(out[:own], out[own+1:]...)
 		}
 		committed, _, err := a.Store.Write(Write{
-			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(ref.Segs(), out)}.Payload(), When: []Require{when}, Principal: SystemPrincipal,
+			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(ref.Segs(), out)}.Payload(), When: []Require{when}, Principal: SystemPerms,
 		})
 		if err != nil {
 			return fmt.Errorf("setting %s at %s: %w", level, ref, err)
@@ -1389,7 +1359,7 @@ func SetUnder(s Store, ref, under Ref) error {
 		return nil
 	}
 	_, _, err := a.Store.Write(Write{
-		At: PermsRef(ref).At(), Value: Obj{UnderField: under.String()}.Payload(), Principal: SystemPrincipal,
+		At: PermsRef(ref).At(), Value: Obj{UnderField: under.String()}.Payload(), Principal: SystemPerms,
 	})
 	if err != nil {
 		return fmt.Errorf("linking %s under %s: %w", ref, under, err)
@@ -1398,23 +1368,30 @@ func SetUnder(s Store, ref, under Ref) error {
 	return nil
 }
 
-// Note lists a principal under a kind, the first time: `verse.principal.<kind>.<principal>`,
-// written as the system under an absence precondition, which is what lets a grant to the kind
-// name them.
-func Note(s Store, kind, principal string) error {
-	_, _, err := s.Write(Write{
-		At:        PrincipalRef(kind, principal).At(),
+// Note lists a principal under the kind its name carries, the first time:
+// `verse.principal.<kind>.<id>`, written as the system under an absence precondition. It is the
+// record of who has been met; a grant to the kind reads the name, not this.
+func Note(s Store, principal string) error {
+	g, err := ParsePrincipal(principal)
+	if err != nil {
+		return err
+	}
+	if g.Kind == ViaKind || g.Kind == SystemKind {
+		return fmt.Errorf("%s: versed makes that name, and meets nobody by it", principal)
+	}
+	_, _, err = s.Write(Write{
+		At:        PrincipalRef(g.Kind, g.ID).At(),
 		Value:     Obj{"first": Val(nowStamp())}.Payload(),
 		When:      []Require{Created()},
-		Principal: SystemPrincipal,
+		Principal: SystemPerms,
 	})
 	return err
 }
 
 // PrincipalSystem is the system under verse's root that lists the principals this verse has
-// met, by kind: `verse.principal.user.<email>` for a person, written the first time they
-// present themselves over the api. A user is specified in the CLI's config for now, and this
-// is where it becomes data. A runner is the other kind a principal can be, and gets its own.
+// met, by the kind their name carries: `verse.principal.user.<email>` for a person, written the
+// first time they present themselves over the api, `verse.principal.runner.<identity>` for a
+// worker at its claim. A group's record stands beside them, under GroupKind.
 const PrincipalSystem = "principal"
 
 // MembersField is the field of a group listing its members.

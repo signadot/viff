@@ -1,9 +1,11 @@
 package versed
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/source"
@@ -27,5 +29,42 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 	}
 	if _, err := entity.ParseGrantee(entity.Via(runner.Ref("pool", "coderunner"))); err == nil {
 		t.Errorf("a runner's address parsed as a place that acts")
+	}
+}
+
+// The seed is written in the grammar and says which part wrote it: the docket is answered by
+// `user:*` and `agent:*`, and the row's commit is system:seed's.
+func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
+	srv := testServer(t)
+	docket := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
+	rec, ok, err := srv.Store.Get(entity.PermsRef(docket))
+	if err != nil || !ok {
+		t.Fatalf("no seed row at the docket: ok=%v err=%v", ok, err)
+	}
+	grants, err := entity.ParseGrants(docket.Segs(), rec.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer []string
+	for _, g := range grants {
+		answer = append(answer, g.To[entity.ReadWrite]...)
+	}
+	if strings.Join(answer, ",") != "user:*,agent:*" {
+		t.Fatalf("the docket is answered by %v, want user:* and agent:*", answer)
+	}
+	commits, err := srv.Store.Since(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := ""
+	for _, c := range commits {
+		for _, ev := range c.Changes {
+			if ev.Ref == entity.PermsRef(docket) && by == "" {
+				by = c.Author
+			}
+		}
+	}
+	if by != entity.SystemSeed {
+		t.Fatalf("the seed row was written by %q, want %s", by, entity.SystemSeed)
 	}
 }

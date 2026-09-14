@@ -20,7 +20,7 @@ func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("no owner record for demo.pr.1 (ok=%v err=%v)", ok, err)
 	}
-	if got := entity.Str(rec.Payload, entity.OwnerField); got != "alice@example.com" {
+	if got := entity.Str(rec.Payload, entity.OwnerField); got != "user:alice@example.com" {
 		t.Fatalf("owner = %q, want the configured user", got)
 	}
 
@@ -35,5 +35,19 @@ func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 	// The mirror, though, is the system's: a person reading it is answered with nothing of it.
 	if perms, _ := runCLI(t, "data", "verse", "perms"); strings.Contains(perms, "alice@example.com") {
 		t.Fatalf("`verse data verse perms` shows a person the mirror:\n%s", perms)
+	}
+}
+
+// A principal is spelled with its kind: a worker is `runner:<identity>`, and a bare word is
+// refused with the grammar rather than guessed to be one.
+func TestABareWordIsNotAPrincipal(t *testing.T) {
+	serve(t)
+	_, err := runCLI(t, "task", "do", "note", "t1", "hello", "--as", "coderunner")
+	if err == nil || !strings.Contains(err.Error(), entity.Grammar()) {
+		t.Fatalf("--as coderunner: %v", err)
+	}
+	t.Setenv("VERSE_USER", "smoke")
+	if _, err := runCLI(t, "data", "demo", "pr", "1"); err == nil || !strings.Contains(err.Error(), "config user") {
+		t.Fatalf("a bare word as the configured user: %v", err)
 	}
 }

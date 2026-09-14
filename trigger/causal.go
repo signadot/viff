@@ -52,8 +52,8 @@ func (e *Engine) caused(chain string, parent int64) entity.Store {
 	return causal{Store: e.store, e: e, chain: chain, parent: parent, principal: e.Principal(chain)}
 }
 
-// Principal is who a firing acts as: the address of the rule's own record, `verse.trigger.rule.
-// <name>` (`<package>:<name>` in a package). The rule and not its owner, because a firing has
+// Principal is who a firing acts as: the rule's own record, as a place acting —
+// `via:verse.trigger.rule.<name>` (`<package>:<name>` in a package). The rule and not its owner, because a firing has
 // no launcher — nobody typed it — and a write carrying the installer's name would say they
 // acted when they did not. The perms mirror resolves the address to whoever owns the record,
 // which is how the charter acts as its owner without the write saying so.
@@ -62,7 +62,7 @@ func (e *Engine) caused(chain string, parent int64) entity.Store {
 // name cannot carry a dot (validTriggerName), so the root is everything before the first one.
 func (e *Engine) Principal(chain string) string {
 	name, _, _ := strings.Cut(chain, ".")
-	return CharterRefAt(e.confine.stamp(), name).String()
+	return entity.Via(CharterRefAt(e.confine.stamp(), name))
 }
 
 // causal is the store a firing writes through. Everything but Write and Scope delegates to the
@@ -72,7 +72,7 @@ type causal struct {
 	e         *Engine
 	chain     string
 	parent    int64
-	principal string // the rule's record address; see Engine.Principal
+	principal string // via the rule's record; see Engine.Principal
 }
 
 // Write commits through the underlying store and records what the commit descends from.

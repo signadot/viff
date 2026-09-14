@@ -257,9 +257,9 @@ const (
 	DriverGroup  = "group"
 )
 
-// Answerer is who a question bound to this binding is held out to: the binding's own address
-// for a service, which acts as the binding through its instance; the person, or the group's
-// address, otherwise, since they answer as themselves from the docket.
+// Answerer is who a question bound to this binding is held out to: the binding, `via:` its
+// address, for a service, which acts as the binding through its instance; the person, or the
+// group's address, otherwise, since they answer as themselves from the docket.
 func (r Resolver) Answerer() string {
 	switch r.Method.Driver {
 	case DriverPerson:
@@ -267,7 +267,7 @@ func (r Resolver) Answerer() string {
 	case DriverGroup:
 		return r.Method.Group
 	}
-	return Ref(r.Kind, r.Name).String()
+	return entity.Via(Ref(r.Kind, r.Name))
 }
 
 // Dials reports whether the binding's resolver reads through an instance: a service does, a

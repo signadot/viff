@@ -61,7 +61,7 @@ func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 		t.Fatalf("put: %s", resp.Status)
 	}
 	pr := entity.RefAt("demo", "pr", "1")
-	if got := owner(t, srv, pr); got != "alice@example.com" {
+	if got := owner(t, srv, pr); got != "user:alice@example.com" {
 		t.Fatalf("owner of %s = %q, want the requester", pr, got)
 	}
 	if _, ok, err := srv.Store.Get(entity.UserRef("alice@example.com")); err != nil || !ok {
@@ -76,7 +76,7 @@ func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s", resp.Status)
 	}
-	if got := owner(t, srv, trigger.CharterRefAt("", "review")); got != "scott@example.com" {
+	if got := owner(t, srv, trigger.CharterRefAt("", "review")); got != "user:scott@example.com" {
 		t.Fatalf("the rule record is owned by %q, want its installer", got)
 	}
 

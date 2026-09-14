@@ -66,7 +66,7 @@ func TestAPackageAddressIsItsInstallersAndItsRowsNeedNoRecord(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("no owner record at the package address: ok=%v err=%v", ok, err)
 	}
-	if got := entity.Str(rec.Payload, entity.OwnerField); got != "alice@example.com" {
+	if got := entity.Str(rec.Payload, entity.OwnerField); got != "user:alice@example.com" {
 		t.Fatalf("the package address is owned by %q, want its installer", got)
 	}
 
@@ -80,7 +80,7 @@ func TestAPackageAddressIsItsInstallersAndItsRowsNeedNoRecord(t *testing.T) {
 	if rec, ok, _ := srv.Store.Get(entity.PermsRef(row)); ok {
 		t.Fatalf("a derived row has a record of its own: %v", rec.Payload)
 	}
-	if ok, err := entity.Holds(srv.Store, "alice@example.com", entity.OwnerLevel, row); err != nil || !ok {
+	if ok, err := entity.Holds(srv.Store, "user:alice@example.com", entity.OwnerLevel, row); err != nil || !ok {
 		t.Fatalf("alice does not own the row through the address: ok=%v err=%v", ok, err)
 	}
 

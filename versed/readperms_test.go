@@ -135,7 +135,7 @@ func TestACharterReadsAsItsOwner(t *testing.T) {
 	if entity.Get(entity.Get(e.Payload, "seenBy"), "bob") != nil {
 		t.Fatalf("bob's rule fired on alice's pr: %v", e.Payload)
 	}
-	if got := owner(t, srv, trigger.CharterRef("bobs-rule")); got != "bob@example.com" {
+	if got := owner(t, srv, trigger.CharterRef("bobs-rule")); got != "user:bob@example.com" {
 		t.Fatalf("bob's rule is owned by %q", got)
 	}
 

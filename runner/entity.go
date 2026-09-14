@@ -41,18 +41,18 @@ type Entity struct {
 	// reconstructs from. Required, with no default and no local special case — `local` is what
 	// the ABSENCE of a runner means, which keeps every runner entity somewhere to reach.
 	URL string `tony:"field=url"`
-	// Identity is the principal the runner acts as: what a task's reports are written as, and
-	// what the spawn grants `read-write` and `control` on the task. A runner acts as itself,
+	// Identity is the id of the principal the runner acts as, `runner:<identity>`: what a task's
+	// reports are written as, and what the spawn grants `read-write` and `control` on the task. A runner acts as itself,
 	// not as whoever installed it or whoever's work it runs. Defaults to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
 }
 
-// Principal is who the runner acts as: its identity, or its name.
+// Principal is who the runner acts as: `runner:` its identity, or its name.
 func (e Entity) Principal() string {
 	if e.Identity != "" {
-		return e.Identity
+		return entity.RunnerKind + ":" + e.Identity
 	}
-	return e.Name
+	return entity.RunnerKind + ":" + e.Name
 }
 
 // Check validates a runner before it is installed.
@@ -81,6 +81,12 @@ func (e Entity) Check() error {
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("runner %q: a name may not contain / — it is a path segment on the "+
 			"route that serves it, so this one would address something else", e.Name)
+	}
+	// The identity is the id alone: the runner acts as `runner:<identity>`, so an identity that
+	// spells a kind of its own would act as `runner:user:…`, which is nobody anybody granted.
+	if _, err := entity.ParsePrincipal(e.Principal()); err != nil || (e.Identity != "" && entity.KindOf(e.Identity) != "") {
+		return fmt.Errorf("runner %q: identity %q is the id of the principal it acts as, "+
+			"runner:<identity>, and carries no kind or space of its own", e.Name, e.Identity)
 	}
 	if e.URL == "" {
 		return fmt.Errorf("runner %q: url is required — there is no default and no local "+

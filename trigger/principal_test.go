@@ -33,13 +33,13 @@ func (s *stamps) by(ref entity.Ref) string {
 	return s.last[ref]
 }
 
-// A firing writes as the rule that fired: the address of its record, whatever the chain has
+// A firing writes as the rule that fired: via the address of its record, whatever the chain has
 // descended to beneath it. Nobody typed a firing, so no person's name goes on its writes.
 func TestAFiringWritesAsItsRule(t *testing.T) {
 	st := &stamps{Store: entitytest.Store(t)}
 	eng := New(st, task.AutoResolver{})
 
-	want := CharterRefAt("", "review").String()
+	want := entity.Via(CharterRefAt("", "review"))
 	if got := eng.Principal("review.onDone.onFailed"); got != want {
 		t.Fatalf("Principal(review.onDone.onFailed) = %q, want %q", got, want)
 	}
@@ -60,7 +60,7 @@ func TestAFiringWritesAsItsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg.Confine(sub)
-	if got, want := pkg.Principal("head-moved"), CharterRefAt(sub.Stamp(), "head-moved").String(); got != want {
+	if got, want := pkg.Principal("head-moved"), entity.Via(CharterRefAt(sub.Stamp(), "head-moved")); got != want {
 		t.Fatalf("a packaged rule's principal = %q, want %q", got, want)
 	}
 }

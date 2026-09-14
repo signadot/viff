@@ -25,7 +25,7 @@ func mustParse(t *testing.T, src string) entity.Payload {
 func TestParseGrants(t *testing.T) {
 	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
 	  {at: [verse, task, instance, "*"], owner: ["*"]},
-	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, user]},
+	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, "user:*"]},
 	  {at: verse.task.instance.t1, read-write: [bot], control: [bot]},
 	]}`))
 	if err != nil {
@@ -110,9 +110,9 @@ func holds(t *testing.T, s entity.Store, who string, level entity.Level, ref ent
 // seed will say.
 func TestWhoHoldsWhatWhere(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
+	system := entity.As(inner, entity.SystemDefault)
 	entity.PolicyOf(system).SetRootDefault(nil) // the granted model: nothing is held out by default
-	alice, bob, bot := "alice@example.com", "bob@example.com", "bot"
+	alice, bob, bot := "user:alice@example.com", "user:bob@example.com", "runner:bot"
 	rw := func(to ...string) map[entity.Level][]string { return map[entity.Level][]string{entity.ReadWrite: to} }
 
 	// The seed: anyone may create a task; a person may answer a question.
@@ -160,34 +160,33 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 		t.Fatal("a grant without a star covers the node and what is beneath it")
 	}
 	q := entity.VerseRef("gate", "question", "t1~d1")
-	seedRecord(t, system, q, entity.SystemPrincipal) // posed by versed: its own record
+	seedRecord(t, system, q, entity.SystemDocket) // posed by versed: its own record
 	if holds(t, system, bot, entity.Read, q) {
 		t.Fatal("the runner reaches the question its task raised")
 	}
 
-	// A kind: a person listed under verse.principal.user answers; an unlisted string and the
-	// unattributed request do not.
-	carol := "carol@example.com"
-	if _, _, err := system.Write(entity.Write{At: entity.UserRef(carol).At(), Value: entity.Obj{"first": "now"}.Payload()}); err != nil {
-		t.Fatal(err)
-	}
+	// A kind: a principal whose name carries the kind answers, whether or not anybody has met
+	// them; a principal of another kind, a name with no kind, and the unattributed request do
+	// not.
+	carol := "user:carol@example.com"
 	q2 := entity.VerseRef("gate", "question", "t2~d1")
-	seedRecord(t, system, q2, entity.SystemPrincipal)
+	seedRecord(t, system, q2, entity.SystemDocket)
 	// The grants on the record above the question hang above an owner record, and do not
 	// cross it: the seed's `user` grant reaches a question only through the question's own
 	// record. Grant it there, as the mirror will.
-	seedRecord(t, system, q2, entity.SystemPrincipal, entity.Grant{At: q2.Segs(), To: rw(entity.UserKind)})
+	seedRecord(t, system, q2, entity.SystemDocket, entity.Grant{At: q2.Segs(), To: rw("user:*")})
 	if !holds(t, system, carol, entity.ReadWrite, q2) {
-		t.Fatal("a listed user does not hold what `user` is granted")
+		t.Fatal("a user does not hold what `user:*` is granted")
 	}
-	if holds(t, system, "dave@example.com", entity.ReadWrite, q2) || holds(t, system, "", entity.ReadWrite, q2) {
-		t.Fatal("an unlisted string, or nobody, holds what `user` is granted")
+	if holds(t, system, bot, entity.ReadWrite, q2) || holds(t, system, "agent", entity.ReadWrite, q2) ||
+		holds(t, system, "", entity.ReadWrite, q2) {
+		t.Fatal("a runner, a kindless name, or nobody, holds what `user:*` is granted")
 	}
 
-	// An address-shaped principal holds what its owner holds.
+	// A place acting holds what its owner holds.
 	rule := entity.VerseRef("trigger", "rule", "review")
 	seedRecord(t, system, rule, alice)
-	if !holds(t, system, rule.String(), entity.OwnerLevel, t1) || holds(t, system, rule.String(), entity.Read, q) {
+	if !holds(t, system, entity.Via(rule), entity.OwnerLevel, t1) || holds(t, system, entity.Via(rule), entity.Read, q) {
 		t.Fatal("a firing of alice's rule does not act as alice")
 	}
 
@@ -204,7 +203,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	}
 
 	// The system holds everything, the mirror included; nobody else reaches the mirror.
-	if !holds(t, system, entity.SystemPrincipal, entity.OwnerLevel, entity.PermsRef(pr)) ||
+	if !holds(t, system, entity.SystemDefault, entity.OwnerLevel, entity.PermsRef(pr)) ||
 		holds(t, system, alice, entity.Read, entity.PermsRef(pr)) {
 		t.Fatal("the mirror is the system's alone")
 	}
@@ -213,9 +212,9 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 // A refusal refuses and writes nothing, says who wanted what and what decided, and is counted.
 func TestARefusalRefusesAndIsCounted(t *testing.T) {
 	inner := &stamped{Store: entitytest.Store(t)}
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice := entity.As(system, "alice@example.com")
-	bob := entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice := entity.As(system, "user:alice@example.com")
+	bob := entity.As(system, "user:bob@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -254,9 +253,9 @@ func TestARefusalRefusesAndIsCounted(t *testing.T) {
 // view learns of every write this process makes to the mirror.
 func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice := entity.As(system, "alice@example.com")
-	bob := entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice := entity.As(system, "user:alice@example.com")
+	bob := entity.As(system, "user:bob@example.com")
 	notes := entity.RefAt("spaces", "alice", "notes")
 	if _, _, err := alice.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -264,8 +263,8 @@ func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	if _, _, err := bob.Write(entity.Write{At: notes.At("n"), Value: entity.Val(2)}); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("before the grant: %v", err)
 	}
-	seedRecord(t, system, notes, "alice@example.com", entity.Grant{
-		At: notes.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"bob@example.com"}},
+	seedRecord(t, system, notes, "user:alice@example.com", entity.Grant{
+		At: notes.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"user:bob@example.com"}},
 	})
 	if _, _, err := bob.Write(entity.Write{At: notes.At("n"), Value: entity.Val(2)}); err != nil {
 		t.Fatalf("with the grant: %v", err)
@@ -274,7 +273,7 @@ func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	if _, _, err := bob.Write(entity.Write{At: notes.At()}); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("a grantee deleting the node: %v", err)
 	}
-	seedRecord(t, system, notes, "alice@example.com")
+	seedRecord(t, system, notes, "user:alice@example.com")
 	if _, _, err := bob.Write(entity.Write{At: notes.At("n"), Value: entity.Val(3)}); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("after the grant was withdrawn: %v", err)
 	}
@@ -285,7 +284,7 @@ func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	if _, _, err := bob.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 4}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, notes); o != "bob@example.com" {
+	if o, _ := ownerOf(t, inner, notes); o != "user:bob@example.com" {
 		t.Fatalf("re-created by bob, owner = %q", o)
 	}
 }

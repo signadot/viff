@@ -166,3 +166,52 @@ func (g Grantee) String() string {
 
 // Via spells the principal of a place acting: whoever writes as a rule, a source or a binding.
 func Via(ref Ref) string { return ViaKind + ":" + ref.String() }
+
+// The parts of versed that write on its own behalf, each a name so a record says which act
+// wrote it. They are attribution, not authority: any principal of SystemKind owns the root and
+// passes every check, and nothing grants to one part rather than another.
+const (
+	// SystemDocket poses, settles, escalates and reowns a question, and releases a binding.
+	SystemDocket = SystemKind + ":docket"
+	// SystemMirror projects a task and grants the worker that claimed it.
+	SystemMirror = SystemKind + ":mirror"
+	// SystemPerms writes the perms mirror: an owner taken, a grant added, `under`, and who has
+	// been met.
+	SystemPerms = SystemKind + ":perms"
+	// SystemSeed writes the deployment's policy at start.
+	SystemSeed = SystemKind + ":seed"
+	// SystemCharter installs the charter the deployment stands behind, so its rules resolve to it.
+	SystemCharter = SystemKind + ":charter"
+	// SystemDefault is what remains: the restore at start, and whatever else names no part. It
+	// is the owner of the root.
+	SystemDefault = SystemKind + ":default"
+)
+
+// IsSystem reports whether a principal is versed itself, whichever part.
+func IsSystem(principal string) bool { return KindOf(principal) == SystemKind }
+
+// KindOf is the kind a name carries before its colon, and "" for a name that carries none.
+func KindOf(name string) string {
+	kind, _, found := strings.Cut(name, ":")
+	if !found {
+		return ""
+	}
+	return kind
+}
+
+// Canonical is a name as the grammar spells it — a bare email as `user:<email>` — and the name
+// as written where it does not parse, which admits nobody. Every list of grantees a record holds
+// is written through it, so one form is stored whichever form was typed.
+func Canonical(names []string) []string {
+	if names == nil {
+		return nil
+	}
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = n
+		if g, err := ParseGrantee(n); err == nil {
+			out[i] = g.String()
+		}
+	}
+	return out
+}

@@ -53,11 +53,12 @@ func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	r.Header.Set(api.VersionHeader, s.mine)
 	// AND WHO IS ASKING, on every request for the same reason the version is: a principal
 	// that reaches three of the four call sites is one the fourth writes as nobody.
-	if p := principal(""); p != "" {
+	p, err := principal("")
+	if err != nil {
+		return nil, err
+	}
+	if p != "" {
 		r.Header.Set(api.PrincipalHeader, p)
-		if k := principalKind(); k != "" {
-			r.Header.Set(api.PrincipalKindHeader, k)
-		}
 	}
 
 	base := s.base

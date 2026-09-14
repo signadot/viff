@@ -65,7 +65,7 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	if err != nil || !ok || entity.Str(rec.Payload, entity.UnderField) != mirror.Ref("run-1").String() {
 		t.Fatalf("the question's record does not link it under its task: %v (ok=%v err=%v)", rec.Payload, ok, err)
 	}
-	if got := entity.Str(rec.Payload, entity.OwnerField); got != entity.SystemPrincipal {
+	if got := entity.Str(rec.Payload, entity.OwnerField); got != entity.SystemDocket {
 		t.Fatalf("the question's record is owned by %q; it is the system's, on a record of its own", got)
 	}
 
@@ -114,14 +114,14 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != binding ||
+	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "via:"+binding ||
 		len(grants[0].To[entity.Read]) != 1 || grants[0].To[entity.Read][0] != entity.Everyone {
 		t.Fatalf("the question's grants = %+v, want read-write for its binding beside read for everyone", grants)
 	}
-	if ok, _ := entity.Holds(srv.Store, binding, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
+	if ok, _ := entity.Holds(srv.Store, "via:"+binding, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
 		t.Fatal("the binding does not hold read-write on the question held out to it")
 	}
-	if ok, _ := entity.Holds(srv.Store, "carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
+	if ok, _ := entity.Holds(srv.Store, "user:carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
 		t.Fatal("somebody else holds what the binding was granted")
 	}
 
@@ -131,14 +131,14 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the binding's verdict was refused: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != binding {
+	if q := settledQuestion(t, srv, qid); q["by"] != "via:"+binding {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }
 
 // The runner working a task holds its grant on the task and nothing on the question the task
 // raised — the executor may not resolve its own gate — and a runner's name is a runner's,
-// however it later turns up on the api. The task's owner answers, and the answer reaches the
+// since the kind is in the name, however it later turns up on the api. The task's owner answers, and the answer reaches the
 // worker.
 func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
 	srv := testServer(t)
@@ -157,7 +157,7 @@ func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
 	resp.Body.Close()
 
 	resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json",
-		strings.NewReader(`{"identity":"bot"}`))
+		strings.NewReader(`{"identity":"runner:bot"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
 	resp.Body.Close()
 	waitDocket(t, srv, qid)
 
-	resp = answerAs(t, "bot", ts.URL, qid)
+	resp = answerAs(t, "runner:bot", ts.URL, qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("the runner answered its own question: %s", resp.Status)

@@ -372,7 +372,7 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	// claim, routed through /broker/<nonce>/tasks/p1/claim.
 	resp, err := ts.Client().Post(
 		ts.URL+"/broker/"+nonce+"/tasks/p1/claim", "application/json",
-		strings.NewReader(`{"identity":"human:scott"}`))
+		strings.NewReader(`{"identity":"runner:scott"}`))
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}

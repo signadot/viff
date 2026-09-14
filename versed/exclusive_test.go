@@ -76,7 +76,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("the owner could not answer its own question: %s", ok.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "verse.resolvers.security.payments-review" || q["overrode"] != nil {
+	if q["by"] != "via:verse.resolvers.security.payments-review" || q["overrode"] != nil {
 		t.Fatalf("the owner's own answer was recorded as an override: %+v", q)
 	}
 }

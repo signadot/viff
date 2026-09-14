@@ -23,7 +23,7 @@ import (
 
 // checkPlace refuses an install over a place the installer does not hold `owner` at.
 func checkPlace(store entity.Store, installer string, ref entity.Ref, act string) (int, error) {
-	if installer == "" || installer == entity.SystemPrincipal {
+	if installer == "" || entity.IsSystem(installer) {
 		return 0, nil
 	}
 	if err := entity.Check(store, installer, entity.OwnerLevel, ref, act); err != nil {
@@ -36,7 +36,7 @@ func checkPlace(store entity.Store, installer string, ref entity.Ref, act string
 // could not be written is said and not fatal: what was installed stands, and what it writes is
 // recorded per entity, as it was, until the next install.
 func takePlace(store entity.Store, installer string, ref entity.Ref, what string) {
-	if installer == "" || installer == entity.SystemPrincipal {
+	if installer == "" || entity.IsSystem(installer) {
 		return
 	}
 	if err := entity.Claim(store, ref, installer); err != nil {

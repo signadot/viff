@@ -370,7 +370,7 @@ ok "the action is held; verse gate shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v data demo release 1)" stage open || die "the ask gate did not hold the action"
 ok "demo:release:1 still open while the gate is pending"
-v gate y "$GID" -s "ship it" --as human:smoke >/dev/null || die "gate approve (y) failed"
+v gate y "$GID" -s "ship it" --as user:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo release 1 2>/dev/null || true)" stage shipped; then
@@ -408,13 +408,13 @@ done
 [ -n "$QID" ] || die "the threshold gate never reached the docket"
 has "$(v gate)" 'demo.motion."1"' || die "the docket does not say what is being decided"
 ok "the question is on the docket as $QID, about demo:motion:1"
-out=$(v gate y "$QID" --as human:alice) || die "the first ballot was refused"
+out=$(v gate y "$QID" --as user:alice) || die "the first ballot was refused"
 has "$out" "1 of 2" || die "the answerer was not told where the tally stands: $out"
 sleep 0.5
 haskv "$(v data demo motion 1)" stage open || die "one approval released a gate that needs two"
 has "$(v gate)" "$QID" || die "a question one short of its threshold left the docket"
 ok "one of two: recorded, and the action is still held"
-v gate y "$QID" --as human:bob >/dev/null || die "the second ballot was refused"
+v gate y "$QID" --as user:bob >/dev/null || die "the second ballot was refused"
 carried=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo motion 1 2>/dev/null || true)" stage shipped; then
@@ -426,7 +426,7 @@ done
 [ -n "$carried" ] || die "the second approval did not release the action"
 ok "two of two: demo:motion:1 open → shipped"
 rec=$(v data verse gate question "$QID")
-has "$rec" "human:alice" && has "$rec" "human:bob" || die "the settled record does not carry both ballots: $rec"
+has "$rec" "user:alice" && has "$rec" "user:bob" || die "the settled record does not carry both ballots: $rec"
 haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
 ok "the question is settled with both ballots on the record"
 
@@ -436,21 +436,21 @@ ok "the question is settled with both ballots on the record"
 # One principal for the run and its control: a task is its requester's, and control is held
 # by the owner and the runner, so the party that spawned it is the party that steers it.
 step "task run + control surfaces"
-VERSE_USER=human:smoke v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
+VERSE_USER=user:smoke v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
 ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v task get "$ID")" "$ID" || die "task get missing the id"
 ok "task get"
-VERSE_USER=human:smoke v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
+VERSE_USER=user:smoke v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
 ok "task say (re-prompt)"
-out=$(VERSE_USER=human:smoke v task vector "$ID" ask --as human:smoke) || die "task vector failed"
+out=$(VERSE_USER=user:smoke v task vector "$ID" ask --as user:smoke) || die "task vector failed"
 has "$out" "ask" || die "task vector did not report the new mode"
-ok "task vector → ask (as human:smoke)"
+ok "task vector → ask (as user:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" vectorBy human:smoke; then
+	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" vectorBy user:smoke; then
 		observed=1
 		break
 	fi
@@ -458,7 +458,7 @@ for _ in $(seq 1 25); do
 done
 [ -n "$observed" ] || die "slide not observable on the entity (vector/vectorBy not projected)"
 ok "slide observable on the entity (vector/vectorBy projected)"
-VERSE_USER=human:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
+VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 
 # ── connect: federate a local tree into a scope (docd-only path) ─────────────

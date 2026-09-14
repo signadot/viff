@@ -82,8 +82,8 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 		t.Fatalf("the question did not settle: %+v", settled)
 	}
 	// Attribution is verse's: a service says what it decided, never who it is.
-	if settled["by"] != binding {
-		t.Fatalf("by = %v, want the resolver's own ref %q", settled["by"], binding)
+	if settled["by"] != "via:"+binding {
+		t.Fatalf("by = %v, want via the resolver's own ref %q", settled["by"], binding)
 	}
 }
 

@@ -18,7 +18,7 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("perms: %v", err)
 	}
-	if !strings.Contains(out, "owner: walter@example.com") {
+	if !strings.Contains(out, "owner: user:walter@example.com") {
 		t.Fatalf("the place is not scott's:\n%s", out)
 	}
 	if _, err := runCLI(t, "data", "spaces", "scott", "private", "--put", `{todo: [nothing]}`); err != nil {
@@ -59,7 +59,7 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	}
 	t.Setenv("VERSE_USER", "ana@example.com")
 	out, err = runCLI(t, "perms", "spaces", "scott", "notes")
-	if err != nil || !strings.Contains(out, "owner: walter@example.com") || !strings.Contains(out, "ana@example.com") {
+	if err != nil || !strings.Contains(out, "owner: user:walter@example.com") || !strings.Contains(out, "ana@example.com") {
 		t.Fatalf("ana cannot see the record of a node she may read: %v\n%s", err, out)
 	}
 	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read-write: [ana@example.com]}`); err == nil {

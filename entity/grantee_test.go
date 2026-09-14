@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // Every spelling the grammar has reads back as itself, and a bare email reads as the person.
@@ -84,6 +85,19 @@ func TestGranteeRefusals(t *testing.T) {
 	for _, in := range []string{"user:ana@example.com", "ana@example.com", "runner:coderunner", "via:verse.trigger.rule.x", "system:default"} {
 		if _, err := entity.ParsePrincipal(in); err != nil {
 			t.Errorf("ParsePrincipal(%q): %v", in, err)
+		}
+	}
+}
+
+// Every part of the system owns the root: the parts say which act wrote, and none is narrower.
+func TestEverySystemPartHoldsTheRoot(t *testing.T) {
+	system := entity.As(entitytest.Store(t), entity.SystemDefault)
+	for _, part := range []string{entity.SystemDefault, entity.SystemDocket, entity.SystemMirror,
+		entity.SystemPerms, entity.SystemSeed, entity.SystemCharter} {
+		for _, ref := range []entity.Ref{entity.RefAt("demo", "pr", "1"), entity.VerseRef("trigger", "rule", "x"), entity.PermsRef(entity.RefAt("demo"))} {
+			if ok, err := entity.Holds(system, part, entity.OwnerLevel, ref); err != nil || !ok {
+				t.Errorf("%s does not hold owner at %s: %v", part, ref, err)
+			}
 		}
 	}
 }

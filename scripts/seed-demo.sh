@@ -181,7 +181,7 @@ seeded. What to type next:
   $BIN$scope_note data                        what is there (also: state demo)
   $BIN$scope_note charter                      the charter you just installed
   $BIN$scope_note gates                        the decision demo-review is holding
-  $BIN$scope_note gate approve ${GID:-<id>} --as you
+  $BIN$scope_note gate approve ${GID:-<id>} --as user:you
                                         …and it spawns a 45s review task:
   $BIN$scope_note flows                        the subjects with live work
   $BIN$scope_note flow show demo:pr:1          what is happening to this one, and what comes next

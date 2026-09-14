@@ -194,7 +194,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	// by anybody outside verse, and a write that names nobody would leave what it creates
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
-	store = entity.As(store, entity.SystemPrincipal)
+	store = entity.As(store, entity.SystemDefault)
 	// Who answers as a binding: the person or the group behind it, or the binding itself for
 	// a service. mirror binds by it and cannot read a binding.
 	mirror.AnswererOf = func(r entity.Reader, binding string) string {
@@ -1183,8 +1183,8 @@ func (s *Server) Handler() http.Handler {
 	return versioned(s.principals(rt.mux))
 }
 
-// principals notes every principal that presents itself, once: `verse.principal.user.<p>` is
-// the record that a party has acted here, which is what `verse d verse principal` lists. Written
+// principals notes every principal that presents itself, once: `verse.principal.<kind>.<id>`
+// is the record that a party has acted here, which is what `verse d verse principal` lists. Written
 // under an absence precondition so the first sighting is the one on record, and remembered
 // per process so that a listing costs one write per party rather than one per request.
 //
@@ -1192,51 +1192,41 @@ func (s *Server) Handler() http.Handler {
 // and a party that only ever looked is still a party the verse has met.
 //
 // THE SYSTEM IS NOT SELF-ASSERTABLE. A request saying it is the system is refused here, since
-// a header saying "system" is precisely the assertion that was fine while nothing was refused
+// a header saying `system:<part>` is precisely the assertion that was fine while nothing was refused
 // and is a way to hold everything once something is. What installs a system-owned charter is
 // versed itself, from the file its deployment names (Server.SystemCharter).
 func (s *Server) principals(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := principalOf(r)
-		if p == entity.SystemPrincipal {
+		// A bare email is a person, and is stored as one: the name is respelled on the request
+		// itself, so every write and check below reads the one form.
+		if g, err := entity.ParsePrincipal(p); err == nil && g.String() != p {
+			p = g.String()
+			r.Header.Set(api.PrincipalHeader, p)
+		}
+		if entity.IsSystem(p) {
 			http.Error(w, "the system is versed itself, and a request cannot be made as it: a "+
 				"charter the system stands behind is installed from the file the deployment "+
 				"names (systemCharter in its config)", http.StatusForbidden)
 			return
 		}
-		kind := entity.UserKind
-		switch r.Header.Get(api.PrincipalKindHeader) {
-		case "":
-		case entity.AgentKind:
-			kind = entity.AgentKind
-		default:
-			http.Error(w, "principal kind: `agent`, or none for a person", http.StatusBadRequest)
-			return
-		}
 		if p != "" {
-			s.notePrincipal(kind, p)
+			s.notePrincipal(p)
 		}
 		h.ServeHTTP(w, r)
 	})
 }
 
-// notePrincipal records p as a principal of the given kind, the first time this process sees
-// them — unless the name is a RUNNER's. A worker that claimed work is listed under
-// verse.principal.runner by the claim, and a name that then turns up on the api is the runner,
-// not a person: listing it as a user too would hand it what a question holds out to people,
-// which is the one grant the model keeps from an executor.
-func (s *Server) notePrincipal(kind, p string) {
-	key := kind + "/" + p
-	if _, seen := s.users.Load(key); seen {
+// notePrincipal records p under the kind its name carries, the first time this process sees
+// them.
+func (s *Server) notePrincipal(p string) {
+	if _, seen := s.users.Load(p); seen {
 		return
 	}
-	if _, isRunner, err := s.Store.Get(entity.PrincipalRef(entity.RunnerKind, p)); err != nil || isRunner {
-		return
+	if err := entity.Note(s.Store, p); err != nil {
+		return // the store did not answer, or the name is none to meet; the next request asks again
 	}
-	if err := entity.Note(s.Store, kind, p); err != nil {
-		return // the store did not answer; the next request asks again
-	}
-	s.users.Store(key, struct{}{})
+	s.users.Store(p, struct{}{})
 }
 
 // ── scripted driver: the default task runtime driver ─────────────────────
@@ -1376,20 +1366,30 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 	return entity.As(store, principalOf(r))
 }
 
-// asSystem is the store versed's OWN acts go through on a request's behalf, in the request's
-// scope: the clock settling an overdue question, the layer rule handing one on when a reader
-// arrives or a binding is removed. Whoever read the docket did not decide those, and a write
-// carrying their name would say they did.
-func (s *Server) asSystem(r *http.Request) entity.Store {
-	return entity.As(s.scopedStore(r), entity.SystemPrincipal)
+// asDocket is the store the docket's OWN acts go through on a request's behalf, in the
+// request's scope: the clock settling an overdue question, the layer rule handing one on when a
+// reader arrives or a binding is removed. Whoever read the docket did not decide those, and a
+// write carrying their name would say they did.
+func (s *Server) asDocket(r *http.Request) entity.Store {
+	return entity.As(s.scopedStore(r), entity.SystemDocket)
 }
 
-// asBinding is the store a resolver acts through: the request's scope, as the binding whose
+// asBinding is the store a resolver acts through: the request's scope, via the binding whose
 // instance the request came through. A service says what it decided, never who it is
-// (resolverVerdict), so the party on the write is the binding — an address, which the check
-// resolves to whoever installed it, and which a question is held out to by name.
+// (resolverVerdict), so the party on the write is the binding — `via:` its address, which the
+// check resolves to whoever installed it, and which a question is held out to by name.
 func (s *Server) asBinding(r *http.Request, binding string) entity.Store {
-	return entity.As(s.scopedStore(r), binding)
+	return entity.As(s.scopedStore(r), bindingPrincipal(binding))
+}
+
+// bindingPrincipal is who acts as a binding: `via:` its address. An address that does not parse
+// is kept as written, and names no place the check admits anybody at.
+func bindingPrincipal(binding string) string {
+	ref, err := entity.ParseAddr(binding)
+	if err != nil {
+		return binding
+	}
+	return entity.Via(ref)
 }
 
 // principalOf is who a request says it is made by (api.PrincipalHeader), and "" for a request
@@ -2020,7 +2020,7 @@ func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
 // records through this verb rather than through `verse data verse perms` for exactly that
 // reason. The check per record costs a walk through the cache and no read.
 func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
-	ents, err := entity.ListAtErr(s.asSystem(r),
+	ents, err := entity.ListAtErr(entity.As(s.scopedStore(r), entity.SystemPerms),
 		[]string{entity.VerseRoot, entity.PermsSystem, entity.PermsKind}, entity.Depth+1, nil)
 	if unreadable(w, r, err) {
 		return
@@ -2255,10 +2255,10 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	// docket as of now, and `⊤` is a person reading.
 	out := make([]map[string]any, 0)
 	ents, readErr := pendingQuestionsErr(s.scopedStore(r))
-	if s.settleOverdueIn(s.asSystem(r), ents) {
+	if s.settleOverdueIn(s.asDocket(r), ents) {
 		ents, readErr = pendingQuestionsErr(s.scopedStore(r))
 	}
-	s.escalateOverdueIn(s.asSystem(r), ents)
+	s.escalateOverdueIn(s.asDocket(r), ents)
 	for _, ent := range ents {
 		p := entity.ToObj(ent.Payload)
 		rec := map[string]any{}
@@ -2418,7 +2418,7 @@ func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Versed's own act, in the request's scope: the handover is the layer rule's, not the
 	// person's write.
-	if !reown(s.asSystem(r), mirror.QuestionRef(body.ID), questionOrigin(p, subject), subject, from, why) {
+	if !reown(s.asDocket(r), mirror.QuestionRef(body.ID), questionOrigin(p, subject), subject, from, why) {
 		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
 		return
 	}
@@ -2492,13 +2492,13 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	if unreadable(w, r, err) {
 		return
 	}
-	if exclusive && body.By != holder && !body.Override {
+	if exclusive && body.By != bindingPrincipal(holder) && !body.Override {
 		http.Error(w, holder+" answers this question exclusively; "+
 			"say override to answer it anyway, and the record will name you both",
 			http.StatusForbidden)
 		return
 	}
-	overriding := exclusive && body.By != holder
+	overriding := exclusive && body.By != bindingPrincipal(holder)
 	owner := taskID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
@@ -2741,7 +2741,7 @@ func watchesARun(origin entity.Ref) bool {
 // Context arrives before the ask, which is the whole reason a resolver is attached rather than
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
-	s.escalateOverdue(s.asSystem(r)) // a resolver arriving is a reader arriving
+	s.escalateOverdue(s.asDocket(r)) // a resolver arriving is a reader arriving
 	_, origin, ok, readErr := s.instanceOf(r)
 	if unreadable(w, r, readErr) {
 		return
@@ -2941,9 +2941,10 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	if watchesARun(origin) {
 		taskID = origin.ID()
 	}
+	as := s.asBinding(r, binding)
 	s.answerQuestion(w, r, api.Resolve{
-		ID: v.ID, Choice: v.Verdict, By: binding, Say: v.Say,
-	}, taskID, s.asBinding(r, binding))
+		ID: v.ID, Choice: v.Verdict, By: entity.PrincipalOf(as), Say: v.Say,
+	}, taskID, as)
 }
 
 // ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
@@ -3300,7 +3301,7 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.releaseResolver(s.asSystem(r), ref)
+	s.releaseResolver(s.asDocket(r), ref)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -3601,7 +3602,7 @@ func (s *Server) installSystemCharter() {
 		return
 	}
 	defer release()
-	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemPrincipal), "", "", defs); err != nil {
+	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemCharter), "", "", defs); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: system charter %s: %v\n", s.SystemCharter, err)
 	}
 }

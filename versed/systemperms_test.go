@@ -22,7 +22,7 @@ func TestARequestCannotBeMadeAsTheSystem(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := putAs(t, entity.SystemPrincipal, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
+	resp := putAs(t, entity.SystemDefault, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a request as the system: %s", resp.Status)
@@ -32,8 +32,8 @@ func TestARequestCannotBeMadeAsTheSystem(t *testing.T) {
 	}
 }
 
-// An operator agent is a principal of its own kind: listed under verse.principal.agent and not
-// as a user, and owning what it creates under its own name.
+// An operator agent is a principal of its own kind, which its name carries: listed under
+// verse.principal.agent and not as a user, and owning what it creates under its own name.
 func TestAnAgentIsAPrincipalOfItsOwnKind(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -41,8 +41,7 @@ func TestAnAgentIsAPrincipalOfItsOwnKind(t *testing.T) {
 	put, _ := codec.Marshal(api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "open"}.Payload()}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/entity", strings.NewReader(string(put)))
 	req.Header.Set("Content-Type", "application/tony")
-	req.Header.Set(api.PrincipalHeader, "claude")
-	req.Header.Set(api.PrincipalKindHeader, entity.AgentKind)
+	req.Header.Set(api.PrincipalHeader, "agent:claude")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +50,7 @@ func TestAnAgentIsAPrincipalOfItsOwnKind(t *testing.T) {
 	if resp.StatusCode/100 != 2 {
 		t.Fatalf("the agent's put: %s", resp.Status)
 	}
-	if got := owner(t, srv, entity.RefAt("demo", "pr", "1")); got != "claude" {
+	if got := owner(t, srv, entity.RefAt("demo", "pr", "1")); got != "agent:claude" {
 		t.Fatalf("owned by %q, want the agent", got)
 	}
 	if _, ok, _ := srv.Store.Get(entity.PrincipalRef(entity.AgentKind, "claude")); !ok {
@@ -59,18 +58,6 @@ func TestAnAgentIsAPrincipalOfItsOwnKind(t *testing.T) {
 	}
 	if _, ok, _ := srv.Store.Get(entity.UserRef("claude")); ok {
 		t.Fatal("the agent was listed as a user")
-	}
-	req, _ = http.NewRequest(http.MethodPost, ts.URL+"/entity", strings.NewReader(string(put)))
-	req.Header.Set("Content-Type", "application/tony")
-	req.Header.Set(api.PrincipalHeader, "claude")
-	req.Header.Set(api.PrincipalKindHeader, "wizard")
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("an unknown kind: %s", resp.Status)
 	}
 }
 
@@ -96,7 +83,7 @@ func TestControlIsHeldByTheTasksOwner(t *testing.T) {
 	if code := say("alice@example.com"); code != http.StatusNoContent {
 		t.Fatalf("the owner could not steer their task: %d", code)
 	}
-	if ok, _ := entity.Holds(srv.Store, "bob@example.com", entity.Control, mirror.Ref("run-1")); ok {
+	if ok, _ := entity.Holds(srv.Store, "user:bob@example.com", entity.Control, mirror.Ref("run-1")); ok {
 		t.Fatal("bob holds control")
 	}
 }
@@ -121,9 +108,9 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 		t.Fatalf("the system charter was not installed (ok=%v err=%v)", ok, err)
 	}
 	if got := owner(t, srv, rule); got != "" {
-		t.Fatalf("the rule record is owned by %q; the system's records carry no owner of their own", got)
+		t.Fatalf("the rule record is owned by %q; the system is one owner, and its records carry none of their own", got)
 	}
-	if ok, _ := entity.Holds(srv.Store, rule.String(), entity.OwnerLevel, entity.PermsRef(rule)); !ok {
+	if ok, _ := entity.Holds(srv.Store, entity.Via(rule), entity.OwnerLevel, entity.PermsRef(rule)); !ok {
 		t.Fatal("a firing of the system's rule does not act as the system")
 	}
 

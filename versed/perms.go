@@ -40,7 +40,7 @@ var seed = []struct {
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(source.System), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.ReadWrite, []string{entity.UserKind, entity.AgentKind}},
+	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.ReadWrite, []string{"user:*", "agent:*"}},
 	// The docket is everybody's to read, the runner working a task included; answering is
 	// the row above.
 	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Read, []string{entity.Everyone}},
@@ -61,7 +61,7 @@ var defaults = []struct {
 }{
 	// The docket: everyone reads a question, and a person answers one nobody else was given.
 	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Levels{
-		entity.Read: {entity.Everyone}, entity.ReadWrite: {entity.UserKind, entity.AgentKind},
+		entity.Read: {entity.Everyone}, entity.ReadWrite: {"user:*", "agent:*"},
 	}},
 }
 
@@ -78,7 +78,7 @@ func seedPerms(store entity.Store) error {
 			At:        rec.At(entity.DefaultField),
 			Value:     d.levels.Payload(),
 			When:      []entity.Require{{At: rec.At(entity.DefaultField), Absent: true}},
-			Principal: entity.SystemPrincipal,
+			Principal: entity.SystemSeed,
 		})
 		if err != nil {
 			return fmt.Errorf("seeding the default at %s: %w", d.at, err)
@@ -106,7 +106,7 @@ func seedGrants(store entity.Store) error {
 			At:        entity.PermsRef(at).At(),
 			Value:     entity.Obj{entity.GrantsField: entity.GrantsPayload(at.Segs(), grants[at])}.Payload(),
 			When:      []entity.Require{entity.Created()},
-			Principal: entity.SystemPrincipal,
+			Principal: entity.SystemSeed,
 		})
 		if err != nil {
 			return fmt.Errorf("seeding the grants at %s: %w", at, err)

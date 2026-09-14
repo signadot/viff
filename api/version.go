@@ -18,21 +18,16 @@ import (
 const VersionHeader = "Verse-Version"
 
 // PrincipalHeader carries who is asking: the principal every request from the api is made as,
-// which the server stamps on every write the request makes (entity.Write.Principal). The CLI
-// fills it from its config's `user:` and `--as` overrides it where a command takes one. It is
+// which the server stamps on every write the request makes (entity.Write.Principal), spelled
+// with its kind — `user:<email>`, `agent:<name>`, `runner:<identity>` (entity.Grammar). The CLI
+// fills it from its config's `user:` or `agent:`, and `--as` overrides it where a command takes
+// one. It is
 // self-asserted, exactly as `--as` is, and the server trusts it no harder — what it buys is
 // that a write names a party, on the write, rather than in a field only some verbs carry.
 //
 // A request without it is unattributed: nothing is refused, and what it creates reads as its
 // parent's, which is what an api used by hand from curl gets.
 const PrincipalHeader = "Verse-Principal"
-
-// PrincipalKindHeader says what KIND of principal is asking, when it is not a person: `agent`
-// for an operator agent — a harness driving verse from outside through the api, which is a
-// principal of its own and not the person whose terminal it runs in. Absent means a user. The
-// server lists the principal under that kind (verse.principal.<kind>.<name>), which is what a
-// grant to the kind reaches. `system` is not a kind anybody may claim: the system is versed.
-const PrincipalKindHeader = "Verse-Principal-Kind"
 
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a

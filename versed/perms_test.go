@@ -82,12 +82,12 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	scott := entity.As(srv.Store, "walter@example.com")
+	scott := entity.As(srv.Store, "user:walter@example.com")
 	space, notes, private := entity.RefAt("spaces", "scott"), entity.RefAt("spaces", "scott", "notes"), entity.RefAt("spaces", "scott", "private")
 	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.scott.notes", entity.Obj{"todo": "milk"}.Payload()); resp.StatusCode/100 != 2 {
 		t.Fatalf("notes: %s", resp.Status)
 	}
-	if err := entity.Claim(scott, space, "walter@example.com"); err != nil {
+	if err := entity.Claim(scott, space, "user:walter@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetDefault(scott, space, entity.Levels{}); err != nil {
@@ -128,7 +128,7 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 	if _, ok := mine[private.String()]; ok {
 		t.Errorf("a node owned through the place above it has a record: %v", mine[private.String()])
 	}
-	if mine[space.String()].Owner != "walter@example.com" {
+	if mine[space.String()].Owner != "user:walter@example.com" {
 		t.Errorf("the place's record reads %+v", mine[space.String()])
 	}
 	theirs := listed("ana@example.com")

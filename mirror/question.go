@@ -71,13 +71,13 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
 	var grants []entity.Grant
 	if len(q.Answerers) > 0 {
 		levels := entity.DefaultFor(store, ref)
-		to := map[entity.Level][]string{entity.ReadWrite: q.Answerers}
+		to := map[entity.Level][]string{entity.ReadWrite: entity.Canonical(q.Answerers)}
 		if reads := levels[entity.Read]; len(reads) > 0 {
 			to[entity.Read] = reads
 		}
 		grants = []entity.Grant{{At: ref.Segs(), To: to}}
 	}
-	_ = entity.Establish(store, ref, entity.SystemPrincipal, origin, grants)
+	_ = entity.Establish(store, ref, entity.SystemDocket, origin, grants)
 }
 
 // Bind holds the question out to the binding that answers it: `read-write` on the question's
@@ -89,15 +89,25 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
 // back to whoever the default holds it out to. `read` is left as the record has it.
 func Bind(store entity.Store, id, binding string) {
 	ref := QuestionRef(id)
-	names := []string{binding}
+	names := []string{viaBinding(binding)}
 	if binding == "" {
 		names = entity.DefaultFor(store, ref)[entity.ReadWrite]
 	} else if AnswererOf != nil {
 		if who := AnswererOf(store, binding); who != "" {
-			names = []string{who}
+			names = entity.Canonical([]string{who})
 		}
 	}
 	_ = entity.SetLevel(store, ref, entity.ReadWrite, names)
+}
+
+// viaBinding is the principal a binding acts as, from its address: `via:<address>`. An address
+// that does not parse is held out as written, and the grammar admits nobody by it.
+func viaBinding(binding string) string {
+	ref, err := entity.ParseAddr(binding)
+	if err != nil {
+		return binding
+	}
+	return entity.Via(ref)
 }
 
 // AnswererOf says who answers as a binding — its own address for a service, the person or the

@@ -127,7 +127,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		defer work.Close()
 
 		b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
-		claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "human:w"})
+		claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
 		var cl struct {
 			Epoch int64 `tony:"field=epoch"`
 		}

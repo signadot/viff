@@ -149,7 +149,7 @@ type runnerAddConfig struct {
 	*cli.Command
 	File     string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
 	NoProbe  bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
-	Identity string `cli:"name=identity desc='the principal the runner acts as (default: its name): what its reports are written as and what a spawn grants it'"`
+	Identity string `cli:"name=identity desc='the id of the principal the runner acts as, runner:<identity> (default: its name): what its reports are written as and what a spawn grants it'"`
 }
 
 func runnerAddCmd() *cli.Command {

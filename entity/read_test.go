@@ -22,8 +22,8 @@ func refs(ents []entity.Entity) map[string]bool {
 // system's alone.
 func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -49,9 +49,9 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 // listing, a replay, a live watch and a snapshot.
 func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
+	system := entity.As(inner, entity.SystemDefault)
 	entity.PolicyOf(system).SetRootDefault(nil)
-	alice, bob, carol := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com"), entity.As(system, "carol@example.com")
+	alice, bob, carol := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com"), entity.As(system, "user:carol@example.com")
 
 	mine := entity.RefAt("demo", "pr", "1")
 	from := system.Head()
@@ -66,8 +66,8 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	if _, _, err := carol.Write(entity.Write{At: shared.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	seedRecord(t, system, shared, "carol@example.com", entity.Grant{
-		At: shared.Segs(), To: map[entity.Level][]string{entity.Read: {"bob@example.com"}},
+	seedRecord(t, system, shared, "user:carol@example.com", entity.Grant{
+		At: shared.Segs(), To: map[entity.Level][]string{entity.Read: {"user:bob@example.com"}},
 	})
 
 	// Get: refused for alice's, answered for bob's own and for the one held out to him.
@@ -163,22 +163,22 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 // before defaults existed reads as holding out the root's.
 func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 
 	// alice takes her space, and says nothing created beneath it is held out.
 	space := entity.RefAt("spaces", "alice")
-	if err := entity.Claim(alice, space, "alice@example.com"); err != nil {
+	if err := entity.Claim(alice, space, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if o, ok := ownerOf(t, inner, space); !ok || o != "alice@example.com" {
+	if o, ok := ownerOf(t, inner, space); !ok || o != "user:alice@example.com" {
 		t.Fatalf("the claimed place is owned by %q (%v)", o, ok)
 	}
 	if err := entity.SetDefault(alice, space, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
 	// A place already somebody's is not bob's to claim.
-	if err := entity.Claim(bob, space, "bob@example.com"); !errors.Is(err, entity.ErrForbidden) {
+	if err := entity.Claim(bob, space, "user:bob@example.com"); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("bob claimed alice's place: %v", err)
 	}
 
@@ -220,21 +220,21 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	// A default set beneath the root reaches a creation that gets a record of its own: bob,
 	// holding out `owner` under his space, sees carol's creation there hold out nothing.
 	bobs := entity.RefAt("spaces", "bob")
-	if err := entity.Claim(bob, bobs, "bob@example.com"); err != nil {
+	if err := entity.Claim(bob, bobs, "user:bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetDefault(bob, bobs, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.AddGrant(bob, bobs, entity.Grant{At: bobs.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {"carol@example.com"}}}); err != nil {
+	if err := entity.AddGrant(bob, bobs, entity.Grant{At: bobs.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {"user:carol@example.com"}}}); err != nil {
 		t.Fatal(err)
 	}
-	carol := entity.As(system, "carol@example.com")
+	carol := entity.As(system, "user:carol@example.com")
 	theirs := entity.RefAt("spaces", "bob", "carols")
 	if _, _, err := carol.Write(entity.Write{At: theirs.At(), Value: entity.Obj{"n": 3}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, theirs); o != "carol@example.com" {
+	if o, _ := ownerOf(t, inner, theirs); o != "user:carol@example.com" {
 		t.Fatalf("carol's creation under bob's space is owned by %q", o)
 	}
 	if _, _, err := alice.Get(theirs); !errors.Is(err, entity.ErrForbidden) {
@@ -258,7 +258,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	if _, _, err := system.Write(entity.Write{At: old.At(), Value: entity.Obj{"n": 5}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	seedRecordRaw(t, system, old, entity.Obj{entity.OwnerField: "alice@example.com"})
+	seedRecordRaw(t, system, old, entity.Obj{entity.OwnerField: "user:alice@example.com"})
 	if _, ok, err := bob.Get(old); err != nil || !ok {
 		t.Fatalf("a pre-default record is not read as the root's default: ok=%v err=%v", ok, err)
 	}
@@ -267,7 +267,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 // seedRecordRaw writes a perms record exactly as given, through the view so it learns of it.
 func seedRecordRaw(t *testing.T, store entity.Store, ref entity.Ref, rec entity.Obj) {
 	t.Helper()
-	if _, _, err := store.Write(entity.Write{At: entity.PermsRef(ref).At(), Value: rec.Payload(), Principal: entity.SystemPrincipal}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: entity.PermsRef(ref).At(), Value: rec.Payload(), Principal: entity.SystemPerms}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -277,17 +277,17 @@ func seedRecordRaw(t *testing.T, store entity.Store, ref entity.Ref, rec entity.
 // next creator there owns what they create.
 func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 	space := entity.RefAt("spaces", "alice")
 	notes := entity.RefAt("spaces", "alice", "notes")
-	if err := entity.Claim(alice, space, "alice@example.com"); err != nil {
+	if err := entity.Claim(alice, space, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := alice.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.AddGrant(alice, notes, entity.Grant{At: notes.Segs(), To: map[entity.Level][]string{entity.Read: {"bob@example.com"}}}); err != nil {
+	if err := entity.AddGrant(alice, notes, entity.Grant{At: notes.Segs(), To: map[entity.Level][]string{entity.Read: {"user:bob@example.com"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := ownerOf(t, inner, notes); !ok {
@@ -306,7 +306,7 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 	if _, _, err := bob.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
 		t.Fatalf("bob cannot create where alice's place was: %v", err)
 	}
-	if o, _ := ownerOf(t, inner, notes); o != "bob@example.com" {
+	if o, _ := ownerOf(t, inner, notes); o != "user:bob@example.com" {
 		t.Fatalf("re-created by bob, owner = %q", o)
 	}
 }
@@ -315,9 +315,9 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 // binding; a group of groups is walked to a bounded depth, and a cycle admits nobody.
 func TestAGroupAdmitsItsMembers(t *testing.T) {
 	inner := entitytest.Store(t)
-	system := entity.As(inner, entity.SystemPrincipal)
+	system := entity.As(inner, entity.SystemDefault)
 	entity.PolicyOf(system).SetRootDefault(nil)
-	alice := entity.As(system, "alice@example.com")
+	alice := entity.As(system, "user:alice@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -331,22 +331,19 @@ func TestAGroupAdmitsItsMembers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	group("payments", "oscar@example.com", entity.GroupRef("security").String())
-	group("security", "carol@example.com", entity.RunnerKind)
+	group("payments", "user:oscar@example.com", entity.GroupRef("security").String())
+	group("security", "user:carol@example.com", "runner:*")
 	group("loop-a", entity.GroupRef("loop-b").String())
 	group("loop-b", entity.GroupRef("loop-a").String())
 	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.Read: {entity.GroupRef("payments").String(), entity.GroupRef("loop-a").String()}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.Note(system, entity.RunnerKind, "bot"); err != nil {
-		t.Fatal(err)
-	}
 	for who, want := range map[string]bool{
-		"oscar@example.com": true,  // a member
-		"carol@example.com":   true,  // a member of a member group
-		"bot":                 true,  // listed under a kind a member group names
-		"bob@example.com":     false, // nobody's member
-		"":                    false, // the unattributed request is not a member of anything
+		"user:oscar@example.com": true,  // a member
+		"user:carol@example.com":   true,  // a member of a member group
+		"runner:bot":               true,  // of a kind a member group names
+		"user:bob@example.com":     false, // nobody's member
+		"":                         false, // the unattributed request is not a member of anything
 	} {
 		if got, _ := entity.Holds(system, who, entity.Read, pr); got != want {
 			t.Errorf("%q reads alice's pr = %v, want %v", who, got, want)
@@ -354,7 +351,7 @@ func TestAGroupAdmitsItsMembers(t *testing.T) {
 	}
 	// Membership moves: taking davido out takes his read.
 	group("payments", entity.GroupRef("security").String())
-	if got, _ := entity.Holds(system, "oscar@example.com", entity.Read, pr); got {
+	if got, _ := entity.Holds(system, "user:oscar@example.com", entity.Read, pr); got {
 		t.Fatal("davido reads after being taken out of the group")
 	}
 }

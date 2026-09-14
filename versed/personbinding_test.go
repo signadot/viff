@@ -48,7 +48,7 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if ok, _ := entity.Holds(srv.Store, "oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
+		if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -56,7 +56,7 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.approvals.payments-owner" {
 		t.Fatalf("the question is owned by %v, want the person's binding", q["resolver"])
 	}
-	if ok, _ := entity.Holds(srv.Store, "oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
+	if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
 		rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
 		t.Fatalf("davido does not hold read-write on the question his binding took: %v", entity.ToObj(rec.Payload))
 	}
@@ -113,10 +113,10 @@ func TestAPersonEscalates(t *testing.T) {
 	if q["reownedWhy"] != "escalated by oscar@example.com: not mine: infra" {
 		t.Fatalf("the handover is not on the record: %v", q["reownedWhy"])
 	}
-	if ok, _ := entity.Holds(srv.Store, "oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
+	if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
 		t.Fatal("davido still holds the question he handed on")
 	}
-	if ok, _ := entity.Holds(srv.Store, "carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
+	if ok, _ := entity.Holds(srv.Store, "user:carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
 		t.Fatal("carol does not hold the question handed to her")
 	}
 

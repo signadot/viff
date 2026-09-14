@@ -98,7 +98,7 @@ func ParseLevels(rec Payload, field string) (levels Levels, present bool, err er
 		if len(names) != len(to.Values) {
 			return nil, true, fmt.Errorf("%s.%s: every grantee is a string", field, name)
 		}
-		levels[l] = names
+		levels[l] = Canonical(names)
 	}
 	return levels, true, nil
 }
@@ -238,7 +238,7 @@ func parseGrant(node []string, v Payload) (Grant, error) {
 		if g.To == nil {
 			g.To = map[Level][]string{}
 		}
-		g.To[l] = names
+		g.To[l] = Canonical(names)
 	}
 	if len(g.To) == 0 {
 		return Grant{}, fmt.Errorf("a grant holds out a level: read, read-write, owner or control")

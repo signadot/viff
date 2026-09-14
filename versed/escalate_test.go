@@ -264,7 +264,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	if got["reownedWhy"] != nil {
 		t.Fatalf("an answered question was moved by its own deadline: %+v", got)
 	}
-	if got["by"] != "verse.resolvers.security.payments-review" {
+	if got["by"] != "via:verse.resolvers.security.payments-review" {
 		t.Fatalf("answered by %v, want the binding that answered in time", got["by"])
 	}
 }
@@ -300,7 +300,7 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 	if got["reownedWhy"] != nil {
 		t.Fatalf("a settled question was handed on anyway: %+v", got)
 	}
-	if got["by"] != "verse.resolvers.security.security-review" || got["status"] != mirror.QuestionAnswered {
+	if got["by"] != "via:verse.resolvers.security.security-review" || got["status"] != mirror.QuestionAnswered {
 		t.Fatalf("the answer did not survive: %+v", got)
 	}
 }

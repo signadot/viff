@@ -35,7 +35,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 		t.Fatal("no id returned from task run")
 	}
 	taskRef := mirror.Ref(sp.ID)
-	if got := owner(t, srv, taskRef); got != "alice@example.com" {
+	if got := owner(t, srv, taskRef); got != "user:alice@example.com" {
 		t.Fatalf("the task is owned by %q, want the requester", got)
 	}
 
@@ -43,7 +43,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 	// nothing else.
 
 	resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json",
-		strings.NewReader(`{"identity":"bot"}`))
+		strings.NewReader(`{"identity":"runner:bot"}`))
 	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 		if ok {
 			grants, _ := entity.ParseGrants(taskRef.Segs(), rec.Payload)
 			for i, g := range grants {
-				if len(g.To[entity.ReadWrite]) > 0 && g.To[entity.ReadWrite][0] == "bot" {
+				if len(g.To[entity.ReadWrite]) > 0 && g.To[entity.ReadWrite][0] == "runner:bot" {
 					bots = &grants[i]
 				}
 			}
@@ -73,16 +73,16 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if bots == nil || bots.Below || strings.Join(bots.At, ".") != strings.Join(taskRef.Segs(), ".") ||
-		len(bots.To[entity.Control]) != 1 || bots.To[entity.Control][0] != "bot" {
+		len(bots.To[entity.Control]) != 1 || bots.To[entity.Control][0] != "runner:bot" {
 		t.Fatalf("the task's grant to bot = %+v; want read-write and control for bot at the task", bots)
 	}
-	if ok, err := entity.Holds(srv.Store, "bot", entity.ReadWrite, taskRef); err != nil || !ok {
+	if ok, err := entity.Holds(srv.Store, "runner:bot", entity.ReadWrite, taskRef); err != nil || !ok {
 		t.Fatalf("bot holds read-write on its task: %v %v", ok, err)
 	}
-	if ok, _ := entity.Holds(srv.Store, "bot", entity.OwnerLevel, taskRef); ok {
+	if ok, _ := entity.Holds(srv.Store, "runner:bot", entity.OwnerLevel, taskRef); ok {
 		t.Fatal("bot owns the task")
 	}
-	if ok, _ := entity.Holds(srv.Store, "bot", entity.ReadWrite, mirror.QuestionRef(sp.ID+"~d1")); ok {
+	if ok, _ := entity.Holds(srv.Store, "runner:bot", entity.ReadWrite, mirror.QuestionRef(sp.ID+"~d1")); ok {
 		t.Fatal("bot's grant reaches a question its task would raise")
 	}
 	if _, ok, err := srv.Store.Get(entity.PrincipalRef(entity.RunnerKind, "bot")); err != nil || !ok {
@@ -130,7 +130,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 			}
 		}
 	}
-	if by != "bot" {
+	if by != "runner:bot" {
 		t.Fatalf("the report's commit is written by %q, want the worker", by)
 	}
 	if refused, _ := entity.PolicyOf(srv.Store).Refusals(); len(refused) != 0 {

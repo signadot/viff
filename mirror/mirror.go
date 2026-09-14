@@ -317,7 +317,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// the reports are written as it from the first frame: the assignment is the owner's act,
 	// made at the moment of assigning.
 	if m.As != "" {
-		claimed(asPrincipal(store, entity.SystemPrincipal), id, st, m.As)
+		claimed(asPrincipal(store, entity.SystemMirror), id, st, m.As)
 	}
 	go func() {
 		// A stream ending is not the same fact as a task ending, and treating them as one
@@ -388,7 +388,7 @@ func claimed(system entity.Store, id string, st entity.Obj, by string) {
 	if entity.PolicyOf(system) == nil {
 		return
 	}
-	_ = entity.Note(system, entity.RunnerKind, by)
+	_ = entity.Note(system, by)
 	refs := []entity.Ref{Ref(id)}
 	if occ := occurrenceOf(st); occ > 0 {
 		refs = append(refs, RunRef(id, occ))
@@ -420,12 +420,13 @@ func backoff(attempt int) time.Duration {
 // WHO WRITES. The task's record is written as the party working the task: the spawn's
 // principal until a worker claims it, and the worker from then on — the claimant, named by the
 // broker on the claim's running frame, and remembered across a reconnect in claimant. A
-// question is posed and settled as the SYSTEM whoever is working the task, since versed poses
-// it and the decision that settles it travelled by the answer path, where the answerer was
-// checked; the worker's grant is on its task and must reach no question, and a projection
-// written as the worker would pass exactly the check that grant is meant to fail.
+// question is posed and settled as the docket (entity.SystemDocket) whoever is working the task,
+// since versed poses it and the decision that settles it travelled by the answer path, where the
+// answerer was checked; the worker's grant is on its task and must reach no question, and a
+// projection written as the worker would pass exactly the check that grant is meant to fail. The
+// worker's grant at the claim is the mirror's own act (entity.SystemMirror).
 func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame, claimant *string) (ended, heard bool) {
-	system := asPrincipal(store, entity.SystemPrincipal)
+	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
 	if *claimant != "" {
 		store = asPrincipal(store, *claimant)
 	}
@@ -464,7 +465,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if owner == "" && subject != "" && m.Owner != nil {
 					owner = m.Owner(subject)
 				}
-				PostFrameQuestion(system, ev, id, subject, owner, answerersFor(m.Gates, ev))
+				PostFrameQuestion(docket, ev, id, subject, owner, answerersFor(m.Gates, ev))
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
@@ -480,7 +481,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
 				if st["pending"] != nil {
-					AnswerQuestion(system, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+					AnswerQuestion(docket, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
 				}
 				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool
@@ -507,7 +508,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					// to its runner is written now, naming the party that actually turned up,
 					// and every report from here on is written as them.
 					if ev.Text == string(task.Running) && ev.By != "" && *claimant == "" {
-						claimed(system, id, st, ev.By)
+						claimed(projector, id, st, ev.By)
 						*claimant = ev.By
 						store = asPrincipal(store, ev.By)
 					}
@@ -530,7 +531,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// A brokered task ends with an EvStatus and no EvDecision, so
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
-						OrphanQuestions(system, id)
+						OrphanQuestions(docket, id)
 						return true, heard // the TASK ended; the entity remains, terminal
 					}
 				}

@@ -278,8 +278,8 @@ next_steps() {
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
 	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub_at"
 	case "$1" in
-	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as you\n' "$c" "$c" ;;
-	vote) printf '  %s gates                  ← it is waiting for a tally\n  %s gate approve <id> --as alice\n  %s gate approve <id> --as bob\n' "$c" "$c" "$c" ;;
+	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id> --as user:you\n' "$c" "$c" ;;
+	vote) printf '  %s gates                  ← it is waiting for a tally\n  %s gate approve <id> --as user:alice\n  %s gate approve <id> --as user:bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)

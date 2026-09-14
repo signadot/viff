@@ -99,7 +99,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 
 	// A worker claims the task and reports a gate it is blocked on — which is how a
 	// decision becomes open and resolvable.
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "runner:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
@@ -150,7 +150,7 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "runner:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}
@@ -241,7 +241,7 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	work := httptest.NewServer(srv.BrokerHandler())
 	defer work.Close()
 
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "human:scott"})
+	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "runner:scott"})
 	var cl struct {
 		Epoch int64 `tony:"field=epoch"`
 	}

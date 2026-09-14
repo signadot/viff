@@ -39,7 +39,7 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 		t.Fatal("no id from the spawn")
 	}
 	taskRef := mirror.Ref(sp.ID)
-	if got := owner(t, srv, taskRef); got != "alice@example.com" {
+	if got := owner(t, srv, taskRef); got != "user:alice@example.com" {
 		t.Fatalf("the task is owned by %q, want the requester", got)
 	}
 
@@ -47,13 +47,13 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	granted := false
 	for time.Now().Before(deadline) && !granted {
-		granted, _ = entity.Holds(srv.Store, "gpu-bot", entity.Control, taskRef)
+		granted, _ = entity.Holds(srv.Store, "runner:gpu-bot", entity.Control, taskRef)
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !granted {
 		t.Fatal("gpu-bot was not granted control of the task it runs")
 	}
-	if ok, _ := entity.Holds(srv.Store, "gpu-bot", entity.OwnerLevel, taskRef); ok {
+	if ok, _ := entity.Holds(srv.Store, "runner:gpu-bot", entity.OwnerLevel, taskRef); ok {
 		t.Fatal("gpu-bot owns the task")
 	}
 	if _, ok, _ := srv.Store.Get(entity.PrincipalRef(entity.RunnerKind, "gpu-bot")); !ok {
@@ -61,21 +61,21 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	}
 	by := ""
 	deadline = time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && by != "gpu-bot" {
+	for time.Now().Before(deadline) && by != "runner:gpu-bot" {
 		commits, err := srv.Store.Since(from)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, c := range commits {
 			for _, r := range c.ChangedAt(len(taskRef.Segs())) {
-				if r == taskRef && c.Author == "gpu-bot" {
+				if r == taskRef && c.Author == "runner:gpu-bot" {
 					by = c.Author
 				}
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if by != "gpu-bot" {
+	if by != "runner:gpu-bot" {
 		t.Fatal("no report on the task was written as the runner")
 	}
 	if refused, _ := entity.PolicyOf(srv.Store).Refusals(); len(refused) != 0 {
@@ -102,7 +102,7 @@ func TestAWorkerRaisedGateIsHeldOutToWhomItNames(t *testing.T) {
 		}
 		decodeResp(t, resp, &sp)
 		resp.Body.Close()
-		resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json", strings.NewReader(`{"identity":"bot"}`))
+		resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json", strings.NewReader(`{"identity":"runner:bot"}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestAWorkerRaisedGateIsHeldOutToWhomItNames(t *testing.T) {
 	id, epoch := spawn(`{prompt: "deploy", driver: human, runner: broker}`)
 	qid := id + "~d1"
 	raise(id, epoch, "unsure", qid, "ani@example.com")
-	if got := holders(qid); len(got) != 1 || got[0] != "ani@example.com" {
+	if got := holders(qid); len(got) != 1 || got[0] != "user:ani@example.com" {
 		t.Fatalf("held out to %v, want ani", got)
 	}
 	resp := answerAs(t, "bob@example.com", ts.URL, qid)
@@ -162,10 +162,10 @@ func TestAWorkerRaisedGateIsHeldOutToWhomItNames(t *testing.T) {
 		gates: [{name: push, mode: ask, answerers: [oscar@example.com]}]}`)
 	qid = id + "~d1"
 	raise(id, epoch, "push", qid, "bot")
-	if got := holders(qid); len(got) != 1 || got[0] != "oscar@example.com" {
+	if got := holders(qid); len(got) != 1 || got[0] != "user:oscar@example.com" {
 		t.Fatalf("held out to %v, want davido by the spawn's gate", got)
 	}
-	resp = answerAs(t, "bot", ts.URL, qid)
+	resp = answerAs(t, "runner:bot", ts.URL, qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("the worker answered the policy gate it raised: %s", resp.Status)

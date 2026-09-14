@@ -36,7 +36,7 @@ func TestAGateHeldOutToAGroup(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("group add: %s", resp.Status)
 	}
-	if got := owner(t, srv, entity.GroupRef("payments")); got != "walter@example.com" {
+	if got := owner(t, srv, entity.GroupRef("payments")); got != "user:walter@example.com" {
 		t.Fatalf("the group is owned by %q", got)
 	}
 	resp = groupAs(t, "bob@example.com", ts.URL, "payments", "bob@example.com")

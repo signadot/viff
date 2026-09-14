@@ -18,6 +18,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
 )
 
@@ -512,10 +513,14 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		}
 		calls, prompt = cs, ""
 	}
+	by, err := principal(cfg.As)
+	if err != nil {
+		return err
+	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
-		Runner: cfg.Runner, Environment: cfg.Environment, Principal: principal(cfg.As),
+		Runner: cfg.Runner, Environment: cfg.Environment, Principal: by,
 		Answer: contract,
 	})
 	if err != nil {
@@ -540,7 +545,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
 		// stream continues to completion. Ctrl-c to detach; the task keeps running.
-		if err := streamEvents(cc, sp.ID, principal(cfg.As)); err != nil {
+		if err := streamEvents(cc, sp.ID, by); err != nil {
 			return err
 		}
 	}
@@ -667,7 +672,11 @@ func (cfg *taskAttachConfig) run(cc *cli.Context, args []string) error {
 	if pid, _, ok := strings.Cut(id, task.GateSep); ok {
 		return fmt.Errorf("task attach takes a task id, but %q is a gate id — did you mean %q?", id, pid)
 	}
-	return streamEvents(cc, id, principal(cfg.As))
+	by, err := principal(cfg.As)
+	if err != nil {
+		return err
+	}
+	return streamEvents(cc, id, by)
 }
 
 // streamEvents streams a task's read plane (SSE) to stdout — the agent's words, each
@@ -957,7 +966,11 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("%w: task vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
 	}
-	resp, err := httpPut("/tasks/"+id+"/vector", api.SetVector{Vector: &vec, By: principal(cfg.As)})
+	by, err := principal(cfg.As)
+	if err != nil {
+		return err
+	}
+	resp, err := httpPut("/tasks/"+id+"/vector", api.SetVector{Vector: &vec, By: by})
 	if err != nil {
 		return fmt.Errorf("task vector: %w", err)
 	}
@@ -977,32 +990,45 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 // process, so a variable is the whole of the plumbing a per-request field would need.
 var asOverride string
 
-// principal resolves who a command acts as: its --as where it took one, else the config's
-// `user:`. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
-// `--as bob` is also a request MADE by bob, and the two cannot disagree.
-func principal(as string) string {
+// principal resolves who a command acts as, spelled in the grammar (entity.Grammar): its --as
+// where it took one, else the config's `agent:` as `agent:<name>`, else its `user:`. --as and
+// `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused
+// rather than guessed at, so `--as coderunner` is an error and `--as runner:coderunner` a
+// worker. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
+// `--as bob@example.com` is also a request MADE by bob, and the two cannot disagree.
+func principal(as string) (string, error) {
 	if as != "" {
-		asOverride = as
+		g, err := entity.ParsePrincipal(as)
+		if err != nil {
+			return "", fmt.Errorf("--as %w", err)
+		}
+		asOverride = g.String()
 	}
 	if asOverride != "" {
-		return asOverride
+		return asOverride, nil
 	}
-	if appCfg != nil {
-		if appCfg.Agent != "" {
-			return appCfg.Agent
+	if appCfg == nil {
+		return "", nil
+	}
+	if appCfg.Agent != "" {
+		name := appCfg.Agent
+		if entity.KindOf(name) == "" {
+			name = entity.AgentKind + ":" + name
 		}
-		return appCfg.User
+		g, err := entity.ParsePrincipal(name)
+		if err != nil || g.Kind != entity.AgentKind {
+			return "", fmt.Errorf("config agent: %q is not an agent's name — %s", appCfg.Agent, entity.Grammar())
+		}
+		return g.String(), nil
 	}
-	return ""
-}
-
-// principalKind is the kind the principal acts under: `agent` when the CLI is configured as an
-// operator agent and no --as named a person instead, and "" — a user — otherwise.
-func principalKind() string {
-	if asOverride == "" && appCfg != nil && appCfg.Agent != "" {
-		return "agent"
+	if appCfg.User != "" {
+		g, err := entity.ParsePrincipal(appCfg.User)
+		if err != nil {
+			return "", fmt.Errorf("config user: %w", err)
+		}
+		return g.String(), nil
 	}
-	return ""
+	return "", nil
 }
 
 // requireAs refuses an unattributed action. A claim, a ballot and a report all name who
@@ -1010,8 +1036,8 @@ func principalKind() string {
 // obviously load-bearing prints the usage rather than a bare line. What it answers is the
 // principal to act as: --as, or the config's user when the flag was left off.
 func requireAs(as, noun, why string) (string, error) {
-	if p := principal(as); p != "" {
-		return p, nil
+	if p, err := principal(as); err != nil || p != "" {
+		return p, err
 	}
 	return "", fmt.Errorf("%w: --as <%s> is required (%s): pass it, or set `user:` in the verse config", cli.ErrUsage, noun, why)
 }

@@ -295,7 +295,7 @@ answer() {
 	if [ -z "$inst" ]; then
 		die "no resolver owns this question — it is ⊤'s, so a person answers it:
       $BIN gates
-      $BIN gate y <id> --as human:you"
+      $BIN gate y <id> --as user:you"
 	fi
 	q=$(question_id)
 	[ -n "$q" ] || die "no open question"
@@ -349,8 +349,8 @@ run_act() {
 			"$0 state" "reownedWhy: overdue, and the clock cleared for its new owner"
 		;;
 	exclusive)
-		next "$BIN gate y $q --as human:you" "refused, and told who owns it" \
-			"$BIN gate y $q --as human:you --override" "accepted, and the record names you both" \
+		next "$BIN gate y $q --as user:you" "refused, and told who owns it" \
+			"$BIN gate y $q --as user:you --override" "accepted, and the record names you both" \
 			"$0 state" "overrode: beside by:"
 		;;
 	esac

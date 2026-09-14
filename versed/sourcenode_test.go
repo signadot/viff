@@ -52,7 +52,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		t.Fatalf("its claims name no node: %+v", e.Owns)
 	}
 	for _, node := range nodes {
-		if o, ok := ownerOfRecord(t, raw, node); !ok || o != "alice@example.com" {
+		if o, ok := ownerOfRecord(t, raw, node); !ok || o != "user:alice@example.com" {
 			t.Fatalf("node %s is owned by %q (record %v), want its installer", node, o, ok)
 		}
 	}
@@ -62,7 +62,27 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	if _, ok := ownerOfRecord(t, raw, head); ok {
 		t.Fatalf("a reflected entity has an owner record of its own")
 	}
-	if ok, err := entity.Holds(srv.Store, "alice@example.com", entity.OwnerLevel, head); err != nil || !ok {
+	// Written via the source, which is how it comes to be alice's.
+	commits, err := raw.Since(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reflected := 0
+	for _, c := range commits {
+		for _, r := range c.ChangedAt(len(head.Segs())) {
+			if r != head {
+				continue
+			}
+			reflected++
+			if c.Author != entity.Via(source.Ref("git", "first")) {
+				t.Fatalf("a reflection of %s was written by %q, want via the source", head, c.Author)
+			}
+		}
+	}
+	if reflected == 0 {
+		t.Fatalf("no commit reflected %s", head)
+	}
+	if ok, err := entity.Holds(srv.Store, "user:alice@example.com", entity.OwnerLevel, head); err != nil || !ok {
 		t.Fatalf("alice does not own what her source reflects: %v %v", ok, err)
 	}
 	resp := putAs(t, "bob@example.com", ts.URL, head.String(), entity.Obj{"sha": "forged"}.Payload())
@@ -82,7 +102,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	if code, msg := install("bob@example.com", "bobs", other); code != http.StatusCreated {
 		t.Fatalf("bob's install of another repository = %d: %s", code, msg)
 	}
-	if o, ok := ownerOfRecord(t, raw, entity.RefAt(source.GitSystem, baseOf(other))); !ok || o != "bob@example.com" {
+	if o, ok := ownerOfRecord(t, raw, entity.RefAt(source.GitSystem, baseOf(other))); !ok || o != "user:bob@example.com" {
 		t.Fatalf("bob's repository is owned by %q (record %v)", o, ok)
 	}
 }

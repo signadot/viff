@@ -54,14 +54,14 @@ type Config struct {
 	Addr  string `tony:"field=addr,omitzero"`
 	Scope string `tony:"field=scope,omitzero"`
 	// User is the principal this CLI acts as: who every request is made by, and so who every
-	// write it causes is attributed to and who owns what it creates. An email for a person;
-	// a runner runs under its own name. Self-asserted — there is no login here — and `--as`
-	// overrides it on the commands that take one. Env: VERSE_USER.
+	// write it causes is attributed to and who owns what it creates. An email for a person,
+	// which goes on the wire as `user:<email>`; a principal of another kind spelled as one
+	// (`runner:coderunner`). Self-asserted — there is no login here — and `--as` overrides it on
+	// the commands that take one. Env: VERSE_USER.
 	User string `tony:"field=user,omitzero"`
 	// Agent is the operator agent this CLI acts as, when it is one: a harness driving verse
 	// through the api is a principal of its own, and not the person whose terminal it runs in.
-	// When set, every request is made as the agent (under its own kind, api.PrincipalKindHeader)
-	// rather than as User; `--as` still overrides it where a command takes one. Env: VERSE_AGENT.
+	// When set, every request is made as `agent:<name>` rather than as User; `--as` still overrides it where a command takes one. Env: VERSE_AGENT.
 	Agent string `tony:"field=agent,omitzero"`
 	// SystemCharter is the path of a charter file versed installs at start AS THE SYSTEM — the
 	// rules the deployment itself stands behind, such as the one that watches policy change.

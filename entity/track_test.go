@@ -38,7 +38,7 @@ func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
 	raw := entitytest.Store(t)
 	inner := &reads{Store: raw}
 	pr := entity.RefAt("demo", "pr", "1")
-	first := entity.As(entity.As(inner, entity.SystemPrincipal), "alice@example.com")
+	first := entity.As(entity.As(inner, entity.SystemDefault), "user:alice@example.com")
 	if _, _, err := first.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +47,11 @@ func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
 	}
 
 	// The next life: a fresh view over the same store, the mirror loaded.
-	system := entity.As(inner, entity.SystemPrincipal)
+	system := entity.As(inner, entity.SystemDefault)
 	if err := entity.Track(t.Context(), system); err != nil {
 		t.Fatal(err)
 	}
-	alice := entity.As(system, "alice@example.com")
+	alice := entity.As(system, "user:alice@example.com")
 	reads, writes := inner.mirror.Load(), inner.writes.Load()
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "reviewed"}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -63,8 +63,8 @@ func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
 		t.Fatalf("%d mirror reads for a node whose record the loaded mirror holds, want none", got)
 	}
 	// And the record stands as it was: alice's, so bob is still refused.
-	bob := entity.As(system, "bob@example.com")
-	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); ok {
+	bob := entity.As(system, "user:bob@example.com")
+	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); ok {
 		t.Fatal("bob writes alice's pr")
 	}
 }
@@ -75,8 +75,8 @@ func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
 func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
 	raw := entitytest.Store(t)
 	inner := &reads{Store: raw}
-	system := entity.As(inner, entity.SystemPrincipal)
-	alice, bob := entity.As(system, "alice@example.com"), entity.As(system, "bob@example.com")
+	system := entity.As(inner, entity.SystemDefault)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -90,10 +90,10 @@ func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
 
 	before := inner.mirror.Load()
 	// A fresh address beneath a fresh system: every prefix is a miss, and none is read.
-	if ok, err := entity.Holds(bob, "bob@example.com", entity.OwnerLevel, entity.RefAt("spaces", "bob", "x")); err != nil || !ok {
+	if ok, err := entity.Holds(bob, "user:bob@example.com", entity.OwnerLevel, entity.RefAt("spaces", "bob", "x")); err != nil || !ok {
 		t.Fatalf("bob holds owner at a fresh world address: %v %v", ok, err)
 	}
-	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); ok {
+	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); ok {
 		t.Fatal("bob writes alice's pr")
 	}
 	if _, _, err := bob.Write(entity.Write{At: entity.RefAt("spaces", "bob", "x").At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
@@ -104,56 +104,56 @@ func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
 	}
 
 	// What this process writes to the mirror is what it checks against next.
-	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"bob@example.com"}}}); err != nil {
+	if err := entity.AddGrant(alice, pr, entity.Grant{At: pr.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"user:bob@example.com"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); !ok {
+	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); !ok {
 		t.Fatal("a grant this process wrote is not what it checks against")
 	}
 
 	// What ANOTHER process writes — a second view over the same store, sharing nothing —
 	// arrives on the watch.
-	other := entity.As(raw, entity.SystemPrincipal)
+	other := entity.As(raw, entity.SystemDefault)
 	if err := entity.SetGrants(other, pr, nil); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); !ok {
+		if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); !ok {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, pr); ok {
+	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); ok {
 		t.Fatal("a grant another process withdrew is still honoured")
 	}
 	// And a record another process establishes on a node this view had never seen.
 	notes := entity.RefAt("spaces", "carol", "notes")
-	carol := entity.As(other, "carol@example.com")
+	carol := entity.As(other, "user:carol@example.com")
 	if _, _, err := carol.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, notes); !ok {
+		if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, notes); !ok {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if ok, _ := entity.Holds(bob, "bob@example.com", entity.ReadWrite, notes); ok {
+	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, notes); ok {
 		t.Fatal("carol's record, written by another process, is not seen: bob still holds the open world there")
 	}
 
 	// A whole delete sweeps the records beneath it from the cache, without listing the store.
 	space := entity.RefAt("spaces", "alice")
-	if err := entity.Claim(alice, space, "alice@example.com"); err != nil {
+	if err := entity.Claim(alice, space, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	child := entity.RefAt("spaces", "alice", "c")
 	if _, _, err := alice.Write(entity.Write{At: child.At(), Value: entity.Obj{"n": 3}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.AddGrant(alice, child, entity.Grant{At: child.Segs(), To: map[entity.Level][]string{entity.Read: {"bob@example.com"}}}); err != nil {
+	if err := entity.AddGrant(alice, child, entity.Grant{At: child.Segs(), To: map[entity.Level][]string{entity.Read: {"user:bob@example.com"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := alice.Write(entity.Write{At: space.At()}); err != nil {

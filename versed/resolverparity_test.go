@@ -128,8 +128,8 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	if hand.By != "human:scott" {
 		t.Fatalf("the human's decision is attributed to %q", hand.By)
 	}
-	if res.By != binding {
-		t.Fatalf("the resolver's decision is attributed to %q, want %q", res.By, binding)
+	if res.By != "via:"+binding {
+		t.Fatalf("the resolver's decision is attributed to %q, want via %q", res.By, binding)
 	}
 	// Everything else about the two decisions is the same act.
 	if hand.Proceed != res.Proceed || hand.Tool != res.Tool {
@@ -138,8 +138,8 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 
 	// And both settle their question the same way — the docket cannot tell them apart
 	// either, except by reading who answered.
-	for _, c := range []struct{ task, by string }{{"byhand", "human:scott"}, {"watched", binding}} {
-		q := question(t, srv, c.task+"~d1")
+	for _, c := range []struct{ task, by string }{{"byhand", "human:scott"}, {"watched", "via:" + binding}} {
+		q := settledQuestion(t, srv, c.task+"~d1")
 		if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" || q["by"] != c.by {
 			t.Fatalf("%s settled as %+v", c.task, q)
 		}

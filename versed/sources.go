@@ -597,10 +597,10 @@ func (s *Server) startSource(e source.Entity) error {
 		store = s.Store.Scope(e.Scope)
 	}
 	// AND AS THE SOURCE. A source has no identity of its own: it is a node with an owner, and it
-	// acts as that owner, so what it reflects is written as its record's address and owned by
+	// acts as that owner, so what it reflects is written via its record's address and owned by
 	// whoever installed it. Written as the system, every reflected entity would read as the
 	// verse's own, and the installer answerable for a slice would own nothing in it.
-	store = entity.As(store, ref.String())
+	store = entity.As(store, entity.Via(ref))
 	rf := source.NewReflector(src, store, ResyncEvery)
 	// SEEDED FROM THE REGISTRATION, not from empty. run.lastErr is the comparison recordPass
 	// makes to decide whether anything changed, and it is a belief about what the STORE holds.
