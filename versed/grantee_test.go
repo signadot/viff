@@ -1,6 +1,8 @@
 package versed
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -66,5 +68,42 @@ func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
 	}
 	if by != entity.SystemSeed {
 		t.Fatalf("the seed row was written by %q, want %s", by, entity.SystemSeed)
+	}
+}
+
+// Every edge a grantee is written at reads it in the grammar: a group's member, a person or a
+// group binding's answerer. The old spellings are refused, saying the grammar; the new ones are
+// stored as the grammar spells them.
+func TestTheEdgesRefuseWhatTheGrammarDoesNotRead(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := groupAs(t, "walter@example.com", ts.URL, "release", "ana@example.com", "verse.principal.group.x")
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, entity.Grammar()) {
+		t.Fatalf("a member spelled as a group's address: %s %s", resp.Status, body)
+	}
+	resp = groupAs(t, "walter@example.com", ts.URL, "release", "ana@example.com", "group:qa", "runner:*")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("group add: %s", resp.Status)
+	}
+	e, _, _ := srv.Store.Get(entity.GroupRef("release"))
+	if got := strings.Join(entity.Strs(e.Payload, entity.MembersField), ","); got != "user:ana@example.com,group:qa,runner:*" {
+		t.Fatalf("the members are stored as %s", got)
+	}
+
+	for _, doc := range []string{
+		`{name: p, kind: approvals, byRef: true, method: {driver: person, who: davido}}`,
+		`{name: p, kind: approvals, byRef: true, method: {driver: person, who: "group:qa"}}`,
+		`{name: g, kind: approvals, byRef: true, method: {driver: group, group: verse.principal.group.qa}}`,
+		`{name: g, kind: approvals, byRef: true, method: {driver: group, group: user:ana@example.com}}`,
+	} {
+		resp := installResolver(t, ts.URL, doc)
+		body := readBody(t, resp)
+		if resp.StatusCode/100 == 2 || !strings.Contains(body, "method.") {
+			t.Errorf("%s: %s %s, want a refusal naming the field", doc, resp.Status, body)
+		}
 	}
 }

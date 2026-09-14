@@ -71,10 +71,38 @@ const DefaultField = "default"
 // Levels is what a default holds: grantees by level, the levels of a grant with no `at`.
 type Levels map[Level][]string
 
-// ParseLevels reads grantees by level out of an object: `{read: ["*"], control: [bot]}`.
+// ParseLevels reads grantees by level out of an object: `{read: ["*"], control: [runner:bot]}`.
 // present reports whether the field was there at all, since `{}` and absence say different
-// things — nothing, and inherit.
+// things — nothing, and inherit. Every grantee is read in the grammar and stored as it spells
+// one; a name it does not read is refused where it is typed.
 func ParseLevels(rec Payload, field string) (levels Levels, present bool, err error) {
+	return parseLevels(rec, field, grantees)
+}
+
+// readLevels is ParseLevels over what a record already holds: a name the grammar does not read
+// is kept as written, so the check meets it, admits nobody by it and says so.
+func readLevels(rec Payload, field string) (Levels, bool, error) {
+	return parseLevels(rec, field, keepNames)
+}
+
+// grantees reads a list of grantee names in the grammar, canonically.
+func grantees(field string, names []string) ([]string, error) {
+	out := make([]string, len(names))
+	for i, n := range names {
+		g, err := ParseGrantee(n)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		out[i] = g.String()
+	}
+	return out, nil
+}
+
+// keepNames is grantees for a stored record: every name that parses canonically, and the rest
+// as written.
+func keepNames(_ string, names []string) ([]string, error) { return Canonical(names), nil }
+
+func parseLevels(rec Payload, field string, read func(string, []string) ([]string, error)) (levels Levels, present bool, err error) {
 	f := ir.Uncomment(Get(rec, field))
 	if f == nil {
 		return nil, false, nil
@@ -98,7 +126,9 @@ func ParseLevels(rec Payload, field string) (levels Levels, present bool, err er
 		if len(names) != len(to.Values) {
 			return nil, true, fmt.Errorf("%s.%s: every grantee is a string", field, name)
 		}
-		levels[l] = Canonical(names)
+		if levels[l], err = read(field+"."+name, names); err != nil {
+			return nil, true, err
+		}
 	}
 	return levels, true, nil
 }
@@ -150,9 +180,20 @@ func (g Grant) Covers(segs []string) bool {
 // ParseGrants reads a record's grants field, for the record at node: a line with no `at` is
 // about that node. A record with none has nil grants and no error; a line that cannot be read
 // is an error naming it, so a policy edit that would silently grant nothing is refused where
-// it is written rather than discovered where it is checked. With no node — a caller holding a
-// grants field that belongs nowhere yet — every line has to say where it is.
+// it is written rather than discovered where it is checked — a grantee the grammar does not read
+// included. With no node — a caller holding a grants field that belongs nowhere yet — every line
+// has to say where it is.
 func ParseGrants(node []string, rec Payload) ([]Grant, error) {
+	return parseGrants(node, rec, grantees)
+}
+
+// readGrants is ParseGrants over what a record already holds, keeping a name the grammar does not
+// read as written (readLevels), so a record rewritten around one does not lose its other lines.
+func readGrants(node []string, rec Payload) ([]Grant, error) {
+	return parseGrants(node, rec, keepNames)
+}
+
+func parseGrants(node []string, rec Payload, read func(string, []string) ([]string, error)) ([]Grant, error) {
 	f := ir.Uncomment(Get(rec, GrantsField))
 	if f == nil {
 		return nil, nil
@@ -162,7 +203,7 @@ func ParseGrants(node []string, rec Payload) ([]Grant, error) {
 	}
 	var out []Grant
 	for i, v := range f.Values {
-		g, err := parseGrant(node, v)
+		g, err := parseGrant(node, v, read)
 		if err != nil {
 			return nil, fmt.Errorf("%s[%d]: %w", GrantsField, i, err)
 		}
@@ -171,7 +212,7 @@ func ParseGrants(node []string, rec Payload) ([]Grant, error) {
 	return out, nil
 }
 
-func parseGrant(node []string, v Payload) (Grant, error) {
+func parseGrant(node []string, v Payload, read func(string, []string) ([]string, error)) (Grant, error) {
 	v = ir.Uncomment(v)
 	if v == nil || v.Type != ir.ObjectType {
 		return Grant{}, fmt.Errorf("a grant is an object holding out a level, with `at` when it is not about this node")
@@ -229,16 +270,20 @@ func parseGrant(node []string, v Payload) (Grant, error) {
 			continue
 		}
 		if to.Type != ir.ArrayType {
-			return Grant{}, fmt.Errorf("%s: a list of grantees — principals, `*`, or a principal kind", l)
+			return Grant{}, fmt.Errorf("%s: a list of grantees — %s", l, Grammar())
 		}
 		names := Strs(v, string(l))
 		if len(names) != len(to.Values) {
 			return Grant{}, fmt.Errorf("%s: every grantee is a string", l)
 		}
+		kept, err := read(string(l), names)
+		if err != nil {
+			return Grant{}, err
+		}
 		if g.To == nil {
 			g.To = map[Level][]string{}
 		}
-		g.To[l] = Canonical(names)
+		g.To[l] = kept
 	}
 	if len(g.To) == 0 {
 		return Grant{}, fmt.Errorf("a grant holds out a level: read, read-write, owner or control")

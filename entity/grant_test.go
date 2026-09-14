@@ -20,13 +20,14 @@ func mustParse(t *testing.T, src string) entity.Payload {
 	return p
 }
 
-// A grant's `at` is a path with at most a trailing `*`, spelled as a list or a kinded path, and
-// a line that grants nothing readable is refused where it is written.
+// A grant's `at` is a path with at most a trailing `*`, spelled as a list or a kinded path, its
+// grantees are in the grammar and stored as it spells them, and a line that grants nothing
+// readable is refused where it is written.
 func TestParseGrants(t *testing.T) {
 	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
 	  {at: [verse, task, instance, "*"], owner: ["*"]},
 	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, "user:*"]},
-	  {at: verse.task.instance.t1, read-write: [bot], control: [bot]},
+	  {at: verse.task.instance.t1, read-write: [runner:bot], control: [runner:bot]},
 	]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +38,8 @@ func TestParseGrants(t *testing.T) {
 	if !gs[0].Below || strings.Join(gs[0].At, ".") != "verse.task.instance" || gs[0].To[entity.OwnerLevel][0] != "*" {
 		t.Fatalf("list spelling: %+v", gs[0])
 	}
-	if gs[1].Below || strings.Join(gs[1].At, "|") != "spaces|walter@example.com|shared" {
+	if gs[1].Below || strings.Join(gs[1].At, "|") != "spaces|walter@example.com|shared" ||
+		strings.Join(gs[1].To[entity.ReadWrite], ",") != "user:ana@example.com,user:*" {
 		t.Fatalf("kinded-path spelling: %+v", gs[1])
 	}
 	if gs[2].Below || len(gs[2].To[entity.Control]) != 1 {
@@ -45,7 +47,7 @@ func TestParseGrants(t *testing.T) {
 	}
 	// Round trip.
 	back, err := entity.ParseGrants(nil, entity.Obj{entity.GrantsField: entity.GrantsPayload(nil, gs)}.Payload())
-	if err != nil || len(back) != 3 || !back[0].Below || back[2].To[entity.Control][0] != "bot" {
+	if err != nil || len(back) != 3 || !back[0].Below || back[2].To[entity.Control][0] != "runner:bot" {
 		t.Fatalf("round trip: %+v %v", back, err)
 	}
 
@@ -54,7 +56,7 @@ func TestParseGrants(t *testing.T) {
 	// for no node, it is.
 	node := []string{"verse", "task", "instance", "t1"}
 	own, err := entity.ParseGrants(node, mustParse(t, `{grants: [
-	  {read-write: [bot], control: [bot]},
+	  {read-write: [runner:bot], control: [runner:bot]},
 	  {below: true, owner: ["*"]},
 	  {at: [verse, task, instance, t1], read: ["*"]},
 	]}`))
@@ -91,6 +93,21 @@ func TestParseGrants(t *testing.T) {
 		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil {
 			t.Errorf("%s: parsed, want a refusal", bad)
 		}
+	}
+	// A grantee the grammar does not read is refused where it is typed, in a grant as in a
+	// default, and the refusal says the grammar.
+	for _, bad := range []string{
+		`{grants: [{at: [demo], read: [user]}]}`,
+		`{grants: [{at: [demo], read: [verse.principal.group.release]}]}`,
+		`{grants: [{at: [demo], control: [coderunner]}]}`,
+	} {
+		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil || !strings.Contains(err.Error(), entity.Grammar()) {
+			t.Errorf("%s: %v, want a refusal quoting the grammar", bad, err)
+		}
+	}
+	if _, _, err := entity.ParseLevels(mustParse(t, `{default: {read-write: [agent]}}`), "default"); err == nil ||
+		!strings.Contains(err.Error(), entity.Grammar()) {
+		t.Errorf("a default naming a bare kind: %v, want a refusal quoting the grammar", err)
 	}
 	if gs, err := entity.ParseGrants(nil, mustParse(t, `{owner: alice}`)); err != nil || gs != nil {
 		t.Fatalf("a record with no grants: %v %v", gs, err)

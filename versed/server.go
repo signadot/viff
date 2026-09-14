@@ -1924,9 +1924,9 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 // putGroup writes a group — its maker's, by the seed's grant beneath verse.principal.group —
-// or replaces the members of one its requester owns. A member is taken as written: a
-// principal, a kind, `*`, another group's address or a binding's; membership is read when it
-// is checked, so a group may name a member nobody has met.
+// or replaces the members of one its requester owns. A member is a grantee in the grammar — a
+// principal, `<kind>:*`, `*`, `group:<name>` or a place acting — stored as the grammar spells
+// it; membership is read when it is checked, so a group may name a member nobody has met.
 func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 	var body api.Group
 	if err := codec.Read(r, &body); err != nil {
@@ -1937,17 +1937,21 @@ func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a group has a name", http.StatusBadRequest)
 		return
 	}
-	for _, m := range body.Members {
-		if m == "" || strings.ContainsAny(m, " \t\n") {
-			http.Error(w, fmt.Sprintf("member %q: a member is a principal, a kind, `*`, or an address", m), http.StatusBadRequest)
-			return
-		}
+	if g, err := entity.ParseGrantee(entity.GroupKind + ":" + body.Name); err != nil || g.Kind != entity.GroupKind {
+		http.Error(w, fmt.Sprintf("group %q: a group's name is what follows group: in a grantee, and "+
+			"holds no space or `*`", body.Name), http.StatusBadRequest)
+		return
 	}
-	ref := entity.GroupRef(body.Name)
 	members := make([]any, 0, len(body.Members))
 	for _, m := range body.Members {
-		members = append(members, m)
+		g, err := entity.ParseGrantee(m)
+		if err != nil {
+			http.Error(w, "member "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		members = append(members, g.String())
 	}
+	ref := entity.GroupRef(body.Name)
 	_, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: entity.Obj{entity.MembersField: members}.Payload()})
 	if refused(w, err) {
 		return
@@ -1955,7 +1959,7 @@ func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String(), "members": body.Members})
+	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String(), "members": members})
 }
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {

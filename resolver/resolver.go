@@ -147,10 +147,11 @@ type Method struct {
 	// docket; `group`, a group's members each as themselves. `llm` and `script` are drivers
 	// over the url protocol and are not built.
 	Driver string `tony:"field=driver"`
-	// Who is the person, for `driver: person`: the principal the question is held out to.
+	// Who is the person, for `driver: person`: the principal the question is held out to, in
+	// the grammar (entity.Grammar) — `user:<email>`, or the bare email.
 	Who string `tony:"field=who,omitzero"`
-	// Group is the group's address, for `driver: group`: `verse.group.<name>`, whose members
-	// the question is held out to.
+	// Group is the group, for `driver: group`: `group:<name>`, whose members the question is
+	// held out to.
 	Group string `tony:"field=group,omitzero"`
 	// URL is where the service is, so verse can hand it a capability and an operator can see
 	// what is bound. It is not an endpoint verse posts questions to — the service dials out
@@ -234,10 +235,18 @@ func (r Resolver) Check() error {
 			return fmt.Errorf("resolver %q: method.who is required for driver person — the "+
 				"principal the question is held out to", r.Name)
 		}
+		if _, err := entity.ParsePrincipal(r.Method.Who); err != nil {
+			return fmt.Errorf("resolver %q: method.who %w", r.Name, err)
+		}
 	case DriverGroup:
 		if r.Method.Group == "" {
 			return fmt.Errorf("resolver %q: method.group is required for driver group — the "+
-				"group's address, verse.group.<name>", r.Name)
+				"group, group:<name>", r.Name)
+		}
+		if g, err := entity.ParseGrantee(r.Method.Group); err != nil {
+			return fmt.Errorf("resolver %q: method.group %w", r.Name, err)
+		} else if g.Kind != entity.GroupKind {
+			return fmt.Errorf("resolver %q: method.group %q is not a group: group:<name>", r.Name, r.Method.Group)
 		}
 	case "":
 		return fmt.Errorf("resolver %q: method.driver is required", r.Name)
@@ -257,15 +266,20 @@ const (
 	DriverGroup  = "group"
 )
 
-// Answerer is who a question bound to this binding is held out to: the binding, `via:` its
-// address, for a service, which acts as the binding through its instance; the person, or the
-// group's address, otherwise, since they answer as themselves from the docket.
+// Answerer is who a question bound to this binding is held out to, as the grammar spells it: the
+// binding, `via:` its address, for a service, which acts as the binding through its instance;
+// the person, or the group, otherwise, since they answer as themselves from the docket.
 func (r Resolver) Answerer() string {
 	switch r.Method.Driver {
-	case DriverPerson:
-		return r.Method.Who
-	case DriverGroup:
-		return r.Method.Group
+	case DriverPerson, DriverGroup:
+		name := r.Method.Who
+		if r.Method.Driver == DriverGroup {
+			name = r.Method.Group
+		}
+		if g, err := entity.ParseGrantee(name); err == nil {
+			return g.String()
+		}
+		return name // refused at install (Check); one that got past names nobody
 	}
 	return entity.Via(Ref(r.Kind, r.Name))
 }

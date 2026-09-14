@@ -52,8 +52,16 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	if _, err := runCLI(t, "perms", "spaces", "scott"); err == nil {
 		t.Fatal("ana read the record of a place she may not read")
 	}
-	// What she may read, she may see the record of: who owns it and what it holds out.
+	// A grantee the grammar does not read is refused where it is typed, whichever flag it rides.
 	t.Setenv("VERSE_USER", "walter@example.com")
+	for _, flag := range [][]string{{"--grant", `{read: [user]}`}, {"--revoke", `{read: [agent]}`},
+		{"--default", `{read: [coderunner]}`}, {"--grants", `[{read: [verse.principal.group.release]}]`}} {
+		if _, err := runCLI(t, append([]string{"perms", "spaces", "scott", "notes"}, flag...)...); err == nil ||
+			!strings.Contains(err.Error(), "a bare word names nothing") && !strings.Contains(err.Error(), "is no person") {
+			t.Errorf("perms %s: %v, want the grammar's refusal", flag, err)
+		}
+	}
+	// What she may read, she may see the record of: who owns it and what it holds out.
 	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read: [ana@example.com]}`); err != nil {
 		t.Fatalf("grant: %v", err)
 	}

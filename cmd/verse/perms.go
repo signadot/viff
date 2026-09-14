@@ -14,7 +14,7 @@ import (
 // permsConfig is `verse perms`: a node's permissions, read and set by its owner.
 type permsConfig struct {
 	*cli.Command
-	Default string `cli:"name=default desc='what a node created beneath this one holds out, as grantees by level: {read: [\"*\"]}; {} for nothing; null to inherit again'"`
+	Default string `cli:"name=default desc='what a node created beneath this one holds out, as grantees by level: {read: [\"*\"], read-write: [user:*]}; {} for nothing; null to inherit again'"`
 	Grants  string `cli:"name=grants desc='what this node holds out, replacing the list: [{read: […]}] is about the node, {below: true, …} what is beneath it, {at: …, …} another path; [] for nothing'"`
 	Grant   string `cli:"name=grant desc='one line to add at this node, as grantees by level: {read: [ana@example.com]}'"`
 	Below   bool   `cli:"name=below desc='the --grant covers what is beneath the node, not the node itself'"`
@@ -28,7 +28,7 @@ func permsCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "perms").
-		WithSynopsis("perms — permissions: bare lists the records of every node you may read; perms <path…> reads one, and sets it as its owner with [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}']").
+		WithSynopsis("perms — permissions: bare lists the records of every node you may read; perms <path…> reads one, and sets it as its owner with [--default '{…}'] [--grants '[…]'] [--grant '{…}' [--below]] [--revoke '{…}'] — a grantee is user:<email> (or the bare email), agent:<name>, runner:<identity>, via:<address>, <kind>:*, group:<name>, or *").
 		// --if/--trim beside its own, as every listing carries them (filteredCollection).
 		WithOpts(append(opts, filterOpts()...)...).
 		WithRun(cfg.run)

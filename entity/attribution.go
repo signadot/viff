@@ -910,11 +910,12 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	}
 	var rec *permsRecord
 	if ok {
-		// A line that cannot be read grants nothing: ParseGrants refuses the whole field, so a
-		// record with one bad line holds out nothing until it is fixed, which is the safe way
-		// round and is visible on the record itself. A RECORD WRITTEN BEFORE DEFAULTS EXISTED
-		// carries an owner and no grants field at all, and is read as holding out what the
-		// root's default says: the open verse's, which is what it held out when written.
+		// A line that cannot be read grants nothing: a malformed line refuses the whole field, so
+		// a record with one holds out nothing until it is fixed, which is the safe way round and
+		// is visible on the record itself. A grantee the grammar does not read is narrower: it is
+		// kept, and admits nobody when the check meets it (named). A RECORD WRITTEN BEFORE
+		// DEFAULTS EXISTED carries an owner and no grants field at all, and is read as holding out
+		// what the root's default says: the open verse's, which is what it held out when written.
 		rec = parseRecord(key, e.Payload, a.attr.RootDefault())
 	}
 	a.attr.mu.Lock()
@@ -1070,9 +1071,9 @@ func (a *attributed) apply(ev Event) {
 // a record from before defaults existed (see recordAt).
 func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 	node, _ := PathSegs(key)
-	grants, _ := ParseGrants(node, payload)
+	grants, _ := readGrants(node, payload)
 	rec := &permsRecord{owner: Str(payload, OwnerField), under: Str(payload, UnderField), grants: grants}
-	rec.defaults, rec.hasDefault, _ = ParseLevels(payload, DefaultField)
+	rec.defaults, rec.hasDefault, _ = readLevels(payload, DefaultField)
 	if rec.owner != "" && Get(payload, GrantsField) == nil && len(root) > 0 {
 		if ref, err := ParseAddr(key); err == nil {
 			rec.grants = []Grant{{At: ref.Segs(), To: map[Level][]string(root)}}
@@ -1140,7 +1141,7 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = ParseGrants(ref.Segs(), cur.Payload)
+			grants, _ = readGrants(ref.Segs(), cur.Payload)
 			when = Require{Pattern: Unchanged(cur.Payload)}
 		}
 		grants = append(grants, g)
@@ -1262,7 +1263,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 		if !exists {
 			return nil // nothing held out here to take back
 		}
-		grants, _ := ParseGrants(ref.Segs(), cur.Payload)
+		grants, _ := readGrants(ref.Segs(), cur.Payload)
 		kept := make([]Grant, 0, len(grants))
 		for _, g := range grants {
 			to := map[Level][]string{}
@@ -1358,7 +1359,7 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = ParseGrants(ref.Segs(), cur.Payload)
+			grants, _ = readGrants(ref.Segs(), cur.Payload)
 			when = Require{Pattern: Unchanged(cur.Payload)}
 		}
 		own := -1

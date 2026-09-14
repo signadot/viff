@@ -10,12 +10,12 @@ import (
 	"github.com/signadot/verse/api"
 )
 
-// groupCmd is `verse group`: a named set of principals, a grantee whose address admits its
+// groupCmd is `verse group`: a named set of principals, the grantee `group:<name>` admitting its
 // members. Bare lists them; add writes one (or replaces its members), show reads one, remove
 // takes one away.
 func groupCmd() *cli.Command {
 	return filteredCollection("group", "groups", "/groups",
-		"group — a named set of principals, granted by its address (verse.principal.group.<name>); add|show|remove one",
+		"group — a named set of principals, granted as group:<name>; add|show|remove one",
 		nil, func() url.Values { return nil }, groupAddCmd(), groupShowCmd(), groupRemoveCmd())
 }
 
@@ -24,7 +24,7 @@ type groupAddConfig struct{ *cli.Command }
 func groupAddCmd() *cli.Command {
 	cfg := &groupAddConfig{}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add a group, or replace its members: add <name> <member>… — a member is a principal, a kind, *, or a group's or a binding's address").
+		WithSynopsis("add a group, or replace its members: add <name> <member>… — a member is user:<email> (or the bare email), agent:<name>, runner:<identity>, via:<address>, <kind>:*, group:<name>, or *").
 		WithRun(cfg.run)
 }
 

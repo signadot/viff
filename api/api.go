@@ -483,8 +483,9 @@ type Status struct {
 	Restoring []string `tony:"field=restoring,omitzero"`
 }
 
-// Group is a named set of principals (`verse group add`): as a grantee, its address admits its
-// members. A member is a principal, a kind, `*`, another group's address or a binding's.
+// Group is a named set of principals (`verse group add`): as a grantee, `group:<name>` admits its
+// members. A member is a grantee in the grammar (entity.Grammar): a principal, `<kind>:*`, `*`,
+// `group:<name>`, or a place acting.
 //
 //tony:schemagen=verse-group,notag
 type Group struct {
