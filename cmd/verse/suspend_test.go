@@ -72,6 +72,9 @@ func TestSuspendReadsItsWords(t *testing.T) {
 			t.Fatalf("verse resume %v sent %+v, want %+v", c.args, got, c.want)
 		}
 	}
+	// The scope a config layer sets outlives the command in this process's globals, so it is put
+	// back for the tests after this one.
+	defer func(scope string) { g.Scope = scope }(g.Scope)
 	t.Setenv("VERSE_SCOPE", "me")
 	if _, err := runCLI(t, "suspend", "verse-dev.drift", "--why", "from a scope"); err != nil {
 		t.Fatalf("verse --scope me suspend verse-dev.drift: %v", err)
@@ -79,7 +82,6 @@ func TestSuspendReadsItsWords(t *testing.T) {
 	if got.Charter != "verse-dev.drift" {
 		t.Fatalf("from a scope, a package's address sent %+v, want it read as the charter", got)
 	}
-	t.Setenv("VERSE_SCOPE", "")
 	if _, err := runCLI(t, "suspend", "verse-dev.drift"); err == nil || !strings.Contains(err.Error(), "--why") {
 		t.Fatalf("suspend with no --why: %v", err)
 	}
