@@ -730,8 +730,10 @@ disciplines — ranked, weighted, secret.*
 
 **Isolation** — [reference/connect.md](reference/connect.md#scopes) and
 [scope lifecycle](roadmap/scope-lifecycle.md). Every command takes `--scope`; a scope is a
-real copy-on-write overlay, and `verse disconnect --scope` drops the whole thing. *Left to
-do: scopes as first-class, listable, durable things.*
+real copy-on-write overlay, and `verse disconnect --scope` drops the whole thing. Its writes to
+the world are copies; its steers, answers and removals reach what the scope created and are
+refused at what it merely sees ([what a scope owns](reference/connect.md#what-a-scope-owns)).
+*Left to do: scopes as first-class, listable, durable things.*
 
 **Your working tree, in the verse** — [reference/connect.md](reference/connect.md) and
 [content federation](content-federation.md). `verse connect` federates a tree into its own

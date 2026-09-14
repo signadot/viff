@@ -223,7 +223,10 @@ reconciles via `since`.
 
 *Scopes.* A scope is a copy-on-write overlay: reads see the scope layered on baseline, writes land
 in the scope only. Local-dev federation and a dev's in-flight flows live in a private scope,
-isolated from baseline and from other devs, and dropped in one `DeleteScope`.
+isolated from baseline and from other devs, and dropped in one `DeleteScope`. That is the world
+half; the program half — rules, tasks, gates, flows — is referenced rather than copied, so a
+scope steers, answers and removes what it created and is refused the rest, and a grant made in
+a scope governs the scope alone ([what a scope owns](reference/connect.md#what-a-scope-owns)).
 
 *The charter is durable.* An installed trigger is an entity (`verse.trigger.rule.<name>`) carrying
 the definition it was installed from, so a restart reinstalls the rules standing in the verse
