@@ -160,18 +160,7 @@ func (p Pattern) MatchRef(ref Ref) bool {
 // pathCovers reports whether an address is at or under the pattern's path. A segment of `*`
 // matches any one segment, and a segment carrying an operator is asked of the address's own
 // segment as a tony match — the same grammar a dimension takes, one level at a time.
-func (p Pattern) pathCovers(ref Ref) bool {
-	segs := ref.Segs()
-	if len(segs) < len(p.Path) {
-		return false
-	}
-	for i, want := range p.Path {
-		if !SegMatches(want, segs[i]) {
-			return false
-		}
-	}
-	return true
-}
+func (p Pattern) pathCovers(ref Ref) bool { return Under(p.Path, ref.Segs(), SegMatches) }
 
 // SafeMatch is tony.Match with a floor under it: a predicate that PANICS comes back as an
 // error, not as a dead process.

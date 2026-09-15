@@ -166,15 +166,10 @@ type Grant struct {
 
 // Covers reports whether the grant reaches the node at segs.
 func (g Grant) Covers(segs []string) bool {
-	if len(segs) < len(g.At) || (g.Below && len(segs) == len(g.At)) {
+	if g.Below && len(segs) == len(g.At) {
 		return false
 	}
-	for i, s := range g.At {
-		if segs[i] != s {
-			return false
-		}
-	}
-	return true
+	return Under(g.At, segs, Literal)
 }
 
 // ParseGrants reads a record's grants field, for the record at node: a line with no `at` is

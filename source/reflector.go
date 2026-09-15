@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -482,15 +481,7 @@ type place struct {
 // holds reports whether a ref is one of the entities a read of this place returns.
 func (p place) holds(ref entity.Ref) bool {
 	segs := ref.Segs()
-	if len(segs) != p.depth || len(segs) < len(p.prefix) {
-		return false
-	}
-	for i, s := range p.prefix {
-		if segs[i] != s {
-			return false
-		}
-	}
-	return true
+	return len(segs) == p.depth && entity.Under(p.prefix, segs, entity.Literal)
 }
 
 // coverPlace is where a cover's entities are read: its path down to the first segment that is
@@ -523,8 +514,7 @@ func distinctPlaces(at []place) []place {
 	for _, p := range at {
 		redundant := false
 		for _, q := range out {
-			if q.depth == p.depth && len(q.prefix) <= len(p.prefix) &&
-				slices.Equal(q.prefix, p.prefix[:len(q.prefix)]) {
+			if q.depth == p.depth && entity.Under(q.prefix, p.prefix, entity.Literal) {
 				redundant = true
 				break
 			}

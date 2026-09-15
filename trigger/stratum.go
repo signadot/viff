@@ -261,20 +261,7 @@ func matchContains(outer, inner Match) bool {
 //
 // An outer LONGER than the inner cannot contain it: `[verse-dev, drift, head]` does not contain
 // `[verse-dev, drift]`, whose entities include things that are not under `head`.
-func pathContains(outer, inner []string) bool {
-	if len(outer) > len(inner) {
-		return false
-	}
-	for i, want := range outer {
-		if want == "*" {
-			continue
-		}
-		if inner[i] != want {
-			return false
-		}
-	}
-	return true
-}
+func pathContains(outer, inner []string) bool { return entity.Under(outer, inner, entity.Wild) }
 
 // matchOverlap reports whether some ref could satisfy both. Unset is a wildcard on either side,
 // so it overlaps everything at that dimension.
@@ -296,15 +283,7 @@ func matchOverlap(a, b Match) bool {
 // Past the shorter one there is nothing to disagree about, since one path is then a prefix of
 // the other and a prefix contains what extends it.
 func pathOverlap(a, b []string) bool {
-	for i := 0; i < len(a) && i < len(b); i++ {
-		if a[i] == "*" || b[i] == "*" {
-			continue
-		}
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	return entity.Overlap(a, b, func(x, y string) bool { return x != "*" && y != "*" && x != y })
 }
 
 // validate reports whether the stratum is installable on its own terms. What it does not check

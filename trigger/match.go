@@ -922,17 +922,23 @@ func (s Subtree) root() string {
 // moment an id held a dot.
 func (s Subtree) covers(ref entity.Ref) bool {
 	if s.kp == "" {
-		return ref.Root() == "" // the world's half: an address in verse's own is not in it
+		// The world's half: an address in verse's own is not in it. This is the shorthand's
+		// reading of a subject that names nothing, and goes with it (step 3 of
+		// docs/working/paths-and-nodes-plan.md).
+		return ref.Root() == ""
 	}
-	mine, err := kpath.Parse(s.kp)
+	mine := s.segments()
+	return mine != nil && entity.Under(mine, ref.Segs(), entity.KPathAdmits)
+}
+
+// segments is the subtree as kinded-path segments, wildcards kept as wildcards and a quoted `*`
+// as a name — which Path, a reader of stored names, cannot say.
+func (s Subtree) segments() []*kpath.KPath {
+	kp, err := kpath.Parse(s.kp)
 	if err != nil {
-		return false
+		return nil
 	}
-	theirs, err := kpath.Parse(entity.JoinSegs(ref.Segs()))
-	if err != nil {
-		return false
-	}
-	return mine.MatchesPrefix(theirs)
+	return entity.KPathSegments(kp)
 }
 
 // within reports whether this subtree stands strictly BELOW an address: the place the address
@@ -942,31 +948,11 @@ func (s Subtree) covers(ref entity.Ref) bool {
 //
 // Asked of the subtree cut to the address's length, under the same wildcard rule covers uses.
 func (s Subtree) within(ref entity.Ref) bool {
-	if s.kp == "" {
+	segs := ref.Segs()
+	if s.kp == "" || len(segs) == 0 {
 		return false
 	}
-	mine, err := kpath.Parse(s.kp)
-	if err != nil {
-		return false
-	}
-	theirs, err := kpath.Parse(entity.JoinSegs(ref.Segs()))
-	if err != nil || theirs == nil {
-		return false
-	}
-	cut := 0
-	for kp := mine; kp != nil; kp = kp.Next {
-		cut++
-	}
-	for kp := theirs; kp != nil; kp = kp.Next {
-		cut--
-	}
-	if cut <= 0 {
-		return false
-	}
-	for ; cut > 0; cut-- {
-		mine = mine.Parent()
-	}
-	return mine.Matches(theirs)
+	return entity.Above(s.segments(), segs, entity.KPathAdmits)
 }
 
 // subtreeOf is the subtree a match reads.

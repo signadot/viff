@@ -417,22 +417,35 @@ func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
 // Pattern, and a test can say so (TestStateAndWatchNameTheSameSet).
 //
 // Only the segments an address HAS are asked about: below them a path is inside a payload, and
-// an entity is still the thing a change is about.
+// an entity is still the thing a change is about. So a ref at or under the path is in it, and so
+// is one ABOVE it — the half that lets a replay or a watch reporting at a fixed arity reach a
+// deeper path, which goes when changes are reported at the question's depth (step 5 of
+// docs/working/paths-and-nodes-plan.md).
 func MatchesAt(ref Ref, at *kpath.KPath) bool {
-	segs := ref.Segs()
-	i := 0
-	for kp := at; kp != nil && i < len(segs); kp, i = kp.Next, i+1 {
-		switch {
-		case kp.FieldAll: // every key at this level
-		case kp.Field != nil:
-			if *kp.Field != segs[i] {
-				return false
-			}
-		default:
-			return false // an index or a keyed element: no entity is addressed that way
-		}
+	pattern, segs := KPathSegments(at), ref.Segs()
+	return Under(pattern, segs, KPathAdmits) || Above(pattern, segs, KPathAdmits)
+}
+
+// KPathSegments is a kinded path as its segments, in order, each still the kpath segment it was —
+// so a quoted field named `*` stays a name and the wildcard stays a wildcard.
+func KPathSegments(at *kpath.KPath) []*kpath.KPath {
+	var out []*kpath.KPath
+	for kp := at; kp != nil; kp = kp.Next {
+		out = append(out, kp)
 	}
-	return true
+	return out
+}
+
+// KPathAdmits is one kinded-path segment asked of one address segment: `*` admits any name, a
+// field its own; an index or a keyed element admits none, since no address is spelled that way.
+func KPathAdmits(kp *kpath.KPath, seg string) bool {
+	switch {
+	case kp.FieldAll:
+		return true
+	case kp.Field != nil:
+		return *kp.Field == seg
+	}
+	return false
 }
 
 // EntityPaths spells one address per ENTITY in the answer, at the depth the read asked at — the

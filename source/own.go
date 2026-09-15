@@ -281,17 +281,8 @@ func (c Claim) String() string {
 // `git.verse.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
 // something, and it is the case the three fixed dimensions could not express at all.
 func (c Claim) Disjoint(o Claim) bool {
-	n := len(c.Segs)
-	if len(o.Segs) < n {
-		n = len(o.Segs)
-	}
-	for i := 0; i < n; i++ {
-		if c.Segs[i].Disjoint(o.Segs[i]) {
-			return true
-		}
-	}
-	// The addresses overlap; the payload paths decide.
-	return pathsDisjoint(c.Field, o.Field)
+	// The addresses overlap or they do not; where they do, the payload paths decide.
+	return !entity.Overlap(c.Segs, o.Segs, Seg.Disjoint) || pathsDisjoint(c.Field, o.Field)
 }
 
 // pathsDisjoint reports whether two payload paths can share no place. They cannot when neither
@@ -444,17 +435,7 @@ func Nodes(claims []Claim) []entity.Ref {
 }
 
 // under reports whether segs is at or beneath prefix.
-func under(segs, prefix []string) bool {
-	if len(segs) < len(prefix) {
-		return false
-	}
-	for i := range prefix {
-		if segs[i] != prefix[i] {
-			return false
-		}
-	}
-	return true
-}
+func under(segs, prefix []string) bool { return entity.Under(prefix, segs, entity.Literal) }
 
 // shallowest drops any place another place already contains, duplicates included.
 func shallowest(places []entity.Path) []entity.Path {
