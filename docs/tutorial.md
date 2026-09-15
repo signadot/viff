@@ -106,7 +106,8 @@ verse data -paths demo pr | xargs -L1 verse data
 
 One spelling in and out. A step is a whole word, so a dot inside one is part of the name. The
 shell's own quoting appears only where a segment holds a space or a `*`, and it is single quotes,
-which `xargs` understands.
+which `xargs` understands. A name that would read as an array access, such as a field called
+`[0]`, is printed inside double quotes as well (`'"[0]"'`), which reads back as that name.
 
 **A positional is a step and nothing else.** `verse data demo.pr.1` names a system called
 `demo.pr.1`, because a word cannot be both one segment and several. A whole address in one

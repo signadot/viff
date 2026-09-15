@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -192,6 +193,11 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 		{[]string{"demo", "pr", ""}, "demo pr ''"},
 		// Double quotes are the fallback, for a segment holding a single one.
 		{[]string{"demo", "pr", "it's"}, `demo pr "it's"`},
+		// A name the step clauses would read as something else carries the quoted clause too.
+		{[]string{"demo", "pr", "1", "[0]"}, `demo pr 1 '"[0]"'`},
+		{[]string{"demo", "pr", "1", "(scott)"}, `demo pr 1 '"(scott)"'`},
+		{[]string{"demo", "pr", "1", `"x"`}, `demo pr 1 '""x""'`},
+		{[]string{"demo", "pr", "1", "'x'"}, `demo pr 1 "''x''"`},
 	} {
 		if got := JoinSteps(c.segs); got != c.want {
 			t.Errorf("JoinSteps(%q) = %q, want %q", c.segs, got, c.want)
@@ -202,11 +208,14 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 // And what it prints is what a read takes, for every one of those — which is the property the
 // listing exists to have.
 //
-// THE SHELL STRIPS THE QUOTING before verse sees it, so what arrives is the SEGMENTS, as
-// separate arguments: `xargs -L1` and `set -- $line` both do that, which is why the quoting is
-// the shell's rather than kpath's. The CLI joins them with JoinSegs, so this is the round trip
-// end to end — print, split, rejoin, address.
+// THE SHELL STRIPS ITS QUOTING before verse sees the words, and the step clauses read what is
+// left, so the round trip is only proved by running both: a real shell (`eval set --`) and
+// `xargs -L1` split the printed line, and KPathOf reads the words the way `verse data` does.
 func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh to split the line with")
+	}
 	for _, segs := range [][]string{
 		{"demo", "pr", "1"},
 		{"demo", "pr", "a.b"},
@@ -214,9 +223,30 @@ func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 		{"git", "ref", "*"},
 		{"dotted.sys", "pr", "1"},
 		{"verse", "task", "instance", "review@demo.pr.1"},
+		{"demo", "pr", "1", "[0]"},
+		{"demo", "pr", "1", "{0}"},
+		{"demo", "pr", "1", "(scott)"},
+		{"demo", "pr", "1", `"x"`},
+		{"demo", "pr", "1", "'x'"},
+		{"demo", "pr", "1", `"`},
 	} {
-		if got, want := JoinSegs(segs), RefAt(segs...).At().KPath(); got != want {
-			t.Errorf("steps %q rejoined as %q, want %q", segs, got, want)
+		line := JoinSteps(segs)
+		want := JoinSegs(segs)
+		for _, split := range []struct{ name, script string }{
+			{"sh", `eval "set -- $1"; printf '%s\0' "$@"`},
+			{"xargs", `printf '%s\n' "$1" | xargs -L1 sh -c 'printf "%s\0" "$@"' _`},
+		} {
+			out, err := exec.Command(sh, "-c", split.script, "_", line).Output()
+			if err != nil {
+				t.Errorf("%s could not split %s: %v", split.name, line, err)
+				continue
+			}
+			words := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+			got, err := KPathOf(words)
+			if err != nil || got != want {
+				t.Errorf("%q prints %s, which %s reads back as %q (%v), want %q",
+					segs, line, split.name, got, err, want)
+			}
 		}
 	}
 }

@@ -69,9 +69,10 @@ func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 // token ends, which is what tells this apart from reading a delimiter out of a word: that
 // changed how MANY segments a word was, and this does not.
 //
-// The quoted clause is the escape, and it costs the spelling of a field whose name literally
-// begins and ends with a quote. Array access is what people address; a field named `[0]` is
-// not, and verse writes none.
+// The quoted clause is the escape, and it reaches every name: one that would read as an access,
+// or that itself begins and ends with a quote, is spelled inside one more pair — `"[0]"`,
+// `""x""`. Array access is what people address; a field named `[0]` is not, and verse writes
+// none, but a listing prints whatever the document holds (quoteStep).
 func StepIsAccess(step string) bool {
 	if step == "" {
 		return false
@@ -603,8 +604,9 @@ func JoinSegs(segs []string) string {
 //
 //	demo pr 1
 //	demo pr a.b                 a dot is ordinary in a step — this is the form's whole point
-//	demo pr "a b.txt"           a space is the delimiter, so the segment carries quotes
-//	git ref "*"                 an id that IS an asterisk, kept from globbing
+//	demo pr 'a b.txt'           a space is the delimiter, so the segment carries quotes
+//	git ref '*'                 an id that IS an asterisk, kept from globbing
+//	demo pr 1 '"[0]"'           a FIELD named [0], which a bare `[0]` step would read as an access
 //
 // STEPS ARE THE ADDRESSING MODEL'S OWN SPELLING, on the way in and on the way out. `verse data
 // demo pr a.b` needs no escaping from the person typing it, because the shell has already
@@ -631,6 +633,13 @@ func JoinSteps(segs []string) string {
 // quoteStep is one step as a shell word: bare when it already is one, and quoted when it is not
 // — including when it is EMPTY, which would otherwise vanish from the line entirely.
 //
+// TWO QUOTINGS, for two readers. The shell's comes off before verse sees the word, so it only
+// protects a segment from being split or expanded; what arrives is then read by the step
+// clauses, and a name those would read as something else — an access (`[0]`, `(scott)`), or a
+// quoted name (`"x"`) — is first wrapped in the quoted clause, which takes it back literally.
+// Without that the listing prints `'[0]'`, the shell hands verse `[0]`, and the line reads
+// back as array element 0 rather than the field it named.
+//
 // SINGLE QUOTES BY PREFERENCE, because they are literal: nothing inside one is expanded, globbed
 // or substituted, so the segment survives whatever the reader's shell would otherwise do to it.
 // Double quotes are the fallback for a segment that contains a single quote, and they are the
@@ -642,6 +651,15 @@ func JoinSteps(segs []string) string {
 // listing can fix that, and an id containing both is not a shape any address in this system
 // produces.
 func quoteStep(s string) string {
+	if StepIsAccess(s) || StepName(s) != s {
+		// Either quote is the clause; the one the name already holds is the one that keeps the
+		// word to a single kind, which is what the shell quoting below needs for xargs.
+		q := `"`
+		if strings.Contains(s, "'") {
+			q = "'"
+		}
+		s = q + s + q
+	}
 	if s != "" && !strings.ContainsFunc(s, shellSpecial) {
 		return s
 	}

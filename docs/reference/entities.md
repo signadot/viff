@@ -67,7 +67,8 @@ name and needs no quoting — which is the ergonomic win, and it holds at every 
 data dotted.sys pr 1` is three segments, and `verse data a.b.c pr 1` names the system `a.b.c`.
 The shell's own quoting is applied only where a segment would otherwise be split or expanded (a
 space, a `*`), and it is single quotes, which are literal — so nothing inside is globbed or
-substituted, and `xargs` understands them.
+substituted, and `xargs` understands them. A name the step clauses below would read as
+something else also carries the quoted clause inside them.
 
 A positional is a step and nothing else, because it cannot be both. A single word `w` has
 two legal readings — the one segment `w`, and `split(w, delim)` — and choosing either makes the
@@ -87,9 +88,10 @@ guess about where the word ends. That is what tells this apart from reading a de
 word: a delimiter changes how **many** segments a word is, and this does not. One word in, one
 place out, whatever is inside it.
 
-The quoted clause is the escape, and it costs the spelling of a field whose name literally
-begins and ends with a quote. Array access is what people address; a field named `[0]` is not,
-and verse writes none.
+The quoted clause is the escape, and it reaches every name: one that would read as an access, or
+that itself begins and ends with a quote, is spelled inside one more pair (`'"[0]"'`,
+`'""x""'`). A listing prints it that way, so the line still hands back. Array access is what
+people address; a field named `[0]` is not, and verse writes none.
 
 A whole address in one token is taken where it is marked, which is unambiguous for the
 reason the positional is not — a flag is a different *place* on the line, not a second reading
