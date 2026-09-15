@@ -28,16 +28,21 @@ writing: a condition over the task's own report is the agent moving itself forwa
 condition over source-owned facts is not. Nothing asks it yet. It belongs with the install
 check above.
 
-## 3. A source's claim as an owner record
+## 3. Where a source's install takes no node
 
-A source's `owns` claim is checked for disjointness against other registrations and nothing
-else. The model says a claim is the list of paths the installer needs `owner` at, refused at
-install if they lack it — and a claim written as an owner record at the claimed path would
-also spare the mirror one record per reflected entity, since each would then be owned by the
-record above it. Two things stopped it here: a claim may carry a glob or a path inside the
-payload, which is no address to hang a record on, and the claimed node may stand already with
-nobody's record, which is the system's and would need the install to take it. Both are
-answerable; neither is answered.
+A source's install takes the node each claim names — its levels up to the first glob — for the
+installer, refused where somebody else owns it, and what it reflects beneath is owned through
+that record ([perms.md](../perms.md)). Two cases still record per entity:
+
+- **A claim whose first level is a glob** (`*.issue.x`) names no place (`source.Claim.Node`
+  answers false), so nothing is taken and every entity it reflects gets a record of its own.
+- **A node that could not be taken.** The install has landed by then, so the failure is said on
+  stderr and is not fatal (`takePlace`); the source's reflections are recorded per entity until
+  the next install takes it.
+
+A slot claim (`path: [owners, ENG]`) takes the node its address names and not the slot, since
+`Node` reads the claim's levels and not its path. So two sources sharing an entity by slot share
+a node, and must share an installer.
 
 ## 4. What is not attributed
 
@@ -61,7 +66,9 @@ answerable; neither is answered.
 What a new record holds out comes from the nearest default up the tree, the root's from
 config. Three things around it are not built. There is no `read` row in the seed for a
 source's slice, so a private root default hides every reflected entity from everybody but the
-installer, which is §3's record again. A default is copied at creation and nothing revisits a
+installer. The node a source's install takes is where one would go: the record is written
+holding the defaults above it, so a `read` there is one `verse perms` write per node, and
+nothing seeds it. A default is copied at creation and nothing revisits a
 record when the default above it changes, which is the model's stance and also means a place
 made private after the fact has to be walked — `verse perms` takes one node. And there is no
 listing of what a person holds anywhere: the verb reads one node's record.
