@@ -198,14 +198,60 @@ as a spawn's `gates:` or a file handed to `-gates`, in the shape `task vector -f
   deadline: {within: "4h", default: deny}    # and the clock decides silence
 - name: delegate
   mode: ask
-  match: {verbs: [call_agent]}
+  match: {verbs: [call-agent]}
 ```
+
+`match` is over what the action does rather than what the tool is called: `verbs` (`read`,
+`write`, `create`, `delete`, `exec`, `network`, `call-agent`, `resolve`, `push`), `tools` for
+the name itself, and `paths`, `resources`, `branches` and `onPush` for what it touches. Every dimension a
+gate writes has to hold, and one it leaves out holds for anything.
 
 `need`, `options` and `deadline` mean what they mean on a
 [charter gate](../trigger-model.md#gates--whether-it-proceeds), and are refused the same way
 when they cannot be posed as written — at the spawn, or at `task vector`, never at the boundary
-a running task reaches. The gates ride over `-vector`'s default; gates with no default are
-over `auto`, since the gates are what asks.
+a running task reaches.
+
+**A run that asks before its one command**, with no credentials needed. A scripted run is a
+single shell command, which is `exec`, so a gate over `exec` stops it before it runs:
+
+```sh
+cat > gates.tony <<'EOF'
+- name: shell
+  mode: ask
+  match: {verbs: [exec]}
+  deadline: {within: "10m", default: deny}
+EOF
+
+verse task run -driver scripted -gates gates.tony "date -u"      # run-4e919ce01f99
+verse gate
+# - gate: shell
+#   id: run-4e919ce01f99~d1
+#   mode: ASK
+#   reason: "verb exec"
+#   tool: run_bash
+#   effects:
+#     resources:
+#     - kind: task
+#       ref: "date -u"
+#     verbs:
+#     - exec
+#   deadline:
+#     default: deny
+#     within: 10m
+verse gate approve run-4e919ce01f99~d1 -as ana@example.com       # the command runs
+verse task get run-4e919ce01f99                                   # status: done
+```
+
+Without `-gates` the same command runs straight through, since `-driver scripted` as you type it
+is `auto`. Leave the question alone and the deadline settles it on `deny` after ten minutes: the
+command never runs, the question's record says `by: deadline` and `verdict: deny`, and the run
+ends `failed`, since a refused call ends a list.
+
+**The gates ride over `-vector`'s default, and the strictest that matches wins** — `auto`, then
+`ask`, then `park`. So a gate makes an action stricter than the default and never looser: under
+`-vector ask`, a `mode: auto` gate over `exec` changes nothing, and the command is asked about
+with `reason: "no gate matched"`. With `-gates` and no `-vector` the default is `auto`, since the
+gates are what asks.
 
 **The deadline is the question's own clock, and it settles.** `default: deny` is how an
 unattended run stops parking on a question nobody will find: when the clock passes, the action
