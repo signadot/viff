@@ -2,7 +2,7 @@
 
 Status: step 0 done (84a72f95 the ratchet, f311d0a7 the read leak, 2f07ed46 ChangedAt's counts,
 e5bc5154 the reap watch, 4eaddde8 7de326e3's claim, ef526f2f the stale sentences; 04f21f51
-reverted the wildcard read in favour of step 6). The model is [paths-and-nodes.md](paths-and-nodes.md); read that
+reverted the wildcard read in favour of step 6). Step 1 done (4128776b). The model is [paths-and-nodes.md](paths-and-nodes.md); read that
 first — this file does not restate it, only the order of work and what each step must prove.
 
 The order is set by three things. Live defects go first, each with a test that fails today,
