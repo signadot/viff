@@ -341,8 +341,7 @@ watch GitHub come back around will think they have found a bug.
 **Tasks are outside the ordering.** A spawned agent writes wherever its tools reach, at no
 level. So the guarantee reads: *the ordering covers a charter to the extent its writes are
 declared.* `derive` moves cross-entity writes from "an agent did it, unanalyzable" into "the
-charter said it, checkable"; every write still going through a spawn is outside it. Fencing those
-is [authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md)'s business.
+charter said it, checkable"; every write still going through a spawn is outside it.
 
 ## Declaring nothing is a complete answer
 

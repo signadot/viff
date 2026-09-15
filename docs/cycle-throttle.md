@@ -160,8 +160,7 @@ can come up short, and it says so.
   structurally; two peers on one baseline do not. Nothing in the tree runs two peers, and the
   constraint is recorded on the `Engine` type.
 - **Two rules writing one field is a different hazard and is not caught.** They settle wherever the
-  last write lands, without any chain growing. See
-  [firing residual §3](https://github.com/signadot/verse/blob/main/docs/working/firing-residual.md#3-two-triggers-one-field).
+  last write lands, without any chain growing.
 - **Strata would tighten the bound, and the throttle does not use them.** A chain that crossed
   levels could reset its counter on every crossing, since a derive strictly increases level and
   nothing writes downward, making the cap max|stratum| rather than the whole charter. That part is

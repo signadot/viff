@@ -181,4 +181,4 @@ action:
 ## Not built
 
 `llm` and `script` drivers, resolvers over a scope other than baseline, and resolvers over a
-motion. See [the residual](https://github.com/signadot/verse/blob/main/docs/working/attached-resolvers-residual.md).
+motion.

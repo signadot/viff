@@ -8,8 +8,7 @@ A **resolver** is that service. It is attached rather than called: it reads the 
 for as long as the run lasts, so the context arrives before the ask. It answers through the same
 path `verse gate approve` takes, with `by` naming the binding instead of a person.
 
-`driver: url` is the only driver built, and the missing corners are named in
-[the residual](https://github.com/signadot/verse/blob/main/docs/working/attached-resolvers-residual.md).
+`driver: url` is the only driver built.
 [An automatic supervisor](auto-supervisor.md) is the charter-level counterpart: an agent that
 decides by writing to the subject, where this decides by answering the gate.
 

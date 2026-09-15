@@ -4,8 +4,8 @@
 *scope*, and wires a validator to every file — the local-dev loop. It is its own process, so
 give it a terminal and leave it running.
 
-The mechanics, through docd's two faces, are in [connect](https://github.com/signadot/verse/blob/main/docs/working/connect.md); how a tree
-is split into an index and served bytes is [content federation](../content-federation.md).
+How a tree is split into an index and served bytes is
+[content federation](../content-federation.md).
 
 ## What one command does
 
@@ -120,8 +120,7 @@ that is, when you reconnect. Until something asks for the scope, its engine does
 its rules are not running, because a restart cannot enumerate the scopes that have a charter:
 a scope's layer is invisible from baseline and nothing registers one.
 
-*Left to do: a scope is not yet a first-class, listable, durable thing — see
-[scope lifecycle](https://github.com/signadot/verse/blob/main/docs/roadmap/scope-lifecycle.md). That is the missing piece above: a registry
+*Left to do: a scope is not yet a first-class, listable, durable thing. That is the missing piece above: a registry
 would let a restart bring every scope's charter back without waiting for a reconnect.*
 
 <a id="what-a-scope-owns"></a>

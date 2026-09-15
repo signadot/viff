@@ -81,4 +81,4 @@ plane, and [task control](task-control.md) already runs a task off-box. Splittin
 deployment change, not a redesign.
 
 Next: [the reference](reference/README.md#commands) for the commands this shape produces, and
-[connect](https://github.com/signadot/verse/blob/main/docs/working/connect.md) for how a developer's working tree joins a running verse.
+[connect](reference/connect.md) for how a developer's working tree joins a running verse.

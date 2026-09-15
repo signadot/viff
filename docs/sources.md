@@ -112,7 +112,7 @@ deployed one to differ from.
 
 **Three ways to reach one, one contract.** A registration carries exactly one of `url` (verse
 dials), `dir` (the in-process git source), or `dial-in` (the source dials — designed, not
-built; see [what is left](https://github.com/signadot/verse/blob/main/docs/working/sources-residual.md)). They differ only in where the
+built). They differ only in where the
 `net.Conn` comes from; `Reflect` is the same call down all three. This is deliberately not the
 runner's "a runner with no url is refused": there, absence already meant `local`, so a url-less
 entity was ambiguous. Here the field present says which it is.
@@ -181,8 +181,7 @@ lot and can be proved apart from nothing in its own system.
 A claim may also name a place **inside** an entity (`at: [owners, ENG]`), which is the one way
 two sources may write one entity: each is the single writer of its own slot, proved apart by the
 same comparison a segment further down. The Linear source declares one — a project belongs to
-several teams at once, so each team claims `owners.<KEY>` and nothing at the top (below) — and
-what converge still owes it is in [what is left](https://github.com/signadot/verse/blob/main/docs/working/shared-ownership.md).
+several teams at once, so each team claims `owners.<KEY>` and nothing at the top (below).
 
 ## Removing one, and the fork
 
@@ -322,7 +321,6 @@ exception to single-writership; it is single-writership at a deeper address.**
 What it costs is a project with no top: every field Linear has about a project is global, and a
 global field has no owner among the teams, so each slot carries its own copy and a charter reads
 a project through an owner. That is the honest shape of an entity nobody owns the whole of.
-[shared-ownership.md](https://github.com/signadot/verse/blob/main/docs/working/shared-ownership.md) has the design and what is left of it.
 
 **And the shape arrived again, in a system sharing no code with Linear.** A GitHub project is
 org- or user-owned and spans repositories, so no per-repo source can claim it as an address
@@ -331,7 +329,7 @@ model. A GitHub *user* is a third variant and not the same one: it has exactly o
 owner is the system, so the way out is not a slot but a source of its own, in a system of its
 own: under `github.` the level after the system is an organisation, and a people source claiming
 a level there would be claiming a name GitHub could give an organisation. Neither kind is
-reflected today ([working/gh-source-residual.md](https://github.com/signadot/verse/blob/main/docs/working/gh-source-residual.md)).
+reflected today.
 
 ### The window, and why Slack is not git
 
@@ -407,7 +405,7 @@ second kind, and stays a verse-level interface with nothing underneath it.
 ## What a Source does not do
 
 **No write-back.** A source reflects; acting on the external system stays the outbound executor
-path ([the write half of expose](https://github.com/signadot/verse/blob/main/docs/roadmap/expose.md#the-write-half)).
+path.
 
 **No paging.** One reflect answer is one payload in memory. A source of ten thousand issues
 narrows its `Covers` and reflects a slice at a time, which is the same level-triggered pass at a
@@ -415,13 +413,9 @@ finer grain. If that stops being enough the answer is a paged reflect, not a str
 would put ordering back into a contract whose whole point is that it has none.
 
 **No authority.** verse dials a url an entity-writer chose and accepts hints from anyone, which
-is the same edge the runner install probe already opens, and lands with
-[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md) rather than before it.
+is the same edge the runner install probe already opens.
 
 **Nothing new about credentials.** The Slack source's events endpoint arrives from the internet
 and needs an ingress and a signature check, and all of that lives in the Slack source, where the
 signing secret already has to be, rather than in a public face verse has to grow. Verse knows
 nothing about Slack, and the hint route is the same one every source uses.
-
-What is designed and not built — dial-in, for the source verse cannot reach — is in
-[what is left](https://github.com/signadot/verse/blob/main/docs/working/sources-residual.md).

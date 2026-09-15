@@ -270,8 +270,7 @@ the last owner leaves.
 What that costs is **a project with no top**: every field Linear has about a project is global,
 so each owner's slot carries its own copy and there is no `name` at the root. A charter reads a
 project through an owner (`owners.ENG.state`). An issue still carries its project's name as a
-plain field, which is what a rule about an issue wants and costs no join. See
-[working/shared-ownership.md](https://github.com/signadot/verse/blob/main/docs/working/shared-ownership.md).
+plain field, which is what a rule about an issue wants and costs no join.
 
 ## github
 

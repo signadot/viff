@@ -248,8 +248,7 @@ the agent and drop the asking, or slide the vector once it starts (`task vector 
 A trigger hits the same edge from the other side: its gates approve *the firing*, not the
 actions the spawned agent then chooses. It can say it already decided — `vector: auto` on
 the spawn — but that is a charter asserting the equivalence rather than the runtime deriving it,
-and it is all-or-nothing where the firing may have authorized one action and not another. Where
-the permission *should* come from is [authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md).
+and it is all-or-nothing where the firing may have authorized one action and not another.
 
 ## The mirror
 

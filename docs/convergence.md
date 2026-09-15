@@ -38,8 +38,7 @@ over the slice a burst is landing in.
 The standing improvement is to carry the rolled-forward document rather than re-read it, the shape
 `Since` already uses, which reads once at its floor and rolls forward with the deltas it is
 replaying. It is not built, and nothing above depends on it: the model is correct as it stands,
-and this is a constant factor on observation. It is recorded with the rest of the residual in
-[working/firing-residual.md](https://github.com/signadot/verse/blob/main/docs/working/firing-residual.md).
+and this is a constant factor on observation.
 
 ## One snapshot, so two reads cannot disagree
 
@@ -68,8 +67,7 @@ are the same datum under two spellings.
 
 The reason is cost rather than principle. `refPayload` runs for every firing, so pinning it means a
 snapshot for every firing, where the as-of-C references above are taken only when a charter
-actually asks for one. Closing it properly is the same work as
-[the roll-forward](https://github.com/signadot/verse/blob/main/docs/working/firing-residual.md#2-the-read-per-commit-carry-the-document-do-not-re-read-it),
+actually asks for one. Closing it properly is the same work as the roll-forward above,
 holding the evaluated document through the firing, and tightens for free with it.
 
 ## What ends a firing

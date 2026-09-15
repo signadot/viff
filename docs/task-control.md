@@ -282,7 +282,7 @@ human case first gets the agent for free.
 A base URL does not have to be a new service. Verse can host a broker the way docd hosts a
 controller: docd forwards a subtree's ops to a registered controller under a mount, and verse
 forwards a task's worker and engine ops to a registered backend under `/broker/<nonce>`, the same
-capability-URL trick [`connect`](https://github.com/signadot/verse/blob/main/docs/working/connect.md) uses for `dir-content-<nonce>`. A runner
+capability-URL trick `connect` uses for `dir-content-<nonce>`. A runner
 binding is then uniformly a URL: `<broker>/broker/local`, `<broker>/broker/<nonce>`, or an external
 one. Verse consumes the verse-facing contract from it — as an in-process or forwarded call for a
 hosted broker, over HTTP for an external one.

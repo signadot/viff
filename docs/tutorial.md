@@ -245,8 +245,7 @@ verse gate approve run-f3e31ed0390f~d1 --as you@example.com
 (`⏸ gate "write" (write_file) — approve? [y/N]`), while the same gate stays resolvable from
 anywhere else by its id, since it is the same question either way. There is a rough edge in which
 of the two rules applies when you hand verse a *command* and it satisfies it with an *agent*.
-[reference/tasks.md](reference/tasks.md#the-rough-edge-who-you-addressed) states it, and
-[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md) is where it gets fixed.
+[reference/tasks.md](reference/tasks.md#the-rough-edge-who-you-addressed) states it.
 
 ### A task is an entity too
 
@@ -766,8 +765,7 @@ entities, selection by capability and a match over attributes, and the narrowing
 makes a registry anyone can write safe to select from. *Left to do: richer voting
 disciplines — ranked, weighted, secret.*
 
-**Isolation** — [reference/connect.md](reference/connect.md#scopes) and
-[scope lifecycle](https://github.com/signadot/verse/blob/main/docs/roadmap/scope-lifecycle.md). Every command takes `--scope`; a scope is a
+**Isolation** — [reference/connect.md](reference/connect.md#scopes). Every command takes `--scope`; a scope is a
 real copy-on-write overlay, and `verse disconnect --scope` drops the whole thing. Its writes to
 the world are copies; its steers, answers and removals reach what the scope created and are
 refused at what it merely sees ([what a scope owns](reference/connect.md#what-a-scope-owns)).
@@ -789,8 +787,7 @@ and install, the way a runner is: `verse source add git.laptop <url>`.
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
 only climb, and the two install checks that follow — plus a plain statement of what it does not
 buy, since a charter under strata still does not converge and was never going to. *Left to do:
-fencing a spawned agent's writes to its own level and above, which is
-[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md)'s.*
+fencing a spawned agent's writes to its own level and above.*
 
 **The store underneath** — [reference/store.md](reference/store.md) and
 [change events](change-events.md). Where verse's deeper properties come from: copy-on-write

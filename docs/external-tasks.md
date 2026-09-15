@@ -153,8 +153,7 @@ for.
 
 ## Permissions
 
-Where this is headed is [authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md). The part that matters here is what the
-contract must not preclude.
+What matters here is what the contract must not preclude.
 
 An in-process agent is trusted by construction: verse built its executor, derives its effects, and
 gates each one. An external worker is a separate principal, and the boundary moves.

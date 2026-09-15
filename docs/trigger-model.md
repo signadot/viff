@@ -360,10 +360,7 @@ rather than an edge.
 **There are no goals.** A goal would be a target over this substrate: a `doneWhen` witness, a
 deadline fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome, durable
 the same way a rule is. Every use case tried against that definition falls short of it, and it
-would cost a top-level concept in a model whose whole claim is that it is small. The finding, and
-the three shapes a better definition might take, are in
-[Goals: what is left](https://github.com/signadot/verse/blob/main/docs/working/goals-residual.md). Where it is headed is
-[a charter authored per change](https://github.com/signadot/verse/blob/main/docs/roadmap/dynamic-charter.md).
+would cost a top-level concept in a model whose whole claim is that it is small.
 
 A **scoped charter** (`verse c -a --scope`) is restored the same way, when the scope's engine is
 next built, which is on demand and so in practice when the dev reconnects. Its record carries
@@ -458,8 +455,7 @@ selects. See [`action`](#action--what-fires) below.
 A write names the place it writes, and a listing walks: `verse data --paths` lists every address
 under the one it was given, and `--depth` bounds how far it goes. Asking a listing for one level
 answers with whatever happens to live there and loses anything deeper, which is why it walks
-instead. [working/entity-tree.md](https://github.com/signadot/verse/blob/main/docs/working/entity-tree.md) records why it is this way round
-rather than a marker in the store.
+instead.
 
 ### The string form is an address, in one grammar
 
@@ -892,7 +888,7 @@ side: the firing withdraws rather than acts.
 This is not hypothetical tidiness. Without it, a merge proposal swept to `state: stale` while its
 gate stands open leaves a question that watches only its ballots: it reaches its threshold on the
 approval already cast, settles `proceed`, and merges a branch the sweep retired, losing the work
-on it (see [merge-gate-residual](https://github.com/signadot/verse/blob/main/docs/working/merge-gate-residual.md)). A gate that can only be
+on it. A gate that can only be
 answered about a world that has moved on is a gate answered by reflex, which is the failure gates
 exist to prevent.
 
@@ -983,8 +979,7 @@ two rules can address the same entity, which is what the composition is for.
 **So a reader of a derivation says how deep one is**, and how deep follows from the depth of the
 subjects the producing rule selects. `[verse-dev, merge, proposal, "*"]` is four segments and
 selects the *rule* level, whose payload is the whole subtree of that rule's derivations rather than
-any one of them. A selection of N segments identifies entities at depth N, exactly; see
-[working/entity-tree.md](https://github.com/signadot/verse/blob/main/docs/working/entity-tree.md). A rule that selects the wrong depth here does not
+any one of them. A selection of N segments identifies entities at depth N, exactly. A rule that selects the wrong depth here does not
 fail: it selects a node that exists, reads fields that are not there, and writes its patches onto
 it.
 
@@ -1063,8 +1058,7 @@ An unknown `vector`, `grant`, or tool name fails the spawn rather than falling b
 field that reads back as written and enforces nothing is the failure this is built to avoid.
 `resolver` names the binding that answers this run's gates, and a spawn naming one that is not
 installed is refused rather than left unsupervised; see
-[attached resolvers](attached-resolvers.md). `environment` is declared and unread; see
-[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md).
+[attached resolvers](attached-resolvers.md). `environment` is declared and unread.
 
 ```tony
 spawn:

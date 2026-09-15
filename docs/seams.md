@@ -121,7 +121,6 @@ better served by a sentence than a document.
 
 This is the **trusted** side. There is no authentication on it. The default bind is
 `localhost:9797`, and in the Kubernetes deploy its Service is cluster-internal with no Ingress.
-Where permission comes from is [authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md), which is not built.
 
 ## 2. The store: two faces, not one
 
@@ -157,7 +156,7 @@ file. It looks like a store read the whole way down, and is a live filesystem re
 
 So the tree stays where it is, under its owner's lifetime, and only the entities describing it
 are what a charter reacts to. The write half — an agent changing a federated file — is
-[not built](https://github.com/signadot/verse/blob/main/docs/roadmap/expose.md#the-write-half), because a write is an outbound effect rather than
+not built, because a write is an outbound effect rather than
 a read run backwards, and it needs a definite target that a read does not.
 
 ## 4. Task control, dialled out
