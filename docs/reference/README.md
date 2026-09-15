@@ -143,8 +143,9 @@ verse
                                              A path NOTHING STANDS AT is a non-zero exit,
                                              at every depth: `{}` is a document somebody
                                              wrote, not what a read says about a path
-                                             nobody wrote. An empty `{}` with exit 0 means
-                                             the path stands and a -if kept none of it
+                                             nobody wrote. A wildcard stands only where it
+                                             reaches something. An empty `{}` with exit 0
+                                             means the path stands and a -if kept none of it
           [-at <path>]                       …or whole, as a kinded path — which is how one is
                                              copied out of a document:
                                              demo.pr.1 · 'demo.pr.*.stage'

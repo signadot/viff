@@ -324,8 +324,17 @@ is a question about a system that is not there.
     verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
     verse data                   the verse is empty: nothing has been written yet
 
-An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `-if`
-predicate kept none of what it holds. That answer is about the filter rather than about the path,
+**A wildcard stands where it reaches.** A path with a `*` or an access in it names the places
+that match all of it, so a literal prefix that stands is not enough: `demo pr '[*]'` over an
+object of ids, `demo '*' 2` where no kind holds a `2`, and `demo pr '*' nosuch` where no id holds
+that field are each a path nothing stands at. What the wildcard reaches is entities, as every
+read at a path is, so a place holding no entity at the depth asked — absent from `verse data
+demo` too — does not make `demo '*'` stand.
+
+    verse data demo '*' 2        nothing stands at demo.*."2"
+
+An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands — a wildcard's
+having reached something — and a `-if` predicate kept none of what it holds. That answer is about the filter rather than about the path,
 so it is a 200 with `{}` — which is why the two cannot be spelled the same way.
 
 This used to turn on depth — `{}` with 200 at 0–2 segments, 404 below — which was verse guessing
