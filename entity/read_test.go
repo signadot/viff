@@ -158,6 +158,100 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	}
 }
 
+// A RECORD BENEATH A ROW GOVERNS ITS NODE WHEREVER THE READ WAS ASKED: a node inside a readable
+// payload that stands under a record the reader may not read is left out of it — by a Get of the
+// row, a listing, a replay, a live watch and a snapshot alike — and its owner still sees it.
+func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemDefault)
+	scott, ana := entity.As(system, "user:walter@example.com"), entity.As(system, "user:ana@example.com")
+
+	pr := entity.RefAt("demo", "pr", "1")
+	secret := entity.RefAt("demo", "pr", "1", "secret")
+	from := system.Head()
+	if _, _, err := scott.Write(entity.Write{At: pr.At(), Value: entity.Obj{
+		"open": "yes", "secret": entity.Obj{"x": 1},
+	}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	// scott's, holding out nothing: an explicit empty list, since a record with no grants field
+	// reads as holding out the root's default.
+	seedRecordRaw(t, system, secret, entity.Obj{
+		entity.OwnerField: "user:walter@example.com", entity.GrantsField: entity.GrantsPayload(secret.Segs(), nil),
+	})
+
+	holdsSecret := func(p entity.Payload) bool { return entity.Get(p, "secret") != nil }
+	if _, _, err := ana.Get(secret); !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("ana reads the secret at its own address: %v", err)
+	}
+	// Get of the row.
+	if e, ok, err := ana.Get(pr); err != nil || !ok || holdsSecret(e.Payload) || entity.Get(e.Payload, "open") == nil {
+		t.Fatalf("ana's Get of the row = %v ok=%v err=%v, want it without the secret", e.Payload, ok, err)
+	}
+	// A listing, at the row's depth and from further up.
+	for _, at := range [][]string{{"demo", "pr"}, {"demo"}} {
+		for _, e := range ana.ListAt(at, len(pr.Segs()), nil) {
+			if e.Ref == pr && holdsSecret(e.Payload) {
+				t.Fatalf("ana's listing at %v carries the secret", at)
+			}
+		}
+	}
+	// A replay.
+	commits, err := ana.Since(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range commits {
+		for _, ev := range c.Changes {
+			if ev.Ref == pr && holdsSecret(ev.To) {
+				t.Fatalf("ana's replay carries the secret: %v", ev.To)
+			}
+		}
+	}
+	// A live watch, over a change to the row once the record stands.
+	watch, unsub := ana.Observe()
+	defer unsub()
+	if _, _, err := scott.Write(entity.Write{At: pr.At("open"), Value: entity.Val("no")}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	for seen := false; !seen; {
+		select {
+		case c := <-watch:
+			for _, ev := range c.Changes {
+				if ev.Ref != pr {
+					continue
+				}
+				if holdsSecret(ev.To) {
+					t.Fatalf("ana's watch carries the secret: %v", ev.To)
+				}
+				seen = true
+			}
+		case <-deadline:
+			t.Fatal("ana's watch never delivered the change to the row")
+		}
+	}
+	// A snapshot.
+	snap, err := ana.AsOf(system.Head())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, ok, err := snap.Get(pr); err != nil || !ok || holdsSecret(e.Payload) {
+		t.Fatalf("ana's snapshot Get of the row = %v ok=%v err=%v", e.Payload, ok, err)
+	}
+	for _, e := range snap.ListAt([]string{"demo", "pr"}, len(pr.Segs()), nil) {
+		if e.Ref == pr && holdsSecret(e.Payload) {
+			t.Fatal("ana's snapshot listing carries the secret")
+		}
+	}
+	// scott, who owns it, and the system see it.
+	for name, s := range map[string]entity.Store{"scott": scott, "the system": system} {
+		if e, ok, err := s.Get(pr); err != nil || !ok || !holdsSecret(e.Payload) {
+			t.Fatalf("%s's Get of the row = %v ok=%v err=%v, want the secret", name, e.Payload, ok, err)
+		}
+	}
+}
+
 // What a node holds out is decided where its record is written, from the nearest default up
 // the tree: a default of nothing makes what is created beneath its creator's alone, a default
 // set on a place is inherited beneath it until another says otherwise, and a record written

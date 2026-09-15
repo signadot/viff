@@ -207,7 +207,11 @@ under `perms`.
 Reads go through the same view. A `Get` of what may not be read is refused as a write is; a
 listing, a replay, a live watch and a snapshot **leave out** what may not be seen, so one
 principal sees one set whichever way they ask, and what a listing withholds is counted apart
-(`hidden`) since the listing was answered. A listing or a watch *at* a path is refused whole
+(`hidden`) since the listing was answered. **What an answer carries is read the same way, at
+every node in it:** a node inside a readable payload that stands under a record the reader may
+not read is left out of the payload — by a `Get` of what holds it, a listing, a replay, a watch
+and a snapshot alike — so a record governs its node whichever ancestor the read was asked at.
+A listing or a watch *at* a path is refused whole
 when the reader may not read into it — the node, or what a grant at it holds out beneath. One window is real and one commit wide: the owner
 record follows the write it records, so the commit that creates a node reaches a live watch
 before the record that would hide it.

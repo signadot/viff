@@ -5,6 +5,40 @@ import (
 	"testing"
 )
 
+// A RECORD GOVERNS ITS NODE WHEREVER THE READ IS ASKED: ana is refused scott's secret at its own
+// address, and a read or a replayed watch of what holds it answers without it.
+func TestARecordBeneathAReadIsLeftOutOfIt(t *testing.T) {
+	serve(t)
+	t.Setenv("VERSE_USER", "walter@example.com")
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "--put", `{open: yes, secret: {x: 1}}`); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	if _, err := runCLI(t, "perms", "demo", "pr", "1", "secret", "--grants", "[]", "--default", "{}"); err != nil {
+		t.Fatalf("perms: %v", err)
+	}
+	if out, err := runCLI(t, "data", "demo", "pr", "1"); err != nil || !strings.Contains(out, "x: 1") {
+		t.Fatalf("scott's own read lost the secret: %v\n%s", err, out)
+	}
+	t.Setenv("VERSE_USER", "ana@example.com")
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "secret"); err == nil {
+		t.Fatal("ana read the secret at its own address")
+	}
+	for _, args := range [][]string{
+		{"data", "demo", "pr", "1"},
+		{"data", "demo", "pr"},
+		{"data", "demo"},
+		{"watch", "demo", "pr", "1", "--since", "0", "--until", `{to: {open: yes}}`},
+	} {
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("ana %q: %v", args, err)
+		}
+		if !strings.Contains(out, "open") || strings.Contains(out, "secret") {
+			t.Errorf("ana %q answered %q, want the row without the secret", args, out)
+		}
+	}
+}
+
 // perms READS STEPS AS `verse data` DOES: the quoted clause is the name inside it, and an access
 // or a `*` is refused, since a record is about one node.
 func TestPermsReadsItsPathAsSteps(t *testing.T) {

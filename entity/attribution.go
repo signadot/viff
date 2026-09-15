@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -555,7 +558,147 @@ func (a *attributed) keepAll(ents []Entity) ([]Entity, error) {
 			out = append(out, e)
 		}
 	}
+	return a.withholdAll(out)
+}
+
+// withholdAll is withhold over rows already kept, reading the mirror once for all of them.
+func (a *attributed) withholdAll(ents []Entity) ([]Entity, error) {
+	refs := make([]Ref, len(ents))
+	for i, e := range ents {
+		refs[i] = e.Ref
+	}
+	beneath, err := a.recordsBeneath(refs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range ents {
+		if ents[i], err = a.withhold(ents[i], beneath[ents[i].Ref.String()]); err != nil {
+			return nil, err
+		}
+	}
+	return ents, nil
+}
+
+// A READ ANSWERS ONLY WHAT MAY BE READ, AT EVERY NODE IT CARRIES. A row the reader may read
+// holds a payload, and a node inside that payload can stand under a record of its own that the
+// reader may not read: scott's `demo.pr.1.secret`, taken with no grants, is refused to ana at
+// its own address — and was handed to her whole by a read of `demo.pr.1` or `demo.pr`, since
+// keep asks only of the row. withhold leaves each such node out of the payload, as keep leaves a
+// row out of a listing, and counts it as Hidden.
+//
+// ONLY A RECORD BENEATH THE ROW CAN NARROW IT. The access walk takes the nearest owner on the
+// way up and stops taking grants from above once it has crossed one; a grant, a co-owner and the
+// open base case only ever add. So a node below a readable row reads narrower than the row only
+// where a record stands between them, and those records are the only places asked. A node left
+// out takes what is beneath it, even where a deeper grant would admit the reader: that node is
+// still read at its own address, where the walk answers for it exactly.
+
+// recordsBeneath is, for each row, the relative paths of the perms records strictly beneath it,
+// shortest first — from the loaded mirror when there is one, and otherwise by listing it once.
+func (a *attributed) recordsBeneath(rows []Ref) (map[string][][]string, error) {
+	out := map[string][][]string{}
+	if len(rows) == 0 || IsSystem(a.principal) {
+		return out, nil
+	}
+	byKey := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		byKey[r.String()] = true
+	}
+	var keys []string
+	a.attr.mu.Lock()
+	loaded := a.attr.loaded
+	if loaded {
+		for key, rec := range a.attr.records {
+			if rec != nil {
+				keys = append(keys, key)
+			}
+		}
+	}
+	a.attr.mu.Unlock()
+	if !loaded {
+		mirror := []string{VerseRoot, PermsSystem, PermsKind}
+		recs, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			segs := rec.Ref.Segs()
+			keys = append(keys, segs[len(segs)-1])
+		}
+	}
+	for _, key := range keys {
+		node, err := ParseAddr(key)
+		if err != nil {
+			continue
+		}
+		segs := node.Segs()
+		for i := len(segs) - 1; i >= 1; i-- {
+			row := RefAt(segs[:i]...).String()
+			if byKey[row] {
+				out[row] = append(out[row], segs[i:])
+			}
+		}
+	}
+	for row := range out {
+		slices.SortFunc(out[row], func(x, y []string) int { return len(x) - len(y) })
+	}
 	return out, nil
+}
+
+// withhold leaves out of a readable row's payload every node beneath it the reader may not read,
+// given the records beneath the row (recordsBeneath).
+func (a *attributed) withhold(e Entity, beneath [][]string) (Entity, error) {
+	if len(beneath) == 0 || IsSystem(a.principal) {
+		return e, nil
+	}
+	row := e.Ref.Segs()
+	var cut [][]string
+	for _, rel := range beneath {
+		if slices.ContainsFunc(cut, func(c []string) bool { return len(c) <= len(rel) && slices.Equal(c, rel[:len(c)]) }) {
+			continue // already left out with the node above it
+		}
+		at := append(append(make([]string, 0, len(row)+len(rel)), row...), rel...)
+		acc, err := a.accessOf(a.principal, RefAt(at...))
+		if err != nil {
+			a.attr.noteUnreadable()
+			return Entity{}, err
+		}
+		if !acc.level.Admits(Read) {
+			cut = append(cut, rel)
+		}
+	}
+	if len(cut) == 0 {
+		return e, nil
+	}
+	payload := clone(e.Payload)
+	for _, rel := range cut {
+		if dropPath(payload, rel) {
+			a.attr.noteHidden()
+		}
+	}
+	e.Payload = payload
+	return e, nil
+}
+
+// dropPath removes the node at a field path inside a payload, reporting whether one stood there.
+func dropPath(n *ir.Node, path []string) bool {
+	for i, name := range path {
+		n = ir.Uncomment(n)
+		if n == nil || n.Type != ir.ObjectType {
+			return false
+		}
+		j := slices.IndexFunc(n.Fields, func(f *ir.Node) bool { return f != nil && fieldName(f) == name })
+		if j < 0 {
+			return false
+		}
+		if i == len(path)-1 {
+			n.Fields = slices.Delete(n.Fields, j, j+1)
+			n.Values = slices.Delete(n.Values, j, j+1)
+			return true
+		}
+		n = n.Values[j]
+	}
+	return false
 }
 
 // narrow is a commit as this view's principal sees it (Commit.Only). A mirror that did not
@@ -572,7 +715,31 @@ func (a *attributed) narrow(c Commit) Commit {
 	if IsSystem(a.principal) {
 		return c
 	}
-	return c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
+	c = c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
+	// What an event carries is read like a row: the nodes beneath it the reader may not read are
+	// left out of it. A mirror that did not answer leaves the event as it is, as keep does.
+	refs := make([]Ref, 0, len(c.Changes))
+	for _, ev := range c.Changes {
+		if ev.To != nil {
+			refs = append(refs, ev.Ref)
+		}
+	}
+	beneath, err := a.recordsBeneath(refs)
+	if err != nil || len(beneath) == 0 {
+		return c
+	}
+	changes := make([]Event, len(c.Changes))
+	copy(changes, c.Changes)
+	for i, ev := range changes {
+		if ev.To == nil {
+			continue
+		}
+		if e, err := a.withhold(Entity{Ref: ev.Ref, Payload: ev.To}, beneath[ev.Ref.String()]); err == nil {
+			changes[i].To = e.Payload
+		}
+	}
+	c.Changes = changes
+	return c
 }
 
 func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
@@ -590,12 +757,25 @@ func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
 }
 
 func (a *attributed) Get(ref Ref) (Entity, bool, error) {
-	if !IsSystem(a.principal) {
-		if _, err := a.check(a.principal, Read, ref, "reading it"); err != nil {
-			return Entity{}, false, err
-		}
+	if IsSystem(a.principal) {
+		return a.Store.Get(ref)
 	}
-	return a.Store.Get(ref)
+	if _, err := a.check(a.principal, Read, ref, "reading it"); err != nil {
+		return Entity{}, false, err
+	}
+	return a.withholdOne(a.Store.Get(ref))
+}
+
+// withholdOne is withhold for a single read that has already been checked at its own address.
+func (a *attributed) withholdOne(e Entity, ok bool, err error) (Entity, bool, error) {
+	if err != nil || !ok {
+		return e, ok, err
+	}
+	kept, err := a.withholdAll([]Entity{e})
+	if err != nil {
+		return Entity{}, false, err
+	}
+	return kept[0], true, nil
 }
 
 func (a *attributed) List(pred func(Ref) bool) []Entity {
@@ -650,7 +830,7 @@ func (n narrowed) Get(ref Ref) (Entity, bool, error) {
 	if _, err := n.a.check(n.a.principal, Read, ref, "reading it"); err != nil {
 		return Entity{}, false, err
 	}
-	return n.Snapshot.Get(ref)
+	return n.a.withholdOne(n.Snapshot.Get(ref))
 }
 
 func (n narrowed) List(pred func(Ref) bool) []Entity {
