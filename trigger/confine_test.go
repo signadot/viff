@@ -239,3 +239,32 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 		t.Fatal("a rule patching a source outside the package installed")
 	}
 }
+
+// THE CONFINEMENT'S ROOT IS PART OF IT, at install as at the write: a package at `demo` that
+// declares it reads `verse.demo` may still not install a rule patching `verse.demo.pr`, which
+// mayWrite would refuse at every firing.
+func TestAConfinementDoesNotReachIntoVersesHalf(t *testing.T) {
+	eng := New(entitytest.Store(t), denyResolver{})
+	eng.Confine(SubtreeAt("demo"))
+	eng.SetReads([]Subtree{SubtreeAt(entity.VerseRoot, "demo")})
+	subject := Match{"root": entity.VerseRoot, "system": "demo", "kind": "pr"}
+	if err := eng.AddTrigger(Trigger{
+		Name:      "reach-verse",
+		Condition: Condition{Subject: subject},
+		Action:    Action{Patch: entity.Obj{"touched": true}.Payload()},
+	}); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("a package at demo installed a rule patching verse.demo.pr, or was refused for "+
+			"something other than its confinement: %v", err)
+	}
+	if err := eng.mayWrite(entity.VerseRef("demo", "pr", "1")); err == nil {
+		t.Fatal("the run-time check admitted verse.demo.pr.1 for a package at demo")
+	}
+	// The world's demo.pr stays its own.
+	if err := eng.AddTrigger(Trigger{
+		Name:      "own",
+		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Action:    Action{Patch: entity.Obj{"touched": true}.Payload()},
+	}); err != nil {
+		t.Fatalf("a package at demo could not patch its own demo.pr: %v", err)
+	}
+}

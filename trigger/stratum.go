@@ -243,6 +243,14 @@ func matchContains(outer, inner Match) bool {
 	if outer.Deep() || inner.Deep() {
 		return entity.Under(outer.SegNodes(), inner.SegNodes(), segContains)
 	}
+	// THE ROOT IS A SEGMENT, and the shorthand's dimensions sit below it: a match naming the
+	// system `demo` is the world's `demo`, not verse's. Only a match naming nothing is the tree.
+	// Ignoring it admitted a package at `demo` patching `verse.demo.pr` at install, which mayWrite
+	// then refused at every firing. (The branch goes with the shorthand, step 3 of the
+	// paths-and-nodes plan.)
+	if (outer.Root() != "" || outer.System() != "" || outer.Kind() != "") && outer.Root() != inner.Root() {
+		return false
+	}
 	if s := outer.System(); s != "" && s != inner.System() {
 		return false
 	}
