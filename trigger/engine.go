@@ -342,9 +342,10 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
 	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike
 	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
-	// The mirror's own depth: a run's record stands at `<task>.<instance>.<id>`, three under
-	// this store's root, so that is what the watch reports at.
-	if ch, unsub, err := e.store.WatchSubtree(entity.Depth, mirror.System, "instance"); err == nil {
+	// Where the records are, and at their own length: a run's record is `mirror.Ref(id)`, so the
+	// watch is on the place above it and reports each record whole.
+	instances := mirror.Ref("").Segs()
+	if ch, unsub, err := e.store.WatchSubtree(len(instances)+1, instances...); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
 		e.tracef("mirror subtree watch: %v", err)

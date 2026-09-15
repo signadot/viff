@@ -35,7 +35,6 @@
 1 trigger/deriveclobber_test.go
 2 trigger/derivekey_test.go
 5 trigger/each_test.go
-1 trigger/engine.go
 1 trigger/flowquery_test.go
 1 trigger/formula_test.go
 2 trigger/gateoptions_test.go
