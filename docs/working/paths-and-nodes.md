@@ -1,6 +1,8 @@
 # Paths and nodes: one tree, one set of words
 
-Status: proposal, nothing here runs. The plan is [paths-and-nodes-plan.md](paths-and-nodes-plan.md).
+Status: landed. The plan is [paths-and-nodes-plan.md](paths-and-nodes-plan.md) and what it did
+not finish is [paths-and-nodes-residual.md](paths-and-nodes-residual.md). This note is the model
+the code cites; it is written as the proposal it was, and everything in it runs.
 
 verse keeps one document. What it calls an entity, a place, a slice, a leaf, a row or a record
 has drifted into at least six operational meanings, and the code decides "is anything there"

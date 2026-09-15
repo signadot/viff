@@ -178,5 +178,10 @@ comes back empty.
 
 ## Landing
 
-This note, this plan and entity-tree.md go when step 9 lands. What is left goes to
-`paths-and-nodes-residual.md`.
+Landed: steps 0–9, `84a72f95` through `f6423e74`. What is left is
+[paths-and-nodes-residual.md](paths-and-nodes-residual.md) — overlap that does not read a
+descent, `entity.Depth` and `List`, the surfaces a descent has not reached, and the mirror's
+address-as-text key.
+
+This plan and [entity-tree.md](entity-tree.md) are records now; [the model](paths-and-nodes.md)
+is what the code cites and is worth keeping where it is.
