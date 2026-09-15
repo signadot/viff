@@ -135,12 +135,17 @@ record is kept at — has no wildcard and no `..`, as kpath itself says of a que
 each clause becomes one kpath segment (a name, a quoted name, an access, `*`, and `..` as a whole
 word), and from there on every route, record, listing, log line and error carries the kpath.
 Nothing downstream of the CLI reads steps, and nothing re-derives segments any other way.
-Containment — "does this pattern reach that path", "may this write land here" — is one question
-asked of kpath, and every consumer asks it.
 
-A charter's subject path may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`).
-That stays a match on the field name at that position; the kpath structure around it — its
-length, its wildcards, its `..` — is kpath's.
+Two questions are asked of patterns, and each is asked one way. **Reach** — does this pattern
+reach that path, is this write under that confinement — is kpath's (`Matches`, `MatchesPrefix`).
+**Overlap** — can two patterns reach a common path: two strata, two sources' claims — is not a
+question kpath answers, and is one per-segment walk in verse: at each position, can some name
+satisfy both.
+
+A charter's subject path may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`),
+and a source's claim may put a literal prefix there (`ws/*`). Either stays a match on the field
+name at that position; the kpath structure around it — its length, its wildcards, its `..` — is
+kpath's.
 
 **An entity** is not a kind of node. It is the word for a node a question is about: the subject a
 rule selects, one row of a listing, one event of a watch. Every one of those questions carries a

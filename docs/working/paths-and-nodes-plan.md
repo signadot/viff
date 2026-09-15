@@ -49,15 +49,33 @@ routing (`Get`'s `rootFor`, `rootForAt`, `IsMountOwned`) asks of the same segmen
 *Proves:* step 0's third defect cannot be written again. A test pins `Get`, `ListAt`, `Standing`
 and `WatchSubtree` rendering one store path for a verse-half mounted ref.
 
-## 2. One containment question
+## 2. Reach and overlap, each asked one way
 
-Does pattern P reach path A; is A at or under P — asked of kpath (`Matches`, `MatchesPrefix`), with
-a charter's operator segments matched on the field name at their position. `MatchesAt`,
-`pathCovers`, `Subtree.covers`, `place.holds`, `Claim.Disjoint`'s shorter-ref case,
-`pathContains`/`pathOverlap` and `Match.MatchRef` call it or go.
+Two primitives in entity, with a table test pinning them to what the tests they replace answer
+today: **under** (pattern reaches the path or an ancestor-or-equal of it: kpath `MatchesPrefix`,
+an operator or claim prefix matched on the name at its position) and **above** (the path is a
+strict ancestor of what the pattern reaches: the pattern cut to the path's length, `Matches`).
+Then, one commit each, behaviour held by the suite:
 
-*Proves:* rows 10, 11 and 14 of the note's table as tests — install-time confinement and run-time
-`mayWrite` agree on a verse-half patch, and a claim covers exactly what it names.
+- `Pattern.pathCovers` → under. `Subtree.covers`/`within` → under/above, keeping the empty-subject
+  guard, which is the shorthand's and goes in step 3. `Grant.Covers`, source's `under` and
+  `distinctPlaces` → under.
+- `MatchesAt` → under or above. **The above half stays until step 5**: it is what lets replay's
+  fixed-arity events reach a deeper watch, and a test pins that so step 5 flips it on purpose.
+- `place.holds` is equal depth, not containment: `Matches` over its prefix and wildcards; `place`
+  itself goes in step 4.
+- `pathContains` → under over patterns. An operator on the outer side is then matched honestly
+  rather than flattened to `*`, which tightens containment: its own commit, with a stratum that no
+  longer contains what it did not name.
+- **Overlap**, one per-segment walk: `pathOverlap` and `Claim.Disjoint` ask it. A crossed pair
+  (`[demo, *, x]` and `[*, pr, x]`) is a test.
+- **Row 14:** `Claimed` skips a claim longer than the ref, so a scalar above a claim's depth is not
+  covered by it.
+- **Row 11:** `matchContains`' shorthand branch compares the root, so install-time confinement and
+  run-time `mayWrite` agree on a verse-half patch until step 3 deletes the branch.
+
+*Proves:* rows 11 and 14; every "is A under B" in the tree is one of two functions. Row 10 is the
+shorthand's `Select` and lands with step 3.
 
 ## 3. The shorthand goes
 
@@ -69,7 +87,11 @@ commit. What `$subject.system` was used for is answered by the subject's path.
 
 `Tier: contract`, `Breaks:` the charter grammar.
 
-*Proves:* rows 2 and 3 — one spelling of a selection, and `[verse, task, instance]` is a path of
+With it go the shorthand branches of `matchContains`/`matchOverlap`, `Subtree.match`, the
+empty-subject guard in `Subtree.covers`, and `SubtreeAt` dropping empty segments in the middle
+(so `{kind: pr}` watched a top-level `pr`).
+
+*Proves:* rows 2, 3 and 10 — one spelling of a selection, a root that is never ignored, and `[verse, task, instance]` is a path of
 three that names the kind node only if a rule says so.
 
 ## 4. One listing
@@ -79,7 +101,7 @@ nothing else: kpath's own walk (`ListKPath`) over the subtree at the pattern's l
 each match keyed by the path it answers (`Node.KPath()`). `walkLeaves` goes from the listing path;
 the walk over a delta (where a removal is an operation and a comment operand a statement) is its
 own function. `ListAt`, `docSnapshot.ListAt`, rule selection, `reflector.current` and
-`reflectedBy` use it.
+`reflectedBy` use it; `place`, `coverPlace` and `reflectedBy`'s root `List` go.
 
 *Proves:* a rule over `demo.pr.*` does not fire on a scalar at `demo.pr`; the snapshot and the
 live store list the same set; a source's current set is what it wrote.
@@ -88,7 +110,8 @@ live store list the same set; a source's current set is what it wrote.
 
 A change under a pattern is every path it reaches whose node differs between the document before
 a commit and after it. The subtree watch already holds both. `Since` answers the same question
-over the log; `Commit.Changes`' fixed arity, `walkEntityLeaves` and `ChangedAt`'s second branch go.
+over the log; `Commit.Changes`' fixed arity, `walkEntityLeaves` and `ChangedAt`'s second branch go,
+and so does the above half of `MatchesAt` and `within` in `touches`, which exist for them.
 
 *Proves:* row 6 — replay and live at one address — and that removing a derived place reaches the
 causal chain. The trigger suite is the oracle that firing is unchanged.
@@ -113,7 +136,7 @@ A write is a stored path, an optional access, a value: `TargetOf`'s split goes, 
 and ownership key on the path written however it was spelled. `Match.Names` is "the subject is a
 stored path", at any length. `!get-path`'s string form reads a kpath. Charter package addresses
 are kpaths from the file to the route to the tree; `splitCharterPath`, `trigger.ParseAt`'s
-`strings.Split` and `belowAddr` go.
+`strings.Split`, `belowAddr` and `atOrBeneath` go.
 
 *Proves:* rows 4, 12 and 13 — `{path: [demo, cfg]}` creates, `demo tags '[0]' --put` writes, the
 engine's and the CLI's spelling of one field write need the same grant — and `verse c
