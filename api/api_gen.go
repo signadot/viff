@@ -2545,6 +2545,124 @@ func (s *FlowCount) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts SuspensionCount to a Tony IR node.
+func (s *SuspensionCount) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Count
+	irMap["count"] = ir.FromInt(int64(s.Count))
+
+	// Field: Tasks
+	irMap["tasks"] = ir.FromInt(int64(s.Tasks))
+
+	// Field: Subjects
+	irMap["subjects"] = ir.FromInt(int64(s.Subjects))
+
+	// Field: Questions
+	irMap["questions"] = ir.FromInt(int64(s.Questions))
+
+	// Field: Launches
+	irMap["launches"] = ir.FromInt(int64(s.Launches))
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates SuspensionCount from a Tony IR node.
+func (s *SuspensionCount) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for SuspensionCount, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "count":
+			// Field: Count
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "count", fieldNodeUnwrapped.Type)
+			}
+			s.Count = int(*fieldNodeUnwrapped.Int64)
+		case "tasks":
+			// Field: Tasks
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "tasks", fieldNodeUnwrapped.Type)
+			}
+			s.Tasks = int(*fieldNodeUnwrapped.Int64)
+		case "subjects":
+			// Field: Subjects
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "subjects", fieldNodeUnwrapped.Type)
+			}
+			s.Subjects = int(*fieldNodeUnwrapped.Int64)
+		case "questions":
+			// Field: Questions
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "questions", fieldNodeUnwrapped.Type)
+			}
+			s.Questions = int(*fieldNodeUnwrapped.Int64)
+		case "launches":
+			// Field: Launches
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "launches", fieldNodeUnwrapped.Type)
+			}
+			s.Launches = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for SuspensionCount", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts SuspensionCount to Tony format bytes.
+func (s *SuspensionCount) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates SuspensionCount.
+func (s *SuspensionCount) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts Status to a Tony IR node.
 func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
@@ -2571,8 +2689,14 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Gates
 	irMap["gates"] = ir.FromInt(int64(s.Gates))
 
-	// Field: Suspensions
-	irMap["suspensions"] = ir.FromInt(int64(s.Suspensions))
+	// Field: Suspensions (optional)
+	if s.Suspensions != nil {
+		node, err = s.Suspensions.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["suspensions"] = node
+	}
 
 	// Field: Tasks
 	irMap["tasks"] = ir.FromInt(int64(s.Tasks))
@@ -2709,10 +2833,10 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Gates = int(*fieldNodeUnwrapped.Int64)
 		case "suspensions":
 			// Field: Suspensions
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "suspensions", fieldNodeUnwrapped.Type)
+			s.Suspensions = &SuspensionCount{}
+			if err := s.Suspensions.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
 			}
-			s.Suspensions = int(*fieldNodeUnwrapped.Int64)
 		case "tasks":
 			// Field: Tasks
 			if fieldNodeUnwrapped.Int64 == nil {

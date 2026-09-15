@@ -269,6 +269,17 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  count: .[int]
+  launches: .[int]
+  questions: .[int]
+  subjects: .[int]
+  tasks: .[int]
+signature:
+  name: verse-suspension-count
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   charter: .[tony-base:ir]
@@ -284,7 +295,7 @@ define:
   runners: .[array(string)]
   sources: .[array(string)]
   storeRev: .[int]
-  suspensions: .[int]
+  suspensions: .[nullable(verse-suspension-count)]
   tasks: .[int]
 signature:
   name: verse-status

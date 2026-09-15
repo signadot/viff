@@ -341,6 +341,16 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 	if pendingHas(srv, id) {
 		t.Fatal("the withdrawn question is still pending in the registry")
 	}
+	for deadline := time.Now().Add(3 * time.Second); ; {
+		st := statusOf(t, ts).Suspensions
+		if st != nil && *st == (api.SuspensionCount{Count: 1, Questions: 1}) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status says suspensions %+v, want one in force holding the withdrawn question", st)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if code := ballot("user:bob@example.com"); code != http.StatusNotFound {
 		t.Fatalf("a ballot on a withdrawn question = %d, want 404", code)
 	}
@@ -741,8 +751,9 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 		}
 	}
 
-	if st := statusOf(t, ts); st.Suspensions != 3 {
-		t.Fatalf("status counts %d suspensions, want 3", st.Suspensions)
+	if st := statusOf(t, ts); st.Suspensions == nil ||
+		*st.Suspensions != (api.SuspensionCount{Count: 3, Tasks: 1, Subjects: 1}) {
+		t.Fatalf("status says suspensions %+v, want three in force holding the one task by hand", st.Suspensions)
 	}
 	resp, err := http.Get(ts.URL + "/status?scope=me")
 	if err != nil {
@@ -750,8 +761,8 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 	}
 	var scoped api.Status
 	decodeResp(t, resp, &scoped)
-	if scoped.Suspensions != 0 {
-		t.Fatalf("status in a scope with none counts %d", scoped.Suspensions)
+	if scoped.Suspensions != nil {
+		t.Fatalf("status in a scope with none says suspensions %+v, want it absent", scoped.Suspensions)
 	}
 
 	byID := map[string]api.FlowRow{}

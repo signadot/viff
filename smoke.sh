@@ -451,7 +451,7 @@ v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a fail
 TONY
 out=$(v flow suspend 2>&1) && die "a bare verse flow suspend was accepted: $out"
 has "$out" "--charter" || die "a bare verse flow suspend does not print its usage: $out"
-haskv "$(v status)" suspensions 0 || die "a bare verse flow suspend wrote a suspension"
+has "$(v status)" "suspensions:" && die "a bare verse flow suspend wrote a suspension"
 ok "a bare verse flow suspend prints its usage and suspends nothing"
 v flow suspend --charter smoke-susp --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
 has "$(v flow)" 'smoke: hold the package' || die "the listing does not say why it is held"
@@ -461,8 +461,9 @@ v data smoke-susp gated 1 --put '{stage: open}' >/dev/null || die "data --put fa
 sleep 1
 haskv "$(v data smoke-susp level 1)" stage open || die "a suspended level rule fired"
 has "$(v gate)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
-haskv "$(v status)" suspensions 1 || die "status does not count the suspension"
-ok "nothing fired, nothing was asked, and status counts suspensions: 1"
+st=$(v status)
+has "$st" "suspensions:" && haskv "$st" count 1 || die "status does not count the suspension: $st"
+ok "nothing fired, nothing was asked, and status counts suspensions: {count: 1}"
 args=$(v flow --charter smoke-susp --args) || die "verse flow --charter smoke-susp --args failed"
 [ "$args" = "--charter smoke-susp --subject '*'" ] || die "the listing's --args is not the flags that name it: $args"
 printf '%s\n' "$args" | xargs -L1 "$BIN" --addr "$ADDR" flow resume >/dev/null || die "xargs -L1 verse flow resume over --args failed"

@@ -946,6 +946,25 @@ func (e *Engine) reArm(covers func(rule string) bool) {
 	}
 }
 
+// HeldNow is everything this engine holds under suspensions now, each piece once however many
+// suspensions cover it: the live tasks a suspension holds, and how many questions are withdrawn
+// and launches parked.
+func (e *Engine) HeldNow() (tasks []LiveTask, questions, launches int) {
+	for _, fp := range e.liveTasks() {
+		if len(fp.suspended) > 0 {
+			tasks = append(tasks, fp.live())
+		}
+	}
+	for _, f := range e.flights() {
+		f.mu.Lock()
+		if len(f.withdrawn) > 0 {
+			questions++
+		}
+		f.mu.Unlock()
+	}
+	return tasks, questions, e.Parked()
+}
+
 // Holds is what this engine holds for one suspension now: live tasks it paused, questions it has
 // withdrawn, and launches parked that it covers.
 func (e *Engine) Holds(id string) (tasks, questions, launches int) {

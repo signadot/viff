@@ -484,6 +484,19 @@ type FlowCount struct {
 	Subjects int `tony:"field=subjects"`
 }
 
+// SuspensionCount is what a scope's suspensions hold now: how many are in force, the live tasks
+// they hold and the distinct subjects those are about, the questions they have withdrawn and the
+// launches they have parked. Each is counted once however many suspensions cover it.
+//
+//tony:schemagen=verse-suspension-count,notag
+type SuspensionCount struct {
+	Count     int `tony:"field=count"`
+	Tasks     int `tony:"field=tasks"`
+	Subjects  int `tony:"field=subjects"`
+	Questions int `tony:"field=questions"`
+	Launches  int `tony:"field=launches"`
+}
+
 // Status is what GET /status answers: what this verse is, what it is running, and where to
 // reach the pieces around it.
 //
@@ -498,10 +511,10 @@ type Status struct {
 	StoreRev int64     `tony:"field=storeRev"`
 	Flows    FlowCount `tony:"field=flows"`
 	Gates    int       `tony:"field=gates"`
-	// Suspensions is how many suspensions are in force in the scope asked about.
-	Suspensions int `tony:"field=suspensions"`
-	Tasks       int `tony:"field=tasks"`
-	Fired       int `tony:"field=fired"`
+	// Suspensions is what is suspended in the scope asked about, absent when nothing is.
+	Suspensions *SuspensionCount `tony:"field=suspensions,omitzero"`
+	Tasks       int              `tony:"field=tasks"`
+	Fired       int              `tony:"field=fired"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
 	// these three are things somebody put here, and a verse that has lost them looks healthy by

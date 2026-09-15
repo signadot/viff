@@ -341,13 +341,30 @@ func heldBySuspension(w http.ResponseWriter, r *http.Request, what string, by []
 			"suspension's flags lifts it, and `verse flow --args` prints them", what, strings.Join(by, ", ")))
 }
 
-// suspensionCount is how many suspensions are in force in a scope: what status counts.
-func (s *Server) suspensionCount(scope string) int {
+// suspensionCount is what status says of a scope's suspensions: how many are in force and what
+// they hold now across the scope's engines, or nil when none is in force.
+func (s *Server) suspensionCount(scope string) *api.SuspensionCount {
 	tbl := s.suspensionsOf(scope)
 	if tbl == nil {
-		return 0
+		return nil
 	}
-	return len(tbl.List())
+	n := len(tbl.List())
+	if n == 0 {
+		return nil
+	}
+	out := &api.SuspensionCount{Count: n}
+	subjects := map[string]bool{}
+	for _, eng := range s.flowEngines(scope) {
+		tasks, questions, launches := eng.HeldNow()
+		out.Tasks += len(tasks)
+		for _, lt := range tasks {
+			subjects[lt.Subject] = true
+		}
+		out.Questions += questions
+		out.Launches += launches
+	}
+	out.Subjects = len(subjects)
+	return out
 }
 
 // markSuspendedRules marks each rule in a charter listing that a suspension holds about every
