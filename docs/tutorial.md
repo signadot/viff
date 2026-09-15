@@ -86,10 +86,13 @@ verse data demo pr '*' -if '{urgent: true}' -if-at labels # …rooted inside the
 verse data demo pr '*' -trim '{stage}'             # …and how much of each entity to print
 verse data -paths demo pr '*'                      # just the addresses
 verse data -at demo.pr.1                           # …an address copied out of a document
+verse data demo '..' -if '{stage: open}'           # every node that says so, at any depth
 ```
 
 A verse is one document, and `verse data` answers it at a path, so the same address works at every
-depth and the answer is the node standing there. A name is a key in it rather than a token inside a
+depth and the answer is the node standing there. `*` leaves one position open and `..` opens every
+depth beneath, which is how a question says what it means rather than inheriting a depth from
+somewhere. A name is a key in it rather than a token inside a
 rendered `at:`, which is what `-paths` is for. A read, a
 `-put` and a `-rm` all take the same address: two spellings of one grammar, steps and a kinded
 path, laid out in [reference/entities §Addressing](reference/entities.md#addressing).

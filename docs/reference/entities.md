@@ -487,7 +487,7 @@ verse data demo pr 1 votes -put '[{by: ana}, {by: bo}, {by: cy}]'
 
 The guard is a precondition carried with the write, so it is decided at the commit rather than
 in a check beforehand, and `-create`/`-update`/`-expect` compose with it. `-create` is worth
-naming, because it does not stand in for this one: it asks whether the LEAF is absent, which
+naming, because it does not stand in for this one: it asks whether the NODE is absent, which
 under an array it truthfully is, so it admits exactly the write that would do the damage.
 
 A charter's `patch` is guarded on the same principle, one step looser: it is a document rather

@@ -23,7 +23,7 @@ type Reader interface {
 	//
 	// The depth is the caller's because nothing else knows it: a document holding `{a: {b: {c:
 	// {stage: open}}}}` has an entity at `a.b.c` or at `a.b`, and which one is a property of
-	// the question rather than of the store (docs/working/entity-tree.md). `at` is the literal
+	// the question rather than of the store (docs/working/paths-and-nodes.md). `at` is the literal
 	// prefix to read under and `depth` counts segments from the root, so `ListAt([verse-dev,
 	// drift, head], 4, …)` answers the entities one level below that path.
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity

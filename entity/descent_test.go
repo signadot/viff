@@ -9,7 +9,7 @@ import (
 //
 // The refusal is the point, and so is the name. kpath carries `..` as its own segment kind —
 // one that "names a set rather than a step" — and an address here selects at ONE depth, which
-// is the whole decision this package rests on (docs/working/entity-tree.md): the question
+// is the whole decision this package rests on (docs/working/paths-and-nodes.md): the question
 // carries the depth, and a question spanning depths is a different question.
 //
 // BY THAT NAME, because the two ways of refusing it by accident are both worse. Flattened to a

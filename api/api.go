@@ -37,7 +37,7 @@ import (
 // THE ADDRESS IS ONE KINDED PATH, at whatever depth, and it is the whole place written:
 // `demo.pr.1` is an entity, `demo.pr.1.labels.urgent` is a field of one, and nothing on the
 // wire says which — entity-hood is a LENS rather than a stored fact
-// (docs/working/entity-tree.md), so a write that had to declare where the entity ended was
+// (docs/working/paths-and-nodes.md), so a write that had to declare where the entity ended was
 // answering a question the store does not ask. It carried three spellings to avoid it: a
 // three-segment `ref`, a `path` vector for anything deeper, and a `field` list for the place
 // inside. They are one path, so that is what this takes — the same grammar the READ takes

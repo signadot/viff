@@ -437,9 +437,9 @@ How deep an entity is is a property of the question rather than of the store. A 
 `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c`, or one at `a.b` whose payload happens to
 be nested, and nothing in it says which.
 
-So the pattern carries the depth. A `path:` of N segments identifies entities at depth N,
-exactly: `{path: [demo, pr, "*"]}` selects three-segment entities and
-`{path: [verse-dev, drift, head, "*"]}` selects four-segment ones. Each element is a match in
+So the pattern carries the depth. A `path:` of N segments identifies the nodes N segments down,
+exactly: `{path: [demo, pr, "*"]}` selects the nodes standing under `demo.pr` and
+`{path: [verse-dev, drift, head, "*"]}` those under `verse-dev.drift.head`. Each element is a match in
 its own right and an operator acts within its segment, so a name, a `!glob` and a `*` all count
 the same: one segment. Nothing means "at or below", and a short path is not a prefix: `{path: [demo, pr]}` names the
 entity at `demo.pr` itself, and `{path: [demo, pr, "*"]}` the ones under it.
@@ -579,8 +579,8 @@ a charter is read. See [Limits today](#limits-today).
 
 ## What a match can say
 
-The leaf is a real tony match, evaluated by `tony.Match`, in each path segment and in the payload
-predicate.
+At the bottom it is a real tony match, evaluated by `tony.Match`, in each path segment and in the
+payload predicate.
 
 A path segment takes operators — the richer matching a bare name cannot spell:
 

@@ -233,10 +233,10 @@ each of those nodes differs. A pattern that reaches the subtree itself yields on
 instead — the same commit, a different question. A consumer with no pattern asks
 `Commit.Touches` about a path it holds.
 
-There is no depth the stream picks for everybody. A stream that reported at one arity delivered a
-change to a deeper node as a change to its three-segment ancestor, and every consumer comparing
-that with an address it already held was comparing an ancestor with a descendant
-(docs/working/paths-and-nodes.md).
+There is no depth the stream picks for everybody, and there cannot be: a stream that picked one
+would deliver a change to a deeper node as a change to some ancestor, and a consumer comparing
+that with an address it already holds is comparing an ancestor with a descendant. The question
+carries the depth, here as everywhere (docs/working/paths-and-nodes.md).
 
 This is what makes a trigger's subject well-defined. A firing is driven by one event, which carries
 one `Ref`, so `$subject`, and hence the flow keyed on it, is always exactly one entity. Not because

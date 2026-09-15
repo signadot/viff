@@ -125,7 +125,7 @@ type Store interface {
 	//
 	// DEPTH IS THE CALLER'S, and it is the whole address's depth rather than the depth below
 	// the prefix — the same number `ListAt` takes, for the same reason. A document does not say
-	// where its entities end (docs/working/entity-tree.md), so a watch cannot know. Reporting at
+	// where its entities end (docs/working/paths-and-nodes.md), so a watch cannot know. Reporting at
 	// a fixed arity delivers a change to something deeper as a change to its three-segment
 	// ancestor, and every consumer comparing the reported ref to an address it already holds —
 	// the causal chain above all — is then comparing an ancestor with a descendant and

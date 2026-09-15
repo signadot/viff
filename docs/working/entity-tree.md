@@ -1,6 +1,9 @@
 # An address is as deep as the tree it lives in
 
-Status: done. One thing is deferred rather than residual, and §8 says which: a selection of N
+Status: done, and superseded by [paths-and-nodes.md](paths-and-nodes.md), which carries the
+model this note applied halfway — the deferral below (recursive descent) landed there, in step 8.
+
+Status as written: done. One thing is deferred rather than residual, and §8 says which: a selection of N
 segments identifies entities at depth N, and asking across depths — recursive descent — is
 refused by name until the rest has settled. The charter became a tree (`verse charter`,
 packages at an address) and the entity model did not, which was half a change: a charter

@@ -912,7 +912,7 @@ func (d deriveTarget) segs() []string { return d.Path }
 // SEGMENTS RATHER THAN AN ID, so a derived entity is as deep as what it is about — the target,
 // the rule, and the subject's own address. What that costs is stated where it is paid: a reader
 // of derived entities says how deep they are, and how deep they are follows from the depth of
-// the subjects the producing rule selects (docs/working/entity-tree.md).
+// the subjects the producing rule selects (docs/working/paths-and-nodes.md).
 func (d deriveTarget) refFor(segs ...string) entity.Ref {
 	return entity.RefAt(append(append([]string{}, d.segs()...), segs...)...)
 }

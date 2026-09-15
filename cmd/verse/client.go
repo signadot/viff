@@ -1073,7 +1073,7 @@ type stateConfig struct {
 	KPaths bool `cli:"name=kpaths desc='…the same listing as one kinded path per line (for --at)'"`
 	// Depth BOUNDS the walk rather than picking a level out of it, and the difference is
 	// whether a listing can be silently wrong. Entity-hood is a lens rather than a stored fact
-	// (docs/working/entity-tree.md), so nothing in an answer says where an entity ends — and
+	// (docs/working/paths-and-nodes.md), so nothing in an answer says where an entity ends — and
 	// `--paths` asking for one depth answered with whatever happened to live there and omitted
 	// everything deeper, which is how a place holding four-segment records listed as the place
 	// itself and nothing else. The walk omits nothing; this says how far it goes.
