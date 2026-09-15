@@ -326,8 +326,8 @@ with the subject `{path: [demo, pr, "*"], value: X}` would select.
 ```sh
 verse data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality
 verse data demo pr '*' -if '{urgent: true}' -if-at labels  # rooted inside the payload
-verse watch -if '{stage: open}' demo             # the same selector, as it happens
-verse watch -until '{to: {stage: merged}}' demo # …until one of them merges, then stop
+verse watch -if '{stage: open}' demo pr '*'     # the same selector, as it happens
+verse watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them merges, then stop
 ```
 
 `-until` is the exception to that symmetry, and the shape of its pattern says so. `-if` is

@@ -1,23 +1,11 @@
 package entity
 
-// The verse as ONE DOCUMENT, addressed by one kinded path.
+// The verse as ONE DOCUMENT, addressed by one kinded path (docs/working/paths-and-nodes.md).
 //
-// The store never held a list. It holds `{system: {kind: {id: payload}}}` — docSnapshot says
-// so in its own field comment, trigger/path.go grounds the charter grammar on it, and every
-// walk in logdstore.go descends exactly those three levels. What the read face published was a
-// flattening of it: `[{ref, payload}, …]`, out of which every consumer then rebuilt the map
-// the store had thrown away.
-//
-// So this is not a new shape. It is the shape, stopped from being flattened, plus the one
-// thing the flattening made unsayable: an address that CONTINUES past the id. `demo.pr.1` is
-// an entity, `demo.pr` a kind, `demo` a system, the empty path the whole verse, and
-// `demo.pr.1.votes(scott)` a place inside a payload — one grammar, asked at different depths,
-// where the read face had three (`--system`/`--kind` to narrow, a ref to address, `--at` to
-// reach inside).
-//
-// A ref is that path with a different delimiter, which is why nothing about identity moves
-// here: `Ref.String()` still spells `demo:pr:1`, charters still say `demo:pr:*`, and
-// source/own.go's globs still mean what they meant.
+// The store holds a tree. A read names a path into it — `demo`, `demo.pr.1`,
+// `demo.pr.*.stage`, the empty path for the root — and answers the node standing there, with
+// everything beneath it. Nothing in the answer says where an entity ends, because nothing in the
+// store does: a question names its own depth by the path it asks.
 
 import (
 	"errors"
@@ -31,144 +19,128 @@ import (
 // Doc is the verse's state at a path: the subtree standing there, verbatim.
 //
 // It wraps a node rather than being one because it is a WIRE TYPE — the body of a read — and
-// naming it is what lets the schema say what the route answers. A nil Node means nothing
-// stands at the path, which a caller distinguishes from an empty object (a slice with no
-// members, i.e. something that exists and is empty).
+// naming it is what lets the schema say what the route answers.
 //
 //tony:schemagen=verse-state,notag,codec=custom
 type Doc struct{ Node *ir.Node }
 
-// Nest builds the document from entities and narrows it to at, which together are the answer
-// to a read: the entities are what the store holds, at is what was asked for.
+// LiteralPrefix splits a kinded path at its first segment that is not a field name: the prefix
+// a store is read at, and the rest, which is answered over what stands there.
+func LiteralPrefix(at *kpath.KPath) (prefix []string, rest *kpath.KPath) {
+	kp := at
+	for ; kp != nil && kp.Field != nil; kp = kp.Next {
+		prefix = append(prefix, *kp.Field)
+	}
+	return prefix, kp
+}
+
+// Reach narrows a node by a kinded path, and keeps what keep keeps of each node the path
+// reaches. keep answers the node to put in its place and whether to put anything; nil keeps
+// every node as it stands.
 //
-// The two steps are one function because the narrowing is not a filter over the answer, it IS
-// the answer — `demo.pr` does not mean "the whole verse, please ignore the rest", it means the
-// subtree standing at demo.pr. A nil at is the empty path: the whole verse.
-//
-// Every level is built with ir.FromMap, which SORTS, so the document is deterministic top to
-// bottom and two reads of an unchanged verse are byte-identical. (It also re-parents what it
-// is handed, so payloads are cloned on the way in: a payload read out of a snapshot belongs to
-// that snapshot's tree, and adopting it would rewire the tree it came from.)
-func Nest(ents []Entity, at *kpath.KPath) (Doc, error) {
-	node, err := narrow(nestAll(ents), at)
-	if err != nil {
-		return Doc{}, err
-	}
-	return Doc{Node: node}, nil
-}
-
-// nestAll builds the whole {system: {kind: {id: payload}}} document — one level per segment,
-// so an address in verse's own half nests one deeper and lands under the one reserved key.
-func nestAll(ents []Entity) *ir.Node {
-	tree := map[string]any{} // each level: map[string]any, leaves *ir.Node
-	for _, e := range ents {
-		segs := e.Ref.Segs()
-		at := tree
-		for _, s := range segs[:len(segs)-1] {
-			next, ok := at[s].(map[string]any)
-			if !ok {
-				next = map[string]any{}
-				at[s] = next
-			}
-			at = next
-		}
-		// A payload that is Go-nil still occupies its key: the entity stands there, and what it
-		// holds is null. Absence is the key not being here at all.
-		if e.Payload == nil {
-			at[segs[len(segs)-1]] = ir.Null()
-			continue
-		}
-		at[segs[len(segs)-1]] = clone(e.Payload)
-	}
-	return treeNode(tree)
-}
-
-// treeNode turns the nested map nestAll builds into a document.
-func treeNode(tree map[string]any) *ir.Node {
-	out := make(map[string]*ir.Node, len(tree))
-	for k, v := range tree {
-		switch t := v.(type) {
-		case map[string]any:
-			out[k] = treeNode(t)
-		case *ir.Node:
-			out[k] = t
-		}
-	}
-	return ir.FromMap(out)
-}
-
-// narrow walks a document to a kpath and returns what stands there — nil when nothing does.
+// reached is whether the path reached any node at all, kept or not. A path that reaches nothing
+// names nothing, and one whose every node was dropped is an answer that kept none — the first is
+// not-found and the second an empty document, and a caller has to be able to tell them apart.
 //
 // A WILDCARD KEEPS ITS CONTAINER'S SHAPE, which is what keeps the answer addressable: `.*` over
 // an object answers an object under the same keys, so `demo.pr.*.stage` is
-// `{1: open, 2: reviewed}` and every value in it can still be pointed at. Collecting the
-// matches into a flat list instead — which is what ir.ListKPath does — would answer with values
-// nobody can say the address of, and the whole point of the path is that the answer keeps it.
-func narrow(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
+// `{1: open, 2: reviewed}` and every value in it can still be pointed at. A concrete segment is
+// followed and not kept, since the path already says it. A wildcard level none of whose nodes
+// was kept is left out, as the nodes are.
+//
+// A SEGMENT THAT DOES NOT FIT what it lands on reaches nothing — a field of a scalar, an element
+// of an object — which is what the store answers for a literal path through a value of the
+// wrong shape, so a wildcard over nodes of different shapes reaches the ones that have it.
+func Reach(node *ir.Node, kp *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, error)) (out *ir.Node, reached bool, err error) {
+	return reach(node, kp, keep, true)
+}
+
+func reach(node *ir.Node, kp *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, error), literal bool) (*ir.Node, bool, error) {
 	if kp == nil {
-		return node, nil
+		if keep == nil {
+			return node, true, nil
+		}
+		v, ok, err := keep(node)
+		if err != nil || !ok {
+			return nil, err == nil, err
+		}
+		return v, true, nil
 	}
 	// A comment WRAPS the value it precedes, and a path is about structure: `demo.pr.1.stage`
 	// means the same thing whether or not somebody wrote a note above the payload.
 	node = ir.Uncomment(node)
 	if node == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	switch {
+	case kp.Descend:
+		return nil, false, fmt.Errorf("`..` is not answered by a read yet")
 	case kp.FieldAll:
 		if node.Type != ir.ObjectType {
-			return nil, nil // a wildcard over what has no fields matches nothing
+			return nil, false, nil
 		}
-		out := map[string]*ir.Node{}
+		out, reached := map[string]*ir.Node{}, false
 		for i, f := range node.Fields {
-			sub, err := narrow(node.Values[i], kp.Next)
+			sub, r, err := reach(node.Values[i], kp.Next, keep, false)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
+			reached = reached || r
 			if sub != nil {
-				out[f.String] = sub
+				out[fieldName(f)] = sub
 			}
 		}
 		if len(out) == 0 {
-			return nil, nil
+			return nil, reached, nil
 		}
-		return ir.FromMap(out), nil
-	case kp.IndexAll, kp.SparseIndexAll:
+		return ir.FromMap(out), true, nil
+	case kp.IndexAll, kp.SparseIndexAll, kp.KeyAll:
 		if node.Type != ir.ArrayType {
-			return nil, nil
+			return nil, false, nil
+		}
+		if kp.KeyAll {
+			if _, keyed := node.KeyField(); !keyed {
+				if !literal {
+					return nil, false, nil
+				}
+				return nil, false, fmt.Errorf("(*): the array is not keyed, so it has no elements named by identity")
+			}
 		}
 		var out []*ir.Node
+		reached := false
 		for _, v := range node.Values {
-			sub, err := narrow(v, kp.Next)
+			sub, r, err := reach(v, kp.Next, keep, false)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
+			reached = reached || r
 			if sub != nil {
 				out = append(out, sub)
 			}
 		}
 		if len(out) == 0 {
-			return nil, nil
+			return nil, reached, nil
 		}
-		return ir.FromSlice(out), nil
+		return ir.FromSlice(out), true, nil
 	}
-	child, err := step(node, kp)
-	if err != nil {
-		return nil, err
+	child, err := step(node, kp, literal)
+	if err != nil || child == nil {
+		return nil, false, err
 	}
-	return narrow(child, kp.Next)
+	return reach(child, kp.Next, keep, literal)
 }
 
 // step follows one concrete segment: the value it addresses, or nil when nothing is there.
 //
-// A segment whose KIND does not fit what it lands on is an ERROR rather than a miss —
-// `demo.pr[0]` asks for the first element of an object, which is not a question about an empty
-// verse but a malformed one, and answering "nothing there" would let a typo read as a fact.
-func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
+// An array with no key to look an element up by is an ERROR where no wildcard came before it:
+// the question can never be answered by that array, and a reader who asked it about one place
+// is told why rather than that nothing is there. Beneath a wildcard it is one of the nodes that
+// lack what the path asks for.
+func step(node *ir.Node, kp *kpath.KPath, literal bool) (*ir.Node, error) {
 	switch {
 	case kp.Field != nil:
 		if node.Type != ir.ObjectType {
-			return nil, fmt.Errorf("%q: a field of a %s", *kp.Field, node.Type)
+			return nil, nil
 		}
 		return ir.Get(node, *kp.Field), nil
 	case kp.Index != nil, kp.SparseIndex != nil:
@@ -176,19 +148,16 @@ func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 		if i == nil {
 			i = kp.SparseIndex
 		}
-		if node.Type != ir.ArrayType {
-			return nil, fmt.Errorf("[%d]: an element of a %s", *i, node.Type)
-		}
-		if *i < 0 || *i >= len(node.Values) {
+		if node.Type != ir.ArrayType || *i < 0 || *i >= len(node.Values) {
 			return nil, nil
 		}
 		return node.Values[*i], nil
 	case kp.Key != nil:
 		if node.Type != ir.ArrayType {
-			return nil, fmt.Errorf("(%s): a keyed element of a %s", *kp.Key, node.Type)
+			return nil, nil
 		}
 		// The array says what it is keyed BY (`!key(voter)`); without the annotation there is
-		// no key to look one up by, and every element answers no.
+		// no key to look one up by.
 		//
 		// The annotation has to have been STORED, which is the part worth saying out loud: `!key`
 		// is a registered merge operator, so an ordinary write EXECUTES it — the array is merged
@@ -196,6 +165,9 @@ func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 		// written as data (entity.Raw / AsData), which is what the engine's own writers do.
 		field, keyed := node.KeyField()
 		if !keyed {
+			if !literal {
+				return nil, nil
+			}
 			return nil, fmt.Errorf("(%s): the array is not keyed. It carries no `!key(<field>)`, "+
 				"and an ordinary write does not leave one — `!key` is a merge operator, so a write "+
 				"executes it and stores the merged array untagged. The payload has to be written "+
@@ -208,203 +180,111 @@ func step(node *ir.Node, kp *kpath.KPath) (*ir.Node, error) {
 		}
 		return nil, nil
 	}
-	return node, nil
+	return nil, fmt.Errorf("%s: not a segment a read follows", kp)
 }
 
-// Entities reads the entities back out of a document that Nest rooted at `at` — the inverse of
-// the nesting, and the same walk the store's own materialized read does (walkEntityDoc is this
-// at the whole-verse depth).
-//
-// It is what `--paths` is derived from, client-side: a caller that wants the addresses does not
-// need the payloads sent again, and an id is a KEY now rather than a token inside a rendered
-// ref, so grepping one back out of the answer is no longer a thing scripts should be doing.
-//
-// Which levels come from the path and which from the document is decided by the path: a
-// concrete segment FIXES that level and it does not appear in the answer, a `.*` leaves it in
-// the answer as a key. So `demo.*.1` answers `{pr: <payload>}` and the kind is read back out of
-// the one key standing there.
-//
-// The entities are at the depth the path asks at (atDepth): its own length, or its half's
-// address where it is shorter. It answers nil when the path names a level in a way an entity
-// address cannot be recovered from (an index, a keyed element), and saying so with nil is
-// better than naming an entity whose payload is not what the document holds.
-func (d Doc) Entities(at *kpath.KPath) []Entity {
-	fixed, wild, ok := levels(at)
-	if !ok {
-		return nil
-	}
-	asked := AtDepth(at)
-	var out []Entity
-	var rec func(n *ir.Node, seen []string)
-	rec = func(n *ir.Node, seen []string) {
-		// The path fixed some segments and the document carries the rest, in order:
-		// interleaving them is what turns a leaf into the address it stands at.
-		segs := make([]string, 0, len(fixed))
-		next := 0
-		for _, f := range fixed {
-			if f == "" {
-				if next >= len(seen) {
-					break
-				}
-				f = seen[next]
-				next++
-			}
-			segs = append(segs, f)
+// answerPath is the path an ANSWER is walked by: the segments of rest that left a level in it.
+// A read answered at `demo.pr.*.stage` is `{1: open}` — the wildcard kept its keys and `stage`
+// was followed — so the answer is walked by `*` alone.
+func answerPath(rest *kpath.KPath) *kpath.KPath {
+	var head, tail *kpath.KPath
+	for kp := rest; kp != nil; kp = kp.Next {
+		if !kp.FieldAll && !kp.IndexAll && !kp.SparseIndexAll && !kp.KeyAll {
+			continue
 		}
-		// AT EACH DEPTH, not at one: the two halves of the verse are different depths, so a
-		// read that spans both — the whole verse, or a wildcard at the top — reaches an address
-		// three levels down on one side and four on the other. refAtDepth is what says which, and
-		// asking it here rather than counting levels is what lets one walk serve both.
-		if ref, ok := refAtDepth(segs, asked); ok {
-			out = append(out, Entity{Ref: ref, Payload: n})
-			return
-		}
-		if len(seen) >= wild {
-			return
-		}
-		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
-			return
-		}
-		for i, f := range n.Fields {
-			rec(n.Values[i], append(append([]string{}, seen...), f.String))
+		seg := *kp
+		seg.Next = nil
+		if head == nil {
+			head, tail = &seg, &seg
+		} else {
+			tail.Next, tail = &seg, &seg
 		}
 	}
-	rec(d.Node, nil)
-	return out
+	return head
 }
 
-// EntitiesAt is Entities at a depth the CALLER names, counted in segments from the root — which
-// is the only way to ask once an address may be as deep as the tree it lives in.
-//
-// `Entities` answers at the depth an address has always had (three, four in verse's own half),
-// which is what every listing written before this wants. This one answers "what stands at depth
-// N under the path I read", and the caller has that number: a pattern from its own path, a
-// person from `--depth`.
-//
-// A node shallower than N contributes nothing rather than being reported short: the question was
-// about a depth, and a half-address is not an answer to it.
-func (d Doc) EntitiesAt(at *kpath.KPath, depth int) []Entity {
-	prefix, err := pathPrefix(at)
-	if err != nil || depth < len(prefix) {
-		return nil
+// Each rebuilds the answer to a read at `at` with keep applied to each node the path reached —
+// what a client-side filter or projection is applied to. What is left is `{}` when keep kept
+// nothing.
+func (d Doc) Each(at *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, error)) (*ir.Node, error) {
+	if d.Node == nil {
+		return nil, nil
 	}
-	var out []Entity
-	var rec func(n *ir.Node, segs []string)
-	rec = func(n *ir.Node, segs []string) {
-		if len(segs) == depth {
-			out = append(out, Entity{Ref: RefAt(segs...), Payload: n})
-			return
-		}
-		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
-			return
-		}
-		for i, f := range n.Fields {
-			rec(n.Values[i], append(append([]string{}, segs...), f.String))
-		}
-	}
-	rec(d.Node, prefix)
-	return out
-}
-
-// Paths is every address in a document, in order, deepest last within each branch — the walk
-// `verse data --paths` prints.
-//
-// AS SEGMENTS, so the caller renders them: `--paths` joins with JoinSteps and `--kpaths` with
-// JoinSegs, and the walk has no opinion about which. One walk, two spellings, rather than the
-// walk knowing about either.
-//
-// EVERY node, not the ones at some depth, and that is the difference between a listing that can
-// be wrong and one that cannot. Entity-hood is a LENS rather than a stored fact
-// (docs/working/entity-tree.md), so nothing in a document says where an entity ends: asking for
-// one depth answers with the addresses that happen to live there and silently omits everything
-// deeper, which is how `--paths` came to print the place it was asked about and nothing else. A
-// walk omits nothing; `max` bounds how far it goes when the reader knows what they want, and
-// bounding a walk is a convenience where picking a level was a requirement.
-//
-// max is the total number of segments an address may have, so it is comparable with the depths
-// the rest of the model counts in (`entity.Depth`); 0 means no bound. The prefix the read fixed
-// is part of every address, so a max below it yields nothing rather than truncating into a lie.
-func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
-	prefix, err := pathPrefix(at)
+	_, rest := LiteralPrefix(at)
+	out, _, err := Reach(d.Node, answerPath(rest), keep)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	if max > 0 && max < len(prefix) {
-		return nil
-	}
-	var out [][]string
-	var rec func(n *ir.Node, segs []string)
-	rec = func(n *ir.Node, segs []string) {
-		if len(segs) > len(prefix) {
-			out = append(out, append([]string{}, segs...))
-		}
-		if max > 0 && len(segs) >= max {
-			return
-		}
-		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
-			return
-		}
-		for i, f := range n.Fields {
-			rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
-		}
-	}
-	rec(d.Node, prefix)
-	return out
-}
-
-// pathPrefix is the literal segments a read path fixes — what the document below it hangs from.
-// A wildcard has no literal, so a path carrying one fixes nothing past it.
-func pathPrefix(at *kpath.KPath) ([]string, error) {
-	var out []string
-	for kp := at; kp != nil; kp = kp.Next {
-		if kp.Field == nil {
-			return out, nil // a wildcard: the document carries the rest
-		}
-		out = append(out, *kp.Field)
+	if out == nil {
+		return ir.FromMap(map[string]*ir.Node{}), nil
 	}
 	return out, nil
 }
 
-// refAtDepth is RefOf asked by a read of `asked` segments: the segments name an entity when
-// there are as many as the path asked for, or as many as an address in their own half has where
-// the path asked for fewer.
-func refAtDepth(segs []string, asked int) (Ref, bool) {
-	want := Depth
-	if len(segs) > 0 && segs[0] == VerseRoot {
-		want++
-	}
-	if len(segs) != max(want, asked) {
-		return Ref{}, false
-	}
-	return RefOfAny(segs)
-}
-
-// levels splits a path into the entity levels it fixes and the number it leaves for the
-// document to carry. ok is false for a path that cannot address entities at all.
-func levels(at *kpath.KPath) (fixed []string, wild int, ok bool) {
-	fixed = make([]string, atDepth(at))
-	// A path that has not said which half it is in — the whole verse, or a wildcard at the top
-	// — must leave room for the deeper one, and Entities stops at whichever depth is an address.
-	if at == nil || at.Field == nil {
-		fixed = make([]string, max(Depth+1, AtDepth(at)))
-	}
-	depth := 0
-	for kp := at; kp != nil; kp = kp.Next {
+// Reached is each node the read at `at` reached, at the address it stands at in the store. A
+// node reached through an array has no address of names, and is not among them.
+func (d Doc) Reached(at *kpath.KPath) []Entity {
+	prefix, rest := LiteralPrefix(at)
+	var out []Entity
+	var rec func(n *ir.Node, kp *kpath.KPath, segs []string)
+	rec = func(n *ir.Node, kp *kpath.KPath, segs []string) {
+		if kp == nil {
+			out = append(out, Entity{Ref: RefAt(segs...), Payload: n})
+			return
+		}
 		switch {
 		case kp.Field != nil:
-			fixed[depth] = *kp.Field
-		case kp.FieldAll: // stays empty: the document carries it
-		default:
-			return nil, 0, false // an index or a keyed element is not an entity level
-		}
-		depth++
-	}
-	for _, f := range fixed {
-		if f == "" {
-			wild++
+			rec(n, kp.Next, append(append([]string{}, segs...), *kp.Field))
+		case kp.FieldAll:
+			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+				return
+			}
+			for i, f := range n.Fields {
+				rec(n.Values[i], kp.Next, append(append([]string{}, segs...), fieldName(f)))
+			}
 		}
 	}
-	return fixed, wild, true
+	if d.Node != nil {
+		rec(d.Node, rest, prefix)
+	}
+	return out
+}
+
+// Paths is every address in the answer to a read at `at`, in order, deepest last within each
+// branch — the walk `verse data --paths` prints: each node the path reached where it reached
+// several, and everything beneath each.
+//
+// AS SEGMENTS, so the caller renders them: `--paths` joins with JoinSteps and `--kpaths` with
+// JoinSegs, and the walk has no opinion about which.
+//
+// EVERY node beneath, not the ones at some depth: nothing in a document says where an entity
+// ends, so asking for one depth answers with the addresses that happen to live there and
+// silently omits everything deeper. `max` bounds how far the walk goes, as the total number of
+// segments an address may have; 0 means no bound. A path naming one node does not print that
+// node, which is the address the reader typed.
+func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
+	_, rest := LiteralPrefix(at)
+	wild := answerPath(rest) != nil
+	var out [][]string
+	for _, e := range d.Reached(at) {
+		var rec func(n *ir.Node, segs []string, top bool)
+		rec = func(n *ir.Node, segs []string, top bool) {
+			if max > 0 && len(segs) > max {
+				return
+			}
+			if !top || wild {
+				out = append(out, append([]string{}, segs...))
+			}
+			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+				return
+			}
+			for i, f := range n.Fields {
+				rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)), false)
+			}
+		}
+		rec(e.Payload, e.Ref.Segs(), true)
+	}
+	return out
 }
 
 // MatchesAt reports whether a ref falls at or under a path — the ref half of "which entities
@@ -458,20 +338,6 @@ func KPathAdmits(kp *kpath.KPath, seg string) bool {
 	return false
 }
 
-// EntityPaths spells one address per ENTITY in the answer, at the depth the read asked at — the
-// lens, where Paths above is the whole document.
-//
-// A ref IS a kinded path, spelled with `:` (see the package comment), so these go straight back
-// into the commands that take one.
-func (d Doc) EntityPaths(at *kpath.KPath) []string {
-	ents := d.Entities(at)
-	out := make([]string, 0, len(ents))
-	for _, e := range ents {
-		out = append(out, e.Ref.String())
-	}
-	return out
-}
-
 // ToTonyIR emits the document itself. The Go type is a struct so the schema can name what a
 // read answers with; the wire is the subtree, with nothing wrapped around it — which is the
 // whole claim, that the answer is what the store holds rather than a shape assembled for the
@@ -500,8 +366,7 @@ func ParseAt(s string) (*kpath.KPath, error) {
 	return at, nil
 }
 
-// AtDepth counts a path's segments. What it is counted AGAINST is atDepth — the depth an
-// address has under this path — and AtNamesEntity is that comparison.
+// AtDepth counts a path's segments: the depth of the nodes it names.
 func AtDepth(at *kpath.KPath) int {
 	n := 0
 	for kp := at; kp != nil; kp = kp.Next {
@@ -510,101 +375,20 @@ func AtDepth(at *kpath.KPath) int {
 	return n
 }
 
-// AtNamesEntity reports whether a path names an ADDRESS rather than a slice of the tree.
-//
-// IT NO LONGER DECIDES HOW A READ THAT FOUND NOTHING ANSWERS, which is what it was written for:
-// an empty document where a system or a kind held nothing, "not there" where a thing was not
-// there. That was verse guessing where entities end, and it made a slice nobody had written
-// answer as one that exists and is empty. The store says which since go-tony v0.0.201, so a read
-// asks `LogdStore.Standing` and absence is absence at every depth
-// (git-issue 7e5gv3n9h12krd10jhn0).
-//
-// It is kept because the question it asks is still a real one — a path either names a thing or
-// describes a slice of the tree — and the depth arithmetic below is the only place that reasons
-// about the two halves having different depths.
-//
-// AGAINST THE DEPTH OF ITS OWN HALF, because the two halves are different depths. `demo.pr` is a
-// kind holding nothing and `verse.motion.channel` is the same claim one level down, so counting
-// both against the world's depth makes the second a thing that is not there — which is what an
-// empty docket answered with, under a path that is exactly where motions live.
-func AtNamesEntity(at *kpath.KPath) bool { return AtDepth(at) >= halfDepth(at) }
-
-// AtPrefix answers how a read at this path may be NARROWED: the literal segments it can be
-// asked under, and the depth entities beneath it sit at (Store.ListAt's two arguments).
-//
-// It exists because a read at a path was reading the whole verse and filtering. `ListAt`
-// narrows and `List` does not, and the difference is not small — a read of one registration
-// took 0.74s where the substrate answers the narrow form in under 50ms, and the time barely
-// moved with the path because the work never did.
-//
-// The prefix stops at the first segment that is not a literal name (`*`, an index, a keyed
-// element): nothing below a wildcard is a literal to read under. The depth is atDepth's — the
-// path's own length where that is deeper than its half — so `git-issue.verse.issue.*` reads
-// under `git-issue.verse.issue` for the issues, one entity each, and `--if` asks of each.
-//
-// ok is false for a path that names nothing, and the caller must fall back to List there:
-// the whole verse spans both halves, whose entities sit at different depths, and one ListAt
-// answers for only one depth.
-func AtPrefix(at *kpath.KPath) (prefix []string, depth int, ok bool) {
-	if at == nil {
-		return nil, 0, false
-	}
-	depth = atDepth(at)
-	for kp := at; kp != nil; kp = kp.Next {
-		if kp.FieldAll || kp.Field == nil {
-			break
-		}
-		prefix = append(prefix, *kp.Field)
-	}
-	if len(prefix) == 0 {
-		return nil, 0, false
-	}
-	return prefix, depth, true
+// Below lists the nodes exactly `levels` segments beneath the place at — the records of a registry
+// whose layout the system decides (`verse.gate.question.<id>` is one level below
+// `verse.gate.question`; `verse.resolvers.<kind>.<name>` two below `verse.resolvers`). The
+// registry says how far below its place its records stand; nothing supplies a default.
+func Below(r Reader, pred func(Ref) bool, levels int, at ...string) []Entity {
+	return r.ListAt(at, len(at)+levels, pred)
 }
 
-// atDepth is how many segments an entity read at this path has: A SELECTION OF N SEGMENTS
-// IDENTIFIES ENTITIES AT DEPTH N (docs/working/entity-tree.md, §8), and a shorter path is a
-// prefix of its half's addresses.
-//
-// So `demo.pr` lists at three and `verse-dev.triage.next.*` at four, one row each. A name and a
-// `*` count alike, because the depth is the length of the question: `git-issue.verse.issue.<id>`
-// is the issue, not a place inside the whole map of them, which is what `--if` on it asks of.
-func atDepth(at *kpath.KPath) int { return max(halfDepth(at), AtDepth(at)) }
-
-// halfDepth is how many segments an address has by default in the half a path is about: one
-// more in verse's own, where the reserved root is a level of its own.
-//
-// It reads the path's FIRST segment, which is the only thing that can say which half a read is
-// about before anything has been walked. A path that names no segment at all (the whole verse)
-// spans both halves, and the walks handle that by asking again at each top-level key.
-func halfDepth(at *kpath.KPath) int {
-	if at != nil && at.Field != nil && *at.Field == VerseRoot {
-		return Depth + 1
-	}
-	return Depth
+// BelowErr is Below, reporting its own read.
+func BelowErr(r Reader, pred func(Ref) bool, levels int, at ...string) ([]Entity, error) {
+	return ListAtErr(r, at, len(at)+levels, pred)
 }
 
-// ListUnder enumerates the entities beneath a literal prefix, at the depth that prefix implies:
-// three segments in the world's half, four in verse's own where the reserved root is a level of
-// its own.
-//
-// It exists because Reader.List is a Match on the ROOT — the whole verse across the wire,
-// filtered by the caller — and almost every caller knows the slice it wants. That difference is
-// not small on a store carrying reflected repositories: verse spent 88 seconds restoring itself
-// before it served anything, and the phases that cost it were exactly the ones reading at the
-// root for records that live in one (system, kind).
-//
-// A caller that genuinely spans slices — an ownership claim with a wildcard system, a read at a
-// path naming nothing — keeps List, which is what it is for.
-func ListUnder(r Reader, pred func(Ref) bool, at ...string) []Entity {
-	depth := Depth
-	if len(at) > 0 && at[0] == VerseRoot {
-		depth = Depth + 1
-	}
-	return r.ListAt(at, depth, pred)
-}
-
-// ListErr, ListAtErr and ListUnderErr are the three listings, each answering with the error
+// ListErr and ListAtErr are the listings, each answering with the error
 // THIS read failed with rather than with whatever the store last remembered.
 //
 // A LISTING CANNOT SAY SO IN ITS SIGNATURE — List answers a slice, so a read that did not happen
@@ -635,15 +419,6 @@ func ListAtErr(r Reader, at []string, depth int, pred func(Ref) bool) ([]Entity,
 	}
 	out := r.ListAt(at, depth, pred)
 	return out, ReadFailed(r)
-}
-
-// ListUnderErr is ListUnder, reporting its own read's failure.
-func ListUnderErr(r Reader, pred func(Ref) bool, at ...string) ([]Entity, error) {
-	depth := Depth
-	if len(at) > 0 && at[0] == VerseRoot {
-		depth = Depth + 1
-	}
-	return ListAtErr(r, at, depth, pred)
 }
 
 // ReadFailed answers the error a store's last read failed with, or nil.

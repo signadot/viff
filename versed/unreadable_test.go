@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 )
@@ -28,6 +30,12 @@ func (f *failReads) ListAt(at []string, depth int, pred func(entity.Ref) bool) [
 		return nil
 	}
 	return f.Store.ListAt(at, depth, pred)
+}
+func (f *failReads) ReadAt(at []string) (*ir.Node, bool, error) {
+	if f.on {
+		return nil, false, errFor("context deadline exceeded")
+	}
+	return f.Store.ReadAt(at)
 }
 func (f *failReads) ReadError() error {
 	if f.on {

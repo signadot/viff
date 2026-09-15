@@ -1244,32 +1244,29 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	return out
 }
 
-// Standing reports whether anything stands at a path — the fact a read of it would answer with,
-// asked without fetching what is there.
-//
-// It exists for ONE caller: the read route a person types an address into, which has to tell "no
-// such thing" from "such a thing, holding nothing". Every other listing wants absence to arrive
-// as an empty slice, because watching or listing a slice before anything is written to it is what
-// an engine, a source and an install all do — so ListAt and its siblings keep answering that way
-// and nothing else has to learn a new error.
-//
-// It costs one match at the path, and only on a listing that came back empty: a caller with rows
-// in hand already knows the path stands.
-func (s *LogdStore) Standing(at []string) (bool, error) {
+// ReadAt is the node standing at a path, in one match there — see Reader.ReadAt. Not-found and a
+// conflicting ancestor are nothing standing (isNotFound); anything else that fails is the read
+// failing, and says so.
+func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	path := s.rootForAt(at)
 	for _, sg := range at {
 		path += "." + seg(sg)
 	}
-	_, err := s.sess.Match(ctx, path)
+	node, err := s.sess.Match(ctx, path)
 	if isNotFound(err) {
-		return false, nil
+		s.noteRead(nil)
+		return nil, false, nil
 	}
+	s.noteRead(err)
 	if err != nil {
-		return false, err
+		return nil, false, fmt.Errorf("read %s: %w", JoinSegs(at), err)
 	}
-	return true, nil
+	if node == nil {
+		return nil, false, nil
+	}
+	return nodeToPayload(node), true, nil
 }
 
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
@@ -1292,8 +1289,7 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 	// IT ARRIVES AS AN EMPTY ANSWER, deliberately. Listing or watching a slice before anything
 	// is written to it is what an engine, a source and an install all do, and none of them wants
 	// an error for it. The one caller that must tell "nothing stands here" from "this holds
-	// nothing" is the read a person types an address into, and it asks `Standing` — which is one
-	// match, on a listing that already came back empty.
+	// nothing" is the read a person types an address into, and it reads the node (ReadAt).
 	if isNotFound(err) {
 		s.noteRead(nil)
 		return nil, nil
@@ -1306,7 +1302,7 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 	// walk starts here and the remaining depth is what is left to descend. (List asks at the
 	// root and walks the system keys directly, which is the same fact one level up.)
 	var out []Entity
-	walkLeaves(node, depth-len(at),
+	nodesAt(node, depth-len(at),
 		func(segs []string, v *ir.Node) {
 			ref := RefAt(append(append([]string{}, at...), segs...)...)
 			if pred == nil || pred(ref) {
@@ -1622,9 +1618,10 @@ func stateOf(ev *logdapi.WatchEvent) *ir.Node {
 // the watched node and walks the remaining depth to the entity leaves — pure structure, no
 // diff interpretation.
 //
-// IT NAMES WHAT A READ OF THE SAME PATH NAMES (ListAt): the leaves at the depth asked for, and a
-// value that bottomed out above it, where it stands. A watch that answered less would be a
-// stream missing a change the listing beside it shows.
+// It reports the nodes at the depth asked for, and a value that bottomed out above it where it
+// stands, so a write replacing what a rule over the depth below reads wakes that rule. A listing
+// answers only the depth (nodesAt); one change walk at the question's depth is step 5 of
+// docs/working/paths-and-nodes-plan.md.
 func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[Ref]Payload {
 	node := childByKey(doc, root)
 	for _, p := range prefix {
@@ -1663,6 +1660,30 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		}
 	})
 	return out
+}
+
+// nodesAt calls fn for every node exactly depth object levels below node — whatever stands there:
+// an object, a list, a scalar, a null, an empty object — and for nothing shallower. It is what a
+// LISTING answers (docs/working/paths-and-nodes.md): the nodes a pattern of that depth reaches. A
+// value met above the depth is not at it; a read of its own path answers it.
+func nodesAt(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
+	var rec func(n *ir.Node, segs []string)
+	rec = func(n *ir.Node, segs []string) {
+		if len(segs) == depth {
+			fn(segs, n)
+			return
+		}
+		n = ir.Uncomment(n) // a comment is not a container
+		if n == nil || n.Type != ir.ObjectType {
+			return
+		}
+		for i, f := range n.Fields {
+			rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
+		}
+	}
+	if depth >= 0 {
+		rec(node, nil)
+	}
 }
 
 // walkLeaves descends exactly `depth` object levels from node, invoking fn with the

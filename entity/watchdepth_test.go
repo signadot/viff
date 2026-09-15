@@ -145,8 +145,8 @@ func TestAWatchOnAnAddressReportsWhateverStandsThere(t *testing.T) {
 }
 
 // A VALUE ABOVE THE REPORTING DEPTH IS REPORTED WHERE IT STANDS, on every watch that covers it —
-// the root stream and a watch at any prefix of it — because the read of the same path lists it
-// there (walkLeaves) and a stream answering less misses a write the listing beside it shows
+// the root stream and a watch at any prefix of it — because a read of its own path answers it,
+// and a stream answering less misses a write that replaced what a rule reads
 // (git-issue ga22z20vh12krhbcn1n0).
 func TestAValueAboveTheReportingDepthReachesEveryWatch(t *testing.T) {
 	s := openStore(t)

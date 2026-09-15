@@ -4,8 +4,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
 // A ref's segments and the ref are the same address said two ways, and the round trip has to
@@ -79,45 +77,38 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 	}
 }
 
-// A path fixes some segments and the document carries the rest; Entities interleaves them. The
+// A path fixes some segments and the answer carries the rest; Reached interleaves them. The
 // wildcard case is the one that needs saying out loud — the fixed and carried segments are not
-// a prefix and a suffix, they interleave — and it is what `verse data 'demo.pr.*.stage'`
-// rests on.
-func TestEntitiesInterleavesFixedAndCarriedSegments(t *testing.T) {
-	doc := Doc{Node: mustParseNode(t, `{demo: {pr: {1: {stage: open}, 2: {stage: merged}}}}`)}
+// a prefix and a suffix, they interleave — and it is what `verse data demo '*' 1` rests on.
+func TestReachedInterleavesFixedAndCarriedSegments(t *testing.T) {
+	root := mustParseNode(t, `{demo: {pr: {1: {stage: open}, 2: {stage: merged}}}}`)
 	for _, tc := range []struct {
 		at   string
 		want []string
 	}{
-		{"", []string{`demo.pr."1"`, `demo.pr."2"`}},
-		{"demo", []string{`demo.pr."1"`, `demo.pr."2"`}},
-		{"demo.pr", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"*.*.*", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"demo.*.*", []string{`demo.pr."1"`, `demo.pr."2"`}},
+		{"demo.pr.*", []string{`demo.pr."1"`, `demo.pr."2"`}},
 		{"demo.pr.1", []string{`demo.pr."1"`}},
 		{"demo.*.1", []string{`demo.pr."1"`}},
+		{"*.pr.2.stage", []string{`demo.pr."2".stage`}},
 	} {
 		at, err := ParseAt(tc.at)
 		if err != nil {
 			t.Fatalf("ParseAt(%q): %v", tc.at, err)
 		}
+		out, _, err := Reach(root, at, nil)
+		if err != nil {
+			t.Fatalf("reach %q: %v", tc.at, err)
+		}
 		var got []string
-		for _, e := range doc.narrowed(t, at).Entities(at) {
+		for _, e := range (Doc{Node: out}).Reached(at) {
 			got = append(got, e.Ref.String())
 		}
 		if strings.Join(got, " ") != strings.Join(tc.want, " ") {
 			t.Errorf("at %q: %v, want %v", tc.at, got, tc.want)
 		}
 	}
-}
-
-// narrowed is what a read does before Entities sees the document: the server narrows to the
-// path, then reads the addresses back out of what is left.
-func (d Doc) narrowed(t *testing.T, at *kpath.KPath) Doc {
-	t.Helper()
-	n, err := narrow(d.Node, at)
-	if err != nil {
-		t.Fatalf("narrow: %v", err)
-	}
-	return Doc{Node: n}
 }
 
 // AN ADDRESS ARRIVES AS ITS SEGMENTS, and each one is whole.

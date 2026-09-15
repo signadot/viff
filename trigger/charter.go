@@ -233,9 +233,9 @@ func (e *Engine) LoadCharter() error {
 	// At the charter's own slice. A restore is the one moment the store is largest and
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
 	// startup — with restorePackages paying it again per package.
-	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
+	ents := entity.Below(e.store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
-	}, entity.VerseRoot, CharterSystem)
+	}, 2, entity.VerseRoot, CharterSystem)
 	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
 	// second reading brings a verse back running NO RULES and saying nothing about it — which
 	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so

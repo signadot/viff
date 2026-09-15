@@ -170,8 +170,8 @@ func stringsNode(ss []string) *ir.Node {
 // listing that did not happen resumed nothing and settled nothing, and is asked for again.
 func (e *Engine) ResumeSelections() (int, error) {
 	resumed := 0
-	ents := entity.ListUnder(e.store, mirror.IsQuestion,
-		entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	ents := entity.Below(e.store, mirror.IsQuestion,
+		1, entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
 	if err := entity.ReadFailed(e.store); err != nil {
 		return 0, fmt.Errorf("the docket could not be read, so no selection was resumed: %w", err)
 	}

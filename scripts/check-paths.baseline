@@ -1,7 +1,5 @@
 3 cmd/verse/client.go
 2 entity/addr_test.go
-3 entity/doc_test.go
-16 entity/doc.go
 3 entity/entity.go
 6 entity/read_test.go
 2 entity/snapshot.go

@@ -1118,9 +1118,9 @@ func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 		if len(p.Match) > 0 {
 			pattern, _ = gomap.ToTonyIR(p.Match)
 		}
-		ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
+		ents := entity.Below(e.store, func(r entity.Ref) bool {
 			return r.ChildOf("provider", p.Capability)
-		}, "provider", p.Capability)
+		}, 1, "provider", p.Capability)
 		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.Name() < ents[j].Ref.Name() })
 		for _, en := range ents {
 			if pattern != nil && !providerMatches(en.Payload, pattern) {
@@ -1221,9 +1221,9 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 	}
 	// Registered-but-excluded and not-registered-at-all look the same from the caller and
 	// are fixed in opposite places, so count the registry before the match is applied.
-	registered := len(entity.ListUnder(e.store, func(r entity.Ref) bool {
+	registered := len(entity.Below(e.store, func(r entity.Ref) bool {
 		return r.ChildOf("provider", p.Capability)
-	}, "provider", p.Capability))
+	}, 1, "provider", p.Capability))
 	if registered == 0 {
 		return fmt.Sprintf("no provider.%s.* is registered (register one, e.g. "+
 			"`verse data provider %s <id> --put '{driver: llm}'`)", p.Capability, p.Capability)
@@ -1829,7 +1829,7 @@ func (e *Engine) ReconcileOrphans() int {
 	// mirror.RunKind). A run whose runtime died IS orphaned, and its record is the only place
 	// that fact can still be told; leaving it saying `running` forever would make the history
 	// less honest than the live view beside it. Claims carry no status and fall through.
-	for _, ent := range entity.ListUnder(e.store, mirror.IsTaskish, entity.VerseRoot, mirror.System) {
+	for _, ent := range entity.Below(e.store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System) {
 		status := entity.Str(ent.Payload, "status")
 		if status == "" || task.TerminalStatus(status) {
 			continue

@@ -92,7 +92,8 @@ func TestAWatchCanAskToWait(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 		entitytest.Set(t, srv, entity.RefAt("later", "k", "1"), entity.Obj{"stage": "open"}.Payload())
 	}()
-	out, err := runCLI(t, "watch", "later", "--wait-if-absent", "--until", `{to: {stage: open}}`)
+	// At the depth the arrival is about: `later` alone would report the change at `later`.
+	out, err := runCLI(t, "watch", "later", "*", "*", "--wait-if-absent", "--until", `{to: {stage: open}}`)
 	if err != nil {
 		t.Fatalf("a waiting watch was refused: %v", err)
 	}

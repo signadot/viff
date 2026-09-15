@@ -353,12 +353,16 @@ func TestACommentedPayloadIsStillReadable(t *testing.T) {
 
 	// The read face reaches into it, which is the surface that fails loudest: a path into a
 	// commented payload used to refuse the field outright.
-	d, err := Nest(s.List(nil), at(t, "demo.pr.1.stage"))
+	root, _, err := s.ReadAt(nil)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	stage, _, err := Reach(root, at(t, "demo.pr.1.stage"), nil)
 	if err != nil {
 		t.Fatalf("state demo.pr.1.stage: %v", err)
 	}
-	if d.Node == nil || d.Node.String != "open" {
-		t.Fatalf("state demo.pr.1.stage = %v, want open", d.Node)
+	if stage == nil || stage.String != "open" {
+		t.Fatalf("state demo.pr.1.stage = %v, want open", stage)
 	}
 
 	// And a selection binds what it selected on, rather than selecting and then reading blank.

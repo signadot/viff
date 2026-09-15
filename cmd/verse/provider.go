@@ -20,7 +20,7 @@ func providerCmd() *cli.Command {
 		func(cc *cli.Context, args []string) error {
 			// The capability is the KIND, read out of the document rather than sliced back off
 			// the front of a rendered ref.
-			ents, err := stateAt("provider")
+			ents, err := stateAt("provider.*.*")
 			if err != nil {
 				return fmt.Errorf("provider: %w", err)
 			}

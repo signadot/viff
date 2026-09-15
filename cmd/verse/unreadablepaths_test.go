@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/versed"
@@ -31,6 +33,13 @@ func (u *unreadable) ListAt(at []string, depth int, pred func(entity.Ref) bool) 
 		return nil
 	}
 	return u.Store.ListAt(at, depth, pred)
+}
+
+func (u *unreadable) ReadAt(at []string) (*ir.Node, bool, error) {
+	if u.on {
+		return nil, false, errors.New("context deadline exceeded")
+	}
+	return u.Store.ReadAt(at)
 }
 
 func (u *unreadable) ReadError() error {
@@ -80,16 +89,21 @@ func TestPathsRefusesWhatTheDocumentFormRefuses(t *testing.T) {
 	}
 }
 
-// …AND AN EMPTY VERSE IS NOT AN UNREADABLE STORE, which is the half that makes the refusal above
-// worth anything: a listing of nothing is a true answer, and it succeeds. The two cases differ
-// in the exit status, because on this form they cannot differ in the output.
-func TestPathsAnswersNothingForAVerseHoldingNothing(t *testing.T) {
-	serveUnreadable(t) // healthy: `on` is false
-	out, err := runState(t, "git", "--paths")
+// …AND A NODE HOLDING NOTHING IS NOT AN UNREADABLE STORE, which is the half that makes the
+// refusal above worth anything: a listing of nothing is a true answer, and it succeeds. The two
+// cases differ in the exit status, because on this form they cannot differ in the output. A path
+// nothing stands at is a third answer, and says so in its own words.
+func TestPathsAnswersNothingForANodeHoldingNothing(t *testing.T) {
+	store := serveUnreadable(t) // healthy: `on` is false
+	entitytest.Set(t, store.Store, entity.RefAt("git", "ref"), entity.Obj{}.Payload())
+	out, err := runState(t, "git", "ref", "--paths")
 	if err != nil {
-		t.Fatalf("verse data git --paths on an empty verse: %v", err)
+		t.Fatalf("verse data git ref --paths over an empty node: %v", err)
 	}
 	if out != "" {
-		t.Errorf("an empty verse listed %q", out)
+		t.Errorf("an empty node listed %q", out)
+	}
+	if _, err := runState(t, "nosuch", "--paths"); err == nil || !strings.Contains(err.Error(), "nothing stands at nosuch") {
+		t.Errorf("verse data nosuch --paths = %v, want it to say nothing stands there", err)
 	}
 }

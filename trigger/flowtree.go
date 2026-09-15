@@ -148,9 +148,9 @@ func FlowTreesAcross(engines []*Engine, m Match, active *bool) []FlowTree {
 	// Instances, not every kind the task system holds: a flow tree is the LIVE shape of the
 	// work, one node per task, and a run record is history about a node already in it (see
 	// mirror.RunKind). Including them would double every node that has run more than once.
-	for _, ent := range entity.ListUnder(first.store, func(r entity.Ref) bool {
+	for _, ent := range entity.Below(first.store, func(r entity.Ref) bool {
 		return mirror.IsTask(r)
-	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
+	}, 1, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		subj := entity.Str(ent.Payload, "flow")
 		if subj == "" {
 			continue // a task about nothing is in no flow

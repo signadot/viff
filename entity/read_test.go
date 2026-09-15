@@ -188,6 +188,20 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 	if e, ok, err := ana.Get(pr); err != nil || !ok || holdsSecret(e.Payload) || entity.Get(e.Payload, "open") == nil {
 		t.Fatalf("ana's Get of the row = %v ok=%v err=%v, want it without the secret", e.Payload, ok, err)
 	}
+	// A read of the row, of what holds it, and of the root.
+	for _, at := range [][]string{pr.Segs(), {"demo", "pr"}, {"demo"}, nil} {
+		node, ok, err := ana.ReadAt(at)
+		if err != nil || !ok {
+			t.Fatalf("ana's read at %v: ok=%v err=%v", at, ok, err)
+		}
+		row := node
+		for _, seg := range pr.Segs()[len(at):] {
+			row = entity.Get(row, seg)
+		}
+		if row == nil || entity.Get(row, "open") == nil || holdsSecret(row) {
+			t.Fatalf("ana's read at %v = %v, want the row without the secret", at, row)
+		}
+	}
 	// A listing, at the row's depth and from further up.
 	for _, at := range [][]string{{"demo", "pr"}, {"demo"}} {
 		for _, e := range ana.ListAt(at, len(pr.Segs()), nil) {
@@ -244,11 +258,66 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 			t.Fatal("ana's snapshot listing carries the secret")
 		}
 	}
+	if node, ok, err := snap.ReadAt([]string{"demo"}); err != nil || !ok || holdsSecret(entity.Get(entity.Get(node, "pr"), "1")) {
+		t.Fatalf("ana's snapshot read of demo = %v ok=%v err=%v", node, ok, err)
+	}
 	// scott, who owns it, and the system see it.
 	for name, s := range map[string]entity.Store{"scott": scott, "the system": system} {
 		if e, ok, err := s.Get(pr); err != nil || !ok || !holdsSecret(e.Payload) {
 			t.Fatalf("%s's Get of the row = %v ok=%v err=%v, want the secret", name, e.Payload, ok, err)
 		}
+	}
+}
+
+// A READ OF A PATH ANSWERS WHAT READS OF EACH NODE IN IT WOULD. Beneath a node the reader may
+// not read, a node held out to them is still theirs, and comes back where it stands; what is
+// neither theirs nor held out is not there, and neither is verse's own half, which nothing here
+// holds out.
+func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemDefault)
+	entity.PolicyOf(system).SetRootDefault(nil)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
+
+	pr := entity.RefAt("demo", "pr", "1")
+	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{
+		"stage": "open", "shared": entity.Obj{"note": "hi"},
+	}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	shared := entity.RefAt("demo", "pr", "1", "shared")
+	seedRecord(t, system, shared, "user:alice@example.com", entity.Grant{
+		At: shared.Segs(), To: map[entity.Level][]string{entity.Read: {"user:bob@example.com"}},
+	})
+	if _, _, err := bob.Write(entity.Write{At: entity.RefAt("demo", "pr", "2").At(), Value: entity.Obj{"stage": "draft"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, at := range [][]string{{"demo"}, nil} {
+		node, ok, err := bob.ReadAt(at)
+		if err != nil || !ok {
+			t.Fatalf("bob's read at %v: ok=%v err=%v", at, ok, err)
+		}
+		if at == nil {
+			if entity.Get(node, entity.VerseRoot) != nil {
+				t.Fatalf("bob's read of the root holds verse's own half: %v", node)
+			}
+			node = entity.Get(node, "demo")
+		}
+		prs := entity.Get(node, "pr")
+		one := entity.Get(prs, "1")
+		if one == nil || entity.Get(one, "stage") != nil || entity.Str(entity.Get(one, "shared"), "note") != "hi" {
+			t.Fatalf("bob's read at %v has pr 1 = %v, want only what is held out to him", at, one)
+		}
+		if entity.Str(entity.Get(prs, "2"), "stage") != "draft" {
+			t.Fatalf("bob's read at %v lost his own pr: %v", at, prs)
+		}
+	}
+	if node, _, err := alice.ReadAt([]string{"demo", "pr"}); err != nil || entity.Get(entity.Get(node, "1"), "stage") == nil || entity.Get(node, "2") != nil {
+		t.Fatalf("alice's read of demo.pr = %v err=%v, want hers whole and not bob's", node, err)
+	}
+	if node, _, err := system.ReadAt(nil); err != nil || entity.Get(node, entity.VerseRoot) == nil {
+		t.Fatalf("the system's read of the root = %v err=%v, want all of it", node, err)
 	}
 }
 

@@ -1,5 +1,7 @@
 package entity
 
+import "github.com/signadot/tony-format/go-tony/ir"
+
 // Store is the entity-verse as its consumers (engine, mirror, actions) see it:
 // write changes, read state, observe the change stream, and catch up from a
 // revision cursor. It is deliberately minimal and transport-agnostic: the store it is
@@ -102,6 +104,8 @@ type Store interface {
 	List(pred func(Ref) bool) []Entity
 	// ListAt enumerates the nodes at a depth the caller names — see Reader.ListAt.
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
+	// ReadAt is the node standing at a path — see Reader.ReadAt.
+	ReadAt(at []string) (node *ir.Node, ok bool, err error)
 	// WatchSubtree observes exactly the slice standing at a prefix of an address — one
 	// (system, kind), or a whole system given the system alone — rather than the whole store.
 	// It is what a scoped trigger watches, so that observation is precisely what the trigger
@@ -123,8 +127,7 @@ type Store interface {
 	// caller watching one entity passes that entity's depth.
 	//
 	// The depth bounds a report from BELOW only. A value that bottomed out above it — a scalar
-	// at the prefix, or at the address being watched — is reported where it stands, as ListAt
-	// lists it.
+	// at the prefix, or at the address being watched — is reported where it stands.
 	//
 	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
 	// stands in the slice as Set events, then streams changes. A rule is a statement about

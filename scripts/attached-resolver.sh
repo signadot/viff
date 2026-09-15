@@ -173,12 +173,12 @@ setup() {
 # so the id is the last step of each line.
 run_id() {
 	# STEPS in and steps out: the address is a vector, and `--paths` answers one address per
-	# line as words — so the run id is the LAST word. `--depth 4` bounds the walk to the
-	# instances themselves (verse + task + instance + id); without it the walk goes on into
-	# each payload and the last word is a field name.
+	# line as words — so the run id is the LAST word. The `*` makes each instance what --if asks
+	# of, and `--depth 4` bounds the walk to the instances themselves (verse + task + instance +
+	# id); without it the walk goes on into each payload and the last word is a field name.
 	# SINGLE-quoted inside the pattern: an address whose own segment is quoted (`change.pr."1"`)
 	# carries double quotes, and nesting them would end the tony string early.
-	v data --paths --depth 4 --if "{flow: '$SUBJECT', pending: null}" verse task instance 2>/dev/null |
+	v data --paths --depth 4 --if "{flow: '$SUBJECT', pending: null}" verse task instance '*' 2>/dev/null |
 		awk 'NF {print $NF}' | head -1
 }
 

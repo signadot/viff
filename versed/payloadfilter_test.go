@@ -169,13 +169,6 @@ func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 	}
 }
 
-// listRefs writes the fixture, reads /state with the given filters, and returns the refs it
-// answered with, sorted — the read promises a set, not an order.
-//
-// The refs are read back OUT of the document, which is the change in one line: the answer is
-// the tree itself, one key per segment down to each payload, so an address is assembled from the
-// keys rather than lifted from a `ref:` field. Every assertion below is unchanged, because they are all about
-// the set and the set is the same one.
 // listStatus is listRefs for a read whose ANSWER is its status code.
 func listStatus(t *testing.T, q url.Values) int {
 	t.Helper()
@@ -197,6 +190,10 @@ func listStatus(t *testing.T, q url.Values) int {
 	return resp.StatusCode
 }
 
+// listRefs writes the fixture, reads /state with the given filters, and returns the addresses of
+// the nodes the path reached and the filter kept, sorted — the read promises a set, not an order.
+// They are read back OUT of the document: the answer is the tree itself, so an address is
+// assembled from the path and the keys the wildcards kept.
 func listRefs(t *testing.T, q url.Values) []string {
 	t.Helper()
 	srv := testServer(t)
@@ -225,7 +222,11 @@ func listRefs(t *testing.T, q url.Values) []string {
 	if err != nil {
 		t.Fatalf("?at %q: %v", q.Get("at"), err)
 	}
-	refs := worldsHalf(doc.EntityPaths(at))
+	var refs []string
+	for _, e := range (entity.Doc{Node: doc.Node}).Reached(at) {
+		refs = append(refs, e.Ref.String())
+	}
+	refs = worldsHalf(refs)
 	sort.Strings(refs)
 	return refs
 }
@@ -243,48 +244,92 @@ func worldsHalf(refs []string) []string {
 	return out
 }
 
-// The read takes the same filter the stream does, and picks the same entities by it. What
-// differs is only WHEN the question is asked — of the state as it stands here, of each change
-// as it happens there — which is why both faces are pinned against one fixture.
+// The read takes the same filter the stream does, and picks the same nodes by it. What differs
+// is only WHEN the question is asked — of the state as it stands here, of each change as it
+// happens there — which is why both faces are pinned against one fixture.
+//
+// THE FILTER IS ASKED OF WHAT THE PATH REACHED: `demo.pr.*` reaches each pr, and `demo.pr` the
+// one node holding them.
 func TestStateFiltersOnThePayload(t *testing.T) {
+	prs := url.Values{"at": {"demo.pr.*"}}
+	with := func(kv ...string) url.Values {
+		q := url.Values{"at": prs["at"]}
+		for i := 0; i < len(kv); i += 2 {
+			q[kv[i]] = []string{kv[i+1]}
+		}
+		return q
+	}
 	all := []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."3"`, sentinel.String()}
-	if got := listRefs(t, url.Values{}); !sameRefs(got, all...) {
+	if got := listRefs(t, prs); !sameRefs(got, all...) {
 		t.Fatalf("an unfiltered read gave %v, want the whole fixture", got)
 	}
-	if got := listRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got,
+	if got := listRefs(t, with("if", "{stage: open}")); !sameRefs(got,
 		`demo.pr."1"`, `demo.pr."3"`, sentinel.String()) {
 		t.Errorf("?if {stage: open} listed %v, want the open ones", got)
 	}
-	if got := listRefs(t, url.Values{"if": {"{stage: !or [open, merged]}"}}); !sameRefs(got, all...) {
+	if got := listRefs(t, with("if", "{stage: !or [open, merged]}")); !sameRefs(got, all...) {
 		t.Errorf("?if with !or listed %v, want all of them", got)
 	}
-	if got := listRefs(t, url.Values{"if": {"{stage: closed}"}}); len(got) != 0 {
+	if got := listRefs(t, with("if", "{stage: closed}")); len(got) != 0 {
 		t.Errorf("?if {stage: closed} listed %v, want nothing", got)
 	}
-	// The PATH still narrows, and it composes with the predicate rather than replacing it — the
-	// store applies the address dimensions as List's prefilter, the payload is answered at the
-	// handler, and the answer must be the conjunction either way.
-	//
-	// A path NOTHING STANDS AT is a 404 rather than an empty list, which is the distinction
-	// git-issue 7e5gv3n9h12krd10jhn0 is about: `other` is not a system holding no matches, it is
-	// not a system. An empty list is what a path that DOES stand answers when the predicate
-	// keeps none of what it holds — the case above it.
+	if got := listRefs(t, with("if", "{sentinel: true}")); !sameRefs(got, sentinel.String()) {
+		t.Errorf("?at + ?if listed %v, want the one node satisfying both", got)
+	}
+	// A path NOTHING STANDS AT is a 404 rather than an empty document, which is the distinction
+	// git-issue 7e5gv3n9h12krd10jhn0 is about: `other` is not a node holding no matches, it is
+	// not a node. An empty document is what a path that DOES stand answers when the predicate
+	// keeps none of what it reached.
 	if code := listStatus(t, url.Values{"at": {"other"}, "if": {"{stage: open}"}}); code != http.StatusNotFound {
 		t.Errorf("?at other -> %d, want 404: no such path", code)
 	}
-	if got := listRefs(t, url.Values{"at": {"demo.pr"}, "if": {"{sentinel: true}"}}); !sameRefs(got, sentinel.String()) {
-		t.Errorf("?at + ?if listed %v, want the one entity satisfying both", got)
+}
+
+// A predicate over a path naming ONE node asks that node, and a wildcard reaching nothing names
+// nothing: `demo.pr` holds prs and is not itself open, `demo.pr.1` is, and `demo.pr.1.stage.*`
+// reaches no node at all.
+func TestStateAsksThePredicateOfWhatThePathReached(t *testing.T) {
+	for _, tc := range []struct {
+		q    url.Values
+		code int
+		body string
+	}{
+		{url.Values{"at": {"demo.pr"}, "if": {"{stage: open}"}}, http.StatusOK, "{}"},
+		{url.Values{"at": {"demo.pr.*"}, "if": {"{stage: closed}"}}, http.StatusOK, "{}"},
+		{url.Values{"at": {"demo.pr.1"}, "if": {"{stage: open}"}}, http.StatusOK, "stage: open"},
+		{url.Values{"at": {"demo.pr.1.stage.*"}}, http.StatusNotFound, "nothing stands at"},
+		{url.Values{"at": {"demo.pr.*.nosuch"}}, http.StatusNotFound, "nothing stands at"},
+	} {
+		srv := testServer(t)
+		ts := httptest.NewServer(srv.Handler())
+		for _, e := range fixture {
+			ref, err := entity.ParseAddr(e.ref)
+			if err != nil {
+				t.Fatalf("%s: %v", e.ref, err)
+			}
+			entitytest.Set(t, srv.Store, ref, e.payload)
+		}
+		resp, err := http.Get(ts.URL + "/state?" + tc.q.Encode())
+		if err != nil {
+			t.Fatalf("state: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		ts.Close()
+		if resp.StatusCode != tc.code || !strings.Contains(string(body), tc.body) {
+			t.Errorf("%v -> %d %q, want %d holding %q", tc.q, resp.StatusCode, body, tc.code, tc.body)
+		}
 	}
 }
 
 // Rooting works the same on the read as on the stream, including the part that is easy to
-// get wrong: an entity the path does not reach (demo.pr.3 has no labels) is not listed.
+// get wrong: a node the path does not reach (demo.pr.3 has no labels) is not listed.
 func TestStateRootsThePredicateAtAPath(t *testing.T) {
-	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
+	q := url.Values{"at": {"demo.pr.*"}, "if": {"{urgent: true}"}, "if-at": {"labels"}}
 	if got := listRefs(t, q); !sameRefs(got, `demo.pr."1"`, sentinel.String()) {
 		t.Errorf("?if-at labels listed %v, want the urgent ones", got)
 	}
-	deep := url.Values{"if": {"false"}, "if-at": {"labels", "urgent"}}
+	deep := url.Values{"at": {"demo.pr.*"}, "if": {"false"}, "if-at": {"labels", "urgent"}}
 	if got := listRefs(t, deep); !sameRefs(got, `demo.pr."2"`) {
 		t.Errorf("?if-at labels&if-at=urgent listed %v, want the one that is not urgent", got)
 	}
@@ -435,22 +480,21 @@ func TestWatchSaysTheStoreIsDownRatherThanBlamingTheCursor(t *testing.T) {
 // the watch a stream of events, and the narrowing is a path as well as a predicate — so this
 // asks the question directly, across the selectors that have somewhere to diverge.
 //
-// The watch's answer is per-CHANGE and the read's per-entity, which is why the fixture is
-// written once with no updates: over it, "the entities that changed" and "the entities that
-// stand" are the same set, and any difference is the selector's.
+// The watch's answer is per-CHANGE and the read's per node reached, which is why the fixture is
+// written once with no updates: over it, "the nodes that changed" and "the nodes that stand" are
+// the same set, and any difference is the selector's.
 func TestStateAndWatchNameTheSameSet(t *testing.T) {
 	for _, q := range []url.Values{
-		{},
-		{"if": {"{stage: open}"}},
-		{"if": {"{stage: !or [open, merged]}"}},
-		{"at": {"demo"}},
-		{"at": {"demo.pr"}},
+		{"at": {"*.*.*"}},
+		{"at": {"*.*.*"}, "if": {"{stage: open}"}},
+		{"at": {"demo.*.*"}, "if": {"{stage: !or [open, merged]}"}},
+		{"at": {"demo.pr.*"}},
 		// Narrowing to ONE id, spelled at the sentinel's own address so the stream still
 		// terminates — see below.
 		{"at": {"demo.pr.sentinel"}},
 		{"at": {"demo.*.sentinel"}},
-		{"at": {"demo.pr"}, "if": {"{stage: open}"}},
-		{"at": {"demo.pr"}, "if": {"{urgent: true}"}, "if-at": {"labels"}},
+		{"at": {"demo.pr.*"}, "if": {"{stage: open}"}},
+		{"at": {"demo.pr.*"}, "if": {"{urgent: true}"}, "if-at": {"labels"}},
 	} {
 		// The sentinel terminates the stream, so every selector here has to reach it. That rules
 		// out the empty cases (`at=other`), which is a limit of the harness rather than a gap in

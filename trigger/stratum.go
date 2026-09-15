@@ -688,9 +688,9 @@ func (e *Engine) persistStratum(s Stratum, as string) error {
 // asked to be checked against is not in force in this federation.
 func (e *Engine) LoadStrata() error {
 	var errs []error
-	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
+	ents := entity.Below(e.store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind)
-	}, entity.VerseRoot, StrataSystem)
+	}, 2, entity.VerseRoot, StrataSystem)
 	// Asked before anything is installed, for LoadCharter's reason: a load that could not
 	// read installed nothing, and is asked again.
 	if err := entity.ReadFailed(e.store); err != nil {

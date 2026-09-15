@@ -377,9 +377,9 @@ func unwrap(n *ir.Node) *ir.Node {
 // who asks.
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
-	for _, ent := range entity.ListUnder(r, func(ref entity.Ref) bool {
+	for _, ent := range entity.Below(r, func(ref entity.Ref) bool {
 		return !ref.Under(entity.VerseRoot, System, InstanceKind)
-	}, entity.VerseRoot, System) {
+	}, 2, entity.VerseRoot, System) {
 		var res Resolver
 		if err := codec.FromNode(ent.Payload, &res); err != nil {
 			// A binding this build cannot read is one it cannot honour either — and it SAYS so,

@@ -301,8 +301,12 @@ there.
     verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
     verse data                   the verse is empty: nothing has been written yet
 
-An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `-if`
-predicate kept none of what it holds. That answer is about the filter rather than about the path,
+A `*` reaches the children of what it lands on, so over a node with none it reaches nothing:
+`verse data solo '*'` over `solo: {}` is a 404 too, and over `solo: {hollow: {}}` it answers
+`{hollow: {}}`.
+
+An EMPTY DOCUMENT still has a meaning, and it is the other one: the path reached nodes, and a
+`-if` predicate kept none of them. That answer is about the filter rather than about the path,
 so it is a 200 with `{}` — which is why the two cannot be spelled the same way. The store is
 what answers absence: a read reports null only where a null was written, and absence is absence
 at every length.
@@ -315,7 +319,7 @@ separated by the shell in the first case and by the quoting in the second.
 verse data demo pr 1
 ```
 
-`-if` narrows which nodes the document holds, per node, before the nesting — it never prunes
+`-if` narrows which of the nodes the path reached the document holds, per node — it never prunes
 inside what it keeps. **It asks of what the path names**: a path of N segments asks about the
 nodes N segments down, a name and a `*` alike, so the question says its own depth by the `*`s it
 carries. A reflected issue stands at `git-issue.<repository>.issue.<id>`, so the `*` is what
@@ -547,10 +551,10 @@ gives
 Nothing is missed, and a rule watching that subtree still selects the deep node, because it
 re-evaluates against the store rather than against the event's address alone.
 
-A node is reported where it stands, a scalar included, as a read lists it. After
-`verse data a b -put c`, a bare `verse watch`, `verse watch a` and `verse watch a b` each report
-a `set` at `a.b` holding `c`, and `verse data -rm a b` a `delete` at `a.b`. A watch on an
-address reports whatever stands there, a scalar included. A rule reading `demo.pr` is woken by a
+A node is reported where the path reaches it, a scalar included. After `verse data a b -put c`,
+`verse watch a b` reports a `set` at `a.b` holding `c` and `verse watch a` a `set` at `a` holding
+`{b: c}`. `verse data -rm a b` is then a `delete` at `a.b` to a watch on `a b`. A rule reading
+`demo.pr` is woken by a
 write at `demo` as well as one under it, since that write replaces what the rule reads.
 
 A `delete` carries no payload, so a `-if` filter does not match one: there is nothing left

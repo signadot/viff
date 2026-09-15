@@ -35,37 +35,51 @@ func at(t *testing.T, s string) *kpath.KPath {
 	return kp
 }
 
-func nest(t *testing.T, ents []Entity, path string) Doc {
+// docOf is the document the fixture's nodes stand in, rooted at the root.
+func docOf(ents []Entity) *ir.Node {
+	tree := map[string]any{}
+	for _, e := range ents {
+		segs := e.Ref.Segs()
+		level := tree
+		for _, s := range segs[:len(segs)-1] {
+			next, ok := level[s].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				level[s] = next
+			}
+			level = next
+		}
+		level[segs[len(segs)-1]] = clone(e.Payload)
+	}
+	var build func(map[string]any) *ir.Node
+	build = func(m map[string]any) *ir.Node {
+		out := map[string]*ir.Node{}
+		for k, v := range m {
+			switch v := v.(type) {
+			case map[string]any:
+				out[k] = build(v)
+			case *ir.Node:
+				out[k] = v
+			}
+		}
+		return ir.FromMap(out)
+	}
+	return build(tree)
+}
+
+// read is a read of the fixture at a path: the node the path reaches, nil when it reaches none.
+func read(t *testing.T, ents []Entity, path string) Doc {
 	t.Helper()
-	d, err := Nest(ents, at(t, path))
+	out, _, err := Reach(docOf(ents), at(t, path), nil)
 	if err != nil {
-		t.Fatalf("nest at %q: %v", path, err)
+		t.Fatalf("read at %q: %v", path, err)
 	}
-	return d
+	return Doc{Node: out}
 }
 
-// The nesting and the store's own materialized walk are inverses. That is the whole claim: the
-// document is not a shape assembled for the wire, it is what the store holds.
-func TestNestIsWalkEntityDocInverted(t *testing.T) {
-	want := fixture()
-	got := walkEntityDoc(nest(t, want, "").Node)
-	sortEntities(want)
-	sortEntities(got)
-	if len(got) != len(want) {
-		t.Fatalf("walked %d entities, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i].Ref != want[i].Ref {
-			t.Fatalf("ref %d = %s, want %s", i, got[i].Ref, want[i].Ref)
-		}
-		if !Equal(got[i].Payload, want[i].Payload) {
-			t.Fatalf("payload of %s did not survive the round trip", want[i].Ref)
-		}
-	}
-}
-
-// The depth table: what a path of each length answers with.
-func TestNestAnswersTheSubtreeAtThePath(t *testing.T) {
+// The depth table: what a path of each length answers with — the node standing there, whatever
+// it is, with everything beneath it.
+func TestAReadAnswersTheNodeAtThePath(t *testing.T) {
 	for _, tc := range []struct {
 		path string
 		want string // the tony rendering of the answer
@@ -77,8 +91,10 @@ func TestNestAnswersTheSubtreeAtThePath(t *testing.T) {
 		{`demo.pr."a.b".stage`, "open"},
 		{"demo.pr", `{"1": {stage: open} "2": {stage: reviewed} a.b: {stage: open}}`},
 		{"count", `{n: {hits: 42 nothing: null}}`},
+		// A null reads as null wherever it is asked, a wildcard included.
+		{"count.n.*", `{hits: 42 nothing: null}`},
 	} {
-		got := nest(t, fixture(), tc.path)
+		got := read(t, fixture(), tc.path)
 		if got.Node == nil {
 			t.Errorf("%s: nothing stands there, want %s", tc.path, tc.want)
 			continue
@@ -92,26 +108,21 @@ func TestNestAnswersTheSubtreeAtThePath(t *testing.T) {
 // A numeric id is the FIELD named 1, not an array index — the distinction the kpath grammar
 // carries in its syntax, and the reason nothing here has to guess by counting segments.
 func TestANumericIDIsAFieldNotAnIndex(t *testing.T) {
-	if d := nest(t, fixture(), "demo.pr.1"); d.Node == nil {
+	if d := read(t, fixture(), "demo.pr.1"); d.Node == nil {
 		t.Fatal("demo.pr.1 named nothing — a numeric id must read as the field it is")
 	}
-	if _, err := Nest(fixture(), at(t, "demo.pr[1]")); err == nil {
-		t.Fatal("demo.pr[1] asked an object for its second element and was answered anyway")
+	if d := read(t, fixture(), "demo.pr[1]"); d.Node != nil {
+		t.Fatalf("demo.pr[1] asked an object for its second element and was answered %s", flatten(t, d.Node))
 	}
 }
 
 // A DERIVED ID HOLDS THE ADDRESS IT IS ABOUT, so it holds dots, so it is quoted like any other
 // segment that does — `git.ref."proposal-appeared@git.ref.x+2a6c8212"`. `@` and `+` need no
 // quoting on their own (an unquoted kpath field runs until one of `.[{(`); the dots do.
-//
-// It is the cost of the id token joining an address's segments with the delimiter everything
-// else joins them with, and it is temporary: a derived entity's address is on its way to being
-// a real path — the chain as one segment, then the subject's segments — at which point there is
-// no flattened id to quote (docs/working/entity-tree.md).
 func TestADerivedIDIsOneQuotedSegment(t *testing.T) {
-	d := nest(t, fixture(), `git.ref."proposal-appeared@git.ref.x+2a6c8212"`)
+	d := read(t, fixture(), `git.ref."proposal-appeared@git.ref.x+2a6c8212"`)
 	if d.Node == nil {
-		t.Fatal("a derived id did not address its entity")
+		t.Fatal("a derived id did not address its node")
 	}
 	if got := Str(d.Node, "sha"); got != "2a6c" {
 		t.Fatalf("sha = %q, want 2a6c", got)
@@ -121,22 +132,42 @@ func TestADerivedIDIsOneQuotedSegment(t *testing.T) {
 // A wildcard keeps its container's shape, so the answer stays addressable: the ids are still
 // the keys, rather than a flat list of values nobody can point at.
 func TestAWildcardKeepsTheKeys(t *testing.T) {
-	got := nest(t, fixture(), "demo.pr.*.stage")
+	got := read(t, fixture(), "demo.pr.*.stage")
 	if want := `{"1": open "2": reviewed a.b: open}`; flatten(t, got.Node) != want {
 		t.Fatalf("demo.pr.*.stage = %s, want %s", flatten(t, got.Node), want)
 	}
 	// …at any level, and `demo.*.1` reads its kind back out of the one key standing there.
-	if want := `{pr: {stage: open}}`; flatten(t, nest(t, fixture(), "demo.*.1").Node) != want {
-		t.Fatalf("demo.*.1 = %s, want %s", flatten(t, nest(t, fixture(), "demo.*.1").Node), want)
+	if want := `{pr: {stage: open}}`; flatten(t, read(t, fixture(), "demo.*.1").Node) != want {
+		t.Fatalf("demo.*.1 = %s, want %s", flatten(t, read(t, fixture(), "demo.*.1").Node), want)
 	}
 }
 
-// A path naming nothing answers with nothing, at every depth. What the caller does about it —
-// 200 for a slice, 404 for a thing — is the handler's, and AtDepth is what it asks.
+// A WILDCARD REACHES THE NODES THAT HAVE WHAT IT ASKS FOR. `demo.pr.*.stage` over a pr that is
+// a string reaches the others, which is what the store answers for a literal path through a
+// value of the wrong shape.
+func TestAWildcardOverMixedShapesReachesTheOnesThatFit(t *testing.T) {
+	ents := append(fixture(), Entity{Ref: RefAt("demo", "pr", "3"), Payload: ir.FromString("closed")})
+	if got, want := flatten(t, read(t, ents, "demo.pr.*.stage").Node), `{"1": open "2": reviewed a.b: open}`; got != want {
+		t.Fatalf("demo.pr.*.stage = %s, want %s", got, want)
+	}
+}
+
+// A path naming nothing answers with nothing, at every depth — a wildcard over a node with no
+// children among them — and reaching nodes a filter kept none of is a different answer.
 func TestAPathNamingNothingIsNothing(t *testing.T) {
-	for _, path := range []string{"nosuch", "demo.nosuch", "demo.pr.nosuch", "demo.pr.1.nosuch"} {
-		if d := nest(t, fixture(), path); d.Node != nil {
-			t.Errorf("%s answered %s, want nothing", path, flatten(t, d.Node))
+	ents := append(fixture(), Entity{Ref: RefAt("solo", "hollow"), Payload: ir.FromMap(map[string]*ir.Node{})})
+	for _, path := range []string{"nosuch", "demo.nosuch", "demo.pr.nosuch", "demo.pr.1.nosuch", "solo.hollow.*", "demo.pr.1.stage.*"} {
+		if out, reached, err := Reach(docOf(ents), at(t, path), nil); err != nil || reached || out != nil {
+			t.Errorf("%s answered %v (reached=%v, err=%v), want nothing", path, out, reached, err)
+		}
+	}
+	if got := flatten(t, read(t, ents, "solo.*").Node); got != "{hollow: {}}" {
+		t.Errorf("solo.* = %s, want {hollow: {}}", got)
+	}
+	none := func(*ir.Node) (*ir.Node, bool, error) { return nil, false, nil }
+	for _, path := range []string{"demo.pr", "demo.pr.*", "*.pr.*.stage"} {
+		if out, reached, err := Reach(docOf(ents), at(t, path), none); err != nil || !reached || out != nil {
+			t.Errorf("%s with nothing kept = %v (reached=%v, err=%v), want reached and empty", path, out, reached, err)
 		}
 	}
 	for path, want := range map[string]int{"": 0, "demo": 1, "demo.pr": 2, "demo.pr.1": 3, "demo.pr.1.a": 4} {
@@ -146,55 +177,48 @@ func TestAPathNamingNothingIsNothing(t *testing.T) {
 	}
 }
 
-// AND AGAINST ITS OWN HALF'S DEPTH. Verse's own half is one level deeper, so the same claim
-// sits one segment further along: `demo.pr` is a kind and `verse.motion.channel` is exactly
-// that, one level down. Counted against the world's depth the second reads as a thing rather
-// than a slice, which is the arithmetic this pins.
-//
-// It no longer decides what a read of a path holding nothing ANSWERS — that is the store's, and
-// absence is absence at every depth (git-issue 7e5gv3n9h12krd10jhn0).
-func TestAPathNamesAnEntityAtItsOwnHalfsDepth(t *testing.T) {
-	for path, want := range map[string]bool{
-		"":                            false,
-		"demo":                        false,
-		"demo.pr":                     false,
-		"demo.pr.1":                   true,
-		"demo.pr.1.labels":            true,
-		VerseRoot:                     false,
-		"verse.motion":                false,
-		"verse.motion.channel":        false,
-		"verse.motion.channel.m1":     true,
-		"verse.motion.channel.m1.why": true,
-	} {
-		if got := AtNamesEntity(at(t, path)); got != want {
-			t.Errorf("AtNamesEntity(%q) = %v, want %v", path, got, want)
-		}
-	}
-}
-
-// The addresses come back out of the answer at every depth, which is what --paths is: no
-// payloads, one address per line, and no grepping an id out of a rendered ref.
-func TestEntitiesRecoversTheAddresses(t *testing.T) {
+// The addresses of what a read reached come back out of its answer, which is what a command
+// wanting nodes and --paths read: the path fixes some segments and the answer carries the rest.
+func TestReachedRecoversTheAddresses(t *testing.T) {
 	for _, tc := range []struct {
 		path string
 		want []string
 	}{
-		{"", []string{
-			`count.n.hits`, `count.n.nothing`, `demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`,
-			`git.ref."proposal-appeared@git.ref.x+2a6c8212"`,
-		}},
-		{"demo", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
-		{"demo.pr", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
+		{"demo.pr", []string{`demo.pr`}},
+		{"demo.pr.*", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
 		{"demo.pr.1", []string{`demo.pr."1"`}},
 		{"demo.*.1", []string{`demo.pr."1"`}},
-		{"*.pr", []string{`demo.pr."1"`, `demo.pr."2"`, `demo.pr."a.b"`}},
-		// A selection of N segments identifies entities at depth N, a name and a `*` alike: the
-		// map of prs is one entity when three segments ask, and each stage is one when four do.
+		{"*.pr", []string{`demo.pr`}},
 		{"demo.pr.1.stage", []string{`demo.pr."1".stage`}},
 		{"demo.pr.*.stage", []string{`demo.pr."1".stage`, `demo.pr."2".stage`, `demo.pr."a.b".stage`}},
 		{"*.pr.*.stage", []string{`demo.pr."1".stage`, `demo.pr."2".stage`, `demo.pr."a.b".stage`}},
 	} {
-		got := nest(t, fixture(), tc.path).EntityPaths(at(t, tc.path))
+		var got []string
+		for _, e := range read(t, fixture(), tc.path).Reached(at(t, tc.path)) {
+			got = append(got, e.Ref.String())
+		}
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%q reached = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// --paths walks the answer by the path that was asked: `demo.pr.*.stage` prints the stages, not
+// the prs, and a path naming one node prints what is beneath it.
+func TestPathsWalkTheAnswerByThePath(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want []string
+	}{
+		{"demo.pr.*.stage", []string{`demo.pr."1".stage`, `demo.pr."2".stage`, `demo.pr."a.b".stage`}},
+		{"demo.pr.1", []string{`demo.pr."1".stage`}},
+		{"demo.*", []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`, `demo.pr."2".stage`, `demo.pr."a.b"`, `demo.pr."a.b".stage`}},
+	} {
+		var got []string
+		for _, segs := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
+			got = append(got, RefAt(segs...).String())
+		}
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%q paths = %v, want %v", tc.path, got, tc.want)
@@ -214,14 +238,41 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes}),
 	}}
 
-	if want := `{choice: yes voter: scott}`; flatten(t, nest(t, ents, "merge.proposal.X.votes(scott)").Node) != want {
-		t.Fatalf("votes(scott) = %s, want %s", flatten(t, nest(t, ents, "merge.proposal.X.votes(scott)").Node), want)
+	if want := `{choice: yes voter: scott}`; flatten(t, read(t, ents, "merge.proposal.X.votes(scott)").Node) != want {
+		t.Fatalf("votes(scott) = %s, want %s", flatten(t, read(t, ents, "merge.proposal.X.votes(scott)").Node), want)
 	}
-	if d := nest(t, ents, "merge.proposal.X.votes(nobody)"); d.Node != nil {
+	if d := read(t, ents, "merge.proposal.X.votes(nobody)"); d.Node != nil {
 		t.Fatalf("votes(nobody) answered %s, want nothing", flatten(t, d.Node))
 	}
-	if got := flatten(t, nest(t, ents, "merge.proposal.X.votes[0].choice").Node); got != "yes" {
+	if got := flatten(t, read(t, ents, "merge.proposal.X.votes[0].choice").Node); got != "yes" {
 		t.Fatalf("votes[0].choice = %s, want yes", got)
+	}
+}
+
+// A wildcard of each kind reaches only what has that kind: `(*)` the elements of a keyed array,
+// `[*]` those of any array, `*` the fields of an object — and over the wrong kind, nothing
+// (git-issue anbz58g6h12krp0sn5n0).
+func TestAWildcardReachesOnlyItsOwnKind(t *testing.T) {
+	votes := ir.FromSlice([]*ir.Node{
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+	}).WithTag("!key(voter)")
+	ents := []Entity{{
+		Ref:     RefAt("merge", "proposal", "X"),
+		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes}),
+	}}
+	for path, want := range map[string]string{
+		"merge.proposal.X.votes(*).choice": "[yes]",
+		"merge.proposal.X.votes[*].choice": "[yes]",
+		"merge.proposal.*.votes(*).choice": "{X: [yes]}",
+	} {
+		if got := flatten(t, read(t, ents, path).Node); got != want {
+			t.Errorf("%s = %s, want %s", path, got, want)
+		}
+	}
+	for _, path := range []string{"merge.proposal[*]", "merge.proposal(*)", "merge.proposal{*}", "merge.proposal.X.votes.*"} {
+		if out, reached, err := Reach(docOf(ents), at(t, path), nil); err != nil || reached || out != nil {
+			t.Errorf("%s answered %v (reached=%v, err=%v), want nothing", path, out, reached, err)
+		}
 	}
 }
 
@@ -232,27 +283,14 @@ func TestAKeyOnAnUnkeyedArrayIsAnError(t *testing.T) {
 		Ref:     RefAt("merge", "proposal", "X"),
 		Payload: ir.FromMap(map[string]*ir.Node{"votes": ir.FromSlice([]*ir.Node{ir.FromString("scott")})}),
 	}}
-	if _, err := Nest(ents, at(t, "merge.proposal.X.votes(scott)")); err == nil {
+	if _, _, err := Reach(docOf(ents), at(t, "merge.proposal.X.votes(scott)"), nil); err == nil {
 		t.Fatal("a keyed lookup into an unkeyed array was answered rather than refused")
-	}
-}
-
-// The document is deterministic: ir.FromMap sorts at every level, so two reads of an unchanged
-// verse are the same bytes however the entities arrived.
-func TestTheDocumentIsOrdered(t *testing.T) {
-	forward := fixture()
-	backward := fixture()
-	for i, j := 0, len(backward)-1; i < j; i, j = i+1, j-1 {
-		backward[i], backward[j] = backward[j], backward[i]
-	}
-	if a, b := flatten(t, nest(t, forward, "").Node), flatten(t, nest(t, backward, "").Node); a != b {
-		t.Fatalf("the document depends on arrival order:\n %s\n %s", a, b)
 	}
 }
 
 // The codec is the document itself, with nothing wrapped around it.
 func TestDocIsItsOwnWire(t *testing.T) {
-	d := nest(t, fixture(), "demo.pr.1")
+	d := read(t, fixture(), "demo.pr.1")
 	node, err := d.ToTonyIR()
 	if err != nil {
 		t.Fatalf("ToTonyIR: %v", err)
@@ -267,10 +305,6 @@ func TestDocIsItsOwnWire(t *testing.T) {
 	if !Equal(back.Node, d.Node) {
 		t.Fatal("the document did not survive its own codec")
 	}
-}
-
-func sortEntities(es []Entity) {
-	sort.Slice(es, func(i, j int) bool { return es[i].Ref.String() < es[j].Ref.String() })
 }
 
 // flatten renders a node compact and single-line, which is what makes a whole expected
@@ -305,11 +339,15 @@ func TestKeyedReachAgainstTheStore(t *testing.T) {
 		t.Fatalf("write: committed=%v err=%v", ok, err)
 	}
 
-	d, err := Nest(s.List(nil), at(t, "merge.proposal.X.votes(scott)"))
-	if err != nil {
-		t.Fatalf("nest: %v", err)
+	node, ok, err := s.ReadAt(ref.Segs())
+	if err != nil || !ok {
+		t.Fatalf("read: ok=%v err=%v", ok, err)
 	}
-	if got := Str(d.Node, "choice"); got != "yes" {
+	out, _, err := Reach(node, at(t, "votes(scott)"), nil)
+	if err != nil {
+		t.Fatalf("reach: %v", err)
+	}
+	if got := Str(out, "choice"); got != "yes" {
 		t.Fatalf("votes(scott).choice = %q, want yes — the stored array did not keep its key", got)
 	}
 }

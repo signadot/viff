@@ -778,6 +778,157 @@ func (a *attributed) withholdOne(e Entity, ok bool, err error) (Entity, bool, er
 	return kept[0], true, nil
 }
 
+// ReadAt is the node at a path with every node the reader may not read left out of it — at any
+// depth, and not only beneath a row: what stands at a node the reader may read is theirs, down
+// to a record beneath that says otherwise, and beneath a node they may not read, what a record
+// or a grant holds out to them is still theirs. A read of a path answers what reads of each
+// node in it would, whichever node the read was asked at.
+//
+// Nothing of it theirs is a node holding nothing, `{}`: the node stands, and whether the reader
+// may ask about it at all is the route's check (CheckInto), made before the read.
+func (a *attributed) ReadAt(at []string) (*ir.Node, bool, error) {
+	node, ok, err := a.Store.ReadAt(at)
+	if err != nil || !ok || IsSystem(a.principal) {
+		return node, ok, err
+	}
+	return a.readable(node, at)
+}
+
+func (a *attributed) readable(node *ir.Node, at []string) (*ir.Node, bool, error) {
+	places, err := a.places()
+	if err != nil {
+		a.attr.noteUnreadable()
+		return nil, false, err
+	}
+	acc, err := a.accessOf(a.principal, RefAt(at...))
+	if err != nil {
+		a.attr.noteUnreadable()
+		return nil, false, err
+	}
+	out, keep, err := a.prune(clone(node), at, acc.level.Admits(Read), places.at(at))
+	if err != nil {
+		return nil, false, err
+	}
+	if !keep {
+		return ir.FromMap(map[string]*ir.Node{}), true, nil
+	}
+	return out, true, nil
+}
+
+// placeTrie is the paths where what a reader may read can differ from the node above: every
+// perms record, every path a grant names, and the reserved root, which the check's base case
+// treats apart from the world's half. Beneath a node with nothing in the trie below it, every
+// node reads as that node does — ownership descends, a grant covers what is beneath its path,
+// and the base case is one answer throughout a half — so only the trie's paths are asked.
+type placeTrie struct {
+	children map[string]*placeTrie
+	below    bool // a grant here covers what is beneath the node and not the node
+}
+
+func (t *placeTrie) add(segs []string, below bool) {
+	for _, s := range segs {
+		if t.children == nil {
+			t.children = map[string]*placeTrie{}
+		}
+		next := t.children[s]
+		if next == nil {
+			next = &placeTrie{}
+			t.children[s] = next
+		}
+		t = next
+	}
+	t.below = t.below || below
+}
+
+// at is the trie beneath a path, nil when nothing in it is at or beneath the path.
+func (t *placeTrie) at(segs []string) *placeTrie {
+	for _, s := range segs {
+		if t == nil {
+			return nil
+		}
+		t = t.children[s]
+	}
+	return t
+}
+
+// places reads the trie from the loaded mirror, or by listing the mirror once.
+func (a *attributed) places() (*placeTrie, error) {
+	t := &placeTrie{}
+	t.add([]string{VerseRoot}, false)
+	add := func(key string, rec *permsRecord) {
+		if rec == nil {
+			return
+		}
+		if ref, err := ParseAddr(key); err == nil {
+			t.add(ref.Segs(), false)
+		}
+		for _, g := range rec.grants {
+			t.add(g.At, g.Below)
+		}
+	}
+	a.attr.mu.Lock()
+	loaded := a.attr.loaded
+	if loaded {
+		for key, rec := range a.attr.records {
+			add(key, rec)
+		}
+	}
+	root := a.attr.rootDefault
+	a.attr.mu.Unlock()
+	if loaded {
+		return t, nil
+	}
+	mirror := []string{VerseRoot, PermsSystem, PermsKind}
+	recs, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, rec := range recs {
+		key := rec.Ref.Name()
+		add(key, parseRecord(key, rec.Payload, root))
+	}
+	return t, nil
+}
+
+// prune is the node at segs as the reader sees it, given whether they may read segs itself and
+// the places at and beneath it (t). keep is false when nothing of it is theirs. The node is the
+// reader's own copy, and is narrowed in place.
+func (a *attributed) prune(n *ir.Node, segs []string, readable bool, t *placeTrie) (*ir.Node, bool, error) {
+	obj := ir.Uncomment(n)
+	if t == nil || (len(t.children) == 0 && !t.below) || obj == nil || obj.Type != ir.ObjectType {
+		if !readable {
+			a.attr.noteHidden()
+		}
+		return n, readable, nil
+	}
+	fields, values := obj.Fields[:0:0], obj.Values[:0:0]
+	for i, f := range obj.Fields {
+		name := fieldName(f)
+		child := append(append(make([]string, 0, len(segs)+1), segs...), name)
+		sub, childReadable := t.children[name], readable
+		if sub != nil || t.below {
+			acc, err := a.accessOf(a.principal, RefAt(child...))
+			if err != nil {
+				a.attr.noteUnreadable()
+				return nil, false, err
+			}
+			childReadable = acc.level.Admits(Read)
+		}
+		v, keep, err := a.prune(obj.Values[i], child, childReadable, sub)
+		if err != nil {
+			return nil, false, err
+		}
+		if keep {
+			fields, values = append(fields, f), append(values, v)
+		}
+	}
+	obj.Fields, obj.Values = fields, values
+	if !readable && len(fields) == 0 {
+		return nil, false, nil
+	}
+	return n, true, nil
+}
+
 func (a *attributed) List(pred func(Ref) bool) []Entity {
 	out, _ := a.keepAll(a.Store.List(pred))
 	return out
@@ -831,6 +982,14 @@ func (n narrowed) Get(ref Ref) (Entity, bool, error) {
 		return Entity{}, false, err
 	}
 	return n.a.withholdOne(n.Snapshot.Get(ref))
+}
+
+func (n narrowed) ReadAt(at []string) (*ir.Node, bool, error) {
+	node, ok, err := n.Snapshot.ReadAt(at)
+	if err != nil || !ok {
+		return node, ok, err
+	}
+	return n.a.readable(node, at)
 }
 
 func (n narrowed) List(pred func(Ref) bool) []Entity {
@@ -1743,13 +1902,6 @@ func (a *attributed) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...stri
 	}
 	ch, unsub := a.Store.Observe()
 	return a.narrowing(ch), unsub, nil
-}
-
-func (a *attributed) Standing(prefix []string) (bool, error) {
-	if h, ok := a.Store.(interface{ Standing([]string) (bool, error) }); ok {
-		return h.Standing(prefix)
-	}
-	return true, nil
 }
 
 func (a *attributed) Close() error {

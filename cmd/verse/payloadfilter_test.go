@@ -156,7 +156,8 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	// --paths, because the question is WHICH ENTITIES the filter names and that is exactly what
 	// --paths answers. The document itself spells an id as a key rather than as a ref, so
 	// asserting on `demo.pr.1` in the body would be asserting on a rendering.
-	out, err := runState(t, "--paths", "--if", "{stage: open}")
+	// At `demo pr '*'`, each pr: the filter is asked of what the path reached.
+	out, err := runState(t, "demo", "pr", "*", "--paths", "--if", "{stage: open}")
 	if err != nil {
 		t.Fatalf("state --if: %v", err)
 	}
@@ -171,7 +172,7 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 	}
 
 	// Rooted at a path, and the entity that has no such path is not named.
-	out, err = runState(t, "--paths", "--if", "{urgent: true}", "--if-at", "labels")
+	out, err = runState(t, "demo", "pr", "*", "--paths", "--if", "{urgent: true}", "--if-at", "labels")
 	if err != nil {
 		t.Fatalf("state --if-at: %v", err)
 	}
@@ -356,9 +357,9 @@ func TestAListingFiltersAndProjects(t *testing.T) {
 	}
 }
 
-// `state`'s items are ENTITIES, not the document's top-level keys: a trim names payload fields
-// and applies to each entity standing at the path, whatever depth the path reaches.
-func TestStateTrimsEachEntitysPayload(t *testing.T) {
+// `state`'s items are THE NODES THE PATH REACHED, not the document's top-level keys: a trim names
+// fields of each, whatever depth the path reaches.
+func TestStateTrimsEachReachedNode(t *testing.T) {
 	serve(t)
 	for _, e := range [][]string{
 		{"demo", "pr", "1", `{stage: open, owner: ana}`},
@@ -371,15 +372,19 @@ func TestStateTrimsEachEntitysPayload(t *testing.T) {
 	}
 	// Through the state command itself: the harness walks subcommands by name, so a path
 	// positional has to go to the command rather than through the walk.
-	out, err := runState(t, "demo", "pr", "--trim", `{stage: null}`)
+	out, err := runState(t, "demo", "pr", "*", "--trim", `{stage: null}`)
 	if err != nil {
 		t.Fatalf("state --trim: %v", err)
 	}
 	if !strings.Contains(out, "stage") || strings.Contains(out, "owner") {
 		t.Errorf("--trim did not project each payload: %s", out)
 	}
-	// Both entities survive: --trim says how much, not which.
+	// Both prs survive: --trim says how much, not which.
 	if !strings.Contains(out, `"1"`) || !strings.Contains(out, `"2"`) {
-		t.Errorf("--trim dropped an entity: %s", out)
+		t.Errorf("--trim dropped a pr: %s", out)
+	}
+	// And at `demo pr` the one node reached is the map of prs, which holds no stage.
+	if out, err := runState(t, "demo", "pr", "--trim", `{stage: null}`); err != nil || strings.Contains(out, "open") {
+		t.Errorf("--trim at demo pr = %q (%v), want the map of prs projected as one node", out, err)
 	}
 }

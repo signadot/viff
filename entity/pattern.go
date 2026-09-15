@@ -327,7 +327,7 @@ func descend(payload Payload, field []string) Payload {
 // into verse's own by omission. A read's pattern filters what a path already chose, and a path
 // that named both halves means both — so asking the pattern about the address again would
 // answer a question the reader did not ask.
-func (p Pattern) MatchesPayload(e Entity) bool { return p.matchPayload(e.Payload) }
+func (p Pattern) MatchesPayload(n Payload) bool { return p.matchPayload(n) }
 
 func (p Pattern) MatchesChange(ev Event) bool {
 	if p.Op != "" && p.Op != ev.Op {

@@ -1309,14 +1309,11 @@ func inSteps(at entity.Path) string {
 	return entity.JoinSteps(segs)
 }
 
-// stateAt reads the verse at a path and hands back the entities standing there.
+// stateAt reads the verse at a kinded path and hands back each node it reached, at its address:
+// `provider.*.*` is every provider, one node each.
 //
-// It is what a command that wants ENTITIES uses, and the reason it can: the addresses are in
-// the answer, as keys, so a caller reads them out of the document it already has rather than
-// recovering them from a rendered ref and making a second request. Every consumer in this
-// package used to do the latter — `strings.TrimPrefix(e.Ref, "provider:")` and a SplitN to get
-// the capability back — which is exactly the map the store had thrown away being rebuilt by
-// hand at each caller.
+// The addresses are in the answer, as keys, so a caller reads them out of the document it already
+// has rather than recovering them from a rendered string and making a second request.
 func stateAt(at string) ([]entity.Entity, error) {
 	kp, err := entity.ParseAt(at)
 	if err != nil {
@@ -1351,7 +1348,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decoding the state: %w", err)
 	}
-	return (entity.Doc{Node: node}).Entities(kp), nil
+	return (entity.Doc{Node: node}).Reached(kp), nil
 }
 
 // printPaths prints one address per line — EVERY address under what was asked for, deepest last

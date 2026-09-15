@@ -539,9 +539,9 @@ func answerRecord(res task.Resolution) entity.Obj {
 // fact that it was never decided, is the trail. `orphaned` is the same word a restart uses
 // for the same fact — the party who could have answered no longer exists.
 func OrphanQuestions(store entity.Store, taskID string) {
-	for _, ent := range entity.ListUnder(store, func(ref entity.Ref) bool {
+	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
 		return IsQuestion(ref)
-	}, entity.VerseRoot, QuestionSystem, QuestionKind) {
+	}, 1, entity.VerseRoot, QuestionSystem, QuestionKind) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] != taskID || p["status"] != QuestionPending {
 			continue

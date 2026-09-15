@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/versed"
@@ -55,6 +57,11 @@ func (f *flapping) List(func(entity.Ref) bool) []entity.Entity {
 func (f *flapping) ListAt([]string, int, func(entity.Ref) bool) []entity.Entity {
 	out, _ := f.read()
 	return out
+}
+
+func (f *flapping) ReadAt([]string) (*ir.Node, bool, error) {
+	_, err := f.read()
+	return nil, false, err
 }
 
 func (f *flapping) ListErr(func(entity.Ref) bool) ([]entity.Entity, error) { return f.read() }

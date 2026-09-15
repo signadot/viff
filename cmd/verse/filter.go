@@ -143,47 +143,15 @@ func (f filters) apply(node *ir.Node) (*ir.Node, error) {
 	return ir.FromSlice(kept), nil
 }
 
-// applyDoc filters `state`'s answer, whose items are ENTITIES rather than elements: it reads
-// the addresses out of the document the same way a read does, filters the payload standing at
-// each, and rebuilds the document from what survived.
-//
-// Going through the entity walk rather than the raw node is what makes it work at every depth
-// and across both halves of the tree: which keys are address levels and which are payload is
-// exactly the question `Doc.Entities` answers, and answering it twice would be answering it
-// differently one day.
-//
-// A path through an index or a keyed element names no entities, and there the document itself
-// is the one item.
+// applyDoc filters `state`'s answer, whose items are the NODES THE PATH REACHED rather than
+// elements: `demo pr` reached one node, `demo pr '*'` each pr. It walks the answer by the path
+// that was asked (entity.Doc.Each), so what --trim projects and --if keeps is what the read was
+// about at any depth, and `{}` is an answer that kept nothing.
 func (f filters) applyDoc(node *ir.Node, at *kpath.KPath) (*ir.Node, error) {
 	if f.none() || node == nil {
 		return node, nil
 	}
-	ents := (entity.Doc{Node: node}).Entities(at)
-	if len(ents) == 0 {
-		out, keep, err := f.item(node)
-		if err != nil || !keep {
-			return ir.FromMap(map[string]*ir.Node{}), err
-		}
-		return out, nil
-	}
-	kept := make([]entity.Entity, 0, len(ents))
-	for _, e := range ents {
-		out, keep, err := f.item(e.Payload)
-		if err != nil {
-			return nil, err
-		}
-		if keep {
-			kept = append(kept, entity.Entity{Ref: e.Ref, Payload: out})
-		}
-	}
-	doc, err := entity.Nest(kept, at)
-	if err != nil {
-		return nil, err
-	}
-	if doc.Node == nil {
-		return ir.FromMap(map[string]*ir.Node{}), nil
-	}
-	return doc.Node, nil
+	return (entity.Doc{Node: node}).Each(at, f.item)
 }
 
 // frame applies the filters to one streamed event, answering the text to print.

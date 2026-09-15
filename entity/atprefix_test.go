@@ -18,42 +18,29 @@ func at(t *testing.T, s string) *kpath.KPath {
 	return p
 }
 
-// AtPrefix says how narrowly a read at a path may be asked, which is the difference between
-// reading a subtree and reading the verse and discarding it.
-func TestAtPrefix(t *testing.T) {
+// LiteralPrefix says where a read at a path is asked of the store, which is the difference
+// between reading a subtree and reading the verse and discarding it.
+func TestLiteralPrefix(t *testing.T) {
 	for _, c := range []struct {
 		at     string
-		prefix []string
-		depth  int
-		ok     bool
+		prefix string
+		rest   string
 	}{
-		{"demo.pr", []string{"demo", "pr"}, 3, true},
-		{"demo.pr.1", []string{"demo", "pr", "1"}, 3, true},
-		// A path of N segments reads at depth N: what it names is the entity asked about.
-		{"demo.pr.1.labels.urgent", []string{"demo", "pr", "1", "labels", "urgent"}, 5, true},
-		// A wildcard ends the prefix — nothing below it is a literal to read under — and still
-		// counts toward the depth.
-		{"demo.pr.*.stage", []string{"demo", "pr"}, 4, true},
-		// A repository is a level of a reflected address, so its issues are four segments down.
-		{"git-issue.verse.issue.*", []string{"git-issue", "verse", "issue"}, 4, true},
-		{"git-issue.verse.issue", []string{"git-issue", "verse", "issue"}, 3, true},
-		// Verse's own half is one deeper, and the root counts as a segment.
-		{"verse.gate.question", []string{"verse", "gate", "question"}, 4, true},
-		// Naming nothing spans both halves, whose entities sit at different depths: no single
-		// ListAt answers that, so the caller must fall back to the root read.
-		{"", nil, 0, false},
+		{"demo.pr", "demo.pr", ""},
+		{"demo.pr.1.labels.urgent", `demo.pr."1".labels.urgent`, ""},
+		// A wildcard ends the prefix: nothing below it is a literal to read under.
+		{"demo.pr.*.stage", "demo.pr", "*.stage"},
+		{"demo.tags[0]", "demo.tags", "[0]"},
+		{"*.pr", "", "*.pr"},
+		{"", "", ""},
 	} {
-		prefix, depth, ok := entity.AtPrefix(at(t, c.at))
-		if ok != c.ok || depth != c.depth || len(prefix) != len(c.prefix) {
-			t.Errorf("AtPrefix(%q) = %v, %d, %v; want %v, %d, %v",
-				c.at, prefix, depth, ok, c.prefix, c.depth, c.ok)
-			continue
+		prefix, rest := entity.LiteralPrefix(at(t, c.at))
+		restStr := ""
+		if rest != nil {
+			restStr = rest.String()
 		}
-		for i := range prefix {
-			if prefix[i] != c.prefix[i] {
-				t.Errorf("AtPrefix(%q) = %v; want %v", c.at, prefix, c.prefix)
-				break
-			}
+		if got := entity.JoinSegs(prefix); got != c.prefix || restStr != c.rest {
+			t.Errorf("LiteralPrefix(%q) = %q, %q; want %q, %q", c.at, got, restStr, c.prefix, c.rest)
 		}
 	}
 }

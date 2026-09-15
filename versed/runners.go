@@ -223,9 +223,9 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 // so that removing the entity cannot strand it.
 func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 	var out []string
-	for _, ent := range entity.ListUnder(r, func(e entity.Ref) bool {
+	for _, ent := range entity.Below(r, func(e entity.Ref) bool {
 		return mirror.IsTask(e)
-	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
+	}, 1, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue

@@ -672,7 +672,7 @@ func (s *Server) reconcileTasks() error {
 	}
 	var resumed []resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
-	tasks := entity.ListUnder(s.Store, mirror.IsTaskish, entity.VerseRoot, mirror.System)
+	tasks := entity.Below(s.Store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System)
 	if err := entity.ReadFailed(s.Store); err != nil {
 		// Not "no tasks outlived us": orphaning nothing is right, and resuming nothing is not.
 		// Reported as the read it is, and the phase asks again.
@@ -861,9 +861,9 @@ type resumedRun struct{ subject, chain string }
 // are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
 // worth fixing when scoped resume is, since both are the same gap.
 func (s *Server) reconcileClaims(resumed []resumedRun) {
-	for _, ent := range entity.ListUnder(s.Store, func(r entity.Ref) bool {
+	for _, ent := range entity.Below(s.Store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
-	}, entity.VerseRoot, mirror.System, mirror.ClaimKind) {
+	}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind) {
 		if claimIsLive(ent, resumed) {
 			continue
 		}
@@ -1526,9 +1526,7 @@ func principalOf(r *http.Request) string { return r.Header.Get(api.PrincipalHead
 // tony match over the payload, rooted at the field path in ?if-at (one parameter per segment,
 // so a field name is never re-split here).
 //
-// It no longer reads ?system/?kind, and nothing sends them: which entities a read is about is
-// the positional PATH now (?at), which says the same thing at any depth instead of only at two
-// — see querySelector, which pairs the two halves.
+// Which nodes a read is about is the PATH (?at) — see querySelector, which pairs the two halves.
 //
 // ?if arrives as TONY whatever the operator typed, because a GET carries no Content-Type to
 // declare a dialect in; the client parses in --ifmt and re-renders (see payloadFilter.apply).
@@ -1540,14 +1538,13 @@ func queryPattern(q url.Values) (entity.Pattern, error) {
 	return entity.Pattern{Predicate: pred, At: q["if-at"]}, nil
 }
 
-// selector is what a read-plane route was asked for: a path naming the entities, and a
-// predicate over the payloads standing at it.
+// selector is what a read-plane route was asked for: a path reaching nodes, and a predicate over
+// each node it reached.
 //
 // It is ONE type because the streaming face and the listing face must name the SAME set —
-// `verse watch --if X demo.pr` and `verse data --if X demo.pr` differ in when they answer, not
-// in what they pick. That was true of the pattern alone before the path existed; it has to stay
-// true now that the narrowing lives in two places, and it is no longer visible by eye, so
-// TestStateAndWatchNameTheSameSet says it instead.
+// `verse watch --if X demo pr '*'` and `verse data --if X demo pr '*'` differ in when they
+// answer, not in what they pick. That is not visible by eye, so TestStateAndWatchNameTheSameSet
+// says it instead.
 type selector struct {
 	at  *kpath.KPath
 	pat entity.Pattern
@@ -1566,14 +1563,13 @@ func querySelector(q url.Values) (selector, error) {
 	return selector{at: at, pat: pat}, nil
 }
 
-// matchRef is the prefilter a store can apply for itself: the address dimensions, which is
-// everything the path says down to the id.
+// matchRef is whether a change's path is one the selector's path reaches.
 func (s selector) matchRef(ref entity.Ref) bool { return entity.MatchesAt(ref, s.at) }
 
-// matchEntity is the whole question about a stored entity, and matchEvent the whole question
+// matchNode is the whole question about a node a read reached, and matchEvent the whole question
 // about a change.
-func (s selector) matchEntity(e entity.Entity) bool {
-	return s.matchRef(e.Ref) && s.pat.MatchesPayload(e)
+func (s selector) matchNode(n *ir.Node) (*ir.Node, bool, error) {
+	return n, s.pat.MatchesPayload(n), nil
 }
 
 func (s selector) matchEvent(ev entity.Event) bool {
@@ -1650,7 +1646,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	var replay []entity.Commit
 	var replayErr error
 	if catchUp {
-		prefix, _, _ := entity.AtPrefix(sel.at)
+		prefix, _ := entity.LiteralPrefix(sel.at)
 		replay, replayErr = store.Since(since, prefix...)
 	}
 	if replayErr != nil {
@@ -1739,26 +1735,6 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// state answers the verse AT A PATH: the subtree standing there, which is what the store holds
-// rather than a shape assembled for the wire. It is narrowed by the same selector /watch
-// streams, so a read and a stream never disagree about what a filter names.
-//
-// The address dimensions go to the store as List's prefilter, which is where they belong: they
-// are the ones a store can apply for itself. The payload predicate is answered here, because
-// answering it needs the payload — so the split is what the store can do, not a second opinion
-// about the selector.
-//
-// `--if` narrows WHICH ENTITIES remain, per entity, before the nesting. It never prunes inside
-// a payload: the document's leaves are whole payloads, and a filter that reached into one would
-// answer with entities that do not hold what they say they hold. (`--if-at` says where the
-// predicate is evaluated, which is a different question again.)
-//
-// A path naming nothing is `{}` with 200 at collection depth and 404 below it. The cut is where
-// a path stops describing a SLICE and starts naming a THING: `demo.nosuch` asks which prs a
-// system that is not there has, and "none" is a true answer to it; `demo.pr.nosuch` names one
-// entity, and answering `{}` would say it is there and empty. The empty answer is `{}` rather
-// than an absent one for the same reason inverted — at collection depth the slice is the answer,
-// and it is empty.
 // storeUnreadable reports the store's last failed read, or nil.
 //
 // A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
@@ -1820,6 +1796,16 @@ func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 	return true
 }
 
+// state answers the verse AT A PATH: the node the path reaches in the store, with everything
+// beneath it (docs/working/paths-and-nodes.md). It is narrowed by the same selector /watch
+// streams, so a read and a stream never disagree about what a filter names.
+//
+// `--if` is asked of each node the path reached — `demo.pr` reaches one, `demo.pr.*` each pr —
+// and never prunes inside one it keeps. (`--if-at` says where inside the node the predicate is
+// evaluated, which is a different question again.)
+//
+// A path that reaches nothing is a 404 at every length; a path whose nodes `--if` kept none of is
+// `{}`, which is an answer about the filter rather than the path.
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	sel, err := querySelector(r.URL.Query())
 	if err != nil {
@@ -1830,86 +1816,52 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	if refused(w, readableAt(store, principalOf(r), sel)) {
 		return
 	}
-	// AT THE PATH, not at the root. This read used to be List(matchRef) — the whole verse
-	// across the wire, filtered here — whatever `at` said, which made every read cost the same
-	// as reading everything: 0.74s for one registration on a 6900-entity store, against under
-	// 50ms for the narrow form the substrate already answers. See entity.AtPrefix.
-	ents, err := listAt(store, sel)
+	// AT THE LITERAL PREFIX, which is what the substrate routes on: a read of one registration
+	// costs what that registration holds, not what the verse does. The rest of the path — from
+	// its first wildcard, index or key — is answered over the node that came back.
+	prefix, rest := entity.LiteralPrefix(sel.at)
+	node, ok, err := store.ReadAt(prefix)
 	if unreadable(w, r, err) {
 		return
 	}
-	// NOTHING STANDS THERE is an answer, and a different one from an empty document. Asked only
-	// when the listing came back with nothing — rows in hand already prove the path stands — so
-	// an ordinary read pays for it never.
-	if len(ents) == 0 && !pathStands(store, sel) {
+	if !ok {
 		notFoundAt(w, r, sel.at)
 		return
 	}
-	kept := make([]entity.Entity, 0, len(ents))
-	for _, e := range ents {
-		if sel.matchEntity(e) {
-			kept = append(kept, e)
-		}
+	var keep func(*ir.Node) (*ir.Node, bool, error)
+	if sel.pat.Predicate != nil {
+		keep = sel.matchNode
 	}
-	doc, err := entity.Nest(kept, sel.at)
+	out, reached, err := entity.Reach(node, rest, keep)
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Nothing came back from a path that DOES stand: the read reached it and the selector kept
-	// none of what it held. That is an answer about the filter rather than about the path, so
-	// it is an empty document rather than a not-found — and it no longer turns on the depth
-	// asked at, which was verse guessing where entities end.
-	if doc.Node == nil {
-		doc.Node = ir.FromMap(map[string]*ir.Node{})
+	// A PATH THAT REACHES NOTHING NAMES NOTHING — a wildcard over a node with no children
+	// included — and a path that reached nodes `--if` kept none of is an answer about the
+	// filter: the empty document.
+	if !reached {
+		notFoundAt(w, r, sel.at)
+		return
 	}
-	writeOut(w, r, http.StatusOK, doc)
+	if out == nil {
+		out = ir.FromMap(map[string]*ir.Node{})
+	}
+	writeOut(w, r, http.StatusOK, entity.Doc{Node: out})
 }
 
-// listAt reads the entities a selector can pick, under the narrowest prefix its path allows.
-// A path that names nothing falls back to the root read, because the whole verse spans both
-// halves and their entities sit at different depths.
-// pathStands asks whether the path a selector names stands at all, for a listing that came back
-// empty. A store that cannot answer says yes: before there was a way to ask, an empty listing was
-// the only answer, and reporting not-found on a store that merely cannot tell would be worse than
-// the ambiguity this removes.
-func pathStands(store entity.Store, sel selector) bool {
-	prefix, _, ok := entity.AtPrefix(sel.at)
-	asker, can := store.(interface{ Standing([]string) (bool, error) })
-	if !can {
-		return true
-	}
-	if !ok {
-		prefix = nil // the whole verse: does the root itself stand?
-	}
-	stands, err := asker.Standing(prefix)
-	if err != nil {
-		return true
-	}
-	return stands
-}
-
-// watchFor opens the narrowest watch the selector allows: at the prefix it names, or at the root
-// when it names none. A store without the narrowing method falls back to the root watch, which is
-// what every store did before there was one.
+// watchFor opens the narrowest watch the selector allows: at its literal prefix, reporting at the
+// depth the path names, or at the root when it names no prefix.
 func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entity.Commit, func(), error) {
-	prefix, depth, ok := entity.AtPrefix(sel.at)
+	prefix, _ := entity.LiteralPrefix(sel.at)
 	narrow, hasNarrow := store.(interface {
 		WatchSubtreeAt(int, bool, ...string) (<-chan entity.Commit, func(), error)
 	})
-	if !ok || !hasNarrow {
+	if len(prefix) == 0 || !hasNarrow {
 		ch, unsub := store.Observe()
 		return ch, unsub, nil
 	}
-	return narrow.WatchSubtreeAt(depth, waitIfAbsent, prefix...)
-}
-
-func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
-	prefix, depth, ok := entity.AtPrefix(sel.at)
-	if !ok {
-		return entity.ListErr(store, sel.matchRef)
-	}
-	return entity.ListAtErr(store, prefix, depth, sel.matchRef)
+	return narrow.WatchSubtreeAt(entity.AtDepth(sel.at), waitIfAbsent, prefix...)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
@@ -2090,8 +2042,8 @@ func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	ents, err := entity.ListUnderErr(store, func(ref entity.Ref) bool { return entity.IsGroup(ref) },
-		entity.VerseRoot, entity.PrincipalSystem, entity.GroupKind)
+	ents, err := entity.BelowErr(store, func(ref entity.Ref) bool { return entity.IsGroup(ref) },
+		1, entity.VerseRoot, entity.PrincipalSystem, entity.GroupKind)
 	if unreadable(w, r, err) {
 		return
 	}
@@ -2301,8 +2253,8 @@ func permsRecordOf(ref entity.Ref, payload entity.Payload) api.PermsRecord {
 // readable at all is refused, and says so, rather than answered empty. A selector naming no
 // path reads at the root, which is everyone's.
 func readableAt(store entity.Store, principal string, sel selector) error {
-	prefix, _, ok := entity.AtPrefix(sel.at)
-	if !ok || len(prefix) == 0 {
+	prefix, _ := entity.LiteralPrefix(sel.at)
+	if len(prefix) == 0 {
 		return nil
 	}
 	return entity.CheckInto(store, principal, entity.RefAt(prefix...))
@@ -3395,12 +3347,12 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	resolvers, readErr := entity.ListUnderErr(s.scopedStore(r), func(ref entity.Ref) bool {
+	resolvers, readErr := entity.BelowErr(s.scopedStore(r), func(ref entity.Ref) bool {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
 		return ref.Under(entity.VerseRoot, resolver.System) && !ref.Under(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}, entity.VerseRoot, resolver.System)
+	}, 2, entity.VerseRoot, resolver.System)
 	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -3551,9 +3503,9 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// machinery for a reader that no longer exists; what they were evidence of is in the
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
-	for _, ent := range entity.ListUnder(store, func(ref entity.Ref) bool {
+	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
 		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}, entity.VerseRoot, resolver.System, resolver.InstanceKind) {
+	}, 1, entity.VerseRoot, resolver.System, resolver.InstanceKind) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
@@ -4265,8 +4217,8 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 // written at spawn and complete without asking any runtime. Both the list and the count come
 // through here, so that they are the same rows by construction rather than by agreement.
 func taskRows(store entity.Store) []entity.Entity {
-	return entity.ListUnder(store, mirror.IsTask,
-		entity.VerseRoot, mirror.System, mirror.InstanceKind)
+	return entity.Below(store, mirror.IsTask,
+		1, entity.VerseRoot, mirror.System, mirror.InstanceKind)
 }
 
 // taskCount is how many tasks this verse has a record of — the number `verse task` lists.
@@ -4314,9 +4266,9 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 // store — the scope's membership.
 func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	ids := map[string]bool{}
-	for _, e := range entity.ListUnder(store, func(ref entity.Ref) bool {
+	for _, e := range entity.Below(store, func(ref entity.Ref) bool {
 		return mirror.IsTask(ref)
-	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
+	}, 1, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		ids[e.Ref.Name()] = true
 	}
 	return ids

@@ -18,8 +18,8 @@ type Reader interface {
 	// List enumerates the stored entities whose ref satisfies pred (nil = all), at the depth an
 	// address has had all along — three segments, four in verse's own half.
 	List(pred func(Ref) bool) []Entity
-	// ListAt enumerates the nodes at a STATED depth under a prefix, which is how a caller asks
-	// about entities deeper than three.
+	// ListAt enumerates the nodes at a STATED depth under a prefix — whatever stands there, and
+	// nothing shallower.
 	//
 	// The depth is the caller's because nothing else knows it: a document holding `{a: {b: {c:
 	// {stage: open}}}}` has an entity at `a.b.c` or at `a.b`, and which one is a property of
@@ -27,6 +27,11 @@ type Reader interface {
 	// prefix to read under and `depth` counts segments from the root, so `ListAt([verse-dev,
 	// drift, head], 4, …)` answers the entities one level below that path.
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
+	// ReadAt is THE READ: the node standing at a path — an object with everything beneath it, an
+	// array, a scalar, a null — with no opinion about where anything in it ends
+	// (docs/working/paths-and-nodes.md). The empty path is the root. ok is false when nothing
+	// stands there, and err says the read could not be performed, which is not the same answer.
+	ReadAt(at []string) (node *ir.Node, ok bool, err error)
 }
 
 // Snapshot is a Reader fixed at one revision: every read answers as of that commit, and no
@@ -94,13 +99,29 @@ func (s docSnapshot) ListAt(at []string, depth int, pred func(Ref) bool) []Entit
 		node = childByKey(node, seg)
 	}
 	var out []Entity
-	walkLeaves(node, depth-len(at), func(segs []string, v *ir.Node) {
+	if node == nil {
+		return nil // nothing stands at the prefix
+	}
+	nodesAt(node, depth-len(at), func(segs []string, v *ir.Node) {
 		ref := RefAt(append(append([]string{}, at...), segs...)...)
 		if pred == nil || pred(ref) {
 			out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
 		}
 	})
 	return out
+}
+
+// ReadAt reads the node at a path out of the document already in hand. The error is always nil:
+// the read that could have failed happened when the snapshot was taken.
+func (s docSnapshot) ReadAt(at []string) (*ir.Node, bool, error) {
+	node := childByKey(s.doc, s.root)
+	for _, seg := range at {
+		node = childByKey(node, seg)
+	}
+	if node == nil {
+		return nil, false, nil
+	}
+	return node, true, nil
 }
 
 // compile-time checks: a Store reads like a Reader, and a docSnapshot is a Snapshot.

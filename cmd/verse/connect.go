@@ -405,7 +405,7 @@ func disconnectCmd() *cli.Command {
 
 // removeLocalEntities deletes every local:* entity in the current (scope) view.
 func removeLocalEntities(cc *cli.Context) error {
-	ents, err := stateAt(source.FederationSystem)
+	ents, err := stateAt(source.FederationSystem + ".*.*")
 	if err != nil {
 		return fmt.Errorf("disconnect: %w", err)
 	}
