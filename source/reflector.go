@@ -237,7 +237,7 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			return 0, err
 		}
 		for _, p := range at {
-			desired[p.String()] = true
+			desired[p.at.String()] = true
 		}
 	}
 	for _, e := range rn.Entities {
@@ -271,7 +271,7 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			return wrote, err
 		}
 		if len(at) == 0 {
-			at = []entity.Path{e.Ref.At()}
+			at = []spot{{node: e.Ref, at: e.Ref.At()}}
 		}
 		for _, p := range at {
 			// Compared AT THE PLACE, which is what stops two owners of one entity from rewriting
@@ -283,13 +283,14 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			// read — so a source that legitimately reported one differed from itself on every
 			// pass, forever. Absence is `!delete` now and a null is a null, so there is nothing
 			// to strip here and nothing to mimic.
-			curAt, nextAt := valueAt(cur, p.Field), valueAt(e.Payload, p.Field)
+			slot := p.at.Below(e.Ref)
+			curAt, nextAt := valueAt(cur, slot), valueAt(e.Payload, slot)
 			if exists && entity.Equal(curAt, nextAt) {
 				continue
 			}
 			// An answer that carries nothing at its own slot is saying the slot is empty, which
 			// is a removal and wants the same last-owner-out question a tombstone does.
-			if nextAt == nil && !p.IsEntity() {
+			if nextAt == nil && len(slot) > 0 {
 				if err := rf.removeAt(p); err != nil {
 					return wrote, err
 				}
@@ -313,8 +314,8 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 			// source has stopped reporting goes away only because an explicit null is written at
 			// it. The List above is where it comes from, in the same pass, from the only writer
 			// there is — and scoped to the place, so a null can never land on a sibling slot.
-			if err := entity.ReplaceAt(rf.store, p, curAt, nextAt); err != nil {
-				return wrote, fmt.Errorf("reflecting %s: %w", p, err)
+			if err := entity.ReplaceAt(rf.store, p.at, curAt, nextAt); err != nil {
+				return wrote, fmt.Errorf("reflecting %s: %w", p.at, err)
 			}
 			wrote++
 		}
@@ -324,7 +325,7 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		return wrote, err
 	}
 	for _, p := range tombstones {
-		if desired[p.String()] {
+		if desired[p.at.String()] {
 			continue
 		}
 		// Fenced as the writes above are, and for the sharper reason: a tombstone written into
@@ -352,26 +353,36 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 //
 // A refused delete is not an error: it means somebody else is still here, which is the ordinary
 // case and the reason the write is conditional at all.
-func (rf *Reflector) removeAt(p entity.Path) error {
-	if _, _, err := rf.store.Write(entity.Write{At: p}); err != nil {
-		return fmt.Errorf("tombstoning %s: %w", p, err)
+func (rf *Reflector) removeAt(p spot) error {
+	if _, _, err := rf.store.Write(entity.Write{At: p.at}); err != nil {
+		return fmt.Errorf("tombstoning %s: %w", p.at, err)
 	}
-	if p.IsEntity() {
-		return nil
+	slot := p.at.Below(p.node)
+	if len(slot) == 0 {
+		return nil // the place IS the node: it is gone, and there is nothing to collect
 	}
-	mine := p.Field[len(p.Field)-1]
-	container := entity.Path{Ref: p.Ref, Field: p.Field[:len(p.Field)-1]}
+	// A SLOT'S REMOVAL ASKS WHETHER IT WAS THE LAST OWNER: the node is taken when the only thing
+	// left standing where the slots are is the null this write just left.
+	mine := slot[len(slot)-1]
+	container := p.node.At(slot[:len(slot)-1]...)
 	only := ir.FromSlice([]*ir.Node{
 		ir.FromString(mine).WithTag("!field"),
 		ir.Null().WithTag("!irtype"),
 	}).WithTag("!all.or")
 	if _, _, err := rf.store.Write(entity.Write{
-		At:   p.Ref.At(),
+		At:   p.node.At(),
 		When: []entity.Require{{At: container, Pattern: only}},
 	}); err != nil {
-		return fmt.Errorf("collecting %s: %w", p.Ref, err)
+		return fmt.Errorf("collecting %s: %w", p.node, err)
 	}
 	return nil
+}
+
+// spot is one place a reflection owns, and the node it is a place IN. They are one address for a
+// cover in the tree, and differ for a slot cover: a project's ENG slot is a place in the project.
+type spot struct {
+	node entity.Ref
+	at   entity.Path
 }
 
 // places is where an answer is authoritative for one entity: nothing when no cover matches it,
@@ -382,8 +393,8 @@ func (rf *Reflector) removeAt(p entity.Path) error {
 // destroy something — taking the whole would spell nulls over the other owners, taking the slot
 // would leave what the source meant to tombstone standing forever. Neither is a choice to make
 // on a source's behalf in silence.
-func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) ([]entity.Path, error) {
-	var out []entity.Path
+func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) ([]spot, error) {
+	var out []spot
 	seen := map[string]bool{}
 	whole, slotted := false, false
 	for _, c := range covers {
@@ -395,10 +406,10 @@ func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) ([]
 		} else {
 			slotted = true
 		}
-		at := entity.Path{Ref: ref, Field: c.Slot}
+		at := ref.At(c.Slot...)
 		if key := at.String(); !seen[key] {
 			seen[key] = true
-			out = append(out, at)
+			out = append(out, spot{node: ref, at: at})
 		}
 	}
 	if whole && slotted {
@@ -540,8 +551,8 @@ func coverString(c entity.Pattern) string {
 // Select skips an entity marked VANISHING, which is right for an actor that must not act on
 // something on its way out, and wrong for the slice's own single writer — an entity hidden
 // from converge would be neither refreshed nor tombstoned, and would sit there forever.
-func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]entity.Path, error) {
-	var out []entity.Path
+func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]spot, error) {
+	var out []spot
 	for ref, payload := range current {
 		at, err := places(covers, ref, payload)
 		if err != nil {
@@ -549,7 +560,7 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) ([]
 		}
 		out = append(out, at...)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	sort.Slice(out, func(i, j int) bool { return out[i].at.String() < out[j].at.String() })
 	return out, nil
 }
 

@@ -2,12 +2,14 @@ package versed
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -39,18 +41,24 @@ import (
 // `verse-dev.drift` is installed, because the tree has a node there and `verse charter
 // verse-dev` has always answered about it.
 func (s *Server) splitCharterPath(segs []string) (at string, rest []string) {
-	places := s.packagesSeen()
+	// SEGMENT BY SEGMENT: an installed address is a kinded path, so `verse-dev.drift` typed as
+	// ONE step is a place whose name holds a dot and reaches no two-segment package.
+	var places [][]string
+	for _, addr := range s.packagesSeen() {
+		if p, err := entity.PathSegs(addr); err == nil {
+			places = append(places, p)
+		}
+	}
 	longest := 0
 	for n := 1; n <= len(segs); n++ {
-		want := strings.Join(segs[:n], ".")
 		for _, addr := range places {
-			if addr == want || strings.HasPrefix(addr, want+".") {
+			if len(addr) >= n && slices.Equal(addr[:n], segs[:n]) {
 				longest = n
 				break
 			}
 		}
 	}
-	return strings.Join(segs[:longest], "."), segs[longest:]
+	return entity.JoinSegs(segs[:longest]), segs[longest:]
 }
 
 // charterReach walks the node document by the remaining segments.

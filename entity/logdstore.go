@@ -624,7 +624,7 @@ func isNotFound(err error) bool {
 func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	ctx, cancel := s.writeCtx()
 	defer cancel()
-	path := s.writePath(w.At, w.Sub)
+	path := s.writePath(w.At)
 	// REFUSED HERE, before the log can hold it. A match operator in a written value is a store
 	// that stops being readable — see entity.CheckPatchable, and the two staging deployments
 	// that were lost to it. This is the one place every write passes through, which is the only
@@ -671,18 +671,18 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 		// place of its own is about the element — `--create` at `votes[0]` asks whether
 		// `votes[0]` is there, not whether the entity is. It is asked with `!at` rather than by
 		// nesting (elemPattern); a require that spells a place out is nested as it names it.
-		if w.Sub != "" && r.atOwnPlace() {
+		if w.At.Access != "" && r.atOwnPlace() {
 			// `!at` carries the address as a TAG ARGUMENT, which has no quoting: a step holding
 			// a top-level comma or an unbalanced parenthesis cannot be written in one, and a
 			// tag that reads back as something else is worse than a refusal (ir.TagArgOK).
-			if !ir.TagArgOK(w.Sub) {
-				return false, 0, fmt.Errorf("write %s %s: a precondition here cannot be "+
+			if !ir.TagArgOK(w.At.Access) {
+				return false, 0, fmt.Errorf("write %s: a precondition here cannot be "+
 					"written: it is asked with !at(%s), and a tag argument has no quoting, so "+
 					"a comma or an unpaired parenthesis in the address cannot be spelled in "+
 					"one. Write it unconditionally, or guard the field that holds the array",
-					w.At, w.Sub, w.Sub)
+					w.At, w.At.Access)
 			}
-			sub = w.Sub
+			sub = w.At.Access
 		}
 		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent})
 	}
@@ -725,13 +725,13 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 // what is refused is descending through a VALUE, and creating where nothing stands is left
 // alone at every depth (see descendablePath).
 //
-// An ARRAY ACCESS (Write.Sub) answers false, and not for want of a way to say it. The guard
+// An ARRAY ACCESS (Path.Access) answers false, and not for want of a way to say it. The guard
 // admits an object, a null, or nothing at all, and the parent of an element must be an ARRAY —
 // the one shape it refuses. Nothing is lost by not asking: the substrate refuses an element
 // write whose parent is not an array standing there, naming what it found instead. A wildcard
 // answers false too — it names no one place to ask about.
 func descendsThrough(w Write) (Path, bool, error) {
-	if w.Sub != "" {
+	if w.At.Access != "" {
 		return Path{}, false, nil
 	}
 	segs := w.At.segments()
@@ -764,7 +764,7 @@ func descendsThrough(w Write) (Path, bool, error) {
 // a write has already been refused: the cost lands on the failure, and what it buys is the
 // difference between a transcript a reader can act on and one they cannot.
 func (s *LogdStore) descendRefusal(ctx context.Context, w Write, parent Path) error {
-	node, err := s.sess.Match(ctx, s.writePath(parent, ""))
+	node, err := s.sess.Match(ctx, s.writePath(parent))
 	if err != nil || node == nil {
 		return nil // cannot say; leave it as the ordinary refusal
 	}
@@ -817,23 +817,20 @@ func (s *LogdStore) Head() int64 {
 	return s.sess.KnownCommit()
 }
 
-// writePath renders a write's target as a kpath: the entity's path, then the place inside it —
-// a segment per field, or the `sub` fragment when the target is an array access.
+// writePath renders a write's target as a kpath: the path's own names, then the access fragment
+// when the target is an array element.
 //
 // An access takes NO dot before it, which is the kpath grammar's shape: `…."1".votes[0]`, and
-// `…."1"[0]` when the payload is itself an array.
-func (s *LogdStore) writePath(at Path, sub string) string {
+// `…."1"[0]` when the node is itself an array.
+func (s *LogdStore) writePath(at Path) string {
 	path := s.refPath(at.Ref)
-	if sub != "" {
-		if StepIsAccess(sub) {
-			return path + sub
-		}
-		return path + "." + sub
+	if at.Access == "" {
+		return path
 	}
-	for _, f := range at.Field {
-		path += "." + seg(f)
+	if StepIsAccess(at.Access) {
+		return path + at.Access
 	}
-	return path
+	return path + "." + at.Access
 }
 
 // replacing returns payload with an explicit null for every field the stored value has and
@@ -962,9 +959,9 @@ func patternUnder(pre []pathPattern, depth int) *ir.Node {
 // pattern to evaluate there or the question of whether anything is there at all.
 type pathPattern struct {
 	at Path
-	// sub is the place inside the entity at when it is richer than a Path can spell — an array
-	// element, and anything under it. Set, it is what the pattern is about, and at names the
-	// entity the walk to it starts from (Write.Sub).
+	// sub is the place inside the node at `at` when it is one an address of names cannot spell —
+	// an array element, and anything under it. Set, it is what the pattern is about, and at
+	// names the node the walk to it starts from (Path.Access).
 	sub     string
 	pattern Payload
 	absent  bool // nothing stands at at; pattern is unused
@@ -1101,8 +1098,9 @@ func nestPattern(root patTree, segs []string, pattern Payload) {
 // so create-only writes always fired, and a resolver's read position reset every time a
 // question was posed.
 func (p Path) segments() []string {
-	out := make([]string, 0, Depth+1+len(p.Field))
-	for _, seg := range append(p.Ref.Segs(), p.Field...) {
+	segs := p.Ref.Segs()
+	out := make([]string, 0, len(segs))
+	for _, seg := range segs {
 		if seg == "" {
 			return out
 		}

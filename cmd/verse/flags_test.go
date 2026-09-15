@@ -318,12 +318,12 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 			t.Errorf("address(%q): %v", steps, err)
 			continue
 		}
-		p, _, err := entity.TargetOf(segs)
+		p, err := entity.TargetOf(segs)
 		if err != nil {
 			t.Errorf("address(%q) = %q, which does not name a path: %v", steps, segs, err)
 			continue
 		}
-		got := append(p.Ref.Segs(), p.Field...)
+		got := p.Ref.Segs()
 		if strings.Join(got, "\x00") != strings.Join(steps, "\x00") {
 			t.Errorf("address(%q) → %q, want the steps back", steps, got)
 		}
@@ -369,10 +369,10 @@ func TestAStarStepSelects(t *testing.T) {
 			t.Errorf("addressWire(%q) = %q, wildcard %v, want %v", c.steps, got, kp.HasWild(), wild)
 		}
 	}
-	if _, _, err := entity.TargetOf([]string{"demo", "pr", "*"}); err == nil {
+	if _, err := entity.TargetOf([]string{"demo", "pr", "*"}); err == nil {
 		t.Error("a write took a `*` step, which names every id rather than one")
 	}
-	if at, _, err := entity.TargetOf([]string{"demo", "pr", `"*"`}); err != nil ||
+	if at, err := entity.TargetOf([]string{"demo", "pr", `"*"`}); err != nil ||
 		at.Ref.Segs()[2] != "*" {
 		t.Errorf(`TargetOf(demo pr "*") = (%+v, %v), want the id that is an asterisk`, at, err)
 	}

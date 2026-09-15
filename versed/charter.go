@@ -110,10 +110,14 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 
 // belowAddr reports whether a charter's address is at or under the address asked for, and what
 // is left of it once the asked-for part is taken off — which is where it hangs in the answer.
+//
+// SEGMENT BY SEGMENT, over the kinded path each address is: a package at `verse-dev.drift` is
+// two segments, and the one segment `verse-dev.drift` — a place whose name holds a dot — is a
+// different address that reaches it not at all.
 func belowAddr(at string, want []string) ([]string, bool) {
-	var addr []string
-	if at != "" {
-		addr = strings.Split(at, ".")
+	addr, err := entity.PathSegs(at)
+	if err != nil {
+		return nil, false
 	}
 	if len(addr) < len(want) {
 		return nil, false

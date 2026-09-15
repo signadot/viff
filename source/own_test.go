@@ -300,7 +300,7 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 		// The place claimed is the ENTITY, since git claims no path — which is what makes a
 		// --forget on it exactly the removal it has always been.
 		places := source.Claimed(claims, mustRef(t, ref))
-		if len(places) != 1 || !places[0].IsEntity() {
+		if len(places) != 1 || places[0].Ref != mustRef(t, ref) {
 			t.Fatalf("%s is reflected; Claimed = %v, want the whole entity", ref, places)
 		}
 	}

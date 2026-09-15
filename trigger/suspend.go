@@ -247,7 +247,7 @@ func (s Suspension) CoversCharter(at []string, rule string) bool {
 	case s.charterAll:
 		return true
 	case s.Recursive:
-		return atOrBeneath(s.charter, at)
+		return entity.Under(s.charter, at, entity.Literal)
 	default:
 		return slices.Equal(s.charter, at)
 	}
@@ -316,7 +316,7 @@ func (s Suspension) Within(o Suspension) bool {
 	case s.charterAll:
 		return false
 	case o.Recursive:
-		if !atOrBeneath(o.charter, s.charter) {
+		if !entity.Under(o.charter, s.charter, entity.Literal) {
 			return false
 		}
 	default:
@@ -351,11 +351,6 @@ func ParseCharterFlag(s string) (charter, rule string) {
 		return s[:i], s[i+1:]
 	}
 	return s, Every
-}
-
-// atOrBeneath reports whether segs stands at prefix or beneath it.
-func atOrBeneath(prefix, segs []string) bool {
-	return len(segs) >= len(prefix) && slices.Equal(prefix, segs[:len(prefix)])
 }
 
 // Suspensions is one scope's table: the suspensions in force, held in memory and written only by

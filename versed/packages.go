@@ -511,11 +511,17 @@ func (s *Server) packagesSeenAt(at string) bool {
 
 // packagesUnder is every installed charter STRICTLY under an address.
 func (s *Server) packagesUnder(at string) []string {
+	prefix, err := entity.PathSegs(at)
+	if err != nil {
+		return nil
+	}
 	var out []string
 	for _, other := range s.packagesSeen() {
-		if other != at && strings.HasPrefix(other, at+".") {
-			out = append(out, other)
+		segs, err := entity.PathSegs(other)
+		if err != nil || other == at || !entity.Under(prefix, segs, entity.Literal) {
+			continue
 		}
+		out = append(out, other)
 	}
 	sort.Strings(out)
 	return out

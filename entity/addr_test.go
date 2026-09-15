@@ -116,7 +116,7 @@ func TestPathOfTakesASegmentWhole(t *testing.T) {
 		{[]string{"a:b", "pr", "1"}, `a:b.pr."1"`},   // a COLON: ordinary, since nothing reads one
 		{[]string{"demo", "pr", "a.b"}, `demo.pr."a.b"`},
 	} {
-		p, _, err := TargetOf(c.segs)
+		p, err := TargetOf(c.segs)
 		if err != nil {
 			t.Errorf("TargetOf(%q): %v", c.segs, err)
 			continue
@@ -124,22 +124,22 @@ func TestPathOfTakesASegmentWhole(t *testing.T) {
 		if got := p.Ref.String(); got != c.ref {
 			t.Errorf("TargetOf(%q) → %q, want %q", c.segs, got, c.ref)
 		}
-		if len(p.Field) != 0 {
-			t.Errorf("TargetOf(%q) named a field path %v", c.segs, p.Field)
+		if p.Access != "" {
+			t.Errorf("TargetOf(%q) read an access %q out of names", c.segs, p.Access)
 		}
 	}
 }
 
-// …and the field path is simply the segments past the entity.
-func TestPathOfSplitsTheFieldOffPositionally(t *testing.T) {
-	p, _, err := TargetOf([]string{"demo", "pr", "a.b", "labels", "urgent"})
+// …and a longer address is simply a longer path: there is no split in it.
+func TestPathOfKeepsEverySegment(t *testing.T) {
+	p, err := TargetOf([]string{"demo", "pr", "a.b", "labels", "urgent"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Ref.String() != `demo.pr."a.b"` {
-		t.Errorf("ref = %q", p.Ref.String())
+	if want := `demo.pr."a.b".labels.urgent`; p.Ref.String() != want {
+		t.Errorf("path = %q, want %q", p.Ref.String(), want)
 	}
-	if len(p.Field) != 2 || p.Field[0] != "labels" || p.Field[1] != "urgent" {
-		t.Errorf("field = %v, want [labels urgent]", p.Field)
+	if p.Access != "" {
+		t.Errorf("access = %q, want none", p.Access)
 	}
 }

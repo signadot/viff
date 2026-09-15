@@ -244,10 +244,14 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if w.Principal == "" {
 		w.Principal = a.principal
 	}
+	// THE PATH WRITTEN, however it was spelled: `demo pr 1 stage` and a rule patching `stage` of
+	// `demo.pr.1` are one place, so they are checked at one place and recorded at one place. A
+	// record stands where ownership CHANGES, so a write into a node the writer already owns
+	// writes none (record), and the mirror does not grow a row per field.
 	ref := w.At.Ref
-	wholeDelete := w.Value == nil && w.At.IsEntity() && w.Sub == ""
-	// A whole-entity delete is a co-owner's act — eviction — and not a write into the node;
-	// everything else is.
+	wholeDelete := w.Value == nil && w.At.Access == ""
+	// Removing the node is a co-owner's act — eviction, since it takes everything beneath it
+	// with it — and not a write into the node; everything else is.
 	need := ReadWrite
 	if wholeDelete {
 		need = OwnerLevel

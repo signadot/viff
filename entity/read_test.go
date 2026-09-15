@@ -319,6 +319,47 @@ func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 	}
 }
 
+// ONE PLACE, HOWEVER IT IS SPELLED. A write at `demo.pr.1.stage` and a rule patching `stage` of
+// `demo.pr.1` name one node, so they are checked at one node and recorded at one node — where
+// the two spellings needed different levels, and a removal of one of them ran the eviction the
+// other did not (docs/working/paths-and-nodes.md, row 12).
+func TestAWriteIsCheckedAtThePathHoweverItIsSpelled(t *testing.T) {
+	inner := entitytest.Store(t)
+	system := entity.As(inner, entity.SystemDefault)
+	entity.PolicyOf(system).SetRootDefault(nil)
+	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
+
+	pr := entity.RefAt("demo", "pr", "1")
+	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	seedRecord(t, system, pr, "user:alice@example.com", entity.Grant{
+		At: pr.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"user:bob@example.com"}},
+	})
+	deep := entity.RefAt("demo", "pr", "1", "stage")
+
+	// Two spellings of the same write, admitted alike.
+	for _, at := range []entity.Path{pr.At("stage"), deep.At()} {
+		if ok, _, err := bob.Write(entity.Write{At: at, Value: entity.Val("reviewed")}); err != nil || !ok {
+			t.Fatalf("bob's write at %s: ok=%v err=%v", at, ok, err)
+		}
+	}
+	// And two spellings of the same removal, refused alike: removing a node is eviction, which
+	// read-write is not.
+	for _, at := range []entity.Path{pr.At("stage"), deep.At()} {
+		if _, _, err := bob.Write(entity.Write{At: at}); !errors.Is(err, entity.ErrForbidden) {
+			t.Fatalf("bob removed %s with read-write: %v", at, err)
+		}
+	}
+	// Its owner takes it, at either spelling.
+	if ok, _, err := alice.Write(entity.Write{At: deep.At()}); err != nil || !ok {
+		t.Fatalf("alice removing what she owns: ok=%v err=%v", ok, err)
+	}
+	if node, _, err := system.ReadAt(pr.Segs()); err != nil || entity.Get(node, "stage") != nil {
+		t.Fatalf("demo.pr.1 = %v (%v), want the stage gone", node, err)
+	}
+}
+
 // What a node holds out is decided where its record is written, from the nearest default up
 // the tree: a default of nothing makes what is created beneath its creator's alone, a default
 // set on a place is inherited beneath it until another says otherwise, and a record written

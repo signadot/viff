@@ -67,13 +67,13 @@ func TestDepthIsWhatEveryAddressHas(t *testing.T) {
 		t.Fatalf("the string spelling reads back as %d segments (%v) and Depth says %d",
 			len(segs), err, Depth)
 	}
-	// PathOf splits an address from the field path at exactly that depth.
-	p, _, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
+	// And a write's target keeps every segment it was given: there is no split in an address.
+	p, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
 	if err != nil {
-		t.Fatalf("PathOf: %v", err)
+		t.Fatalf("TargetOf: %v", err)
 	}
-	if p.Ref != ref || len(p.Field) != 2 {
-		t.Fatalf("PathOf = %+v, want the entity at Depth with the rest as fields", p)
+	if p.Ref != RefAt("demo", "pr", "1", "labels", "urgent") {
+		t.Fatalf("TargetOf = %+v, want the whole path", p)
 	}
 }
 
@@ -133,13 +133,13 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 		{[]string{"demo", "pr", "a b"}, RefAt("demo", "pr", "a b")},                 // and a space
 		{[]string{"verse", "task", "instance", "run-a1"}, RefAt("verse", "task", "instance", "run-a1")},
 	} {
-		p, _, err := TargetOf(c.segs)
+		p, err := TargetOf(c.segs)
 		if err != nil {
 			t.Errorf("TargetOf(%q): %v", c.segs, err)
 			continue
 		}
-		if p.Ref != c.want || len(p.Field) != 0 {
-			t.Errorf("TargetOf(%q) = %s%v, want %s", c.segs, p.Ref, p.Field, c.want)
+		if p.Ref != c.want || p.Access != "" {
+			t.Errorf("TargetOf(%q) = %s%s, want %s", c.segs, p.Ref, p.Access, c.want)
 		}
 		// And the READ of the same segments reaches the same place: the wire takes a kinded
 		// path, and JoinSegs quotes each segment as kpath needs — which is lossless, since the
@@ -150,9 +150,9 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 		}
 	}
 
-	// A field path is just the segments past the entity.
-	p, _, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
-	if err != nil || p.Ref != RefAt("demo", "pr", "1") || strings.Join(p.Field, ".") != "labels.urgent" {
+	// A longer address is a longer path, whole.
+	p, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})
+	if err != nil || p.Ref != RefAt("demo", "pr", "1", "labels", "urgent") {
 		t.Errorf("TargetOf(demo pr 1 labels urgent) = (%v, %v)", p, err)
 	}
 }

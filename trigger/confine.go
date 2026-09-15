@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -188,7 +187,7 @@ func (s Subtree) stamp() string {
 	if !s.confined() {
 		return ""
 	}
-	return strings.Join(s.Path(), ".")
+	return s.KPath() // the kinded path, quoting where a segment needs it
 }
 
 // ParseAt reads a charter's address — the subtree a package is installed at — from the kinded
@@ -205,7 +204,13 @@ func ParseAt(at string) (Subtree, error) {
 	if at == "" {
 		return Subtree{}, nil
 	}
-	segs := strings.Split(at, ".")
+	segs, err := entity.PathSegs(at)
+	if err != nil {
+		return Subtree{}, fmt.Errorf("a charter's address %q: %w", at, err)
+	}
+	if len(segs) == 0 {
+		return Subtree{}, nil
+	}
 	if segs[0] == entity.VerseRoot {
 		return Subtree{}, fmt.Errorf("a charter may not be installed at %s: %s is verse's own "+
 			"half of the tree, and a charter installed there could write the records verse "+

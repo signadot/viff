@@ -19,13 +19,27 @@ import (
 // field, requiring a field, and (later) reading or watching one.
 type Path struct {
 	Ref
-	// Field is the path inside the payload — {"labels","urgent"} is the `urgent` key of the
-	// `labels` object. Empty means the whole payload.
-	Field []string
+	// Access is the place INSIDE the node when it is one an address of names cannot spell: an
+	// array element and anything under it — `votes[0]`, `votes(scott).choice`. It is a kinded
+	// path fragment below the path, and it is empty for every write that names a node.
+	//
+	// A FIELD ALONGSIDE, rather than the path growing a segment kind, because a path is what
+	// ownership claims and the reflector are written in (source/own.go, valueAt) and "is
+	// votes[0] disjoint from votes[1]" is a question those would then have to answer. Nothing
+	// but a command line addresses an element: a charter patches a node, and so does every
+	// source.
+	Access string
 }
 
-// At returns the path to a place inside this entity — with no arguments, the entity itself.
-func (r Ref) At(field ...string) Path { return Path{Ref: r, Field: field} }
+// At returns the path to a place beneath this one — with no arguments, the node itself. The
+// names simply extend the path: a node and a place inside it are one grammar, and nothing here
+// decides where an entity ends.
+func (r Ref) At(below ...string) Path {
+	if len(below) == 0 {
+		return Path{Ref: r}
+	}
+	return Path{Ref: RefAt(append(append([]string{}, r.Segs()...), below...)...)}
+}
 
 // String spells the path, and ParsePath is its inverse.
 //
@@ -38,7 +52,7 @@ func (r Ref) At(field ...string) Path { return Path{Ref: r, Field: field} }
 // `labels` — where an unquoted `demo.pr.a.b.labels` is five segments naming something else.
 // A delimiter alone cannot say which; the quoting says it.
 func (p Path) String() string {
-	if len(p.Field) == 0 {
+	if p.Access == "" {
 		return p.Ref.String()
 	}
 	return p.KPath()
@@ -49,7 +63,14 @@ func (p Path) String() string {
 // which is why it exists beside String — String picks the spelling a reader expects for the
 // depth, and this one picks the grammar the wire takes.
 func (p Path) KPath() string {
-	return JoinSegs(append(p.Ref.Segs(), p.Field...))
+	out := JoinSegs(p.Ref.Segs())
+	if p.Access == "" {
+		return out
+	}
+	if StepIsAccess(p.Access) {
+		return out + p.Access // no dot before an access: `votes[0]`
+	}
+	return out + "." + p.Access
 }
 
 // KPath spells a REF as a kinded path — the grammar the wire speaks, at every depth, where
@@ -151,77 +172,68 @@ func KPathOf(segs []string) (string, error) {
 	return out, nil
 }
 
-// TargetOf is the place a WRITE addresses, from the steps themselves: the entity, and either
-// the object fields inside it or — when any step is an array access — the kpath fragment that
-// reaches it (Write.Sub).
+// TargetOf is the place a WRITE addresses, from the steps themselves: the stored path its names
+// spell, and — where a step is an array access — the kpath fragment below it that reaches the
+// element (Path.Access).
 //
-// AN ADDRESS IS AS DEEP AS IT IS. Where there are Depth segments or more, those name the entity
-// and the rest is a path inside its payload; where there are fewer, all of them name the entity,
-// because there is nothing left over to be a field OF anything. A short address is not an error:
-// nothing in the document says where an entity ends (docs/working/entity-tree.md), so a write
-// naming two segments is a write at two segments, and it is the same rule the selections keep —
-// N segments identify entities at depth N.
+// AN ADDRESS IS AS DEEP AS IT IS, and there is no split in it. `demo pr 1` and `demo pr 1 stage`
+// are one grammar asked at two lengths; which of them a reader would call an entity is a lens
+// over one document and not a boundary a write records (docs/working/paths-and-nodes.md). So
+// permission, ownership and confinement all key on the path written, however it was spelled.
 //
-// The split at Depth is a DEFAULT for the ambiguous half rather than a fact about the store. At
-// four segments `demo pr 1 stage` reaches a field of an entity and `a b c d` could as easily be
-// an entity, and the two produce the same document either way — entity-hood is a lens, and the
-// write records which lens it used, not a boundary anything reads back.
-//
-// The entity's own segments may not be an access: an id is a name, and an entity is not an
-// element of anything. No step may be a wildcard, since a write names one place.
-func TargetOf(segs []string) (Path, string, error) {
+// No step may be a wildcard, since a write names one place; and a name may not follow an access
+// as a separate segment of the path, because everything below an access is inside a node rather
+// than an address of names.
+func TargetOf(segs []string) (Path, error) {
 	for _, step := range segs {
 		if StepIsWild(step) {
-			return Path{}, "", fmt.Errorf("%q: a `*` step selects every field there, and a write "+
+			return Path{}, fmt.Errorf("%q: a `*` step selects every field there, and a write "+
 				"names one place — the name that is an asterisk is the step '\"*\"'",
 				strings.Join(segs, " "))
 		}
 	}
-	want := Depth
-	if len(segs) > 0 && StepName(segs[0]) == VerseRoot {
-		want++
-	}
-	if len(segs) < want {
-		want = len(segs)
-	}
-	names := make([]string, 0, want)
-	for _, step := range segs[:want] {
+	cut := len(segs)
+	for i, step := range segs {
 		if StepIsAccess(step) {
-			return Path{}, "", fmt.Errorf("%q: %q addresses an array element, and an entity is "+
-				"named by its segments", strings.Join(segs, " "), step)
+			cut = i
+			break
 		}
+	}
+	names := make([]string, 0, cut)
+	for _, step := range segs[:cut] {
 		names = append(names, StepName(step))
 	}
 	// RefOfAny, not RefOf: the depth is the address's own, so the only thing left to refuse is
 	// a nameless level.
 	ref, ok := RefOfAny(names)
-	if !ok {
-		return Path{}, "", fmt.Errorf("%q does not name an entity: a segment is a name, and a "+
-			"nameless level addresses nothing", strings.Join(segs, " "))
+	if !ok || len(names) == 0 {
+		return Path{}, fmt.Errorf("%q does not name a place: a segment is a name, a nameless "+
+			"level addresses nothing, and the root is not written at", strings.Join(segs, " "))
 	}
-	rest := segs[want:]
-	access := false
-	for _, step := range rest {
-		if StepIsAccess(step) {
-			access = true
-		}
+	if cut == len(segs) {
+		return Path{Ref: ref}, nil
 	}
-	if !access {
-		field := make([]string, 0, len(rest))
-		for _, step := range rest {
-			field = append(field, StepName(step))
-		}
-		return Path{Ref: ref, Field: field}, "", nil
-	}
-	sub, err := KPathOf(rest)
+	access, err := KPathOf(segs[cut:])
 	if err != nil {
-		return Path{}, "", fmt.Errorf("%q: %w", strings.Join(segs, " "), err)
+		return Path{}, fmt.Errorf("%q: %w", strings.Join(segs, " "), err)
 	}
-	return Path{Ref: ref}, sub, nil
+	return Path{Ref: ref, Access: access}, nil
 }
 
-// IsEntity reports whether the path addresses a whole entity rather than a place inside one.
-func (p Path) IsEntity() bool { return len(p.Field) == 0 }
+// Into is the path reaching a place inside the node at this path that an address of names
+// cannot spell: an array element and what is under it (`votes[0]`, `votes(scott).choice`).
+func (r Ref) Into(access string) Path { return Path{Ref: r, Access: access} }
+
+// Below is the segments of this path beneath ref — the slot inside a node, for a caller that
+// holds both and needs the tail: a source's cover names a place inside what it reflects, and a
+// reflection compares the value there.
+func (p Path) Below(ref Ref) []string {
+	segs, above := p.Ref.Segs(), ref.Segs()
+	if len(segs) < len(above) {
+		return nil
+	}
+	return segs[len(above):]
+}
 
 // Write is one conditional write: Value is applied at At iff every Require holds, with the
 // checks and the write committing as a single step. It is the only write the store has —
@@ -235,18 +247,7 @@ func (p Path) IsEntity() bool { return len(p.Field) == 0 }
 // nil at that field — which is one more line at the two call sites that need it, and is
 // what lets every other write skip the read that whole-value replace requires.
 type Write struct {
-	At Path
-	// Sub is the place inside the entity when it is richer than a Path can spell: an ARRAY
-	// ACCESS, and anything under it — `votes[0]`, `votes(scott).choice`. It is a kinded path
-	// fragment below the entity, and it replaces At.Field when set.
-	//
-	// A FIELD ALONGSIDE, rather than Path growing a segment kind, because Path is what
-	// ownership claims and the reflector are written in (source/own.go, valueAt) and "is
-	// votes[0] disjoint from votes[1]" is a question those would then have to answer. Nothing
-	// but a command line addresses an element: a charter patches a field, and so does every
-	// source. The same shape api.PutEntity already uses, where Ref and Path sit side by side
-	// because the ref spelling cannot carry a fourth segment.
-	Sub   string
+	At    Path
 	Value Payload
 	// Principal is who acts: the party this write is attributed to. A user by email, a runner
 	// by name, or the address of the rule or source that acted — one string, because the
@@ -449,7 +450,7 @@ const irTypeTag = "!irtype"
 // place is asking about `votes[0]`, while one that spells the entity out is asking about the
 // entity, and the two are answered by different shapes (logdstore.elemPattern).
 func (r Require) atOwnPlace() bool {
-	return r.At.Ref == (Ref{}) && len(r.At.Field) == 0
+	return r.At.Ref == (Ref{}) && r.At.Access == ""
 }
 
 // path resolves a Require's target: its own At, or the write's when it has none.

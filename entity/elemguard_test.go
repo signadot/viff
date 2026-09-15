@@ -16,7 +16,7 @@ func TestAGuardAtAnArrayElementAsksAboutTheElement(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	seedVotes(t, s, ref) // [{by: scott, choice: approve}, {by: dee, choice: reject}]
 
-	won, _, err := s.Write(Write{At: ref.At(), Sub: "votes[1].choice", Value: Val("approve"),
+	won, _, err := s.Write(Write{At: ref.Into("votes[1].choice"), Value: Val("approve"),
 		When: []Require{{Pattern: Val("reject")}}})
 	if err != nil {
 		t.Fatalf("guarded write at an element: %v", err)
@@ -30,7 +30,7 @@ func TestAGuardAtAnArrayElementAsksAboutTheElement(t *testing.T) {
 
 	// The same pattern at the OTHER element: `reject` was never what votes[0].choice held, and
 	// the entity holding one somewhere is not an answer to the question asked.
-	won, _, err = s.Write(Write{At: ref.At(), Sub: "votes[0].choice", Value: Val("reject"),
+	won, _, err = s.Write(Write{At: ref.Into("votes[0].choice"), Value: Val("reject"),
 		When: []Require{{Pattern: Val("reject")}}})
 	if err != nil {
 		t.Fatalf("guarded write at the other element: %v", err)
@@ -49,7 +49,7 @@ func TestAGuardAtAnElementIsUndisturbedByTheOthers(t *testing.T) {
 	seedVotes(t, s, ref)
 	guarded := func() bool {
 		t.Helper()
-		won, _, err := s.Write(Write{At: ref.At(), Sub: "votes[0]",
+		won, _, err := s.Write(Write{At: ref.Into("votes[0]"),
 			Value: Obj{"choice": "approve"}.Payload(),
 			When:  []Require{{Pattern: Obj{"by": "scott"}.Payload()}}})
 		if err != nil {
@@ -84,7 +84,7 @@ func TestAGuardNamingTheEntityIsAboutTheEntity(t *testing.T) {
 		stage string
 		want  bool
 	}{{"open", true}, {"closed", false}} {
-		won, _, err := s.Write(Write{At: ref.At(), Sub: "votes[0].choice", Value: Val("approve"),
+		won, _, err := s.Write(Write{At: ref.Into("votes[0].choice"), Value: Val("approve"),
 			When: []Require{{At: ref.At(), Pattern: Obj{"stage": c.stage}.Payload()}}})
 		if err != nil {
 			t.Fatalf("guarded write (stage %s): %v", c.stage, err)
@@ -102,7 +102,7 @@ func TestACreateAtAnElementThatStandsIsRefused(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 	seedVotes(t, s, ref)
-	won, _, err := s.Write(Write{At: ref.At(), Sub: "votes[0]", Value: Val("clobbered"),
+	won, _, err := s.Write(Write{At: ref.Into("votes[0]"), Value: Val("clobbered"),
 		When: []Require{{Absent: true}}})
 	if err != nil {
 		t.Fatalf("create at an element: %v", err)
@@ -122,7 +122,7 @@ func TestACreateAtAnElementPastTheEndIsAnsweredByTheSubstrate(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 	seedVotes(t, s, ref)
-	won, _, err := s.Write(Write{At: ref.At(), Sub: "votes[9]", Value: Val("nowhere"),
+	won, _, err := s.Write(Write{At: ref.Into("votes[9]"), Value: Val("nowhere"),
 		When: []Require{{Absent: true}}})
 	if won {
 		t.Fatal("a write past the end committed")
@@ -148,10 +148,10 @@ func TestAGuardAtAnElementNoTagCanCarryIsRefused(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	sub := `"a,b"[0]`
-	if _, _, err := s.Write(Write{At: ref.At(), Sub: sub, Value: Val("plain")}); err != nil {
+	if _, _, err := s.Write(Write{At: ref.Into(sub), Value: Val("plain")}); err != nil {
 		t.Fatalf("an unconditional write at %s: %v", sub, err)
 	}
-	_, _, err := s.Write(Write{At: ref.At(), Sub: sub, Value: Val("guarded"),
+	_, _, err := s.Write(Write{At: ref.Into(sub), Value: Val("guarded"),
 		When: []Require{{Pattern: Val("plain")}}})
 	if err == nil {
 		t.Fatal("a guard at an address no tag can carry was accepted")

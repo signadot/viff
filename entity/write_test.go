@@ -495,12 +495,12 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 		{"verse", "task"},
 		{"git", "ref"},
 	} {
-		got, _, err := TargetOf(segs)
+		got, err := TargetOf(segs)
 		if err != nil {
 			t.Errorf("TargetOf(%q): %v", segs, err)
 			continue
 		}
-		back := append(append([]string{}, got.Ref.Segs()...), got.Field...)
+		back := got.Ref.Segs()
 		if strings.Join(back, "\x00") != strings.Join(segs, "\x00") {
 			t.Errorf("TargetOf(%q) → %q, which is not the same address", segs, back)
 		}
@@ -525,105 +525,83 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 	}
 }
 
-// A WRITE REACHES AN ARRAY ELEMENT, and the address that reaches it is a STEP.
+// A WRITE REACHES AN ARRAY ELEMENT, and the address that reaches it is a STEP: the names before
+// it are the path, and the access and everything under it is the place inside the node there.
 //
-// It used to be refused here — the string parser read `votes[0]` as an index and turned it away,
-// because an index past the end was once accepted and took the log with it. That hazard is gone
-// (go-tony v0.0.149: an index past the end is refused at the patch, naming the length), so the
-// refusal was outliving its reason. What replaces it is the grammar: a step beginning `[`, `{`
-// or `(` IS that access, and it travels as Write.Sub because a field path cannot carry one.
+// AT ANY LENGTH, which is the whole of what the split cost: `merge proposal X votes [0]` and
+// `merge proposal [0]` are the same grammar, and the second was refused because the names before
+// an access had to reach an entity's own depth first (docs/working/paths-and-nodes.md, row 13).
 func TestAWriteReachesAnArrayElement(t *testing.T) {
 	for _, c := range []struct {
-		segs []string
-		sub  string
+		segs   []string
+		path   Ref
+		access string
 	}{
-		{[]string{"merge", "proposal", "X", "votes", "[0]"}, "votes[0]"},
-		{[]string{"merge", "proposal", "X", "votes", "{0}"}, "votes{0}"},
-		{[]string{"merge", "proposal", "X", "votes", "(scott)"}, "votes(scott)"},
-		{[]string{"merge", "proposal", "X", "votes", "[*]"}, "votes[*]"},
-		{[]string{"merge", "proposal", "X", "votes", "[0]", "choice"}, "votes[0].choice"},
-		// An access may LEAD, which addresses an element of a payload that is itself an array.
-		{[]string{"merge", "proposal", "X", "[0]"}, "[0]"},
+		{[]string{"merge", "proposal", "X", "votes", "[0]"}, RefAt("merge", "proposal", "X", "votes"), "[0]"},
+		{[]string{"merge", "proposal", "X", "votes", "{0}"}, RefAt("merge", "proposal", "X", "votes"), "{0}"},
+		{[]string{"merge", "proposal", "X", "votes", "(scott)"}, RefAt("merge", "proposal", "X", "votes"), "(scott)"},
+		{[]string{"merge", "proposal", "X", "votes", "[*]"}, RefAt("merge", "proposal", "X", "votes"), "[*]"},
+		{[]string{"merge", "proposal", "X", "votes", "[0]", "choice"}, RefAt("merge", "proposal", "X", "votes"), "[0].choice"},
+		// An access may LEAD, which addresses an element of a node that is itself an array.
+		{[]string{"merge", "proposal", "X", "[0]"}, RefAt("merge", "proposal", "X"), "[0]"},
+		// …at an entity's own depth, and shorter still.
+		{[]string{"merge", "proposal", "[0]"}, RefAt("merge", "proposal"), "[0]"},
+		{[]string{"demo", "[0]"}, RefAt("demo"), "[0]"},
 	} {
-		at, sub, err := TargetOf(c.segs)
+		at, err := TargetOf(c.segs)
 		if err != nil {
 			t.Errorf("TargetOf(%q): %v", c.segs, err)
 			continue
 		}
-		if sub != c.sub {
-			t.Errorf("TargetOf(%q) sub = %q, want %q", c.segs, sub, c.sub)
-		}
-		if at.Ref != RefAt("merge", "proposal", "X") || len(at.Field) != 0 {
-			t.Errorf("TargetOf(%q) = %+v, want the entity with the place in sub", c.segs, at)
+		if at.Ref != c.path || at.Access != c.access {
+			t.Errorf("TargetOf(%q) = %s + %q, want %s + %q", c.segs, at.Ref, at.Access, c.path, c.access)
 		}
 	}
-	// A NAME that merely needs quoting is still a field, not an access.
-	if _, sub, err := TargetOf([]string{"demo", "pr", "1", "a.b"}); err != nil || sub != "" {
-		t.Errorf(`"a.b" became an access: sub=%q err=%v`, sub, err)
+	// A NAME that merely needs quoting is still a name, not an access.
+	if at, err := TargetOf([]string{"demo", "pr", "1", "a.b"}); err != nil || at.Access != "" {
+		t.Errorf(`"a.b" became an access: %+v err=%v`, at, err)
+	}
+	// And the quoted clause is how an id that LOOKS like an access is named.
+	at, err := TargetOf([]string{"merge", "proposal", `"[0]"`})
+	if err != nil || at.Access != "" || at.Ref != RefAt("merge", "proposal", "[0]") {
+		t.Errorf(`TargetOf(merge proposal "[0]") = (%+v, %v), want the name [0]`, at, err)
 	}
 }
 
-// AN ENTITY IS NAMED BY ITS SEGMENTS, so an access among them is refused — an entity is not an
-// element of anything. An id that merely LOOKS like one is reached through the quoted clause.
-func TestAnEntitySegmentIsNotAnAccess(t *testing.T) {
-	if _, _, err := TargetOf([]string{"merge", "proposal", "[0]"}); err == nil {
-		t.Error("an access was accepted as an entity id")
-	}
-	at, sub, err := TargetOf([]string{"merge", "proposal", `"[0]"`})
-	if err != nil || sub != "" || at.Ref != RefAt("merge", "proposal", "[0]") {
-		t.Errorf(`TargetOf(merge proposal "[0]") = (%+v, %q, %v), want the id [0]`, at, sub, err)
-	}
-	// And in a SHORT address, where every segment is the entity's own.
-	if got, _, err := TargetOf([]string{"demo", "[0]"}); err == nil {
-		t.Errorf("TargetOf(demo [0]) = %+v, want a refusal: an entity is not an element", got)
-	}
-}
-
-// AN ADDRESS IS AS DEEP AS IT IS. A write names its entity with every segment it has, and only
-// where there are more than an entity's own does the remainder become a path inside the payload.
+// AN ADDRESS IS AS DEEP AS IT IS, and a write keeps every segment of it: there is no entity to
+// split off, at any length.
 //
 // The short cases are what this exists for. `demo.pr` is a place in the tree like any other — a
-// read answers at it, a watch reports it, and a selection of two segments identifies entities at
-// depth two — so a write there is a write there. Refusing it was the last of the three-segment
-// arity, surviving in the one parse that turns argv into an address after the representation
-// underneath had become a path (docs/working/entity-tree.md §5, §8).
+// read answers at it, a watch reports it, a selection of two segments identifies nodes two deep —
+// so a write there is a write there. Refusing it was the last of the three-segment arity,
+// surviving in the one parse that turns argv into an address.
 func TestTheAddressIsAsDeepAsItIs(t *testing.T) {
-	for _, c := range []struct {
-		segs  []string
-		ref   Ref
-		field []string
-	}{
-		{[]string{"demo"}, RefAt("demo"), nil},
-		{[]string{"demo", "pr"}, RefAt("demo", "pr"), nil},
-		{[]string{"demo", "pr", "1"}, RefAt("demo", "pr", "1"), nil},
-		{[]string{"demo", "pr", "1", "stage"}, RefAt("demo", "pr", "1"), []string{"stage"}},
-		{[]string{"demo", "pr", "1", "labels", "urgent"},
-			RefAt("demo", "pr", "1"), []string{"labels", "urgent"}},
+	for _, segs := range [][]string{
+		{"demo"},
+		{"demo", "pr"},
+		{"demo", "pr", "1"},
+		{"demo", "pr", "1", "stage"},
+		{"demo", "pr", "1", "labels", "urgent"},
 		// Verse's own half is one segment deeper, and the same rule reads it.
-		{[]string{"verse", "task"}, RefAt("verse", "task"), nil},
-		{[]string{"verse", "task", "instance", "run-1"},
-			RefAt("verse", "task", "instance", "run-1"), nil},
-		{[]string{"verse", "task", "instance", "run-1", "stage"},
-			RefAt("verse", "task", "instance", "run-1"), []string{"stage"}},
+		{"verse", "task"},
+		{"verse", "task", "instance", "run-1"},
+		{"verse", "task", "instance", "run-1", "stage"},
 	} {
-		at, sub, err := TargetOf(c.segs)
+		at, err := TargetOf(segs)
 		if err != nil {
-			t.Errorf("TargetOf(%q): %v", c.segs, err)
+			t.Errorf("TargetOf(%q): %v", segs, err)
 			continue
 		}
-		if sub != "" {
-			t.Errorf("TargetOf(%q) sub = %q, want none", c.segs, sub)
+		if at.Access != "" {
+			t.Errorf("TargetOf(%q) access = %q, want none", segs, at.Access)
 		}
-		if at.Ref != c.ref {
-			t.Errorf("TargetOf(%q) ref = %s, want %s", c.segs, at.Ref, c.ref)
-		}
-		if strings.Join(at.Field, "\x00") != strings.Join(c.field, "\x00") {
-			t.Errorf("TargetOf(%q) field = %q, want %q", c.segs, at.Field, c.field)
+		if want := RefAt(segs...); at.Ref != want {
+			t.Errorf("TargetOf(%q) = %s, want %s", segs, at.Ref, want)
 		}
 	}
 	// A nameless level addresses nothing, at every depth — which is all that is left to refuse.
 	for _, bad := range [][]string{{}, {""}, {"demo", ""}, {"", "pr"}} {
-		if got, _, err := TargetOf(bad); err == nil {
+		if got, err := TargetOf(bad); err == nil {
 			t.Errorf("TargetOf(%q) = %+v, want a refusal", bad, got)
 		}
 	}

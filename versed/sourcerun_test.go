@@ -497,7 +497,7 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A literal claim is its own place: the repository's node, whatever stands beneath it.
-	if len(got) != 1 || got[0].Ref != entity.RefAt("git", "A") || !got[0].IsEntity() {
+	if len(got) != 1 || got[0].Ref != entity.RefAt("git", "A") || got[0].Access != "" {
 		t.Fatalf("reflectedBy = %v, want just the place git.A that holds %v", got, mine)
 	}
 }
@@ -524,13 +524,14 @@ func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Ref != shared || got[0].IsEntity() {
-		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the entity", got, shared)
+	slot := entity.RefAt("linear", "project", "p1", "owners", "ENG")
+	if len(got) != 1 || got[0].Ref != slot {
+		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the node itself", got, shared)
 	}
-	// The kinded-path spelling, because the address continues INTO the payload: a ref spells an
-	// entity, and `linear.project.p1.owners.ENG` cannot say whether `owners` is a field or part
-	// of an id. See entity.Path.String.
-	if want := "linear.project.p1.owners.ENG"; got[0].String() != want {
+	// The kinded-path spelling, because the address continues INTO what the entity holds:
+	// `linear.project.p1.owners.ENG` is one path, and the quoting is what says where each
+	// segment ends. See entity.Path.String.
+	if want := `linear.project.p1.owners.ENG`; got[0].String() != want {
 		t.Fatalf("the place is %s, want %s", got[0], want)
 	}
 	// And the removal writes there: the slot goes, the entity and the other owner stand.

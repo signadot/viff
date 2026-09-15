@@ -344,7 +344,7 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 	}
 	for _, e := range rn.Entities {
 		places := source.Claimed(claims, e.Ref)
-		if len(places) != 1 || !places[0].IsEntity() {
+		if len(places) != 1 || places[0].Ref != e.Ref {
 			t.Fatalf("%s is reflected; Claimed = %v, want the whole entity", e.Ref, places)
 		}
 	}

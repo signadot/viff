@@ -1929,7 +1929,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
-		At: ref.At(), Sub: q.Get("sub"),
+		At: entity.Path{Ref: ref, Access: q.Get("sub")},
 	}); refused(w, err) {
 		return
 	} else if err != nil {
@@ -1968,7 +1968,7 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	store := s.scopedStore(r)
 	committed, _, err := store.Write(entity.Write{
-		At: ref.At(), Sub: body.Sub, Value: body.Payload, When: when,
+		At: entity.Path{Ref: ref, Access: body.Sub}, Value: body.Payload, When: when,
 	})
 	// A WRITE THAT WOULD REPLACE WHAT IT DESCENDS THROUGH IS THE CALLER'S, not the gateway's:
 	// nothing failed downstream and a retry changes nothing, so it answers 409 beside the

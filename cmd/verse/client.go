@@ -1223,9 +1223,9 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	}
 	// FROM THE SEGMENTS, not from a string: argv already is the vector, and assembling it into
 	// a path only to parse the path back is the round trip that could not be right for every
-	// input. See address. `sub` is set when a step is an ARRAY ACCESS, which a field path
-	// cannot carry — see entity.Write.Sub.
-	at, sub, err := entity.TargetOf(segs)
+	// input. See address. The access is set when a step reaches into an ARRAY, which an address
+	// of names cannot spell — see entity.Path.Access.
+	at, err := entity.TargetOf(segs)
 	if err != nil {
 		return fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
 	}
@@ -1250,8 +1250,8 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	// answer comes back from the address written, so a put still shows the merge wherever the
 	// address IS an entity, which is the ordinary case.
 	resp, err := httpPost("/entity", api.PutEntity{
-		At:      at.KPath(),
-		Sub:     sub,
+		At:      at.Ref.KPath(),
+		Sub:     at.Access,
 		Payload: payload,
 		When:    when,
 	})
@@ -1267,13 +1267,13 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 		return fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
 			"--at demo.pr.1)", cli.ErrUsage)
 	}
-	at, sub, err := entity.TargetOf(segs)
+	at, err := entity.TargetOf(segs)
 	if err != nil {
 		return fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
 	}
-	q := url.Values{"at": {at.KPath()}}
-	if sub != "" {
-		q.Set("sub", sub)
+	q := url.Values{"at": {at.Ref.KPath()}}
+	if at.Access != "" {
+		q.Set("sub", at.Access)
 	}
 	resp, err := httpDelete("/entity", q)
 	if err != nil {
@@ -1302,11 +1302,13 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 // throughout is the point; an `at:` inside a rendered document keeps the document's spelling,
 // which is read by a parser and not by a shell.
 func inSteps(at entity.Path) string {
-	segs := append(append([]string{}, at.Ref.Segs()...), at.Field...)
+	segs := at.Ref.Segs()
 	if len(segs) == 0 {
 		return at.String()
 	}
-	return entity.JoinSteps(segs)
+	// An access takes no space before it, as it takes no dot in a kpath: `demo pr 1 votes[0]`
+	// is four steps, the last of them reaching into an array.
+	return entity.JoinSteps(segs) + at.Access
 }
 
 // stateAt reads the verse at a kinded path and hands back each node it reached, at its address:

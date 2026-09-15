@@ -1,12 +1,14 @@
 package versed
 
 import (
-	"github.com/signadot/verse/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/api"
 )
 
 // charterPath asks GET /charter with a path and answers the body and the status.
@@ -66,6 +68,29 @@ func TestACharterPathReachesIntoTheNodeAtIt(t *testing.T) {
 		if !strings.Contains(body, c.want) {
 			t.Errorf("path=%s does not mention %q:\n%s", c.path, c.want, body)
 		}
+	}
+}
+
+// ONE STEP IS ONE SEGMENT, so a name that holds a dot reaches no package spelled with two.
+// `verse c verse-dev.drift` typed as one word asks about a place called `verse-dev.drift`, and
+// the charter installed at `verse-dev` `drift` is somewhere else entirely — which is what the
+// segment-wise split says and what a dotted-string comparison could not
+// (docs/working/paths-and-nodes.md).
+func TestOneSegmentReachesNoTwoSegmentPackage(t *testing.T) {
+	srv, url := pathFixture(t)
+	if at, rest := srv.splitCharterPath([]string{"verse-dev.drift"}); at != "" || len(rest) != 1 {
+		t.Errorf("split of the one segment `verse-dev.drift` = (%q, %v), want no address at all", at, rest)
+	}
+	if at, rest := srv.splitCharterPath([]string{"verse-dev", "drift"}); at != "verse-dev.drift" || len(rest) != 0 {
+		t.Errorf("split of the two segments = (%q, %v), want the package", at, rest)
+	}
+	// Over the wire, where the quoting is what says which spelling was meant.
+	if code, body := charterPath(t, url, neturl.QueryEscape(`"verse-dev.drift"`)); code != http.StatusNotFound {
+		t.Errorf("the one-segment address answered %d: %s", code, body)
+	}
+	if code, body := charterPath(t, url, "verse-dev.drift"); code != http.StatusOK ||
+		!strings.Contains(body, "watcher") {
+		t.Errorf("the two-segment address answered %d: %s", code, body)
 	}
 }
 

@@ -385,7 +385,7 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 		if len(c.Segs) > len(point.Segs) || c.Disjoint(point) {
 			continue
 		}
-		out = append(out, entity.Path{Ref: ref, Field: c.Field})
+		out = append(out, ref.At(c.Field...))
 	}
 	return shallowest(out)
 }
@@ -448,7 +448,7 @@ func shallowest(places []entity.Path) []entity.Path {
 	for _, p := range places {
 		held := false
 		for _, q := range out {
-			if holds(q.Field, p.Field) {
+			if holds(q.Ref.Segs(), p.Ref.Segs()) {
 				held = true
 				break
 			}
@@ -458,7 +458,7 @@ func shallowest(places []entity.Path) []entity.Path {
 		}
 		kept := out[:0:0]
 		for _, q := range out {
-			if !holds(p.Field, q.Field) {
+			if !holds(p.Ref.Segs(), q.Ref.Segs()) {
 				kept = append(kept, q)
 			}
 		}
