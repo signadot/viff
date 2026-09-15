@@ -120,9 +120,8 @@ Force-push your own `use/` branch freely. Never force-push `main`.
 
 [`verse-dev`](verse-dev.md) — verse coordinating verse. Contributing to verse *is* an SDLC
 flow, which is the shape verse claims to run, so it is the fastest honest feedback available:
-the tree as entities, a contract notice as a motion rather than a `git issue`, and commits
-landing as facts. Two of the three are expected to hit a wall, which is the point. Its own
-note has the detail.
+the tree as entities, and commits landing as facts. Either may hit a wall, which is the point.
+Its own note has the detail.
 
 ## From a note, to a plan, to a doc
 
@@ -203,7 +202,7 @@ that directory describes what is true and those two are where we promised the op
 working note is retired, contradicted or rewritten as the thinking moves — that is the genre,
 not a break — and the roadmap is resynthesized whole. Nobody's checkout depends on either.
 
-Carries the `!` marker, all four trailers, and a notice filed before the push.
+Carries the `!` marker and all three trailers.
 
 ### Say what you held yourself to
 
@@ -216,7 +215,6 @@ the only thing that breaks this.
 Tier: change | contract                                  # omit entirely for a fix
 Checked: make check && make test && ./smoke.sh
 Breaks: <surface> — <what a reader must do>              # contract only
-Notice: <git-issue id, or motion id>                     # contract only
 ```
 
 `Checked:` is free text — `by hand: drove §4`, `smoke only`, `nothing — see body` are all
@@ -267,46 +265,6 @@ These describe the *diff*, not the author. Most commits here are co-authored by 
 that changes nothing — except that an agent will happily write a confident body about work it
 did not run.
 
-### Coordinating a break
-
-[`git issue`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/cmd/git-issue) for
-now: already in the toolbox, no service, no browser, and it pushes to the same remote as the
-code so the notice travels with what it explains. Replacing it with a motion is
-[`verse-dev` step 2](verse-dev.md#2-a-contract-notice-as-a-motion).
-
-```sh
-go install github.com/signadot/tony-format/go-tony/cmd/git-issue@latest
-```
-
-```sh
-git issue create "charter grammar: <what is changing>"
-git issue label <id> contract
-git issue comment <id> "what breaks, what to change it to, roughly when"
-git issue push <id>                 # now it is visible
-# ... push the code ...
-git issue link <id> <sha>
-git issue close <id> --commit <sha>
-git issue push <id>
-```
-
-The notice precedes the push but is a notice, not a request: the window is long enough to be
-seen, not to be answered. Somebody mid-drive against that surface gets to ask for a day — a
-courtesy you extend, not a veto they hold. Cannot wait? Push, then file immediately; a late
-notice beats none.
-
-Link the commit, because `git issue for-commit <sha>` is how somebody bisecting their own
-breakage finds the explanation from the commit itself.
-
-The habit likely to fail: **issues do not arrive with a `git pull`.**
-
-```sh
-git pull --rebase && git issue pull
-git issue list --label contract
-```
-
-Chat for the ping — nobody should learn about a break by polling. The issue is the record,
-because chat scrolls and whoever joins in three weeks reads neither.
-
 ## What we are deliberately not doing yet
 
 Each has a trigger that would change the answer; naming it is what stops "not yet" becoming
@@ -324,27 +282,21 @@ Each has a trigger that would change the answer; naming it is what stops "not ye
 - **How does this relate to tony-format?** verse pins `go-tony`, and the charter
   grammar *is* tony — so a bump can break charters with no verse commit declaring it, and a
   defect found driving verse is often a tony defect (filed today on that repo's living issue).
-  `git issue` itself ships from there, so even the notice mechanism is downstream of it. Does
-  a bump get a `Breaks:` here? Does a `dogfood/<name>` tag pin the go-tony it was driven
+  Does a bump get a `Breaks:` here? Does a `dogfood/<name>` tag pin the go-tony it was driven
   against? Do the two repos share these conventions or merely interoperate? Unanswered, and
   the most likely source of a break nobody sees coming.
 - **Does a `--data` directory survive a binary upgrade?** Untried. Until somebody tries, the
   honest advice on advancing a tag is "start fresh" — bad for anyone driving something real.
-- **Is `git issue` visible enough?** It needs a deliberate `git issue pull` nobody does yet.
-  If notices go unread the `contract` tier is theatre, which is the argument for the motion —
-  `verse docket` being somewhere a dogfooder already looks. Hypothesis until drive #1 tests it.
 - **How do you ask someone to read something?** Nothing above addresses a person. The only
-  attention mechanism here is the `contract` notice, which is the opposite register on purpose
-  — announcement not permission, seen rather than answered — and `git issue` has labels and
-  comments but no assignee. Left open deliberately, because the convention is that review
+  attention mechanism here is a `contract` commit's `Breaks:` trailer, which is the opposite
+  register on purpose — announcement not permission, seen rather than answered. Left open
+  deliberately, because the convention is that review
   happens *out of band* — chat, a call, someone's afternoon — and the repo is the home of what
   applying it produced: an edited note, a commit, a residual. That much is consistent with this
   note being subject to itself ("disagree by editing it and pushing to `main`"), and with a
   reply that is a commit beating a comment thread nobody rereads. What is unsettled is whether
-  the *ask* wants a trace in here at all — a `review` label, a line in a note's `Status:`, or
-  the motion [`verse-dev` step 2](verse-dev.md#2-a-contract-notice-as-a-motion) builds, since a
-  review request is the case that genuinely is a gate (`!quorum 1` over a doc) where a notice
-  awkwardly is not.
+  the *ask* wants a trace in here at all — a line in a note's `Status:`, or a gate over the doc,
+  since a review request is the case that genuinely is one (`!quorum 1`).
 - **Where does friction go?** Not a defect, but "this took an hour and I'm still unsure" is the
   most valuable thing dogfooding produces and fits none of the buckets above.
 - **Do per-drive tags proliferate?** No proposal for retiring a drive or its tags, and
