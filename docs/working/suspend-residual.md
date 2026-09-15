@@ -6,8 +6,8 @@ hold and a durable suspension, addressed by `verse flow --task | --charter | --s
 rules, gates, hooks and a lift. It answers git-issue `xr69yacwh12kr4qamsn0` ("control over
 subjects and charters"); the surface's contract notice is `r2ae6mqbh12kstkyn1n0`.
 
-What is here is what the design and its two plans named and did not build, so a known gap does not
-become an unknown one.
+What is here is what the design and its two plans named and did not build, and what driving
+`verse flow` against a verse turned up and left, so a known gap does not become an unknown one.
 
 ## 1. Automatic suspension
 
@@ -61,9 +61,17 @@ restore an operator's hold: a remote task stays paused at its runtime, with noth
 saying whose hold it is, and a suspension's lift over it would not know to leave it. Restoring it
 means carrying the mark across the restart, which the record does until the engine next writes it.
 
+## 8. A run's hold keeps no reason
+
+`--why` is asked of a durable suspension, which records it per holder, and not of `verse flow
+suspend --task`: a run's hold is an operator mark on the engine tracking the task, and has nowhere
+to keep one. So `heldBy: [operator]` says whose hold it is and not what it is for, and a second
+operator finding a run held cannot ask the record why. Keeping it wants a place beside the mark on
+the task's record, and the mark itself surviving a restart (§7) first.
+
 ## Found along the way
 
-Read while designing suspensions, and not fixed by them.
+Read while designing suspensions or driving them, and not fixed by them.
 
 - **A hook whose spawn needs a provider selection blocks its engine's reap loop** until somebody
   answers. A suspension parks such a launch before the selection is posed, so it is not made worse;
@@ -75,3 +83,13 @@ Read while designing suspensions, and not fixed by them.
   unanswered question and does not reach it.
 - **The cycle throttle's "aborts if its chain breaks"** is wired only through the dormant dispatch
   loop; in versed a paced firing always waits its full interval.
+- **A subject selector ignores a leading `verse` segment** when it is short enough for the three
+  dimensions: `Match.MatchRef` compares system, kind and id and not the root, so `--subject
+  'verse.task.*'` covers the world's `task.instance.x` too. A deeper selector is a path and
+  compares the root. It is the flow selector's reading generally, and a suspension inherits it.
+- **`still` and `Within` compare spellings.** A glob inside a segment contains only the same glob:
+  lifting `demo.pr.hot-1` beside a standing `demo.pr.hot-*` does not say the pair is still held,
+  though it is — the refusal a resumed run meets, and `flow show`, do say so.
+- **A suspend's answer counts `holding` before a question's withdrawal lands.** The withdrawal is
+  the firing's own goroutine noticing the cancel, so `verse flow suspend --charter walk:ship`
+  answered `holding: {}` and the listing a moment later `questions: 1`.

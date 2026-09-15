@@ -56,7 +56,7 @@ The twelve, and what each is a residual of:
 | [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | what `principal: runner` actually contains and the refusal nothing makes, staged work never swept |
 | [merge-gate-residual.md](merge-gate-residual.md) | [reference/examples/README.md §push](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations) | the sweep's discovery: a condition that reads another entity's value, which `!let` is the shape for |
 | [grants-residual.md](grants-residual.md) | [perms.md](../perms.md) | policy edits as gated changes, a claim as an owner record, what is not attributed yet, and where a question stands |
-| [suspend-residual.md](suspend-residual.md) | [control.md](../control.md), [trigger-model.md §suspending](../trigger-model.md#suspending) | automatic suspension, a scope deleted with its suspensions, a parked launch and an operator's hold across a restart, a lapsed holder, the system charter, stored names |
+| [suspend-residual.md](suspend-residual.md) | [control.md](../control.md), [trigger-model.md §suspending](../trigger-model.md#suspending) | automatic suspension, a scope deleted with its suspensions, a parked launch and an operator's hold across a restart, a lapsed holder, the system charter, stored names, a run's hold with no reason |
 
 [provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
 an older name: it reads against [provider selection](../provider-selection.md) and carries what
