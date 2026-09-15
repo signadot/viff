@@ -1119,14 +1119,14 @@ func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
 			pattern, _ = gomap.ToTonyIR(p.Match)
 		}
 		ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
-			return r.System() == "provider" && r.Kind() == p.Capability
+			return r.ChildOf("provider", p.Capability)
 		}, "provider", p.Capability)
-		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.ID() < ents[j].Ref.ID() })
+		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.Name() < ents[j].Ref.Name() })
 		for _, en := range ents {
 			if pattern != nil && !providerMatches(en.Payload, pattern) {
 				continue
 			}
-			add(en.Ref.ID(), providerFragment(en.Ref, en.Payload), en.Payload)
+			add(en.Ref.Name(), providerFragment(en.Ref, en.Payload), en.Payload)
 		}
 	}
 	return out
@@ -1195,7 +1195,7 @@ func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
 		Tools:  entity.Strs(payload, "tools"),
 	}
 	if f.Driver == "" {
-		f.Driver = ref.ID()
+		f.Driver = ref.Name()
 	}
 	return f
 }
@@ -1222,7 +1222,7 @@ func (e *Engine) whyNoEligible(spawn launch.Spec) string {
 	// Registered-but-excluded and not-registered-at-all look the same from the caller and
 	// are fixed in opposite places, so count the registry before the match is applied.
 	registered := len(entity.ListUnder(e.store, func(r entity.Ref) bool {
-		return r.System() == "provider" && r.Kind() == p.Capability
+		return r.ChildOf("provider", p.Capability)
 	}, "provider", p.Capability))
 	if registered == 0 {
 		return fmt.Sprintf("no provider.%s.* is registered (register one, e.g. "+
@@ -1781,7 +1781,7 @@ func (e *Engine) reap(ev entity.Event) {
 	if !task.TerminalStatus(status) {
 		return
 	}
-	if fp, ok := e.retire(ev.Ref.ID()); ok {
+	if fp, ok := e.retire(ev.Ref.Name()); ok {
 		e.applyHook(fp, task.Status(status), ev)
 	}
 }
@@ -1807,7 +1807,7 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 				if !task.TerminalStatus(status) {
 					continue
 				}
-				if fp, ok := e.retire(ev.Ref.ID()); ok {
+				if fp, ok := e.retire(ev.Ref.Name()); ok {
 					e.applyHook(fp, task.Status(status), ev)
 				}
 			}

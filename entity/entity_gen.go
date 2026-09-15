@@ -264,19 +264,6 @@ func (s *Pattern) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Root
-	if s.Root != "" {
-		irMap["root"] = ir.FromString(string(s.Root))
-	}
-
-	// Field: System
-	irMap["system"] = ir.FromString(string(s.System))
-
-	// Field: Kind
-	if s.Kind != "" {
-		irMap["kind"] = ir.FromString(string(s.Kind))
-	}
-
 	// Field: Path
 	if len(s.Path) > 0 {
 		slice := make([]*ir.Node, len(s.Path))
@@ -349,24 +336,6 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "root":
-			// Field: Root
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "root", fieldNodeUnwrapped.Type)
-			}
-			s.Root = string(fieldNodeUnwrapped.String)
-		case "system":
-			// Field: System
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "system", fieldNodeUnwrapped.Type)
-			}
-			s.System = string(fieldNodeUnwrapped.String)
-		case "kind":
-			// Field: Kind
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
-			}
-			s.Kind = string(fieldNodeUnwrapped.String)
 		case "path":
 			// Field: Path
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

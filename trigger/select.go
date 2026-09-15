@@ -200,7 +200,7 @@ func (e *Engine) ResumeSelections() (int, error) {
 			if !said && e.knownElsewhere(name) {
 				// It does not say which charter it came from and the rule is in one of the
 				// others, so it is not gone — it was never ours to settle (ownsQuestion).
-				e.tracef("selection %s is another charter's rule %q: left standing", ent.Ref.ID(), name)
+				e.tracef("selection %s is another charter's rule %q: left standing", ent.Ref.Name(), name)
 				continue
 			}
 			e.orphanQuestion(ent.Ref, "the rule that asked it is no longer in the charter")
@@ -227,7 +227,7 @@ func (e *Engine) ResumeSelections() (int, error) {
 			e.orphanQuestion(ent.Ref, "the subject it is about is gone")
 			continue
 		}
-		e.tracef("resuming selection %s: %s on %s", ent.Ref.ID(), chain, subj)
+		e.tracef("resuming selection %s: %s on %s", ent.Ref.Name(), chain, subj)
 		go e.resumeSelection(*act, chain, subj)
 		resumed++
 	}
@@ -257,7 +257,7 @@ func (e *Engine) ownsQuestion(p entity.Payload) (mine, said bool) {
 // orphanQuestion settles a question nobody can answer, recording WHY. The record stays rather
 // than being deleted: what was asked, and why it was never decided, is the trail.
 func (e *Engine) orphanQuestion(ref entity.Ref, why string) {
-	e.tracef("orphaning %s: %s", ref.ID(), why)
+	e.tracef("orphaning %s: %s", ref.Name(), why)
 	e.modify(ref, func(cur entity.Payload) entity.Payload {
 		if entity.Str(cur, "verdict") != "" {
 			return cur // it settled while we were deciding it had not; terminal-once

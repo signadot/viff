@@ -26,22 +26,12 @@ conversion step and nothing to configure.
 
 What verse will not do is hand JSON back. `-o json`, `VERSE_FORMAT=json` and
 `Accept: application/json` are refused, the last with a 406. The reason is tags. A match's
-operators are built from them — `!glob "hotfix-*"`, `!or [...]` — and JSON has no tag syntax,
-so rendering one means rewriting it as a single-key object: `{"glob": "hotfix-*"}`. That is
-unambiguous where the surrounding keys are a closed set, and not unambiguous inside a
-match's `value`, where a payload key may itself be named `or`. A rendering that is
-faithful for most of the model and quietly wrong for the rest is worse than one honestly
-not offered.
+operators are tags — `!glob "hotfix-*"`, `!or [...]` — and JSON has no tag syntax, so a JSON
+rendering of a charter could not say what the charter says.
 
-Reading is unaffected by all of this, including the single-key spelling: a charter that
-writes `{"glob": "hotfix-*"}` in a dimension loads exactly like one that writes
-`!glob "hotfix-*"`. That is how you reach an operator from JSON, and it is why JSON is a
-first-class way to write a charter even though it is not a way to read one back.
-
-With one exception, for the same reason the rendering is refused: the single-key spelling
-is only unambiguous where the keyspace is closed, so it is *not* applied inside a payload
-predicate, where a key may itself be named `or`. Plain equality predicates work in JSON;
-an operator over a payload needs tony (see [the trigger model](../trigger-model.md)).
+The same fact bounds JSON input: a charter written in JSON has no operators. It writes paths
+of names and `*`, and plain equality predicates; an operator is written in tony (see
+[the trigger model](../trigger-model.md)).
 
 Output is colorized on a terminal and plain when piped, so `verse charter | o v` keeps
 working. `-color always` forces it (for a pager), `-color never` or `NO_COLOR=1` turns it

@@ -9,7 +9,7 @@ import (
 
 // `--paths` WALKS, and the walk is what makes it impossible to be silently wrong.
 //
-// An address may be three segments or deeper — a write names a place at whatever depth — and
+// An address is a path of any length — a write names a place at whatever depth — and
 // nothing in an answer says where an entity ends (docs/working/entity-tree.md: entity-hood is a
 // lens). Listing "the level an address has" therefore answered `verse-dev.drift.range` for a
 // place holding four-segment records: true, and nothing anybody wanted. Every address under what

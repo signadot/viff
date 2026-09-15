@@ -38,7 +38,7 @@ func TestCharterSurvivesARestart(t *testing.T) {
 	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -60,7 +60,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -81,7 +81,7 @@ func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	eng := New(first, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
 	if err := eng.AddTrigger(trig); err != nil {
@@ -146,14 +146,13 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if spec == nil || !entity.IsObj(spec) {
 		t.Fatalf("%s = %v; want the rule as an object", specField, spec)
 	}
-	// The LAST segment of the subject's path — the position `id` is a reading of — still
-	// carries its operator as a tag.
+	// The LAST segment of the subject's path still carries its operator as a tag.
 	path := ir.Get(ir.Get(ir.Get(spec, "condition"), "subject"), "path")
 	if path == nil || len(path.Values) != 3 {
-		t.Fatalf("condition.subject.path = %v; want the three segments it was written with", path)
+		t.Fatalf("condition.subject.path = %v; want the segments it was written with", path)
 	}
 	if id := path.Values[2]; id == nil || id.Tag != "!glob" {
-		t.Fatalf("the id segment = %v; the operator did not survive as a tag", id)
+		t.Fatalf("the last segment = %v; the operator did not survive as a tag", id)
 	}
 	back, err := ruleOf(ent)
 	if err != nil {
@@ -199,7 +198,7 @@ func TestReinstallReplacesTheRule(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 		Gates:     []Gate{{Name: "approval", Mode: "ask"}},
 		Action:    setStage("reviewed"),
 	}
@@ -231,7 +230,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	eng := New(first, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -260,7 +259,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 		Action:    setStage("reviewed"),
 	}
 	doc, err := trig.ToTonyIR()
@@ -297,8 +296,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 - name: latched
   condition:
     subject:
-      system: drift
-      kind: head
+      path: [drift, head, "*"]
       value: !not
         reviewed: null
   action:
@@ -396,7 +394,7 @@ func TestARuleKeepsItsComments(t *testing.T) {
 		t.Fatalf("Doc = %q, want the line the author wrote", back.Doc)
 	}
 	// The comment is not DATA: it does not become a field, and the rule is otherwise identical.
-	if back.Name != "commented" || back.Condition.Subject.Kind() != "pr" {
+	if back.Name != "commented" || !isPath(back.Condition.Subject, "demo.pr.*") {
 		t.Fatalf("the rule itself did not survive: %+v", back)
 	}
 }
@@ -424,9 +422,9 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 		"# what this is about\n" +
 		"condition: # cause and subject\n" +
 		"  # the subject\n" +
-		"  subject: demo.pr # any PR\n" +
+		"  subject: demo.pr.* # any PR\n" +
 		"  # what has to hold\n" +
-		"  when: ci:status # a build says so\n" +
+		"  when: ci.status.* # a build says so\n" +
 		"# who has to agree\n" +
 		"gates: # conjunctive\n" +
 		"# the first gate\n" +
@@ -437,7 +435,7 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 		"  # the patch\n" +
 		"  patch: # merged into the subject\n" +
 		"    stage: reviewing # the new stage\n"
-	if err := eng.AddStratum(Stratum{Name: "base", Level: 1, Match: []Match{{"system": "demo"}}}); err != nil {
+	if err := eng.AddStratum(Stratum{Name: "base", Level: 1, Match: []Match{mm("demo")}}); err != nil {
 		t.Fatalf("AddStratum: %v", err)
 	}
 	node, err := codec.ParseNode([]byte(src), codec.Tony)
@@ -476,7 +474,7 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 	// And the rule is still the rule: a comment is not data, and none of these carriers is a
 	// field of the document.
 	if back.Name != "everything" || back.Stratum != "base" ||
-		back.Condition.Subject.Kind() != "pr" || len(back.Gates) != 1 {
+		!isPath(back.Condition.Subject, "demo.pr.*") || len(back.Gates) != 1 {
 		t.Fatalf("the rule itself did not survive carrying its comments: %+v", back)
 	}
 }
@@ -522,7 +520,7 @@ func TestAConditionKeepsItsFieldComments(t *testing.T) {
 			}
 		}
 		// …and the condition itself still decodes to what it says.
-		if tr.Condition.Subject.Kind() != "pr" || tr.Condition.When == nil {
+		if !isPath(tr.Condition.Subject, "demo.pr.*") || tr.Condition.When == nil {
 			t.Errorf("the condition did not survive carrying its comments: %+v", tr.Condition)
 		}
 	}

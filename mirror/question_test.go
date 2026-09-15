@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
@@ -23,10 +24,11 @@ func pose(t *testing.T, store entity.Store, id, gate, taskID string, effs ...tas
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.
 func ids(t *testing.T, store entity.Store, p entity.Pattern) []string {
 	t.Helper()
-	p.System, p.Kind = QuestionSystem, QuestionKind
+	p.Path = []*ir.Node{ir.FromString(entity.VerseRoot), ir.FromString(QuestionSystem),
+		ir.FromString(QuestionKind), ir.FromString("*")}
 	var out []string
 	for _, ref := range p.Select(store) {
-		out = append(out, ref.ID())
+		out = append(out, ref.Name())
 	}
 	return out
 }

@@ -41,7 +41,7 @@ func TestSelectionSkipsAVanishingEntity(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -72,7 +72,7 @@ func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 
 	if err := eng.AddTrigger(Trigger{
 		Name: "reap",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"),
 			"value": map[string]any{"verse": map[string]any{"meta": map[string]any{"vanishing": nil}}}}},
 		Action: Action{Patch: entity.Removed()}, // `!delete null` at the root removes the entity
 	}); err != nil {
@@ -113,7 +113,7 @@ func TestVanishingIsARisingEdge(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "note-departures",
 		Condition: Condition{
-			On: MatchWhen(Match{"system": "demo", "kind": "pr",
+			On: MatchWhen(Match{"path": pathOf("demo", "pr", "*"),
 				"value": map[string]any{"verse": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
 			Subject: mm(audit.String()),
 		},
@@ -177,7 +177,7 @@ func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "farewell",
 		Condition: Condition{
-			On: MatchWhen(Match{"system": "demo", "kind": "pr",
+			On: MatchWhen(Match{"path": pathOf("demo", "pr", "*"),
 				"value": map[string]any{"verse": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
 			Subject: mm(ref.String()), // named — and leaving
 		},
@@ -200,7 +200,7 @@ func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 	}
 	// A name that has NEVER existed is still nameable — the create amendment is intact.
 	fresh := entity.RefAt("demo", "report", "1")
-	if got := (Match{"system": "demo", "kind": "report", "id": "1"}).Select(store); len(got) != 1 || got[0] != fresh {
+	if got := (mm("demo.report.1")).Select(store); len(got) != 1 || got[0] != fresh {
 		t.Fatalf("naming a never-written entity selected %v, want a set of one", got)
 	}
 }

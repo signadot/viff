@@ -50,7 +50,7 @@ func TestResumeReEntersASelection(t *testing.T) {
 	subj := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "reviewing"}.Payload(), Spawn: spawn},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -154,7 +154,7 @@ func TestBaselineDoesNotSettleAPackagesSelection(t *testing.T) {
 	pkg.Confine(SubtreeAt("verse-dev", "merge"))
 	if err := pkg.AddTrigger(Trigger{
 		Name:      "train-run",
-		Condition: Condition{Subject: Match{"system": "verse-dev", "kind": "merge"}},
+		Condition: Condition{Subject: mm("verse-dev.merge.*")},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestAFiringGateNamesItsCharter(t *testing.T) {
 	eng.Confine(SubtreeAt("verse-dev", "merge"))
 	if err := eng.AddTrigger(Trigger{
 		Name:      "train-run",
-		Condition: Condition{Subject: Match{"system": "verse-dev", "kind": "merge"}},
+		Condition: Condition{Subject: mm("verse-dev.merge.*")},
 		Gates:     []Gate{{Name: "merge-to-main", Mode: "ask"}},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {

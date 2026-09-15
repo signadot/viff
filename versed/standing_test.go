@@ -31,7 +31,7 @@ func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string
 }
 
 func standing(name, area string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {system: change, kind: pr,` +
+	return `{name: ` + name + `, kind: security, condition: {subject: {path: [change, pr, "*"],` +
 		` value: {area: ` + area + `}}}, method: {driver: url, url: "https://x"}}`
 }
 
@@ -183,7 +183,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 	// A rule that names nobody: the standing binding covering the subject owns its gate.
 	addRule(t, ts, `{
 		name: guard,
-		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
 		gates:  [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewed}},
 	}`)
@@ -196,7 +196,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 	// questions it was already answering rather than competing for these.
 	addRule(t, ts, `{
 		name: named,
-		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
 		gating: {resolver: "verse.resolvers.security.security-review", gates: [{name: sign, mode: ask}]},
 		action: {patch: {signed: true}},
 	}`)
@@ -228,7 +228,7 @@ func waitOwner(t *testing.T, srv *Server, origin string) string {
 	t.Helper()
 	for range 400 {
 		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+			return mirror.IsQuestion(ref)
 		}) {
 			p := entity.ToObj(ent.Payload)
 			if p["origin"] == origin && p["status"] == mirror.QuestionPending {
@@ -276,9 +276,9 @@ func instances(t *testing.T, srv *Server) map[string]map[string]any {
 	t.Helper()
 	out := map[string]map[string]any{}
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
+		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
 	}) {
-		out[ent.Ref.ID()] = entity.ToObj(ent.Payload)
+		out[ent.Ref.Name()] = entity.ToObj(ent.Payload)
 	}
 	return out
 }
@@ -298,7 +298,7 @@ func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	addRule(t, ts, `{
 		name: guard,
-		condition: {subject: {system: change, kind: pr, value: {area: payments}}},
+		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
 		gates:  [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewed}},
 	}`)
@@ -368,8 +368,8 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 	// is minted right after it, so a position posted on the strength of the question alone
 	// races the mint that is meant to be tested against — and this test is about what a mint
 	// does to a position that is ALREADY there.
-	waitFor(t, srv, ref.ID())
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.ID()+"/position",
+	waitFor(t, srv, ref.Name())
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.Name()+"/position",
 		api.Position{Position: 9, Notes: "read this far"})
 	resp.Body.Close()
 
@@ -475,7 +475,7 @@ func TestRemovingTheLastBindingSendsAQuestionToTheDocket(t *testing.T) {
 
 	// A verdict from the removed binding loses on the ownership check that already exists —
 	// no new rule, and its instance is gone besides.
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.ID()+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {

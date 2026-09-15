@@ -204,7 +204,7 @@ func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
 
 	resp := postAs(t, "alice@example.com", ts.URL+"/charter", "application/tony", `{
 		name: approve-ask,
-		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
 		gates: [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewing}},
 	}`)

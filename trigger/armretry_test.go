@@ -35,7 +35,7 @@ func TestARestoredRuleKeepsAskingForItsWatch(t *testing.T) {
 	for _, name := range []string{"review", "other"} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      name,
-			Condition: Condition{Subject: Match{"system": "demo", "kind": name, "value": map[string]any{"stage": "open"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", name, "*"), "value": map[string]any{"stage": "open"}}},
 			Action:    setStage("reviewed"),
 		}); err != nil {
 			t.Fatalf("AddTrigger %s: %v", name, err)

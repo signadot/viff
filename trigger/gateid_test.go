@@ -62,7 +62,7 @@ func TestRepeatedFiringsShareOneGateQuestion(t *testing.T) {
 		Name: "ship",
 		// It latches on `stage`, so once shipped it stops selecting. Until then every write
 		// re-evaluates it and asks the same question again.
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "release",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "release", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Gates:  []Gate{{Name: "approve", Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},

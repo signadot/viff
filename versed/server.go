@@ -679,7 +679,7 @@ func (s *Server) reconcileTasks() error {
 		return fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err)
 	}
 	for _, ent := range tasks {
-		if ent.Ref.Kind() == mirror.RunKind {
+		if ent.Ref.Under(entity.VerseRoot, mirror.System, mirror.RunKind) {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,
 			// so nothing later would catch it, and reconcile would try to resume history —
@@ -687,7 +687,7 @@ func (s *Server) reconcileTasks() error {
 			// of one that did not.
 			continue
 		}
-		if ent.Ref.Kind() == mirror.ClaimKind {
+		if ent.Ref.Under(entity.VerseRoot, mirror.System, mirror.ClaimKind) {
 			// A run claim, not a task. It is cleared below rather than here, and it is
 			// named explicitly so it is not merely skipped by accident (a claim carries no
 			// `status`, so it would fall through the check that follows).
@@ -722,12 +722,12 @@ func (s *Server) reconcileTasks() error {
 			if runnerRef == brokerName {
 				place = s.brokerRuntime()
 			}
-			if h := attachOn(place, ent.Ref.ID()); h != nil {
+			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
 				// The binding its spawn named is read back off the entity rather than
 				// remembered: a resumed task must be watched by whoever was watching
 				// it, and the launch that said so is long gone.
-				s.reflect(s.Store, ent.Ref.ID(), h, mirror.Meta{
+				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
 					// provenance this does not hand back is provenance the resumed task
@@ -738,16 +738,16 @@ func (s *Server) reconcileTasks() error {
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Resolver:  entity.Str(ent.Payload, "resolver"),
-					HeldBy:    func() []string { return s.Eng.HeldBy(ent.Ref.ID()) },
+					HeldBy:    func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				// A task about no subject is the flow of its own id, as at spawn.
 				flow := subject
 				if flow == "" {
-					flow = ent.Ref.ID()
+					flow = ent.Ref.Name()
 				}
-				s.Eng.AdoptChain(flow, ent.Ref.ID(), chain, h)
+				s.Eng.AdoptChain(flow, ent.Ref.Name(), chain, h)
 				resumed = append(resumed, resumedRun{subject: subject, chain: chain})
 				continue
 			}
@@ -862,7 +862,7 @@ type resumedRun struct{ subject, chain string }
 // worth fixing when scoped resume is, since both are the same gap.
 func (s *Server) reconcileClaims(resumed []resumedRun) {
 	for _, ent := range entity.ListUnder(s.Store, func(r entity.Ref) bool {
-		return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.ClaimKind
+		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
 	}, entity.VerseRoot, mirror.System, mirror.ClaimKind) {
 		if claimIsLive(ent, resumed) {
 			continue
@@ -2097,7 +2097,7 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(ents))
 	for _, e := range ents {
-		out = append(out, map[string]any{"at": e.Ref.String(), "name": e.Ref.ID(), "members": entity.Strs(e.Payload, entity.MembersField)})
+		out = append(out, map[string]any{"at": e.Ref.String(), "name": e.Ref.Name(), "members": entity.Strs(e.Payload, entity.MembersField)})
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -2112,7 +2112,7 @@ func (s *Server) getGroup(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"at": ref.String(), "name": ref.ID(), "members": entity.Strs(e.Payload, entity.MembersField)})
+	writeOut(w, r, http.StatusOK, map[string]any{"at": ref.String(), "name": ref.Name(), "members": entity.Strs(e.Payload, entity.MembersField)})
 }
 
 func (s *Server) removeGroup(w http.ResponseWriter, r *http.Request) {
@@ -2158,7 +2158,7 @@ func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
 	store, who := s.scopedStore(r), principalOf(r)
 	out := make([]api.PermsRecord, 0, len(ents))
 	for _, e := range ents {
-		ref, err := entity.ParseAddr(e.Ref.ID())
+		ref, err := entity.ParseAddr(e.Ref.Name())
 		if err != nil {
 			continue // a record keyed by something that is not an address is nobody's to see
 		}
@@ -2797,7 +2797,7 @@ func (s *Server) armDeadlines() error {
 	}
 	for _, ent := range ents {
 		if within, _, _ := mirror.DeadlineOf(ent.Payload); within != "" {
-			s.armDeadline(s.Store, ent.Ref.ID(), within)
+			s.armDeadline(s.Store, ent.Ref.Name(), within)
 		}
 	}
 	return nil
@@ -2839,7 +2839,7 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 			continue
 		}
 		if fires, err := time.Parse(time.RFC3339Nano, at); err == nil && !now.Before(fires) {
-			s.settleByDeadline(store, ent.Ref.ID())
+			s.settleByDeadline(store, ent.Ref.Name())
 			any = true
 		}
 	}
@@ -2870,7 +2870,7 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 	if perr != nil {
 		return "", entity.Ref{}, false, nil
 	}
-	return binding, origin, binding != "" && origin.ID() != "", nil
+	return binding, origin, binding != "" && origin.Name() != "", nil
 }
 
 // watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
@@ -2903,7 +2903,7 @@ func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 	// so a resolver over a local run and one over a brokered run read through one path. The
 	// task route splits only because it forwards to the runtime's own mount, and a
 	// resolver is not asking that route's question.
-	s.streamEvents(w, r, origin.ID())
+	s.streamEvents(w, r, origin.Name())
 }
 
 // streamSpine serves the commits that touched one subject, from `?since=<revision>`.
@@ -3084,7 +3084,7 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// task holds it.
 	var taskID string
 	if watchesARun(origin) {
-		taskID = origin.ID()
+		taskID = origin.Name()
 	}
 	as := s.asBinding(r, binding)
 	s.answerQuestion(w, r, api.Resolve{
@@ -3244,7 +3244,7 @@ func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
 		return false
 	}
 	if watchesARun(origin) {
-		return q["task"] == origin.ID()
+		return q["task"] == origin.Name()
 	}
 	return q["subject"] == origin.String()
 }
@@ -3399,7 +3399,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 		// Bindings only. An instance shares the system deliberately — one `--system
 		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
 		// record of who is watching is a different question.
-		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() != resolver.InstanceKind
+		return ref.Under(entity.VerseRoot, resolver.System) && !ref.Under(entity.VerseRoot, resolver.System, resolver.InstanceKind)
 	}, entity.VerseRoot, resolver.System)
 	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
@@ -3507,7 +3507,7 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	}
 	// And the grant goes with the record: the question is held out to the binding that now
 	// answers it and to no other, the old binding's grant going with the old binding.
-	mirror.Bind(store, at.ID(), binding)
+	mirror.Bind(store, at.Name(), binding)
 	// The new owner gets an instance for what it now watches, because re-owning IS an
 	// ownership decision and that is where instances are minted. Without it a layer could own
 	// a question with no record through which to act on it — and no way to read the fine grain
@@ -3552,7 +3552,7 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
 	for _, ent := range entity.ListUnder(store, func(ref entity.Ref) bool {
-		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
+		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
 	}, entity.VerseRoot, resolver.System, resolver.InstanceKind) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
@@ -4225,9 +4225,9 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		if rec == nil {
 			continue
 		}
-		inst, ok := live[ent.Ref.ID()]
+		inst, ok := live[ent.Ref.Name()]
 		if !ok {
-			inst = instanceFromRecord(ent.Ref.ID(), rec)
+			inst = instanceFromRecord(ent.Ref.Name(), rec)
 		}
 		// Where it ran is the RECORD's to say, not the runtime's: the runtime knows it hosts
 		// the task, and the record knows which installed runner that is and what the
@@ -4317,7 +4317,7 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	for _, e := range entity.ListUnder(store, func(ref entity.Ref) bool {
 		return mirror.IsTask(ref)
 	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
-		ids[e.Ref.ID()] = true
+		ids[e.Ref.Name()] = true
 	}
 	return ids
 }

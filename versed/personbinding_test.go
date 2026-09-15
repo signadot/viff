@@ -20,7 +20,7 @@ func personBinding(name, area, who, deadline string) string {
 		d = `deadline: {within: "` + deadline + `"},`
 	}
 	return `{name: ` + name + `, kind: approvals, ` + d +
-		` condition: {subject: {system: change, kind: pr, value: {area: ` + area + `}}},` +
+		` condition: {subject: {path: [change, pr, "*"], value: {area: ` + area + `}}},` +
 		` method: {driver: person, who: ` + who + `}}`
 }
 

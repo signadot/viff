@@ -186,8 +186,7 @@ fi
 step "checking nobody owns what this is about to write"
 # grep -E rather than a sed alternation: `\|` inside `\(...\)` is a GNU extension that BSD sed
 # accepts and ignores, so on macOS the guard silently matched nothing and let the run proceed.
-# The claim's own spelling: `git.verse`, a kinded path. It was `git:ref:*` when this guard was
-# written, and matching on the colon quietly stopped matching anything — the guard passed by
+# A claim is spelled as a kinded path, `git.verse`: a guard matching some other spelling passes by
 # finding nothing rather than by there being nothing.
 owned=$(v sources -o tony 2>/dev/null |
 	grep -E '^[[:space:]]*- at:[[:space:]]*"?(git|github)[.:]' |
@@ -251,25 +250,25 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
     subject: {path: [github, acme, widget, pr, "*"], value: { merged: true }}
   action:
     derive:
-      lineage:
-        trace:
-          pr:      $subject
-          title:   $subject.value.title
-          commit:  $subject.value.headSha
-          target:  $subject.value.base
-          # The commit is a different system's entity, and reaching it is where two real id
-          # schemes bite. git keeps a commit under its repository — a sha is not a sound
-          # cross-repo key, since two repositories have independent histories — and names the
-          # repository by the id its operator gave it, while a pull request carries a bare
-          # `headSha` and spells its repository GitHub's way. So there is no address to name,
-          # and `!get-path` refuses a predicate: the join has to be a LIST read narrowed by the
-          # sha the payload carries.
-          #
-          # It answers a one-element list rather than a value, which is the shape of "find the
-          # thing that says this about itself" and the price of two systems that never agreed
-          # on an id — which is the whole point being demonstrated.
-          message: !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: msg}
-          author:  !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: author}
+    - path: [lineage, trace]
+      value:
+        pr:      $subject
+        title:   $subject.value.title
+        commit:  $subject.value.headSha
+        target:  $subject.value.base
+        # The commit is a different system's entity, and reaching it is where two real id
+        # schemes bite. git keeps a commit under its repository — a sha is not a sound
+        # cross-repo key, since two repositories have independent histories — and names the
+        # repository by the id its operator gave it, while a pull request carries a bare
+        # `headSha` and spells its repository GitHub's way. So there is no address to name,
+        # and `!get-path` refuses a predicate: the join has to be a LIST read narrowed by the
+        # sha the payload carries.
+        #
+        # It answers a one-element list rather than a value, which is the shape of "find the
+        # thing that says this about itself" and the price of two systems that never agreed
+        # on an id — which is the whole point being demonstrated.
+        message: !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: msg}
+        author:  !list-paths {at: [git, "*", commit, "*"], value: {sha: $subject.value.headSha}, path: author}
 
 # The release does not correlate anything; it READS THE SET. A derive is about exactly one
 # subject, so fifty traces cannot feed one release — the level above reads them instead.

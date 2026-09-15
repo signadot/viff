@@ -24,16 +24,15 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/tony-format/go-tony/mergeop"
 
 	"github.com/signadot/verse/entity"
 )
 
 // ── Match ────────────────────────────────────────────────────────────────────
 
-// ToTonyIR emits the address string when the match names only system/kind/id, and the
-// object form otherwise. `subject: demo:pr:*` is how a charter is written by hand, and a
-// round trip should give it back rather than expanding it into three fields.
+// ToTonyIR emits the kinded path when the match is an address and nothing else — every segment a
+// name or `*`, no predicate — and the object form `{path, value}` otherwise. `subject: demo.pr.*`
+// is how a charter is written by hand, and a round trip gives it back.
 func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if m == nil {
 		return ir.Null(), nil
@@ -44,110 +43,41 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if addr, ok := m.address(); ok {
 		return ir.FromString(addr), nil
 	}
-	// A PATH GOES BACK OUT AS `path:`, the OBJECT form, because that is the spelling that means
-	// a path at every length. `!verse-path [a b c]` does not: three steps FOLD into the three
-	// dimensions, deliberately, so that the vector spelling names the entity `a:b:c` the way
-	// every charter written before paths does. Rendering a path with it turns a PLACE into an
-	// address with an id.
-	//
-	// Which is a restart's worth of damage. A stratum is a place — `{path: [verse-dev, drift,
-	// head]}` — and written down as `!verse-path` it came back constraining `id`, so restore
-	// refused it, and then refused every rule whose derive needed the level it named. The
-	// charter shrank across a restart, in the store's own copy of itself.
-	//
-	// Without SOME path spelling here a deep rule rendered as `{}`, which was worse again: it
-	// installed, was written down as a match on everything, and came back with no subject.
-	if m.Deep() {
-		segs := m.SegNodes()
+	var kvs []ir.KeyVal
+	if segs := m.SegNodes(); len(segs) > 0 {
 		vals := make([]*ir.Node, 0, len(segs))
 		vals = append(vals, segs...)
-		kvs := []ir.KeyVal{{Key: ir.FromString(mKeyPath), Val: ir.FromSlice(vals)}}
-		if node, ok := predicateNode(m[mKeyValue]); ok {
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyValue), Val: node})
-		}
-		return ir.FromKeyVals(kvs), nil
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyPath), Val: ir.FromSlice(vals)})
 	}
-	// Canonical dimension order, not map order: ir.FromMap sorts, and
-	// {fields, id, kind, system} reads worse than the order people write.
-	var kvs []ir.KeyVal
-	// The root first, as it is written: without it a match in verse's own half is stored as the
-	// world's and restores there.
-	if r := m.Root(); r != "" {
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyRoot), Val: ir.FromString(r)})
-	}
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
-		// An operator goes back out as a tag, which is how it was written in tony and the
-		// only faithful spelling — the tag-keyed input form is sugar, not a rendering.
-		if n := m.dim(k); n != nil {
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: n})
-			continue
-		}
-		if v := m.str(k); v != "" {
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: ir.FromString(v)})
-		}
-	}
-	// The predicate goes back out as the node it is, operators and all — the same
-	// faithful-rendering rule the id/op dimensions follow above.
+	// The predicate goes back out as the node it is, operators and all.
 	if node, ok := predicateNode(m[mKeyValue]); ok {
 		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyValue), Val: node})
 	}
-	if len(kvs) == 0 {
-		return ir.FromKeyVals(nil), nil // {} — the empty match, which matches everything
-	}
-	return ir.FromKeyVals(kvs), nil
+	return ir.FromKeyVals(kvs), nil // {} for the empty match, which matches everything
 }
 
-// address renders the match as the kinded path "system.kind.id" when it carries only those
-// dimensions, with "*" for a gap. Reported false when a payload predicate or an op is present
-// (no string can carry those), or when the match is empty.
-//
-// A COLON IS ORDINARY in any segment: the grammar reads dots, and a segment that would otherwise
-// be mis-read is quoted rather than refused. So a match carrying a colon outside the id has a
-// string form like any other, where a colon-delimited rendering would be ambiguous to ParseExpr
-// and have none.
-//
-// A PATH IS NOT RENDERED AS ONE OF THESE, whatever its length. System/Kind/ID read a path's
-// segments now (Match.seg), so the two spellings answer alike — but they do not MEAN alike, and
-// the difference is what a stratum rests on: `{path: [verse-dev, drift, head]}` is a PLACE, and
-// the dimension spelling's third position is an ID, which a stratum may not constrain. A path
-// that came back as `{system, kind, id}` was refused on reinstall by the very check it passed
-// going in.
+// address renders the match as a kinded path when it is an address and nothing else: a path whose
+// every segment is a name or `*`, with no predicate. An operator or a predicate has no string
+// spelling, and rendering one as the string would drop it.
 func (m Match) address() (string, bool) {
-	if m.Deep() {
+	segs := m.SegNodes()
+	if len(segs) == 0 || m.HasPredicate() {
 		return "", false
 	}
-	if m.HasPredicate() {
-		return "", false // no address spelling carries a payload predicate
-	}
-	// An operator has no address spelling. Rendering one as the string form would drop it
-	// — `{id: !glob "a/*"}` becoming "demo:pr" — which is the widest possible match wearing
-	// the narrowest one's clothes.
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
-		if m.dim(k) != nil {
+	out := make([]string, 0, len(segs))
+	for _, n := range segs {
+		if n.Tag != "" {
 			return "", false
 		}
-	}
-	sys, kind, id := m.System(), m.Kind(), m.ID()
-	if sys == "" && kind == "" && id == "" {
-		return "", false
-	}
-	segs := []string{sys, kind, id}
-	last := 0
-	for i, s := range segs {
-		if s != "" {
-			last = i
+		t, ok := stepText(n)
+		if !ok {
+			return "", false
 		}
-	}
-	out := make([]string, 0, last+2)
-	if r := m.Root(); r != "" {
-		out = append(out, r) // a leading `verse` reads back as the root
-	}
-	for _, s := range segs[:last+1] {
-		if s == "" || s == "*" {
-			out = append(out, "*") // a gap or a wildcard is any segment, and a `*` is never quoted
+		if t == "*" {
+			out = append(out, "*") // any one segment, and a `*` is never quoted
 			continue
 		}
-		out = append(out, entity.JoinSegs([]string{s}))
+		out = append(out, entity.JoinSegs([]string{t}))
 	}
 	return strings.Join(out, "."), true
 }
@@ -160,17 +90,11 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		*m = nil
 		return nil
 	}
-	// A `!match` tag is accepted and never emitted: the match atom is written unwrapped,
-	// but someone may spell it explicitly.
-	// `!verse-path [demo pr 1]` — an address as STEPS, checked before the guard below because
-	// it is a tag this type accepts rather than one it refuses.
+	// A `!match` tag is accepted and never emitted: the match atom is written unwrapped, but
+	// someone may spell it explicitly.
 	if tagName(node) == VersePathTag {
-		parsed, err := stepsMatch(node)
-		if err != nil {
-			return err
-		}
-		*m = parsed
-		return nil
+		return fmt.Errorf("match: !%s is not a spelling of an address — write the kinded path "+
+			"(`demo.pr.*`) or `path: [demo, pr, \"*\"]`", VersePathTag)
 	}
 	if tag := tagName(node); tag != "" && tag != string(ReqMatch) {
 		return fmt.Errorf("match: unexpected tag %q", node.Tag)
@@ -184,13 +108,8 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		*m = parsed
 		return nil
 	case ir.ArrayType:
-		// An untagged list is not an address — stepsMatch is what says so, and why.
-		parsed, err := stepsMatch(node)
-		if err != nil {
-			return err
-		}
-		*m = parsed
-		return nil
+		return fmt.Errorf("match: a list is not an address — write the kinded path (`demo.pr.*`) " +
+			"or `path: [demo, pr, \"*\"]`")
 	case ir.ObjectType:
 		parsed, err := matchFromObject(node)
 		if err != nil {
@@ -199,7 +118,7 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		*m = parsed
 		return m.Validate()
 	}
-	return fmt.Errorf("match: want an object or a \"system:kind:id\" string, got %v", node.Type)
+	return fmt.Errorf("match: want an object or a kinded path string, got %v", node.Type)
 }
 
 // matchFromObject reads the object form dimension by dimension, rather than flattening the
@@ -211,15 +130,12 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 // somewhere that can hold it or is reported, never dropped.
 func matchFromObject(node *ir.Node) (Match, error) {
 	out := Match{}
-	var at Match // the `at:` spelling, merged after the loop so a conflict is caught either way
 	for i, key := range node.Fields {
 		k := key.String
 		val := unwrap(node.Values[i])
 		switch k {
 		case mKeyPath:
-			// `path:` is the object spelling of `!verse-path`, and the two are one dimension:
-			// a list of segments, each a match. It is what an address deeper than the three
-			// dimensions is carried as, and what a rendering of one comes back in.
+			// A list of segments, each a name, a bare `*`, or a tony match over one segment.
 			if val == nil || val.Type != ir.ArrayType {
 				return nil, fmt.Errorf("match: `%s` is a list of segments (`[demo, pr, \"*\"]`); "+
 					"got %v", mKeyPath, valType(val))
@@ -228,122 +144,27 @@ func matchFromObject(node *ir.Node) (Match, error) {
 			if err != nil {
 				return nil, err
 			}
-			at = got
-
-		case mKeyAt: //nolint:dupl // the conflict is checked once, after the loop
-			// `at:` is the whole address prefix as ONE covering path — `at: demo.pr` for
-			// `{system: demo, kind: pr}`, `at: verse.gate.question` for the same three in
-			// verse's own half. It EXPANDS here rather than being carried as a dimension of
-			// its own: what a match means is the dimensions, and one address written two ways
-			// in one map would be two answers to ask a firing about.
-			//
-			// It takes the vector spelling too, so `at: !verse-path [demo pr]` reads.
-			got, err := atMatch(val)
-			if err != nil {
-				return nil, err
-			}
-			at = got
-
-		case mKeySystem, mKeyKind, mKeyID, mKeyRoot:
-			// A dimension is a closed grammar — a string, or an operator over one — so an
-			// object here is unambiguously the tag-keyed spelling of an operator and can
-			// be desugared without asking what the surrounding keys mean.
-			n, err := opNode(val)
-			if err != nil {
-				return nil, fmt.Errorf("match %q: %w", k, err)
-			}
-			if n != nil {
-				out[k] = n
-				continue
-			}
-			if val.Type != ir.StringType {
-				return nil, fmt.Errorf("match: %q must be a string, got %v", k, val.Type)
-			}
-			out[k] = val.String
+			out[mKeyPath] = got[mKeyPath]
 
 		case mKeyValue:
 			// Kept as the NODE, not decoded to a map: a payload predicate is a tony match
 			// evaluated at the payload root, so any operator it carries has to survive to
-			// tony.Match. Decoding to map[string]any would drop the tag and silently turn
-			// `{stage: !glob "review*"}` into a predicate that matches nothing.
-			//
-			// Tags used to be rejected here, with an error saying a payload predicate is
-			// equality-only. That is no longer true, which is the point of the change.
+			// tony.Match.
 			out[k] = val
 
 		default:
-			// Unknown: decode it so Validate can name it, rather than dropping it here
-			// and reporting a match that constrains less than it says.
+			// Unknown or removed: decode it so Validate can name it, rather than dropping it
+			// here and reporting a match that constrains less than it says.
 			var v any
-			if err := gomap.FromTonyIR(val, &v); err != nil {
-				return nil, fmt.Errorf("match %q: %w", k, err)
+			if val != nil {
+				if err := gomap.FromTonyIR(val, &v); err != nil {
+					return nil, fmt.Errorf("match %q: %w", k, err)
+				}
 			}
 			out[k] = v
 		}
 	}
-	// `at:` merges LAST and refuses to overwrite: the two are one address written two ways, and
-	// a map holding both has said it twice. Checked here rather than in the loop, so the
-	// refusal does not depend on which key the author wrote first.
-	for dim, v := range at {
-		if _, taken := out[dim]; taken {
-			return nil, fmt.Errorf("match: `at` names %s, and so does the match itself — an "+
-				"address is written one way or the other", dim)
-		}
-		out[dim] = v
-	}
 	return out, nil
-}
-
-// opNode converts a dimension's value into a tony match if it carries an operator, in
-// either spelling — `!glob "hotfix-*"` or `{glob: "hotfix-*"}` — and returns nil for a
-// plain value. The two are one grammar: JSON has no tag syntax, so the tag-keyed object is
-// the only way a JSON-shaped charter reaches an operator, exactly as it is for a formula
-// (Formula.fromTagKeyed).
-//
-// Recursive, so operands are desugared too: {"or": ["a", {"glob": "b-*"}]} becomes
-// !or [a, !glob "b-*"]. Inside a dimension there are no object VALUES to be confused with,
-// which is what makes this unambiguous here and impossible inside `fields`.
-func opNode(n *ir.Node) (*ir.Node, error) {
-	if n == nil {
-		return nil, nil
-	}
-	// A LAYOUT tag is not an operator. The parser attaches !bracket to anything written in
-	// flow style, which is every JSON object — so treating a tag as an operator without
-	// looking would make `{"glob": …}` a tagged node that no mergeop ever sees, and the
-	// sugar would decode to itself.
-	if !isLayoutTag(n.Tag) {
-		return desugar(n), nil
-	}
-	if n.Type != ir.ObjectType {
-		return nil, nil
-	}
-	if len(n.Fields) != 1 {
-		return nil, fmt.Errorf("want a string or a single-key operator object, got %d keys",
-			len(n.Fields))
-	}
-	name := n.Fields[0].String
-	if mergeop.Lookup(name) == nil {
-		return nil, fmt.Errorf("unknown operator %q (write %q as a plain string, or use a "+
-			"known operator such as glob/or/not)", name, name)
-	}
-	return desugar(unwrap(n.Values[0])).WithTag("!" + name), nil
-}
-
-// desugar rewrites the tag-keyed spelling into tags throughout a subtree.
-func desugar(n *ir.Node) *ir.Node {
-	if n == nil {
-		return nil
-	}
-	if n.Type == ir.ObjectType && len(n.Fields) == 1 && isLayoutTag(n.Tag) {
-		if name := n.Fields[0].String; mergeop.Lookup(name) != nil {
-			return desugar(unwrap(n.Values[0])).WithTag("!" + name)
-		}
-	}
-	out := n.Clone()
-	for i, v := range out.Values {
-		out.Values[i] = desugar(unwrap(v))
-	}
-	return out
 }
 
 // ── Formula ──────────────────────────────────────────────────────────────────
@@ -370,12 +191,6 @@ func (f *Formula) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	}
 	if tag := tagName(node); retiredFormulaTags[tag] {
 		return retiredFormula("!" + tag)
-	}
-	// The JSON spelling of the same: a single-key object whose key is the tag. A match
-	// dimension is never one of these (TestMatchKeysDisjointFromFormulaTags), so a
-	// single-key match object is left to the match.
-	if node.Type == ir.ObjectType && len(node.Fields) == 1 && retiredFormulaTags[node.Fields[0].String] && !matchKeys[node.Fields[0].String] {
-		return retiredFormula(node.Fields[0].String)
 	}
 	var m Match
 	if err := m.FromTonyIR(node); err != nil {
@@ -526,59 +341,6 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 // would be a second thing a bare list can mean — the union form a stratum's `match` takes is
 // already one — and an address is exactly the place where guessing wrong is expensive.
 const VersePathTag = "verse-path"
-
-// stepsMatch reads the tagged-vector spelling of an address into the same dimensions the string
-// spelling produces.
-func stepsMatch(node *ir.Node) (Match, error) {
-	if tagName(node) != VersePathTag {
-		return nil, fmt.Errorf("match: an address written as a list needs the !%s tag "+
-			"(`!%s [demo pr 1]`), so a list of steps cannot be read as anything else",
-			VersePathTag, VersePathTag)
-	}
-	// The NODES, not their text: a step may carry an operator (`!glob "hot-*"`), and the tag is
-	// what says so. ParseStepNodes keeps it.
-	if hasTaggedStep(node) {
-		return ParseStepNodes(node.Values)
-	}
-	steps := make([]string, 0, len(node.Values))
-	for _, v := range node.Values {
-		// ANY SCALAR, not just a string: an id is a name whatever it looks like, and `1` is
-		// the id of half the entities anybody writes down. Refusing a number here would make
-		// the vector spelling the one form that needs quoting, which is the opposite of what
-		// it is for.
-		step, ok := stepText(unwrap(v))
-		if !ok {
-			return nil, fmt.Errorf("match: a step of !%s is a name; got %v", VersePathTag, v.Type)
-		}
-		steps = append(steps, step)
-	}
-	return ParseSteps(steps)
-}
-
-// atMatch reads the `at:` dimension: an address prefix as a kinded path (`demo.pr`) or as the
-// tagged vector (`!verse-path [demo pr]`), into the dimensions it names.
-func atMatch(val *ir.Node) (Match, error) {
-	switch {
-	case val == nil:
-		return nil, fmt.Errorf("match: `at` is empty")
-	case val.Type == ir.ArrayType:
-		return stepsMatch(val)
-	case val.Type == ir.StringType:
-		return ParseSteps(strings.Split(val.String, "."))
-	}
-	return nil, fmt.Errorf("match: `at` is an address as a path (`demo.pr`) or as steps "+
-		"(`!%s [demo pr]`); got %v", VersePathTag, val.Type)
-}
-
-// hasTaggedStep reports whether any step of an address carries an operator.
-func hasTaggedStep(node *ir.Node) bool {
-	for _, v := range node.Values {
-		if u := unwrap(v); u != nil && u.Tag != "" {
-			return true
-		}
-	}
-	return false
-}
 
 // stepText is a step's text, whatever scalar it was written as. It is scalarText's question
 // asked of an ADDRESS rather than of an interpolation, and it answers no for a composite for

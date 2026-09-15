@@ -335,7 +335,7 @@ re-fire idempotent and what `verse flow demo.pr.1` addresses.
 
 ```sh
 verse data verse task run '<id>@<occurrence>'
-verse data -if '{flow: "demo.pr.1"}' verse.task.run
+verse data verse task run '*' -if '{flow: "demo.pr.1"}'
 ```
 
 `occurrence` is the store revision the run is about — the commit that woke the firing, or the
@@ -372,7 +372,7 @@ payload:
 select the questions it cares about without reading prose:
 
 ```sh
-verse data -if '{status: pending, effects: {verbs: [write]}}' gate
+verse data verse gate question '*' -if '{status: pending, effects: {verbs: [write]}}'
 ```
 
 It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
@@ -393,7 +393,7 @@ The gate is closed to further answers the moment one is accepted; what is still 
 whether the party who must act on it knows. It clears on the worker's acknowledgement.
 
 ```sh
-verse data -if '{delivered: false}' gate              # answers still in flight
+verse data verse gate question '*' -if '{delivered: false}'   # answers still in flight
 ```
 
 Every answer names its answerer — `verse gate approve <id> -as you@example.com` — and two people

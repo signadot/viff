@@ -89,7 +89,7 @@ reads: [git, signadot.comment-drift]
 - name: reflected
   level: 0
   match:
-    system: git
+    path: [git]
 
 - name: proposal
   level: 30

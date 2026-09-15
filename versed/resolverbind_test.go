@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
+	"github.com/signadot/verse/source"
 )
 
 // askingRun spawns a task that blocks on its first action, so there is a real question to
@@ -95,7 +96,7 @@ func TestASpawnWithNoResolverBindsNothing(t *testing.T) {
 		t.Fatalf("an unbound question carries %v as its owner: %+v", q["resolver"], q)
 	}
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.Reserved() && ref.System() == resolver.System && ref.Kind() == resolver.InstanceKind
+		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
 	}) {
 		t.Fatalf("an unbound spawn minted %s", ent.Ref)
 	}
@@ -115,10 +116,8 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	waitQuestion(t, srv, "unwatched")
 	time.Sleep(50 * time.Millisecond) // let both records land
 
-	pat := entity.Pattern{
-		System: mirror.QuestionSystem, Kind: mirror.QuestionKind,
-		Predicate: entity.Obj{"resolver": ref}.Payload(),
-	}
+	pat := source.Cover(entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind, "*")
+	pat.Predicate = entity.Obj{"resolver": ref}.Payload()
 	got := pat.Select(srv.Store)
 	if len(got) != 1 {
 		t.Fatalf("{resolver: %q} selected %v, want only the watched run's question", ref, got)

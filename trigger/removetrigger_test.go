@@ -19,7 +19,7 @@ func TestRemovedTriggerStopsFiring(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	})
 
@@ -56,12 +56,12 @@ func TestRemovingOneTriggerLeavesTheOthersObserving(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "triage",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "issue", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "issue", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("triaged"),
 	})
 
@@ -90,7 +90,7 @@ func TestReAddedTriggerObservesAgain(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	trig := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
 	eng.AddTrigger(trig)

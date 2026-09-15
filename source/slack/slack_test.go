@@ -96,9 +96,13 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	// has to be tombstonable, which is what the workspace-wide cover is for.
 	kinds := map[string]bool{}
 	for _, c := range rn.Covers {
-		kinds[c.Kind] = true
-		if c.System != slack.System {
-			t.Fatalf("a cover over %q", c.System)
+		if top, ok := entity.PathLiteral(c.Path[0]); !ok || top != slack.System {
+			t.Fatalf("a cover over %v", c.Path)
+		}
+		for _, kind := range []string{"channel", "message", "user"} {
+			if c.MatchRef(entity.RefAt(slack.System, kind, "Acme/x")) {
+				kinds[kind] = true
+			}
 		}
 	}
 	for _, want := range []string{"channel", "message", "user"} {
@@ -123,7 +127,7 @@ func TestSlackATargetedPassCoversOnlyItsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		if !strings.Contains(e.Ref.ID(), "C1") {
+		if !strings.Contains(e.Ref.Name(), "C1") {
 			t.Fatalf("a targeted pass carried %s", e.Ref)
 		}
 	}
@@ -191,7 +195,7 @@ func TestSlackKeepsTheChannelsWhenThePeopleCannotBeRead(t *testing.T) {
 		t.Fatal("the channels went with the people")
 	}
 	for _, c := range rn.Covers {
-		if c.Kind == "user" {
+		if c.MatchRef(entity.RefAt(slack.System, "user", "Acme/U1")) {
 			t.Fatal("a user cover survived a users read that failed — whatever stands under it " +
 				"would be tombstoned by an answer that could not read it")
 		}

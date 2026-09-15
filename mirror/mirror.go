@@ -582,8 +582,8 @@ func BindResolver(store entity.Store, binding, name, taskID string) {
 // rendering quotes a segment that would otherwise read as something else (`change.pr."1"`),
 // which a URL path may not hold.
 func OriginKey(origin entity.Ref) string {
-	if origin.System() == System {
-		return origin.ID()
+	if IsTask(origin) {
+		return origin.Name()
 	}
 	return origin.Token()
 }
@@ -788,9 +788,7 @@ func ClaimRef(id string) entity.Ref { return entity.VerseRef(System, ClaimKind, 
 // `System` alone would be true of a `task:instance:x` in the world's half — an entity anybody
 // may write — and the caller would be reading somebody's fixture as the mirror of a running
 // task. Each namespace answers for itself, here, where the address is built.
-func IsTask(ref entity.Ref) bool {
-	return ref.Reserved() && ref.System() == System && ref.Kind() == InstanceKind
-}
+func IsTask(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System, InstanceKind) }
 
 // IsTaskish is the whole task namespace: an instance, its run record, its claim.
-func IsTaskish(ref entity.Ref) bool { return ref.Reserved() && ref.System() == System }
+func IsTaskish(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }

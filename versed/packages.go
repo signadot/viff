@@ -417,7 +417,7 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, trigger.IsCharterPackage) {
 		at := entity.Str(ent.Payload, trigger.AtField)
 		if at == "" {
-			at = ent.Ref.ID()
+			at = ent.Ref.Name()
 		}
 		subs, err := trigger.ParseReads(entity.Strs(ent.Payload, trigger.ReadsField))
 		if err != nil {

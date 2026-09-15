@@ -39,8 +39,8 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "review",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewing"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
 			Spawn:  &launch.Spec{Prompt: "review $subject"},

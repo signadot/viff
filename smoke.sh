@@ -220,7 +220,7 @@ step "charter -a + drive (reactive core)"
 # JSON *is* tony, not because anything sniffed it.
 v charter -a -f - >/dev/null <<'JSON' || die "charter -a failed"
 [ { "name": "smoke-advance",
-    "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
+    "condition": { "subject": { "path": ["demo", "pr", "*"], "value": { "stage": "open" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "reviewed" } } } ]
 JSON
@@ -235,8 +235,8 @@ for _ in $(seq 1 100); do
 	fi
 	sleep 0.2
 done
-[ -n "$advanced" ] || die "trigger did not advance demo:pr:2 open → reviewed"
-ok "demo:pr:2 auto-advanced open → reviewed"
+[ -n "$advanced" ] || die "trigger did not advance demo.pr.2 open → reviewed"
+ok "demo.pr.2 auto-advanced open → reviewed"
 
 # ── the same charter, written in tony: the FILE SUFFIX picks the dialect ─────
 # The JSON case above pipes on stdin (no name, so the configured default applies); this one
@@ -274,22 +274,24 @@ done
 [ -n "$advanced" ] || die "the tony-authored trigger did not fire"
 ok "a tony-authored trigger fires identically to its JSON twin"
 
-# ── an operator on the subject id, written in the JSON spelling ──────────────
-# `id` may carry a tony match rather than a string, and JSON reaches it through the
-# single-key form — {"glob": …} for !glob. Installing it exercises the whole path the unit
-# tests cover in pieces: sugar → tag → Validate → the engine's selection.
-step "trigger subject with an id operator (JSON spelling)"
-# demo:task, not demo:pr: the charters above match every demo:pr, and a subject the fan-out
+# ── an operator on a path segment ────────────────────────────────────────────
+# A segment of a subject's path may carry a tony match rather than a name. Installing one
+# exercises the whole path the unit tests cover in pieces: tag → Validate → the engine's
+# selection, and the rendering back.
+step "trigger subject with an operator on a segment"
+# demo.task, not demo.pr: the charters above match every demo.pr, and a subject the fan-out
 # was supposed to exclude would then be indistinguishable from one they had already moved.
-v charter -a -f - >/dev/null <<'JSON' || die "operator charter -a failed"
-[ { "name": "smoke-hotfix-only",
-    "condition": { "when":    { "system": "demo", "kind": "note", "value": { "seen": true } },
-                   "subject": { "system": "demo", "kind": "task", "id": { "glob": "hotfix-*" } } },
-    "gates":     [],
-    "action":    { "patch": { "stage": "escalated" } } } ]
-JSON
+v charter -a -f - >/dev/null <<'TONY' || die "operator charter -a failed"
+- name: smoke-hotfix-only
+  condition:
+    when: {path: [demo, note, "*"], value: {seen: true}}
+    subject: {path: [demo, task, !glob "hotfix-*"]}
+  gates: []
+  action:
+    patch: {stage: escalated}
+TONY
 has "$(v charter rules smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
-ok "installed; the sugar renders back as a tag"
+ok "installed; the operator renders back as a tag"
 # two candidates, one matching the glob and one not — the fan-out must pick exactly one.
 v data demo task hotfix-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 v data demo task feature-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
@@ -302,22 +304,22 @@ for _ in $(seq 1 100); do
 	fi
 	sleep 0.2
 done
-[ -n "$escalated" ] || die "the glob subject did not select demo:task:hotfix-9"
+[ -n "$escalated" ] || die "the glob subject did not select demo.task.hotfix-9"
 haskv "$(v data demo task feature-9)" stage open || die "the glob subject escalated a task it excludes"
 ok "!glob subject selected hotfix-9 and left feature-9 alone"
 
 # ── `on`: a cause as the RISING EDGE of a store predicate ────────────────────
 # The charters above dispatch on a change to their own subject. This one names its cause
 # separately: it fires at the commit where `on` first holds, having not held before, and acts
-# on whatever its subject selects then. Its own systems, so the charters above cannot reach it.
+# on whatever its subject selects then. Its own places, so the charters above cannot reach it.
 #
 # The edge is the point, and it is what a unit test cannot check end to end: the write that
 # makes the predicate FALSE must not fire it, and the one that makes it true must.
 step "trigger with an \`on\` (a cause as a rising edge)"
 v charter -a -f - >/dev/null <<'JSON' || die "on-charter -a failed"
 [ { "name": "smoke-on-green",
-    "condition": { "on":      { "system": "smokeci", "kind": "status", "value": { "state": "green" } },
-                   "subject": { "system": "demo", "kind": "build", "value": { "stage": "reviewed" } } },
+    "condition": { "on":      { "path": ["smokeci", "status", "*"], "value": { "state": "green" } },
+                   "subject": { "path": ["demo", "build", "*"], "value": { "stage": "reviewed" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
@@ -340,7 +342,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$shippedb" ] || die "the rising edge did not fire"
-ok "the rising edge fired: demo:build:1 reviewed → shipped"
+ok "the rising edge fired: demo.build.1 reviewed → shipped"
 
 # ── the human loop: an ask gate HOLDS, and answering it releases the action ───
 # The charters above prove the engine reacts on its own. This is the other half — the dial
@@ -353,12 +355,13 @@ ok "the rising edge fired: demo:build:1 reviewed → shipped"
 step "gate: an ask gate holds; answering it releases the action"
 v charter -a --file - >/dev/null <<'JSON' || die "gated charter -a failed"
 [ { "name": "smoke-gated",
-    "condition": { "subject": { "system": "demo", "kind": "release", "value": { "stage": "open" } } },
+    "condition": { "subject": { "path": ["demo", "release", "*"], "value": { "stage": "open" } } },
     "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
 v data demo release 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-# A gate id carries colons (trigger:smoke-gated:ship~1), so it is cut by prefix, not by field.
+# A gate id is a whole path with a `~` in it (verse.trigger.smoke-gated.ship~1), so it is cut by
+# prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
 	GID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
@@ -369,7 +372,7 @@ done
 ok "the action is held; verse gate shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v data demo release 1)" stage open || die "the ask gate did not hold the action"
-ok "demo:release:1 still open while the gate is pending"
+ok "demo.release.1 still open while the gate is pending"
 v gate y "$GID" -s "ship it" --as user:smoke >/dev/null || die "gate approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
@@ -380,7 +383,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$shipped" ] || die "the approved gate did not release the action"
-ok "gate y + -s released it: demo:release:1 open → shipped"
+ok "gate y + -s released it: demo.release.1 open → shipped"
 has "$(v gate)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
@@ -407,7 +410,7 @@ for _ in $(seq 1 100); do
 done
 [ -n "$QID" ] || die "the threshold gate never reached the docket"
 has "$(v gate)" 'demo.motion."1"' || die "the docket does not say what is being decided"
-ok "the question is on the docket as $QID, about demo:motion:1"
+ok "the question is on the docket as $QID, about demo.motion.1"
 out=$(v gate y "$QID" --as user:alice) || die "the first ballot was refused"
 has "$out" "1 of 2" || die "the answerer was not told where the tally stands: $out"
 sleep 0.5
@@ -424,7 +427,7 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$carried" ] || die "the second approval did not release the action"
-ok "two of two: demo:motion:1 open → shipped"
+ok "two of two: demo.motion.1 open → shipped"
 rec=$(v data verse gate question "$QID")
 has "$rec" "user:alice" && has "$rec" "user:bob" || die "the settled record does not carry both ballots: $rec"
 haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
@@ -630,9 +633,9 @@ cat >"$tmp/strata.tony" <<'TONY'
     patch:
       triaged: true
     derive:
-      smokesd:
-        feature:
-          priority: urgent
+    - path: [smokesd, feature]
+      value:
+        priority: urgent
 - name: smoke-consume
   stratum: smoke-sdlc
   condition:
@@ -697,16 +700,16 @@ v charter -a -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb 
     subject: {path: [smokesd, feature, *]}
   action:
     derive:
-      smokegh:
-        issue:
-          a: 1
+    - path: [smokegh, issue]
+      value:
+        a: 1
 TONY
 ok "a derive landing at or below its own level is refused at install"
 v charter -r strata smoke-observe >/dev/null 2>&1 && die "removed a stratum still holding rules"
 ok "removing a stratum with rules in it is refused"
 
 # ── restart: the charter is durable ──────────────────────────────────────────
-# The rules installed above are entities (verse:trigger:rule:<name>), so a second `up` over the
+# The rules installed above are records (verse.trigger.rule.<name>), so a second `up` over the
 # same data dir comes back running the same program. This is the one check that exercises
 # the real path end to end — down, up, and a change that arrives only afterwards.
 step "restart (the charter survives)"

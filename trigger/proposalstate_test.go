@@ -38,8 +38,7 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 - name: proposal-outrun
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [merge, proposal, "*"]
       value: !and
       - !not.has-path state
       - !let

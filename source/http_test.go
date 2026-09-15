@@ -68,8 +68,13 @@ func sameReflection(t *testing.T, want, got source.Reflection) {
 	}
 	for i, w := range want.Covers {
 		g := got.Covers[i]
-		if g.System != w.System || g.Kind != w.Kind || g.Op != w.Op {
-			t.Fatalf("cover %d dimensions: got %+v, want %+v", i, g, w)
+		if len(g.Path) != len(w.Path) || g.Op != w.Op {
+			t.Fatalf("cover %d: got %+v, want %+v", i, g, w)
+		}
+		for j := range w.Path {
+			if !entity.Equal(g.Path[j], w.Path[j]) || g.Path[j].Tag != w.Path[j].Tag {
+				t.Fatalf("cover %d path segment %d: got %v, want %v", i, j, g.Path, w.Path)
+			}
 		}
 		// The predicate is the half a cover would be dangerous without: `{repo: A}` lost on
 		// the way turns "this repo's refs" into "every repo's refs", and converge would
@@ -115,7 +120,7 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 
 	// Something the source reflected earlier, standing in the store.
 	ok := &fakeSource{system: "x", answer: func() source.Reflection {
-		rn := source.Reflection{Covers: []entity.Pattern{cover("x", "a")}}
+		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 		rn.Add(standing, entity.Obj{"n": 1})
 		return rn
 	}}

@@ -78,26 +78,22 @@ func (r *Reflection) Add(ref entity.Ref, p entity.Obj) {
 // owns. It is called before anything is written, because every fault here is one that costs
 // entities rather than returning an error.
 //
-// A COVER WITH NO SYSTEM is the dangerous one, and it is dangerous in the direction that is
-// easy to miss. An empty dimension in a Pattern is a WILDCARD (entity.Pattern.MatchRef), so a
-// cover that lost its system does not claim nothing — it claims everything the pass looked
-// at, and tombstones whatever the answer did not carry.
+// A COVER WITH NO PATH is the dangerous one, and it is dangerous in the direction that is easy
+// to miss: an empty path is the root, which every address is under (entity.Pattern.MatchRef), so
+// a cover that lost its path does not claim nothing — it claims everything the pass looked at,
+// and tombstones whatever the answer did not carry.
 func (r Reflection) Check(system string) error {
 	for _, p := range r.Covers {
-		top := p.System
-		if len(p.Path) > 0 {
-			// A PATH COVER NAMES ITS SYSTEM IN ITS FIRST SEGMENT, and it must be a literal: a `*`
-			// or an operator there is the same wildcard an empty System is, one spelling over.
-			lit, ok := entity.PathLiteral(p.Path[0])
-			if !ok {
-				return fmt.Errorf("reflection: a cover whose path does not begin with a literal "+
-					"system claims every system it is compared against — begin it with %q", system)
-			}
-			top = lit
+		if len(p.Path) == 0 {
+			return fmt.Errorf("reflection: a cover with no path claims EVERYTHING it is compared "+
+				"against, since the empty path is the root — begin it with %q", system)
 		}
-		if top == "" {
-			return fmt.Errorf("reflection: a cover with no system claims EVERYTHING it is "+
-				"compared against, since an empty dimension is a wildcard — name %q", system)
+		// A COVER NAMES ITS SOURCE'S PLACE IN ITS FIRST SEGMENT, and it must be a literal: a `*`
+		// or an operator there claims every place it is compared against.
+		top, ok := entity.PathLiteral(p.Path[0])
+		if !ok {
+			return fmt.Errorf("reflection: a cover whose path does not begin with a literal "+
+				"place claims every place it is compared against — begin it with %q", system)
 		}
 		if top != system {
 			return fmt.Errorf("reflection: cover over system %q, but this source owns %q — a "+
@@ -130,12 +126,13 @@ func (r Reflection) Check(system string) error {
 			return fmt.Errorf("reflection: entity %s is in verse's own half, which no source "+
 				"reflects — a source writes what the world is about, beside it", e.Ref)
 		}
-		if e.Ref.System() != system {
-			return fmt.Errorf("reflection: entity %s is outside %q, the slice this source owns",
+		if !e.Ref.Under(system) {
+			return fmt.Errorf("reflection: entity %s is outside %q, the place this source owns",
 				e.Ref, system)
 		}
-		if e.Ref.Kind() == "" || e.Ref.ID() == "" {
-			return fmt.Errorf("reflection: entity %s has no kind or no id", e.Ref)
+		if len(e.Ref.Segs()) < 2 {
+			return fmt.Errorf("reflection: entity %s is the source's whole place, which a "+
+				"reflection writes into rather than over", e.Ref)
 		}
 	}
 	return nil
@@ -485,16 +482,8 @@ func (p place) holds(ref entity.Ref) bool {
 }
 
 // coverPlace is where a cover's entities are read: its path down to the first segment that is
-// not a literal name, at the path's own depth — or, for a cover spelled as a system and a kind,
-// that slice at the depth those two imply.
+// not a literal name, at the path's own depth.
 func coverPlace(c entity.Pattern) place {
-	if len(c.Path) == 0 {
-		prefix := []string{c.System}
-		if c.Kind != "" {
-			prefix = append(prefix, c.Kind)
-		}
-		return place{prefix: prefix, depth: entity.Depth}
-	}
 	var prefix []string
 	for _, seg := range c.Path {
 		lit, ok := entity.PathLiteral(seg)
@@ -526,11 +515,8 @@ func distinctPlaces(at []place) []place {
 	return out
 }
 
-// coverString renders a cover's address for a message, whichever spelling it came in.
+// coverString renders a cover's address for a message.
 func coverString(c entity.Pattern) string {
-	if len(c.Path) == 0 {
-		return c.System + "." + c.Kind
-	}
 	segs := make([]string, len(c.Path))
 	for i, seg := range c.Path {
 		if lit, ok := entity.PathLiteral(seg); ok {

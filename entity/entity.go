@@ -101,30 +101,23 @@ func (r Ref) Root() string { return r.root }
 // and what a namespace's own predicate (mirror.IsTask and friends) asks first.
 func (r Ref) Reserved() bool { return r.root == VerseRoot }
 
-// System, Kind and ID are the three-segment reading of an address, and they are true while
-// every address has three segments. What is asking is usually "which namespace is this" —
-// `ref.System == mirror.System` — and that question survives the representation changing;
-// this is where it will be answered differently when it does.
-func (r Ref) System() string { return r.seg(0) }
-func (r Ref) Kind() string   { return r.seg(1) }
-func (r Ref) ID() string     { return r.seg(2) }
-
-// seg is the nth segment below the root, or "" — the positional reading the three above are.
-func (r Ref) seg(n int) string {
-	for i, from := 0, 0; from <= len(r.key); i++ {
-		to := strings.Index(r.key[from:], sep)
-		if to < 0 {
-			if i == n {
-				return r.key[from:]
-			}
-			return ""
-		}
-		if i == n {
-			return r.key[from : from+to]
-		}
-		from += to + len(sep)
+// Name is the last segment of the path: the key the node stands at in its parent. It is what a
+// record in a place the system decides is called there — a task's id under verse.task.instance.
+func (r Ref) Name() string {
+	segs := r.Segs()
+	if len(segs) == 0 {
+		return ""
 	}
-	return ""
+	return segs[len(segs)-1]
+}
+
+// Under reports whether the ref is at or below the path prefix.
+func (r Ref) Under(prefix ...string) bool { return Under(prefix, r.Segs(), Literal) }
+
+// ChildOf reports whether the ref is exactly one segment below the path prefix: a record in a place
+// the system decides, like a task under verse.task.instance or a perms record under verse.perms.node.
+func (r Ref) ChildOf(prefix ...string) bool {
+	return len(r.Segs()) == len(prefix)+1 && r.Under(prefix...)
 }
 
 // String spells an address as the kinded path it is, at every depth — `demo.pr."1"`,

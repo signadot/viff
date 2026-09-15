@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -13,17 +14,17 @@ import (
 )
 
 // A Match round-trips without losing meaning: whatever the authored form, re-reading the
-// marshalled output yields the same dimensions. A string address becomes the object form it
-// parses to, so `trigger show` displays the system/kind/id the matcher will actually apply.
+// marshalled output yields the same path and predicate. An address with no predicate renders as
+// the kinded path it is, so `trigger show` displays the path the matcher will actually apply.
 //
 // Authored in JSON, rendered in tony — which is the shape of every real round trip now.
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
 		`"demo.pr.1"`,
-		`{"system":"demo","kind":"pr","value":{"stage":"open"}}`,
-		`{"system":"demo","kind":"pr","id":"*"}`,
-		`{"root":"verse","system":"task","kind":"instance"}`,
-		`{"root":"verse","system":"task","kind":"instance","value":{"status":"done"}}`,
+		`{"path":["demo","pr","*"],"value":{"stage":"open"}}`,
+		`{"path":["demo","pr","*"]}`,
+		`{"path":["verse","task","instance","*"]}`,
+		`{"path":["verse","task","instance","*"],"value":{"status":"done"}}`,
 		`{}`,
 	} {
 		var m Match
@@ -38,29 +39,13 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		if err := codec.Unmarshal(out, &back, codec.Tony); err != nil {
 			t.Fatalf("re-unmarshal %s → %s: %v", in, out, err)
 		}
-		// MEANING, not shape. A match naming only system/kind/id marshals to the address
-		// string, and `id: "*"` is the same thing as an unset id — a wildcard — so
-		// {"system":"demo","kind":"pr","id":"*"} comes back as demo.pr.* and re-parses with
-		// the id dropped. The dimensions the matcher applies are what has to survive.
-		if back.Root() != m.Root() || back.System() != m.System() || back.Kind() != m.Kind() {
-			t.Fatalf("round-trip lost root/system/kind: %s → %s", in, out)
-		}
-		if wildcard(back.ID()) != wildcard(m.ID()) {
-			t.Fatalf("round-trip changed the id dimension: %s → %s (%q vs %q)",
-				in, out, m.ID(), back.ID())
+		if !reflect.DeepEqual(back.Segs(), m.Segs()) {
+			t.Fatalf("round-trip changed the path: %s → %s (%q vs %q)", in, out, m.Segs(), back.Segs())
 		}
 		if !sameFields(back.Predicate(), m.Predicate()) {
 			t.Fatalf("round-trip lost fields: %s → %s", in, out)
 		}
 	}
-}
-
-// wildcard normalises the two spellings of "any id": unset and "*".
-func wildcard(id string) string {
-	if id == "*" {
-		return ""
-	}
-	return id
 }
 
 // sameFields compares two payload predicates. They are nodes, so they are compared as
@@ -82,30 +67,45 @@ func mm(s string) Match {
 	return m
 }
 
-// Selects() reports a set-valued pattern: a definite system AND kind (the engine must know the
-// kind it spawns for). A system alone is not enough.
-func TestSelects(t *testing.T) {
-	if !(Match{"system": "demo", "kind": "pr"}).Selects() {
-		t.Fatal("system+kind must be a set-valued selector")
+// pathOf is a path of literal segments (`*` any one), as a Match's `path` holds it — for a Go
+// literal that also carries a `value`.
+func pathOf(segs ...string) []*ir.Node {
+	out := make([]*ir.Node, 0, len(segs))
+	for _, s := range segs {
+		out = append(out, ir.FromString(s))
 	}
-	// A system alone cannot select: the engine must know the kind it spawns for.
-	if (Match{"system": "demo"}).Selects() {
-		t.Fatal("system without kind must not be a set-valued selector")
+	return out
+}
+
+// isPath reports whether a match's path is the one an address string spells, operators read as
+// `*` (Segs).
+func isPath(m Match, addr string) bool { return reflect.DeepEqual(m.Segs(), mm(addr).Segs()) }
+
+// Selects() reports a set anchored at a place: a path whose first segment is a literal. A path
+// opening on `*` is a sweep from the root rather than a selection.
+func TestSelects(t *testing.T) {
+	for _, in := range []string{"demo.pr.*", "demo.*.*", "demo.pr.1"} {
+		if !mm(in).Selects() {
+			t.Errorf("%s must be a set-valued selector", in)
+		}
+	}
+	if mm("*.pr.*").Selects() {
+		t.Fatal("a path opening on `*` must not be a set-valued selector")
 	}
 }
 
-// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses. There is no
-// deferred `$var` form: a `$` in an address is a typo now, and fails at install.
+// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses: a kinded path,
+// a whole `*` segment any one. There is no deferred `$var` form: a `$` in an address is a typo
+// now, and fails at install.
 func TestStringFormIsAnAddress(t *testing.T) {
-	cases := map[string]Match{
-		`"demo.pr.1"`:        {"system": "demo", "kind": "pr", "id": "1"},
-		`"demo.pr.*"`:        {"system": "demo", "kind": "pr"},
-		`"demo.pr.hotfix-*"`: {"system": "demo", "kind": "pr", "id": "hotfix-*"},
-		`"demo.*.*"`:         {"system": "demo"},
-		`"demo.pr"`:          {"system": "demo", "kind": "pr"},
-		`"*"`:                {},
-		// An id may itself contain colons, so only the first two separators are structural.
-		`"github.pr.org/repo#42"`: {"system": "github", "kind": "pr", "id": "org/repo#42"},
+	cases := map[string][]string{
+		`"demo.pr.1"`: {"demo", "pr", "1"},
+		`"demo.pr.*"`: {"demo", "pr", "*"},
+		`"demo.*.*"`:  {"demo", "*", "*"},
+		`"demo.pr"`:   {"demo", "pr"}, // a short path names the node at it
+		`"*"`:         {"*"},
+		// A `*` INSIDE a segment is part of the name: a glob is `!glob` in `path:`.
+		`"demo.pr.hotfix-*"`: {"demo", "pr", "hotfix-*"},
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -113,8 +113,13 @@ func TestStringFormIsAnAddress(t *testing.T) {
 			if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
-			if !reflect.DeepEqual(map[string]any(m), map[string]any(want)) {
-				t.Fatalf("%s parsed to %#v, want %#v", in, m, want)
+			if got := m.Segs(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("%s parsed to %q, want %q", in, got, want)
+			}
+			for i, n := range m.SegNodes() {
+				if n.Tag != "" {
+					t.Fatalf("%s: segment %d carries tag %q; a string address has no operators", in, i, n.Tag)
+				}
 			}
 		})
 	}
@@ -147,16 +152,19 @@ func TestStringFormWhenConstrains(t *testing.T) {
 }
 
 // Names() is what separates the one case a Subject may bring into existence from a selection
-// over what already exists. A glob anywhere must fall to the selection side, so an action can
-// never `set` an entity literally called "*".
+// over what already exists. A `*` or an operator in any segment must fall to the selection side,
+// so an action can never `set` a node literally called "*".
 func TestMatchNames(t *testing.T) {
 	yes := map[string]entity.Ref{
-		`{"system":"demo","kind":"pr","id":"1"}`: entity.RefAt("demo", "pr", "1"),
-		`"demo.pr.1"`:                            entity.RefAt("demo", "pr", "1"),
+		`{path: [demo, pr, "1"]}`: entity.RefAt("demo", "pr", "1"),
+		`"demo.pr.1"`:             entity.RefAt("demo", "pr", "1"),
+		// A literal path names one node at whatever length it has.
+		`demo.pr`:                              entity.RefAt("demo", "pr"),
+		`{path: [verse, task, instance, abc]}`: entity.RefAt("verse", "task", "instance", "abc"),
 	}
 	for in, want := range yes {
 		var m Match
-		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
+		if err := codec.Unmarshal([]byte(in), &m, codec.Tony); err != nil {
 			t.Fatal(err)
 		}
 		got, ok := m.Names()
@@ -165,56 +173,21 @@ func TestMatchNames(t *testing.T) {
 		}
 	}
 	no := []string{
-		`"demo.pr.*"`,                                   // the kind
-		`"demo.pr.hotfix-*"`,                            // a family
-		`{"system":"demo","kind":"pr"}`,                 // no id
-		`{"system":"demo","kind":"pr","id":"*"}`,        // explicit wildcard
-		`{"system":"demo","kind":"pr","id":"hotfix-*"}`, // a glob is never a name
-		// …and neither is a match that says what the entity must LOOK like. Naming is by
+		`"demo.pr.*"`,                          // the prs
+		`{path: [demo, pr, "*"]}`,              // the same, as a path
+		`{path: [demo, pr, !glob "hotfix-*"]}`, // an operator is never a name
+		`{path: [demo, "*", "1"]}`,             // a wildcard above the leaf
+		// …and neither is a match that says what the node must LOOK like. Naming is by
 		// identity alone, because that is the case whose answer does not depend on the store.
-		`{"system":"demo","kind":"pr","id":"1","value":{"stage":"open"}}`,
+		`{path: [demo, pr, "1"], value: {stage: open}}`,
 	}
 	for _, in := range no {
 		var m Match
-		if err := codec.Unmarshal([]byte(in), &m, codec.JSON); err != nil {
+		if err := codec.Unmarshal([]byte(in), &m, codec.Tony); err != nil {
 			t.Fatal(err)
 		}
 		if got, ok := m.Names(); ok {
-			t.Errorf("%s: Names() = %v, true; must not name a single entity", in, got)
-		}
-	}
-}
-
-// The id glob, which is what makes "demo.pr.*" mean the kind and "hotfix-*" a family in it.
-func TestGlobMatch(t *testing.T) {
-	cases := []struct {
-		pat, s string
-		want   bool
-	}{
-		{"*", "anything", true},
-		{"*", "", true},
-		{"1", "1", true},
-		{"1", "2", false},
-		{"hotfix-*", "hotfix-42", true},
-		{"hotfix-*", "hotfix-", true},
-		{"hotfix-*", "hotfi", false},
-		{"hotfix-*", "release-42", false},
-		{"*-42", "hotfix-42", true},
-		{"*-42", "hotfix-421", false},
-		{"pr-*-fix", "pr-9-fix", true},
-		{"pr-*-fix", "pr--fix", true},
-		{"pr-*-fix", "pr-9-fixup", false},
-		{"a*b*c", "azzbzzc", true},
-		{"a*b*c", "azzc", false},
-		// The backtracking case: the first "*" must give ground for the literal to land.
-		{"*abc", "aabc", true},
-		{"*a*a", "aXaXa", true},
-		{"", "", true},
-		{"", "x", false},
-	}
-	for _, c := range cases {
-		if got := globMatch(c.pat, c.s); got != c.want {
-			t.Errorf("globMatch(%q, %q) = %v, want %v", c.pat, c.s, got, c.want)
+			t.Errorf("%s: Names() = %v, true; must not name a single node", in, got)
 		}
 	}
 }
@@ -225,8 +198,9 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	// value, so `{"value":"stage=open"}` is a legal predicate on a string payload rather than
 	// a typo verse can name. See TestMatchValueScalarIsTheWholePayload.
 	cases := map[string]string{
-		"unknown key":       `{"sytem":"demo"}`,
-		"non-string system": `{"system":{"a":1}}`,
+		"unknown key":         `{"sytem":"demo"}`,
+		"a path that is text": `{"path":"demo.pr.*"}`,
+		"an empty path":       `{"path":[]}`,
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -238,45 +212,95 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	}
 }
 
+// AN ADDRESS IS A PATH, written as the kinded path string or as `path:` — the two mean one thing.
+func TestAnAddressIsAPath(t *testing.T) {
+	want := []string{"verse", "gate", "question", "*"}
+	for _, src := range []string{
+		`"verse.gate.question.*"`,
+		`{path: [verse, gate, question, "*"]}`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
+			t.Errorf("%s: %v", src, err)
+			continue
+		}
+		if got := m.Segs(); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s → %q, want %q", src, got, want)
+		}
+	}
+}
+
+// Every positional spelling of an address is REFUSED, not compiled to a path: the dimension keys,
+// `at:`, `!verse-path`, and a bare list. The refusal names the key so a charter carrying one says
+// what to write instead.
+func TestPositionalAddressSpellingsAreRefused(t *testing.T) {
+	for _, src := range []string{
+		`{system: demo, kind: pr}`,
+		`{system: demo}`,
+		`{kind: pr}`,
+		`{id: "1"}`,
+		`{root: verse, path: [task, instance, "*"]}`,
+		`{at: demo.pr.1}`,
+		`{at: !verse-path [demo pr 1]}`,
+		`!verse-path [demo pr 1]`,
+		`[demo, pr, 1]`,
+	} {
+		var m Match
+		err := codec.Unmarshal([]byte(src), &m, codec.Tony)
+		if err == nil {
+			t.Errorf("%s installed as %v, want a refusal", src, m)
+			continue
+		}
+		if !strings.Contains(err.Error(), "path") {
+			t.Errorf("%s: refusal %q does not say an address is a path", src, err)
+		}
+	}
+	// A Go literal carrying a dimension key fails Validate the same way.
+	if err := (Match{"system": "demo", "kind": "pr"}).Validate(); err == nil {
+		t.Error("Validate accepted a match carrying system/kind")
+	}
+}
+
 // FieldString reads one literal string back out of the predicate — what the quorum machinery
 // asks of the facts match it built itself ("which choice does this count"). A predicate that
 // is not a record has no key to read, and an operator has no single value behind it, so both
 // answer "" rather than a guess.
 func TestMatchFieldString(t *testing.T) {
-	m := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}
+	m := Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}
 	if got := m.FieldString("stage"); got != "open" {
 		t.Errorf("FieldString(stage) = %q, want open", got)
 	}
 	if got := m.FieldString("absent"); got != "" {
 		t.Errorf("FieldString of an absent key = %q, want empty", got)
 	}
-	scalar := Match{"system": "demo", "value": "open"}
+	scalar := Match{"path": pathOf("demo", "*", "*"), "value": "open"}
 	if got := scalar.FieldString("stage"); got != "" {
 		t.Errorf("FieldString of a scalar predicate = %q, want empty", got)
 	}
 }
 
-// MatchEvent is the EDGE face: it ANDs every set dimension against one observed change, and an
-// empty match matches everything (as an empty pattern list did).
-func TestMatchEventDimensions(t *testing.T) {
+// MatchEvent is the EDGE face: every segment of the path and the predicate must agree with one
+// observed change, and an empty match matches everything (as an empty pattern list did).
+func TestMatchEventPath(t *testing.T) {
 	ev := entity.Event{
 		Ref: entity.RefAt("demo", "pr", "1"),
 		Op:  entity.Set, To: entity.Obj{"stage": "open"}.Payload(),
 	}
 	yes := []Match{
 		{},
-		{"system": "demo"},
-		{"system": "demo", "kind": "pr"},
-		{"system": "demo", "kind": "pr", "id": "1"},
-		{"system": "demo", "kind": "pr", "id": "*"},
+		mm("demo.*.*"),
+		mm("demo.pr.*"),
+		mm("demo.pr.1"),
+		mm("*.pr.*"),
 		{"value": map[string]any{"stage": "open"}},
 	}
 	no := []Match{
-		{"system": "other"},
-		{"kind": "issue"},
-		{"id": "2"},
+		mm("other.*.*"),
+		mm("*.issue.*"),
+		mm("*.*.2"),
 		{"value": map[string]any{"stage": "closed"}},
-		{"system": "demo", "kind": "pr", "id": "2"}, // one wrong dimension fails the conjunction
+		mm("demo.pr.2"),   // one wrong segment fails the whole path
+		mm("demo.pr.1.x"), // a path deeper than the change does not reach it
 	}
 	for _, m := range yes {
 		if !m.MatchEvent(ev) {
@@ -290,9 +314,7 @@ func TestMatchEventDimensions(t *testing.T) {
 	}
 }
 
-// Select is the SET face. The `id` dimension is owned by Match (entity.Pattern has none), so
-// it must be applied on top of the delegated system/kind/value selection — including the "*"
-// wildcard that flow addressing will use.
+// Select is the SET face: the nodes the path reaches whose payload satisfies the predicate.
 func TestMatchSelect(t *testing.T) {
 	store := entitytest.Store(t)
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
@@ -302,22 +324,19 @@ func TestMatchSelect(t *testing.T) {
 
 	count := func(m Match) int { return len(m.Select(store)) }
 
-	if n := count(Match{"system": "demo", "kind": "pr"}); n != 3 {
-		t.Errorf("whole kind: %d, want 3", n)
+	if n := count(mm("demo.pr.*")); n != 3 {
+		t.Errorf("the prs: %d, want 3", n)
 	}
-	if n := count(Match{"system": "demo", "kind": "pr", "id": "*"}); n != 3 {
-		t.Errorf("explicit wildcard id: %d, want 3", n)
+	if n := count(mm("demo.pr.2")); n != 1 {
+		t.Errorf("one node: %d, want 1", n)
 	}
-	if n := count(Match{"system": "demo", "kind": "pr", "id": "2"}); n != 1 {
-		t.Errorf("one id: %d, want 1", n)
-	}
-	if n := count(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}); n != 2 {
+	if n := count(Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}); n != 2 {
 		t.Errorf("payload predicate: %d, want 2", n)
 	}
-	// system+kind pins the slice: a same-id entity in another system is not picked.
-	refs := Match{"system": "demo", "kind": "pr", "id": "1"}.Select(store)
-	if len(refs) != 1 || refs[0].System() != "demo" {
-		t.Errorf("id selection crossed systems: %v", refs)
+	// The path pins the slice: a same-named node under another first segment is not picked.
+	refs := Match{"path": pathOf("demo", "pr", "1"), "value": map[string]any{"stage": "open"}}.Select(store)
+	if len(refs) != 1 || refs[0] != entity.RefAt("demo", "pr", "1") {
+		t.Errorf("selection crossed first segments: %v", refs)
 	}
 	// An invalid match selects nothing rather than everything — fail closed.
 	if n := count(Match{"sytem": "demo"}); n != 0 {
@@ -327,7 +346,7 @@ func TestMatchSelect(t *testing.T) {
 
 // The match-key namespace and the retired formula tags must stay disjoint. A single-key
 // object whose key is a retired tag is refused by name (Formula.FromTonyIR), so a match
-// dimension that shared a name with one would be refused as a formula instead of read.
+// key that shared a name with one would be refused as a formula instead of read.
 func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 	var overlap []string
 	for k := range matchKeys {
@@ -336,7 +355,7 @@ func TestMatchKeysDisjointFromFormulaTags(t *testing.T) {
 		}
 	}
 	if len(overlap) != 0 {
-		t.Fatalf("match keys overlap the retired formula tags at %v; want none — a dimension "+
+		t.Fatalf("match keys overlap the retired formula tags at %v; want none — a key "+
 			"by that name would be refused as a formula", overlap)
 	}
 }
@@ -374,64 +393,5 @@ func sameDoc(a, b *ir.Node) bool {
 		return true
 	default:
 		return a.DeepEqual(b)
-	}
-}
-
-// AN ADDRESS IN A CHARTER, three ways, all meaning the one thing. The string is what charters
-// have always written; `at:` is the whole prefix as one covering path; `!verse-path` is the
-// same address as STEPS — the spelling a command line prints and takes, so an address read off
-// a listing pastes into a charter without being re-punctuated.
-func TestAnAddressMayBeWrittenThreeWays(t *testing.T) {
-	want := Match{"system": "demo", "kind": "pr", "id": "1"}
-	for _, src := range []string{
-		`"demo.pr.1"`,
-		`{at: demo.pr.1}`,
-		`{at: !verse-path [demo pr 1]}`,
-		`!verse-path [demo pr 1]`,
-		`{path: [demo, pr, "1"]}`,
-	} {
-		var m Match
-		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
-			t.Errorf("%s: %v", src, err)
-			continue
-		}
-		if m.System() != want.System() || m.Kind() != want.Kind() || m.ID() != want.ID() {
-			t.Errorf("%s → %v, want %v", src, m, want)
-		}
-	}
-	// And verse's own half, where the address is one segment deeper.
-	for _, src := range []string{
-		`"verse.gate.question.*"`,
-		`{at: verse.gate.question}`,
-		`{at: !verse-path [verse gate question]}`,
-		`!verse-path [verse gate question "*"]`,
-	} {
-		var m Match
-		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
-			t.Errorf("%s: %v", src, err)
-			continue
-		}
-		if m.Root() != "verse" || m.System() != "gate" || m.Kind() != "question" || m.ID() != "" {
-			t.Errorf("%s → %v, want the reserved half's gate:question", src, m)
-		}
-	}
-}
-
-// An address written twice in one match is refused rather than merged: `at` and the dimensions
-// are two spellings of one thing, and a map holding both has said it twice.
-func TestAnAddressIsWrittenOneWayOrTheOther(t *testing.T) {
-	for _, src := range []string{
-		`{system: other, at: demo.pr}`,
-		`{system: demo, at: demo.pr}`,
-	} {
-		var m Match
-		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err == nil {
-			t.Errorf("%s installed as %v, want a refusal", src, m)
-		}
-	}
-	// A bare list is not an address: the tag is what says it is one.
-	var m Match
-	if err := codec.Unmarshal([]byte(`[demo, pr, 1]`), &m, codec.Tony); err == nil {
-		t.Errorf("a bare list read as an address: %v", m)
 	}
 }

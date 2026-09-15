@@ -42,7 +42,9 @@ func TestVanishingOptIn(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := Pattern{System: "demo", Kind: "pr", Predicate: c.pred}.Select(s)
+			pat := patternAt("demo", "pr", "*")
+			pat.Predicate = c.pred
+			got := pat.Select(s)
 			if len(got) != len(c.want) {
 				t.Fatalf("selected %v, want %v", got, c.want)
 			}

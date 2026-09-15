@@ -25,7 +25,7 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
-		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
 		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}},
 		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}},
 	} {
@@ -38,7 +38,7 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 - name: gather
   stratum: tip
   condition:
-    subject: !verse-path [verse-dev, drift, head, "*"]
+    subject: verse-dev.drift.head.*
   action:
     derive:
     - path: [verse-dev, drift, finding]

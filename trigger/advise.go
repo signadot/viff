@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/tony-format/go-tony/mergeop"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
@@ -25,86 +24,6 @@ func advise(t Trigger) []string {
 	}
 	out = append(out, adviseDenyLatch(t)...)
 	out = append(out, adviseHookFlatRef(t)...)
-	out = append(out, adviseTagKeyedInValue(t)...)
-	return out
-}
-
-// adviseTagKeyedInValue names the operator that is not one.
-//
-// A MATCH HAS TWO POSITIONS AND ONE OF THEM TAKES BOTH SPELLINGS. On a dimension — system, kind,
-// id, root — `{glob: "hot-*"}` and `!glob "hot-*"` are one grammar, and the tag-keyed object is
-// how a JSON-shaped charter reaches an operator at all, since JSON has no tag syntax. Inside
-// `value` only the tag works:
-//
-//	value: {not: {reviewed: null}}    matches the payload EQUAL to that object — nothing, ever
-//	value: !not {reviewed: null}      the absence latch
-//
-// and the first is silent. Checked: the two lines above select false and true against the same
-// payload, in flow style and block alike (git-issue srrwnc0kh12kr1r1e1n0, whose own diagnosis —
-// that the axis is flow-vs-block — its discussion then corrected to dimension-vs-value).
-//
-// IT CANNOT BE DESUGARED, which is why this is a note and not a fix. Under `value` a single-key
-// object named `not` is legitimate payload data — a field genuinely called that, holding one
-// key — so desugaring unconditionally would take away the only way to match it. tonycodec.go
-// says as much where it desugars a dimension: "inside a dimension there are no object VALUES to
-// be confused with, which is what makes this unambiguous here and impossible inside fields".
-//
-// So: a note, on the charter that almost certainly meant the operator, leaving the charter that
-// meant the data working and unbothered except for a line it can ignore. The worst case it
-// covers is a JSON charter, which cannot write ANY operator under `value` and has no way to say
-// so.
-func adviseTagKeyedInValue(t Trigger) []string {
-	seen := map[string]bool{}
-	var out []string
-	mats := append([]Match{t.Condition.Subject}, formulaMatches(t.Condition.When)...)
-	mats = append(mats, formulaMatches(t.Condition.On)...)
-	for _, m := range mats {
-		for _, name := range operatorShapedKeys(m.Predicate()) {
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			out = append(out, fmt.Sprintf(
-				"a condition's `value` holds {%s: …}, which is READ AS DATA: the tag-keyed "+
-					"spelling of an operator works on system/kind/id, and inside `value` only "+
-					"the tag does. Write `!%s …` if the operator is what was meant — as it "+
-					"stands the predicate asks for a payload field literally named %q",
-				name, name, name))
-		}
-	}
-	return out
-}
-
-// formulaMatches is every point-in-time Match a formula reads — a `when`, an `on`, a gate's
-// requirement. They are match positions like the subject's and take the same `value`.
-func formulaMatches(f *Formula) []Match {
-	if f == nil || f.Req == nil || f.Req.Facts == nil {
-		return nil
-	}
-	return []Match{f.Req.Facts}
-}
-
-// operatorShapedKeys is every single-key object under a predicate whose key names a known
-// operator and which carries no semantic tag of its own — the shape that reads as an operator
-// and is not one.
-func operatorShapedKeys(p entity.Payload) []string {
-	var out []string
-	var walk func(n entity.Payload)
-	walk = func(n entity.Payload) {
-		n = ir.Uncomment(n)
-		if n == nil {
-			return
-		}
-		if n.Type == ir.ObjectType && len(n.Fields) == 1 && isLayoutTag(n.Tag) {
-			if name := n.Fields[0].String; mergeop.Lookup(name) != nil {
-				out = append(out, name)
-			}
-		}
-		for _, v := range n.Values {
-			walk(v)
-		}
-	}
-	walk(p)
 	return out
 }
 
@@ -319,7 +238,7 @@ func subtreeList(sts []Subtree) string {
 		if i > 0 {
 			out += ", "
 		}
-		out += strings.Join(st.Path(), ":")
+		out += entity.JoinSegs(st.Path())
 	}
 	return out
 }

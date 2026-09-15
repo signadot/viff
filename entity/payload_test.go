@@ -65,7 +65,8 @@ func TestFieldReadsOfANonObjectPayloadAreEmpty(t *testing.T) {
 // because the value differs" — the question is unanswerable, and a selector that cannot
 // answer must not select. An EMPTY predicate still matches everything, including scalars.
 func TestFieldPredicateDoesNotMatchANonObjectPayload(t *testing.T) {
-	p := Pattern{System: "demo", Kind: "count", Predicate: Obj{"stage": "open"}.Payload()}
+	p := patternAt("demo", "count", "*")
+	p.Predicate = Obj{"stage": "open"}.Payload()
 	if p.matchPayload(Val(42)) {
 		t.Error("a field predicate matched a scalar payload")
 	}
@@ -76,7 +77,7 @@ func TestFieldPredicateDoesNotMatchANonObjectPayload(t *testing.T) {
 		t.Error("a field predicate matched a nil payload")
 	}
 
-	empty := Pattern{System: "demo", Kind: "count"}
+	empty := patternAt("demo", "count", "*")
 	if !empty.matchPayload(Val(42)) {
 		t.Error("an empty predicate must still match a scalar payload")
 	}

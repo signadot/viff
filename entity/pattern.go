@@ -2,48 +2,29 @@ package entity
 
 import (
 	"fmt"
+	"strconv"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Pattern is a conjunctive selector over the entity-verse: it picks by System,
-// Kind, an optional change Op, and exact key==value equality over a payload's
-// Fields. Empty dimensions are wildcards. One Pattern serves both faces of
-// "select entities" — matching an observed change (MatchEvent, the trigger
-// "when") and listing the stored entities that satisfy it (Select, a formula's
-// fact-read). The match grammar is deliberately tiny (system/kind/op/field
-// equality); a richer tony match is the eventual destination.
+// Pattern is a conjunctive selector over the tree: a PATH naming the nodes it reaches, an
+// optional change Op, and a payload predicate. One Pattern serves both faces of "select" —
+// matching an observed change (MatchEvent, the trigger "when") and listing the stored nodes that
+// satisfy it (Select, a formula's fact-read).
 //
 //tony:schemagen=verse-pattern,notag
 type Pattern struct {
-	// Root is which half of the verse to select from: `verse` for what verse writes about its
-	// own running, empty for what the world is about. It is a dimension of its own because it
-	// answers a different question from System — whose half, rather than which namespace.
-	//
-	// EMPTY MEANS THE WORLD'S HALF, not "either", and that is the whole point: a rule about
-	// `demo:pr:*` must not quietly select the task records of the runs reviewing them, and a
-	// charter that wants verse's own state says `root: verse`. A read that means "either" says
-	// so by not asking a pattern about the address at all — the path is what narrows a read.
-	Root   string `tony:"field=root,omitzero"`
-	System string `tony:"field=system"`
-	Kind   string `tony:"field=kind,omitzero"`
-	// Path is the address as a PATH — the general form the three above are a reading of, and
-	// the only one that can name a place deeper than three segments (`verse-dev.drift.head`).
+	// Path is the address the pattern reaches, one segment at a time, from the top of the tree.
 	//
 	// A segment is a NODE rather than a string because a segment may be an OPERATOR: `!glob
-	// "head-*"` is a perfectly good thing to say about one level of an address, and it is what
-	// the three-dimension spelling already allows per dimension (`{kind: !glob "k-*"}`).
-	// Carrying strings would have to drop the tag, which is worse than refusing it — a pattern
-	// that reads as a glob and matches literally is a rule that silently selects nothing.
+	// "head-*"` is a perfectly good thing to say about one level of an address. Carrying strings
+	// would have to drop the tag, which is worse than refusing it — a pattern that reads as a glob
+	// and matches literally is a rule that silently selects nothing.
 	//
-	// When it is set it is the authority and Root/System/Kind are ignored; when it is not, they
-	// are, which is every pattern written before addresses became trees.
-	//
-	// It IS on the wire, and a source's Covers is why: a git source covers `git.verse.ref.*` and
-	// `git.verse.head`, one place per repository at two depths, and no three-dimension reading can
-	// say either. A charter never writes this field — its spelling is `trigger.Match`'s `path:`,
-	// which compiles to it — so the one document that carries it is a reflection.
+	// It is on the wire, and a source's Covers is why: a git source covers `git.verse.ref.*` and
+	// `git.verse.head`, one place per repository at two depths. A charter writes it as
+	// `trigger.Match`'s `path:`, which compiles to it.
 	Path []*ir.Node `tony:"field=path,omitzero"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
 	// It applies to MatchEvent only; Select (stored entities have no op) ignores
@@ -148,14 +129,7 @@ func (p Pattern) MatchEntity(e Entity) bool {
 // an empty System selects nothing, because a trigger's match always names one and a match
 // that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
 // is an operator declining to filter, which is the opposite intent.
-func (p Pattern) MatchRef(ref Ref) bool {
-	if len(p.Path) > 0 {
-		return p.pathCovers(ref)
-	}
-	return (p.Root == ref.Root()) &&
-		(p.System == "" || p.System == ref.System()) &&
-		(p.Kind == "" || p.Kind == ref.Kind())
-}
+func (p Pattern) MatchRef(ref Ref) bool { return p.pathCovers(ref) }
 
 // pathCovers reports whether an address is at or under the pattern's path. A segment of `*`
 // matches any one segment, and a segment carrying an operator is asked of the address's own
@@ -224,7 +198,15 @@ func segText(n *ir.Node) (string, bool) {
 	case ir.StringType:
 		return n.String, true
 	case ir.NumberType:
-		return n.Number, n.Number != ""
+		switch {
+		case n.Number != "":
+			return n.Number, true
+		case n.Int64 != nil:
+			return strconv.FormatInt(*n.Int64, 10), true
+		case n.Float64 != nil:
+			return strconv.FormatFloat(*n.Float64, 'g', -1, 64), true
+		}
+		return "", false
 	case ir.BoolType:
 		if n.Bool {
 			return "true", true
@@ -262,12 +244,11 @@ func (p Pattern) literalPrefix() []string {
 	return out
 }
 
-// Depth is how many segments the pattern names, which is the depth of the entities it selects.
-// Zero means it names none, and the three-dimension reading decides.
+// Depth is how many segments the pattern names, which is the depth of the nodes it selects.
 func (p Pattern) Depth() int { return len(p.Path) }
 
-// Select returns the refs of every stored entity the pattern picks: entities of
-// (System, Kind) whose payload satisfies every Fields entry.
+// Select returns the refs of every stored node the pattern picks: the nodes its path reaches whose
+// payload satisfies the predicate.
 //
 // An entity marked VANISHING is skipped unless the predicate asks about the marker. A rule
 // acts on what it selects — patches it, spawns about it, raises a gate on it — and doing any
@@ -279,38 +260,14 @@ func (p Pattern) Depth() int { return len(p.Path) }
 // addressing it by identity, not selecting from what exists (see trigger.Match.Select). If you
 // name a retiring entity, you meant that one.
 func (p Pattern) Select(r Reader) []Ref {
-	pick := func(ref Ref) bool {
-		return ref.System() == p.System && (p.Kind == "" || ref.Kind() == p.Kind)
+	// A pattern naming no path selects nothing: a match that lost its address must not quietly
+	// become a sweep of the whole tree.
+	if len(p.Path) == 0 {
+		return nil
 	}
-	var ents []Entity
-	if len(p.Path) > 0 {
-		// THE PATTERN'S OWN DEPTH is what the store is asked for: a path of four segments
-		// selects entities four deep, and the literal head of it is the prefix to read under.
-		ents = r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
-	} else if p.System != "" {
-		// TWO READS, ONE PER HALF, because there are exactly two: a Ref is rooted at the
-		// world's half or at verse's own, and nothing else (Ref.root is "" or VerseRoot). A
-		// Pattern names a system and a kind but not WHICH half it is about, and the answer to
-		// that used to be a read of the root — every entity anything had ever reflected,
-		// filtered down to one system here. It is the two places the pattern could match
-		// instead, each read at its own depth, and their union is the same set.
-		//
-		// It matters because this is the engine's hot path: a rule condition naming a system
-		// and a kind is evaluated per commit, and a root read costs the WHOLE LOG rather than
-		// the slice — on staging that grew until `verse gate` took ten seconds and the root
-		// read timed out, while the same data read a slice at a time came back in
-		// milliseconds.
-		at := []string{p.System}
-		if p.Kind != "" {
-			at = append(at, p.Kind)
-		}
-		ents = r.ListAt(at, Depth, pick)
-		ents = append(ents, r.ListAt(append([]string{VerseRoot}, at...), Depth+1, pick)...)
-	} else {
-		// No system to narrow on: a pattern that names none is about everything, and the root
-		// is where everything is.
-		ents = r.List(pick)
-	}
+	// THE PATTERN'S OWN DEPTH is what the store is asked for: a path of four segments selects
+	// nodes four deep, and the literal head of it is the prefix to read under.
+	ents := r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
 	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))
 	for _, e := range ents {

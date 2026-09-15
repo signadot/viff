@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,12 +12,9 @@ import (
 // store's copy of the charter is the charter, and a spelling that means something else on the way
 // back is a charter nobody edited quietly changing.
 //
-// Two spellings, and the difference is exactly three segments long. `{path: [a, b, c]}` is a
-// PLACE at every length. `!verse-path [a b c]` FOLDS into the three dimensions, deliberately, so
-// that the vector spelling names the entity `a.b.c` the way every charter written before paths
-// does. A stratum rendered with the second came back constraining `id` — which a stratum may not
-// do, since a derived id is the engine's — so restore refused it, and then refused every rule
-// whose derive needed the level it named.
+// `{path: [a, b, c]}` is a PLACE at every length, and it must come back as the same place. A
+// stratum that came back as something else overlapped its neighbour, so restore refused it, and
+// then refused every rule whose derive needed the level it named.
 //
 // The charter shrank across a restart: `verse-dev.drift` lost `ledger` and `comment-drift`,
 // `verse-dev.merge` lost `train`, `train-load` and `train-run`. Nothing failed; there were simply
@@ -44,8 +42,8 @@ func TestAPathStratumSurvivesBeingWrittenDown(t *testing.T) {
 			t.Fatalf("%s came back as %d matches: a path is ONE match, and its segments are not "+
 				"a union of names", st.Name, len(got.Match))
 		}
-		if !got.Match[0].Deep() {
-			t.Errorf("%s came back as dimensions rather than a path: %v", st.Name, got.Match[0])
+		if want := st.Match[0].Segs(); !reflect.DeepEqual(got.Match[0].Segs(), want) {
+			t.Errorf("%s came back as %q, want the path %q", st.Name, got.Match[0].Segs(), want)
 		}
 		back[st.Name] = got
 	}
@@ -55,22 +53,19 @@ func TestAPathStratumSurvivesBeingWrittenDown(t *testing.T) {
 	}
 }
 
-// The union form and the path form are both lists, so the TAG is what tells them apart — and a
-// stratum's `match` takes a union, which is why reading a tagged list as one was not optional.
-func TestATaggedListIsOneMatchNotAUnion(t *testing.T) {
+// A stratum's `match` list is a UNION, and `!verse-path` is not a spelling of one address inside
+// it: a tagged list is refused rather than read as a union of its steps, each of which would be a
+// one-segment path matching everything under it.
+func TestATaggedListIsRefusedNotAUnion(t *testing.T) {
 	node, err := codec.ParseNode([]byte(`!verse-path [verse-dev, drift, finding, "*"]`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var ms Matches
-	if err := ms.FromTonyIR(node); err != nil {
-		t.Fatal(err)
+	if err := ms.FromTonyIR(node); err == nil {
+		t.Fatalf("`!verse-path` read as %d matches; want a refusal", len(ms))
 	}
-	if len(ms) != 1 {
-		t.Fatalf("an address read as %d matches: each step became a match on its own, and a bare "+
-			"name matches a whole system", len(ms))
-	}
-	// The union form still reads as a union.
+	// The union form reads as a union.
 	node, err = codec.ParseNode([]byte(`[demo.pr.*, {path: [gh, issue, *]}]`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +79,7 @@ func TestATaggedListIsOneMatchNotAUnion(t *testing.T) {
 	}
 }
 
-// A DEEP SUBJECT TOO: the rendering a rule is stored with has to name the same entities the rule
-// named, and `!verse-path` with exactly three steps does not.
+// A SUBJECT TOO: the rendering a rule is stored with has to name the same place the rule named.
 func TestADeepSubjectRendersAsAPath(t *testing.T) {
 	m := mustPathMatch(t, `{path: [verse-dev, drift, head]}`)
 	node, err := m.ToTonyIR()
@@ -103,7 +97,7 @@ func TestADeepSubjectRendersAsAPath(t *testing.T) {
 	if err := got.FromTonyIR(node); err != nil {
 		t.Fatal(err)
 	}
-	if got.str(mKeyID) != "" || got.dim(mKeyID) != nil {
-		t.Errorf("the place came back constraining an id: %v", got)
+	if !isPath(got, "verse-dev.drift.head") {
+		t.Errorf("the place came back as %q", got.Segs())
 	}
 }

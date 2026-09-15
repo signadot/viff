@@ -27,12 +27,12 @@ func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "a"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "a"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 		},
 		{
 			Name:      "onward",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "b"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "b"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "c"}.Payload()},
 		},
 	} {
@@ -88,7 +88,7 @@ func TestMachineryWritesCarryNoChain(t *testing.T) {
 	defer unsub()
 	if err := eng.AddTrigger(Trigger{
 		Name:      "ship",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 		Action:    Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -235,12 +235,12 @@ func TestRunawayCycleStopsAtTheTriggerCount(t *testing.T) {
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "a"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "a"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 		},
 		{
 			Name:      "back",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "b"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "b"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "a"}.Payload()},
 		},
 	} {
@@ -295,13 +295,13 @@ func TestPacedCycleNeverTrips(t *testing.T) {
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "a"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "a"}}},
 			Gates:     []Gate{{Name: "go", Mode: "ask"}},
 			Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 		},
 		{
 			Name:      "back",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "b"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "b"}}},
 			Gates:     []Gate{{Name: "go", Mode: "ask"}},
 			Action:    Action{Patch: entity.Obj{"stage": "a"}.Payload()},
 		},
@@ -343,7 +343,7 @@ func TestBurstOfExternalWritesDoesNotTrip(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "greet",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "new"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "new"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "seen"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -435,12 +435,12 @@ func TestTripReportsTheCycleByName(t *testing.T) {
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "a"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "a"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 		},
 		{
 			Name:      "back",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "b"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "b"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "a"}.Payload()},
 		},
 	} {
@@ -557,12 +557,12 @@ func TestTrippedChainIsPacedNotStopped(t *testing.T) {
 	for _, tr := range []Trigger{
 		{
 			Name:      "fwd",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "a"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "a"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 		},
 		{
 			Name:      "back",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "b"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "b"}}},
 			Action:    Action{Patch: entity.Obj{"stage": "a"}.Payload()},
 		},
 	} {

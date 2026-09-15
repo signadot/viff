@@ -18,15 +18,15 @@ func TestCharterRoundTrip(t *testing.T) {
 		{
 			Name: "advance-on-review",
 			Condition: Condition{
-				When:    MatchWhen(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}),
-				Subject: Match{"system": "demo", "kind": "pr", "id": "*"},
+				When:    MatchWhen(Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}),
+				Subject: mm("demo.pr.*"),
 			},
 			Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 		{
 			Name: "spawn-a-review",
 			Condition: Condition{
-				Subject: Match{"system": "demo", "kind": "pr"},
+				Subject: mm("demo.pr.*"),
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
@@ -36,7 +36,7 @@ func TestCharterRoundTrip(t *testing.T) {
 		{
 			Name: "quorum-gated",
 			Condition: Condition{
-				Subject: Match{"system": "demo", "kind": "pr"},
+				Subject: mm("demo.pr.*"),
 			},
 			Gates: []Gate{{
 				Name: "two-approvals",
@@ -64,9 +64,7 @@ func TestCharterRoundTrip(t *testing.T) {
 					t.Errorf("when survived differently\n%s", b)
 				}
 				// The subject has to survive — it is the one field a charter cannot be installed
-				// without — though not key-for-key: `id: "*"` renders as the address `demo:pr`
-				// and comes back with the wildcard as an unset dimension, which is the same
-				// match (ParseExpr). So compare what it MATCHES.
+				// without. Compare what it MATCHES.
 				probe := entity.RefAt("demo", "pr", "1")
 				if len(got.Condition.Subject) == 0 {
 					t.Errorf("the subject did not survive\n%s", b)
@@ -95,7 +93,7 @@ func TestCharterRoundTrip(t *testing.T) {
 func TestCharterOmitsUnsetFields(t *testing.T) {
 	b, err := codec.Marshal(Trigger{
 		Name:      "minimal",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 	}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
@@ -125,12 +123,12 @@ func TestCharterGrammarSpellings(t *testing.T) {
 		{
 			"tony/address-sugar", `demo.pr.*`, codec.Tony,
 			func(f *Formula) bool {
-				return f.IsMatchAtom() && f.Req.Facts.System() == "demo" && f.Req.Facts.Kind() == "pr"
+				return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.pr.*")
 			},
 		},
 		{
 			"tony/bare-match", `{path: [demo, pr, *]}`, codec.Tony,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.Kind() == "pr" },
+			func(f *Formula) bool { return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.pr.*") },
 		},
 		{
 			"tony/empty-match", `{}`, codec.Tony,
@@ -138,13 +136,13 @@ func TestCharterGrammarSpellings(t *testing.T) {
 		},
 		{
 			"tony/explicit-match-tag", `!match {path: [demo, *, *]}`, codec.Tony,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" },
+			func(f *Formula) bool { return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.*.*") },
 		},
 
 		// The JSON spelling, decoded by the same code path.
 		{
 			"json/address-sugar", `"demo.pr.*"`, codec.JSON,
-			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.System() == "demo" },
+			func(f *Formula) bool { return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.pr.*") },
 		},
 	}
 	for _, c := range cases {

@@ -112,8 +112,8 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "record",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "audit", "kind": "record", "id": "latest"},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: mm("audit.record.latest"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "noted"}.Payload()},
 	}); err != nil {
@@ -170,19 +170,16 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	}
 }
 
-// A charter carrying an operator means the same thing in both dialects. JSON has no tags, so
-// it spells one as a single-key object (`{"tmp": {"delete": null}}`) — the same convention a
-// formula and a match already use. The assertion is the EFFECT, not the parse: a patch that
-// decodes but never deletes would pass a shape check and fail in the verse.
-func TestPatchOperatorWorksInBothDialects(t *testing.T) {
+// A charter carrying a patch operator keeps it as a tag through install, and the operator does
+// what it says. The assertion is the EFFECT, not the parse: a patch that decodes but never
+// deletes would pass a shape check and fail in the verse.
+func TestPatchOperatorWorks(t *testing.T) {
 	for _, c := range []struct {
 		name, doc string
 		f         codec.Format
 	}{
 		{"tony", `{name: retract, condition: {subject: {path: [demo, pr, *], value: {stage: open}}},
 			action: {patch: {tmp: !delete null}}}`, codec.Tony},
-		{"json", `{"name":"retract","condition":{"subject":{"system":"demo","kind":"pr","value":{"stage":"open"}}},
-			"action":{"patch":{"tmp":{"delete":null}}}}`, codec.JSON},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			store := entitytest.Store(t)
@@ -194,7 +191,7 @@ func TestPatchOperatorWorksInBothDialects(t *testing.T) {
 			if err := eng.AddTrigger(tr); err != nil {
 				t.Fatalf("AddTrigger: %v", err)
 			}
-			// installed form carries the tag, whichever dialect wrote it
+			// the installed form carries the tag
 			got, ok := eng.Trigger("retract")
 			if !ok {
 				t.Fatal("trigger not installed")

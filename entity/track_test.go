@@ -17,14 +17,14 @@ type reads struct {
 }
 
 func (r *reads) Get(ref entity.Ref) (entity.Entity, bool, error) {
-	if ref.Reserved() && ref.System() == entity.PermsSystem {
+	if ref.Under(entity.VerseRoot, entity.PermsSystem) {
 		r.mirror.Add(1)
 	}
 	return r.Store.Get(ref)
 }
 
 func (r *reads) Write(w entity.Write) (bool, int64, error) {
-	if w.At.Reserved() && w.At.System() == entity.PermsSystem {
+	if w.At.Under(entity.VerseRoot, entity.PermsSystem) {
 		r.writes.Add(1)
 	}
 	return r.Store.Write(w)

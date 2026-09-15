@@ -46,9 +46,7 @@ const (
 
 // IsStratum reports whether an address is a durable stratum's — the namespace's own question,
 // asked by anything that lists the ordering, as IsCharterRule is for the rules.
-func IsStratum(r entity.Ref) bool {
-	return r.Reserved() && r.System() == StrataSystem && r.Kind() == StrataKind
-}
+func IsStratum(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind) }
 
 // StrataRef names the entity holding one of BASELINE's strata.
 func StrataRef(name string) entity.Ref { return StrataRefAt("", name) }
@@ -233,31 +231,10 @@ func (ms Matches) overlaps(other []Match) bool {
 	return false
 }
 
-// matchContains reports whether outer picks everything inner can.
-//
-// Only system and kind are consulted, which is exactly why a stratum's match is restricted to
-// those two (validate, below). An unset dimension on the outer is a wildcard and contains
-// anything; an unset dimension on the INNER is the case that must fail, since "any system"
-// is not contained by "system gh".
+// matchContains reports whether outer picks everything inner can: its path is no longer than the
+// inner's, and at each position it admits every name the inner one does (segContains).
 func matchContains(outer, inner Match) bool {
-	if outer.Deep() || inner.Deep() {
-		return entity.Under(outer.SegNodes(), inner.SegNodes(), segContains)
-	}
-	// THE ROOT IS A SEGMENT, and the shorthand's dimensions sit below it: a match naming the
-	// system `demo` is the world's `demo`, not verse's. Only a match naming nothing is the tree.
-	// Ignoring it admitted a package at `demo` patching `verse.demo.pr` at install, which mayWrite
-	// then refused at every firing. (The branch goes with the shorthand, step 3 of the
-	// paths-and-nodes plan.)
-	if (outer.Root() != "" || outer.System() != "" || outer.Kind() != "") && outer.Root() != inner.Root() {
-		return false
-	}
-	if s := outer.System(); s != "" && s != inner.System() {
-		return false
-	}
-	if k := outer.Kind(); k != "" && k != inner.Kind() {
-		return false
-	}
-	return true
+	return entity.Under(outer.SegNodes(), inner.SegNodes(), segContains)
 }
 
 // segContains reports whether every name the inner segment admits, the outer one admits too.
@@ -277,19 +254,12 @@ func segContains(outer, inner *ir.Node) bool {
 	return false
 }
 
-// matchOverlap reports whether some ref could satisfy both. Unset is a wildcard on either side,
-// so it overlaps everything at that dimension.
+// Overlaps reports whether some address could satisfy both matches' paths.
+func (m Match) Overlaps(o Match) bool { return matchOverlap(m, o) }
+
+// matchOverlap reports whether some address could satisfy both paths.
 func matchOverlap(a, b Match) bool {
-	if a.Deep() || b.Deep() {
-		return entity.Overlap(a.SegNodes(), b.SegNodes(), segDisjoint)
-	}
-	if x, y := a.System(), b.System(); x != "" && y != "" && x != y {
-		return false
-	}
-	if x, y := a.Kind(), b.Kind(); x != "" && y != "" && x != y {
-		return false
-	}
-	return true
+	return entity.Overlap(a.SegNodes(), b.SegNodes(), segDisjoint)
 }
 
 // segDisjoint reports whether two segments admit no common name. It PROVES, and answers false
@@ -334,30 +304,16 @@ func (s Stratum) validate() error {
 		if err := m.Validate(); err != nil {
 			return fmt.Errorf("stratum %q match[%d]: %w", s.Name, i, err)
 		}
-		// A stratum's pattern is a SYSTEM-AND-KIND pattern, and this is load-bearing rather
-		// than tidy. Check #2 asks whether a derive's target lands in some higher stratum, and
-		// at install the target's ref is {system, kind, id: engine-generated} — the id is a
-		// function of (rule, subject), and neither is known until fire time. A stratum pattern
-		// that constrained the id would make that question undecidable at exactly the moment
-		// the whole proposal is bought for. Disjointness has the same shape: over two segments
-		// it is a comparison, over payload predicates it is not decidable at all.
-		// A PATH NAMES A PLACE, not an entity: it is the derive target's own spelling, and a
-		// derive lands one segment below it under an id the engine chooses. So the question
-		// this refuses cannot arise there — there is no id position in `[verse-dev, drift,
-		// head]`, and the containment check compares two prefixes.
-		if m.Deep() {
-			continue
-		}
-		if m.ID() != "" || m.dim(mKeyID) != nil {
-			return fmt.Errorf("stratum %q match[%d] constrains `id`: a stratum's pattern may "+
-				"name a system and a kind and nothing below, because a derived entity's id is "+
-				"the engine's (a function of rule and subject) and is not known until the rule "+
-				"fires — a pattern that read it could not be checked at install", s.Name, i)
-		}
+		// A stratum owns ADDRESSES, not states: what a node looks like changes as rules fire, so a
+		// level that depended on it would not be a level.
 		if m.HasPredicate() {
 			return fmt.Errorf("stratum %q match[%d] carries a payload predicate: a stratum owns "+
-				"ADDRESSES, not states. What an entity looks like changes as rules fire, so a "+
+				"ADDRESSES, not states. What a node looks like changes as rules fire, so a "+
 				"level that depended on it would not be a level", s.Name, i)
+		}
+		if len(m.SegNodes()) == 0 {
+			return fmt.Errorf("stratum %q match[%d] names no path: a stratum owns the addresses under "+
+				"a place, and one naming none would own the whole tree", s.Name, i)
 		}
 	}
 	// Within one stratum, two patterns that overlap are harmless (a union is a union), so
@@ -733,7 +689,7 @@ func (e *Engine) persistStratum(s Stratum, as string) error {
 func (e *Engine) LoadStrata() error {
 	var errs []error
 	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
-		return r.Reserved() && r.System() == StrataSystem && r.Kind() == StrataKind
+		return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind)
 	}, entity.VerseRoot, StrataSystem)
 	// Asked before anything is installed, for LoadCharter's reason: a load that could not
 	// read installed nothing, and is asked again.
@@ -771,7 +727,7 @@ func stratumOf(ent entity.Entity) (Stratum, error) {
 	if err := s.FromTonyIR(doc); err != nil {
 		return Stratum{}, fmt.Errorf("stratum %s: %w", ent.Ref, err)
 	}
-	if s.Name != recordName(ent.Ref.ID()) { // the tail: a package's records carry its address
+	if s.Name != recordName(ent.Ref.Name()) { // the tail: a package's records carry its address
 		return Stratum{}, fmt.Errorf("stratum %s: it names itself %q; a stratum is addressed by "+
 			"its name, so it would install as one and be removed as another", ent.Ref, s.Name)
 	}
@@ -907,11 +863,7 @@ func stratumIn(all []Stratum, target Match) *Stratum {
 
 // deriveTarget is one derive's address and content: the place it writes, then the payload.
 type deriveTarget struct {
-	System, Kind string
-	// Path is the address as a PATH when the derive was written with one, and is what the two
-	// above are a reading of. It exists for the same reason a Match has one: a charter
-	// installed at `verse-dev.drift` writes `verse-dev.drift.head.<id>`, and two names cannot
-	// hold four segments.
+	// Path is the place the derive writes under.
 	Path []string
 	// Key makes the derived id a function of (rule, subject, KEY) rather than of (rule,
 	// subject) — one entity per value of something, where a plain derive gives exactly one.
@@ -951,13 +903,8 @@ type deriveTarget struct {
 	Each *eachSpec
 }
 
-// segs is the target's address, whichever way it was written.
-func (d deriveTarget) segs() []string {
-	if len(d.Path) > 0 {
-		return d.Path
-	}
-	return []string{d.System, d.Kind}
-}
+// segs is the target's address.
+func (d deriveTarget) segs() []string { return d.Path }
 
 // refFor is the entity this derive writes: the target's own place, then the segments the engine
 // derived for it.
@@ -972,17 +919,14 @@ func (d deriveTarget) refFor(segs ...string) entity.Ref {
 
 // match is the target as the pattern the level and confinement checks compare against.
 func (d deriveTarget) match() Match {
-	if len(d.Path) > 0 {
-		segs := make([]*ir.Node, 0, len(d.Path))
-		for _, sg := range d.Path {
-			segs = append(segs, ir.FromString(sg))
-		}
-		return Match{mKeyPath: segs}
+	segs := make([]*ir.Node, 0, len(d.Path))
+	for _, sg := range d.Path {
+		segs = append(segs, ir.FromString(sg))
 	}
-	return Match{mKeySystem: d.System, mKeyKind: d.Kind}
+	return Match{mKeyPath: segs}
 }
 
-func (d deriveTarget) addr() string { return strings.Join(d.segs(), ":") }
+func (d deriveTarget) addr() string { return entity.JoinSegs(d.segs()) }
 
 // eachSpec is `!each {over, key, value}` — the fan-out form of a derive.
 //
@@ -1091,54 +1035,22 @@ func soleRef(n entity.Payload) (string, bool) {
 	return "", false
 }
 
-// derives reads THIS action's derive block into its targets. The address is exactly two levels
-// of nesting and everything below is payload, so there is no boundary to find — which is what
-// lets the form be read without a delimiter.
+// derives reads THIS action's derive block into its targets: a list of entries, each naming the
+// place it writes under as a path.
 func (a Action) derives() []deriveTarget {
 	// UNWRAPPED AT EVERY LEVEL, because a charter is where people write comments and a head
-	// comment WRAPS the value it precedes. `# one entity per symbol` above `derive:` made this
-	// walk see a Comment where the address should be, so the block read as no derives at all
-	// and the install refused a rule that was written correctly. A comment is not a container:
-	// asking what a value's structure IS means stepping past what was said about it (ir/nav.go).
+	// comment WRAPS the value it precedes; a comment is not a container.
 	d := unwrap(a.Derive)
-	if d == nil {
-		return nil
-	}
-	// THE LIST FORM names its address as a path, which is what an address deeper than two
-	// levels needs: `- {path: [verse-dev, drift, head], value: {…}}`. The nested map stays the
-	// shorthand for the two-level case, which is what most derives are.
-	if d.Type == ir.ArrayType {
-		var out []deriveTarget
-		for _, el := range d.Values {
-			t, ok := derivePathTarget(unwrap(el))
-			if !ok {
-				continue // refused by validate; nothing to walk
-			}
-			out = append(out, t)
-		}
-		return out
-	}
-	if d.Type != ir.ObjectType {
-		return nil
+	if d == nil || d.Type != ir.ArrayType {
+		return nil // refused by validate; nothing to walk
 	}
 	var out []deriveTarget
-	for i, sysName := range d.Fields {
-		sys := unwrap(d.Values[i])
-		if sys == nil || sys.Type != ir.ObjectType {
+	for _, el := range d.Values {
+		t, ok := derivePathTarget(unwrap(el))
+		if !ok {
 			continue // refused by validate; nothing to walk
 		}
-		for j, kindName := range sys.Fields {
-			t := deriveTarget{System: sysName.String, Kind: kindName.String}
-			if v := unwrap(sys.Values[j]); isEach(v) {
-				// A malformed one is refused at install (validateDerive), so anything reaching
-				// here parses; a reader that cannot is left as a target with neither half set,
-				// which the firing path refuses rather than treating as an empty payload.
-				t.Each, _ = readEach(v)
-			} else {
-				t.Payload = v
-			}
-			out = append(out, t)
-		}
+		out = append(out, t)
 	}
 	return out
 }
@@ -1157,7 +1069,7 @@ func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
 		}
 		val := unwrap(el.Values[i])
 		switch key.String {
-		case "path", "at":
+		case "path":
 			segs, ok := addressSegs(val)
 			if !ok {
 				return deriveTarget{}, false
@@ -1255,9 +1167,7 @@ func (a Action) validateDerive() error {
 	// Past the comment wrapper before asking what the shape is — see derives(), which walks the
 	// same block and refused a correctly written rule for the same reason.
 	d := unwrap(a.Derive)
-	// THE LIST FORM, whose entries name their address as a path — the spelling an address
-	// deeper than two levels needs. Each entry is checked the way a map entry is: the address
-	// is names, the content is a literal payload or an `!each`.
+	// Each entry names its place as a path, and its content is a literal payload or an `!each`.
 	if d.Type == ir.ArrayType {
 		if len(d.Values) == 0 {
 			return fmt.Errorf("action.derive is empty: it names where to write and what goes there")
@@ -1268,7 +1178,7 @@ func (a Action) validateDerive() error {
 				return fmt.Errorf("action.derive[%d] must be {path: [<segments>], value: …}: the "+
 					"path is where it writes and the value is what goes there", i)
 			}
-			if t.Each != nil {
+			if isEach(deriveContentNode(unwrap(el))) {
 				// The `!each` NODE, not the entry holding it: the entry carries `path` and
 				// `value`, and the fan-out's closed keyspace is over/key/value.
 				if err := validateEach(deriveContentNode(unwrap(el))); err != nil {
@@ -1295,34 +1205,8 @@ func (a Action) validateDerive() error {
 		}
 		return nil
 	}
-	if d.Type != ir.ObjectType {
-		return fmt.Errorf("action.derive must be an object addressed <system>.<kind>, or a list "+
-			"of {path, value} entries for an address of any depth, got %v", d.Type)
-	}
-	if len(d.Fields) == 0 {
-		return fmt.Errorf("action.derive is empty: it addresses <system>.<kind> and writes what " +
-			"goes there")
-	}
-	for i, sysName := range d.Fields {
-		sys := unwrap(d.Values[i])
-		if sys == nil || sys.Type != ir.ObjectType || len(sys.Fields) == 0 {
-			return fmt.Errorf("action.derive.%s must be an object of kinds: the address is exactly "+
-				"two levels — <system>.<kind> — and everything below is the payload", sysName.String)
-		}
-		for j, kindName := range sys.Fields {
-			payload := unwrap(sys.Values[j])
-			if isEach(payload) {
-				if err := validateEach(payload); err != nil {
-					return fmt.Errorf("action.derive.%s.%s: %w", sysName.String, kindName.String, err)
-				}
-				continue
-			}
-			if err := checkLiteralDerive(payload, sysName.String+"."+kindName.String); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return fmt.Errorf("action.derive is a list of {path: [<segments>], value: …} entries: the path " +
+		"is the place it writes under and the value is what goes there")
 }
 
 // validateEach checks a fan-out at install: the triple is there, `over` and `key` are single
@@ -1429,7 +1313,7 @@ func deriveMayReference(ref string) bool {
 		return true
 	}
 	switch subjectPart(ref) {
-	case subjPartRef, subjPartSystem, subjPartKind, subjPartID, subjPartValue:
+	case subjPartRef, subjPartName, subjPartValue:
 		return true
 	}
 	return false
@@ -1611,11 +1495,9 @@ func subjectText(m Match) string {
 	if s, ok := m.address(); ok {
 		return s
 	}
-	// A PATH renders as the address it is. Without this a message about one printed the Go map
-	// holding it — `map[path:[0x14000…]]` — which names nothing a reader can act on, and is how
-	// a refusal about an address came to be unreadable exactly where the address mattered.
-	if m.Deep() {
-		out := strings.Join(m.Segs(), ".")
+	// A PATH renders as the address it is, never as the Go map holding it.
+	if segs := m.Segs(); len(segs) > 0 {
+		out := strings.Join(segs, ".")
 		if p := m.Predicate(); p != nil {
 			out += " " + matchText(map[string]any{mKeyValue: p})
 		}

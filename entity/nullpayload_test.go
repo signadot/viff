@@ -362,7 +362,8 @@ func TestACommentedPayloadIsStillReadable(t *testing.T) {
 	}
 
 	// And a selection binds what it selected on, rather than selecting and then reading blank.
-	pat := Pattern{System: "demo", Kind: "pr", Predicate: Obj{"stage": "open"}.Payload()}
+	pat := patternAt("demo", "pr", "*")
+	pat.Predicate = Obj{"stage": "open"}.Payload()
 	if !pat.MatchEntity(e) {
 		t.Fatal("the pattern stopped matching")
 	}

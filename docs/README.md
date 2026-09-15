@@ -62,7 +62,7 @@ resolve, do this.
 - [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs
   a cursor rather than a buffer.
 
-**Federation** — external state reflected into the slice of the verse that owns it.
+**Federation** — external state reflected into the place in the verse that owns it.
 
 - [Sources](sources.md) — reflecting git, Slack and Linear: hint as hint, reconcile as truth.
 - [Content federation](content-federation.md) — how `connect` federates a tree, and what a

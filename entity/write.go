@@ -449,7 +449,7 @@ const irTypeTag = "!irtype"
 // place is asking about `votes[0]`, while one that spells the entity out is asking about the
 // entity, and the two are answered by different shapes (logdstore.elemPattern).
 func (r Require) atOwnPlace() bool {
-	return r.At.System() == "" && r.At.Kind() == "" && r.At.ID() == "" && len(r.At.Field) == 0
+	return r.At.Ref == (Ref{}) && len(r.At.Field) == 0
 }
 
 // path resolves a Require's target: its own At, or the write's when it has none.

@@ -263,11 +263,11 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if !committed || err != nil {
 		return committed, rev, err
 	}
-	if ref.Reserved() && ref.System() == PermsSystem {
+	if ref.Under(VerseRoot, PermsSystem) {
 		// The mirror keeps no records about itself, and what this process cached about the
 		// node the record is about is stale the moment the record moves.
-		if ref.Kind() == PermsKind {
-			a.invalidate(ref.ID())
+		if ref.ChildOf(VerseRoot, PermsSystem, PermsKind) {
+			a.invalidate(ref.Name())
 		}
 		return committed, rev, nil
 	}
@@ -1214,9 +1214,9 @@ func (a *attributed) forget(ref Ref) {
 	if !loaded {
 		// Not loaded: the mirror is listed, which costs its size once per whole delete.
 		for _, rec := range a.Store.ListAt([]string{VerseRoot, PermsSystem, PermsKind}, Depth+1, func(r Ref) bool {
-			return strings.HasPrefix(r.ID(), prefix)
+			return strings.HasPrefix(r.Name(), prefix)
 		}) {
-			beneath = append(beneath, rec.Ref.ID())
+			beneath = append(beneath, rec.Ref.Name())
 		}
 	}
 	for _, key := range beneath {
@@ -1259,7 +1259,7 @@ func Track(ctx context.Context, s Store) error {
 		a.attr.records = map[string]*permsRecord{}
 	}
 	for _, e := range ents {
-		a.attr.records[e.Ref.ID()] = parseRecord(e.Ref.ID(), e.Payload, a.attr.rootDefault)
+		a.attr.records[e.Ref.Name()] = parseRecord(e.Ref.Name(), e.Payload, a.attr.rootDefault)
 	}
 	a.attr.owners = nil
 	a.attr.loaded = true
@@ -1275,7 +1275,7 @@ func Track(ctx context.Context, s Store) error {
 					return
 				}
 				for _, ev := range c.Changes {
-					if !ev.Ref.Reserved() || ev.Ref.System() != PermsSystem || ev.Ref.Kind() != PermsKind {
+					if !ev.Ref.ChildOf(VerseRoot, PermsSystem, PermsKind) {
 						continue
 					}
 					a.apply(ev)
@@ -1295,7 +1295,7 @@ func (a *Attribution) Tracked() bool {
 
 // apply is one change to the mirror, as the watch delivered it.
 func (a *attributed) apply(ev Event) {
-	key := ev.Ref.ID()
+	key := ev.Ref.Name()
 	a.attr.mu.Lock()
 	defer a.attr.mu.Unlock()
 	if a.attr.records == nil {
@@ -1699,7 +1699,7 @@ func GroupRef(name string) Ref { return PrincipalRef(GroupKind, name) }
 
 // IsGroup reports whether an address is a group's.
 func IsGroup(ref Ref) bool {
-	return ref.Reserved() && ref.System() == PrincipalSystem && ref.Kind() == GroupKind && ref.ID() != ""
+	return ref.ChildOf(VerseRoot, PrincipalSystem, GroupKind) && ref.Name() != ""
 }
 
 // UserRef addresses the record of one user having acted here.

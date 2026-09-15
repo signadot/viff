@@ -18,16 +18,16 @@ import (
 // They agree now: a re-applied file replaces a stratum the way it replaces a rule.
 func TestReApplyingAFileReplacesALevel(t *testing.T) {
 	eng, store := newEng(t)
-	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 10, Match: []Match{{"system": "gh"}}}); err != nil {
+	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 10, Match: []Match{mm("gh")}}); err != nil {
 		t.Fatalf("installing a level: %v", err)
 	}
 	// The same level, declared again: the file has been applied twice, and nothing happens.
-	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 10, Match: []Match{{"system": "gh"}}}); err != nil {
+	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 10, Match: []Match{mm("gh")}}); err != nil {
 		t.Fatalf("re-applying an unchanged level: %v", err)
 	}
 	// And now edited — a level moved and a union narrowed, which is what an operator iterating on
 	// a charter does.
-	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 20, Match: []Match{{"system": "gh"}, {"system": "git"}}}); err != nil {
+	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 20, Match: []Match{mm("gh"), mm("git")}}); err != nil {
 		t.Fatalf("re-applying an edited level: %v", err)
 	}
 	got := eng.Strata()
@@ -48,7 +48,7 @@ func TestReApplyingAFileReplacesALevel(t *testing.T) {
 
 	// Narrowing the union again: the element that went is gone from the record, rather than
 	// merged back in under it.
-	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 20, Match: []Match{{"system": "gh"}}}); err != nil {
+	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 20, Match: []Match{mm("gh")}}); err != nil {
 		t.Fatalf("narrowing the union: %v", err)
 	}
 	back = New(store, task.AutoResolver{})
@@ -67,7 +67,7 @@ func TestReApplyingAFileReplacesALevel(t *testing.T) {
 // RecheckReads one axis over.
 func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 	eng, store := newEng(t)
-	withStrata(t, eng, Stratum{Name: "observe", Level: 10, Match: []Match{{"system": "gh"}}})
+	withStrata(t, eng, Stratum{Name: "observe", Level: 10, Match: []Match{mm("gh")}})
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: seen
   stratum: observe
@@ -79,9 +79,9 @@ func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 		t.Fatalf("installing a rule: %v", err)
 	}
 
-	// The level moves off the system its rule selects in. The rule is installed, so the EDIT is
+	// The level moves off the place its rule selects in. The rule is installed, so the EDIT is
 	// what is refused.
-	err := eng.InstallStratum(Stratum{Name: "observe", Level: 10, Match: []Match{{"system": "signadot"}}})
+	err := eng.InstallStratum(Stratum{Name: "observe", Level: 10, Match: []Match{mm("signadot")}})
 	if err == nil {
 		t.Fatal("changed a level out from under the rule standing in it")
 	}
@@ -91,14 +91,14 @@ func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 
 	// AND THE LEVEL THAT STOOD IS STILL STANDING, in the engine and in the store: a refused change
 	// is not a half-made one.
-	if s := eng.Strata(); len(s) != 1 || s[0].Match[0].System() != "gh" {
+	if s := eng.Strata(); len(s) != 1 || !isPath(s[0].Match[0], "gh") {
 		t.Fatalf("the refused edit was made anyway: %+v", s)
 	}
 	back := New(store, task.AutoResolver{})
 	if err := back.LoadStrata(); err != nil {
 		t.Fatalf("loading the strata back: %v", err)
 	}
-	if s := back.Strata(); len(s) != 1 || s[0].Match[0].System() != "gh" {
+	if s := back.Strata(); len(s) != 1 || !isPath(s[0].Match[0], "gh") {
 		t.Fatalf("the durable level is not the one that is running: %+v", s)
 	}
 }
@@ -109,20 +109,20 @@ func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 func TestAnEditedLevelStillFacesTheOrdering(t *testing.T) {
 	eng, _ := newEng(t)
 	withStrata(t, eng,
-		Stratum{Name: "low", Level: 10, Match: []Match{{"system": "gh"}}},
-		Stratum{Name: "high", Level: 20, Match: []Match{{"system": "signadot"}}},
+		Stratum{Name: "low", Level: 10, Match: []Match{mm("gh")}},
+		Stratum{Name: "high", Level: 20, Match: []Match{mm("signadot")}},
 	)
 	// Onto a level `high` holds.
-	if err := eng.InstallStratum(Stratum{Name: "low", Level: 20, Match: []Match{{"system": "gh"}}}); err == nil {
+	if err := eng.InstallStratum(Stratum{Name: "low", Level: 20, Match: []Match{mm("gh")}}); err == nil {
 		t.Fatal("two strata at level 20")
 	}
 	// Onto what `high` owns.
-	if err := eng.InstallStratum(Stratum{Name: "low", Level: 10, Match: []Match{{"system": "signadot"}}}); err == nil {
+	if err := eng.InstallStratum(Stratum{Name: "low", Level: 10, Match: []Match{mm("signadot")}}); err == nil {
 		t.Fatal("two strata own signadot")
 	}
 	// And an ordinary edit — same name, same level, a wider union — is not a collision with
 	// itself.
-	if err := eng.InstallStratum(Stratum{Name: "low", Level: 10, Match: []Match{{"system": "gh"}, {"system": "git"}}}); err != nil {
+	if err := eng.InstallStratum(Stratum{Name: "low", Level: 10, Match: []Match{mm("gh"), mm("git")}}); err != nil {
 		t.Fatalf("an edited level collided with the one it replaces: %v", err)
 	}
 }
@@ -154,7 +154,7 @@ func TestReApplyingAFileReplacesAHeldRule(t *testing.T) {
 		t.Fatalf("re-applying a file that edits a held rule: %v", err)
 	}
 	// The stratum arrives, and what installs is the SECOND version — one rule, the edited one.
-	if err := eng.AddStratum(Stratum{Name: "later", Level: 10, Match: []Match{{"system": "gh"}}}); err != nil {
+	if err := eng.AddStratum(Stratum{Name: "later", Level: 10, Match: []Match{mm("gh")}}); err != nil {
 		t.Fatalf("installing the stratum: %v", err)
 	}
 	got := eng.Triggers()

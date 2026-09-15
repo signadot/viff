@@ -23,7 +23,7 @@ func TestControlOutranksObservation(t *testing.T) {
 	// on the rule's own writes.
 	eng.AddTrigger(Trigger{
 		Name:      "count",
-		Condition: Condition{Subject: Match{"system": "demo", "value": map[string]any{"stage": "new"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "*", "*"), "value": map[string]any{"stage": "new"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "seen"}.Payload()},
 	})
 

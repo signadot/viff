@@ -160,7 +160,7 @@ func FlowTreesAcross(engines []*Engine, m Match, active *bool) []FlowTree {
 			continue
 		}
 		subj = subjectKey(subj)
-		eng := mintedBy(engines, ent.Ref.ID())
+		eng := mintedBy(engines, ent.Ref.Name())
 		at(subj)[eng] = append(at(subj)[eng], ent)
 	}
 	// A live task whose mirror has not landed yet still belongs in the tree: the
@@ -503,12 +503,12 @@ func (e *Engine) nodeFrom(chain, kind string, ent entity.Entity) FlowNode {
 	n := FlowNode{
 		Chain:      chain,
 		Kind:       kind,
-		ID:         ent.Ref.ID(),
+		ID:         ent.Ref.Name(),
 		Prompt:     str("prompt"),
 		Status:     str("status"),
 		Gate:       e.gateNameOf(str("pending")),
 		LastAction: str("lastAction"),
-		HeldBy:     e.HeldBy(ent.Ref.ID()),
+		HeldBy:     e.HeldBy(ent.Ref.Name()),
 	}
 	if n.Status == "" {
 		n.Status = string(task.Running)

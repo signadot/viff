@@ -23,7 +23,7 @@ func TestAPatchDoesNotReplaceTheContainerItLandsOn(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "tally",
 		Condition: Condition{Subject: Match{
-			"system": "demo", "kind": "pr",
+			"path":  pathOf("demo", "pr", "*"),
 			"value": map[string]any{"stage": "counting"},
 		}},
 		Action: Action{Patch: entity.Obj{
@@ -78,7 +78,7 @@ func TestAPatchStillCreatesANestedKey(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "note",
 		Condition: Condition{Subject: Match{
-			"system": "demo", "kind": "pr",
+			"path":  pathOf("demo", "pr", "*"),
 			"value": map[string]any{"stage": "shipping"},
 		}},
 		Action: Action{Patch: entity.Obj{

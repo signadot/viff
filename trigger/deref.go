@@ -75,17 +75,16 @@ func refRoot(payload entity.Payload, subject *ir.Node) entity.Payload {
 // The reserved reference and its parts. $subject is a RECORD, and the parts fall in two
 // groups that the rest of the model treats differently:
 //
-//	ref system kind id   IDENTITY — which entity this firing is about
+//	ref name             IDENTITY — which node this firing is about, and the key it stands at
 //	value commit         the FIRING — what was true, and when
 //
 // The bare `$subject` resolves to `ref` (see deref), so every charter written before the record
 // existed means exactly what it meant: the address, as a string.
 const (
-	refSubject     = "subject"
-	subjPartRef    = "ref"
-	subjPartSystem = "system"
-	subjPartKind   = "kind"
-	subjPartID     = "id"
+	refSubject  = "subject"
+	subjPartRef = "ref"
+	// name is the last segment of the subject's path: the key it stands at in its parent.
+	subjPartName = "name"
 	// value is the subject's payload AT THE COMMIT THAT CAUSED THE FIRING, not at the moment
 	// the action runs. Those differ by however long a gate took to answer, and reading late
 	// would let an approval that took a day act on a state nobody evaluated — the model's rule
@@ -100,10 +99,8 @@ const (
 // paying for a snapshot read.
 func subjectNode(subj entity.Ref, value entity.Payload, commit int64) *ir.Node {
 	fields := map[string]*ir.Node{
-		subjPartRef:    ir.FromString(subj.String()),
-		subjPartSystem: ir.FromString(subj.System()),
-		subjPartKind:   ir.FromString(subj.Kind()),
-		subjPartID:     ir.FromString(subj.ID()),
+		subjPartRef:  ir.FromString(subj.String()),
+		subjPartName: ir.FromString(subj.Name()),
 	}
 	if value != nil {
 		fields[subjPartValue] = value.DeepCopy()

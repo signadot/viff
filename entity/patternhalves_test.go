@@ -3,57 +3,74 @@ package entity
 import (
 	"sort"
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Select reads the two halves a Ref can be rooted at — the world's and verse's own — rather
-// than the whole root. The halves are exhaustive (Ref.root is "" or VerseRoot), so the union
-// has to be exactly what a root read filtered to the same system would give. This pins that,
-// because getting it wrong is the silent kind: a narrowing that misses a half finds nothing
-// there and reports an empty selection, which reads as "no entity matched" rather than as a
-// failure.
-func TestSelectSeesBothHalves(t *testing.T) {
+// patternAt is a pattern reaching these path segments, each one a literal or `*`.
+func patternAt(segs ...string) Pattern {
+	path := make([]*ir.Node, len(segs))
+	for i, s := range segs {
+		path[i] = ir.FromString(s)
+	}
+	return Pattern{Path: path}
+}
+
+// selected is a selection as its sorted renderings, for a message and a comparison.
+func selected(refs []Ref) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.String())
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Verse's own half is a place in the tree like any other: a pattern whose path begins with
+// `verse` selects there, and a pattern whose path does not begin with it does not reach it. The
+// same segments on either side of the reserved root are different addresses, so a selection
+// over one must not answer with the other — reading verse's own records as the world's is how a
+// rule would act on a task record somebody's fixture happens to share segments with.
+func TestSelectReachesTheHalfItsPathNames(t *testing.T) {
 	s := openStore(t)
-	// The same system and kind on each side of the root.
 	world := RefAt("task", "instance", "w1")
 	own := RefAt(VerseRoot, "task", "instance", "v1")
 	set(t, s, world, Obj{"stage": "open"}.Payload())
 	set(t, s, own, Obj{"stage": "open"}.Payload())
-	// A neighbour in another system, which must NOT be selected.
+	// A neighbour in another place, which neither selection may reach.
 	set(t, s, RefAt("other", "instance", "x"), Obj{"stage": "open"}.Payload())
 
-	got := Pattern{System: "task", Kind: "instance"}.Select(s)
-	have := make([]string, 0, len(got))
-	for _, r := range got {
-		have = append(have, r.String())
+	if got := selected(patternAt("task", "instance", "*").Select(s)); len(got) != 1 || got[0] != world.String() {
+		t.Errorf("task.instance.* selected %v, want only the world's %s", got, world)
 	}
-	sort.Strings(have)
-
-	if len(have) != 2 || have[0] != own.String() && have[1] != own.String() {
-		t.Fatalf("Select = %v, want both halves (%s and %s)", have, world, own)
-	}
-	var sawWorld, sawOwn bool
-	for _, h := range have {
-		sawWorld = sawWorld || h == world.String()
-		sawOwn = sawOwn || h == own.String()
-	}
-	if !sawWorld {
-		t.Errorf("Select = %v, missing the world's half %s", have, world)
-	}
-	if !sawOwn {
-		t.Errorf("Select = %v, missing verse's own half %s — the reserved root is a segment of "+
-			"its own, and a narrowing that forgets it reports an empty selection", have, own)
+	if got := selected(patternAt(VerseRoot, "task", "instance", "*").Select(s)); len(got) != 1 || got[0] != own.String() {
+		t.Errorf("verse.task.instance.* selected %v, want only verse's own %s", got, own)
 	}
 }
 
-// The same, with the kind left open: a pattern naming only a system still reaches both halves.
-func TestSelectSystemOnlySeesBothHalves(t *testing.T) {
+// A wildcard stands for one segment at its level and nothing more: `task.*.*` selects the nodes
+// three deep under `task`, whatever the middle segment, and stops at `task` — it does not reach
+// verse's own `task` records, which are four deep and under another first segment.
+func TestSelectWildcardsStayInTheirPlace(t *testing.T) {
 	s := openStore(t)
 	set(t, s, RefAt("task", "instance", "w1"), Obj{"a": "1"}.Payload())
+	set(t, s, RefAt("task", "run", "w2"), Obj{"a": "1"}.Payload())
 	set(t, s, RefAt(VerseRoot, "task", "run", "v1"), Obj{"a": "1"}.Payload())
 	set(t, s, RefAt("other", "instance", "x"), Obj{"a": "1"}.Payload())
 
-	got := Pattern{System: "task"}.Select(s)
-	if len(got) != 2 {
-		t.Fatalf("Select(system only) = %v, want the two task entities across both halves", got)
+	got := selected(patternAt("task", "*", "*").Select(s))
+	if len(got) != 2 || got[0] != RefAt("task", "instance", "w1").String() ||
+		got[1] != RefAt("task", "run", "w2").String() {
+		t.Fatalf("task.*.* selected %v, want the two world task entities and nothing else", got)
+	}
+}
+
+// A pattern with no path selects nothing: a match that lost its address must not quietly become a
+// sweep of the whole tree.
+func TestSelectWithNoPathSelectsNothing(t *testing.T) {
+	s := openStore(t)
+	set(t, s, RefAt("task", "instance", "w1"), Obj{"a": "1"}.Payload())
+	if got := (Pattern{}).Select(s); len(got) != 0 {
+		t.Fatalf("a pattern with no path selected %v", got)
 	}
 }

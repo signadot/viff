@@ -57,8 +57,8 @@ for pointing at a store or task runner you already have, are in [reference/up.md
 ## 2. Entities
 
 An entity is anything the flow refers to — a PR, a build, a person, a CI status — addressed by a
-path and carrying a document. The path is three segments (system, kind, id) in the ordinary case,
-and more where a charter keeps its own tree. That is the whole data model.
+path and carrying a document. The path is as long as the place it names: `demo.pr.1` for a pull
+request, longer where a charter keeps its own tree. That is the whole data model.
 
 At a command you type those segments as separate words, `demo pr 1`; in a document they are
 written as a kinded path, `demo.pr."1"`. One address.
@@ -77,20 +77,20 @@ as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 
 ```sh
 verse data                                         # the whole verse, one document
-verse data demo pr                                 # by where it lives
+verse data demo pr '*'                             # by where it lives
 verse data demo pr 1                               # one entity, whole
-verse data -at 'demo.pr.*.stage'                   # one field of each, keyed by id
-verse data -if '{stage: open}'                     # by what it says
-verse data -if '{stage: !or [open, merged]}'       # …an operator, not just equality
-verse data -if '{urgent: true}' -if-at labels      # …rooted inside the payload
-verse data demo pr -trim '{stage}'                 # …and how much of each entity to print
-verse data -paths demo pr                          # just the addresses
+verse data -at 'demo.pr.*.stage'                   # one field of each, keyed by name
+verse data demo pr '*' -if '{stage: open}'         # by what it says
+verse data demo pr '*' -if '{stage: !or [open, merged]}'  # …an operator, not just equality
+verse data demo pr '*' -if '{urgent: true}' -if-at labels # …rooted inside the payload
+verse data demo pr '*' -trim '{stage}'             # …and how much of each entity to print
+verse data -paths demo pr '*'                      # just the addresses
 verse data -at demo.pr.1                           # …an address copied out of a document
 ```
 
-A verse is one document, `{system: {kind: {id: payload}}}`, and `verse data` answers it at a path,
-so the same address works at every depth and the answer is the subtree standing there. An id is a
-key in it rather than a token inside a rendered `at:`, which is what `-paths` is for. A read, a
+A verse is one document, and `verse data` answers it at a path, so the same address works at every
+depth and the answer is the node standing there. A name is a key in it rather than a token inside a
+rendered `at:`, which is what `-paths` is for. A read, a
 `-put` and a `-rm` all take the same address: two spellings of one grammar, steps and a kinded
 path, laid out in [reference/entities §Addressing](reference/entities.md#addressing).
 
@@ -100,17 +100,17 @@ straight back.
 
 ```sh
 verse data demo pr a.b labels urgent           # steps: an id with a dot in it, unquoted
-verse data -paths demo pr                      # demo pr a.b
-verse data -paths demo pr | xargs -L1 verse data
+verse data -paths demo pr '*'                  # demo pr a.b
+verse data -paths demo pr '*' | xargs -L1 verse data
 ```
 
 One spelling in and out. A step is a whole word, so a dot inside one is part of the name. The
 shell's own quoting appears only where a segment holds a space or a `*`, and it is single quotes,
 which `xargs` understands. A name that would read as something else is printed inside double
-quotes as well, which reads back as that name: a field called `[0]` is `'"[0]"'`, and an id that
+quotes as well, which reads back as that name: a field called `[0]` is `'"[0]"'`, and a name that
 is an asterisk is `'"*"'`, because a `*` step on its own selects every field there.
 
-**A positional is a step and nothing else.** `verse data demo.pr.1` names a system called
+**A positional is a step and nothing else.** `verse data demo.pr.1` names one segment called
 `demo.pr.1`, because a word cannot be both one segment and several. A whole address in one
 token is taken where it is *marked*, which says which grammar applies instead of guessing it:
 
@@ -119,8 +119,8 @@ verse data -at demo.pr.1            # an address copied out of a document
 verse data -at 'demo.pr.*.stage'    # …wildcards and all, the same as: demo pr '*' stage
 ```
 
-Flags go on either side of the path — `verse data -paths demo pr` and
-`verse data demo pr -paths` are the same command.
+Flags go on either side of the path — `verse data -paths demo pr '*'` and
+`verse data demo pr '*' -paths` are the same command.
 
 `-if-at` takes a dot-separated field path and roots `-if` there, so a predicate about a
 subtree need not restate the shape above it: `-if-at labels -if '{urgent: true}'` is
@@ -169,13 +169,13 @@ on this command is the read's filter. A refused write leaves the entity alone an
 ### Watch
 
 ```sh
-verse watch -if '{stage: open}' demo
+verse watch -if '{stage: open}' demo pr '*'
 ```
 
 ```tony
 {op: set at: demo.pr.1 rev: 1 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
 {op: set at: demo.pr.3 rev: 3 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
-{op: set ref: demo.pr.5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
+{op: set at: demo.pr.5 rev: 5 to: {labels: {area: engine} owner: cy stage: open …}}
 ```
 
 Two things to read off that. It **replays**: a watch is level-triggered at the open, so what
@@ -252,13 +252,13 @@ of the two rules applies when you hand verse a *command* and it satisfies it wit
 ### A task is an entity too
 
 This is the join between entities and tasks. Every task is mirrored into the store as
-`verse.task.instance.<id>`, in verse's own half of the tree, since it is a record verse keeps about
-its own running. So observing the fleet is observing entities:
+`verse.task.instance.<id>`, under `verse`, where verse keeps the records of its own running. So
+observing the fleet is observing entities:
 
 ```sh
-verse watch verse task                        # the whole fleet's lifecycle
-verse data verse task instance <id>      # its result, still there after it finished
-verse data verse task -trim '{status}'          # …or just where everything got to
+verse watch verse task instance '*'                   # the whole fleet's lifecycle
+verse data verse task instance <id>                   # its result, still there after it finished
+verse data verse task instance '*' -trim '{status}'   # …or just where everything got to
 ```
 
 ```tony
@@ -360,7 +360,7 @@ What varies between rules is which parts are present. Each variation is one comm
 ./scripts/charter-shapes.sh clean            # remove every shape and what it acted on
 ```
 
-Each shape acts on its own kind, `demo.latch.*` or `demo.seq.*`, so several can be installed at
+Each shape acts on its own place, `demo.latch.*` or `demo.seq.*`, so several can be installed at
 once without arguing over an entity.
 
 ### patch — a rule need not spawn anything
@@ -583,25 +583,26 @@ a circle, it comes with the thing that bounds it: a **stratum**, a declared leve
   action:
     patch: { stage: raised }
     derive:
-      derived:
-        feature:
-          priority: urgent
-          about: $subject
+    - path: [derived, feature]
+      value:
+        priority: urgent
+        about: $subject
 ```
 
 ```sh
 ./scripts/charter-shapes.sh run derive
 verse charter                                                  # the ordering
-verse data derived feature shape-derive@demo.derive.1
+verse data derived feature shape-derive demo derive 1
 ```
 
 Two rules, checked at install and neither reading the store: a rule's **subject** must be
 inside its own stratum, and a **derive** must land in a strictly higher one. A charter file may
 hold both strata and rules — `verse c -a` installs the ordering first.
 
-The derived entity's id is the *engine's*, a function of (rule, subject), so the rule name and the
-subject are both in it. No two rules can address the same derived entity, and a re-fire writes the
-same address rather than a second thing. A `!each` fan-out adds the element's key to that address
+The derived entity's address is the *engine's*: the place the derive names, then the rule, then the
+subject's own segments — `derived.feature.shape-derive.demo.derive.1`. No two rules can address the
+same derived entity, and a re-fire writes the same address rather than a second thing. An `id:` or
+`key:` beside `path:` in the entry chooses the name under the place instead. A `!each` fan-out adds the element's key to that address
 and changes nothing else here; see [strata](strata.md#each--when-one-answer-holds-many-facts). The
 engine also records what it is about, at `verse.meta.derivedFrom`.
 
@@ -783,7 +784,7 @@ not share a filesystem with you. *Left to do: file reads are still truncated.*
 [reference/tasks.md](reference/tasks.md). *Left to do: the inbox long-poll.*
 
 **Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
-slice of the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
+place in the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
 and install, the way a runner is: `verse source add git.laptop <url>`.
 
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may

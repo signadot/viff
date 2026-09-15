@@ -107,7 +107,7 @@ verse
 
     verse ps -if '{status: running}' -trim '{id status}'
     verse gate -if '{gate: provider}'
-    verse data demo pr -trim '{stage}'             # …per ENTITY, not per top-level key
+    verse data demo pr '*' -trim '{stage}'         # …per pr: the `*` is what makes each one an item
     verse watch demo -trim '{at to}'
 
   A `-trim` document NAMES keys, so write it as a KEY SET: in brackets, a key with no `:` and
@@ -130,15 +130,15 @@ verse
 
   `data` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
   so there is no plural to alias — and WHAT TO DO IS A FLAG, so its positional is a path in
-  every case. `get`, `put` and `rm` were verbs, and a path's first segment is a system name.
+  every case. A path's first segment is a name like any other, and a verb there would shadow one.
 
   data (d) [<step>…]                         the verse at an address, given as STEPS — one
                                              place per word, its first character saying which:
                                              demo pr 1 · demo pr 1 labels urgent  (a name)
                                              demo pr 1 votes '[0]'   (array; also {0} (k))
-                                             demo pr '*'             (every id: a wildcard)
+                                             demo pr '*'             (any one segment)
                                              demo pr 1 '"[0]"'       (the FIELD named [0])
-                                             demo pr '"*"'           (the id that is `*`)
+                                             demo pr '"*"'           (the name that is `*`)
                                              (none) = the whole verse.
                                              A path NOTHING STANDS AT is a non-zero exit,
                                              at every depth: `{}` is a document somebody
@@ -176,11 +176,10 @@ verse
           -put [-expect <pattern>]           only if what is there matches. `-expect` rather
                                              than `-if`, which is the read's filter: a write's
                                              precondition is a different question
-          An address is one grammar in three delimiters — `demo.pr.1` names the entity
-          whole, `demo.pr.1.labels` continues into the payload, `demo pr 1 labels` is the
-          same as separate words — and whichever comes FIRST is the one in use, so an id may
-          hold the others. entities.md#addressing is the whole of it, including which
-          commands take which spelling.
+          An address is one kinded path in two spellings — `demo.pr.1.labels` as one
+          token, `demo pr 1 labels` as separate words, where a word may hold a dot — and a
+          colon is an ordinary character in a name. entities.md#addressing is the whole of
+          it, including which commands take which spelling.
   gate (gates)                               the docket: every question waiting on somebody —
                                              a gate's, one of a task's actions, a provider
                                              selection's — with its options and ballots
@@ -243,8 +242,8 @@ verse
                                              address ends in `rules` or `strata` and would
                                              otherwise shadow that key
           A charter file may open a package with a `---` document of its own — `at: drift`
-          is where its rules write, `reads: [git, other]` what they may read besides, in
-          either address spelling (`!verse-path [demo pr]` too). A package reads inside its
+          is where its rules write, `reads: [git, demo.pr]` what they may read besides, each
+          a kinded path naming a place. A package reads inside its
           own address and what it declares it reads and NOWHERE else; an undeclared read does not install,
           and the graph over packages must be acyclic (a cycle is refused, showing the loop).
           Several `at:` documents in one file install several packages.
@@ -321,12 +320,12 @@ works). A `<who>` is a principal in the [grammar](../perms.md#principals-and-gra
 
 The path narrows by where an entity lives. `-if` narrows by what it says: a tony match
 against the payload, which is the same predicate a charter carries in `value` — in its
-`subject`, its `on` or its `when`. So `verse data -if X` names exactly what
-`verse watch -if X` streams, and both name what a rule with that predicate would select.
+`subject`, its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule
+with the subject `{path: [demo, pr, "*"], value: X}` would select.
 
 ```sh
-verse data -if '{stage: !or [open, merged]}'    # an operator, not just equality
-verse data -if '{urgent: true}' -if-at labels # rooted inside the payload
+verse data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality
+verse data demo pr '*' -if '{urgent: true}' -if-at labels  # rooted inside the payload
 verse watch -if '{stage: open}' demo             # the same selector, as it happens
 verse watch -until '{to: {stage: merged}}' demo # …until one of them merges, then stop
 ```

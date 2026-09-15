@@ -24,18 +24,17 @@ when a controller reaches docd by another address than verse does. See
 
 ## The mapping
 
-The store maps each entity to a kinded path `verse.<system>.<kind>.<id>`, reads and writes via
-Match/Patch, and drives the change stream and revision cursor from a single logd watch. That
-mapping is the whole of what `verse data` publishes: the document it answers with *is* this one,
-addressed by the same path ([entities.md](entities.md#reading)).
+The store keeps the tree in logd under a prefix of its own, which is its business and never a
+level anyone addresses: the node at `demo.pr.1` is the node at that kinded path, whatever it
+holds. It reads and writes via Match/Patch, and drives the change stream and revision cursor from
+a single logd watch. That tree is the whole of what `verse data` publishes: the document it
+answers with *is* this one, addressed by the same path ([entities.md](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking
-the key out — so a deleted ref reads back not_found, and a null is a payload like any other. Since
-go-tony v0.0.201 that holds for a path that was NEVER written too, at every depth and whether or
-not an ancestor of it resolves: a read answers null iff a null was written there. Before it, a
-path with nothing above it answered a bare null — the same answer an entity holding one gives —
-and verse asked the parent whether the key stood to tell them apart. The
-two walks say the same thing at different times: a *materialized* subtree (`walkEntityDoc`, what a
+the key out — so a deleted path reads back not_found, and a null is a node like any other. That
+holds for a path that was never written too, at every length and whether or not an ancestor of it
+resolves: a read answers null iff a null was written there. The two walks say the same thing at
+different times: a *materialized* subtree (`walkEntityDoc`, what a
 read and a snapshot see) has no removals in it to find, while a *delta* (`walkEntityChanges`) has
 no absence to observe and spells a removal with the `!delete` tag.
 
@@ -45,27 +44,26 @@ revision as an opaque cursor and reconciles via `Since`. Writes are atomic via C
 (`PatchIf`), so concurrent modifies do not lose updates. `Op` is `set` or `delete`, with create
 identical to update, since logd delivers the writer's applied patch verbatim.
 
-## The reactive grain is the entity, not the transaction
+## The reactive grain is the node, not the transaction
 
 This one is subtle, and it is the load-bearing assumption worth naming.
 
-A single docd commit can atomically patch many entities, but the store normalises each commit
-into **one change event per entity** — `walkEntityChanges`, at path-depth `system/kind/id`,
-which is the depth an address has unless a reader asks for another — all
-sharing that commit's revision. That normalisation is exactly what guarantees a trigger's
-subject is always one entity: dispatch is per-entity-edge, so `$subject`, and the flow or goal
-keyed on it, is never ambiguous even under a broad match, since a broad pattern just fans out
+A single docd commit can atomically patch many nodes, but the store normalises each commit into
+**one change event per changed node** — `walkEntityChanges`, at the depth the watching question
+asks about — all sharing that commit's revision. That normalisation is exactly what guarantees a
+trigger's subject is always one node: dispatch is per-node edge, so `$subject`, and the flow or
+goal keyed on it, is never ambiguous even under a broad match, since a broad pattern just fans out
 to one firing per matching change.
 
 Less is lost to that than it first sounds, because the commit lands *whole* before any of its
 events dispatch: the store advances its watched document by the entire patch, then walks it
 for events, and each event's `to` is read back out of the already-advanced document. So when
-the edge for one entity fires, every entity that moved with it is already at its new value —
+the edge for one node fires, every node that moved with it is already at its new value —
 in the level state on the event, and in the verse a gate or a set-valued subject reads at fire
 time. "When A opens, and B is green" is expressible today, and it does not care whether B went
 green in the same commit or an hour earlier.
 
-What is genuinely flattened is the commit as a *unit*. Two entities changing together produce
+What is genuinely flattened is the commit as a *unit*. Two nodes changing together produce
 two firings, not one, so a rule matching both fires twice and any dedup is yours; and nothing
 can ask "did these move together?", since the shared revision is the only trace and nothing
 groups by it. Worth revisiting only if a reaction ever needs the grouping itself rather than

@@ -239,17 +239,20 @@ func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // makes for a repo: the team is what one query reads, so a finer target would cost the same
 // request.
 func (l *Linear) targets(ref entity.Ref) []string {
-	if ref.System() != l.system || ref.ID() == "" {
+	// This source's own layout: `<system>.<kind>.<id>`, which it writes and so reads back.
+	segs := ref.Segs()
+	if len(segs) != 3 || segs[0] != l.system || segs[2] == "" {
 		return l.teams
 	}
+	kind, id := segs[1], segs[2]
 	var key string
-	switch ref.Kind() {
+	switch kind {
 	case "team":
-		key = ref.ID()
+		key = id
 	case "issue":
-		key, _, _ = strings.Cut(ref.ID(), "-") // ENG-123
+		key, _, _ = strings.Cut(id, "-") // ENG-123
 	case "cycle":
-		key, _, _ = strings.Cut(ref.ID(), "/") // ENG/42
+		key, _, _ = strings.Cut(id, "/") // ENG/42
 	default:
 		return l.teams // a kind this build does not know: a full pass cannot be wrong
 	}
@@ -271,9 +274,9 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	// or the issues it no longer has would stand forever.
 	mine := entity.Obj{"team": key}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: l.system, Kind: "team", Predicate: mine},
-		{System: l.system, Kind: "issue", Predicate: mine},
-		{System: l.system, Kind: "cycle", Predicate: mine},
+		withPredicate(source.Cover(l.system, "team", "*"), mine),
+		withPredicate(source.Cover(l.system, "issue", "*"), mine),
+		withPredicate(source.Cover(l.system, "cycle", "*"), mine),
 		// The project cover is narrowed to the projects that CARRY THIS TEAM'S SLOT, which is
 		// what the null in the predicate says (a null in a match is a presence test). The slot
 		// alone is not enough narrowing and the difference is not subtle: an unpredicated slot
@@ -286,8 +289,8 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 		// team is recorded on and no longer owns. One it never owned is not covered, and one it
 		// has just joined is written because the ANSWER carries the slot, which is what the
 		// write side matches against.
-		{System: l.system, Kind: "project", Slot: slotOf(key),
-			Predicate: entity.Obj{"owners": map[string]any{key: nil}}.Payload()},
+		withSlot(withPredicate(source.Cover(l.system, "project", "*"),
+			entity.Obj{"owners": map[string]any{key: nil}}.Payload()), slotOf(key)),
 	}}
 	page, err := l.api.readTeam(ctx, key, l.pageSize, l.max)
 	if err != nil {
@@ -411,5 +414,17 @@ func issuePayload(key string, i issue) entity.Obj {
 	if i.Parent != nil && i.Parent.Identifier != "" {
 		p["parent"] = i.Parent.Identifier
 	}
+	return p
+}
+
+// withPredicate is a cover narrowed by a payload predicate.
+func withPredicate(p entity.Pattern, pred entity.Payload) entity.Pattern {
+	p.Predicate = pred
+	return p
+}
+
+// withSlot is a cover claiming only one path inside what it reaches.
+func withSlot(p entity.Pattern, slot []string) entity.Pattern {
+	p.Slot = slot
 	return p
 }

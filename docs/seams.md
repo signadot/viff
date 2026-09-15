@@ -235,7 +235,7 @@ GET {url}/reflect[?ref=<ref>] → Reflection  { covers, entities }
 ```
 
 The source dials verse to **hint** — `POST /sources/{system}/{name}/hint` — and a hint carries
-which slice went stale and nothing else.
+which place went stale and nothing else.
 
 ```mermaid
 sequenceDiagram
@@ -253,7 +253,7 @@ sequenceDiagram
   X->>Src: a push, a webhook
   Src->>V: POST /sources/{system}/{name}/hint?ref=…
   V->>Src: GET /reflect?ref=…
-  Src-->>V: Reflection (that slice)
+  Src-->>V: Reflection (that place)
   V->>V: converge
 ```
 

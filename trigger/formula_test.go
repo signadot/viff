@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,12 +12,12 @@ import (
 
 // A formula is a match: every spelling a match takes reads as one, and renders back as one.
 func TestFormulaIsAMatch(t *testing.T) {
-	for _, in := range []string{`demo.pr.*`, `{path: [demo, pr, *]}`, `{system: demo, kind: pr, value: {stage: open}}`, `!match {system: demo}`} {
+	for _, in := range []string{`demo.pr.*`, `{path: [demo, pr, *]}`, `{path: [demo, pr, "*"], value: {stage: open}}`, `!match {path: [demo, "*", "*"]}`} {
 		var f Formula
 		if err := codec.Unmarshal([]byte(in), &f, codec.Tony); err != nil {
 			t.Fatalf("%s: %v", in, err)
 		}
-		if !f.IsMatchAtom() || f.Req.Facts.System() != "demo" {
+		if !f.IsMatchAtom() || f.Req.Facts.Segs()[0] != "demo" {
 			t.Fatalf("%s → %+v, want a match on demo", in, f)
 		}
 		out, err := codec.Marshal(&f, codec.Tony)
@@ -27,15 +28,14 @@ func TestFormulaIsAMatch(t *testing.T) {
 		if err := codec.Unmarshal(out, &g, codec.Tony); err != nil {
 			t.Fatalf("re-parse of %s: %v", out, err)
 		}
-		if g.Req.Facts.System() != "demo" || g.Req.Facts.Kind() != f.Req.Facts.Kind() {
+		if !reflect.DeepEqual(g.Req.Facts.Segs(), f.Req.Facts.Segs()) {
 			t.Fatalf("round-trip lost the match: %s → %s → %+v", in, out, g)
 		}
 	}
 }
 
-// The temporal grammar is refused by name, in both spellings, and the refusal says what
-// replaced it. A charter still carrying `!quorum 2` must not be read as a match on a field
-// named quorum.
+// The temporal grammar is refused by name, and the refusal says what replaced it. A charter
+// still carrying `!quorum 2` must not be read as a match on a field named quorum.
 func TestTheTemporalGrammarIsRefusedByName(t *testing.T) {
 	cases := []struct {
 		in  string
@@ -45,9 +45,6 @@ func TestTheTemporalGrammarIsRefusedByName(t *testing.T) {
 		{`!until [!quorum 2, !deadline "4h"]`, codec.Tony},
 		{`!fact ci.status.green`, codec.Tony},
 		{`!deadline "4h"`, codec.Tony},
-		{`{"quorum":2}`, codec.JSON},
-		{`{"until":[{"quorum":2},{"deadline":"4h"}]}`, codec.JSON},
-		{`{"fact":"motion.deadline"}`, codec.JSON},
 	}
 	for _, c := range cases {
 		var f Formula

@@ -71,14 +71,14 @@
 # rules and why the second one's subject is the row. A judgement that failed latches too, so
 # an issue whose judge fell over is judged again when it moves, not on every commit until then.
 at: verse-dev.triage
-reads: [ !verse-path [git-issue] ]
+reads: [git-issue]
 ---
 # The reflected slice, where an ISSUE is the subject. Level 0 because nothing this package
 # writes is upstream of it: the source writes here and this package never does.
 - name: reflected
   level: 0
   match:
-    system: git-issue
+    path: [git-issue]
 
 # One row per issue, keyed by the issue: the judgement and the mark of what was judged. It is
 # this package's own slice, since the source is the single writer of `git-issue.*` and a

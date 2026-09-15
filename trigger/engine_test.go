@@ -29,7 +29,7 @@ func TestDenialsDoNotCountAsFirings(t *testing.T) {
 	eng := New(store, denyResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "gated",
-		Condition: Condition{Subject: Match{"system": "demo"}},
+		Condition: Condition{Subject: mm("demo.*.*")},
 		Gates:     []Gate{{Mode: "ask"}},
 		Action:    Action{},
 	})
@@ -76,12 +76,12 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 	eng := New(store, task.AutoResolver{}) // Ask gates auto-proceed
 	eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "deploy",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}}},
 		Gates:     []Gate{{Mode: "ask"}}, // a human/agent approves the deploy
 		Action:    setStage("deployed"),
 	})
@@ -110,13 +110,13 @@ func TestEmergentChainTurnsAndTerminates(t *testing.T) {
 //
 // The guard is gone because the rule makes it unnecessary rather than because the property
 // was dropped. A trigger names its subtrees and is evaluated at nothing else, so naming a
-// machinery system IS the opt-in — there is no default set left to exclude anything from.
+// machinery subtree IS the opt-in — there is no default set left to exclude anything from.
 func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "greedy",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "x"}},
+		Condition: Condition{Subject: mm("demo.x.*")},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -164,12 +164,12 @@ func TestRunawayOscillationIsStoppedByTheThrottle(t *testing.T) {
 	eng.SetTripPace(0)
 	eng.AddTrigger(Trigger{
 		Name:      "ping",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "value": map[string]any{"phase": "a"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "loop", "*"), "value": map[string]any{"phase": "a"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "b"}.Payload()},
 	})
 	eng.AddTrigger(Trigger{
 		Name:      "pong",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop", "value": map[string]any{"phase": "b"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "loop", "*"), "value": map[string]any{"phase": "b"}}},
 		Action:    Action{Patch: entity.Obj{"phase": "a"}.Payload()},
 	})
 
@@ -200,8 +200,8 @@ func TestIdempotentWriteDoesNotLoop(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name:      "spin",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "loop"}}, // any change re-matches
-		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()},           // writes the SAME value back
+		Condition: Condition{Subject: mm("demo.loop.*")},             // any change re-matches
+		Action:    Action{Patch: entity.Obj{"tick": true}.Payload()}, // writes the SAME value back
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -139,7 +139,7 @@ cannot pull the appeared key out of a `!replace`. That is what makes an N-file `
 fire N−1 validators: the first scoped delta, the `!replace`, is the one dropped.
 
 The contract is therefore: apply the delta, do not decode it. A subtree watcher
-maintains the watched slice as a document, applies each event to it
+maintains the watched subtree as a document, applies each event to it
 ([`tony.Patch`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony#Patch) for a
 Patch, replace for a State — opaquely, whatever ops it carries), and reads entities out
 of the *reconstructed object*, diffing against the last snapshot for per-entity
@@ -150,8 +150,8 @@ That diff compares payloads with `ir.Node.DeepEqual`, and the choice is load-bea
 than stylistic: a node carries `Parent`/`ParentIndex`/`ParentField`, which say where it sits
 in the document rather than what it holds, and a document rebuilt from a fresh read wires
 those up anew. `reflect.DeepEqual` compares them and so calls a value unequal to itself;
-ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a slice diffs
-as changed after any resync, so re-establishing a watch re-emits the whole slice and every
+ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a subtree diffs
+as changed after any resync, so re-establishing a watch re-emits the whole subtree and every
 trigger over it fires again for nothing. This is
 what `LogdStore.WatchSubtree` does — and also what the root watch and the `Since`
 replay do, to level their payloads (`applyDelta`). The residual: those two still take the
@@ -162,8 +162,8 @@ merge, never a scope-computed `!replace`. A root watch over a scope would need t
 **A State and a Patch are not rooted alike, and neither one says so.** A Patch is the
 commit's delta rooted at the document (`verse.demo.pr.1: {…}`); a State carries the value
 *at the watched path* (logd extracts it; docd's composed read builds it relative to the
-path). Taken verbatim, a State seeds a document whose root segment is missing — so every
-read of it navigates root → system → kind and finds nothing, the seed contributes no
+path). Taken verbatim, a State seeds a document whose leading segments are missing — so every
+read of it navigates from the document's root to the watched path and finds nothing, the seed contributes no
 entities, and the level state silently degenerates to *whatever has been patched since the
 watch opened*. A deep write of one field then reports an entity of one field, and a trigger
 binds `$note` from a payload that has no note in it: not a crash, a task whose prompt reads
@@ -190,7 +190,7 @@ burst.
 ## The seed is replayed: a subtree watch is level-triggered at the open
 
 The subtree watch diffs its opening snapshot against an *empty* one, so everything already
-standing in the slice arrives as a `Set` before the first live change. A trigger installed
+standing in the subtree arrives as a `Set` before the first live change. A trigger installed
 over a populated verse therefore acts on the backlog that already matches it. This is the
 level reading taken to its conclusion: if `To` is the entity rather than the delta because a
 rule is a statement about the world, then *which* entities a rule is about cannot depend on
@@ -208,7 +208,7 @@ interval of silence as well as after an end it was told about — because a watc
 reasons the consumer never hears (logd drops a watcher whose buffer it cannot drain), and a
 consumer that can only ever be told waits forever whenever the telling is what breaks. The
 resync costs one `State` and, since the diff is against the snapshot already held, emits
-nothing at all when the slice merely happened to be idle.
+nothing at all when the subtree merely happened to be idle.
 
 `Observe` (the root watch) stays "from now" and does not replay — it is the whole-verse
 doorbell behind the debug stream, and its consumer, the dispatch loop, starts from
@@ -224,18 +224,17 @@ answers it — match a field the action advances — and a re-write to the same 
 ## One commit, many entities: the entity is the reactive grain
 
 A logd commit is a single, atomic transaction that can patch many branches at once —
-several `verse.<system>.<kind>.<id>` paths, across systems and kinds. But an
-`entity.Event` names exactly one `Ref`, so the store normalises: `walkEntityChanges` recurses
-the commit's delta and, at path-depth 3 (`system/kind/id` — the depth an address has unless a
-reader asks for another), emits one `Event` per
-entity — all sharing that commit's number as their `Rev` (`LogdStore.eventsFromDelta`).
-Patch five branches in one tx → five per-entity events; patch a whole kind subtree, or
-above it → it descends to each `id` and still yields one event apiece. The "one entity per
+several paths, anywhere in the tree. But an `entity.Event` names exactly one `Ref`, so the store
+normalises: `walkEntityChanges` recurses the commit's delta and emits one `Event` per changed
+node the stream reports, all sharing that commit's number as their `Rev`
+(`LogdStore.eventsFromDelta`); a consumer whose subjects are deeper than the stream's rows asks
+`Commit.ChangedAt`. Patch five branches in one tx → five events; patch the subtree above them →
+it descends to each and still yields one event apiece. The "one entity per
 change" grain is imposed *here*, at the logd↔store seam, not assumed by the engine.
 
 This is what makes a trigger's subject well-defined. A firing is driven by one event, which carries
 one `Ref`, so `$subject`, and hence the flow keyed on it, is always exactly one entity. Not because
-a match *pattern* is constrained to one entity — it is not, since `{path: ["demo", *, *]}` matches
+a match *pattern* is constrained to one entity — it is not, since `demo.*.*` matches
 every demo entity — but because dispatch is per-entity-edge. A broad pattern fans out to one
 independent firing per matching change.
 
@@ -265,9 +264,9 @@ zero events once it runs out its own timeout — a successful-looking under-deli
 engine's catch-up, which is the worst shape the failure could take.
 
 A consumer could be made resilient to mounts arriving and leaving under it. Verse takes a namespace
-split instead, because it is simpler: mount-owned slices render under a sibling of the entity root,
+split instead, because it is simpler: mounted places render under a sibling of the entity root,
 so no watch verse takes is ever an ancestor of a mount. One root watch, `Since` untouched. The price
-is that a mounted slice fires no triggers, which is the right price, since a mount is task-driven
+is that a mounted place fires no triggers, which is the right price, since a mount is task-driven
 and has no history to observe in the first place. See [controllers](controllers.md).
 
 ## Why this is the portable choice (not an exotic dependency)

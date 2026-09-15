@@ -434,7 +434,7 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 	// however deep the address is.
 	code, msg := installAt(t, ts.URL, "verse-dev.drift", `{
 		name: reach, stratum: tip,
-		condition: {subject: !verse-path [verse-dev, drift, head, "*"]},
+		condition: {subject: {path: [verse-dev, drift, head, "*"]}},
 		action: {derive: [{path: [somewhere, else], value: {x: 1}}]},
 	}`)
 	if code == 201 {
@@ -497,7 +497,7 @@ func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
 	stray := trigger.CharterRefAt("notes", "refused")
 	entitytest.Set(t, srv.Store, stray, entity.Obj{
 		"at": "notes", "name": "refused",
-		"condition": entity.Obj{"subject": entity.Obj{"system": "git", "kind": "head"}},
+		"condition": entity.Obj{"subject": "git.head.*"},
 		"action":    entity.Obj{"patch": entity.Obj{"seen": true}},
 	}.Payload())
 	if got := srv.packagesSeen(); len(got) != 1 {

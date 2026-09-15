@@ -86,7 +86,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	})
 	if err := eng.AddTrigger(Trigger{
 		Name: "validate",
-		Condition: Condition{Subject: Match{"system": "local", "kind": "file",
+		Condition: Condition{Subject: Match{"path": pathOf("local", "file", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
 			Spawn:  &launch.Spec{Prompt: "validate $path"},
@@ -134,7 +134,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 // spawnID keys off the whole ref and disambiguates safeSeg's lossy rewrites, so
 // distinct entities never share a task id (which would cross-wire control).
 func TestSpawnIDDistinguishesRefs(t *testing.T) {
-	// same id, different system: must differ (not just ref.ID keyed)
+	// same last segment, different first: must differ (not keyed by the name alone)
 	if a, b := spawnID("", "r", entity.RefAt("demo", "pr", "1")),
 		spawnID("", "r", entity.RefAt("other", "pr", "1")); a == b {
 		t.Fatalf("same spawn id for different refs: %q", a)

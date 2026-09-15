@@ -30,7 +30,12 @@ func providerCmd() *cli.Command {
 			}
 			for _, e := range ents {
 				payload := entity.ToObj(e.Payload)
-				line := fmt.Sprintf("%-10s %-14s driver=%v", e.Ref.Kind(), e.Ref.ID(), payload["driver"])
+				// The provider registry's own layout: provider.<capability>.<name>.
+				capability := ""
+				if segs := e.Ref.Segs(); len(segs) == 3 {
+					capability = segs[1]
+				}
+				line := fmt.Sprintf("%-10s %-14s driver=%v", capability, e.Ref.Name(), payload["driver"])
 				for k, v := range payload {
 					if k != "driver" {
 						line += fmt.Sprintf(" %s=%v", k, v)

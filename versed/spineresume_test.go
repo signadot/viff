@@ -20,10 +20,10 @@ func waitAnyQuestion(t *testing.T, srv *Server) string {
 	t.Helper()
 	for range 300 {
 		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+			return mirror.IsQuestion(ref)
 		}) {
 			if entity.ToObj(ent.Payload)["status"] == mirror.QuestionPending {
-				return ent.Ref.ID()
+				return ent.Ref.Name()
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -60,7 +60,7 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	// event stream of its own — which is the whole reason this path exists.
 	if err := srv.Eng.AddTrigger(trigger.Trigger{
 		Name:      "review",
-		Condition: trigger.Condition{Subject: trigger.Match{"system": "change", "kind": "pr"}},
+		Condition: trigger.Condition{Subject: matchAt("change.pr.*", nil)},
 		Gating:    &trigger.Gating{Gates: []trigger.Gate{{Name: "sec", Mode: "ask"}}},
 		Action:    trigger.Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
@@ -69,7 +69,7 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	qid := waitAnyQuestion(t, srv)
 
-	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(entity.RefAt("change", "pr", "1"))).ID()
+	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(entity.RefAt("change", "pr", "1"))).Name()
 	_, lines, stop := sseData(t, http.DefaultClient, ts.URL+"/resolvers/instance/"+inst+"/events?since=1")
 	defer stop()
 

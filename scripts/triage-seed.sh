@@ -18,8 +18,8 @@ set -euo pipefail
 v() { verse ${VERSE_ADDR:+-addr "$VERSE_ADDR"} "$@"; }
 
 # The listing, trimmed to the two facts the mark carries. The `*` is what makes each issue the
-# item `--if` and `--trim` ask of: a selection of N segments identifies entities at depth N, and
-# the three segments `git-issue.verse.issue` name the map of issues as one. The steps spelling is
+# item `--if` and `--trim` ask of: a path names the node at it, so `git-issue.verse.issue` is the
+# map of issues as one node and `git-issue.verse.issue.*` is the issues. The steps spelling is
 # `git-issue verse issue '*'`. Output is tony:
 #   <xidr>:
 #     id: <xidr>

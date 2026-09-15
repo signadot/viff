@@ -24,7 +24,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{Subject: Match{
-			"system": "demo", "kind": "pr",
+			"path":  pathOf("demo", "pr", "*"),
 			"value": map[string]any{"stage": "reviewed", "env": "prod"},
 		}},
 		// A rule must have an action (git-issue b2g9hsnfh12ks5vqg9n0), and this one latches:
@@ -81,7 +81,7 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "announce",
 		Condition: Condition{Subject: Match{
-			"system": "demo", "kind": "task",
+			"path":  pathOf("demo", "task", "*"),
 			"value": map[string]any{"stage": "ready"},
 		}},
 		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},

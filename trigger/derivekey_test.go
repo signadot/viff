@@ -27,7 +27,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 
 	for _, st := range []Stratum{
-		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
 		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
@@ -54,7 +54,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 
 	head := entity.RefAt("git", "head", "verse")
 	entitytest.Set(t, store, head, entity.Obj{"sha": "aaa111"}.Payload())
-	// `demo.batch`, the rule, the three segments of `git.head.verse`, and the key.
+	// `demo.batch`, the rule, the segments of `git.head.verse`, and the key.
 	waitDeep(t, store, []string{"demo", "batch"}, batchDepth)
 
 	// THE TIP MOVES, and the point is that this is a SECOND entity rather than a rewrite of the
@@ -100,7 +100,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
 			if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0,
-				Match: []Match{{"system": "git"}}}); err != nil {
+				Match: []Match{mm("git")}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := eng.AddStratum(Stratum{Name: "batches", Level: 10,
@@ -142,7 +142,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, st := range []Stratum{
-		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
 		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
@@ -186,7 +186,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 func TestADeriveRefusesBothKeyAndID(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}}); err != nil {
+	if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0, Match: []Match{mm("git")}}); err != nil {
 		t.Fatal(err)
 	}
 	err := eng.AddTrigger(mustParseCharter(t, `
@@ -217,7 +217,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, st := range []Stratum{
-		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
 		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
@@ -294,6 +294,6 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 }
 
 // batchDepth is where a KEYED derive about `git.head.verse` lands under `demo.batch`: the
-// target, the rule that derived, the subject's own three segments, and the key. A derived
-// entity is as deep as what it is about, so a listing says so rather than assuming three.
+// target, the rule that derived, the subject's own segments, and the key. A derived entity is as
+// deep as what it is about, so a listing says so rather than assuming a depth.
 const batchDepth = 2 + 1 + 3 + 1

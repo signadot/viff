@@ -30,8 +30,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      system: git
-      kind: head
+      path: [git, head, "*"]
       value: !let
         let:
         - tip: !get-path {at: [git, head, verse], path: sha}
@@ -51,8 +50,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      system: git
-      kind: head
+      path: [git, head, "*"]
       value: !let
         let:
         - tip: !get-path {at: [git, head, verse], path: sha}
@@ -69,8 +67,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      system: git
-      kind: head
+      path: [git, head, "*"]
       value: !let
         let:
         - field: !get-path {at: [git, head, verse], path: which}
@@ -103,8 +100,7 @@ func TestAReadThatNamesNoBindingInstalls(t *testing.T) {
 - name: probe
   condition:
     subject:
-      system: git
-      kind: head
+      path: [git, head, "*"]
       value: !let
         let:
         - fresh: !list-paths

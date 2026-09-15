@@ -318,7 +318,7 @@ func TestWatchSubtreeIgnoresOtherSlices(t *testing.T) {
 	r.quiet(t, "writes to slices this watch does not cover")
 
 	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
-	if ev := r.next(t, "a write to the watched slice"); ev.Ref.ID() != "1" {
+	if ev := r.next(t, "a write to the watched slice"); ev.Ref != RefAt("demo", "pr", "1") {
 		t.Fatalf("event = %s, want demo.pr.1", ev.Ref)
 	}
 }

@@ -13,12 +13,12 @@ import (
 
 const ownedPackage = `
 at: notes
-reads: [ !verse-path [demo] ]
+reads: [demo]
 ---
 - name: src
   level: 0
   match:
-    system: demo
+    path: [demo]
 - name: rows
   level: 10
   match:

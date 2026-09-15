@@ -29,15 +29,6 @@ func (f *fakeSource) Reflect(context.Context, entity.Ref) (source.Reflection, er
 	return f.answer(), nil
 }
 
-// cover is the pattern spelling the tests use: a system and kind, unnarrowed.
-func cover(system, kind string) entity.Pattern {
-	return entity.Pattern{System: system, Kind: kind}
-}
-
-func ref(system, kind, id string) entity.Ref {
-	return entity.RefAt(system, kind, id)
-}
-
 // countingStore counts the writes converge ISSUES.
 //
 // It exists because the store underneath absorbs a patch that changes nothing — rewriting an
@@ -137,19 +128,19 @@ func TestReflectorQuietRepoIsSilent(t *testing.T) {
 func TestConvergeTombstonesOnlyWhatItCovers(t *testing.T) {
 	ctx := context.Background()
 	store := newStore(t)
-	entitytest.Set(t, store, ref("x", "a", "1"), entity.Obj{"n": 1}.Payload())
-	entitytest.Set(t, store, ref("x", "b", "1"), entity.Obj{"n": 1}.Payload())
+	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
+	entitytest.Set(t, store, entity.RefAt("x", "b", "1"), entity.Obj{"n": 1}.Payload())
 
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
-		return source.Reflection{Covers: []entity.Pattern{cover("x", "a")}}
+		return source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 	}}
 	if err := source.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(ref("x", "a", "1")); ok {
+	if _, ok, _ := store.Get(entity.RefAt("x", "a", "1")); ok {
 		t.Fatal("x.a.1 is covered and was not carried: it should have tombstoned")
 	}
-	if _, ok, _ := store.Get(ref("x", "b", "1")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("x", "b", "1")); !ok {
 		t.Fatal("x.b.1 is covered by nothing: converge had no authority to remove it")
 	}
 }
@@ -163,9 +154,9 @@ func TestConvergeKeepsWhatNoCoverClaims(t *testing.T) {
 
 	carry := true
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
-		rn := source.Reflection{Covers: []entity.Pattern{cover("x", "a")}}
+		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 		if carry {
-			rn.Add(ref("x", "b", "1"), entity.Obj{"n": 1})
+			rn.Add(entity.RefAt("x", "b", "1"), entity.Obj{"n": 1})
 		}
 		return rn
 	}}
@@ -173,14 +164,14 @@ func TestConvergeKeepsWhatNoCoverClaims(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(ref("x", "b", "1")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("x", "b", "1")); !ok {
 		t.Fatal("an entity under no cover should still be written")
 	}
 	carry = false
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("second reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(ref("x", "b", "1")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("x", "b", "1")); !ok {
 		t.Fatal("an entity under no cover must never be tombstoned, carried or not")
 	}
 }
@@ -195,8 +186,8 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 
 	payload := entity.Obj{"p": 1, "q": 2}
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
-		rn := source.Reflection{Covers: []entity.Pattern{cover("x", "a")}}
-		rn.Add(ref("x", "a", "1"), payload)
+		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
+		rn.Add(entity.RefAt("x", "a", "1"), payload)
 		return rn
 	}}
 	rf := source.NewReflector(src, store, 0)
@@ -208,7 +199,7 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("second reconcile: %v", err)
 	}
-	e, ok, _ := store.Get(ref("x", "a", "1"))
+	e, ok, _ := store.Get(entity.RefAt("x", "a", "1"))
 	if !ok {
 		t.Fatal("x.a.1 vanished")
 	}
@@ -224,47 +215,49 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 	}
 }
 
-// A cover that lost its system does not claim nothing — an empty dimension in a Pattern is a
-// WILDCARD, so it claims everything the pass looked at. Refusing it BEFORE anything is written
-// is the whole point: this is the fault that costs entities rather than returning an error.
-func TestConvergeRefusesACoverWithNoSystem(t *testing.T) {
+// A cover that lost its path does not claim nothing — the empty path is the root, which every
+// address is under, so it claims everything the pass looked at. Refusing it BEFORE anything is
+// written is the whole point: this is the fault that costs entities rather than returning an
+// error.
+func TestConvergeRefusesACoverWithNoPath(t *testing.T) {
 	ctx := context.Background()
 	store := newStore(t)
-	entitytest.Set(t, store, ref("x", "a", "1"), entity.Obj{"n": 1}.Payload())
+	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
 
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
-		return source.Reflection{Covers: []entity.Pattern{{Kind: "a"}}}
+		return source.Reflection{Covers: []entity.Pattern{{Predicate: entity.Obj{"n": 1}.Payload()}}}
 	}}
 	if err := source.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err == nil {
-		t.Fatal("a cover with no system should be refused")
+		t.Fatal("a cover with no path should be refused")
 	}
-	if _, ok, _ := store.Get(ref("x", "a", "1")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt("x", "a", "1")); !ok {
 		t.Fatal("the refusal must land before anything is written")
 	}
 }
 
 // The rest of Check, as messages rather than as behaviour: a source is the single writer of ONE
-// slice, so neither a cover nor an entity may reach outside it, and a cover carries no op —
-// converge compares against what stands in the store, which has none.
+// place, so neither a cover nor an entity may reach outside it, an entity is written into that
+// place rather than over the whole of it, and a cover carries no op — converge compares against
+// what stands in the store, which has none.
 func TestReflectionCheckRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		rn   source.Reflection
 	}{
-		{"cover in another system", source.Reflection{
-			Covers: []entity.Pattern{cover("y", "a")},
+		{"cover in another place", source.Reflection{
+			Covers: []entity.Pattern{source.Cover("y", "a", "*")},
 		}},
 		{"cover carrying an op", source.Reflection{
-			Covers: []entity.Pattern{{System: "x", Kind: "a", Op: entity.Set}},
+			Covers: []entity.Pattern{withOp(source.Cover("x", "a", "*"), entity.Set)},
 		}},
-		{"entity in another system", source.Reflection{
-			Entities: []entity.Entity{{Ref: ref("y", "a", "1")}},
+		{"entity in another place", source.Reflection{
+			Entities: []entity.Entity{{Ref: entity.RefAt("y", "a", "1")}},
 		}},
-		{"entity with no id", source.Reflection{
-			Entities: []entity.Entity{{Ref: ref("x", "a", "")}},
+		{"entity at the source's whole place", source.Reflection{
+			Entities: []entity.Entity{{Ref: entity.RefAt("x")}},
 		}},
 		{"cover with an empty slot segment", source.Reflection{
-			Covers: []entity.Pattern{{System: "x", Kind: "a", Slot: []string{"owners", ""}}},
+			Covers: []entity.Pattern{withSlot(source.Cover("x", "a", "*"), "owners", "")},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,14 +266,14 @@ func TestReflectionCheckRefusals(t *testing.T) {
 			}
 		})
 	}
-	ok := source.Reflection{Covers: []entity.Pattern{cover("x", "a")}}
-	ok.Add(ref("x", "a", "1"), entity.Obj{"n": 1})
+	ok := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
+	ok.Add(entity.RefAt("x", "a", "1"), entity.Obj{"n": 1})
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
 	}
 	// And a slot cover is well-formed: converge honours it.
 	slotted := source.Reflection{Covers: []entity.Pattern{
-		{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}}}
+		withSlot(source.Cover("x", "a", "*"), "owners", "ENG")}}
 	if err := slotted.Check("x"); err != nil {
 		t.Fatalf("a slot cover should be accepted: %v", err)
 	}
@@ -292,12 +285,12 @@ func TestReflectionCheckRefusals(t *testing.T) {
 // forever. So the pass fails, and nothing is written.
 func TestCoveringAnEntityWholeAndBySlotIsRefused(t *testing.T) {
 	store := entitytest.Store(t)
-	shared := ref("x", "project", "p1")
+	shared := entity.RefAt("x", "project", "p1")
 	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{}}}.Payload())
 
 	rn := source.Reflection{Covers: []entity.Pattern{
-		cover("x", "project"),
-		{System: "x", Kind: "project", Slot: []string{"owners", "ENG"}},
+		source.Cover("x", "project", "*"),
+		withSlot(source.Cover("x", "project", "*"), "owners", "ENG"),
 	}}
 	rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{"n": 1}}})
 
@@ -322,7 +315,7 @@ func TestCoveringAnEntityWholeAndBySlotIsRefused(t *testing.T) {
 // than about the codec. It is one optional field on a cover — no cover written before it
 // changes shape, and none of the three connectors sends one.
 func TestASlotRidesTheCoverWire(t *testing.T) {
-	in := entity.Pattern{System: "x", Kind: "a", Slot: []string{"owners", "ENG"}}
+	in := withSlot(source.Cover("x", "a", "*"), "owners", "ENG")
 	n, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{in}})
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +335,7 @@ func TestASlotRidesTheCoverWire(t *testing.T) {
 		t.Fatalf("the slot did not come back: %+v", back.Covers)
 	}
 	// And a cover without one is unchanged, which is the whole claim to being additive.
-	plain, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{cover("x", "a")}})
+	plain, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +362,7 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	mine := entity.Obj{"repo": "r"}.Payload()
 	build := func(stage string, n int) source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
-			{System: "demo", Kind: "thing", Predicate: mine},
+			withPredicate(source.Cover("demo", "thing", "*"), mine),
 		}}
 		for i := range n {
 			rn.Add(entity.RefAt("demo", "thing", fmt.Sprint(i)),
@@ -427,14 +420,14 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 // commits: it says converge did not even ask.
 func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
 	store := entitytest.Store(t)
-	shared := ref("x", "project", "p1")
+	shared := entity.RefAt("x", "project", "p1")
 
 	// Each source answers with a whole-entity-shaped payload carrying only its own slot, and a
 	// cover that says which slot that is. Neither has heard of the other.
 	owner := func(team, name string) *source.Reflector {
 		src := &fakeSource{system: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
-				{System: "x", Kind: "project", Slot: []string{"owners", team}},
+				withSlot(source.Cover("x", "project", "*"), "owners", team),
 			}}
 			rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"name": name}}})
 			return rn
@@ -485,14 +478,14 @@ func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
 // sibling's key was.
 func TestTheLastOwnerOutTakesTheEntity(t *testing.T) {
 	store := entitytest.Store(t)
-	shared := ref("x", "project", "p1")
+	shared := entity.RefAt("x", "project", "p1")
 
 	// A source that reflects its slot only while `has` says so; when it stops, its cover still
 	// claims the slot, which is what makes the absence a tombstone rather than a silence.
 	owner := func(team string, has *bool) *source.Reflector {
 		src := &fakeSource{system: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
-				{System: "x", Kind: "project", Slot: []string{"owners", team}},
+				withSlot(source.Cover("x", "project", "*"), "owners", team),
 			}}
 			if *has {
 				rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"n": 1}}})
@@ -550,7 +543,7 @@ func mustGet(t *testing.T, s entity.Store, r entity.Ref) entity.Payload {
 // entity differs from the answer on every pass, and every trigger over it fires each time.
 func TestASlotIsReplacedNotMerged(t *testing.T) {
 	store := entitytest.Store(t)
-	shared := ref("x", "project", "p1")
+	shared := entity.RefAt("x", "project", "p1")
 	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{
 		"OPS": map[string]any{"name": "theirs"},
 	}}.Payload())
@@ -558,7 +551,7 @@ func TestASlotIsReplacedNotMerged(t *testing.T) {
 	fields := map[string]any{"name": "Migration", "lead": "ana"}
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
-			{System: "x", Kind: "project", Slot: []string{"owners", "ENG"}},
+			withSlot(source.Cover("x", "project", "*"), "owners", "ENG"),
 		}}
 		rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": fields}})
 		return rn
@@ -675,16 +668,15 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 	}
 }
 
-// A path cover names its system in its first segment, literally. A `*` there is the wildcard
-// an empty system is, and is refused for the same reason: it claims every system it is compared
-// against.
+// A cover names its source's place in its first segment, literally. A `*` there is refused for
+// the reason an empty path is: it claims every place it is compared against.
 func TestAPathCoverNamesItsSystem(t *testing.T) {
 	wild := source.Cover("*", "A", "ref", "*")
 	for _, c := range []struct {
 		cover entity.Pattern
 		want  string
 	}{
-		{wild, "literal system"},
+		{wild, "literal place"},
 		{source.Cover("y", "A", "ref", "*"), `this source owns "x"`},
 	} {
 		err := source.Reflection{Covers: []entity.Pattern{c.cover}}.Check("x")
@@ -695,4 +687,22 @@ func TestAPathCoverNamesItsSystem(t *testing.T) {
 	if err := (source.Reflection{Covers: []entity.Pattern{source.Cover("x", "A", "ref", "*")}}).Check("x"); err != nil {
 		t.Fatalf("a cover at this source's own place was refused: %v", err)
 	}
+}
+
+// withSlot is a cover claiming only the value at this path inside what it reaches.
+func withSlot(p entity.Pattern, slot ...string) entity.Pattern {
+	p.Slot = slot
+	return p
+}
+
+// withPredicate is a cover narrowed by a payload predicate.
+func withPredicate(p entity.Pattern, pred entity.Payload) entity.Pattern {
+	p.Predicate = pred
+	return p
+}
+
+// withOp is a cover carrying a change op, which Check refuses.
+func withOp(p entity.Pattern, op entity.Op) entity.Pattern {
+	p.Op = op
+	return p
 }

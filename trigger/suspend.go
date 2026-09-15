@@ -43,7 +43,7 @@ func SuspensionRef(id string) entity.Ref {
 
 // IsSuspension reports whether an address is a suspension's record.
 func IsSuspension(r entity.Ref) bool {
-	return r.Reserved() && r.System() == CharterSystem && r.Kind() == SuspensionKind
+	return r.ChildOf(entity.VerseRoot, CharterSystem, SuspensionKind)
 }
 
 // Suspension is one record: what it covers, the scope it was made in, and who holds it.
@@ -54,8 +54,8 @@ type Suspension struct {
 	Recursive bool
 	// Rule is a rule's name in the charter, or Every.
 	Rule string
-	// Subject is a flow selector: an address with Every in any segment, or Every alone for every
-	// subject — the grammar `verse flow --subject` lists by.
+	// Subject is the path the suspension holds work about, as a rule's subject is a path: a
+	// segment of Every reaches any name there. `*` is the path every address is under.
 	Subject string
 	// Scope is the scope the suspension was made in, "" for baseline, as a rule record's.
 	Scope string
@@ -66,7 +66,6 @@ type Suspension struct {
 	charterAll bool     // Every
 	subject    []string // parsed steps, Every where a segment is open
 	subjectM   Match    // the selector the steps read as
-	subjectAll bool     // Every
 }
 
 // Holder is one party's hold on a suspension: why, since when, and the store revision the hold
@@ -124,19 +123,14 @@ func NewSuspension(charter, rule, subject string, recursive bool) (Suspension, e
 		return Suspension{}, err
 	}
 	s.subject, s.subjectM = steps, m
-	if len(steps) == 0 {
-		s.Subject, s.subjectAll = Every, true
-	} else {
-		s.Subject = joinSelector(steps)
-	}
+	s.Subject = joinSelector(steps)
 	return s, nil
 }
 
 // subjectSelector reads a suspension's subject as the flow selector it is (ParseExpr), and the
-// steps its one spelling is rendered from. A trailing open segment of an address the three
-// dimensions hold is the same selector as none, so it is dropped; deeper, a trailing Every asks
-// for the depth, and stays. A payload predicate has no string spelling, and would let an ordinary
-// write take the subject out of the match and so lift the suspension.
+// steps its one spelling is rendered from. A trailing `*` asks for the depth, and stays. A payload
+// predicate has no string spelling, and would let an ordinary write take the subject out of the
+// match and so lift the suspension.
 func subjectSelector(subject string) ([]string, Match, error) {
 	if strings.TrimSpace(subject) == "" {
 		return nil, nil, fmt.Errorf("a suspension names its subject: an address, or %q for every subject", Every)
@@ -151,11 +145,6 @@ func subjectSelector(subject string) ([]string, Match, error) {
 	steps, err := entity.ExprSegs(strings.TrimSpace(subject))
 	if err != nil {
 		return nil, nil, fmt.Errorf("subject %q: %w", subject, err)
-	}
-	if !m.Deep() {
-		for len(steps) > 0 && steps[len(steps)-1] == Every {
-			steps = steps[:len(steps)-1]
-		}
 	}
 	return steps, m, nil
 }
@@ -267,17 +256,21 @@ func (s Suspension) CoversCharter(at []string, rule string) bool {
 // CoversSubject reports whether the suspension names this subject, by the selector a flow is
 // listed by. Work about no subject is named only by a suspension of every subject.
 func (s Suspension) CoversSubject(subj entity.Ref) bool {
-	if s.subjectAll {
-		return true
-	}
+	// The subject is a PATH, asked as a rule's subject is: what its path reaches. Work about no
+	// subject stands under no path, so no subject names it.
 	if subj == (entity.Ref{}) {
 		return false
 	}
 	return s.subjectM.MatchRef(subj)
 }
 
-// EverySubject reports whether it names every subject — what a whole rule being held means.
-func (s Suspension) EverySubject() bool { return s.subjectAll }
+// EverySubject reports whether its subject path reaches every subject — what a whole rule being
+// held means. It is a question about the path, answered by containment: whether it contains the
+// path of one `*`, which every address is under.
+func (s Suspension) EverySubject() bool { return matchContains(s.subjectM, everySubject) }
+
+// everySubject is the path every address is under: one segment, any name.
+var everySubject = Match{mKeyPath: []*ir.Node{ir.FromString(Every)}}
 
 // EveryCharter reports whether it names every charter.
 func (s Suspension) EveryCharter() bool { return s.charterAll }
@@ -334,18 +327,8 @@ func (s Suspension) Within(o Suspension) bool {
 	if o.Rule != Every && o.Rule != s.Rule {
 		return false
 	}
-	switch {
-	case o.subjectAll:
-		return true
-	case s.subjectAll, len(s.subject) < len(o.subject):
-		return false
-	}
-	for i, want := range o.subject {
-		if want != Every && want != s.subject[i] {
-			return false
-		}
-	}
-	return true
+	// Everything s's subject path reaches, o's reaches too: path containment, as a stratum asks it.
+	return matchContains(o.subjectM, s.subjectM)
 }
 
 // CharterFlag is the charter side as `--charter` spells it: the address, and `:<rule>` when it

@@ -12,8 +12,8 @@ import (
 func installAll(t *testing.T, eng *Engine, src string) {
 	t.Helper()
 	withStrata(t, eng,
-		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "git"}}},
-		Stratum{Name: "high", Level: 1, Match: []Match{{"system": "notes"}}})
+		Stratum{Name: "low", Level: 0, Match: []Match{mm("git")}},
+		Stratum{Name: "high", Level: 1, Match: []Match{mm("notes")}})
 	trigs, _, _, _, ok := parseBlock(src)
 	if !ok || len(trigs) == 0 {
 		t.Fatalf("did not parse as a charter:\n%s", src)
@@ -40,9 +40,9 @@ func TestADeriveOverAnotherRulesFieldIsAdvised(t *testing.T) {
   condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
-      notes:
-        row:
-          reviewed: pending
+    - path: [notes, row]
+      value:
+        reviewed: pending
 - name: gather
   stratum: high
   condition: {subject: {path: [notes, row, *], value: {reviewed: pending}}}
@@ -55,9 +55,9 @@ func TestADeriveOverAnotherRulesFieldIsAdvised(t *testing.T) {
   condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
-      notes:
-        row:
-          reviewed: pending
+    - path: [notes, row]
+      value:
+        reviewed: pending
 `))
 	var found string
 	for _, n := range notes {
@@ -85,9 +85,9 @@ func TestADeriveThatOwnsItsFieldsIsNotAdvised(t *testing.T) {
   condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
-      notes:
-        row:
-          sha: $subject.id
+    - path: [notes, row]
+      value:
+        sha: $subject.name
 - name: gather
   stratum: high
   condition: {subject: {path: [notes, row, *], value: !not.has-path reviewed}}
@@ -110,9 +110,9 @@ func TestADeriveElsewhereIsNotAdvised(t *testing.T) {
   condition: {subject: {path: [git, commit, *]}}
   action:
     derive:
-      notes:
-        row:
-          reviewed: pending
+    - path: [notes, row]
+      value:
+        reviewed: pending
 - name: elsewhere
   condition: {subject: {path: [demo, pr, *]}}
   action:

@@ -36,14 +36,14 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
     onDone:
       patch: {reviewed: done}
       derive:
-        drift:
-          finding: !each
-            over: $data.findings
-            key: $item.symbol
-            value:
-              symbol: $item.symbol
-              was: $item.was
-              about: $subject.id
+      - path: [drift, finding]
+        value: !each
+          over: $data.findings
+          key: $item.symbol
+          value:
+            symbol: $item.symbol
+            was: $item.was
+            about: $subject.name
 `,
 		`
 - name: reflected
@@ -61,7 +61,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
-      derive: {drift: {finding: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}}
+      derive: [{path: [drift, finding], value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
 `,
 	} {
 		trigs, _, strata, _, ok := parseBlock(src)
@@ -95,11 +95,11 @@ func TestEachRefusals(t *testing.T) {
 	cases := []struct{ name, derive, want string }{
 		{"no address", `{over: $data.findings, value: {a: 1}}`, "needs a `key`"},
 		{"both key and id", `{over: $data.f, key: $item.k, id: $item.k, value: {a: 1}}`, "answered twice"},
-		{"id off the element", `{over: $data.f, id: $subject.id, value: {a: 1}}`, "rooted at $item"},
+		{"id off the element", `{over: $data.f, id: $subject.name, value: {a: 1}}`, "rooted at $item"},
 		{"no over", `{key: $item.k, value: {a: 1}}`, `missing "over"`},
 		{"unknown field", `{over: $data.f, key: $item.k, value: {a: 1}, sweep: true}`, `no field "sweep"`},
 		{"over is text", `{over: "the $data.findings", key: $item.k, value: {a: 1}}`, "single reference"},
-		{"key off the element", `{over: $data.f, key: $subject.id, value: {a: 1}}`, "rooted at $item"},
+		{"key off the element", `{over: $data.f, key: $subject.name, value: {a: 1}}`, "rooted at $item"},
 		{"value is scalar", `{over: $data.f, key: $item.k, value: 1}`, "must be an object"},
 		{"value reads state", `{over: $data.f, key: $item.k, value: {a: $data.total}}`, "and nothing else"},
 		{"value reads the occasion", `{over: $data.f, key: $item.k, value: {a: $subject.commit}}`, "and nothing else"},
@@ -122,7 +122,7 @@ func TestEachRefusals(t *testing.T) {
     spawn: {driver: scripted, prompt: "x"}
     onDone:
       patch: {reviewed: done}
-      derive: {drift: {finding: !each ` + c.derive + `}}
+      derive: [{path: [drift, finding], value: !each ` + c.derive + `}]
 `
 			trigs, _, strata, _, ok := parseBlock(src)
 			if !ok {
@@ -160,7 +160,7 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
     subject: {path: [gh, issue, *], value: {label: urgent}}
   action:
     patch: {triaged: true}
-    derive: {signadot: {feature: {priority: urgent, about: $subject.id}}}
+    derive: [{path: [signadot, feature], value: {priority: urgent, about: $subject.name}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -179,7 +179,7 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
 	if len(ds) != 1 || ds[0].Each != nil || ds[0].Payload == nil {
 		t.Fatalf("plain derive read as %+v, want a payload and no Each", ds)
 	}
-	if ds[0].addr() != "signadot:feature" {
+	if ds[0].addr() != "signadot.feature" {
 		t.Errorf("address = %q", ds[0].addr())
 	}
 }
@@ -201,7 +201,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
     spawn: {driver: scripted, prompt: "x"}
     onDone:
       patch: {reviewed: done}
-      derive: {drift: {finding: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}}
+      derive: [{path: [drift, finding], value: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -217,7 +217,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 	if err == nil {
 		t.Fatal("a fan-out into its own stratum installed; a derive must land strictly above")
 	}
-	if !strings.Contains(err.Error(), "drift:finding") {
+	if !strings.Contains(err.Error(), "drift.finding") {
 		t.Errorf("refused with %q, want it to name the derive target", err)
 	}
 }
@@ -239,7 +239,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
     subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}}
+    derive: [{path: [drift, finding], value: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -331,7 +331,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	}
 	for _, c := range commits {
 		for _, ch := range c.Changes {
-			if ch.Ref.System() == "drift" {
+			if ch.Ref.Under("drift") {
 				t.Errorf("re-deriving the same content changed %s — the no-op the ordering "+
 					"rests on did not hold", ch.Ref)
 			}
@@ -365,7 +365,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
     subject: {path: [git, commit, *], value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: {drift: {finding: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}}
+    derive: [{path: [drift, finding], value: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -457,14 +457,14 @@ func TestEachOverATaskAnswer(t *testing.T) {
     onDone:
       patch: {reviewed: done}
       derive:
-        drift:
-          finding: !each
-            over: $data.findings
-            key: $item.symbol
-            value:
-              symbol: $item.symbol
-              says: $item.says
-              about: $subject.id
+      - path: [drift, finding]
+        value: !each
+          over: $data.findings
+          key: $item.symbol
+          value:
+            symbol: $item.symbol
+            says: $item.says
+            about: $subject.name
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {

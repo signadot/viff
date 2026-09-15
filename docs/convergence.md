@@ -14,8 +14,8 @@ action writes and what it may read.
 ## The cost of asking: a read per commit
 
 `Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. Measured against a
-locally-launched logd, reading the whole verse, reading the one slice the commits landed in, and
-reading a slice they never touched all cost the same.
+locally-launched logd, reading the whole verse, reading the one subtree the commits landed in, and
+reading a subtree they never touched all cost the same.
 
 The path makes no difference, because the cost is not the document. It is replaying the log to
 that commit. `AsOf(rev/2)` costs half of `AsOf(head)` on the same store, which is the tell. A
@@ -32,8 +32,8 @@ than distance-from-genesis, and the curve is a sawtooth rather than a ramp.
 **What keeps this affordable in practice is not asking.** A trigger is skipped at a commit that
 touched none of the subtrees it reads, and the skip is exact rather than a heuristic. See
 [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for why it is indistinguishable
-from evaluating. A charter of rules over quiet slices costs nothing at all. What costs is a rule
-over the slice a burst is landing in.
+from evaluating. A charter of rules over quiet subtrees costs nothing at all. What costs is a rule
+over the subtree a burst is landing in.
 
 The standing improvement is to carry the rolled-forward document rather than re-read it, the shape
 `Since` already uses, which reads once at its floor and rolls forward with the deltas it is
@@ -176,7 +176,7 @@ Two triggers whose subject selections can intersect, writing the same payload pa
 values, settle wherever the last write lands. This is reachable under any dispatch rather than
 introduced by per-commit evaluation, but a vacuous `on` multiplies the interleavings.
 
-It is decidable for literal patches — intersecting selections on system and kind, plus comparable
+It is decidable for literal patches — subject paths that overlap segment by segment, plus comparable
 predicates, then same-path-different-value — and undecidable through templates, so it could be a
 warning at install. It is not built. The cycle throttle does not subsume it: two rules disagreeing
 about a field settle wherever the last write lands, without any chain growing, so nothing trips.

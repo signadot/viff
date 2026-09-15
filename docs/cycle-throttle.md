@@ -61,8 +61,8 @@ The chain a firing belongs to is keyed to the **subject**, and this is enforced 
 assumed.
 
 The tempting argument is that it needs no enforcing. The match grammar has no joins — a `Match`
-selects on an entity's own system, kind, id and value, and nothing correlates one entity's field
-with another's — so where an action writes only its subject, a write to S cannot bring S′ into a
+selects on a node's own path and value, and nothing correlates one node's field with
+another's — so where an action writes only its subject, a write to S cannot bring S′ into a
 trigger's selection, and a repeat of trigger T must be a repeat on the same subject. That is true
 and it is not enough. **A firing is woken by a commit, not by a subject**, and the rule re-selects
 the whole set at every commit. So a rule acting on member A writes A; that commit re-evaluates the

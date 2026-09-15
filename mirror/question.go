@@ -754,7 +754,7 @@ func writeAt(store entity.Store, ref entity.Ref, o entity.Obj) {
 // IsQuestion reports whether an address is a posed question's — see IsTask on why a namespace
 // answers this for itself now.
 func IsQuestion(ref entity.Ref) bool {
-	return ref.Reserved() && ref.System() == QuestionSystem && ref.Kind() == QuestionKind
+	return ref.ChildOf(entity.VerseRoot, QuestionSystem, QuestionKind)
 }
 
 // ResumeDeadline gives a question that was withdrawn while it stood the time it had left, from

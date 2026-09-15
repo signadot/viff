@@ -23,24 +23,25 @@ declared level, with rules living in one and derivations only ever climbing.
 - name: urgent-label
   stratum: observe
   condition:
-    subject: {path: [gh, issue, *], value: { label: urgent }}
+    subject: {path: [gh, issue, "*"], value: { label: urgent }}
   action:
     patch: { triaged: true }
     derive:
-      signadot:
-        feature:
-          priority: urgent
+    - path: [signadot, feature]
+      id: $subject.name            # signadot.feature.1, for gh.issue.1
+      value:
+        priority: urgent
 
 - name: request-approval
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, *], value: { priority: urgent }}
+    subject: {path: [signadot, feature, "*"], value: { priority: urgent }}
   action:
     patch: { stage: awaiting-approval }
     derive:
-      do:
-        approve:
-          path: [gh, pr, *]
+    - path: [do, approve]
+      value:
+        feature: $subject
 ```
 
 `verse c -a -f charter.tony` installs both halves, strata first whatever order the file
@@ -74,45 +75,41 @@ read from opposite directions.
 
 ## What a stratum may match
 
-**A place**, and nothing below it — no id, no `value` predicate. Write a union as a list:
-`match: [ "gh", "linear" ]`.
-
-A system and optionally a kind is the ordinary spelling. A charter that keeps a deeper tree
-names the place as a path, and it is the same statement one level further down:
+**A place**: a path, and no `value` predicate. Write a union as a list:
+`match: [ "gh", "linear" ]`. A place is a path of any length, and it owns every address at or
+below it:
 
 ```tony
 - {name: tip,    level: 10, match: {path: [verse-dev, drift, head]}}
 - {name: ledger, level: 20, match: {path: [verse-dev, drift, finding]}}
 ```
 
-`path:` always means a path, at every length, where `!verse-path [a b c]` folds three segments into
-system/kind/id. A stratum is the one place that difference matters: `[verse-dev, drift, head]` is a
-place entities land under, not an entity whose id is `head`.
+`[verse-dev, drift, head]` is the place derivations land under, and a rule's subject
+`[verse-dev, drift, head, "*"]` is inside it.
 
-**An operator at a level position reads as `*` for containment**, because that is the honest
-answer: `!glob "head*"` might select outside the level and nothing at install can say it does
-not. So a rule whose subject globs a level is not in a stratum that owns one particular level —
-and since strata are pairwise disjoint, there is usually no level that owns it either. Such a
-rule is unstratified, which is fine as long as it does not derive: an operator belongs at the
-leaf of an address, where the id already globs, rather than at a level of it.
+**Containment is asked segment by segment.** A stratum's path contains a subject when it is no
+longer than the subject's and, at each position, admits every name the subject's segment does. A
+`*` admits anything; a name admits itself. **A subject with an operator at a position is contained
+only by a `*` there**, because that is the honest answer: `!glob "head*"` might select outside a
+level named `head`, and nothing at install can say it does not. So a rule whose subject globs a
+level is not in a stratum that owns one particular level — and since strata are pairwise disjoint,
+there is usually no level that owns it either. Such a rule is unstratified, which is fine as long
+as it does not derive: an operator belongs below the place a stratum names, rather than at a level
+of it.
 
-The restriction is not tidiness. A derived entity's id belongs to the engine, as below, so at
-install there is no id to check a pattern against, and a stratum matching on one could not be
-checked at the moment the whole ordering is bought for. A `value` predicate would make a level
-depend on a state that rules change as they fire, which is not a level.
+Two strata are disjoint when, at some position both paths reach, their segments admit no common
+name.
+
+A `value` predicate would make a level depend on a state that rules change as they fire, which is
+not a level, so a stratum refuses one.
 
 ## `derive` — identity, not state
 
-The address is a place and the content goes under it. In the nested spelling that place is two
-levels — `<system>.<kind>` — and everything below is payload; where a charter keeps a deeper
-tree, the entry names its place as a path and there is still no boundary to find:
+The address is a place and the content goes under it. Each entry names its place as a path and
+its content as `value`, so there is no boundary to find:
 
 ```tony
-derive:                                  # the nested spelling: two levels, then the payload
-  drift:
-    head: {sha: $subject.value.sha}
-
-derive:                                  # a place of any depth, named
+derive:
 - path: [verse-dev, drift, head]
   value: {sha: $subject.value.sha}
 ```
@@ -139,8 +136,8 @@ The parts:
 
 | reference | resolves to |
 |---|---|
-| `$subject` | the whole ref, `"gh.issue.1"` — a match address as it stands |
-| `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
+| `$subject` | the whole address, `"gh.issue.1"` — a kinded path |
+| `$subject.ref` `.name` | the address, and its last segment — the key it stands at |
 | `$subject.value` | the subject's payload **at the commit that caused the firing** |
 | `$subject.commit` | that commit's revision — not in a derive |
 
@@ -157,7 +154,7 @@ can name what the firing was about, which is what "derive a release note from wh
 needs. A task the charter did not start has no such commit, and both parts fail by name there
 rather than resolving to a silent zero.
 
-In a spawn's strings the identity parts work too (`prompt: "approve $subject.id"`), because those
+In a spawn's strings the identity parts work too (`prompt: "approve $subject.name"`), because those
 are published as flat bindings. `.value` is not: a payload has no text form, and the subject's own
 top-level fields are already flat there (`$stage`).
 
@@ -167,32 +164,31 @@ sentence with the element's key in it — and the engine writes the subject link
 `verse.meta.derivedFrom`:
 
 ```
-$ verse data signadot feature urgent-label@gh.issue.1
+$ verse data derived feature raise gh issue 1
 priority: urgent
 what: gh.issue.1
 verse:
   meta:
     derivedFrom:
-      rule: urgent-label
+      rule: raise
       subject: gh.issue.1
 ```
 
 The address reads `<target>.<rule>.<subject…>` — the place the rule derives into, the rule
 itself as one segment, then the subject's own segments. The rule is in there because identity is
-(rule, subject) rather than subject alone: without it, two rules deriving into one kind about one
-subject would write the same entity, which is the race single-writer exists to retire.
+(rule, subject) rather than subject alone: without it, two rules deriving into one place about
+one subject would write the same entity, which is the race single-writer exists to retire.
 
 It is an address rather than an id, so it carries the subject faithfully.
 `derived.feature.raise.gh.issue.1` is the entity `raise` derived about `gh.issue.1`, and reads back
 as exactly those segments. Two things follow. `verse data derived feature raise -paths` is
-"everything this rule has derived". And **a derived entity is as deep as what it is about**: a rule
-reading one says how deep, and how deep follows from the depth of the subjects the producing rule
-selects, so `{path: [derived, feature, "*", "*", "*", "*"]}` for a rule deriving about
-three-segment entities.
+"everything this rule has derived". And **a derived path is as long as what it is about**: a rule
+reading one says how long, and that follows from the subjects the producing rule selects, so
+`{path: [derived, feature, "*", "*", "*", "*"]}` for a rule deriving about `gh.issue.*`.
 
 The linkage is the spawn's rule, for the spawn's reason: a derivation is about exactly one
 subject, and which one is the condition's answer rather than something a charter should have to
-interpolate. So `do:approve` can say "approve the thing this is about" and the linkage says which,
+interpolate. So `do.approve` can say "approve the thing this is about" and the linkage says which,
 whether or not the charter also wrote `$subject` somewhere it finds convenient — under its own
 key, where a consumer's spawn can bind it flatly (`prompt: "approve $pr"`, after `pr: $subject`).
 
@@ -201,7 +197,7 @@ idempotent. And **no two rules can ever address one derived entity**: names are 
 charter and the id is injective in the subject, which retires
 [two triggers, one field](convergence.md#two-triggers-one-field) for everything derived.
 
-It also forbids rollups: fifty features cannot feed one `do:approve`. The level above reads the
+It also forbids rollups: fifty features cannot feed one `do.approve`. The level above reads the
 *set* instead. That is the trade single-writer is bought with.
 
 ### A key on a single derive
@@ -236,6 +232,16 @@ And it is the invariant rather than a hole in it. A re-fire about the same subje
 same key, writes the same bytes to the same address, and dies as the no-op that lets a rule read
 a higher level safely.
 
+### An `id` instead of a key
+
+`id:` takes the same single reference and drops the composition: the derived entity is the place
+plus that value, verbatim, so `id: $subject.value.sha` under `[verse-dev, merge, train]` is
+`verse-dev.merge.train.<sha>` — an address another rule can spell. The difference is what the
+value identifies. Two subjects of one rule that compute the same `id` share one entity, where
+`key` gives them one each; so `id` says the value identifies the record across subjects, and
+`key` says it identifies it only within one. An entry names one or the other, never both, and
+`!each` takes `id` in place of `key` the same way.
+
 ## `!each` — when one answer holds many facts
 
 One firing derives one entity, which is right until a task answers with twelve findings and eleven
@@ -244,14 +250,14 @@ of them are prose. `!each` is the fan-out:
 ```tony
 action:
   derive:
-    drift:
-      finding: !each
-        over:  $data.findings     # a list to walk; each element binds $item
-        key:   $item.symbol       # the address, read out of the element
-        value:
-          symbol: $item.symbol
-          says:   $item.says
-          about:  $subject.id
+  - path: [drift, finding]
+    value: !each
+      over:  $data.findings     # a list to walk; each element binds $item
+      key:   $item.symbol       # the address, read out of the element
+      value:
+        symbol: $item.symbol
+        says:   $item.says
+        about:  $subject.name
 ```
 
 **It is the same invariant, generalised, not an exception to it.** A plain derive may carry no
@@ -305,9 +311,9 @@ so the levels above still cannot influence what a derive writes, and inertness h
 Reading upward would give it away: the thing above changes, the derive writes different bytes,
 the level above wakes, and round it goes across a level.
 
-It is checked at install, by the same containment the level checks use — a path read names a
-system and a kind, a stratum's `match` constrains a system and a kind. A read naming a target in
-no stratum is refused too: no level, so "at or below" has no answer.
+It is checked at install, by the same containment the level checks use: the read's address, up to
+its first segment that is not a literal name, is a place, and a stratum's `match` has to contain
+it. A read naming a place in no stratum is refused too: no level, so "at or below" has no answer.
 
 In a plain `patch` none of this applies, because nothing downstream depends on a patch being
 reproducible. A rule may read any level it likes and write it to its own subject.

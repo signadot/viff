@@ -236,7 +236,7 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 		named, _ := rec["runnerName"].(string)
 		on, _ := rec["runner"].(string)
 		if named == ref.String() || (url != "" && on == url) {
-			out = append(out, ent.Ref.ID())
+			out = append(out, ent.Ref.Name())
 		}
 	}
 	sort.Strings(out)

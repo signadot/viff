@@ -12,20 +12,20 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// ParseExpr is the address grammar behind `verse flow --subject <addr>`: three segments, `*` as a
-// wildcard per segment, trailing segments optional. An id may contain colons.
+// ParseExpr is the address grammar behind `verse flow --subject <addr>`: a kinded path of any
+// length, `*` a whole segment left open. A segment may hold colons.
 func TestParseExpr(t *testing.T) {
 	cases := []struct {
 		in   string
-		want Match
+		want []string
 	}{
-		{`demo.pr."1"`, Match{"system": "demo", "kind": "pr", "id": "1"}},
-		{"demo.pr.*", Match{"system": "demo", "kind": "pr"}},
-		{"demo.*.*", Match{"system": "demo"}},
-		{"demo.pr", Match{"system": "demo", "kind": "pr"}},
-		{"demo", Match{"system": "demo"}},
-		{"*", Match{}},
-		{"local.file.a/b:c", Match{"system": "local", "kind": "file", "id": "a/b:c"}},
+		{`demo.pr."1"`, []string{"demo", "pr", "1"}},
+		{"demo.pr.*", []string{"demo", "pr", "*"}},
+		{"demo.*.*", []string{"demo", "*", "*"}},
+		{"demo.pr", []string{"demo", "pr"}}, // a short path names the node at it
+		{"demo", []string{"demo"}},
+		{"*", []string{"*"}},
+		{"local.file.a/b:c", []string{"local", "file", "a/b:c"}},
 	}
 	for _, c := range cases {
 		got, err := ParseExpr(c.in)
@@ -33,8 +33,8 @@ func TestParseExpr(t *testing.T) {
 			t.Errorf("ParseExpr(%q): %v", c.in, err)
 			continue
 		}
-		if !reflect.DeepEqual(map[string]any(got), map[string]any(c.want)) {
-			t.Errorf("ParseExpr(%q) = %v, want %v", c.in, got, c.want)
+		if !reflect.DeepEqual(got.Segs(), c.want) {
+			t.Errorf("ParseExpr(%q) = %q, want %q", c.in, got.Segs(), c.want)
 		}
 	}
 	for _, bad := range []string{"", "   ", "demo..1", ".pr.1"} {
@@ -62,8 +62,8 @@ func (blockForever) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, 
 	return task.ToolUse{}, false, ctx.Err()
 }
 
-// A flow is a QUERY, so one address can steer a whole kind or a whole system — "relational
-// flows" without a second primitive. This is the capability step 4 exists to unlock.
+// A flow is a QUERY, so one address can steer every node at a place, or everything under a first
+// segment — "relational flows" without a second primitive. This is the capability step 4 exists to unlock.
 func TestFlowAddressingSelectsSets(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawnFP(t, eng, "p1", `demo.pr."1"`)
@@ -75,8 +75,8 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	cases := map[string]int{
 		`demo.pr."1"`:    2, // one subject, both its tasks
 		`demo.pr."2"`:    1,
-		"demo.pr.*":      3, // the whole kind — the relational case
-		"demo.*.*":       4, // the whole system
+		"demo.pr.*":      3, // every pr — the relational case
+		"demo.*.*":       4, // everything two levels under demo
 		"*":              5, // everything
 		`demo.pr."404"`:  0, // no live work
 		"nothing.x.y":    0,
@@ -96,8 +96,8 @@ func TestFlowAddressingSelectsSets(t *testing.T) {
 	}
 }
 
-// A selection is spelled as a suspension is, so one address reaches a subject, a kind or a whole
-// system, and a charter narrows it to the rules of one charter.
+// A selection is spelled as a suspension is, so one address reaches a subject or every node at a
+// place, and a charter narrows it to the rules of one charter.
 func TestSelectionReachesSets(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	spawnFP(t, eng, "p1", `demo.pr."1"`)

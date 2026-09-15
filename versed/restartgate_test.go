@@ -220,7 +220,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	addr := entitytest.Addr(t)
 	rule := trigger.Trigger{
 		Name:      "guard",
-		Condition: trigger.Condition{Subject: trigger.Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: trigger.Condition{Subject: matchAt("demo.pr.*", map[string]any{"stage": "open"})},
 		Gates:     []trigger.Gate{{Name: "approval", Mode: "ask"}},
 		Action:    trigger.Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}
@@ -277,12 +277,16 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 // waitDocket waits until id is listed on a server's docket.
 func waitDocket(t *testing.T, srv *Server, id string) {
 	t.Helper()
-	for range 400 {
+	// Bounded by TIME, not by a count of reads: how many reads fit in the wait depends on how busy
+	// the machine is, and under the full suite a count ran out before the question was posted.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
 		for _, g := range docket(t, srv) {
 			if g["id"] == id {
 				return
 			}
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s never reached the docket", id)
 }

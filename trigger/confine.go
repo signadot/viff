@@ -97,27 +97,14 @@ func (s Subtree) confined() bool { return s != Subtree{} }
 // cannot say.
 func (s Subtree) match() Match {
 	segs := s.Path()
-	// DEEPER THAN THE DIMENSIONS is a path, and it must be: truncating to system-and-kind here
-	// would make a charter installed at `verse-dev.drift.head` compare as one installed at
-	// `verse-dev.drift`, so its confinement would silently widen by a level.
-	if len(segs) > 2 || (len(segs) > 0 && segs[0] == entity.VerseRoot && len(segs) > 3) {
-		nodes := make([]*ir.Node, 0, len(segs))
-		for _, sg := range segs {
-			nodes = append(nodes, ir.FromString(sg))
-		}
-		return Match{mKeyPath: nodes}
+	nodes := make([]*ir.Node, 0, len(segs))
+	for _, sg := range segs {
+		nodes = append(nodes, ir.FromString(sg))
 	}
-	m := Match{}
-	if len(segs) > 0 && segs[0] == entity.VerseRoot {
-		m[mKeyRoot] = entity.VerseRoot
-		segs = segs[1:]
+	if len(nodes) == 0 {
+		return Match{}
 	}
-	for i, k := range []string{mKeySystem, mKeyKind} {
-		if i < len(segs) && segs[i] != "" {
-			m[k] = segs[i]
-		}
-	}
-	return m
+	return Match{mKeyPath: nodes}
 }
 
 // String is the confinement as an address prefix — what an error message shows.

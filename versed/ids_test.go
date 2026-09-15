@@ -26,7 +26,7 @@ func TestSameNamedRulesInThreeEnginesAskThreeQuestions(t *testing.T) {
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
 	rule := `{
 		name: review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		gates: [{name: ok, mode: ask}],
 		action: {patch: {stage: reviewing}},
 	}`

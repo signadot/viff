@@ -28,9 +28,9 @@ func TestAnImportCycleIsFound(t *testing.T) {
 			map[string][]Subtree{"drift": {st("git")}, "merge": {st("git"), st("drift")}}, false},
 		{"two packages reading one source share no edge",
 			map[string][]Subtree{"a": {st("git")}, "b": {st("git")}}, false},
-		{"a kind narrows: demo.pr and demo.issue do not meet",
+		{"a longer path narrows: demo.pr and demo.issue do not meet",
 			map[string][]Subtree{"demo.pr": {st("demo.issue")}, "demo.issue": {st("demo.note")}}, false},
-		{"but a whole system covers the kinds under it",
+		{"but a shorter path covers the places under it",
 			map[string][]Subtree{"demo.pr": {st("demo")}, "demo.issue": {st("demo.pr")}}, true},
 	} {
 		got := Cycle(tc.pkgs)

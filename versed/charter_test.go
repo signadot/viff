@@ -9,6 +9,19 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
+// matchAt is a match over the nodes at a kinded path, narrowed by a payload predicate when value
+// is non-nil — the Go spelling of `{path: [demo, pr, "*"], value: {stage: open}}`.
+func matchAt(path string, value map[string]any) trigger.Match {
+	m, err := trigger.ParseExpr(path)
+	if err != nil {
+		panic(err)
+	}
+	if value != nil {
+		m["value"] = value
+	}
+	return m
+}
+
 // A restart comes back running the charter it went down with. Start reinstalls the rules
 // standing in the verse, so the second server observes what the first was told to.
 //
@@ -20,8 +33,7 @@ func TestStartRestoresTheCharter(t *testing.T) {
 	if err := first.Eng.AddTrigger(trigger.Trigger{
 		Name: "review",
 		Condition: trigger.Condition{
-			Subject: trigger.Match{"system": "demo", "kind": "pr",
-				"value": map[string]any{"stage": "open"}},
+			Subject: matchAt("demo.pr.*", map[string]any{"stage": "open"}),
 		},
 		Action: trigger.Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {

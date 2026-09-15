@@ -69,7 +69,7 @@ func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 	}
 
 	charter := `{ name: review,
-	  condition: { subject: { system: demo, kind: pr, value: { stage: open } } },
+	  condition: { subject: { path: [demo, pr, "*"], value: { stage: open } } },
 	  action: { patch: { stage: reviewing } } }`
 	resp = postAs(t, "scott@example.com", ts.URL+"/charter", "application/tony", charter)
 	resp.Body.Close()

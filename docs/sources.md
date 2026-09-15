@@ -1,7 +1,7 @@
 # Sources
 
-A Source reflects an external system — a git repo, GitHub, Linear — into the slice of the
-entity-verse it owns (`git.*`, `github.*`, …), and is the single writer of that slice. Triggers
+A Source reflects an external system — a git repo, GitHub, Linear — into the place in the
+verse it owns (`git`, `github`, …), and is the single writer of everything under it. Triggers
 and agents *read* the reflected entities and react. A source only reflects: acting back on the
 external system is the outbound path, not this one.
 
@@ -26,7 +26,7 @@ internally:
 
 A webhook is a low-latency hint ("PR 42 changed") that may be missed, duplicated, or arrive out
 of order. A poll-reconcile is the authoritative, level-triggered pass that reads external truth
-and converges the owned slice. So:
+and converges the owned place. So:
 
 > **A hint never writes entities.** It schedules a reconcile of the affected ref(s); the
 > reconcile reads the source of truth and writes to converge.
@@ -40,14 +40,14 @@ periodic full reconcile is the net that catches every missed hint.
 holds the webhook secret — and tells verse which refs went stale. A second implementation of "map a
 delivery to refs" per source is how the law comes to be broken in one of two places, and across a
 network a divergence is least recoverable. It pays twice: a delivery carrying no data can cost at
-most a reconcile of a slice its sender does not choose the contents of, so the hint route can stay
+most a reconcile of a place its sender does not choose the contents of, so the hint route can stay
 unauthenticated in a wide-open dogfood verse.
 
 ## Ownership = single writer = no CAS
 
-A Source owns `github.*` and is its only writer, so within that slice there is no lost-update
-problem: reflected slices need no compare-and-swap because they have one writer. CAS still matters
-where several triggers write a *shared subject*, which a reflected slice is not.
+A Source owns `github` and is the only writer under it, so there is no lost-update problem there:
+reflected places need no compare-and-swap because they have one writer. CAS still matters where
+several triggers write a *shared subject*, which a reflected entity is not.
 
 In task, one `Git` value holds that. Across deployments nothing holds it but the install check
 below.
@@ -55,7 +55,7 @@ below.
 **Converge spends the single-writer property rather than paying for it twice.** It writes with no
 precondition (`entity.ReplaceFrom`), using the snapshot it already read to spell the removals that
 keep the write a replace rather than a merge. A compare-and-swap here would defend a single-writer
-slice against a concurrent writer that cannot exist.
+place against a concurrent writer that cannot exist.
 
 What that is worth is modest — a pass costs about a quarter less — and the reason to keep it is the
 rule rather than the measurement.
@@ -81,7 +81,7 @@ seam. Shipping a store client is trivial and `POST /entity` already exists, so a
 could write `git.*`. The reason is what converge *does*, which must not be re-implemented once per
 source:
 
-- **skip unchanged**, or every periodic resync re-fires every trigger over the slice;
+- **skip unchanged**, or every periodic resync re-fires every trigger over the place;
 - **tombstone what is gone**, scoped to what the pass covered, so one repo's reconcile never
   deletes another's refs;
 - **never tombstone what the answer did not claim**.
@@ -93,9 +93,10 @@ times.
 `Covers` is the load-bearing field: a reconcile's scoping, said out loud rather than held in a
 parameter. An entity under a covered pattern and absent from `Entities` is tombstoned; an entity in
 `Entities` under no covered pattern is written and never tombstoned. Git's "keep history" is then a
-declaration in the answer rather than a branch in verse's code. It covers `git.<repo>.ref.*` and
-`git.<repo>.head` and does not cover `git.<repo>.commit.*`, so a commit that has fallen out of the
-bounded tip window is not mentioned, and stays.
+declaration in the answer rather than a branch in verse's code. A cover is a path, its first
+segment the source's own place: git covers `git.<repo>.ref.*` and `git.<repo>.head` and does not
+cover `git.<repo>.commit.*`, so a commit that has fallen out of the bounded tip window is not
+mentioned, and stays.
 
 A write **replaces** rather than merges, because the answer is what the entity *is*: a field the
 source stopped reporting is gone. Merging would leave the stale field standing, and since the
@@ -148,25 +149,25 @@ one has by construction:
 
 - **The descriptor's system must be the one the operator named.** A `github` registration
   pointed at a git source is unrecoverable later: every reflection would be written into the
-  wrong slice by a source that thinks it is right.
+  wrong place by a source that thinks it is right.
 - **Ownership must be provably disjoint from every standing registration in the same scope**, or
   the install is refused, with both claims in the message: verse could not prove them apart, so the
   operator is the one who can say. Two sources that write different *places* in the same entities
   say so with a path on the claim and are then proved apart like anything else. `-allow-overlap`
   is what is left for two that genuinely write the same place, with the cost stated rather than
-  discovered: two writers on one slice, each tombstoning what the other reflected.
+  discovered: two writers on one place, each tombstoning what the other reflected.
 
 **And the system itself is the operator's**, which is a coarser separation than a claim and exists
 for a different reason. A source is deployed, and more than one will be. The partition between them
-is drawn by whoever runs them — by credential, by budget, by which slices are busy — and that has
+is drawn by whoever runs them — by credential, by budget, by which places are busy — and that has
 no reason to line up with how the external system is organised. Two deployments sharing `github.*`
 need only disjoint claims, computed from each source's own configuration rather than written by
 hand. One that wants no coordination at all takes `-system` and owes nobody a proof, since two
-systems are disjoint on the first segment. It is also how a second *instance* of a product gets a
-slice that is not confused with the first.
+paths that differ in their first segment are disjoint. It is also how a second *instance* of a
+product gets a place that is not confused with the first.
 
-What it costs is paid by whoever chose it: a charter cannot glob a system, so every rule about a
-separated slice names it. That is why it is a flag rather than the shape.
+What it costs is paid by whoever chose it: a rule's path begins with a literal, so every rule about
+a separated place names it. That is why it is a flag rather than the shape.
 
 **An ownership claim is an address, not a payload predicate**, and the reason is where the
 question is asked. Converge evaluates `Covers` against stored entities whose payloads it can
@@ -185,14 +186,14 @@ several teams at once, so each team claims `owners.<KEY>` and nothing at the top
 
 ## Removing one, and the fork
 
-Tombstoning what a source wrote is right about the common case: a slice nobody reflects any more is
-a slice nothing can correct, and a charter would go on believing in a branch of a repo verse has
+Tombstoning what a source wrote is right about the common case: a place nobody reflects any more is
+a place nothing can correct, and a charter would go on believing in a branch of a repo verse has
 stopped watching. It is wrong about one that will happen. **Moving a repo to another host is a
 remove and an add of the same physical truth**, and tombstoning it fires every branch-deleted
 trigger in the verse and then every branch-created one behind it: a bookkeeping change destroying
 and re-creating live facts, which is the runner's rename case in a different costume.
 
-So removal with a non-empty reflected slice is **refused until told which**: `-forget`
+So removal with anything still reflected is **refused until told which**: `-forget`
 (the reflection is over) or `-keep` (the same truth is moving; leave the last known state, now
 frozen and quietly ageing). A removal with nothing reflected needs no flag, there being nothing
 to be wrong about. What `-forget` may delete is bounded by `owns` and nothing else: it can only
@@ -204,7 +205,7 @@ tombstone what the install proved this source was the single writer of.
 so a source failing every minute writes once and the write that clears it is the one that says
 it recovered. `lastReflect` is written only when a pass actually **wrote** something — it is
 the poll cursor, and stamping it every pass would put a write on `verse.sources.*` once per
-resync interval forever, so anything watching that slice would fire on a verse where nothing is
+resync interval forever, so anything watching that place would fire on a verse where nothing is
 happening.
 
 That cursor cannot catch a source that has *wedged* — alive, answering, reflecting nothing new —
@@ -278,8 +279,8 @@ GitHub is where **a hint names the thing rather than its container**, which the 
 no reason to. git's targeted pass is a whole-repo `for-each-ref` because git is
 content-addressed and a finer target costs the same; Linear's is a whole team because that is
 what one query reads. GitHub answers a single issue in one request, so a hint about `#42`
-converges that issue alone — and the cover it answers with has to say so, `{repo, number}`
-rather than the live set, or one delivery would tombstone every other open issue in the
+converges that issue alone — and the cover it answers with has to say so,
+`github.<org>.<name>.issue.<n>` rather than the live set, or one delivery would tombstone every other open issue in the
 repository. The arity of the hint and the arity of the cover are the same question.
 
 **A source is where an API budget is known.** verse's resync interval is a constant (one
@@ -326,8 +327,8 @@ a project through an owner. That is the honest shape of an entity nobody owns th
 org- or user-owned and spans repositories, so no per-repo source can claim it as an address
 either — which is what makes this a limit of the address grammar rather than a quirk of one data
 model. A GitHub *user* is a third variant and not the same one: it has exactly one owner and that
-owner is the system, so the way out is not a slot but a source of its own, in a system of its
-own: under `github.` the level after the system is an organisation, and a people source claiming
+owner is the system, so the way out is not a slot but a source of its own, in a place of its
+own: under `github` the next level is an organisation, and a people source claiming
 a level there would be claiming a name GitHub could give an organisation. Neither kind is
 reflected today.
 
@@ -353,8 +354,8 @@ covers:
 
 The first says the answer holds *every* open issue, so one that has gone absent is gone. The
 second says it holds the closed ones it read — the most recent `-settled` — so an aged-out one is
-tombstoned as a Slack message is. An issue that closes appears in the settled half carrying its
-new state, ages, and leaves. **Both halves must be covered or neither works**: covering only the
+tombstoned as a Slack message is. An issue that closes appears under the settled cover carrying its
+new state, ages, and leaves. **Both states must be covered or neither works**: covering only the
 repository and answering with the live set plus a tail would tombstone the entire back catalogue
 on the first pass, while covering only `state: open` leaves a husk per issue ever closed, which is
 the warehouse arriving slowly rather than at once.
@@ -372,7 +373,7 @@ and is SDLC-native.
 
 - The "webhook" is a git hook — `reference-transaction` locally, `post-receive` on a bare repo
   — curling the registration's hint route with the ref that names the repo. No signing, no
-  network, and nothing in the delivery but which slice went stale (`Git.InstallHook`).
+  network, and nothing in the delivery but which place went stale (`Git.InstallHook`).
 - Reflection is **cursorless**, because git is content-addressed: `git for-each-ref` yields a
   `ref→sha` map, and comparing shas against the stored entities *is* the level-triggered diff —
   no since-token, no missed-event window.
@@ -385,13 +386,12 @@ and is SDLC-native.
 
 ## A Source is not a controller, and cannot be
 
-A `Source` looks like a `libctl.Handler` run under `RunController`, mounted at its system's
-subtree, and the shape really does fit — right up until you ask what fires.
+A `Source` looks like a `libctl.Handler` run under `RunController`, mounted at its own place, and the shape really does fit — right up until you ask what fires.
 
-**A mounted slice fires no triggers.** Mounts render under `entity.MountRoot`, a top-level
+**A mounted subtree fires no triggers.** Mounts render under `entity.MountRoot`, a top-level
 segment disjoint from the entity root, because a mount is task-driven and so has no history,
 and a history-bearing watch must never span one. `LogdStore.WatchSubtree` renders only under the
-entity root. So a controller-served slice is readable by its ordinary ref and invisible to every
+entity root. So a controller-served subtree is readable by its ordinary path and invisible to every
 watch there is: no change events, no `Since` replay, nothing a charter can react to. A git
 Source mounted this way would reflect a repo perfectly and fire nothing, which is the entire
 point of it. Mounting under the entity root instead is not a trade — it re-creates the composed
@@ -408,7 +408,7 @@ second kind, and stays a verse-level interface with nothing underneath it.
 path.
 
 **No paging.** One reflect answer is one payload in memory. A source of ten thousand issues
-narrows its `Covers` and reflects a slice at a time, which is the same level-triggered pass at a
+narrows its `Covers` and reflects a place at a time, which is the same level-triggered pass at a
 finer grain. If that stops being enough the answer is a paged reflect, not a stream — a stream
 would put ordering back into a contract whose whole point is that it has none.
 

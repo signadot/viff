@@ -51,7 +51,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 
 	resp := installAs(t, "alice@example.com", ts.URL, `{
 		name: approve-ask,
-		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
 		gates: [{name: approval, mode: ask, answerers: [oscar@example.com]}],
 		action: {patch: {stage: reviewing}},
 	}`)
@@ -99,7 +99,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	// Two answerers, both needed.
 	resp = installAs(t, "alice@example.com", ts.URL, `{
 		name: both-ask,
-		condition: {subject: {system: demo, kind: both, value: {stage: open}}},
+		condition: {subject: {path: [demo, both, "*"], value: {stage: open}}},
 		gates: [{name: approval, mode: ask, need: 2, answerers: [oscar@example.com, ana@example.com]}],
 		action: {patch: {stage: reviewing}},
 	}`)
@@ -142,7 +142,7 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 	} {
 		resp := installAs(t, "alice@example.com", ts.URL, fmt.Sprintf(`{
 			name: refused,
-			condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+			condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
 			gates: [%s],
 			action: {patch: {stage: reviewing}},
 		}`, tc.gate))
@@ -155,7 +155,7 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 	// A threshold a kind, a group or everyone can meet is not refused: their number is not known.
 	resp := installAs(t, "alice@example.com", ts.URL, `{
 		name: open-ask,
-		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
 		gates: [{name: g, mode: ask, need: 3, answerers: [user:*]}],
 		action: {patch: {stage: reviewing}},
 	}`)

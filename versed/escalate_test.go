@@ -127,7 +127,7 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 	escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid).Body.Close()
 
-	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).ID()
+	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).Name()
 	transfer := func(ev entity.Event) bool {
 		return ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.security.payments-review"
 	}
@@ -141,7 +141,7 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 }
 
 func standingWithDeadline(name, area, within string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {system: change, kind: pr,` +
+	return `{name: ` + name + `, kind: security, condition: {subject: {path: [change, pr, "*"],` +
 		` value: {area: ` + area + `}}}, deadline: {within: "` + within + `"},` +
 		` method: {driver: url, url: "https://x"}}`
 }
@@ -291,7 +291,7 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 
 	// Settled first, then the sweep arrives and must decline to move it.
 	resp := postTony(t, ts.URL+"/resolvers/instance/"+
-		resolver.InstanceRef("security-review", "run-1").ID()+"/verdicts",
+		resolver.InstanceRef("security-review", "run-1").Name()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	docket(t, srv)

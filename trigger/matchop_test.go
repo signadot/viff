@@ -36,47 +36,10 @@ func matchErr(t *testing.T, src string, f codec.Format) string {
 	return err.Error()
 }
 
-// The two spellings of an operator are ONE grammar: a tag in tony, a single-key object in
-// JSON. They must decode to the same match, because a charter's meaning cannot depend on
-// which syntax it was typed in.
-func TestMatchOperatorSpellingsAgree(t *testing.T) {
-	cases := []struct{ tony, json string }{
-		{
-			`{system: demo, kind: pr, id: !glob "hotfix-*"}`,
-			`{"system":"demo","kind":"pr","id":{"glob":"hotfix-*"}}`,
-		},
-		{`{id: !not "1"}`, `{"id":{"not":"1"}}`},
-		// Nested: the sugar is rewritten throughout the operand, not just at the top.
-		{`{id: !or ["1", !glob "hotfix-*"]}`, `{"id":{"or":["1",{"glob":"hotfix-*"}]}}`},
-	}
-	for _, c := range cases {
-		fromTony := mustMatch(t, c.tony, codec.Tony)
-		fromJSON := mustMatch(t, c.json, codec.JSON)
-
-		// Compared as rendered documents: both go back out as tags, which is the only
-		// spelling verse writes.
-		a, err := codec.MarshalWire(fromTony, codec.Tony)
-		if err != nil {
-			t.Fatalf("render %s: %v", c.tony, err)
-		}
-		b, err := codec.MarshalWire(fromJSON, codec.Tony)
-		if err != nil {
-			t.Fatalf("render %s: %v", c.json, err)
-		}
-		if string(a) != string(b) {
-			t.Errorf("the spellings differ:\n tony %s → %s\n json %s → %s", c.tony, a, c.json, b)
-		}
-		if !strings.Contains(string(a), "!") {
-			t.Errorf("rendered without a tag: %s → %s", c.tony, a)
-		}
-	}
-}
-
-// What the operator BUYS on the id: filepath.Match semantics, where "*" is bounded by "/"
-// and "?"/"[…]" are metacharacters. The plain-string form keeps the older, looser grammar,
-// and that difference is deliberate — an installed charter's `id: "a*"` must go on meaning
-// what it meant.
-func TestMatchIDOperatorGrammar(t *testing.T) {
+// What an operator BUYS in a path segment: filepath.Match semantics, where "*" is bounded by "/"
+// and "?"/"[…]" are metacharacters. A plain segment is a NAME: a `*` inside it is an ordinary
+// character, and only a whole `*` segment is any one.
+func TestPathSegmentOperatorGrammar(t *testing.T) {
 	ev := func(id string) entity.Event {
 		return entity.Event{Ref: entity.RefAt("demo", "pr", id), Op: entity.Set}
 	}
@@ -85,51 +48,51 @@ func TestMatchIDOperatorGrammar(t *testing.T) {
 		id   string
 		want bool
 	}{
-		{`{id: !glob "hotfix-*"}`, "hotfix-1", true},
-		{`{id: !glob "hotfix-*"}`, "cold-1", false},
-		{`{id: !glob "a?c"}`, "abc", true},
-		{`{id: !glob "a?c"}`, "ac", false},
-		{`{id: !glob "[ab]1"}`, "b1", true},
-		{`{id: !glob "[ab]1"}`, "c1", false},
+		{`{path: [demo, pr, !glob "hotfix-*"]}`, "hotfix-1", true},
+		{`{path: [demo, pr, !glob "hotfix-*"]}`, "cold-1", false},
+		{`{path: [demo, pr, !glob "a?c"]}`, "abc", true},
+		{`{path: [demo, pr, !glob "a?c"]}`, "ac", false},
+		{`{path: [demo, pr, !glob "[ab]1"]}`, "b1", true},
+		{`{path: [demo, pr, !glob "[ab]1"]}`, "c1", false},
 
-		// The separator rule, which is the whole reason to want the operator: a path-shaped
-		// id can be matched one segment at a time.
-		{`{id: !glob "a*"}`, "a/b", false},
-		{`{id: !glob "a/*"}`, "a/b", true},
-		{`{id: "a*"}`, "a/b", true}, // the plain string is unchanged: "*" crosses anything
+		// The separator rule: a path-shaped name can be matched one piece at a time.
+		{`{path: [demo, pr, !glob "a*"]}`, "a/b", false},
+		{`{path: [demo, pr, !glob "a/*"]}`, "a/b", true},
+		// A plain segment is the name it spells, `*` and all.
+		{`{path: [demo, pr, "a*"]}`, "a/b", false},
+		{`{path: [demo, pr, "a*"]}`, "a*", true},
 
-		// Composition, which the string form has no spelling for at all.
-		{`{id: !or ["1", "2"]}`, "1", true},
-		{`{id: !or ["1", "2"]}`, "3", false},
-		{`{id: !not "1"}`, "2", true},
-		{`{id: !not "1"}`, "1", false},
-		{`{id: !and [!glob "hotfix-*", !not "hotfix-9"]}`, "hotfix-1", true},
-		{`{id: !and [!glob "hotfix-*", !not "hotfix-9"]}`, "hotfix-9", false},
+		// Composition, which a name has no spelling for at all.
+		{`{path: [demo, pr, !or ["1", "2"]]}`, "1", true},
+		{`{path: [demo, pr, !or ["1", "2"]]}`, "3", false},
+		{`{path: [demo, pr, !not "1"]}`, "2", true},
+		{`{path: [demo, pr, !not "1"]}`, "1", false},
+		{`{path: [demo, pr, !and [!glob "hotfix-*", !not "hotfix-9"]]}`, "hotfix-1", true},
+		{`{path: [demo, pr, !and [!glob "hotfix-*", !not "hotfix-9"]]}`, "hotfix-9", false},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)
 		if got := m.MatchEvent(ev(c.id)); got != c.want {
-			t.Errorf("%s vs id %q = %v, want %v", c.src, c.id, got, c.want)
+			t.Errorf("%s vs %q = %v, want %v", c.src, c.id, got, c.want)
 		}
 	}
 }
 
-// The SET face has to apply the operator too. Select delegates system/kind/value to the
-// typed matcher and owns the id, so an operator that only worked on the event path would
-// silently widen every fan-out to the whole kind.
+// The SET face has to apply the operator too: an operator that only worked on the event path
+// would silently widen every fan-out to every node at the place.
 func TestMatchOperatorSelects(t *testing.T) {
 	store := entitytest.Store(t)
 	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-1"} {
 		entitytest.Set(t, store, entity.RefAt("demo", "pr", id), entity.Obj{"stage": "open"}.Payload())
 	}
 
-	m := mustMatch(t, `{system: demo, kind: pr, id: !glob "hotfix-*"}`, codec.Tony)
+	m := mustMatch(t, `{path: [demo, pr, !glob "hotfix-*"]}`, codec.Tony)
 	refs := m.Select(store)
 	if len(refs) != 2 {
 		t.Fatalf("selected %v, want the two hotfix PRs", refs)
 	}
 	for _, r := range refs {
-		if !strings.HasPrefix(r.ID(), "hotfix-") {
+		if !strings.HasPrefix(r.Name(), "hotfix-") {
 			t.Errorf("selected %s, which the glob excludes", r)
 		}
 	}
@@ -137,14 +100,14 @@ func TestMatchOperatorSelects(t *testing.T) {
 
 // An operator makes a match a SELECTION, never a NAME. This is the one case where getting
 // it wrong does more than fail to match: an action's `set` on a named subject CREATES the
-// entity, so a subject that looked named would conjure `demo:pr:!glob hotfix-*` into being.
+// entity, so a subject that looked named would conjure `demo.pr.!glob hotfix-*` into being.
 func TestMatchOperatorIsNeverANamedRef(t *testing.T) {
-	m := mustMatch(t, `{system: demo, kind: pr, id: !glob "hotfix-*"}`, codec.Tony)
+	m := mustMatch(t, `{path: [demo, pr, !glob "hotfix-*"]}`, codec.Tony)
 	if ref, named := m.Names(); named {
-		t.Errorf("an operator id was read as a name: %s", ref)
+		t.Errorf("an operator segment was read as a name: %s", ref)
 	}
 	if !m.Selects() {
-		t.Error("system+kind are still literal, so this must select")
+		t.Error("the first segment is literal, so this must select")
 	}
 
 	// And it must not render as an address, which would drop the operator entirely and
@@ -158,40 +121,37 @@ func TestMatchOperatorIsNeverANamedRef(t *testing.T) {
 	}
 }
 
-// system and kind refuse operators, and say why. They become a docd watch path
-// (Formula.Subtrees) and the store's List prefilter (Select) — neither of which can be a
-// predicate — so this is a structural limit, not an unfinished one.
-func TestMatchSystemKindRefuseOperators(t *testing.T) {
-	for _, src := range []string{
-		`{system: !or [demo, staging], kind: pr}`,
-		`{system: demo, kind: !glob "p*"}`,
-		`{"system":{"or":["demo","staging"]}}`,
-	} {
-		got := matchErr(t, src, codec.Tony)
-		if !strings.Contains(got, "cannot take an operator") {
-			t.Errorf("%s: %v", src, got)
-		}
-		if !strings.Contains(got, "watch") {
-			t.Errorf("%s: the error does not say why: %v", src, got)
-		}
-	}
-}
-
 // A misspelled or unusable operator fails at INSTALL. The alternative is a charter that
 // parses, deploys, and then matches nothing forever — the failure mode Validate exists to
 // prevent, in its newest form.
 func TestMatchOperatorErrorsAreEarly(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
-		{`{"id":{"gloob":"hotfix-*"}}`, "unknown operator"},
-		{`{id: !gloob "hotfix-*"}`, "unknown operator"},
-		{`{id: !glob 5}`, "cannot glob non-string"},
-		{`{id: !or ["1", !gloob "2"]}`, "unknown operator"}, // nested, not just at the top
-		{`{"id":{"glob":"a","or":"b"}}`, "single-key"},
-		{`{id: {a: 1}}`, "unknown operator"},
-		{`{id: 5}`, "must be a string"},
+		{`{path: [demo, pr, !gloob "hotfix-*"]}`, "unknown operator"},
+		{`{path: [demo, pr, !glob 5]}`, "cannot glob non-string"},
+		{`{path: [demo, pr, !or ["1", !gloob "2"]]}`, "unknown operator"}, // nested, not just at the top
 	} {
 		if got := matchErr(t, c.src, codec.Tony); !strings.Contains(got, c.want) {
 			t.Errorf("%s: got %q, want it to mention %q", c.src, got, c.want)
+		}
+	}
+}
+
+// A segment is a NAME or a MATCH OVER ONE, and a composite is neither: `{a: 1}` or `[a, b]` in a
+// path is refused at install, however the document was laid out. Flow style is how nearly every
+// charter writes a path, and the parser marks a flow collection with a layout tag — which is not
+// an operator, and must not let a composite past the check a block-style one meets.
+func TestAPathSegmentThatIsACompositeIsRefused(t *testing.T) {
+	for _, c := range []struct {
+		src string
+		f   codec.Format
+	}{
+		{`{path: [demo, pr, {a: 1}]}`, codec.Tony},
+		{`{path: [demo, pr, [a, b]]}`, codec.Tony},
+		{`{"path":["demo","pr",{"a":1}]}`, codec.JSON},
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(c.src), &m, c.f); err == nil {
+			t.Errorf("%s was accepted as a path; a composite segment names nothing", c.src)
 		}
 	}
 }
@@ -362,7 +322,7 @@ func TestPatchOnAScalarPayloadReplacesItForNow(t *testing.T) {
 	eng.ObserveScoped(ctx)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "milestone",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "count", "value": int64(100)}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "count", "*"), "value": int64(100)}},
 		Action:    Action{Patch: entity.Obj{"note": "milestone"}.Payload()},
 	}); err != nil {
 		t.Fatalf("install: %v", err)

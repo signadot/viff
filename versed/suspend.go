@@ -72,7 +72,7 @@ func readSuspensions(store entity.Store, scope string) ([]trigger.Suspension, er
 			fmt.Fprintf(os.Stderr, "verse: suspension %s: %v\n", ent.Ref, err)
 			continue
 		}
-		if sus.ID() != ent.Ref.ID() {
+		if sus.ID() != ent.Ref.Name() {
 			fmt.Fprintf(os.Stderr, "verse: suspension %s reads as %s; it is kept under its record's id\n",
 				ent.Ref, sus.ID())
 		}

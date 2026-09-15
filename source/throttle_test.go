@@ -30,7 +30,7 @@ func (c *counted) Reflect(_ context.Context, ref entity.Ref) (source.Reflection,
 	if c.err != nil {
 		return source.Reflection{}, c.err
 	}
-	rn := source.Reflection{Covers: []entity.Pattern{{System: "demo"}}}
+	rn := source.Reflection{Covers: []entity.Pattern{source.Cover("demo", "*", "*")}}
 	rn.Add(entity.RefAt("demo", "thing", "1"),
 		entity.Obj{"calls": len(c.calls)})
 	return rn, nil

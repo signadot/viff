@@ -13,7 +13,7 @@ Installed as `verse.resolvers.<kind>.<name>`.
 name:      security-review
 kind:      security
 condition:                                       # the STANDING door
-  subject: {path: [change, pr, *], value: { area: payments }}
+  subject: {path: [change, pr, "*"], value: { area: payments }}
 byRef:     true                                  # the NAMED door
 method:
   driver:  url
@@ -25,8 +25,8 @@ exclusive: true
 | field | | |
 |---|---|---|
 | `name` | required | may not contain `@` — it is the separator in an instance's address |
-| `kind` | required | the middle segment of the ref; groups bindings by what they are for |
-| `condition.subject` | optional | a [tony match](https://signadot.github.io/tony-format/) over entities, the same vocabulary a trigger's `subject` uses |
+| `kind` | required | the segment before the name in the ref; groups bindings by what they are for |
+| `condition.subject` | optional | a path and a payload predicate, the same vocabulary a trigger's `subject` uses; the path begins with a literal, since a binding whose subject selects from the top would claim every question in the verse |
 | `byRef` | optional | may be named by a spawn's `resolver:` or a rule's `gating.resolver` |
 | `method.driver` | required | who answers: `url`, a service; `person`, one principal, from the docket; `group`, a group's members, each as themselves |
 | `method.url` | | for `url`: where the service is. Verse never posts to it — the service dials in |
@@ -56,8 +56,9 @@ first binding *by name* owns the questions they both cover.
 | `verse.resolvers.<kind>.<name>` | the binding — what is installed |
 | `verse.resolvers.instance.<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
-One `verse data resolvers` shows both, which is why the instance is a reserved
-*kind* inside the system rather than a second system with a singular/plural pair to mistype.
+One `verse data verse resolvers` shows both, which is why instances stand at
+`verse.resolvers.instance`, beside the bindings, rather than in a second place with a
+singular/plural pair to mistype.
 
 The origin is the **run** for a run's gates (`payments-review@review-8f30…`) and the **subject**
 for a firing's (`payments-review@change.pr.1`), because a firing has no event stream of its own.
@@ -142,7 +143,7 @@ moment.
 ```sh
 verse resolver                                  # list the bindings
 verse resolver add <file>                       # install one (- = stdin)
-verse resolver show   verse.resolvers.security.review # or security:review
+verse resolver show   verse.resolvers.security.review # or security.review
 verse resolver remove verse.resolvers.security.review
 
 verse data verse resolvers instance            # who is watching what

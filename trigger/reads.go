@@ -227,7 +227,7 @@ func PackageRef(at string) entity.Ref { return entity.VerseRef(CharterSystem, Pa
 
 // IsCharterPackage reports whether an address is a package declaration's.
 func IsCharterPackage(r entity.Ref) bool {
-	return r.Reserved() && r.System() == CharterSystem && r.Kind() == PackageKind
+	return r.ChildOf(entity.VerseRoot, CharterSystem, PackageKind)
 }
 
 // ReadsField is where the declaration keeps them, as the dotted addresses StampReads writes.
@@ -375,28 +375,15 @@ func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
 	return out, nil
 }
 
-// importSubtree reads one element of the list, in either spelling.
+// importSubtree reads one element of the list: a place, as a kinded path.
 func importSubtree(v *ir.Node) (Subtree, error) {
 	if tagName(v) == VersePathTag {
-		m, err := stepsMatch(v)
-		if err != nil {
-			return Subtree{}, fmt.Errorf("reads: %w", err)
-		}
-		if m.ID() != "" {
-			return Subtree{}, fmt.Errorf("reads: %s names an ENTITY; a read is a place — a "+
-				"system (`git`), or a system and a kind (`demo.pr`)", subtreeOf(m).String())
-		}
-		st := subtreeOf(m)
-		if !st.confined() {
-			return Subtree{}, fmt.Errorf("reads: an empty address reads the whole verse, " +
-				"which is what having a declaration is for")
-		}
-		return st, nil
+		return Subtree{}, fmt.Errorf("reads: !%s is not a spelling of an address — write the "+
+			"kinded path (`git`, `demo.pr`)", VersePathTag)
 	}
 	text, ok := stepText(unwrap(v))
 	if !ok {
-		return Subtree{}, fmt.Errorf("reads: an address is a name or a !%s vector; got %v",
-			VersePathTag, v.Type)
+		return Subtree{}, fmt.Errorf("reads: an address is a kinded path; got %v", v.Type)
 	}
 	sts, err := ParseReads([]string{text})
 	if err != nil {

@@ -44,7 +44,7 @@ func gated(t *testing.T, store entity.Store, res task.Resolver, g Gate) *Engine 
 	eng := New(store, res)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "merge",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Gates:     []Gate{g},
 		Action:    Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
 	}); err != nil {
@@ -126,12 +126,12 @@ func TestAThresholdGateFiresWhenAnswered(t *testing.T) {
 func TestAFormulaGateIsRefusedByName(t *testing.T) {
 	for _, doc := range []string{`
 name: merge
-condition: {subject: {system: demo, kind: pr}}
+condition: {subject: demo.pr.*}
 gates: [{name: approvals, mode: ask, formula: !quorum 2}]
 action: {patch: {ok: yes}}
 `, `
 name: merge
-condition: {subject: {system: demo, kind: pr}}
+condition: {subject: demo.pr.*}
 gating: {gates: [{name: approvals, formula: !until [!quorum 1, !deadline "24h"]}]}
 action: {patch: {ok: yes}}
 `} {
@@ -169,7 +169,7 @@ func TestGateValidation(t *testing.T) {
 		eng := New(entitytest.Store(t), denyResolver{})
 		err := eng.AddTrigger(Trigger{
 			Name:      "merge",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+			Condition: Condition{Subject: mm("demo.pr.*")},
 			Gates:     []Gate{c.gate},
 			Action:    Action{Patch: entity.Obj{"ok": "yes"}.Payload()},
 		})

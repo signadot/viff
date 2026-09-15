@@ -35,7 +35,7 @@ func suspending(t *testing.T, store entity.Store, holder string, shapes ...[3]st
 func reviewRule(name string, patch entity.Obj) Trigger {
 	return Trigger{
 		Name:      name,
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: patch.Payload()},
 	}
 }
@@ -52,8 +52,9 @@ func stays(t *testing.T, s entity.Store, ref entity.Ref, field, want string) {
 
 // A suspension's subject is the selector `verse flow --subject` lists by — `*` open in any segment,
 // covering at or beneath — and its charter is one address, or with recursive that address and
-// every charter beneath it. Two spellings of one selector are one record, and the record spells
-// every part: an empty subject is refused rather than read as every one.
+// every charter beneath it. Two spellings of one path are one record, and the record spells every
+// part: an empty subject is refused rather than read as every one. A subject is a path, so work
+// about no subject stands under none, `*` included.
 func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 	sus := func(charter, rule, subject string, recursive bool) Suspension {
 		t.Helper()
@@ -74,7 +75,7 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		{"demo.*.1", []entity.Ref{pr1, issue1}, []entity.Ref{pr2}},
 		{"*.pr.*", []entity.Ref{pr1, pr2}, []entity.Ref{issue1}},
 		{"github.*.verse.pr.*", []entity.Ref{deep}, []entity.Ref{pr1, entity.RefAt("github", "signadot", "verse", "pr")}},
-		{"*", []entity.Ref{pr1, deep, {}}, nil},
+		{"*", []entity.Ref{pr1, deep}, []entity.Ref{{}}},
 	} {
 		s := sus("*", "", c.subject, false)
 		for _, ref := range c.covers {
@@ -89,14 +90,18 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		}
 	}
 
-	for _, same := range [][2]string{{"demo.pr.*", "demo.pr"}, {`demo.pr."1"`, "demo.pr.1"}, {"*.*.*", "*"}} {
+	for _, same := range [][2]string{{`demo.pr."1"`, "demo.pr.1"}} {
 		a, b := sus("*", "", same[0], false), sus("*", "", same[1], false)
 		if a.ID() != b.ID() {
 			t.Errorf("%q and %q are one selector, but two records: %s, %s", same[0], same[1], a.ID(), b.ID())
 		}
 	}
-	if a, b := sus("*", "", "a.b.c.d.*", false), sus("*", "", "a.b.c.d", false); a.ID() == b.ID() {
-		t.Errorf("a.b.c.d.* asks for a depth a.b.c.d does not, but both are %s", a.ID())
+	// A trailing `*` asks for a depth the shorter path does not, at any length: a short path names
+	// the node at it.
+	for _, other := range [][2]string{{"a.b.c.d.*", "a.b.c.d"}, {"demo.pr.*", "demo.pr"}, {"*.*.*", "*"}} {
+		if a, b := sus("*", "", other[0], false), sus("*", "", other[1], false); a.ID() == b.ID() {
+			t.Errorf("%s asks for a depth %s does not, but both are %s", other[0], other[1], a.ID())
+		}
 	}
 
 	drift := sus("verse-dev.drift", "", "*", true)
@@ -418,7 +423,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 		},
 		{
 			Name:      "triage",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "issue", "value": map[string]any{"stage": "open"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "issue", "*"), "value": map[string]any{"stage": "open"}}},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "triaging"}.Payload(),
 				Spawn:  &launch.Spec{Prompt: "triage"},
@@ -626,8 +631,8 @@ func TestALiftActsOnTheWorldAsItStands(t *testing.T) {
 		{
 			Name: "start",
 			Condition: Condition{
-				On:      MatchWhen(Match{"system": "ci", "kind": "status", "id": "release", "value": map[string]any{"state": "green"}}),
-				Subject: Match{"system": "demo", "kind": "job", "value": map[string]any{"stage": "waiting"}},
+				On:      MatchWhen(Match{"path": pathOf("ci", "status", "release"), "value": map[string]any{"state": "green"}}),
+				Subject: Match{"path": pathOf("demo", "job", "*"), "value": map[string]any{"stage": "waiting"}},
 			},
 			Action: Action{Patch: entity.Obj{"stage": "started"}.Payload()},
 		},

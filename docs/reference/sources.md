@@ -8,7 +8,7 @@ A source is an entity at `verse.sources.<system>.<name>`:
 
 | | |
 |---|---|
-| `system` | the slice this source reflects and is the single writer of (`git`, `github`, …). Required |
+| `system` | the place this source reflects and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
 | `name` | its name within that system. Required |
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task — no network |
@@ -27,10 +27,9 @@ reserved root like everything verse keeps about its own running) because it is a
 already asks: who writes `git.*`. Neither it nor `name` may contain `/`, and `system` may not
 contain `:` — both are segments of the address and of the route that serves them.
 
-A source reflects the world's half and only that: a reflection naming an address under `verse.`
-is refused, a claim that names it is refused at install, and no claim reaches there however wide
-it is written — `*.*.*` claims every three-segment entity the world is about and none of verse's
-own.
+A source reflects what the world is about and never what verse keeps under `verse`: a reflection
+naming an address under `verse.` is refused, a claim that names it is refused at install, and no
+claim reaches there however wide it is written — `*` claims every place but `verse`.
 
 ## Ownership
 
@@ -49,9 +48,9 @@ because an install compares declarations with no entities in hand.
 {at: "linear.project.*", path: [owners, ENG]}   …at a place INSIDE the payload
 ```
 
-A claim is **one pattern per level, at whatever depth** — the same shape an address is. It is
-not three fixed dimensions: a claim shorter than an entity owns everything under it, and one
-longer than three owns a place a package keeps its own tree at.
+A claim is **one pattern per level, at whatever depth** — the same shape an address is. It owns
+the node it names and everything under it, so `git` owns every repository and
+`verse-dev.drift` owns the tree a package keeps there.
 
 `path` is the path inside the payload the claim is about, the same address a write takes
 (`entity.Path`). It is what lets two sources share an entity without either being a second
@@ -77,7 +76,7 @@ owns: [{at: "git.verse"}]
 
 A place is the claim to prefer. It is disjoint from `git.verse-extras` on a literal comparison,
 where a glob such as `git.verse*` would overclaim it, and it is a node the install can take an
-owner record at, where a claim that globs at its second level names only its system.
+owner record at, where a claim that globs at its second level names only its first segment.
 
 **A claim is a document rather than a string**, and the ids are what forced it: `@` — the
 separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids (a task's
@@ -105,8 +104,7 @@ verse source add <system>.<name> <url>       install one, probing the url first
 ```
 
 A `<ref>` is `verse.sources.git.laptop` or `git.laptop` — the whole address or the bare pair;
-the middle form (`sources.git.laptop`) is not accepted, since that was the whole address before
-verse's own half of the tree had a name.
+the middle form (`sources.git.laptop`) is not accepted.
 
 `verse status` names the installed sources — refs only, health left to `verse source`. It is
 there because it is the one line of a status that says anything is *arriving*: every counter
@@ -125,7 +123,7 @@ in the scope it reflects into.
 | `GET /sources/{system}/{name}` | the entity |
 | `GET /sources/{system}/{name}/check` | `{ref, reach}`, plus `says: {system, owns}` when it answered |
 | `DELETE /sources/{system}/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
-| `POST /sources/{system}/{name}/hint` | `?ref=` (repeatable) — reconcile those slices; none means a full resync. `204` |
+| `POST /sources/{system}/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
 
 `reach` is one of `a source`, `not a source`, `unreachable`, and nothing about it is written to
 the store. A `500` from a source is *unreachable* rather than *not a source*: something is
@@ -135,9 +133,9 @@ wrong url, and refusing an install on it would refuse a fact that fixes itself.
 The listing reports `lastPass` from the live reflector — when a pass last *completed*, whatever
 it did — and `running: false` for a registration with no reflector. Neither is stored.
 
-**A hint carries no data.** It names which slice went stale and nothing else, which is what lets
+**A hint carries no data.** It names which place went stale and nothing else, which is what lets
 the route stay unauthenticated in a wide-open dogfood verse: a delivery that is duplicated,
-reordered or forged costs at most a reconcile of a slice its sender does not choose the contents
+reordered or forged costs at most a reconcile of a place its sender does not choose the contents
 of. A malformed ref is `400` rather than a silent full resync, and a hint at a registration that
 is installed but not running is `503` rather than a quiet `204` — a swallowed hint looks exactly
 like one that worked.
@@ -166,9 +164,10 @@ entities:
 from `entities` is tombstoned. An entity under no cover is written and never tombstoned — which
 is how git keeps history, since it covers `ref` and `head` and not `commit`.
 
-A cover's `path` is a place, one segment per level with `*` any one segment, and it is also
-what converge **reads**: `git.verse.ref` four deep and `git.verse.head` alone, rather than the
-whole system. A cover may add `value`, a payload predicate, where a place alone cannot say what
+A cover's `path` is a pattern, one segment per level with `*` any one segment, and it is also
+what converge **reads**: the refs under `git.verse.ref` and the node `git.verse.head`, rather than
+all of `git`. Its first segment is a literal, and it is this source's `system` — a cover that
+begins with `*` would claim every place it is compared against, and is refused. A cover may add `value`, a payload predicate, where a place alone cannot say what
 the answer is complete for — GitHub covers a repository's open issues and its recent closed
 ones as two halves of `github.<org>.<name>.issue.*`.
 
@@ -183,7 +182,7 @@ Covering an entity both whole and by a slot is **refused**: one says the answer 
 other that it is one place in it, and both readings destroy something.
 
 **A slot is not a narrowing.** It says where an answer is authoritative, not which entities it is
-about, so a slot cover with no predicate claims its path in *every* entity of that kind. Give it
+about, so a slot cover with no predicate claims its path in *every* entity its path reaches. Give it
 the predicate that selects the entities carrying that slot — `{owners: {ENG: null}}`, a null in a
 match being a presence test — or the pass writes a tombstone into a place nobody asked about,
 once per entity per pass.

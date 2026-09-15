@@ -26,7 +26,7 @@ func TestOnDeniedLatchesTheSubject(t *testing.T) {
 	pr := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "guard",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Gating: &Gating{Gates: []Gate{{
 			Name: "approval", Mode: "ask",
 			OnDenied: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
@@ -60,7 +60,7 @@ func TestOnDeniedOnAThresholdGate(t *testing.T) {
 	merged := entity.RefAt("result", "merged", "f")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "merge",
-		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(Match{"system": "change"})},
+		Condition: Condition{Subject: mm(merged.String()), When: MatchWhen(mm("change.*.*"))},
 		Gating: &Gating{Gates: []Gate{{
 			Name: "approvals", Need: 2,
 			OnDenied: &Action{Patch: entity.Obj{"outcome": "rejected"}.Payload()},
@@ -102,7 +102,7 @@ func TestNoDecisionWritesNothing(t *testing.T) {
 	pr := entity.RefAt("demo", "pr", "2")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "guard",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Gating: &Gating{Gates: []Gate{{
 			Name: "approval", Mode: "ask",
 			OnDenied: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
@@ -129,7 +129,7 @@ func TestAdviseNamesAnUnlatchedDeny(t *testing.T) {
 	gated := func(g Gate) Trigger {
 		return Trigger{
 			Name:      "guard",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 			Gating:    &Gating{Gates: []Gate{g}},
 			Action:    Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		}
@@ -175,7 +175,7 @@ func TestAdviseReadsACompoundPredicate(t *testing.T) {
 	gated := func(denied entity.Payload) Trigger {
 		return Trigger{
 			Name:      "guard",
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": compound}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": compound}},
 			Gating: &Gating{Gates: []Gate{{Name: "approval", Mode: "ask",
 				OnDenied: &Action{Patch: denied}}}},
 			Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},

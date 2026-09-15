@@ -173,8 +173,8 @@ func TestWatchRootsThePredicateAtAPath(t *testing.T) {
 // answered with, sorted — the read promises a set, not an order.
 //
 // The refs are read back OUT of the document, which is the change in one line: the answer is
-// `{system: {kind: {id: payload}}}` now, so an address is assembled from the keys rather than
-// lifted from a `ref:` field. Every assertion below is unchanged, because they are all about
+// the tree itself, one key per segment down to each payload, so an address is assembled from the
+// keys rather than lifted from a `ref:` field. Every assertion below is unchanged, because they are all about
 // the set and the set is the same one.
 // listStatus is listRefs for a read whose ANSWER is its status code.
 func listStatus(t *testing.T, q url.Values) int {

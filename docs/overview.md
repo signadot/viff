@@ -63,8 +63,8 @@ of what asked it and by whoever it was held out to. See [permissions](perms.md).
 
 A *subject* and a *flow* are derived, and *derived* is meant literally: neither is a record
 anything keeps. A subject is the entity a piece of work is about, the PR moving through its
-lifecycle. It is what a rule's condition selects, and half of nearly every identity in the
-system: a spawn's id, a gate's question, a resolver's instance. A flow is a subject's in-flight
+lifecycle. It is what a rule's condition selects, and half of nearly every identity verse
+keeps: a spawn's id, a gate's question, a resolver's instance. A flow is a subject's in-flight
 tasks, steerable as a unit, assembled per request.
 
 ## Components
@@ -114,7 +114,7 @@ gives durability, copy-on-write scopes, and controller federation. See
 
 `trigger` is the reactive engine. It observes the store through per-subtree watches, matches
 installed `Def`s, resolves gates through a shared registry, and fires actions. Each trigger
-watches exactly the `system.kind` it matches, and there is no root watch. A spawn goes through
+watches exactly the subtree its match names, and there is no root watch. A spawn goes through
 the engine's `Spawner`, which hosts the task via task control and mirrors it back.
 
 `task` and `task/taskd` are the task runtime. A `Task` runs a driver (`Next() → ToolUse`:
@@ -211,20 +211,20 @@ The executor never resolves its own gate. Governance stays on versed's side of t
 
 ## Data and failure model
 
-*Addresses and cursors.* An address is a path in a tree, at any depth, and it carries on into the
-payload: `demo.pr."1"` names an entity, `demo.pr."1".labels.urgent` a place inside one, and
-`verse-dev.drift.head.abc` an entity a package derived four segments down. Three segments is the
-ordinary DEPTH rather than the shape — it is what a listing counts to find the entities under a
-prefix, and it is four in verse's own half, where the reserved root is a level like any other.
-[entities](reference/entities.md#addressing) is the grammar, in both its spellings. A store
+*Addresses and cursors.* An address is a path in one tree, and a path is as long as it is:
+`demo.pr."1"` names a node, `demo.pr."1".labels.urgent` a node inside it, and
+`verse-dev.drift.head.abc` a node a package derived. A short path names the node at it — `demo.pr`
+is the node holding the prs, `demo.pr.*` the prs — and `verse` at the front of verse's own records
+is a segment like any other. [entities](reference/entities.md#addressing) is the grammar, in both
+its spellings. A store
 revision is monotonic but sparse, and is treated as an opaque cursor. The task event stream
 carries its own per-task cursor for resume. Nothing assumes dense numbering, and everything
 reconciles via `since`.
 
 *Scopes.* A scope is a copy-on-write overlay: reads see the scope layered on baseline, writes land
 in the scope only. Local-dev federation and a dev's in-flight flows live in a private scope,
-isolated from baseline and from other devs, and dropped in one `DeleteScope`. That is the world
-half; the program half — rules, tasks, gates, flows — is referenced rather than copied, so a
+isolated from baseline and from other devs, and dropped in one `DeleteScope`. That is what the
+world is about; the program — rules, tasks, gates, flows — is referenced rather than copied, so a
 scope steers, answers and removes what it created and is refused the rest, and a grant made in
 a scope governs the scope alone ([what a scope owns](reference/connect.md#what-a-scope-owns)).
 
@@ -251,7 +251,7 @@ corrupt the log.
 - *Driver* — how a task thinks: `scripted`, `calls`, `llm`, or your own `Next`.
 - *Task control* — where and how a task runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — logd/docd, or anything implementing the `Store` interface.
-- *Source* — reflect an external system into an owned slice of the verse, as a program you deploy
+- *Source* — reflect an external system into an owned place in the verse, as a program you deploy
   and install ([sources](sources.md)). Distinct from a *docd controller*, which serves bytes
   somebody asks for rather than facts something reacts to
   ([writing a controller](controllers.md)).

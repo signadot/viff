@@ -53,7 +53,7 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	for _, risk := range []string{"low", "high"} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "treat-" + risk,
-			Condition: Condition{Subject: Match{"system": "demo", "kind": "finding", "value": map[string]any{"risk": risk}}},
+			Condition: Condition{Subject: Match{"path": pathOf("demo", "finding", "*"), "value": map[string]any{"risk": risk}}},
 			Action: Action{
 				OnDone: &Action{Patch: entity.Obj{"risk": "treated"}.Payload()},
 				Spawn: &launch.Spec{

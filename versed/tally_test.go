@@ -66,8 +66,9 @@ func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := raise(t, srv, id, []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 1}})
 
-	// The record lives in verse's own half of the tree, one segment deeper than the world's.
-	commits, unsub, err := srv.Store.WatchSubtree(entity.Depth+1, entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	// The records are one segment below the place verse keeps its questions.
+	questions := []string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind}
+	commits, unsub, err := srv.Store.WatchSubtree(len(questions)+1, questions...)
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}

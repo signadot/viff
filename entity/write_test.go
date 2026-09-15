@@ -570,7 +570,7 @@ func TestAnEntitySegmentIsNotAnAccess(t *testing.T) {
 		t.Error("an access was accepted as an entity id")
 	}
 	at, sub, err := TargetOf([]string{"merge", "proposal", `"[0]"`})
-	if err != nil || sub != "" || at.Ref.ID() != "[0]" {
+	if err != nil || sub != "" || at.Ref != RefAt("merge", "proposal", "[0]") {
 		t.Errorf(`TargetOf(merge proposal "[0]") = (%+v, %q, %v), want the id [0]`, at, sub, err)
 	}
 	// And in a SHORT address, where every segment is the entity's own.

@@ -88,8 +88,12 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 
 	kinds := map[string]bool{}
 	for _, c := range rn.Covers {
-		kinds[c.Kind] = true
-		if c.Kind == "project" {
+		for _, kind := range []string{"team", "issue", "cycle", "project"} {
+			if c.MatchRef(entity.RefAt("linear", kind, "x")) {
+				kinds[kind] = true
+			}
+		}
+		if c.MatchRef(entity.RefAt("linear", "project", "x")) {
 			// Scoped by its SLOT rather than by a predicate, and the two say the same thing: this
 			// pass is complete for this team's place in every project. A predicate would be the
 			// wrong tool — there is no field on a shared project that names one owner.

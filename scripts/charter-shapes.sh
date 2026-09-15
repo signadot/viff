@@ -137,14 +137,14 @@ shape_tony() {
 			  action:
 			    patch: { stage: raised }
 			    derive:
-			      derived:
-			        feature:
-			          priority: urgent
-			          # A derive may reference its own subject and nothing else — which is
-			          # what lets its content be checked at install and what keeps a re-fire
-			          # a no-op. `.value` reads at the commit that caused the firing.
-			          about: $subject
-			          from: $subject.value.title
+			    - path: [derived, feature]
+			      value:
+			        priority: urgent
+			        # A derive may reference its own subject and nothing else — which is
+			        # what lets its content be checked at install and what keeps a re-fire
+			        # a no-op. `.value` reads at the commit that caused the firing.
+			        about: $subject
+			        from: $subject.value.title
 		TONY
 		;;
 	vote)
@@ -257,7 +257,7 @@ drive_shape() {
 		v data ci status shapes --put '{state: green}' >/dev/null
 		;;
 	on)
-		# An edge has to RISE, so drop it first: a `ci:status:release` left green by an
+		# An edge has to RISE, so drop it first: a `ci.status.release` left green by an
 		# earlier run is a predicate that never becomes true again, and the rule that reads
 		# it would look broken rather than edge-triggered.
 		v data ci status release --put '{state: red}' >/dev/null
@@ -366,9 +366,10 @@ clean)
 	done
 	v data ci status shapes --rm >/dev/null 2>&1 || true
 	v data ci status release --rm >/dev/null 2>&1 || true
-	# The derived entity is addressed by the ENGINE — id = f(rule, subject) — so it is named
-	# here rather than guessed at: nothing else in the verse knows to clean it up.
-	v data 'derived:feature:shape-derive@demo:derive:1' --rm >/dev/null 2>&1 || true
+	# The derived entity is addressed by the ENGINE — the place, the rule, then the subject's own
+	# segments — so it is named here rather than guessed at: nothing else in the verse knows to
+	# clean it up.
+	v data derived feature shape-derive demo derive 1 --rm >/dev/null 2>&1 || true
 	ok "every shape trigger and the entities they acted on are gone"
 	;;
 *)

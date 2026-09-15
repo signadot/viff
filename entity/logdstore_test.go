@@ -297,7 +297,7 @@ func TestLogdStore_ScopeHidesAnInheritedEntity(t *testing.T) {
 	set(t, base, ref, Obj{"stage": "open"}.Payload())
 
 	scoped := base.Scope("me")
-	inDemo := func(r Ref) bool { return r.System() == "demo" }
+	inDemo := func(r Ref) bool { return r.Under("demo") }
 	if _, ok, _ := scoped.Get(ref); !ok {
 		t.Fatal("precondition: the scope should read the baseline entity through")
 	}
@@ -518,8 +518,10 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 		select {
 		case c := <-ch:
 			for _, ev := range c.Changes {
-				if ev.Ref.ID() != "" {
-					seen[ev.Ref.String()] = true
+				for _, r := range refs {
+					if ev.Ref == r {
+						seen[ev.Ref.String()] = true
+					}
 				}
 			}
 		case <-timeout:

@@ -184,7 +184,7 @@ seeded. What to type next:
   $BIN$scope_note gate approve ${GID:-<id>} --as user:you
                                         …and it spawns a 45s review task:
   $BIN$scope_note flows                        the subjects with live work
-  $BIN$scope_note flow show demo:pr:1          what is happening to this one, and what comes next
+  $BIN$scope_note flow show 'demo.pr."1"'      what is happening to this one, and what comes next
   $BIN$scope_note tasks                    the review task itself
 
 Watch it move (another terminal, before approving):

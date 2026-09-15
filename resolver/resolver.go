@@ -202,8 +202,8 @@ func (r Resolver) Check() error {
 			"neither applies to nothing", r.Name)
 	}
 	if r.Condition != nil && !r.Condition.Subject.Selects() {
-		return fmt.Errorf("resolver %q: condition.subject must name a system and a kind — it "+
-			"selects the entities this binding covers, and one that selects everything is a "+
+		return fmt.Errorf("resolver %q: condition.subject must be a path beginning with a literal — "+
+			"it selects the nodes this binding covers, and one that selects from the top is a "+
 			"claim on every question in the verse", r.Name)
 	}
 	if r.Deadline != nil {
@@ -378,7 +378,7 @@ func unwrap(n *ir.Node) *ir.Node {
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
 	for _, ent := range entity.ListUnder(r, func(ref entity.Ref) bool {
-		return ref.System() == System && ref.Kind() != InstanceKind
+		return !ref.Under(entity.VerseRoot, System, InstanceKind)
 	}, entity.VerseRoot, System) {
 		var res Resolver
 		if err := codec.FromNode(ent.Payload, &res); err != nil {
@@ -488,8 +488,8 @@ func FindErr(r entity.Reader, ref string) (Resolver, bool, error) {
 	return res, true, nil
 }
 
-// Overlaps reports the installed bindings that share a (system, kind) with res — what a new
-// one may find itself ordered against.
+// Overlaps reports the installed bindings whose subject paths could meet res's — what a new one
+// may find itself ordered against.
 //
 // Deliberately cheap and deliberately not sound: it is a NOTICE rather than a refusal, so a
 // false positive costs a sentence instead of an install, and there is nothing here that has
@@ -503,8 +503,7 @@ func Overlaps(r entity.Reader, res Resolver) []string {
 		if other.Name == res.Name || other.Condition == nil {
 			continue
 		}
-		if other.Condition.Subject.System() == res.Condition.Subject.System() &&
-			other.Condition.Subject.Kind() == res.Condition.Subject.Kind() {
+		if other.Condition.Subject.Overlaps(res.Condition.Subject) {
 			out = append(out, Ref(other.Kind, other.Name).String())
 		}
 	}

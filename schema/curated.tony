@@ -32,19 +32,17 @@
 # Requirement). Both are corrected here.
 #
 # trigger.Match — the selector grammar, and the most-authored type in the system. On the wire
-# it is EITHER an address string ("demo:pr:*") OR the object of dimensions below; the codec
-# emits the string form whenever the match carries only system/kind/id. The dimension values
-# are open because each may be a literal or a tony match operator (`id: !glob "hotfix-*"`),
-# and `value` — the payload predicate — is open in SHAPE as well: a payload is any tony value,
-# so a predicate over it may be a record, a scalar, a list, or an operator over one.
+# it is EITHER a kinded path string ("demo.pr.*") OR the object below; the codec emits the string
+# form whenever the match is a path of names and `*` with no predicate. `path` is a list of
+# segments, each a name, a bare `*` for any one segment, or a tony match operator over one
+# segment (`!glob "hotfix-*"`), so each element is left open; and `value` — the payload predicate —
+# is open in SHAPE as well: a payload is any tony value, so a predicate over it may be a record,
+# a scalar, a list, or an operator over one.
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  system: .[string]
-  kind: .[string]
-  id: .[tony-base:ir]
-  op: .[tony-base:ir]
+  path: .[array(tony-base:ir)]
   value: .[tony-base:ir]
 signature:
   name: verse-match
@@ -71,7 +69,7 @@ signature:
 # types were wrong. It emits `{subject: <match>, on: <formula>, when: <formula>}` — subject
 # first, and always, since a condition without one is not installable — so `subject` points at
 # the match signature, where codegen said `.[object(object)]` (an object of objects, which a
-# `subject: demo:pr:*` string is not), while `on` and `when` point at the formula signature.
+# `subject: demo.pr.*` string is not), while `on` and `when` point at the formula signature.
 #
 # `on` and `when` share that signature because they ARE one grammar: a predicate over the
 # store, asked at two revisions for a cause and at one for a condition.
@@ -90,7 +88,7 @@ signature:
 # of them. codegen saw the Go slice and said `.[array(object)]`, which describes neither the
 # bare form nor the address-string spelling a match may itself take.
 #
-# `level` orders and `name` addresses: the entity is trigger:strata:<name>, so two strata
+# `level` orders and `name` addresses: the record is verse.trigger.strata.<name>, so two strata
 # cannot share a name by construction, and sharing a LEVEL is refused at install because the
 # number is the whole ordering.
 context:
@@ -104,10 +102,9 @@ signature:
   name: verse-stratum
 ---
 # entity.Doc — the verse's state at a path, and the one signature whose `define` is empty
-# because the SHAPE is the answer rather than a record with fields. The document is
-# `{system: {kind: {id: payload}}}`, so its keys are the systems a verse happens to hold, and a
-# path into it answers with the subtree standing there: an object of kinds, of ids, a payload,
-# or a place inside one. None of that is enumerable here.
+# because the SHAPE is the answer rather than a record with fields. The document is one tree,
+# its keys whatever the verse happens to hold, and a path into it answers with the node standing
+# there — an object, an array, a scalar, a null. None of that is enumerable here.
 #
 # codec=custom for the same reason: the Go type wraps a node so the schema can NAME what a read
 # answers with, and a generated codec would emit that wrapper as a field. The wire is the

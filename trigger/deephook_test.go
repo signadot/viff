@@ -15,8 +15,8 @@ import (
 //
 // The engine recovers a finished task's subject from the text it recorded, and a subject four
 // segments deep whose id is itself an address (`verse-dev.drift.head.head-moved@git.head.verse`
-// — every derived entity's id has this shape) came back through ParseRef as a DIFFERENT ref:
-// three segments, everything past the second colon read as the id. No error. The hook then
+// — every derived entity's name has this shape) came back through ParseRef as a DIFFERENT ref,
+// cut short with the rest read as one name. No error. The hook then
 // patched that ref, the package's confinement saw an address outside itself, and refused.
 //
 // On staging that is exactly what it looked like: a comment review ran for four minutes, fixed

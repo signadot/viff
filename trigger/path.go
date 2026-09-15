@@ -102,7 +102,7 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	case v == nil:
 		return nil, fmt.Errorf("is empty")
 	case v.Type == ir.StringType:
-		segs, err := entity.PathSegs(v.String)
+		segs, err := entity.ExprSegs(v.String)
 		if err != nil {
 			return nil, err
 		}
@@ -112,6 +112,10 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 		}
 		return out, nil
 	case v.Type == ir.ArrayType:
+		if !isLayoutTag(v.Tag) {
+			return nil, fmt.Errorf("an address is a list of segments, and !%s is not one of its "+
+				"spellings — write `[git, repo, abc]`", tagName(v))
+		}
 		m, err := PathMatch(v.Values)
 		if err != nil {
 			return nil, err
@@ -203,9 +207,6 @@ func (p pathSpec) checkNoBinding() error {
 			}
 		}
 	}
-	if name := tonyeval.GetRaw(p.ID); name != "" {
-		return p.bindingRefusal(name, "its id")
-	}
 	if name := tonyeval.GetRaw(p.Path); name != "" {
 		return p.bindingRefusal(name, "its "+pathKey)
 	}
@@ -260,38 +261,23 @@ func pathKind(n *ir.Node) string {
 
 // pathSpec is one path read, as far as it is knowable at install.
 type pathSpec struct {
-	kind         string // GetPathTag or ListPathsTag
-	System, Kind string // always literal
-	ID           string // literal, a $reference, or (list only) a glob
-	// At is the address as a PATH when the read was written with one — `at: [verse-dev, drift,
-	// finding, "*"]` — and is what the three above are a reading of. `path` below is the FIELD
-	// path inside the payload and keeps that name, which is why the address is `at:` here and
-	// `path:` in a match: in a read the two would collide, and only one of them can be `path`.
+	kind string // GetPathTag or ListPathsTag
+	// At is the address the read reaches, one segment at a time — `at: [verse-dev, drift, finding,
+	// "*"]`. `path` below is the FIELD path inside what it reaches and keeps that name, which is why
+	// the address is `at:` here and `path:` in a match: in a read the two would collide.
 	At   []*ir.Node
-	Path string // a kpath into the payload; "" is the whole payload
-	// Value is the payload predicate, list only — "of the ones that are there, the ones
-	// that look like this". nil is no predicate, which is every id the address selects.
+	Path string // a kpath into the node read; "" is the whole node
+	// Value is the payload predicate, list only — "of the ones that are there, the ones that look
+	// like this". nil is no predicate.
 	Value *ir.Node
 }
 
-func (p pathSpec) target() string {
-	if len(p.At) > 0 {
-		return strings.Join(p.match().Segs(), ".")
-	}
-	return p.System + ":" + p.Kind
-}
+func (p pathSpec) target() string { return strings.Join(p.match().Segs(), ".") }
 
 // match is the read's address as a pattern — what it selects, and what the level check compares
 // against a stratum.
 func (p pathSpec) match() Match {
-	if len(p.At) > 0 {
-		m := Match{mKeyPath: p.At}
-		if p.Value != nil {
-			m[mKeyValue] = p.Value
-		}
-		return m
-	}
-	m := Match{mKeySystem: p.System, mKeyKind: p.Kind, mKeyID: p.ID}
+	m := Match{mKeyPath: p.At}
 	if p.Value != nil {
 		m[mKeyValue] = p.Value
 	}
@@ -299,27 +285,10 @@ func (p pathSpec) match() Match {
 }
 
 // place is the read's address as a PATTERN OF A PLACE — what a stratum owns, and what the level
-// check compares against.
-//
-// A read names an entity; a stratum names where entities live. Comparing the two directly would
-// ask whether a stratum owns one id, which it never does.
-//
-// IT IS THE LITERAL PREFIX, calculated, and that is what lets a read reach a tree. The address
-// minus its last segment was the same answer while every segment above the entity was literal —
-// but a derived entity stands at its target, the rule that derived it, and the SUBJECT'S own
-// segments, so reading the set a rule derived means leaving everything below the target open.
-// Stopping at the first non-literal segment names exactly the part that decides the level, and
-// the check then either places it in one stratum or refuses it for naming none.
-//
-// The refusal is not a fallback. A stratum's pattern has to PREFIX the place to contain it, so a
-// place that stops above the level being decided is contained by nothing and is refused there,
-// by the check that is the reason for the rule.
-func (p pathSpec) place() Match {
-	if len(p.At) > 0 {
-		return Match{mKeyPath: literalPrefix(p.At)}
-	}
-	return Match{mKeySystem: p.System, mKeyKind: p.Kind}
-}
+// check compares against: the literal PREFIX, calculated. A stratum's pattern has to prefix the
+// place to contain it, so a place that stops above the level being decided is contained by
+// nothing and is refused by the check that is the reason for the rule.
+func (p pathSpec) place() Match { return Match{mKeyPath: literalPrefix(p.At)} }
 
 // literalPrefix is the leading segments of an address that name a place rather than leaving one
 // open — the deepest part of it that is settled at install.
@@ -337,33 +306,16 @@ func literalPrefix(at []*ir.Node) []*ir.Node {
 	return out
 }
 
-// ref is the entity a one-node read names, for an address written as a path.
-func (p pathSpec) ref() entity.Ref {
-	if len(p.At) > 0 {
-		return entity.RefAt(p.match().Segs()...)
-	}
-	return entity.RefAt(p.System, p.Kind, p.ID)
-}
+// ref is the node a one-node read names.
+func (p pathSpec) ref() entity.Ref { return entity.RefAt(p.match().Segs()...) }
 
 // String is the address the read names — what the level check's refusals quote when they say
 // which entity a derive reached for. The predicate is deliberately not in it: those messages
 // are about WHERE a read lands, which is the two literal segments and nothing else.
-func (p pathSpec) String() string { return p.target() + ":" + p.ID }
+func (p pathSpec) String() string { return p.target() }
 
-// readSpec pulls a path read out of a node in either spelling, and reports what is wrong with it.
-//
-// THE STRING FORM GOES ALL THE WAY DOWN now. It used to address an entity and stop, because an
-// id may itself contain dots and "git:repo:abc.branch" has no unambiguous split into an id and
-// a path — so reaching into the payload needed the object form's `path:`, and one address was
-// spelled across four keys.
-//
-// The delimiter is what dissolves that. A ref is a kinded path whose delimiter is `:`, so the
-// colon spelling names an entity WHOLE — dots and all belong to the id — and the dot spelling
-// carries the path, quoting an id that needs it: `git.repo."abc.branch".sha`. Two spellings of
-// one grammar, each unambiguous, instead of one grammar split by cardinality across an object.
-//
-// The object form stays, and is not merely tolerated: `value:` has nowhere to live in a string,
-// and a `$reference` id reads better as its own key than buried in an address.
+// readSpec pulls a path read out of a node — a kinded path string, or `{at, path, value}` — and
+// reports what is wrong with it.
 func readSpec(n *ir.Node) (pathSpec, error) {
 	kind := pathKind(n)
 	if kind == "" {
@@ -376,149 +328,82 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 	}
 	switch body.Type {
 	case ir.StringType:
-		// ParseExpr refuses a '$' outright — there is no deferred form for a SUBJECT — so the
-		// string spelling is split here instead. The two segments the checks read are still
-		// checked exactly; the id is carried as written and expanded at fire time.
-		ref, path, err := splitAddress(body.String)
+		at, path, err := splitRead(body.String)
 		if err != nil {
-			return spec, fmt.Errorf("!%s %q: %w — a path read starts from one entity, so an "+
-				"address names system, kind and id, and may then continue into the payload "+
-				"(git.repo.abc.sha)", kind, body.String, err)
+			return spec, fmt.Errorf("!%s %q: %w", kind, body.String, err)
 		}
-		spec.System, spec.Kind, spec.ID, spec.Path = ref.System(), ref.Kind(), ref.ID(), path
+		spec.At, spec.Path = at, path
 	case ir.ObjectType:
 		for i, f := range body.Fields {
 			v := unwrap(body.Values[i])
-			// `value` is the one key whose content is a tony match rather than a string, so
-			// it is taken before the string check the address segments answer to.
-			if f.String == mKeyValue {
+			switch f.String {
+			case mKeyValue:
 				if kind == GetPathTag {
 					return spec, fmt.Errorf("!%s carries a payload predicate, which can name "+
-						"several entities — an entity that is not there does not satisfy it, and "+
-						"one that is there might not either. A value slot takes one thing. Use "+
-						"!%s, which answers with a list", kind, ListPathsTag)
+						"several nodes — a node that is not there does not satisfy it, and one that "+
+						"is might not either. A value slot takes one thing. Use !%s, which answers "+
+						"with a list", kind, ListPathsTag)
 				}
 				spec.Value = body.Values[i]
-				continue
-			}
-			// `at` is the address as a PATH — a list of segments, each a match, exactly as a
-			// condition's `path:` takes. It is taken before the string check for the same
-			// reason `value` is: it is not a string, and it is the only address form that can
-			// name a place deeper than three segments.
-			if f.String == mKeyAt {
+			case readKeyAt:
 				at, err := addressPattern(v)
 				if err != nil {
-					return spec, fmt.Errorf("!%s: %s: %w", kind, mKeyAt, err)
+					return spec, fmt.Errorf("!%s: %s: %w", kind, readKeyAt, err)
 				}
 				spec.At = at
-				continue
-			}
-			if v.Type != ir.StringType {
-				return spec, fmt.Errorf("!%s: %q must be a string", kind, f.String)
-			}
-			switch f.String {
-			case mKeySystem:
-				spec.System = v.String
-			case mKeyKind:
-				spec.Kind = v.String
-			case mKeyID:
-				spec.ID = v.String
 			case pathKey:
+				if v == nil || v.Type != ir.StringType {
+					return spec, fmt.Errorf("!%s: %q must be a string", kind, pathKey)
+				}
 				spec.Path = v.String
 			default:
-				return spec, fmt.Errorf("!%s: unknown key %q (want %s, or %s/%s/%s, and %s%s)",
-					kind, f.String, mKeyAt, mKeySystem, mKeyKind, mKeyID, pathKey,
+				return spec, fmt.Errorf("!%s: unknown key %q (want %s and %s%s) — an address is a "+
+					"path, `at: [git, verse, head]`", kind, f.String, readKeyAt, pathKey,
 					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}
 	default:
-		return spec, fmt.Errorf("!%s: want an object or a \"system:kind:id\" string, got %v", kind, body.Type)
+		return spec, fmt.Errorf("!%s: want an object or a kinded path string, got %v", kind, body.Type)
 	}
 	return spec, spec.validate()
 }
 
-// splitAddress splits one address into the entity it starts from and the kpath it continues
-// into the payload with, empty when it names the entity whole.
-//
-// THERE IS ONE SPELLING, so there is nothing to decide first. kpath parses the string and the
-// quoting says where each segment ends, including in the shape a derived entity has:
-//
-//	verse-dev.drift.head."head-moved@git:head:verse@aaaa1111".result.report
-//
-// A reader that split on `:` would find three parts INSIDE those quotes and take the entity to be
-// `verse-dev.drift.head."head-moved@git` : `head` : `verse@aaaa1111".result.report`, and the read
-// would answer "nothing stands there" (git-issue p5qcmpgch12ksd4wgnn0). Read as a kpath it is the
-// six segments it is, and no rule about colons is involved.
-//
-// THE ENTITY IS THE FIRST THREE SEGMENTS and the rest is the payload path — rendered back through
-// KPath.String, so `(scott)` and `[0]` survive into the read that will follow them.
-// (entity.ParsePath is the WRITE-side sibling, and refuses those, because a write cannot reach
-// into an array.)
-//
-// Counting to three is not where a package-deep entity ends — `verse-dev.drift.head.abc` is one
-// entity, four segments — and it does not have to be. A verse is ONE DOCUMENT and entity-hood is
-// a LENS over it (docs/working/entity-tree.md), so the node at `verse-dev:drift:head` is the
-// subtree holding `abc`, and a kpath continuing `abc.result.report` through it reaches the same
-// value the deep entity's own read would. Checked, not assumed: both spellings answer `hello`
-// against the same fixture. What the count cannot survive is a WRONG SPLIT of the segments
-// themselves, which is what the rule above is for.
-func splitAddress(s string) (entity.Ref, string, error) {
+// splitRead reads the string form of a path read as the kinded path it is: its NAMES (and `*`)
+// are the address, and from its first access on — `[1]`, `(key)`, `{n}` — it reads into the node
+// the names reach. The split is where the grammar says an address stops naming, not at a depth.
+func splitRead(s string) ([]*ir.Node, string, error) {
 	kp, err := kpath.Parse(s)
 	if err != nil {
-		return entity.Ref{}, "", err
+		return nil, "", err
 	}
-	segs := make([]string, 0, entity.Depth)
-	for i := 0; i < entity.Depth; i++ {
-		if kp == nil {
-			return entity.Ref{}, "", fmt.Errorf("names %d of the %d address segments", i, entity.Depth)
+	var at []*ir.Node
+	for ; kp != nil; kp = kp.Next {
+		switch {
+		case kp.Descend:
+			return nil, "", fmt.Errorf("`..` is not supported in a read yet")
+		case kp.FieldAll:
+			at = append(at, ir.FromString("*"))
+		case kp.Field != nil:
+			at = append(at, ir.FromString(*kp.Field))
+		default:
+			return at, kp.String(), nil
 		}
-		if kp.Field == nil {
-			return entity.Ref{}, "", fmt.Errorf("an address segment is a name, not an index or a wildcard")
-		}
-		segs = append(segs, *kp.Field)
-		kp = kp.Next
 	}
-	ref := entity.RefAt(segs...)
-	if kp == nil {
-		return ref, "", nil
-	}
-	return ref, kp.String(), nil
+	return at, "", nil
 }
 
-// validate enforces what the two segments the checks read must be, and what each cardinality
-// may say about the rest.
+// readKeyAt is the key a read names its address with.
+const readKeyAt = "at"
+
+// validate enforces what an address may say at install.
 func (p pathSpec) validate() error {
 	if err := p.checkNoBinding(); err != nil {
 		return err
 	}
-	if len(p.At) > 0 {
-		return p.validateAt()
+	if len(p.At) == 0 {
+		return fmt.Errorf("!%s has no address: `at: [<segments>]` or a kinded path", p.kind)
 	}
-	for _, seg := range []struct{ what, v string }{{mKeySystem, p.System}, {mKeyKind, p.Kind}, {mKeyID, p.ID}} {
-		if seg.v == "" {
-			return fmt.Errorf("!%s has no %s: a path read starts from an entity address, and all "+
-				"three segments have to be there", p.kind, seg.what)
-		}
-	}
-	if strings.ContainsAny(p.System+p.Kind, "$*?[") {
-		return fmt.Errorf("!%s %s: the system and the kind must be literal — no reference and no "+
-			"glob. Those two are what says whether the read is at or below the rule's own level, "+
-			"and a check that cannot be made at install is not a check", p.kind, p.target())
-	}
-	if p.kind == GetPathTag {
-		// What makes it a GET. Either of these could name several things, and a value slot
-		// takes one — so they are the list form's business, named as such in the charter rather
-		// than inferred from whether an id happened to hold a '*'.
-		if strings.ContainsAny(p.ID, "*?[") {
-			return fmt.Errorf("!%s %s:%s: the id globs, which can name several entities. Use "+
-				"!%s, which answers with a list", p.kind, p.target(), p.ID, ListPathsTag)
-		}
-		if strings.Contains(p.Path, "*") {
-			return fmt.Errorf("!%s %s: the path %q has a wildcard, which can name several values. "+
-				"Use !%s, which answers with a list", p.kind, p.target(), p.Path, ListPathsTag)
-		}
-	}
-	return nil
+	return p.validateAt()
 }
 
 // eachPathRead walks a document and calls fn for every path read in it, reporting the first

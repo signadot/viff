@@ -299,7 +299,7 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		if e.Ref.System() != "github-internal" {
+		if !e.Ref.Under("github-internal") {
 			t.Fatalf("an entity outside the chosen system: %s", e.Ref)
 		}
 	}

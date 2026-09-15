@@ -84,12 +84,12 @@ if v charter -a -f - >/dev/null 2>&1 <<'YAML'; then
 - name: close-the-loop
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, *]}
+    subject: {path: [signadot, feature, "*"]}
   action:
     derive:
-      gh:
-        issue:
-          reopened: true
+    - path: [gh, issue]
+      value:
+        reopened: true
 YAML
 	die "a derive pointing down was accepted"
 fi
@@ -98,24 +98,24 @@ v charter -a -f - 2>&1 <<'YAML' | head -3 || true
 - name: close-the-loop
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, *]}
+    subject: {path: [signadot, feature, "*"]}
   action:
     derive:
-      gh:
-        issue:
-          reopened: true
+    - path: [gh, issue]
+      value:
+        reopened: true
 YAML
 ok "a cycle ACROSS levels cannot be written; a cycle inside one is ordinary recursion"
 
 # ── seed, and watch ──────────────────────────────────────────────────────────
-step "seed gh:issue:1 and watch for ${WATCH}s"
+step "seed gh.issue.1 and watch for ${WATCH}s"
 v data gh issue 1 --put '{"stage":"triaged"}' >/dev/null || die "data --put failed"
 
 field() { printf '%s' "$1" | grep -oE "\"?$2\"?[: ]+\"?[a-z-]+" | head -1 | grep -oE '[a-z-]+$' || true; }
-printf '  \033[2m%-10s %-12s %s\033[0m\n' "gh:issue" "feature" "fired"
+printf '  \033[2m%-10s %-12s %s\033[0m\n' "gh.issue.1" "feature" "fired"
 for _ in $(seq 1 "$WATCH"); do
 	stage=$(field "$(v data gh issue 1 2>/dev/null || true)" stage)
-	feat=$(v data --paths signadot feature 2>/dev/null | head -1 || true)
+	feat=$(v data --paths signadot feature '*' 2>/dev/null | head -1 || true)
 	phase=""
 	# shellcheck disable=SC2086
 	[ -n "$feat" ] && phase=$(field "$(v data $feat 2>/dev/null || true)" phase)
@@ -127,13 +127,13 @@ done
 # ── what the run leaves behind ───────────────────────────────────────────────
 step "what happened"
 printf '\n'
-v data gh issue
-v data signadot feature
+v data gh issue '*'
+v data signadot feature '*'
 printf '\n'
-feat=$(v data --paths signadot feature | head -1)
+feat=$(v data --paths signadot feature '*' | head -1)
 [ -n "$feat" ] || die "the derive never landed"
 ok "the derived entity is $feat"
-note "its id is the engine's — f(rule, subject) — and it records what it is about:"
+note "it stands at the issue's own name (id: \$subject.name) and records what it is about:"
 # UNQUOTED: `--paths` answers in steps, and the shell splitting them is what a read takes.
 # shellcheck disable=SC2086
 v data $feat

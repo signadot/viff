@@ -77,7 +77,7 @@ grants:
 owner: user:walter@example.com
 ```
 
-Two rules made that record. The world's half is open to *create* until a record says
+Two rules made that record. Outside `verse`, the tree is open to *create* until a record says
 otherwise, so a write where nothing stood makes the writer the owner: `spaces.scott.notes` is
 scott's because scott wrote it first. And a new node holds out what the nearest `default:` above
 it says, which at the root is `read: ["*"]` — readable by everyone, writable by its owner
@@ -115,7 +115,7 @@ delta replayed or watched from the store carries the author back. The CLI does n
 yet; what it prints is the record that decided, which is the same fact from the other side.
 
 **What is not yours to write.** `verse data -put` under `verse.` is refused whatever you hold:
-the reserved half is written through the verbs that own it (`verse c -a`, `verse task run`,
+`verse` is written through the verbs that own it (`verse c -a`, `verse task run`,
 `verse gate approve`, `verse perms`), and beneath each verb the store checks the write against
 its place, so nothing reaching the store can stamp a task or answer a question on your behalf.
 `verse data verse perms` is refused too: a person reads records with `verse perms`, never the

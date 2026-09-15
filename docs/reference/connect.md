@@ -85,8 +85,8 @@ Scopes are the store's, not the surface's: a copy-on-write overlay is something 
 does, and `disconnect -scope` asks it to drop one. A store without real scopes would answer
 501 and the client would fall back to removing `local.*` entities one at a time.
 
-The scope's engine observes via per-trigger subtree watches, each watching exactly the
-`system.kind` it matches rather than a root.
+The scope's engine observes via per-trigger subtree watches, each watching exactly the literal
+prefix of the path its rule matches rather than the whole tree.
 
 ## The charter a scope runs
 

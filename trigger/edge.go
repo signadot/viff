@@ -41,8 +41,8 @@ func subjectAddr(m Match) string {
 	if s, ok := m.address(); ok {
 		return s
 	}
-	if m.Deep() {
-		return strings.Join(m.Segs(), ".")
+	if segs := m.Segs(); len(segs) > 0 {
+		return strings.Join(segs, ".")
 	}
 	return subjectText(m)
 }

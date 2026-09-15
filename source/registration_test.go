@@ -1,6 +1,7 @@
 package source_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestRegistrationRefRoundTrips(t *testing.T) {
 		if parsed != ref {
 			t.Fatalf("%q round-tripped to %q", ref, parsed)
 		}
-		if parsed.System() != source.System || parsed.Kind() != "git" || parsed.ID() != name {
+		if !slices.Equal(parsed.Segs(), []string{entity.VerseRoot, source.System, "git", name}) {
 			t.Fatalf("the address should be verse.sources.<system>.<name>, got %+v", parsed)
 		}
 	}

@@ -40,11 +40,11 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 	deadline := time.After(3 * time.Second)
 	for {
 		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+			return mirror.IsQuestion(ref)
 		}) {
 			p := entity.ToObj(ent.Payload)
 			if p["task"] == taskID && p["status"] == mirror.QuestionPending {
-				return ent.Ref.ID()
+				return ent.Ref.Name()
 			}
 		}
 		select {
@@ -90,11 +90,11 @@ func waitInstance(t *testing.T, srv *Server, name, origin string) string {
 	deadline := time.After(5 * time.Second)
 	for {
 		if _, ok, _ := srv.Store.Get(ref); ok {
-			return ref.ID()
+			return ref.Name()
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("instance %s was never minted", ref.ID())
+			t.Fatalf("instance %s was never minted", ref.Name())
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

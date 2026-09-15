@@ -37,7 +37,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo.pr.*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -83,9 +83,9 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When: MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When: MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			// A predicate the action advances past, so the rule has an end state.
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewing"}},
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
 			Spawn:  &launch.Spec{Prompt: "follow up on $subject"},
@@ -137,7 +137,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "needs-flow",
 		Condition: Condition{
-			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance"}),
+			When:    MatchWhen(mm("verse.task.instance.*")),
 			Subject: mm("demo.pr.*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},
@@ -185,21 +185,21 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 			Condition{Subject: mm("demo.pr.*"), When: MatchWhen(Match{"sytem": "demo"})}, "condition.when",
 		},
 		// A subject that has to SELECT — one whose firing is some other entity's change — must
-		// name a kind, because that is what the engine selects and spawns for. The same subject
-		// with no `when` beside it is fine (TestSubjectOnlyNeedsNoKind): nothing selects then.
-		"selecting subject without kind": {
-			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"system": "demo"}},
-			"must be an address",
+		// start at a place, because a selection is read out of the store under it. The same
+		// subject with no `when` beside it is fine (TestSubjectOnlyNeedsNoKind): nothing selects
+		// then.
+		"selecting subject opening on a wildcard": {
+			Condition{When: MatchWhen(mm("ci.*.*")), Subject: mm("*.pr.*")},
+			"must be a path beginning with a literal",
 		},
 		"bad subject key": {
-			Condition{When: MatchWhen(Match{"system": "ci"}), Subject: Match{"sytem": "demo"}},
+			Condition{When: MatchWhen(mm("ci.*.*")), Subject: Match{"sytem": "demo"}},
 			"condition.subject",
 		},
-		// Only `id` globs. A "*" inside system or kind is a typo for the whole segment, and it
-		// would match nothing at all — the failure mode Validate exists to turn into an error.
-		"globbed kind": {
-			Condition{Subject: Match{"system": "demo", "kind": "p*"}},
-			"cannot glob",
+		// The positional keys are refused by name, not read as a path.
+		"a positional key": {
+			Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+			"is not a key",
 		},
 	}
 	for name, c := range cases {
@@ -217,16 +217,16 @@ func TestAddTriggerRejectsBadCondition(t *testing.T) {
 }
 
 // A subject with no `when` is the whole condition: it dispatches on changes to what it names,
-// so it is never asked to select a set out of the store and needs no definite kind. This is the
-// case the "must name a kind" rule must NOT catch — the ordinary rule that reacts to a system.
+// so it is never asked to select a set out of the store. This is the case the "must be an
+// address" rule must NOT catch — the ordinary rule that reacts to everything under a place.
 func TestSubjectOnlyNeedsNoKind(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "any-demo-change",
-		Condition: Condition{Subject: Match{"system": "demo"}},
+		Condition: Condition{Subject: mm("demo.*.*")},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
-		t.Fatalf("a subject-only condition over a whole system must install: %v", err)
+		t.Fatalf("a subject-only condition over a whole place must install: %v", err)
 	}
 }
 
@@ -289,7 +289,7 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 // written when it meant something, and their authors deserve to be told where the meaning
 // went — a create is the rising edge of "this exists", which is what `on` says.
 func TestOpIsNoLongerAMatchDimension(t *testing.T) {
-	const in = `{"system":"local","kind":"dir-status-abc","op":"set"}`
+	const in = `{"path":["local","dir-status-abc","*"],"op":"set"}`
 	var f Formula
 	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
 		if err := f.Req.Facts.Validate(); err == nil {
@@ -310,8 +310,8 @@ func TestOpIsNoLongerAMatchDimension(t *testing.T) {
 // silence.
 func TestMixedMatchAndTagObjectRejected(t *testing.T) {
 	for _, in := range []string{
-		`{"system":"demo","quorum":2}`,
-		`{"kind":"pr","until":[{"quorum":2}]}`,
+		`{"path":["demo","*","*"],"quorum":2}`,
+		`{"value":{"stage":"open"},"until":[{"quorum":2}]}`,
 	} {
 		var f Formula
 		if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
@@ -329,9 +329,9 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 }
 
 // A `when` round-trips as authored, so `trigger show` reads like the installed charter
-// rather than exposing the internal parse node; the subject round-trips as its dimensions.
+// rather than exposing the internal parse node; the subject round-trips as its path.
 func TestConditionJSONRoundTrip(t *testing.T) {
-	const in = `{"name":"reviewed","condition":{"when":{"system":"task","kind":"instance",` +
+	const in = `{"name":"reviewed","condition":{"when":{"path":["task","instance","*"],` +
 		`"value":{"status":"done"}},"subject":"demo.pr.*"},"action":{"patch":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {
@@ -340,7 +340,7 @@ func TestConditionJSONRoundTrip(t *testing.T) {
 	if err := tr.Condition.validate(); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	// The subject parsed to a demo:pr selector — the address dimensions, not a leftover ref.
+	// The subject parsed to a selector — a path, not a leftover ref.
 	if !tr.Condition.Subject.Selects() {
 		t.Fatalf("subject did not parse as a selector: %#v", tr.Condition.Subject)
 	}

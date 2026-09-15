@@ -21,8 +21,7 @@ const proposalCharter = `
 - name: proposal-stale
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [merge, proposal, "*"]
       value: !let
         let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
         in:  {state: open, base: !not .[tip]}
@@ -130,8 +129,7 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
 - name: self-referential
   condition:
     subject:
-      system: merge
-      kind: proposal
+      path: [merge, proposal, "*"]
       value: !let
         let: [{tip: !get-path {at: [git, head, $subject.value.branch], path: sha}}]
         in:  {base: !not .[tip]}

@@ -55,13 +55,6 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err
 	}
-	// A patch arrives as a raw node — the generated codec passes it through untouched — so
-	// the JSON spelling of an operator (`{"tmp": {"delete": null}}`) is still a plain object
-	// at this point. desugar turns it into the tag the mergeops actually read, which is what
-	// keeps a .json charter and a .tony charter one grammar rather than two (the same job
-	// opNode does for a Match's operators). Done once, at install, so the firing path sees
-	// only the canonical tagged form.
-	desugarPatches(&t.Action)
 	// A RULE THAT COULD NEVER MATCH IS REFUSED, not installed silent. The perms mirror is the
 	// system's, with no read held out on it, so a rule reading it matches nothing unless it is
 	// the system's own — and the one that should read it is exactly that one: a system charter
@@ -726,9 +719,7 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	// `commit` is absent because a spawn is not where provenance belongs and a firing may have
 	// none.
 	b[refSubject+"."+subjPartRef] = subject.String()
-	b[refSubject+"."+subjPartSystem] = subject.System()
-	b[refSubject+"."+subjPartKind] = subject.Kind()
-	b[refSubject+"."+subjPartID] = subject.ID()
+	b[refSubject+"."+subjPartName] = subject.Name()
 	// `value`, AND EVERY PATH INTO IT. In a node position `$subject.value.sha` is a kpath into
 	// the payload and has always resolved; in a string it did not, because this map is all a
 	// spawn's strings get and `value` was left out of it — so the bare `subject` key matched the
@@ -798,26 +789,6 @@ func ParseMode(s string) (task.Mode, error) {
 		return task.Park, nil
 	default:
 		return task.Auto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
-	}
-}
-
-// desugarPatches rewrites the tag-keyed operator spelling into tags across an action and its
-// completion hooks. Recursive because an Action is: a hook is a full action with its own patch.
-func desugarPatches(a *Action) {
-	if a == nil {
-		return
-	}
-	if a.Patch != nil {
-		a.Patch = desugar(a.Patch)
-	}
-	// A derive is a patch on the derived entity, so it carries the same operators and needs
-	// the same desugaring — otherwise `{"tmp": {"delete": null}}` in a .json charter would
-	// reach the store as a literal object where the .tony spelling wrote a deletion.
-	if a.Derive != nil {
-		a.Derive = desugar(a.Derive)
-	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
-		desugarPatches(h)
 	}
 }
 

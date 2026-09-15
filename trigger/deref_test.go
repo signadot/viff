@@ -256,8 +256,8 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		// $branch is a field of the PR. The CI status has no such field — and carries a
 		// `branch` of its own precisely to catch a binding that read the cause instead.
@@ -299,7 +299,7 @@ func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 	pr := entity.RefAt("demo", "pr", "1")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "note",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: entity.Obj{"noted": "$branch", "stage": "seen"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

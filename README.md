@@ -51,9 +51,9 @@ entities, tasks, and the charters that relate them.
 
 ## What's here
 
-- `entity/` — the entity-verse: a `<system, kind, id>` store, observable and
+- `entity/` — the entity-verse: one tree addressed by kinded paths, observable and
   revision-cursored, durable and scope-aware with copy-on-write, over logd/docd. One
-  conditional write addresses a whole entity or one field inside it, and every write names
+  conditional write addresses a node at any path, and every write names
   who made it: a node is its creator's, and the store refuses what its place does not permit
   ([permissions](docs/perms.md)).
 - `trigger/` — the ECA engine: conjunctive matches, conjunctive gates posed concurrently,
@@ -75,7 +75,7 @@ entities, tasks, and the charters that relate them.
   past its deadline hands the question to the next binding covering the subject, and the last
   hop is always the docket a person reads.
 - `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
-  deploy and install (`verse source add`), reflecting an owned slice like `git.*` that triggers
+  deploy and install (`verse source add`), reflecting an owned place like `git` that triggers
   react to. Four ship (`sourced git|slack|linear|github`); anything else is the sample program
   plus one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,

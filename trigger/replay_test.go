@@ -28,7 +28,7 @@ func TestDropRecoveryViaReplay(t *testing.T) {
 	// the walk is not paying a read per commit. What is under test is that the walk HAPPENS.
 	eng.AddTrigger(Trigger{
 		Name:      "elsewhere",
-		Condition: Condition{Subject: Match{"system": "audit", "kind": "record", "id": "1"}},
+		Condition: Condition{Subject: mm("audit.record.1")},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	})
 
@@ -76,7 +76,7 @@ func TestReplayedCommitsFireTriggers(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	eng.AddTrigger(Trigger{
 		Name: "advance",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "x",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "x", "*"),
 			"value": map[string]any{"stage": "new"}}},
 		Action: Action{Patch: entity.Obj{"stage": "seen"}.Payload()},
 	})
@@ -96,7 +96,7 @@ func TestReplayedCommitsFireTriggers(t *testing.T) {
 	deadline := time.After(30 * time.Second)
 	for {
 		seen := 0
-		for _, e := range store.List(func(r entity.Ref) bool { return r.Kind() == "x" }) {
+		for _, e := range store.List(func(r entity.Ref) bool { return r.ChildOf("demo", "x") }) {
 			if entity.Str(e.Payload, "stage") == "seen" {
 				seen++
 			}

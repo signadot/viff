@@ -129,7 +129,7 @@ stops future writes and touches nothing that exists.
 holding `owner` there — by co-owning the node above, or by a grant — becomes the owner, and a
 record is written if that differs from the owner above. A principal holding `read-write` there
 creates the node too, and it is the node's owner's: a file a grantee writes into a shared
-slice belongs to whoever shares it. Holding neither, the write is refused.
+place belongs to whoever shares it. Holding neither, the write is refused.
 
 **Questions stand at their own address and are co-owned through what posed them.** A question
 lives at `verse.gate.question.<id>` and its record — `system:docket`'s, an owner record of its own —
@@ -253,8 +253,8 @@ grants field at all is from before defaults existed and reads as holding out the
 otherwise. It is set in the server's config (`perms: {default: {…}}`, [reference/up.md](reference/up.md#configuration)),
 and `{}` there is a verse where what anybody creates is theirs and their grantees' alone.
 
-**The world's half is open to write until a record says otherwise.** Everyone holds `owner`
-at a world node with no owner record at or above it, so a raw put creates what it names as
+**Outside `verse`, the tree is open to write until a record says otherwise.** Everyone holds
+`owner` at a node outside `verse` with no owner record at or above it, so a raw put creates what it names as
 its requester's, and a source's reflections are its installer's. This is the other rule in
 code rather than in a record, and the two are different questions: what a place with no record
 permits, and what a new record holds out.
@@ -373,7 +373,7 @@ different owners for the same address without either touching baseline's record,
 the scope drops its grants with everything else it wrote.
 
 This is the world's rule rather than the program's — a task or a gate cannot be acted on from a
-scope that did not create it, a grant can be made in one — because a grant has no live half. A
+scope that did not create it, a grant can be made in one — because a grant has no live side. A
 task is a handle and a gate is an awaiter, each running in one engine, and an act on it from a
 scope would land on baseline's live thing while its record landed in the overlay. A grant is a
 record that a cache reads, and a cache layers as records do. What a scope owns is in

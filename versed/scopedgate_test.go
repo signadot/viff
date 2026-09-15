@@ -17,11 +17,11 @@ import (
 func questionsIn(store entity.Store, taskID string) []string {
 	var out []string
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+		return mirror.IsQuestion(ref)
 	}) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] == taskID && p["status"] == mirror.QuestionPending {
-			out = append(out, ent.Ref.ID())
+			out = append(out, ent.Ref.Name())
 		}
 	}
 	return out
@@ -105,11 +105,11 @@ func spawnScoped(t *testing.T, ts *httptest.Server, id, scope string) {
 func firingQuestions(store entity.Store, origin string) []string {
 	var out []string
 	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return ref.System() == mirror.QuestionSystem && ref.Kind() == mirror.QuestionKind
+		return mirror.IsQuestion(ref)
 	}) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] == nil && p["origin"] == origin && p["status"] == mirror.QuestionPending {
-			out = append(out, ent.Ref.ID())
+			out = append(out, ent.Ref.Name())
 		}
 	}
 	return out
@@ -133,7 +133,7 @@ func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
 	const scope = "dev-b"
 	addScopedRule(t, ts, scope, `{
 		name: scoped-ask,
-		condition: {subject: {system: demo, kind: ask, value: {stage: open}}},
+		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
 		gates: [{name: approval, mode: ask, onDenied: {patch: {stage: rejected}}}],
 		action: {patch: {stage: reviewing}},
 	}`)

@@ -192,14 +192,16 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection,
 // A message ref narrows to its channel rather than to itself, which is the same subsumption
 // git makes: the window is read per channel, so a finer target would cost the same call.
 func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
-	if ref.System() != s.system || ref.ID() == "" {
+	// This source's own layout: `<system>.<kind>.<workspace>/<rest>`, which it writes and reads back.
+	segs := ref.Segs()
+	if len(segs) != 3 || segs[0] != s.system || segs[2] == "" {
 		return "", true
 	}
-	ws, rest, ok := strings.Cut(ref.ID(), "/")
+	ws, rest, ok := strings.Cut(segs[2], "/")
 	if !ok || ws != s.workspace {
 		return "", false
 	}
-	switch ref.Kind() {
+	switch segs[1] {
 	case "channel":
 		return rest, false
 	case "message":
@@ -224,8 +226,8 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 	// `slack:channel:{workspace}`, or the channels it can no longer see would stand forever.
 	mine := entity.Obj{"workspace": s.workspace}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: s.system, Kind: "channel", Predicate: mine},
-		{System: s.system, Kind: "message", Predicate: mine},
+		cover(source.Cover(s.system, "channel", "*"), mine),
+		cover(source.Cover(s.system, "message", "*"), mine),
 	}}
 	for _, c := range channels {
 		if !s.watched(c) {
@@ -249,7 +251,7 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 				"this needs; channels are unaffected", err)
 		} else {
 			rn.Covers = append(rn.Covers,
-				entity.Pattern{System: s.system, Kind: "user", Predicate: mine})
+				cover(source.Cover(s.system, "user", "*"), mine))
 			for _, u := range users {
 				s.addUser(&rn, u)
 			}
@@ -267,8 +269,8 @@ func (s *Slack) reflectChannel(ctx context.Context, id string) (source.Reflectio
 	}
 	mine := entity.Obj{"workspace": s.workspace, "channel": id}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		{System: s.system, Kind: "channel", Predicate: mine},
-		{System: s.system, Kind: "message", Predicate: mine},
+		cover(source.Cover(s.system, "channel", "*"), mine),
+		cover(source.Cover(s.system, "message", "*"), mine),
 	}}
 	if !s.watched(c) {
 		// Narrowed out of what this source reflects: the covers stand, the entities do not, so
@@ -413,4 +415,10 @@ func (s *Slack) addUser(rn *source.Reflection, u user) {
 		p["tz"] = u.TZ
 	}
 	rn.Add(entity.RefAt(s.system, "user", s.workspace+"/"+u.ID), p)
+}
+
+// cover is a cover narrowed by a payload predicate.
+func cover(p entity.Pattern, pred entity.Payload) entity.Pattern {
+	p.Predicate = pred
+	return p
 }

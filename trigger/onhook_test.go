@@ -51,7 +51,7 @@ func prRef(id string) entity.Ref { return entity.RefAt("demo", "pr", id) }
 // with no `when` beside it, their cause too. A field predicate rather than a bare kind, so
 // advancing the stage does not re-fire the trigger.
 func prSubject(stage string) Match {
-	return Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": stage}}
+	return Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": stage}}
 }
 
 // waitField polls until store[ref].Payload[key] == want, or fails after a deadline.
@@ -223,7 +223,7 @@ func TestOnHookValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	// A subject the action can advance past: these cases are about onX validation, and a
 	// charter that would re-spawn forever is a poor example to make them from.
-	cond := Condition{Subject: Match{"system": "demo", "kind": "pr",
+	cond := Condition{Subject: Match{"path": pathOf("demo", "pr", "*"),
 		"value": map[string]any{"stage": "open"}}}
 
 	if err := eng.AddTrigger(Trigger{

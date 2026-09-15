@@ -66,7 +66,10 @@ func TestTheTriageDriveMarksWhatMovedAndOnlyThat(t *testing.T) {
 		t.Fatalf("another repository's issue was judged: stage=%v", got)
 	}
 
-	// The judgement lands as the hook would write it, and the issue is quiet from then on.
+	// The judgement lands as the hook would write it, and the issue is quiet from then on. It lands
+	// once the firings already under way have: each is evaluated at the commit that caused it and
+	// writes to the live store, so one still running would write `judged` over the `quiet` below.
+	waitQuiet(t, store)
 	setPayload(t, store, entity.RefAt("verse-dev", "triage", "next", "bbb"), `{judged: {id: bbb, updatedAt: "t1"}, next: build}`)
 	setPayload(t, store, fresh, `{id: bbb, repo: verse, status: open, updatedAt: "t1", title: fresh, stage: quiet}`)
 	setPayload(t, store, seeded, `{id: aaa, repo: verse, status: open, updatedAt: "t1", title: seeded, touched: 2}`)
@@ -202,4 +205,23 @@ func TestTheTriageDriveLatchesARowAsItTakesIt(t *testing.T) {
 	if got := field(t, store, seeded, "stage"); got != "seeded" {
 		t.Fatalf("the seeded row was taken: stage=%v", got)
 	}
+}
+
+// waitQuiet waits until the store has taken no commit for a moment: every firing already under
+// way has written what it was going to.
+func waitQuiet(t *testing.T, store entity.Store) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	last, since := store.Rev(), time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		if rev := store.Rev(); rev != last {
+			last, since = rev, time.Now()
+			continue
+		}
+		if time.Since(since) >= 300*time.Millisecond {
+			return
+		}
+	}
+	t.Fatal("the store kept taking commits; the engine did not settle")
 }

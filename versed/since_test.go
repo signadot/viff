@@ -314,7 +314,7 @@ func TestACharterSetsTheRetainedWindow(t *testing.T) {
 	var trig trigger.Trigger
 	if err := codec.Unmarshal([]byte(`{
 		name: chatty,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {
 			spawn:  {prompt: "review $subject", retain: 4096},
 			onDone: {patch: {stage: reviewed}},

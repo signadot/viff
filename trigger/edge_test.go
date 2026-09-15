@@ -23,9 +23,9 @@ func onWhen(when *Formula) Trigger {
 	return Trigger{
 		Name: "ship",
 		Condition: Condition{
-			On:      MatchWhen(Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}}),
+			On:      MatchWhen(Match{"path": pathOf("ci", "status", "*"), "value": map[string]any{"state": "green"}}),
 			When:    when,
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}
@@ -108,7 +108,7 @@ func TestOnDoesNotReFireWhileItHolds(t *testing.T) {
 func TestOnIsGuardedByWhen(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	when := MatchWhen(Match{"system": "demo", "kind": "notion", "value": map[string]any{"ok": true}})
+	when := MatchWhen(Match{"path": pathOf("demo", "notion", "*"), "value": map[string]any{"ok": true}})
 	if err := eng.AddTrigger(onWhen(when)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestOnDoesNotFireOnTheBacklog(t *testing.T) {
 
 // A cause that PINS THE ENTITY is still read as a predicate over its payload. Naming the id
 // is how you say "this CI status, not any of them", and it used to cost the rest of the
-// match: a definite system+kind+id was treated as an entity NAMED rather than selected, and a
+// match: a path of literal segments was treated as an entity NAMED rather than selected, and a
 // named match is a set of one whether or not it exists — so `{state: green}` was dropped and
 // the predicate meant "ci.status.release is there at all".
 //
@@ -179,8 +179,8 @@ func TestOnWithAPinnedIDReadsItsPredicate(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			On:      MatchWhen(Match{"system": "ci", "kind": "status", "id": "release", "value": map[string]any{"state": "green"}}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			On:      MatchWhen(Match{"path": pathOf("ci", "status", "release"), "value": map[string]any{"state": "green"}}),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -209,8 +209,8 @@ func TestWhenWithAPinnedIDBlocksOnItsPredicate(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status", "id": "build", "value": map[string]any{"state": "green"}}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(Match{"path": pathOf("ci", "status", "build"), "value": map[string]any{"state": "green"}}),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -240,7 +240,7 @@ func TestSubjectDispatchIsUnchangedAlongsideOn(t *testing.T) {
 	}
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger(subject): %v", err)
@@ -292,24 +292,25 @@ func TestEdgeReadsOneSnapshot(t *testing.T) {
 // asked at two revisions, and each of these asks it for something state cannot answer.
 func TestAddTriggerRejectsBadOn(t *testing.T) {
 	cases := map[string]Condition{
-		"on with no system": {
-			On:      MatchWhen(Match{"kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr"},
+		"on opening on a wildcard": {
+			On:      MatchWhen(mm("*.status.*")),
+			Subject: mm("demo.pr.*"),
 		},
 		"on carrying op": {
-			On:      MatchWhen(Match{"system": "ci", "kind": "status", "op": "set"}),
-			Subject: Match{"system": "demo", "kind": "pr"},
+			On:      MatchWhen(Match{"path": pathOf("ci", "status", "*"), "op": "set"}),
+			Subject: mm("demo.pr.*"),
 		},
 		"on with a subject that cannot select": {
-			On:      MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo"}, // no kind, no id — selects nothing definite
+			On:      MatchWhen(mm("ci.status.*")),
+			Subject: mm("*.pr.*"), // opens on a wildcard — a selection starts at a place
 		},
 	}
 	for name, cond := range cases {
 		t.Run(name, func(t *testing.T) {
 			store := entitytest.Store(t)
 			eng := New(store, task.AutoResolver{})
-			err := eng.AddTrigger(Trigger{Name: "t", Condition: cond, Action: Action{}})
+			// An action, so the refusal is the condition's and not "the action does nothing".
+			err := eng.AddTrigger(Trigger{Name: "t", Condition: cond, Action: seenAction()})
 			if err == nil {
 				t.Fatal("installed a condition that cannot mean what it says")
 			}
@@ -323,9 +324,9 @@ func TestAddTriggerRejectsBadOn(t *testing.T) {
 // is hand-written).
 func TestConditionOnRoundTrips(t *testing.T) {
 	in := Condition{
-		On:      MatchWhen(Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}}),
-		When:    MatchWhen(Match{"system": "demo", "kind": "notion"}),
-		Subject: Match{"system": "demo", "kind": "pr"},
+		On:      MatchWhen(Match{"path": pathOf("ci", "status", "*"), "value": map[string]any{"state": "green"}}),
+		When:    MatchWhen(mm("demo.notion.*")),
+		Subject: mm("demo.pr.*"),
 	}
 	node, err := in.ToTonyIR()
 	if err != nil {
@@ -335,14 +336,14 @@ func TestConditionOnRoundTrips(t *testing.T) {
 	if err := out.FromTonyIR(node); err != nil {
 		t.Fatalf("FromTonyIR: %v", err)
 	}
-	if out.On == nil || out.On.Req == nil || out.On.Req.Facts.System() != "ci" {
+	if out.On == nil || out.On.Req == nil || !isPath(out.On.Req.Facts, "ci.status.*") {
 		t.Fatalf("on did not survive the round trip: %#v", out.On)
 	}
-	if out.When == nil || out.When.Req.Facts.System() != "demo" {
+	if out.When == nil || !isPath(out.When.Req.Facts, "demo.notion.*") {
 		t.Fatalf("when did not survive alongside on: %#v", out.When)
 	}
 
-	bare := Condition{Subject: Match{"system": "demo", "kind": "pr"}}
+	bare := Condition{Subject: mm("demo.pr.*")}
 	n, err := bare.ToTonyIR()
 	if err != nil {
 		t.Fatalf("ToTonyIR: %v", err)
@@ -357,7 +358,7 @@ func TestConditionOnRoundTrips(t *testing.T) {
 // stream reports it where it stands — so the skip has to count it, or the rule sleeps through
 // its subjects going away (git-issue ga22z20vh12krhbcn1n0).
 func TestAWriteAboveWhatARuleReadsTouchesIt(t *testing.T) {
-	rule := Trigger{Name: "review", Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}}}
+	rule := Trigger{Name: "review", Condition: Condition{Subject: mm("demo.pr.*")}}
 	for _, c := range []struct {
 		ref  entity.Ref
 		want bool

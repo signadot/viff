@@ -40,8 +40,8 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship-all-reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -91,8 +91,8 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
 			Spawn:  &launch.Spec{Prompt: "ship $subject"},
@@ -167,8 +167,8 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
 			Spawn:  &launch.Spec{Prompt: "ship $subject"},
@@ -215,8 +215,8 @@ func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -257,8 +257,8 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 	}); err != nil {
@@ -279,7 +279,7 @@ func TestFanOutOverEmptySetIsANoOp(t *testing.T) {
 func TestSubjectSelectionIsDeterministic(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "b", "a", "c")
-	m := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}
+	m := Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}}
 	want := []string{"demo.pr.a", "demo.pr.b", "demo.pr.c"}
 	for range 20 { // map iteration order varies per range, so repeat
 		refs := m.Select(store)
@@ -308,8 +308,8 @@ func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "ship",
 		Condition: Condition{
-			When:    MatchWhen(Match{"system": "ci", "kind": "status"}),
-			Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}},
+			When:    MatchWhen(mm("ci.status.*")),
+			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Gates:  []Gate{{Name: "ship", Mode: "ask"}},
 		Action: Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
@@ -361,10 +361,10 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 	}
 }
 
-// An ADDRESS GLOB is the string spelling of a set-valued Subject, and it must dispatch
-// identically to the object form — `"demo.pr.*"` is the whole kind, exactly as `verse flow
-// demo.pr.*` addresses the whole kind's live tasks. Parsed instead as a `ref` naming an entity
-// literally called "*", nothing fans out and `set` creates `demo.pr.*`.
+// A WILDCARD SEGMENT is the string spelling of a set-valued Subject, and it must dispatch
+// identically to the object form — `"demo.pr.*"` is every pr, exactly as `verse flow demo.pr.*`
+// addresses their live tasks. Parsed instead as a name for a node literally called "*", nothing
+// fans out and `set` creates `demo.pr.*`.
 func TestGlobSubjectFansOut(t *testing.T) {
 	store := entitytest.Store(t)
 	open := prs(t, store, "open", "1", "2", "3")
@@ -372,7 +372,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"ship-all",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo.pr.*"},
+		"condition":{"when":"ci.status.*","subject":"demo.pr.*"},
 		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -394,16 +394,16 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	}
 }
 
-// An id glob selects a FAMILY within a kind, not the whole kind.
-func TestIdGlobSelectsAFamily(t *testing.T) {
+// A glob segment selects a FAMILY at a place, not everything there.
+func TestAGlobSegmentSelectsAFamily(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "open", "hotfix-1", "hotfix-2", "feature-9")
 
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
-	if err := codec.Unmarshal([]byte(`{"name":"ship-hotfixes",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"demo.pr.hotfix-*"},
-		"action":{"patch":{"stage":"shipped"}}}`), &tr, codec.JSON); err != nil {
+	if err := codec.Unmarshal([]byte(`{name: ship-hotfixes,
+		condition: {when: ci.status.*, subject: {path: [demo, pr, !glob "hotfix-*"]}},
+		action: {patch: {stage: shipped}}}`), &tr, codec.Tony); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -430,7 +430,7 @@ func TestConcreteSubjectNamesAndCreates(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{"name":"record",
-		"condition":{"when":{"system":"ci","kind":"status"},"subject":"audit.record.latest"},
+		"condition":{"when":"ci.status.*","subject":"audit.record.latest"},
 		"action":{"patch":{"stage":"noted"}}}`), &tr, codec.JSON); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"root": "verse", "system": "task", "kind": "instance", "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo.pr.*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},

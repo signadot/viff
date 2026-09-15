@@ -17,7 +17,7 @@ import (
 // AddTrigger) — what is pinned here is WHICH shapes it names, since that is the judgement.
 func TestLatchCheck(t *testing.T) {
 	pr := func(pred map[string]any) Match {
-		m := Match{"system": "demo", "kind": "pr"}
+		m := mm("demo.pr.*")
 		if pred != nil {
 			m["value"] = pred
 		}
@@ -92,7 +92,7 @@ func TestLatchCheck(t *testing.T) {
 // wildcard, so `{validated: null}` is presence), and writing ANY value falsifies it.
 func TestConnectValidatorShapeLatches(t *testing.T) {
 	unvalidated := Condition{Subject: Match{
-		"system": "local", "kind": "dir-status-abc",
+		"path": pathOf("local", "dir-status-abc", "*"),
 		"value": ir.FromKeyVals([]ir.KeyVal{
 			{Key: ir.FromString("validated"), Val: ir.Null()},
 		}).WithTag("!not"),
@@ -127,7 +127,7 @@ func TestConnectValidatorShapeLatches(t *testing.T) {
 func TestLatchDecidesShapesKeysCouldNot(t *testing.T) {
 	spawn := &launch.Spec{Prompt: "review $subject"}
 	subject := func(pred *ir.Node) Condition {
-		return Condition{Subject: Match{"system": "demo", "kind": "pr", "value": pred}}
+		return Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": pred}}
 	}
 	nested := subject(entity.Obj{"labels": entity.Obj{"urgent": true}}.Payload())
 
@@ -257,7 +257,7 @@ func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 				t.Fatalf("latchOf = %d, want %d", got, c.want)
 			}
 			if err := checkLatch(Condition{Subject: Match{
-				"system": "demo", "kind": "pr", "value": pred}}, c.act); (err != nil) != (c.want == latchUntouched || c.want == latchMatches) {
+				"path": pathOf("demo", "pr", "*"), "value": pred}}, c.act); (err != nil) != (c.want == latchUntouched || c.want == latchMatches) {
 				t.Fatalf("refusal disagrees with the verdict: %v", err)
 			}
 		})
@@ -285,7 +285,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 		Name: "review",
 		// Latches through its onDone — but the task blocks forever, so the latch never
 		// lands and the subject stays selected the whole time.
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Gates: []Gate{{Name: "go", Mode: "ask"}},
 		Action: Action{
@@ -343,7 +343,7 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
-		if len(eng.matchFlow(Match{"system": ref.System, "kind": ref.Kind, "id": ref.ID})) == n {
+		if len(eng.matchFlow(mustSteps(t, ref.Segs()...))) == n {
 			return
 		}
 		select {
@@ -360,7 +360,7 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 // survives the reap. Demanding a subject latch as well would be demanding the same guarantee
 // twice, and it is the shape half the sequence tests are written in.
 func TestLatchCheckLeavesSequencesAlone(t *testing.T) {
-	cond := Condition{Subject: Match{"system": "demo", "kind": "pr"}} // no predicate at all
+	cond := Condition{Subject: mm("demo.pr.*")} // no predicate at all
 	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Prompt: "one"}}, {Spawn: &launch.Spec{Prompt: "two"}}}}
 	if err := checkLatch(cond, seq); err != nil {
 		t.Fatalf("a sequence was asked to latch: %v", err)
@@ -377,7 +377,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	err := eng.AddTrigger(Trigger{
 		Name:      "spin",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Spawn: &launch.Spec{Prompt: "review $subject"}},
 	})
 	if err == nil {
@@ -389,7 +389,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	// a nested sequence trips both checks, and only one of them is the answer.
 	err = eng.AddTrigger(Trigger{
 		Name:      "nested",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Prompt: "inner"}}}}}},
 	})
 	if err == nil {
@@ -402,15 +402,15 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 
 // A narrow `on` SAMPLES, and the note says which of the two sentences the charter wrote.
 func TestSamplingAdvice(t *testing.T) {
-	ship := Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}
-	// `on` covers only ci:status, and the subject reads demo:pr — so a PR arriving after the
+	ship := Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}}
+	// `on` covers only ci.status, and the subject reads demo.pr — so a PR arriving after the
 	// edge waits for CI to go red and green again.
 	narrow := Trigger{Name: "ship", Condition: Condition{
-		On:      MatchWhen(Match{"system": "ci", "kind": "status", "value": map[string]any{"state": "green"}}),
+		On:      MatchWhen(Match{"path": pathOf("ci", "status", "*"), "value": map[string]any{"state": "green"}}),
 		Subject: ship,
 	}}
 	notes := advise(narrow)
-	if len(notes) != 1 || !strings.Contains(notes[0], "demo:pr") {
+	if len(notes) != 1 || !strings.Contains(notes[0], "demo.pr") {
 		t.Fatalf("no note about the subtree the cause does not cover: %v", notes)
 	}
 	t.Log(notes[0])
@@ -422,7 +422,7 @@ func TestSamplingAdvice(t *testing.T) {
 	}
 	// An `on` that covers what the rule reads is not sampling either.
 	full := Trigger{Name: "ship", Condition: Condition{
-		On:      MatchWhen(Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "reviewed"}}),
+		On:      MatchWhen(Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}}),
 		Subject: ship,
 	}}
 	if notes := advise(full); len(notes) != 0 {

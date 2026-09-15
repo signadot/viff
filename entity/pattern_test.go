@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 )
 
@@ -268,15 +269,15 @@ func TestNullPresenceAbsenceIdioms(t *testing.T) {
 // A Pattern goes on the wire — it is what an external source declares as the slice its
 // answer is complete for (docs/sources.md), and what a source registration carries
 // as `owns`. So every dimension has to survive a round trip, the payload predicate included:
-// a cover that arrived with its predicate dropped would claim a whole kind rather than the
-// one repo it meant.
+// a cover that arrived with its predicate dropped would claim a whole place rather than the
+// one repo it meant. The path's segments are nodes, and an operator among them has to arrive as
+// the operator: a glob that came back as its text would match literally and select nothing.
 func TestPatternSurvivesTheWire(t *testing.T) {
-	in := Pattern{
-		System:    "git",
-		Kind:      "ref",
-		Predicate: Obj{"repo": "verse"}.Payload(),
-		At:        []string{"labels"},
-	}
+	in := patternAt("git", "ref", "*")
+	in.Path[1] = ir.FromString("re*")
+	in.Path[1].Tag = "!glob"
+	in.Predicate = Obj{"repo": "verse"}.Payload()
+	in.At = []string{"labels"}
 	node, err := gomap.ToTonyIR(in)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -285,8 +286,17 @@ func TestPatternSurvivesTheWire(t *testing.T) {
 	if err := gomap.FromTonyIR(node, &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if out.System != in.System || out.Kind != in.Kind {
-		t.Fatalf("ref dimensions lost: %+v", out)
+	if len(out.Path) != len(in.Path) {
+		t.Fatalf("path lost: %+v", out.Path)
+	}
+	for i := range in.Path {
+		if !Equal(out.Path[i], in.Path[i]) || out.Path[i].Tag != in.Path[i].Tag {
+			t.Fatalf("path segment %d = %v (tag %q), want %v (tag %q)", i, out.Path[i],
+				out.Path[i].Tag, in.Path[i], in.Path[i].Tag)
+		}
+	}
+	if !out.MatchRef(RefAt("git", "ref", "x")) || out.MatchRef(RefAt("git", "commit", "x")) {
+		t.Fatalf("the decoded path does not select what it was written to: %+v", out.Path)
 	}
 	if len(out.At) != 1 || out.At[0] != "labels" {
 		t.Fatalf("At lost: %+v", out.At)

@@ -72,7 +72,7 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 	eng := New(st, task.AutoResolver{})
 	tr := Trigger{
 		Name:      "review",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
 	if err := eng.InstallTriggerAs("scott@example.com", tr); err != nil {

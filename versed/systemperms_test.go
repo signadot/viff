@@ -19,8 +19,8 @@ import (
 )
 
 // A request presents user:, agent: or runner:, or a bare email for a person. A name versed makes
-// — via: a rule, system: — and a name the grammar does not read are refused at the door, before
-// any check runs, and write nothing.
+// — via: a rule, or the system's own principal — and a name the grammar does not read are refused
+// at the door, before any check runs, and write nothing.
 func TestTheDoorAdmitsOnlyWhatARequestMayPresent(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -132,7 +132,7 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "system.tony")
 	if err := os.WriteFile(path, []byte(`{
 		name: system-watch,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: seen}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)

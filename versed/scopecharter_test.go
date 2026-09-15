@@ -38,7 +38,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 
 	addScopedRule(t, firstHTTP, "me", `{
 		name: scoped-review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	down()
@@ -116,12 +116,12 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 
 	addRule(t, ts, `{
 		name: baseline-review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	addScopedRule(t, ts, "me", `{
 		name: scoped-only,
-		condition: {subject: {system: demo, kind: bug, value: {stage: open}}},
+		condition: {subject: {path: [demo, bug, "*"], value: {stage: open}}},
 		action: {patch: {stage: triaged}},
 	}`)
 
@@ -158,7 +158,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 
 	addRule(t, firstHTTP, `{
 		name: review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: baseline-said-so}},
 	}`)
 	// The dev's first move, refused: the inherited rule is baseline's, not the scope's to drop.
@@ -179,7 +179,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	// The dev's move: write their own under its name.
 	addScopedRule(t, firstHTTP, "me", `{
 		name: review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: mine}},
 	}`)
 	down()

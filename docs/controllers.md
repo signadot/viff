@@ -19,23 +19,23 @@ a `Watch`, starting with the one that decides whether to write a controller at a
 
 ## Should this be a controller at all?
 
-**A mounted slice fires no triggers.** Mounts live under `entity.MountRoot`, a top-level segment
+**A mounted place fires no triggers.** Mounts live under `entity.MountRoot`, a top-level segment
 disjoint from the entity root, because a mount is task-driven and so has no history, and a
 history-bearing watch must either never span one or be resilient to mounts coming and going
-(`entity/logdstore.go`). `refPath` renders a mount-owned slice under `MountRoot`;
+(`entity/logdstore.go`). `refPath` renders a path through a mounted place under `MountRoot`;
 `LogdStore.WatchSubtree` renders only under the entity root. So a controller-served subtree is
 reachable by its ordinary ref and **invisible to every watch there is**: no change events, no
 `Since` replay, and nothing a charter can react to.
 
 The rule has no exceptions. **Bytes somebody asks for may be a mount; facts something reacts to
 must be ordinary writes.** `verse connect` is the worked example on both sides of it, federating
-one working tree as two slices: file bytes served on demand by the content controller, and
+one working tree as two places: file bytes served on demand by the content controller, and
 `dir-status-<scope>` metadata written log-backed precisely because it is what the per-file
 validator trigger matches. `source.TestFederationKindsAreMountOwned` pins the split so neither
-half drifts into the other.
+place drifts into the other.
 
 The escape that suggests itself does not exist. Mounting under the entity root would put the
-slice back where watches can see it, and re-create what `MountRoot` prevents: a composed root
+mount back where watches can see it, and re-create what `MountRoot` prevents: a composed root
 watch that silently drops `FromCommit` and returns a successful-looking empty replay, plus a
 mount that stalls ~5s on the overlapping watch and then force-ends it.
 
@@ -75,17 +75,17 @@ Mount it with `RunController`, which blocks for the controller's lifetime:
 libctl.RunController(ctx, &libctl.ControllerConfig{
     DocdAddr:   mountAddr,                 // docd's mount (controller-facing) face
     Controller: "content-" + scope,        // identifies this controller to docd
-    Path:       entity.MountKPath(system, kind), // <MountRoot>.<system>.<kind> — store & controller agree
+    Path:       entity.MountKPath("local", "dir-content-"+scope), // <MountRoot>.local.dir-content-<scope>
     Handler:    source.NewContent(root, mount),
 })
 ```
 
-`entity.MountKPath(system, kind)` renders the kpath so the store and the controller agree on
-where the subtree lives: under `MountRoot`, not under the entity root. The entity namespace is
-unchanged by that. The slice is the same two segments it always was — a mount owns a SLICE and
-not an entity, so there is no id in it — and only the path those segments render to differs. Add
-the `(system, kind-prefix)` pair to `entity.mountedKinds` so
-`refPath` routes reads there; a mount the store does not know about is a mount every read misses.
+`entity.MountKPath` renders the kpath so the store and the controller agree on where the subtree
+lives: under `MountRoot`, not under the entity root. The addresses are unchanged by that — a path
+through the mount is the same path it would be anywhere — and only where they render differs. Add
+the place to `entity`'s `mounts` (its literal segments, then a prefix of the mounted segment) so
+`refPath` routes reads there; a mount the store does not know about is a mount every read misses,
+and `MountKPath` panics on a path that reaches none.
 Cancel `ctx` to unmount, and docd tombstones the mount cleanly.
 
 Readiness. `RunController` establishes the mount synchronously but exposes no readiness signal,
@@ -122,9 +122,8 @@ mount processes coming and going. Verse simply has no such watches, and that sim
    returns `{path, size, binary:"non-utf8"}`, and `{truncated:"size-cap"}` for an over-cap file.
    Bound size too; a subtree read should not stream an unbounded blob into one node.
 
-3. Own the subtree, as its single writer. A controller owns `system.*`, or a `system.kind.*`
-   slice, and is the only writer there, so reflected data needs no CAS. Mount per-system or
-   per-`(system,kind)`.
+3. Own the subtree, as its single writer. A controller owns everything under the place it mounts
+   at, and is the only writer there, so reflected data needs no CAS.
 
 ## Consuming a controller's stream: apply, do not decode
 
@@ -169,9 +168,9 @@ its scope, on exit.
 
 ## Checklist
 
-- [ ] Nothing needs to trigger on this slice — a mount fires no events, so facts something reacts
+- [ ] Nothing needs to trigger on this place — a mount fires no events, so facts something reacts
       to are log-backed writes instead.
-- [ ] Mount at `entity.MountKPath(system, kind)`, and add the slice to `entity.mountedKinds`; own
+- [ ] Mount at `entity.MountKPath(<path>)`, and add the place to `entity`'s `mounts`; own
       it as sole writer.
 - [ ] `Watch` implemented (no-op + block if read-only), emitting root-rooted patches.
 - [ ] No non-UTF-8 or unbounded bytes on the wire — serve markers.

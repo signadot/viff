@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -19,9 +20,9 @@ import (
 // most of these tests install.
 func demoStrata() []Stratum {
 	return []Stratum{
-		{Name: "observe", Level: 0, Match: []Match{{"system": "gh"}}},
-		{Name: "sdlc", Level: 10, Match: []Match{{"system": "signadot"}}},
-		{Name: "effectuate", Level: 100, Match: []Match{{"system": "do"}}},
+		{Name: "observe", Level: 0, Match: []Match{mm("gh")}},
+		{Name: "sdlc", Level: 10, Match: []Match{mm("signadot")}},
+		{Name: "effectuate", Level: 100, Match: []Match{mm("do")}},
 	}
 }
 
@@ -47,8 +48,8 @@ func newEng(t *testing.T) (*Engine, entity.Store) {
 // written in the first place.
 func TestTwoStrataCannotShareALevel(t *testing.T) {
 	eng, _ := newEng(t)
-	withStrata(t, eng, Stratum{Name: "a", Level: 10, Match: []Match{{"system": "x"}}})
-	err := eng.AddStratum(Stratum{Name: "b", Level: 10, Match: []Match{{"system": "y"}}})
+	withStrata(t, eng, Stratum{Name: "a", Level: 10, Match: []Match{mm("x")}})
+	err := eng.AddStratum(Stratum{Name: "b", Level: 10, Match: []Match{mm("y")}})
 	if err == nil {
 		t.Fatal("installed two strata at level 10")
 	}
@@ -61,37 +62,34 @@ func TestTwoStrataCannotShareALevel(t *testing.T) {
 // levels, and "strictly higher" has two answers for it.
 func TestOverlappingStrataAreRefused(t *testing.T) {
 	eng, _ := newEng(t)
-	withStrata(t, eng, Stratum{Name: "a", Level: 0, Match: []Match{{"system": "gh"}}})
+	withStrata(t, eng, Stratum{Name: "a", Level: 0, Match: []Match{mm("gh")}})
 	for _, over := range []Stratum{
-		{Name: "same", Level: 10, Match: []Match{{"system": "gh"}}},
-		{Name: "narrower", Level: 20, Match: []Match{{"system": "gh", "kind": "pr"}}},
+		{Name: "same", Level: 10, Match: []Match{mm("gh")}},
+		{Name: "narrower", Level: 20, Match: []Match{mm("gh.pr")}},
 		{Name: "everything", Level: 30, Match: []Match{{}}},
-		{Name: "anykind", Level: 40, Match: []Match{{"kind": "pr"}}},
+		{Name: "anykind", Level: 40, Match: []Match{mm("*.pr")}},
 	} {
 		if err := eng.AddStratum(over); err == nil {
 			t.Errorf("%s: installed a stratum overlapping gh", over.Name)
 		}
 	}
-	// Disjoint at either dimension is fine.
+	// Disjoint at any segment is fine.
 	withStrata(t, eng,
-		Stratum{Name: "other-system", Level: 50, Match: []Match{{"system": "linear"}}},
-		Stratum{Name: "other-kind", Level: 60, Match: []Match{{"system": "linear2", "kind": "issue"}}},
+		Stratum{Name: "other-place", Level: 50, Match: []Match{mm("linear")}},
+		Stratum{Name: "other-subplace", Level: 60, Match: []Match{mm("linear2.issue")}},
 	)
 }
 
-// A stratum's pattern names an address and nothing below it. An id would make check #2
-// undecidable at install — the derived id is the engine's and does not exist yet — and a
-// payload predicate would make a LEVEL depend on a state that rules change as they fire.
+// A stratum's pattern names a place and nothing about what stands there: a payload predicate
+// would make a LEVEL depend on a state that rules change as they fire.
 func TestStratumMatchIsAddressOnly(t *testing.T) {
 	eng, _ := newEng(t)
 	bad := map[string]Stratum{
-		"an id":         {Name: "a", Level: 0, Match: []Match{{"system": "gh", "kind": "pr", "id": "1"}}},
-		"an id glob":    {Name: "b", Level: 0, Match: []Match{{"system": "gh", "kind": "pr", "id": "hot-*"}}},
-		"a predicate":   {Name: "c", Level: 0, Match: []Match{{"system": "gh", "value": map[string]any{"stage": "open"}}}},
+		"a predicate":   {Name: "c", Level: 0, Match: []Match{{"path": pathOf("gh"), "value": map[string]any{"stage": "open"}}}},
 		"no match":      {Name: "d", Level: 0},
-		"a bad name":    {Name: "a.b", Level: 0, Match: []Match{{"system": "gh"}}},
-		"a bad level":   {Name: "e", Level: -1, Match: []Match{{"system": "gh"}}},
-		"an empty name": {Name: "", Level: 0, Match: []Match{{"system": "gh"}}},
+		"a bad name":    {Name: "a.b", Level: 0, Match: []Match{mm("gh")}},
+		"a bad level":   {Name: "e", Level: -1, Match: []Match{mm("gh")}},
+		"an empty name": {Name: "", Level: 0, Match: []Match{mm("gh")}},
 	}
 	for why, s := range bad {
 		if err := eng.AddStratum(s); err == nil {
@@ -107,10 +105,10 @@ func TestSubjectMustBeInsideItsStratum(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 
 	ok := []Trigger{
-		{Name: "named", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "id": "1"}}, Action: seenAction()},
-		{Name: "kind", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr"}}, Action: seenAction()},
-		{Name: "system", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh"}}, Action: seenAction()},
-		{Name: "glob", Stratum: "observe", Condition: Condition{Subject: Match{"system": "gh", "kind": "pr", "id": "hot-*"}}, Action: seenAction()},
+		{Name: "named", Stratum: "observe", Condition: Condition{Subject: mm("gh.issue.1")}, Action: seenAction()},
+		{Name: "prs", Stratum: "observe", Condition: Condition{Subject: mm("gh.pr.*")}, Action: seenAction()},
+		{Name: "all-of-gh", Stratum: "observe", Condition: Condition{Subject: mm("gh.*.*")}, Action: seenAction()},
+		{Name: "glob", Stratum: "observe", Condition: Condition{Subject: mustPathMatch(t, `{path: [gh, pr, !glob "hot-*"]}`)}, Action: seenAction()},
 	}
 	for _, tr := range ok {
 		if err := eng.AddTrigger(tr); err != nil {
@@ -119,11 +117,11 @@ func TestSubjectMustBeInsideItsStratum(t *testing.T) {
 	}
 
 	bad := map[string]Trigger{
-		"another stratum's system": {Name: "x1", Stratum: "observe", Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}}},
+		"another stratum's place": {Name: "x1", Stratum: "observe", Condition: Condition{Subject: mm("signadot.feature.*")}},
 		// The case containment exists for: this OVERLAPS gh and is not contained by it, so a
 		// rule written this way would act on entities at every level.
-		"any system": {Name: "x2", Stratum: "observe", Condition: Condition{Subject: Match{"kind": "issue"}}},
-		"everything": {Name: "x3", Stratum: "observe", Condition: Condition{Subject: Match{}}},
+		"any first segment": {Name: "x2", Stratum: "observe", Condition: Condition{Subject: mm("*.issue.*")}},
+		"everything":        {Name: "x3", Stratum: "observe", Condition: Condition{Subject: Match{}}},
 	}
 	for why, tr := range bad {
 		if err := eng.AddTrigger(tr); err == nil {
@@ -139,7 +137,7 @@ func TestTheImplicitStratumIsUnconstrained(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "unstratified",
-		Condition: Condition{Subject: Match{"system": "anything", "kind": "at-all"}},
+		Condition: Condition{Subject: mm("anything.at-all.*")},
 		Action:    seenAction(),
 	}); err != nil {
 		t.Fatalf("a rule declaring no stratum was refused: %v", err)
@@ -154,8 +152,16 @@ func seenAction() Action { return Action{Patch: entity.Obj{"seen": true}.Payload
 
 // ── check #2: a derive lands strictly above ───────────────────────────────────────
 
-func deriveAction(system, kind string, payload entity.Obj) Action {
-	return Action{Derive: entity.Obj{system: entity.Obj{kind: payload}}.Payload()}
+// deriveAction is a one-entry derive: payload, written under the place a kinded path names.
+func deriveAction(place string, payload entity.Obj) Action {
+	segs, err := entity.PathSegs(place)
+	if err != nil {
+		panic(err)
+	}
+	return Action{Derive: ir.FromSlice([]*ir.Node{ir.FromKeyVals([]ir.KeyVal{
+		{Key: ir.FromString("path"), Val: ir.FromSlice(pathOf(segs...))},
+		{Key: ir.FromString("value"), Val: payload.Payload()},
+	})})}
 }
 
 func TestDeriveMustLandStrictlyAbove(t *testing.T) {
@@ -165,8 +171,8 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "up",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"priority": "urgent"}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"priority": "urgent"}),
 	}); err != nil {
 		t.Fatalf("refused a derive that climbs a level: %v", err)
 	}
@@ -174,27 +180,27 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 	bad := map[string]Trigger{
 		"sideways, into its own stratum": {
 			Name: "x1", Stratum: "sdlc",
-			Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}},
-			Action:    deriveAction("signadot", "other", entity.Obj{"a": 1}),
+			Condition: Condition{Subject: mm("signadot.feature.*")},
+			Action:    deriveAction("signadot.other", entity.Obj{"a": 1}),
 		},
 		"downward": {
 			Name: "x2", Stratum: "sdlc",
-			Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}},
-			Action:    deriveAction("gh", "issue", entity.Obj{"a": 1}),
+			Condition: Condition{Subject: mm("signadot.feature.*")},
+			Action:    deriveAction("gh.issue", entity.Obj{"a": 1}),
 		},
 		"into no stratum at all": {
 			Name: "x3", Stratum: "observe",
-			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-			Action:    deriveAction("nowhere", "thing", entity.Obj{"a": 1}),
+			Condition: Condition{Subject: mm("gh.issue.*")},
+			Action:    deriveAction("nowhere.thing", entity.Obj{"a": 1}),
 		},
 		// A derive inside a completion hook crosses a level exactly as one at the top does,
 		// so the check has to see the whole action tree.
 		"inside an onDone": {
 			Name: "x4", Stratum: "sdlc",
-			Condition: Condition{Subject: Match{"system": "signadot", "kind": "feature"}},
+			Condition: Condition{Subject: mm("signadot.feature.*")},
 			Action: Action{
 				Spawn:  &launch.Spec{Prompt: "review $subject"},
-				OnDone: &Action{Derive: entity.Obj{"gh": entity.Obj{"issue": entity.Obj{"a": 1}}}.Payload()},
+				OnDone: &Action{Derive: deriveAction("gh.issue", entity.Obj{"a": 1}).Derive},
 			},
 		},
 	}
@@ -218,8 +224,8 @@ func TestUnstratifiedRuleMayNotDerive(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 	err := eng.AddTrigger(Trigger{
 		Name:      "loose",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"a": 1}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"a": 1}),
 	})
 	if err == nil {
 		t.Fatal("a rule outside the ordering derived into it")
@@ -247,8 +253,8 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 		err := eng.AddTrigger(Trigger{
 			Name:      "ref-" + strings.ReplaceAll(why, " ", "-"),
 			Stratum:   "observe",
-			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-			Action:    deriveAction("signadot", "feature", payload),
+			Condition: Condition{Subject: mm("gh.issue.*")},
+			Action:    deriveAction("signadot.feature", payload),
 		})
 		if err == nil {
 			t.Errorf("installed a derive carrying %s", why)
@@ -267,20 +273,20 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "ok-" + strings.ReplaceAll(strings.ReplaceAll(why, " ", "-"), "$", ""),
 			Stratum:   "observe",
-			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-			Action:    deriveAction("signadot", "feature", payload),
+			Condition: Condition{Subject: mm("gh.issue.*")},
+			Action:    deriveAction("signadot.feature", payload),
 		}); err != nil {
 			t.Errorf("%s was refused: %v", why, err)
 		}
 	}
 	// The parts of $subject, which are all admissible in a derive EXCEPT the one that is a
 	// function of the firing's occasion rather than of the subject.
-	for _, part := range []string{"ref", "system", "kind", "id", "value", "value.stage"} {
+	for _, part := range []string{"ref", "name", "value", "value.stage"} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "part-" + strings.ReplaceAll(part, ".", "-"),
 			Stratum:   "observe",
-			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-			Action:    deriveAction("signadot", "feature", entity.Obj{"x": "$subject." + part}),
+			Condition: Condition{Subject: mm("gh.issue.*")},
+			Action:    deriveAction("signadot.feature", entity.Obj{"x": "$subject." + part}),
 		}); err != nil {
 			t.Errorf("$subject.%s was refused in a derive: %v", part, err)
 		}
@@ -291,8 +297,8 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "subject-commit",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"at": "$subject.commit"}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"at": "$subject.commit"}),
 	}); err == nil {
 		t.Error("$subject.commit was accepted in a derive; an upward read would then change " +
 			"what it writes, and the loop that follows crosses a level")
@@ -305,14 +311,14 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	eng, store := newEng(t)
 	withStrata(t, eng,
-		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
-		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+		Stratum{Name: "low", Level: 0, Match: []Match{mm("gh")}},
+		Stratum{Name: "high", Level: 10, Match: []Match{mm("signadot")}},
 	)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "raise",
 		Stratum:   "low",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"what": "$subject", "note": "raised from $subject"}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"what": "$subject", "note": "raised from $subject"}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -346,21 +352,24 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	_ = rev
 }
 
-func TestDeriveShapeIsTwoLevels(t *testing.T) {
+// A derive is a list of {path, value} entries, and nothing else: the nested map that spelled a
+// two-level address is refused, not read as one.
+func TestDeriveShapeIsAListOfPaths(t *testing.T) {
 	eng, _ := newEng(t)
 	withStrata(t, eng, demoStrata()...)
 	bad := map[string]entity.Payload{
 		"a scalar at the root": entity.Val("nope"),
-		"one level":            entity.Obj{"signadot": "feature"}.Payload(),
-		"empty":                entity.Obj{}.Payload(),
-		"a scalar payload":     entity.Obj{"signadot": entity.Obj{"feature": "urgent"}}.Payload(),
-		"an empty kind object": entity.Obj{"signadot": entity.Obj{}}.Payload(),
+		"a nested map":         entity.Obj{"signadot": entity.Obj{"feature": entity.Obj{"a": 1}}}.Payload(),
+		"an empty list":        ir.FromSlice(nil),
+		"an entry with no path": ir.FromSlice([]*ir.Node{
+			entity.Obj{"value": entity.Obj{"a": 1}}.Payload()}),
+		"an entry that is not an object": ir.FromSlice([]*ir.Node{ir.FromString("signadot.feature")}),
 	}
 	for why, d := range bad {
 		err := eng.AddTrigger(Trigger{
 			Name:      "shape-" + strings.ReplaceAll(why, " ", "-"),
 			Stratum:   "observe",
-			Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+			Condition: Condition{Subject: mm("gh.issue.*")},
 			Action:    Action{Derive: d},
 		})
 		if err == nil {
@@ -391,7 +400,7 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 		"action:\n" +
 		"  patch: {seen: true}\n" +
 		"  # WHY THIS LEDGER ENTRY EXISTS, in the author's words — and the rule still installs.\n" +
-		"  derive:\n    signadot:\n      feature:\n        urgent: true\n"
+		"  derive:\n  - path: [signadot, feature]\n    value:\n      urgent: true\n"
 	node, err := codec.ParseNode([]byte(src), codec.Tony)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -414,7 +423,7 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 		entity.Obj{"state": "open"}.Payload())
 	deadline := time.After(3 * time.Second)
 	for {
-		// `signadot.feature`, the rule that derived, and the subject's own three segments.
+		// `signadot.feature`, the rule that derived, and the subject's own segments.
 		for _, e := range store.ListAt([]string{"signadot", "feature"}, 2+1+3, nil) {
 			if entity.ToObj(e.Payload)["urgent"] == true {
 				return
@@ -438,10 +447,10 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "urgent-label",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Condition: Condition{Subject: mm("gh.issue.*")},
 		Action: Action{
 			Patch:  entity.Obj{"triaged": true}.Payload(),
-			Derive: entity.Obj{"signadot": entity.Obj{"feature": entity.Obj{"priority": "urgent"}}}.Payload(),
+			Derive: deriveAction("signadot.feature", entity.Obj{"priority": "urgent"}).Derive,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -485,14 +494,14 @@ func TestDeriveFiresAndCrossesTheLevel(t *testing.T) {
 func TestDeriveIsIdempotentPerSubject(t *testing.T) {
 	eng, store := newEng(t)
 	withStrata(t, eng,
-		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
-		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+		Stratum{Name: "low", Level: 0, Match: []Match{mm("gh")}},
+		Stratum{Name: "high", Level: 10, Match: []Match{mm("signadot")}},
 	)
 	if err := eng.AddTrigger(Trigger{
 		Name:      "derive-one",
 		Stratum:   "low",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"seen": true}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"seen": true}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +528,7 @@ func TestARuleIsHeldUntilItsStratumArrives(t *testing.T) {
 	tr := Trigger{
 		Name:      "early",
 		Stratum:   "not-yet",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Condition: Condition{Subject: mm("gh.issue.*")},
 		Action:    Action{Patch: entity.Obj{"stage": "seen"}.Payload()},
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -537,7 +546,7 @@ func TestARuleIsHeldUntilItsStratumArrives(t *testing.T) {
 		t.Fatal("two rules were held under one name")
 	}
 	// And it installs when its stratum does.
-	withStrata(t, eng, Stratum{Name: "not-yet", Level: 0, Match: []Match{{"system": "gh"}}})
+	withStrata(t, eng, Stratum{Name: "not-yet", Level: 0, Match: []Match{mm("gh")}})
 	if len(eng.Triggers()) != 1 {
 		t.Fatalf("the held rule did not install when its stratum arrived: %d installed", len(eng.Triggers()))
 	}
@@ -550,7 +559,7 @@ func TestAHeldRuleCanBeRemoved(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "early",
 		Stratum:   "not-yet",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Condition: Condition{Subject: mm("gh.issue.*")},
 		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
@@ -558,7 +567,7 @@ func TestAHeldRuleCanBeRemoved(t *testing.T) {
 	if !eng.RemoveTrigger("early") {
 		t.Fatal("removing a held rule reported that it did not exist")
 	}
-	withStrata(t, eng, Stratum{Name: "not-yet", Level: 0, Match: []Match{{"system": "gh"}}})
+	withStrata(t, eng, Stratum{Name: "not-yet", Level: 0, Match: []Match{mm("gh")}})
 	if len(eng.Triggers()) != 0 {
 		t.Fatal("a removed rule came back when its stratum arrived")
 	}
@@ -574,7 +583,7 @@ func TestAStratumWithRulesCannotBeRemoved(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "r",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Condition: Condition{Subject: mm("gh.issue.*")},
 		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
@@ -606,8 +615,8 @@ func TestStrataSurviveARestart(t *testing.T) {
 	if err := first.AddTrigger(Trigger{
 		Name:      "r",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"a": 1}),
+		Condition: Condition{Subject: mm("gh.issue.*")},
+		Action:    deriveAction("signadot.feature", entity.Obj{"a": 1}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -628,7 +637,7 @@ func TestStrataSurviveARestart(t *testing.T) {
 	}
 	// The match round-tripped as a match, not as whatever a naive encoding would have made
 	// of it — this is what the raw escape on the stratum entity is for.
-	if !Matches(got[0].Match).contains(Match{"system": "gh", "kind": "issue"}) {
+	if !Matches(got[0].Match).contains(mm("gh.issue.*")) {
 		t.Fatalf("the stratum's pattern did not survive the round trip: %+v", got[0].Match)
 	}
 }
@@ -642,7 +651,7 @@ func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
 	if err := first.AddTrigger(Trigger{
 		Name:      "r",
 		Stratum:   "observe",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue"}},
+		Condition: Condition{Subject: mm("gh.issue.*")},
 		Action:    seenAction(),
 	}); err != nil {
 		t.Fatal(err)
@@ -667,9 +676,9 @@ func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
 
 func TestStratumRoundTrip(t *testing.T) {
 	for _, s := range []Stratum{
-		{Name: "one", Level: 0, Match: []Match{{"system": "gh"}}},
-		{Name: "union", Level: 10, Match: []Match{{"system": "gh"}, {"system": "linear"}, {"system": "slack"}}},
-		{Name: "kinded", Level: 20, Match: []Match{{"system": "do", "kind": "approve"}}},
+		{Name: "one", Level: 0, Match: []Match{mm("gh")}},
+		{Name: "union", Level: 10, Match: []Match{mm("gh"), mm("linear"), mm("slack")}},
+		{Name: "kinded", Level: 20, Match: []Match{mm("do.approve")}},
 	} {
 		node, err := s.ToTonyIR()
 		if err != nil {
@@ -683,7 +692,7 @@ func TestStratumRoundTrip(t *testing.T) {
 			t.Fatalf("%s: round trip changed it: %+v", s.Name, back)
 		}
 		for i := range s.Match {
-			if back.Match[i].System() != s.Match[i].System() || back.Match[i].Kind() != s.Match[i].Kind() {
+			if !reflect.DeepEqual(back.Match[i].Segs(), s.Match[i].Segs()) {
 				t.Fatalf("%s: match[%d] changed: %+v", s.Name, i, back.Match[i])
 			}
 		}
@@ -757,7 +766,7 @@ func waitCount(t *testing.T, s entity.Store, target []string, subj entity.Ref, w
 func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 	bad := map[string]entity.Obj{
 		"a misspelled stratum": {"name": "r", "startum": "observe", "condition": entity.Obj{"subject": "gh.issue.*"}},
-		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"derve": entity.Obj{"a": entity.Obj{"b": entity.Obj{}}}}},
+		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"derve": []any{entity.Obj{"path": []any{"a", "b"}, "value": entity.Obj{}}}}},
 		"one in a condition":   {"name": "r", "condition": entity.Obj{"subjekt": "gh.issue.*"}},
 		"one in a hook":        {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"onDone": entity.Obj{"patsh": entity.Obj{}}}},
 		"one in a seq element": {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"seq": []any{entity.Obj{"patsh": entity.Obj{}}}}},
@@ -774,7 +783,7 @@ func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 		"gates":     []any{entity.Obj{"mode": "ask"}},
 		"action": entity.Obj{
 			"patch":  entity.Obj{"stage": "x"},
-			"derive": entity.Obj{"sig": entity.Obj{"feature": entity.Obj{"a": 1}}},
+			"derive": []any{entity.Obj{"path": []any{"sig", "feature"}, "value": entity.Obj{"a": 1}}},
 			"seq":    []any{entity.Obj{"patch": entity.Obj{"a": 1}}},
 			"onDone": entity.Obj{"patch": entity.Obj{"b": 2}},
 		},
@@ -799,21 +808,21 @@ func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 	eng, store := newEng(t)
 	withStrata(t, eng,
-		Stratum{Name: "low", Level: 0, Match: []Match{{"system": "gh"}}},
-		Stratum{Name: "high", Level: 10, Match: []Match{{"system": "signadot"}}},
+		Stratum{Name: "low", Level: 0, Match: []Match{mm("gh")}},
+		Stratum{Name: "high", Level: 10, Match: []Match{mm("signadot")}},
 	)
 	// gh.issue.1 stage a → b (depth 1), b → derive (depth 2), and the level above acts off
 	// the derive (depth 3).
 	for _, tr := range []Trigger{{
 		Name:      "advance",
 		Stratum:   "low",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "value": map[string]any{"stage": "a"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("gh", "issue", "*"), "value": map[string]any{"stage": "a"}}},
 		Action:    Action{Patch: entity.Obj{"stage": "b"}.Payload()},
 	}, {
 		Name:      "derives",
 		Stratum:   "low",
-		Condition: Condition{Subject: Match{"system": "gh", "kind": "issue", "value": map[string]any{"stage": "b"}}},
-		Action:    deriveAction("signadot", "feature", entity.Obj{"priority": "urgent"}),
+		Condition: Condition{Subject: Match{"path": pathOf("gh", "issue", "*"), "value": map[string]any{"stage": "b"}}},
+		Action:    deriveAction("signadot.feature", entity.Obj{"priority": "urgent"}),
 	}, {
 		Name:    "consumes",
 		Stratum: "high",
@@ -853,13 +862,13 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 
 // $subject's parts, in a SPAWN string. Spawn templates do not go through the reference
 // machinery at all — launch.Bind is a flat ReplaceAll — so the dotted forms only work if
-// bindingFor publishes them as keys. Forgetting that does not error: `$subject.id` substitutes
-// the bare key and leaves the text "demo.pr.1.id", which is why this is pinned.
+// bindingFor publishes them as keys. Forgetting that does not error: `$subject.name` substitutes
+// the bare key and leaves the text "demo.pr.1.name", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.RefAt("demo", "pr", "1"))
-	spec := launch.Spec{Prompt: "review $subject.id in $subject.system ($subject) at $stage"}
+	spec := launch.Spec{Prompt: "review $subject.name at $subject.ref ($subject) at $stage"}
 	got := spec.Bind(b).Prompt
-	if want := `review 1 in demo (demo.pr."1") at open`; got != want {
+	if want := `review 1 at demo.pr."1" (demo.pr."1") at open`; got != want {
 		t.Fatalf("task = %q, want %q", got, want)
 	}
 }
@@ -872,9 +881,7 @@ func TestSubjectPartsResolveInAPatch(t *testing.T) {
 	for ref, want := range map[string]string{
 		"$subject":             `demo.pr."7"`,
 		"$subject.ref":         `demo.pr."7"`,
-		"$subject.system":      "demo",
-		"$subject.kind":        "pr",
-		"$subject.id":          "7",
+		"$subject.name":        "7",
 		"$subject.commit":      "42",
 		"$subject.value.stage": "open",
 	} {
@@ -905,7 +912,7 @@ func TestAFiringWithdrawsWhenItsSubjectMovesOnUnderTheGate(t *testing.T) {
 	eng := New(store, blockingResolver{release: release})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "record",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Gates:     []Gate{{Mode: "ask"}},
 		Action:    Action{Patch: entity.Obj{"sawStage": "$subject.value.stage", "sawAt": "$subject.commit"}.Payload()},
 	}); err != nil {

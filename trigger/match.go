@@ -21,16 +21,11 @@ import (
 // accumulated, so `until`/`deadline`/`quorum` would be a category error here; those live in
 // Formula, the temporal layer composed OVER matches. See docs/trigger-model.md.
 //
-// Today it is map-backed and interpreted through the existing typed matcher
-// (entity.Pattern); tomorrow it becomes a real tony match. Callers only ever go through the
-// methods below, so that swap does not reach them.
-//
-// The swap has STARTED, at the one dimension where it is free: `id` and `op` may carry a
-// tony match instead of a string — `id: !glob "hotfix-*"`, or `{"id": {"glob": "hotfix-*"}}`
-// in a JSON-shaped charter — and are then evaluated by tony.Match. `system` and `kind`
-// cannot, and that is structural rather than unfinished: those two become a docd WATCH PATH
-// (Formula.Subtrees) and the store's List prefilter (Select), and
-// an operator has no path. `id` is only ever a filter, which is exactly why it goes first.
+// It is map-backed and carries two things: a PATH, the address the match reaches, and a payload
+// predicate `value`. The path is a list of segments, each a name, a bare `*` (any one segment),
+// or a tony operator over one segment (`!glob "hotfix-*"`, `!or [open, merged]`). There are no
+// positions with names of their own — an address is a path from the top of the tree, `verse` a
+// segment like any other (docs/working/paths-and-nodes.md, CLAUDE.md).
 //
 // `value` IS A TONY MATCH TOO, evaluated at the payload ROOT. A payload is an ir.Node
 // (entity.Payload), so tony.Match(payload, predicate) needs no conversion — the same collapse
@@ -90,61 +85,54 @@ import (
 //	value: {stage: open}         a record — a SUBSET constraint, as a tony match over an
 //	                             object always is: named fields agree, others are ignored
 //
-//	{"system": "demo", "kind": "pr", "value": {"stage": "open"}}   a field predicate
-//	{"system": "demo", "kind": "count", "value": 42}               a root predicate
-//	{"system": "demo", "kind": "pr", "id": "1"}                    one entity
-//	{"system": "demo", "kind": "pr", "id": "*"}                    the whole kind
-//	{"system": "demo", "kind": "pr", "id": "hotfix-*"}             an id glob
-//	"demo:pr:*"                                                    the same, as an address
-//	{}                                                             everything
+//	{path: [demo, pr, "*"], value: {stage: open}}   the prs whose stage is open
+//	{path: [demo, count], value: 42}                the node demo.count, holding 42
+//	{path: [demo, pr, "1"]}                         one node
+//	{path: [demo, pr, !glob "hotfix-*"]}            a family of them
+//	demo.pr.*                                       the prs, as a kinded path
+//	{}                                              everything
 //
 // A Subject is a plain Match too: on a firing it is matched against the entity the firing is
-// about — including a reflected task's own subject (its `flow`), so `subject: "demo:pr:*"`
+// about — including a reflected task's own subject (its `flow`), so `subject: demo.pr.*`
 // on a completion trigger advances the PR that task was about. There is no deferred `$var`
 // form: the pattern IS the reference (see Trigger.resolveSubject).
 //
 //tony:schemagen=verse-match,notag,codec=custom
 type Match map[string]any
 
-// The match dimensions. `value` is the payload predicate, and the only one of the four that
-// is not a string dimension — see the note on Match.
+// The keys a match carries: the address it reaches and the payload predicate.
 const (
-	mKeyAt     = "at"   // the whole address prefix as one path: `demo.pr`, `verse.gate.question`
-	mKeyPath   = "path" // the address as a PATH of any depth: `[verse-dev, drift, head, "*"]`
-	mKeyRoot   = "root" // which half of the verse: empty is the world's, `verse` is verse's own
-	mKeySystem = "system"
-	mKeyKind   = "kind"
-	mKeyID     = "id"
-	mKeyValue  = "value" // the payload predicate: any tony match, at the payload root
+	mKeyPath  = "path"  // the address as a path: `[verse-dev, drift, head, "*"]`
+	mKeyValue = "value" // the payload predicate: any tony match, at the payload root
 )
 
-// matchKeys is the closed set of dimensions a Match may carry. Its disjointness from the
-// formula tag names is load-bearing and asserted in match_test.go: once `when` is a Formula
-// (docs/trigger-model.md), an object is classified as a match or as a formula tag
-// by its keys, so the two namespaces must not collide.
-var matchKeys = map[string]bool{
-	mKeyAt: true, mKeyPath: true, mKeyRoot: true, mKeySystem: true, mKeyKind: true,
-	mKeyID: true, mKeyValue: true,
-}
+// matchKeys is the closed set of keys a Match may carry. Its disjointness from the formula tag
+// names is load-bearing and asserted in match_test.go: an object is classified as a match or as a
+// formula tag by its keys, so the two namespaces must not collide.
+var matchKeys = map[string]bool{mKeyPath: true, mKeyValue: true}
 
-// removedKeys are dimensions a match once had, named so a charter carrying one fails with an
-// explanation instead of "unknown key". `op` classified a CHANGE (set/delete); a match is now
-// asked only of STATE, at a revision, and state has no op. What it was used for has a
-// spelling: a create is the rising edge of "this exists" (`on`), and a delete is the rising
-// edge of the sink state that precedes removal.
+// removedKeys are keys a match does not take, named so a charter carrying one fails with the
+// spelling it wants instead of "unknown key".
 var removedKeys = map[string]string{
-	"op": "`op` classified a change, and a match is now evaluated against state at a revision, " +
-		"where nothing has one. For \"when this appears\", make it the cause: `on: {system: …, " +
-		"kind: …}` fires at the commit where it first exists",
+	"op": "`op` classified a change, and a match is evaluated against state at a revision, " +
+		"where nothing has one. For \"when this appears\", make it the cause: `on: {path: […]}` " +
+		"fires at the commit where it first exists",
+	"system": addressIsAPath, "kind": addressIsAPath, "id": addressIsAPath,
+	"root": addressIsAPath, "at": addressIsAPath,
 }
 
-// Validate reports whether the match carries only known dimensions of the right shape. It is
-// what makes a typo'd charter fail at install rather than silently match nothing.
+// addressIsAPath is the refusal for every positional key: an address is a path.
+const addressIsAPath = "an address is a path from the top of the tree — write `path: [demo, pr, " +
+	"\"*\"]` (or the string `demo.pr.*`); `verse` is its first segment when it is verse's own, and " +
+	"a glob inside a segment is `!glob \"hotfix-*\"`"
+
+// Validate reports whether the match carries only known keys of the right shape. It is what makes
+// a typo'd charter fail at install rather than silently match nothing.
 func (m Match) Validate() error {
 	var unknown []string
 	for k := range m {
 		if why, gone := removedKeys[k]; gone {
-			return fmt.Errorf("match: %q is no longer a dimension: %s", k, why)
+			return fmt.Errorf("match: %q is not a key: %s", k, why)
 		}
 		if !matchKeys[k] {
 			unknown = append(unknown, k)
@@ -152,122 +140,44 @@ func (m Match) Validate() error {
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		known := make([]string, 0, len(matchKeys))
-		for k := range matchKeys {
-			known = append(known, k)
-		}
-		sort.Strings(known)
-		return fmt.Errorf("match: unknown key(s) %s (want any of %s)",
-			strings.Join(unknown, ", "), strings.Join(known, ", "))
+		return fmt.Errorf("match: unknown key(s) %s (want %s and %s)",
+			strings.Join(unknown, ", "), mKeyPath, mKeyValue)
 	}
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
-		v, present := m[k]
-		if !present {
-			continue
+	if p, present := m[mKeyPath]; present {
+		segs, ok := p.([]*ir.Node)
+		if !ok || len(segs) == 0 {
+			return fmt.Errorf("match: %q is a list of segments", mKeyPath)
 		}
-		if _, ok := v.(string); ok {
-			continue
-		}
-		n, ok := v.(*ir.Node)
-		if !ok {
-			return fmt.Errorf("match: %q must be a string, got %T", k, v)
-		}
-		// An operator on system or kind has nowhere to run: those two name the subtree a
-		// formula watches and the set the store lists, and a watch path cannot be a
-		// predicate. Saying so beats letting it match nothing.
-		if k == mKeySystem || k == mKeyKind {
-			return fmt.Errorf("match: %q cannot take an operator (%s) — it names the subtree "+
-				"to watch and the set to list, which must be a literal; write the whole "+
-				"segment as \"*\" to match any, and put the operator on %q",
-				k, tagText(n), mKeyID)
-		}
-		// Both halves of "fails at install rather than by matching nothing forever after":
-		// every tag must NAME an operator (tony would skip an unknown one), and the
-		// operator must ACCEPT a string operand — `!glob 5` is refused by the probe.
-		if err := checkOps(n); err != nil {
-			return fmt.Errorf("match: %q: %w", k, err)
-		}
-		if _, err := entity.SafeMatch(ir.FromString(""), n); err != nil {
-			return fmt.Errorf("match: %q: %w", k, err)
+		for i, n := range segs {
+			if n == nil {
+				return fmt.Errorf("match: segment %d of the path is empty", i+1)
+			}
+			if isLayoutTag(n.Tag) {
+				if _, ok := stepText(n); !ok {
+					return fmt.Errorf("match: segment %d is a name or a match over one; got %v", i+1, n.Type)
+				}
+				continue
+			}
+			// Both halves of "fails at install rather than by matching nothing forever after":
+			// every tag must NAME an operator (tony would skip an unknown one), and the operator
+			// must ACCEPT a string operand — `!glob 5` is refused by the probe.
+			if err := checkOps(n); err != nil {
+				return fmt.Errorf("match: segment %d: %w", i+1, err)
+			}
+			if _, err := entity.SafeMatch(ir.FromString(""), n); err != nil {
+				return fmt.Errorf("match: segment %d: %w", i+1, err)
+			}
 		}
 	}
-	// The predicate is UNRESTRICTED in shape — any tony match, at the payload root — so the
-	// only thing to refuse here is a Go value tony cannot represent at all. There is no
-	// object assertion: `value` promises a value, and a payload is any tony value.
+	// The predicate is UNRESTRICTED in shape — any tony match, at the payload root — so the only
+	// thing to refuse here is a Go value tony cannot represent at all.
 	if v, present := m[mKeyValue]; present {
 		if _, ok := predicateNode(v); !ok {
 			return fmt.Errorf("match: %q must be a payload predicate, got %T", mKeyValue, v)
 		}
 	}
-	// Only `id` globs. A "*" inside system or kind would silently match nothing (they are
-	// compared exactly), and silently matching nothing is the failure this Validate exists to
-	// prevent. Write the whole segment as "*" — an unset dimension — to mean "any".
-	for _, k := range []string{mKeySystem, mKeyKind} {
-		if v := m.str(k); v != "*" && strings.ContainsRune(v, '*') {
-			return fmt.Errorf("match: %q cannot glob (%q); only %q does — write the whole "+
-				"segment as \"*\" to match any", k, v, mKeyID)
-		}
-	}
 	return nil
 }
-
-// System / Kind / ID are the match's const dimensions ("" = unset/wildcard).
-//
-// ID is "" for an id carrying an OPERATOR too, which reads correctly everywhere it is
-// consulted: an operator is a selection over what exists, never a name, so `Names` must
-// decline it and `Selects` must not depend on it. The one place "" would be wrong — the id
-// filter itself — goes through matchDim, which looks at the node first.
-// Root names the half of the verse a match is about: empty selects what the world is about,
-// `verse` what verse writes about its own running (a task's mirror, a posed question, a rule).
-// A charter that wants to react to verse's own state says so, which is what keeps a rule about
-// PRs from quietly selecting the records of the tasks reviewing them.
-// SYSTEM, KIND AND ID ARE A READING, and `path:` is the thing being read. They answer from
-// whichever spelling the charter used — the dimensions when it wrote those, and the path's own
-// segments when it wrote a path — which is what lets the shorthand stay a convention rather
-// than a second grammar every caller has to check for.
-//
-// A segment carrying an OPERATOR has no literal, so it answers "" here, exactly as an operator
-// in the dimension spelling does (see str's contract above): the readers report what can be
-// spelled, and matchDim is where a dimension is actually applied.
-func (m Match) Root() string   { return m.seg(mKeyRoot) }
-func (m Match) System() string { return m.seg(mKeySystem) }
-func (m Match) Kind() string   { return m.seg(mKeyKind) }
-func (m Match) ID() string     { return m.seg(mKeyID) }
-
-// seg answers one dimension, from the path when there is one and from the dimension otherwise.
-//
-// The path's positions are root?, system, kind, id — the same order Segs walks — and a leading
-// `verse` is the root, exactly as it is in an address. A `*` is an unconstrained position, and
-// reads as "" for the same reason an operator does: it names no literal.
-func (m Match) seg(key string) string {
-	if !m.Deep() {
-		return m.str(key)
-	}
-	segs := m.Segs()
-	if len(segs) > 0 && segs[0] == entity.VerseRoot {
-		if key == mKeyRoot {
-			return entity.VerseRoot
-		}
-		segs = segs[1:]
-	} else if key == mKeyRoot {
-		return ""
-	}
-	i := map[string]int{mKeySystem: 0, mKeyKind: 1, mKeyID: 2}[key]
-	if i >= len(segs) || segs[i] == "*" {
-		return ""
-	}
-	return segs[i]
-}
-
-// dim returns the tony match a dimension carries, or nil when it is a plain string or
-// absent. It is the ONE place the two spellings of a dimension are told apart.
-func (m Match) dim(key string) *ir.Node {
-	n, _ := m[key].(*ir.Node)
-	return n
-}
-
-// hasDim reports whether a dimension constrains anything, in either spelling.
-func (m Match) hasDim(key string) bool { return m.str(key) != "" || m.dim(key) != nil }
 
 // Predicate is the payload predicate — a tony match evaluated at the payload root, nil when
 // unset. It is a NODE, not a map of equalities: that is what carries an operator
@@ -299,98 +209,69 @@ func (m Match) FieldString(key string) string {
 	return v.String
 }
 
-// Names reports whether the match designates exactly ONE entity by identity: every segment a
-// definite, glob-free literal. This is the case a Subject may *name* rather than select — an
-// action's `set` on it creates the entity if it does not exist yet, which is how a trigger
-// publishes a fact nothing has written before. A wildcard or an operator in any segment makes
-// it a selection over what exists instead, so it can only ever act on entities that are there.
+// Names reports whether the match designates exactly ONE node by identity: every segment a
+// literal name, at whatever length, and no payload predicate. This is the case a Subject may
+// *name* rather than select — an action's `patch` on it creates the node if nothing stands there
+// yet, which is how a trigger publishes a fact nothing has written before. A `*` or an operator
+// in any segment makes it a selection over what exists instead.
 //
-// IT ASKS THE SEGMENTS, at whatever depth, rather than the three dimensions. Asking the three
-// was the same question only while an address had exactly three: a path of four whose first
-// three are literal — `[verse-dev, drift, head, "*"]`, which is how a package selects its own
-// entities — answered "yes, this names verse-dev.drift.head", so the rule stopped selecting and
-// acted on one entity that does not exist. A `set` on a named subject CREATES, so the failure
-// is not a rule that does nothing.
+// A PAYLOAD PREDICATE makes it a selection, whatever the segments say. Naming is by identity
+// alone, and the moment a match says what the node must LOOK like, that answer is no longer
+// available: a node that is not there does not satisfy `{state: green}`, and one that is might not.
 func (m Match) Names() (entity.Ref, bool) {
 	segs := m.SegNodes()
-	if len(segs) < entity.Depth {
-		return entity.Ref{}, false // shorter than an entity: a place, not a thing
+	if len(segs) == 0 || m.HasPredicate() {
+		return entity.Ref{}, false
 	}
 	lits := make([]string, 0, len(segs))
 	for _, n := range segs {
 		lit, ok := entity.PathLiteral(n)
-		// An operator, an empty position, or a `*` ANYWHERE in the segment: the last is the id
-		// glob (`hotfix-*`), which selects a family rather than naming one of them. The id that
-		// IS an asterisk is written with an operator and therefore selects too — which is the
-		// safe way round, since naming is what CREATES.
-		if !ok || lit == "" || strings.ContainsRune(lit, '*') {
+		if !ok {
 			return entity.Ref{}, false
 		}
 		lits = append(lits, lit)
 	}
-	r := entity.RefAt(lits...)
-	// A PAYLOAD PREDICATE makes it a selection, whatever the three segments say. Naming is by
-	// identity alone — that is what lets a named subject be a set of one whether or not the
-	// entity exists — and the moment a match says what the entity must LOOK like, that
-	// answer is no longer available: an entity that is not there does not satisfy
-	// `{state: green}`, and one that is there might not either.
-	//
-	// Without this, a match's predicate was silently dropped wherever the three segments were
-	// definite, and the failure was quiet in both directions. As a `when`, `{system: ci, kind:
-	// status, id: build, value: {state: green}}` asked only whether ci:status:build EXISTED, so
-	// a rule guarded on green fired on red. As an `on`, it was worse than wrong: the predicate
-	// held from the moment the entity appeared, so the edge had already risen and the rule
-	// never fired at all.
-	if m.HasPredicate() {
-		return entity.Ref{}, false
-	}
-	return r, true
+	return entity.RefAt(lits...), true
 }
 
 // IsEmpty reports whether the match constrains nothing (matches everything).
 func (m Match) IsEmpty() bool { return len(m) == 0 }
 
-// Selects reports whether the match names a SET to select from the store — a definite
-// system+kind, as opposed to one entity by ref. A set-valued Subject must name both, since
-// the engine has to know what kind it is selecting and spawning for.
+// Selects reports whether the match names a SET to select from the store: a path whose first
+// segment is a literal, so a selection is anchored at a place rather than swept from the root.
 func (m Match) Selects() bool {
-	return m.System() != "" && m.Kind() != ""
+	segs := m.SegNodes()
+	if len(segs) == 0 {
+		return false
+	}
+	_, ok := entity.PathLiteral(segs[0])
+	return ok
 }
 
 // MatchEvent reports whether an observed change satisfies the match — the EDGE face, used to
-// dispatch a `when` against one change event. It delegates the system/kind/op/value
-// dimensions to the existing typed matcher and ANDs the `id` dimension, which Match owns (so
-// entity.Pattern stays as it is). An invalid match matches nothing.
+// dispatch a `when` against one change event. An invalid match matches nothing.
 func (m Match) MatchEvent(ev entity.Event) bool {
 	p, err := m.pattern()
 	if err != nil {
 		return false
 	}
-	return p.MatchEvent(ev) && m.matchID(ev.Ref.ID())
+	return p.MatchEvent(ev)
 }
 
-// Select returns the refs of every stored entity the match picks — the SET face, used to
-// resolve a set-valued Subject and to read a formula's facts. An invalid match picks none.
+// Select returns the refs of every stored node the match picks — the SET face, used to resolve a
+// set-valued Subject and to read a formula's facts. An invalid match picks none.
 //
-// The result is sorted by ref, so a fan-out acts on its members in a stable order (which
-// matters when a budget truncates it) and a formula's witness is a stable audit trail.
+// The result is sorted by ref, so a fan-out acts on its members in a stable order (which matters
+// when a budget truncates it) and a formula's witness is a stable audit trail.
 func (m Match) Select(r entity.Reader) []entity.Ref {
 	if ref, names := m.Names(); names {
-		// A NAMED entity is a set of one whether or not it stands there yet. Selection asks
-		// what exists; naming asks for one thing by identity, and an action's `patch` on it
-		// brings it into being — which is how a trigger publishes a fact nothing has written
-		// before. Reading "every entity this selects" literally would have made that
-		// unspellable: the only way to create an entity would be to already have it.
+		// A NAMED node is a set of one whether or not it stands there yet. Selection asks what
+		// exists; naming asks for one thing by identity, and an action's `patch` on it brings it
+		// into being. It is safe because a name cannot widen.
 		//
-		// It is safe precisely because it is not a glob: a name cannot widen. `demo:pr:*`
-		// still selects what is there.
-		//
-		// Except when it is LEAVING. You may name something that does not exist yet; you may
-		// not name something on its way out. Without this a rule reacting to a departure could
-		// act on the departing entity, and since a patch over an absent entity CREATES, the
-		// removal landing first meant the rule resurrected it — stripped to whatever the rule
-		// wrote, and without the marker, so it came back as an ordinary live entity. React to a
-		// departure by writing somewhere else; the thing that is going is not a subject.
+		// Except when it is LEAVING. You may name something that does not exist yet; you may not
+		// name something on its way out: a patch over an absent node CREATES, so a rule reacting
+		// to a departure would resurrect what is going. React to a departure by writing elsewhere.
 		if e, ok, err := r.Get(ref); err == nil && ok && entity.Vanishing(e.Payload) {
 			return nil
 		}
@@ -401,66 +282,16 @@ func (m Match) Select(r entity.Reader) []entity.Ref {
 		return nil
 	}
 	refs := p.Select(r)
-	if m.hasDim(mKeyID) {
-		kept := refs[:0]
-		for _, r := range refs {
-			if m.matchID(r.ID()) {
-				kept = append(kept, r)
-			}
-		}
-		refs = kept
-	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].String() < refs[j].String() })
 	return refs
 }
 
-// pattern interprets the match as today's typed matcher. This is THE seam: when Match grows
-// a real tony match, this is what is replaced, and MatchEvent/Select stay as they are.
+// pattern is the match as the store's selector: its path and its predicate.
 func (m Match) pattern() (entity.Pattern, error) {
 	if err := m.Validate(); err != nil {
 		return entity.Pattern{}, err
 	}
-	p := entity.Pattern{
-		Root:      m.Root(),
-		System:    m.System(),
-		Kind:      m.Kind(),
-		Predicate: m.Predicate(),
-	}
-	if m.Deep() {
-		// The path is the authority when there is one: the three dimensions cannot hold an
-		// address this long, and a Pattern carrying both would have two answers.
-		p.Path = m.SegNodes()
-	}
-	return p, nil
-}
-
-// matchID applies the `id` dimension. See matchDim; kept as its own name because the id is
-// the dimension callers reason about.
-func (m Match) matchID(id string) bool { return m.matchDim(mKeyID, id) }
-
-// matchDim applies one const dimension to one string, in whichever spelling it was written.
-//
-// A tony match wins when there is one, and it is the RICHER grammar: `!glob` is
-// filepath.Match, so "*" does not cross "/" and "?"/"[…]" are metacharacters — which is the
-// path-shaped globbing this type always said would arrive with the tony leaf.
-//
-// A plain string keeps the older, smaller grammar: for `id`, a "*"-glob where "*" crosses
-// anything (globMatch); for everything else, equality. Those are not the same rule, and
-// they are not meant to be — an existing charter's `id: "a*"` must keep matching "a/b",
-// while `id: !glob "a*"` means the stricter thing the author asked for.
-func (m Match) matchDim(key, s string) bool {
-	if n := m.dim(key); n != nil {
-		ok, err := entity.SafeMatch(ir.FromString(s), n)
-		return err == nil && ok
-	}
-	want := m.str(key)
-	if want == "" {
-		return true
-	}
-	if key == mKeyID {
-		return globMatch(want, s)
-	}
-	return want == s
+	return entity.Pattern{Path: m.SegNodes(), Predicate: m.Predicate()}, nil
 }
 
 // ── the tag chain ────────────────────────────────────────────────────────────
@@ -528,38 +359,6 @@ func tagText(n *ir.Node) string {
 	return n.Type.String()
 }
 
-// globMatch reports whether s satisfies a "*"-glob, where "*" matches any run of characters
-// (including none) and everything else is literal. It is deliberately the smallest grammar
-// that makes "demo:pr:*" mean the kind. Linear: one backtrack point, so a pathological
-// pattern cannot make matching blow up. Byte-wise, which is UTF-8-safe because the only
-// metacharacter is ASCII.
-func globMatch(pat, s string) bool {
-	i, j := 0, 0        // cursors into s and pat
-	star, mark := -1, 0 // the last "*" in pat, and how much of s it had consumed there
-	for i < len(s) {
-		switch {
-		case j < len(pat) && pat[j] == s[i]:
-			i, j = i+1, j+1
-		case j < len(pat) && pat[j] == '*':
-			star, mark, j = j, i, j+1
-		case star >= 0: // mismatch — give the last "*" one more character and retry
-			mark++
-			i, j = mark, star+1
-		default:
-			return false
-		}
-	}
-	for j < len(pat) && pat[j] == '*' { // trailing stars may match nothing
-		j++
-	}
-	return j == len(pat)
-}
-
-func (m Match) str(key string) string {
-	s, _ := m[key].(string)
-	return s
-}
-
 // predicateNode normalizes the two ways a payload predicate arrives into the one form that is
 // evaluated: a NODE from a parsed charter (which preserves any operators it carries), or a Go
 // map from a predicate the engine constructed itself (quorumFormula), converted here.
@@ -591,57 +390,33 @@ func predicateNode(v any) (*ir.Node, bool) {
 // absent predicate and an empty one are both "no predicate"; neither is a node.
 func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 
-// MatchRef reports whether a bare REF satisfies the match's const dimensions
-// (system/kind/id). It is the face used to address things by identity when there is no
-// payload or change to look at — steering live tasks by their subject, where the subject
-// is a ref string. `value` is not consulted here: a caller wanting a payload predicate must
-// read the entity and use MatchEvent.
-func (m Match) MatchRef(ref entity.Ref) bool {
-	if m.Deep() {
-		return entity.Pattern{Path: m.SegNodes()}.MatchRef(ref)
-	}
-	if s := m.System(); s != "" && s != ref.System() {
-		return false
-	}
-	if k := m.Kind(); k != "" && k != ref.Kind() {
-		return false
-	}
-	return m.matchID(ref.ID())
-}
+// MatchRef reports whether a bare REF is at or under what the match's path reaches. It is the
+// face used to address things by identity when there is no payload or change to look at —
+// steering live tasks by their subject. `value` is not consulted: a caller wanting a payload
+// predicate reads the node and uses MatchEvent.
+func (m Match) MatchRef(ref entity.Ref) bool { return entity.Pattern{Path: m.SegNodes()}.MatchRef(ref) }
 
-// ParseExpr parses an entity-address expression into a Match — the ONE string surface for
-// addressing entities by identity, shared by the CLI (`verse flow --subject <addr>`) and the charter
-// wire (a string-form Match). It is a KINDED PATH, `*` is a wildcard per segment, and an id
-// may also glob:
+// ParseExpr parses an address expression into a Match — the ONE string surface for addressing by
+// identity, shared by the CLI (`verse flow --subject <addr>`) and the charter wire. It is a KINDED
+// PATH, and a whole `*` segment is any one segment:
 //
-//	demo.pr.1         one entity
-//	demo.pr.*         the whole kind
-//	demo.pr.hotfix-*  a family within it (an id glob — see matchID)
-//	demo.*.*          the whole system
-//	demo.pr           trailing segments omitted are wildcards
-//	*                 everything
-//	demo.pr."a.b"     an id holding a dot, which the colon form could not say at all
+//	demo.pr.1         one node
+//	demo.pr.*         the prs
+//	demo.pr           the node demo.pr itself
+//	*                 every top-level node
+//	demo.pr."a.b"     an id holding a dot
 //
-// ONE GRAMMAR, and the quoting comes with it. A splitter of its own agrees with the address
-// grammar only for as long as the two happen to spell things alike: `Ref.String` renders a
-// kinded path, so an address copied out of a listing — the everyday way a person gets one —
-// would arrive here as a single segment and select nothing.
-//
-// This is what makes "relational flows" fall out of the model rather than being a second
-// primitive: steering an entity-set is the same selector, at a wider setting. (A subtree
-// form — "demo.pr.1/**" — waits for the reference grammar of the tony leaf.)
+// A glob inside a segment has no string spelling: it is `!glob` in `path:`.
 func ParseExpr(s string) (Match, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return nil, fmt.Errorf(`empty address: want "system.kind.id", with * as a wildcard`)
+		return nil, fmt.Errorf("empty address: want a kinded path, e.g. demo.pr.*")
 	}
 	if strings.ContainsRune(s, '$') {
 		return nil, fmt.Errorf("address %q has a $var; there is no deferred subject form — a "+
-			"subject is a pattern matched against the entity a firing is about, e.g. \"demo.pr.*\" "+
+			"subject is a pattern matched against the node a firing is about, e.g. \"demo.pr.*\" "+
 			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
-	// entity.ExprSegs is the reader, shared with source.ParseClaim: one answer to "what are the
-	// segments of this string", whatever is going to be done with them.
 	steps, err := entity.ExprSegs(s)
 	if err != nil {
 		return nil, err
@@ -649,109 +424,45 @@ func ParseExpr(s string) (Match, error) {
 	return ParseSteps(steps)
 }
 
-// ParseSteps is ParseExpr over an address already SPLIT INTO STEPS — the `!verse-path [demo pr
-// 1]` spelling, and the shared body of both.
-//
-// The steps are positional: a leading `verse` is the reserved root, then system, kind and id.
-// `*` is a wildcard, which is simply an unset dimension, and an empty step is a mistake rather
-// than a wildcard — `[demo, "", 1]` is somebody's template that expanded to nothing.
+// ParseSteps is an address already SPLIT INTO STEPS, as a path: each step one segment, `*` any one.
+// An empty step is a mistake rather than a wildcard — `[demo, "", 1]` is somebody's template that
+// expanded to nothing.
 func ParseSteps(steps []string) (Match, error) {
-	keys := []string{mKeySystem, mKeyKind, mKeyID}
-	if len(steps) > 0 && strings.TrimSpace(steps[0]) == entity.VerseRoot {
-		keys = append([]string{mKeyRoot}, keys...)
-	}
-	// DEEPER THAN THE THREE DIMENSIONS is a PATH, and the dimensions have nowhere to put it —
-	// so it is carried whole rather than truncated or refused. `{system, kind, id}` stays the
-	// reading of the first three, which is every address written so far; `path` is the general
-	// one, and Match.Segs is where the two meet. See docs/working/entity-tree.md.
-	if len(steps) > len(keys) {
-		out := make([]*ir.Node, 0, len(steps))
-		for i, seg := range steps {
-			seg = strings.TrimSpace(seg)
-			if seg == "" {
-				return nil, fmt.Errorf("empty step %d in address %q", i+1, strings.Join(steps, " "))
-			}
-			out = append(out, ir.FromString(seg))
-		}
-		return Match{mKeyPath: out}, nil
-	}
-	m := Match{}
-	for i, key := range keys {
-		if i >= len(steps) {
-			break
-		}
-		seg := strings.TrimSpace(steps[i])
+	out := make([]*ir.Node, 0, len(steps))
+	for i, seg := range steps {
+		seg = strings.TrimSpace(seg)
 		if seg == "" {
 			return nil, fmt.Errorf("empty step %d in address %q", i+1, strings.Join(steps, " "))
 		}
-		if seg == "*" {
-			continue // a wildcard is simply an unset dimension
-		}
-		m[key] = seg
-	}
-	return m, nil
-}
-
-// Segs is the address a match names, as segments — the general reading that `path` carries
-// directly and `{root, system, kind, id}` is the first three (or four) of.
-//
-// A `*` is a named wildcard rather than an absence, because a path has to say which POSITION is
-// unconstrained: `[demo, "*", 1]` and `[demo, 1]` are different questions, where the dimension
-// spelling could leave `kind` unset and mean the first. An unset dimension is dropped, so a
-// short address stays short.
-func (m Match) Segs() []string {
-	if p, ok := m[mKeyPath].([]*ir.Node); ok {
-		out := make([]string, 0, len(p))
-		for _, seg := range p {
-			lit, ok := entity.PathLiteral(seg)
-			if !ok {
-				lit = "*" // an operator names no literal: for a prefix it is unconstrained
-			}
-			out = append(out, lit)
-		}
-		return out
-	}
-	var out []string
-	if r := m.Root(); r != "" {
-		out = append(out, r)
-	}
-	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
-		v := m.str(k)
-		if v == "" && m.dim(k) == nil {
-			break // an unset dimension ends the address: what follows it is unconstrained too
-		}
-		if v == "" {
-			v = "*" // an operator: a position this cannot spell as a literal
-		}
-		out = append(out, v)
-	}
-	return out
-}
-
-// SegNodes is the address as PATTERNS, one per segment — the reading that keeps an operator.
-// Segs is the same thing flattened to literals, which is what a prefix and a message want.
-func (m Match) SegNodes() []*ir.Node {
-	if p, ok := m[mKeyPath].([]*ir.Node); ok {
-		return p
-	}
-	var out []*ir.Node
-	for _, seg := range m.Segs() {
 		out = append(out, ir.FromString(seg))
 	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("match: a path names no segments")
+	}
+	return Match{mKeyPath: out}, nil
+}
+
+// Segs is the path as names, an operator read as `*` — what a prefix, a watch and a message want.
+func (m Match) Segs() []string {
+	p := m.SegNodes()
+	out := make([]string, 0, len(p))
+	for _, seg := range p {
+		lit, ok := entity.PathLiteral(seg)
+		if !ok {
+			lit = "*" // an operator names no literal: for a prefix it is unconstrained
+		}
+		out = append(out, lit)
+	}
 	return out
 }
 
-// Deep reports whether the match names an address deeper than the three dimensions can hold.
-func (m Match) Deep() bool { _, ok := m[mKeyPath].([]*ir.Node); return ok }
+// SegNodes is the path as PATTERNS, one per segment — the reading that keeps an operator.
+func (m Match) SegNodes() []*ir.Node {
+	p, _ := m[mKeyPath].([]*ir.Node)
+	return p
+}
 
-// PathMatch is an address read as a PATH, whatever its length — the reading `path:` asks for
-// explicitly, where `!verse-path [a b c]` folds three segments into the dimensions for the sake
-// of every charter that was written before addresses were trees.
-//
-// The difference matters exactly once, and a stratum is where: `[verse-dev, drift, head]` is a
-// PLACE that derived entities land under, not an entity whose id is `head`. The dimensions have
-// no way to say that — their third position IS the id — so the spelling that means "a path" has
-// to mean it at every length.
+// PathMatch is a path given as nodes — `path: […]` and `!verse-path [a b c]` alike.
 func PathMatch(steps []*ir.Node) (Match, error) {
 	segs := make([]*ir.Node, 0, len(steps))
 	for i, n := range steps {
@@ -759,10 +470,16 @@ func PathMatch(steps []*ir.Node) (Match, error) {
 		if u == nil {
 			return nil, fmt.Errorf("match: segment %d of a path is empty", i+1)
 		}
-		if u.Tag == "" {
-			if _, ok := stepText(u); !ok {
-				return nil, fmt.Errorf("match: a path segment is a name or a match over one; got %v",
-					u.Type)
+		// A NAME is its text, whatever scalar it was written as — `1` is the id of half the nodes
+		// anybody writes down — and a tag the parser attached to record layout is no tag.
+		if isLayoutTag(u.Tag) {
+			text, ok := stepText(u)
+			if !ok {
+				return nil, fmt.Errorf("match: segment %d is a name or a match over one; got %v",
+					i+1, u.Type)
+			}
+			if u.Type != ir.StringType {
+				u = ir.FromString(text)
 			}
 		}
 		segs = append(segs, u)
@@ -771,60 +488,6 @@ func PathMatch(steps []*ir.Node) (Match, error) {
 		return nil, fmt.Errorf("match: a path names no segments")
 	}
 	return Match{mKeyPath: segs}, nil
-}
-
-// ParseStepNodes is ParseSteps over steps that may carry an OPERATOR — `!verse-path [demo pr
-// !glob "hot-*"]`. A step is a node, so a tag survives to the dimension or the path that holds
-// it, where the string form had to drop it.
-//
-// Dropping it is what this replaced, and the failure was quiet: a `!glob` at the id position
-// happened to behave, because an id containing `*` globs anyway, and the same operator one
-// level along matched a segment literally called `head-*`. A pattern that reads as a glob and
-// selects nothing is worse than one that is refused.
-func ParseStepNodes(steps []*ir.Node) (Match, error) {
-	segs := make([]*ir.Node, 0, len(steps))
-	texts := make([]string, 0, len(steps))
-	tagged := false
-	for i, n := range steps {
-		u := unwrap(n)
-		if u == nil {
-			return nil, fmt.Errorf("match: step %d of !%s is empty", i+1, VersePathTag)
-		}
-		segs = append(segs, u)
-		if u.Tag != "" {
-			// An OPERATOR, of whatever shape: `!glob "hot-*"` is a string and `!or [hot, cold]`
-			// is a list, and neither has a text reading — which is the whole reason a step is
-			// carried as a node. It is evaluated against the address's segment by tony.Match,
-			// the same grammar a dimension's operator takes.
-			tagged = true
-			texts = append(texts, "*")
-			continue
-		}
-		t, ok := stepText(u)
-		if !ok {
-			return nil, fmt.Errorf("match: a step of !%s is a name or an operator over one; got %v",
-				VersePathTag, u.Type)
-		}
-		texts = append(texts, t)
-	}
-	if !tagged {
-		return ParseSteps(texts)
-	}
-	// An operator was written, so the address is carried as a PATH of patterns: that is the only
-	// reading that holds one at an arbitrary position. The three-dimension spelling could hold
-	// one per dimension and had nowhere to put a fourth.
-	return Match{mKeyPath: segs}, nil
-}
-
-// prefix is the address levels a match fixes above the id: its root when it names one, then
-// system and kind. It is what a watch path and a store prefilter are built from, so the two
-// halves of the verse are watched at the depth each one has.
-func (m Match) prefix() []string {
-	var out []string
-	if r := m.Root(); r != "" {
-		out = append(out, r)
-	}
-	return append(out, m.System(), m.Kind())
 }
 
 // Subtree is a watched slice of the verse: the address levels above an entity's id, root
@@ -864,16 +527,7 @@ func (s Subtree) Depth() int { return s.depth }
 // this way is watching what stands AT it. A prefix whose entities are deeper comes from
 // subtreeOf, which asks the match.
 func SubtreeAt(segs ...string) Subtree {
-	for len(segs) > 0 && segs[len(segs)-1] == "" {
-		segs = segs[:len(segs)-1]
-	}
-	var out []string
-	for _, sg := range segs {
-		if sg != "" {
-			out = append(out, sg)
-		}
-	}
-	return Subtree{kp: entity.JoinSegs(out), depth: len(out)}
+	return Subtree{kp: entity.JoinSegs(segs), depth: len(segs)}
 }
 
 // SubtreeOfPath builds the subtree a kinded path names.
@@ -922,10 +576,7 @@ func (s Subtree) root() string {
 // moment an id held a dot.
 func (s Subtree) covers(ref entity.Ref) bool {
 	if s.kp == "" {
-		// The world's half: an address in verse's own is not in it. This is the shorthand's
-		// reading of a subject that names nothing, and goes with it (step 3 of
-		// docs/working/paths-and-nodes-plan.md).
-		return ref.Root() == ""
+		return true // the root: every address is under it
 	}
 	mine := s.segments()
 	return mine != nil && entity.Under(mine, ref.Segs(), entity.KPathAdmits)
@@ -955,44 +606,27 @@ func (s Subtree) within(ref entity.Ref) bool {
 	return entity.Above(s.segments(), segs, entity.KPathAdmits)
 }
 
-// subtreeOf is the subtree a match reads.
+// subtreeOf is the subtree a match reads: the path UP TO ITS FIRST WILDCARD, and never the leaf
+// itself — a subtree watch at the node would see that node's own changes and not its appearance —
+// watched for nodes at the path's own depth.
 func subtreeOf(m Match) Subtree {
-	if m.Deep() {
-		// The watch is the path UP TO ITS FIRST WILDCARD, and never the leaf itself: a subtree
-		// watch at the entity would see that entity's own changes and not its appearance, which
-		// is what the three-dimension reading avoids by watching (root, system, kind) and
-		// leaving the id to the pattern.
-		segs := m.Segs()
-		cut := len(segs) - 1
-		for i, seg := range segs {
-			if seg == "*" && i < cut {
-				cut = i
-				break
-			}
+	segs := m.Segs()
+	cut := len(segs) - 1
+	if cut < 0 {
+		cut = 0
+	}
+	for i, seg := range segs {
+		if seg == "*" && i < cut {
+			cut = i
+			break
 		}
-		return atDepth(SubtreeAt(segs[:cut]...), len(segs))
 	}
-	// THE DIMENSION FORM NAMES THE ORDINARY ARITY, which is what its own Select does (it lists
-	// at entity.Depth rather than at the pattern's length), so that is the depth its watch
-	// reports at. A path form says its own.
-	full := entity.Depth
-	if m.Root() != "" {
-		full++
-	}
-	return atDepth(SubtreeAt(append(rootSegs(m.Root()), m.System(), m.Kind())...), full)
+	return atDepth(SubtreeAt(segs[:cut]...), len(segs))
 }
 
-// atDepth is a subtree watched for entities at a depth other than its own — a PREFIX, where
-// what stands under it is deeper than the prefix itself.
+// atDepth is a subtree watched for nodes at a depth other than its own — a PREFIX, where what
+// stands under it is deeper than the prefix itself.
 func atDepth(s Subtree, depth int) Subtree { s.depth = depth; return s }
-
-// rootSegs is the leading root segment of a path, or none.
-func rootSegs(root string) []string {
-	if root == "" {
-		return nil
-	}
-	return []string{root}
-}
 
 // paths renders subtrees as the segment lists a read or a watch takes.
 func paths(sts []Subtree) [][]string {

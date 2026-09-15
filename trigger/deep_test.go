@@ -16,17 +16,11 @@ import (
 
 // AN ADDRESS AS DEEP AS THE TREE, which is what a charter installed at `verse-dev.drift` needs:
 // its entities are `verse-dev.drift.head.<id>` and `verse-dev.drift.finding.<sym>`, four
-// segments, and the three dimensions have nowhere to put the fourth.
-//
-// The `path:` spelling carries it whole. `{system, kind, id}` stays the reading of the first
-// three, which is every address written before this.
+// segments. A path carries it whole.
 func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
 	m, err := ParseSteps([]string{"verse-dev", "drift", "head", "abc"})
 	if err != nil {
 		t.Fatalf("four steps: %v", err)
-	}
-	if !m.Deep() {
-		t.Fatal("four segments did not become a path")
 	}
 	if got := m.Segs(); len(got) != 4 || got[3] != "abc" {
 		t.Fatalf("Segs = %v", got)
@@ -36,7 +30,7 @@ func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
 	}
 	for _, other := range []entity.Ref{
 		entity.RefAt("verse-dev", "drift", "head", "xyz"),    // a different leaf
-		entity.RefAt("verse-dev", "drift", "finding", "abc"), // a sibling kind
+		entity.RefAt("verse-dev", "drift", "finding", "abc"), // a sibling place
 		entity.RefAt("verse-dev", "drift"),                   // shallower
 	} {
 		if m.MatchRef(other) {
@@ -44,8 +38,7 @@ func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
 		}
 	}
 
-	// A wildcard is a POSITION, which is what a path needs and dimensions cannot say: an unset
-	// `kind` means "and nothing below", where `*` means "any one segment, then the rest".
+	// A wildcard is a POSITION: `*` means "any one segment, then the rest".
 	star, err := ParseSteps([]string{"verse-dev", "drift", "*", "abc"})
 	if err != nil {
 		t.Fatalf("a wildcard step: %v", err)
@@ -67,28 +60,11 @@ func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
 	if got := subtreeOf(star).Path(); len(got) != 2 || got[0] != "verse-dev" || got[1] != "drift" {
 		t.Errorf("the watch subtree is %v, want the path up to the wildcard", got)
 	}
-}
 
-// The three-dimension spelling still reads as it always did, which is what every charter
-// written so far holds.
-func TestTheThreeDimensionsAreStillTheFirstThreeSegments(t *testing.T) {
-	m, err := ParseSteps([]string{"demo", "pr", "1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Deep() {
-		t.Error("three segments became a path; they are dimensions")
-	}
-	if got := m.Segs(); len(got) != 3 || got[0] != "demo" || got[2] != "1" {
-		t.Errorf("Segs = %v", got)
-	}
-	if !m.MatchRef(entity.RefAt("demo", "pr", "1")) || m.MatchRef(entity.RefAt("demo", "pr", "2")) {
-		t.Error("the dimension reading changed")
-	}
-	// A system alone still means everything under it.
-	sys, _ := ParseSteps([]string{"demo"})
-	if !sys.MatchRef(entity.RefAt("demo", "pr", "1")) {
-		t.Error("a system alone stopped covering what is under it")
+	// A shorter path covers what is under it: MatchRef is "at or under".
+	prefix, _ := ParseSteps([]string{"verse-dev"})
+	if !prefix.MatchRef(entity.RefAt("verse-dev", "drift", "head", "abc")) {
+		t.Error("a one-segment path stopped covering what is under it")
 	}
 }
 
@@ -124,7 +100,7 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 		t.Fatalf("selected %v, want just %s — the predicate and the depth both apply", got, deep)
 	}
 
-	// The sibling kind is a different path, and is not swept in by a wildcard at the leaf.
+	// The sibling place is a different path, and is not swept in by a wildcard at the leaf.
 	all, err := ParseSteps([]string{"verse-dev", "drift", "head", "*"})
 	if err != nil {
 		t.Fatal(err)
@@ -135,8 +111,7 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	}
 }
 
-// A STEP MAY BE AN OPERATOR, at any position — `!verse-path [demo pr !glob "hot-*"]` — which is
-// what the three-dimension spelling already allows per dimension (`{kind: !glob "k-*"}`).
+// A STEP MAY BE AN OPERATOR, at any position — `{path: [demo, pr, !glob "hot-*"]}`.
 //
 // It used to be dropped on the way in. The failure was quiet in the worst way: a `!glob` at the
 // ID position behaved, because an id containing `*` globs anyway, and the same operator one
@@ -152,7 +127,7 @@ func TestAStepMayCarryAnOperator(t *testing.T) {
 		entitytest.Set(t, store, ref, entity.Obj{"seen": true}.Payload())
 	}
 
-	node, err := codec.ParseNode([]byte(`{subject: !verse-path [verse-dev, drift, !glob "head-*", "*"]}`), codec.Tony)
+	node, err := codec.ParseNode([]byte(`{subject: {path: [verse-dev, drift, !glob "head-*", "*"]}}`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +153,7 @@ func TestAStepMayCarryAnOperator(t *testing.T) {
 
 	// ANY OPERATOR, not just a string-shaped one: `!or [hot, cold]` is a list, and a step that
 	// had to have a text reading could not hold it at all.
-	node, err = codec.ParseNode([]byte(`{subject: !verse-path [demo, pr, !or [hot, cold]]}`), codec.Tony)
+	node, err = codec.ParseNode([]byte(`{subject: {path: [demo, pr, !or [hot, cold]]}}`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +203,7 @@ func TestEveryPathSegmentIsAMatch(t *testing.T) {
 		{`!raw "*"`, "*", true},
 		{`!raw "*"`, "any", false}, // …and escaped, it is the id that IS an asterisk
 	} {
-		node, err := codec.ParseNode([]byte(`{subject: !verse-path [demo, pr, `+tc.seg+`]}`), codec.Tony)
+		node, err := codec.ParseNode([]byte(`{subject: {path: [demo, pr, `+tc.seg+`]}}`), codec.Tony)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.seg, err)
 		}
@@ -254,7 +229,7 @@ func TestARuleWithOperatorsInItsPathIsDurable(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: deep-glob
   condition:
-    subject: !verse-path [verse-dev, drift, !glob "head-*", "*"]
+    subject: {path: [verse-dev, drift, !glob "head-*", "*"]}
   action:
     patch: {seen: true}
 `)); err != nil {
@@ -322,7 +297,7 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: literal-star
   condition:
-    subject: !verse-path [demo, pr, !glob "[*]"]
+    subject: {path: [demo, pr, !glob "[*]"]}
   action:
     patch: {seen: true}
 `)); err != nil {
@@ -346,9 +321,7 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 }
 
 // THE CASE THAT STARTED THIS. A charter installed at `verse-dev.drift` writes only inside that
-// address — so its tip fact and its ledger of findings cannot be two SYSTEMS, and under the old
-// two-level derive they could not be two kinds either: the address ended at `<system>.<kind>`
-// and the confinement was the whole of it.
+// address — so its tip fact and its ledger of findings cannot be two top-level places.
 //
 // With an address as deep as the tree they are two levels UNDER it, each with a stratum of its
 // own, and the ordering that makes a derive finite still holds.
@@ -359,7 +332,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
-		{Name: "reflected", Level: 0, Match: []Match{{"system": "git"}}},
+		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
 		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}},
 		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}},
 	} {
@@ -382,13 +355,12 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 		t.Fatalf("the tip rule did not install: %v", err)
 	}
 
-	// The ledger: one level higher, under the same address — which is what two kinds under one
-	// package needs, and what a two-level derive could not express.
+	// The ledger: one level higher, under the same address — two places under one package.
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: gather
   stratum: tip
   condition:
-    subject: !verse-path [verse-dev, drift, head, "*"]
+    subject: {path: [verse-dev, drift, head, "*"]}
   action:
     derive:
     - path: [verse-dev, drift, finding]
@@ -525,7 +497,7 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: notice
   condition:
-    subject: !verse-path [verse-dev, drift, head, "*"]
+    subject: {path: [verse-dev, drift, head, "*"]}
     value: {reviewed: pending}
   action:
     patch: {reviewed: seen}

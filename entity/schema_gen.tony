@@ -33,12 +33,9 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   at: .[array(string)]
-  kind: .[string]
   op: .[string]
   path: .[array(tony-base:ir)]
-  root: .[string]
   slot: .[array(string)]
-  system: .[string]
   value: .[tony-base:ir]
 signature:
   name: verse-pattern

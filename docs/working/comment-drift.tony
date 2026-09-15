@@ -67,7 +67,7 @@
 # what wakes these rules when it moves — and everything acted on belongs to this package. The
 # gate half below still owns one, because a delivered branch is a git ref and that is its subject.
 at: verse-dev.drift
-reads: [ !verse-path [git] ]
+reads: [git]
 ---
 # The cursor is one entity: where the review has got to. It BOUNCES — idle → claimed → idle —
 # and a PATCH is what moves it, which is the one shape that can carry a moving value: a derive's
@@ -410,7 +410,7 @@ reads: [git, verse-dev.drift]
 - name: reflected
   level: 0
   match:
-    system: git
+    path: [git]
 
 - name: merge
   level: 30

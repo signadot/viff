@@ -78,7 +78,7 @@ func TestSnapshotAtHeadAgreesWithLiveStore(t *testing.T) {
 		}
 	}
 	// The pred is applied the same way, so a snapshot can stand in for the store in a select.
-	demo := snap.List(func(r Ref) bool { return r.System() == "demo" })
+	demo := snap.List(func(r Ref) bool { return r.Under("demo") })
 	if len(demo) != 2 {
 		t.Fatalf("snapshot List(demo) = %d, want 2", len(demo))
 	}

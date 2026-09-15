@@ -504,7 +504,8 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 	// `!Reserved()` says at the enumeration what `source.Claimed` also refuses at the point:
 	// verse's own half is not a slice a source can own, so a removal cannot tombstone it.
 	for _, ent := range r.List(func(ref entity.Ref) bool {
-		return !ref.Reserved() && (wildcard || systems[ref.System()])
+		segs := ref.Segs()
+		return !ref.Reserved() && len(segs) > 0 && (wildcard || systems[segs[0]])
 	}) {
 		out = append(out, source.Claimed(claims, ent.Ref)...)
 	}

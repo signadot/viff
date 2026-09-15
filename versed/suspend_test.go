@@ -192,7 +192,7 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	}
 	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(`{
 		name: suspender, stratum: prs,
-		condition: {subject: {system: demo, kind: pr}},
+		condition: {subject: {path: [demo, pr, "*"]}},
 		action: {derive: [{path: [verse, trigger, suspension], value: {charter: "*"}}]},
 	}`))
 	if err != nil {
@@ -309,7 +309,7 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
 		gates: [{name: approvals, need: 2}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -400,7 +400,7 @@ func TestAWithdrawnQuestionsClockStops(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
 		gates: [{name: ok, mode: ask, deadline: {within: "10m", default: deny}}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -440,7 +440,7 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {system: demo, kind: release, value: {stage: open}}},
+		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
 		gates: [{name: ok, mode: ask}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -553,7 +553,7 @@ func TestASecondSuspensionIsNamedOnTheTaskItAlsoHolds(t *testing.T) {
 			t.Fatalf("suspend %+v = %d %s", sel, code, msg)
 		}
 	}
-	both := `*:*@demo.pr,*:*@demo.pr."1"`
+	both := `*:*@demo.pr."1",*:*@demo.pr.*`
 	if got := strings.Join(srv.Eng.HeldBy("run"), ","); got != both || h.count("pause") != 1 {
 		t.Fatalf("the task is held by %s and paused %d times, want both suspensions named and one pause", got, h.count("pause"))
 	}
@@ -566,7 +566,7 @@ func TestASecondSuspensionIsNamedOnTheTaskItAlsoHolds(t *testing.T) {
 	if code, _, msg := suspendAs(t, ts, "resume", "", "", narrow); code != http.StatusOK {
 		t.Fatalf("resume %+v = %d %s", narrow, code, msg)
 	}
-	if got := strings.Join(srv.Eng.HeldBy("run"), ","); got != `*:*@demo.pr` || h.count("resume") != 0 {
+	if got := strings.Join(srv.Eng.HeldBy("run"), ","); got != `*:*@demo.pr.*` || h.count("resume") != 0 {
 		t.Fatalf("after one lift the task is held by %s and resumed %d times, want the wider one holding it", got, h.count("resume"))
 	}
 	if code, _, msg := suspendAs(t, ts, "resume", "", "", wide); code != http.StatusOK {
@@ -680,7 +680,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	firstHTTP := httptest.NewServer(first.Handler())
 	addScopedRule(t, firstHTTP, "me", `{
 		name: scoped-review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	if code, _, msg := suspendAs(t, firstHTTP, "suspend", "", "me", api.FlowSelect{Charter: ":scoped-review", Subject: "*", Why: "reading it"}); code != http.StatusOK {
@@ -733,7 +733,7 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: review,
-		condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	srv.Eng.Adopt("demo.pr.1", "by-hand", newIdleHandle(t))

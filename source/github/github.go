@@ -255,7 +255,7 @@ func (g *GitHub) under(ref entity.Ref) (repo string, rest []string, ok bool) {
 // repository's place reads that repository whole; an issue or pull-request ref reads just that
 // item.
 func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection, error) {
-	if ref.System() != "" && ref.System() != g.system {
+	if segs := ref.Segs(); len(segs) > 0 && segs[0] != g.system {
 		// Another source's slice. No targets means an empty reflection with NO covers, which
 		// claims nothing and so tombstones nothing.
 		return source.Reflection{}, nil

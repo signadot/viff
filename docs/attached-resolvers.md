@@ -26,7 +26,7 @@ pointing at one: what it supervises, how it answers, under what envelope, and it
 name:      security-review                       # verse.resolvers.security.security-review
 kind:      security
 condition:                                       # optional — the standing door
-  subject: {path: [change, pr, *], value: { area: payments }}
+  subject: {path: [change, pr, "*"], value: { area: payments }}
 byRef:     true                                  # optional — the named door
 method:
   driver:  url
@@ -60,7 +60,7 @@ answerable at all.
 ```tony
 name: validate
 condition:
-  subject: {path: [change, pr, *], value: { stage: proposed }}
+  subject: {path: [change, pr, "*"], value: { stage: proposed }}
 gating:
   resolver: verse.resolvers.security.security-review   # answers this RULE's own gates
   gates:  [{ name: ship, mode: ask }]

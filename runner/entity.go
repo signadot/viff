@@ -204,7 +204,7 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 
 // Is reports whether an address is an installed runner's — the namespace's own question, since
 // the reserved root rather than the system is what makes it verse's (see mirror.IsTask).
-func Is(ref entity.Ref) bool { return ref.Reserved() && ref.System() == System }
+func Is(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
 
 // trimAddress takes the two segments that name one of these, from either spelling an operator
 // has in front of them: the whole address as it is listed and stored

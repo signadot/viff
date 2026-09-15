@@ -102,7 +102,7 @@ func TestACharterReadsAsItsOwner(t *testing.T) {
 	} {
 		resp := postAs(t, who.principal, ts.URL+"/charter", "application/tony", `{
 			name: `+who.name+`,
-			condition: {subject: {system: demo, kind: pr, value: {stage: open}}},
+			condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
 			action: {patch: {seenBy: {`+who.mark+`: true}}},
 		}`)
 		resp.Body.Close()

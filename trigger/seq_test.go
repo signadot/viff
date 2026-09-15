@@ -225,8 +225,7 @@ func TestSeqClaimExcludesOverlap(t *testing.T) {
 	}
 }
 
-// The claim lives in the `task` system, which the engine holds out of the default match
-// set — so taking one cannot wake the trigger that took it. Machinery must not be reactive
+// The claim lives under `task`, which the engine holds out of the default match set — so taking one cannot wake the trigger that took it. Machinery must not be reactive
 // fuel; this is the same guard reflected tasks already ride.
 func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	store := entitytest.Store(t)
@@ -234,7 +233,7 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	eng.Start(ctx) // root dispatch, so a bare `{}` match is installable at all
-	// A `when` of {} matches every change it is ALLOWED to — it names no system, so the guard
+	// A `when` of {} matches every change it is ALLOWED to — it names no path, so the guard
 	// is what decides. The subject is one named entity, since the question here is only whether
 	// a claim write wakes anything at all.
 	if err := eng.AddTrigger(Trigger{
@@ -480,7 +479,7 @@ func TestSeqValidation(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	// A subject the action can advance past: these cases are about seq validation, and a
 	// charter that would re-spawn forever is a poor example to make them from.
-	cond := Condition{Subject: Match{"system": "demo", "kind": "pr",
+	cond := Condition{Subject: Match{"path": pathOf("demo", "pr", "*"),
 		"value": map[string]any{"stage": "open"}}}
 	cases := []struct {
 		name string

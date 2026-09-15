@@ -23,12 +23,12 @@ a word is; a segment that would otherwise read as something else is quoted, and 
 itself:
 
 ```
-demo.pr."a.b"              the id `a.b` — quoted, so the dots are in the name
+demo.pr."a.b"              the name `a.b` — quoted, so the dots are in the name
 demo.pr.a.b                four segments, because these dots are not quoted
-demo.pr."1"                the id `1`, quoted so it is a name rather than a number
-git.ref.x@git:ref:y        `@` and `:` are ordinary characters in a name; nothing reads them
+demo.pr."1"                the name `1`, quoted so it is a name rather than a number
+git.ref.x@a:b              `@` and `:` are ordinary characters in a name; nothing reads them
 demo.pr.org/repo#42        …and so are `/` and `#`
-verse.task.instance.run-a1b2   a leading `verse` is the reserved root, a level like any other
+verse.task.instance.run-a1b2   a leading `verse` is a segment like any other
 ```
 
 Which spelling goes where.
@@ -37,17 +37,17 @@ Which spelling goes where.
 |---|---|
 | a path | anywhere a parser reads one and no shell is involved: inside a document (`at: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
 | steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way *in*, and what every listing answers with |
-| a vector | in a charter, where an address is a list of segments: `!verse-path [verse-dev drift head "*"]`, or `path: [verse-dev, drift, head, "*"]` |
+| a list | in a charter, where an address is a list of segments and a segment may carry an operator: `path: [verse-dev, drift, head, "*"]` |
 
 A listing answers with steps, the same spelling the command line takes, so a line hands
 straight back:
 
 ```sh
-verse data -paths demo pr           # demo pr 1
+verse data -paths demo pr '*'       # demo pr 1
                                     # demo pr a.b
                                     # demo pr 'a b.txt'
 
-verse data -paths demo pr | xargs -L1 verse data
+verse data -paths demo pr '*' | xargs -L1 verse data
 ```
 
 `-kpaths` is the same listing as one kinded path per line, which is the spelling that survives
@@ -55,17 +55,17 @@ being captured into a shell variable — a line of steps only reaches a read if 
 it, and a variable passed as one argument does not:
 
 ```sh
-verse data -kpaths demo pr          # demo.pr."1"
+verse data -kpaths demo pr '*'      # demo.pr."1"
                                     # demo.pr."a.b"
 
-ref=$(verse data -kpaths demo pr | head -1)
+ref=$(verse data -kpaths demo pr '*' | head -1)
 verse data -at "$ref"               # …one argument, and it reads back
 ```
 
 One spelling, in and out. A step is a whole word, so a dot inside one is a character in a
 name and needs no quoting — which is the ergonomic win, and it holds at every position: `verse
-data dotted.sys pr 1` is three segments, and `verse data a.b.c pr 1` names the system `a.b.c`.
-The shell's own quoting is applied only where a segment would otherwise be split or expanded (a
+data dotted.sys pr 1` begins with the one segment `dotted.sys`, and `verse data a.b.c pr 1` with
+the one segment `a.b.c`. The shell's own quoting is applied only where a segment would otherwise be split or expanded (a
 space, a `*`), and it is single quotes, which are literal — so nothing inside is globbed or
 substituted, and `xargs` understands them. A name the step clauses below would read as
 something else also carries the quoted clause inside them.
@@ -73,7 +73,7 @@ something else also carries the quoted clause inside them.
 A positional is a step and nothing else, because it cannot be both. A single word `w` has
 two legal readings — the one segment `w`, and `split(w, delim)` — and choosing either makes the
 other unsayable. So there is no delimiter scan on the command line at all, and `verse data
-demo.pr.1` names a system called `demo.pr.1`.
+demo.pr.1` names the one segment `demo.pr.1`.
 
 A step is one place, and its first character says which. Four clauses, no splitting:
 
@@ -114,20 +114,21 @@ In the address grammar, a whole `*` segment is the wildcard in both spellings, a
 is an asterisk is quoted in both.
 
 ```sh
-verse data -at 'demo.pr.*'        # every id under demo.pr — a segment wildcard
+verse data -at 'demo.pr.*'        # every name under demo.pr — a segment wildcard
 verse data demo pr '*'            # the same, as a step
-verse data -at 'demo.pr."*"'      # the one entity whose id IS an asterisk
+verse data -at 'demo.pr."*"'      # the one node whose name IS an asterisk
 verse data demo pr '"*"'          # the same, as a step — the quoted clause
 verse data demo pr 1 votes '[*]'  # every element of an array, which a `*` step is not
 ```
 
-Only a whole segment selects: `hotfix-*` is a name with an asterisk in it, as a step and in
-`-at` alike. A `*` selects every *field*, which is what an id is, and `[*]` every array element,
-so the two are different clauses. A write names one place, so it refuses a `*` step and names
-the quoted one.
+Only a whole segment selects: `hotfix-*` is a name with an asterisk in it, as a step, in `-at`
+and in a charter's kinded path alike. A `*` selects every *field*, which is what the names under
+a node are, and `[*]` every array element, so the two are different clauses. A write names one
+place, so it refuses a `*` step and names the quoted one.
 
-A `*` step cannot glob inside an id, and a charter's subject can (`demo.pr.hotfix-*`). That is
-why the `verse flow` verbs take one token and refuse a second.
+A family of names inside one segment is an operator on that segment, and only a charter's
+`path:` carries one (`path: [demo, pr, !glob "hotfix-*"]`); neither a step nor a kinded path
+string can.
 
 The shell gets there first, and a bare `*` as its own word is the dangerous one. Inside a
 longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
@@ -139,82 +140,60 @@ verse data -at demo.pr.*.stage    # …and so does this, unquoted — the shell 
                                   # which flag it is after
 ```
 
-So quote it, in either form — `-at 'demo.pr.*.stage'`, `demo pr '*' stage`. `-paths` prints an
-id that is an asterisk as `'"*"'`, the shell's quotes around the quoted clause, which is why a
-listing containing one pipes back to that id and not to all of them.
+So quote it, in either form — `-at 'demo.pr.*.stage'`, `demo pr '*' stage`. `-paths` prints a
+name that is an asterisk as `'"*"'`, the shell's quotes around the quoted clause, which is why a
+listing containing one pipes back to that name and not to all of them.
 
 In a charter, quoting does not change it. Tony quoting is about a value's type, not about
 matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
 the literal asterisk takes an operator:
 
 ```tony
-path: [demo, pr, "*"]           # any id — the quotes change nothing
-path: [demo, pr, !or ["*"]]     # the id that IS an asterisk
+path: [demo, pr, "*"]           # any name — the quotes change nothing
+path: [demo, pr, !or ["*"]]     # the name that IS an asterisk
 path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
 ```
 
-An id may itself glob (`demo.pr.hotfix-*`), so `verse flow demo.pr.*` and a charter's
-`subject: demo.pr.*` mean the same set — and the `verse flow` verbs take one token and refuse a
-second rather than reading it as a step, because a glob inside an id is more than a step can
-express.
+### `verse` at the front
 
-In a charter, `!verse-path [demo pr 1]` is the steps spelling: the tag is required, because a
-bare list where an address belongs would be a second thing a bare list can mean.
-
-### The reserved root
-
-One name at the front is not a system: `verse` is the reserved root, and everything verse
-keeps about its own running lives under it ([below](#two-halves-one-tree)). It is a segment like
-any other in all three spellings, so an address in verse's half is four segments rather than
-three:
+Everything verse keeps about its own running lives under `verse` ([below](#two-halves-one-tree)).
+It is a segment like any other in every spelling, and it counts like any other:
 
 ```sh
 verse data verse task instance run-a1b2       # steps
 verse data -at verse.task.instance.run-a1b2   # …the same address copied out of a document
-verse data verse task instance                # …and a prefix of it: the whole kind
+verse data verse task instance '*'            # …and every task record under it
 ```
 
-Two consequences worth knowing in advance:
+The address parses; the write is refused. `verse data verse task instance x '{…}' -put` is a
+well-formed address and a 403: what verse writes about itself is written by the verbs that own it
+(`charter -a`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
 
-- No world system may be called `verse`. `verse x 1` does not parse as an entity — it reads as
-  the root plus two segments, and says so: *an address starts with system kind id, and
-  "verse x 1" names 3 of the 4*.
-- The address parses; the write is refused. `verse data verse task instance x '{…}' -put` is
-  a well-formed address and a 403: what verse writes about itself is written by the verbs that
-  own it (`charter -a`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
-
-In a charter it is the first segment of the path — `{path: [verse, task, instance, *]}` — and a
-path that does not start with it is about the world's half, so a rule that means to watch
-verse's own state says so.
-
-In a charter an address is a `path:`, and every segment of it is a match in tony's own grammar,
-asked of that one segment:
+In a charter an address is a `path:`, or the same path as one kinded path string, and every
+segment of it is a match in tony's own grammar, asked of that one segment:
 
 ```tony
 subject: {path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}
-subject: !verse-path [verse-dev drift !glob "head-*" "*"]
-subject: {path: [demo, pr, 1]}
+subject: {path: [verse-dev, drift, !glob "head-*", "*"]}
+subject: {path: [verse, task, instance, "*"]}
+subject: demo.pr.1
 ```
 
 So `!glob "hot-*"`, `!or [hot, cold]` and `!and [!glob "h*", !not hold]` all say at a position
 what they already say about a payload. Nothing in verse enumerates the operators; `tony.Match`
 owns them. One convention sits above that: a bare `*` is any segment, and inside an operator a
-`*` is an ordinary character — which is how an id that *is* an asterisk is named (`!glob "[*]"`).
+`*` is an ordinary character — which is how a name that *is* an asterisk is named (`!glob "[*]"`).
+An operator has no string spelling, so a path carrying one is written as `path:`.
 
 A `*` is a position, which is why the length of the path is the depth it selects at:
-`[demo, pr, "*"]` picks three-segment entities and `[demo, pr]` is the place above them.
-
-`{system, kind, id}` is still read as the first three positions of a path — a shorthand the
-grammar keeps for the charters written in it — and `System()`/`Kind()`/`ID()` answer from
-whichever spelling was used. It is not what to write: a path says the depth, and the shorthand
-can only ever mean three.
+`[demo, pr, "*"]` picks the nodes under `demo.pr`, and `[demo, pr]` is the node `demo.pr` itself.
 
 **What takes what:**
 
 | | |
 |---|---|
 | `verse data`, `data/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
-| `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
+| `verse flow show <subject>`, and `--subject` on the flow verbs | one token: a kinded path, `*` for any segment |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>.<name>`, or the address as stored |
 | `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter verse-dev drift` |
 | `verse c <address> rules <name>` | a path: the address, then into it |
@@ -224,16 +203,16 @@ can only ever mean three.
 `'"x"'` is the name `x` — but they name one place made of names, so an access (`'[0]'`) or a `*`
 step is refused.
 
-## Two halves, one tree
+<a id="two-halves-one-tree"></a>
+## verse's own records, and the world's, in one tree
 
-The root has one reserved key. Everything verse writes about its own running lives under
-`verse`; everything the world is about lives beside it, at whatever address a writer chooses.
+The top of the tree has one reserved key. Everything verse writes about its own running lives
+under `verse`; everything the world is about lives beside it, at whatever path a writer chooses.
 
-```sh
-verse data -paths
-# demo.pr.1                          the world's half
-# verse.task.instance.run-a1b2       verse's own
-# verse.trigger.rule.review
+```
+demo.pr.1                          what the world is about
+verse.task.instance.run-a1b2       verse's own
+verse.trigger.rule.review
 ```
 
 Under `verse` are `task.instance.*` (the mirror of every running task), `task.run.*` (the
@@ -260,10 +239,10 @@ holding `owner` there, fixed until the entity is deleted. A read answers only wh
 may read. The mirror is written only by versed and read only by the system.
 [perms.md](../perms.md) is the whole of it.
 
-One thing is deliberately not in verse's half: `provider.*` — the registry of doers is written
+One thing is deliberately not under `verse`: `provider.*` — the registry of doers is written
 by whoever runs the verse.
 
-The reserved half is read like anything else and written only through the verbs that own it.
+What is under `verse` is read like anything else and written only through the verbs that own it.
 `verse data verse trigger rule review` reads a rule; `verse data -put` at any address under
 `verse` is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Each verb
@@ -272,52 +251,51 @@ overlaps — and beneath every one of them the store itself checks the write aga
 place permits ([perms.md](../perms.md)), so nothing reaching the store may install a rule, stamp
 a task record or answer a question on somebody else's behalf.
 
-A charter that wants to react to verse's own state says which half it means:
+A charter that wants to react to verse's own state names it by its path, `verse` first:
 
 ```tony
 condition:
-  subject: {path: [verse, gate, question, *], value: {status: pending}}
+  subject: {path: [verse, gate, question, "*"], value: {status: pending}}
 ```
 
-A path that does not start with `verse` is the world's half, so a rule about `demo.pr.*` cannot
-quietly select the task records of the runs reviewing them.
+A path that does not start with `verse` does not reach under it, so a rule about `demo.pr.*`
+cannot quietly select the task records of the runs reviewing them.
 
-`local.*` (a federated working tree) is a third thing again: it is mount-owned and lives under
-its own root with no history — see below.
+`local.*` (a federated working tree) is a third thing again: it is mount-owned and served by a
+controller with no history — see below.
 
 ## Reading
 
-A verse is one document — `{system: {kind: {id: payload}}}` — and `verse data` answers it at a
-path. The path is a
+A verse is one document, a tree, and `verse data` answers it at a path. The path is a
 [kinded path](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath) in any of
-the three spellings [above](#addressing), and it is the same address at every depth: a system, a kind, an
-entity, a place inside a payload.
+the spellings [above](#addressing), and it is the same address at every length: whatever node
+stands there, a place inside a payload included.
 
 ```sh
 verse data                                         # the whole document
-verse data demo                                    # {kind: {id: payload}}
-verse data demo pr                                 # {id: payload}
-verse data demo pr 1                               # one payload
+verse data demo                                    # the subtree at demo
+verse data demo pr '*'                             # each node under demo.pr, keyed by name
+verse data demo pr 1                               # one node
 verse data demo pr 1 labels urgent                 # one place inside it
-verse data -at 'demo.pr.*.stage'                   # one field of each, still keyed by id
-verse data -paths demo pr                          # one address per line
-verse data -if '{stage: open}'                     # by what it says
-verse data -if '{urgent: true}' -if-at labels      # …rooted inside the payload
+verse data -at 'demo.pr.*.stage'                   # one field of each, still keyed by name
+verse data -paths demo pr '*'                      # one address per line
+verse data demo pr '*' -if '{stage: open}'         # by what it says
+verse data demo pr '*' -if '{urgent: true}' -if-at labels   # …rooted inside the payload
 ```
 
 The globbed line has a steps spelling too: `verse data demo pr '*' stage` is the same read, and
-`'"*"'` is the id that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
+`'"*"'` is the name that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
-assembled for the wire. So an id is a key rather than a token inside a rendered `at:`, which
+assembled for the wire. So a name is a key rather than a token inside a rendered `at:`, which
 is what `-paths` is for: a script that wants the addresses gets them one per line instead of
 grepping them back out of a rendering.
 
-**A path naming nothing answers 404, at every depth**, and the command exits non-zero. `{}` is a
-document somebody wrote; it is not what a read says about a path nobody wrote, whether that path
-would have named a slice or a thing. `demo.pr.nosuch` is not there, and neither is `nosuch.pr` —
-"which prs does a system that is not there have" is not a question with `none` as its answer, it
-is a question about a system that is not there.
+**A path naming nothing answers 404, at every length**, and the command exits non-zero. `{}` is
+a document somebody wrote; it is not what a read says about a path nobody wrote, however long.
+`demo.pr.nosuch` is not there, and neither is `nosuch.pr` — "what stands under a node that is not
+there" is not a question with `none` as its answer, it is a question about a node that is not
+there.
 
     verse data nosuch            nothing stands at nosuch
     verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
@@ -325,13 +303,11 @@ is a question about a system that is not there.
 
 An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `-if`
 predicate kept none of what it holds. That answer is about the filter rather than about the path,
-so it is a 200 with `{}` — which is why the two cannot be spelled the same way.
+so it is a 200 with `{}` — which is why the two cannot be spelled the same way. The store is
+what answers absence: a read reports null only where a null was written, and absence is absence
+at every length.
 
-This used to turn on depth — `{}` with 200 at 0–2 segments, 404 below — which was verse guessing
-where entities end. The store answers it now: since go-tony v0.0.201 a read reports null only
-where a null was written, and absence is absence at every depth.
-
-A read, a `-put` and a `-rm` all take the same address, at the same depths, because there is
+A read, a `-put` and a `-rm` all take the same address, at any length, because there is
 only one thing to take: `demo pr 1` typed and `demo.pr."1"` written down are the one grammar,
 separated by the shell in the first case and by the quoting in the second.
 
@@ -339,12 +315,11 @@ separated by the shell in the first case and by the quoting in the second.
 verse data demo pr 1
 ```
 
-`-if` narrows which entities the document holds, per entity, before the nesting — it never
-prunes inside what it keeps. **It asks at the depth the path asks at**: a path of N segments
-identifies entities at depth N, a name and a `*` alike, and a shorter path is a prefix of the
-addresses in its half (three segments in the world's, four in verse's own). A reflected issue
-is four segments down, a repository being a level, so the `*` is what makes each issue the
-thing asked about:
+`-if` narrows which nodes the document holds, per node, before the nesting — it never prunes
+inside what it keeps. **It asks of what the path names**: a path of N segments asks about the
+nodes N segments down, a name and a `*` alike, so the question says its own depth by the `*`s it
+carries. A reflected issue stands at `git-issue.<repository>.issue.<id>`, so the `*` is what
+makes each issue the thing asked about:
 
 ```sh
 verse data git-issue verse issue '*' -if '{status: open}'         # each open issue
@@ -352,7 +327,7 @@ verse data -at 'git-issue.verse.issue.*' -if '{status: open}'     # the same
 verse data git-issue verse issue -if '{status: open}'             # the map of issues, as one: {}
 ```
 
-`-trim` projects the same entities. `-if` is a
+`-trim` projects the same nodes. `-if` is a
 [tony match](https://signadot.github.io/tony-format/) against the payload — the same predicate
 a charter carries in `value`, so a read answers "what would a rule with this predicate
 select?". Operators (`!or`, `!and`, `!not`, `!glob`, presence and absence) are
@@ -424,10 +399,9 @@ commit over it, as it does anywhere else.
 
 ### What the document does not cover
 
-Mount-owned slices are not in it. `verse connect`'s content slice (`local.dir-content-*`) is
-served by a controller under a separate root with no history, and the read walks the entity
-root only — so a mounted entity is addressable by `verse data <path>` and absent from
-`verse data`. Saying "the document, whole" would make that pre-existing gap into a claim that
+Mount-owned paths are not in it. `verse connect`'s content (`local.dir-content-*`) is served by
+a controller outside the store's own tree, with no history, and the read walks the store's tree
+only — so a mounted node is addressable by `verse data <path>` and absent from `verse data`. Saying "the document, whole" would make that pre-existing gap into a claim that
 is not quite true. Unioning the second read is a real decision, not a detail.
 
 ## Writing
@@ -515,7 +489,7 @@ what is read.
 
 ```sh
 verse watch                                        # from now on
-verse watch -if '{stage: open}' demo               # the same selectors as a read
+verse watch -if '{stage: open}' demo pr '*'        # the same selectors as a read
 verse watch -since 42                              # replay from a revision already in hand
 verse watch -ago 50                                # …or the last 50 commits, whatever the head is
 verse watch -since 0                               # replay everything the store still holds
@@ -555,32 +529,31 @@ below what the store still retains, so that history is gone — and the refusal 
 it can still serve from, with `-ago <n>` as the way to ask for what it kept without naming one;
 or the store could not answer, in which case the cursor stands and the same request is worth
 repeating. A catch-up costs what the path it is asked about holds, so watching
-one slice is cheaper than watching the verse in the replay as well as in the stream. With no cursor there is nothing to catch up from and the stream starts at the
-moment it opens. The same level-triggered property is what makes an installed trigger act on
+one path is cheaper than watching the verse in the replay as well as in the stream. With no
+cursor there is nothing to catch up from and the stream starts at the moment it opens. The same level-triggered property is what makes an installed trigger act on
 the backlog — a rule is a statement about the world, not about what happens next — and it is
 why a long hold costs a cursor rather than a buffer. See
 [change events](../change-events.md).
 
-A change deeper than an address is reported against the address above it. Watching
-`verse-dev.drift` while something is written at `verse-dev.drift.head.abc` gives
+A change deeper than the path a watch asks about is reported against the node that path reaches
+above it. Watching `verse-dev drift '*'` while something is written at `verse-dev.drift.head.abc`
+gives
 
 ```tony
 {op: set at: verse-dev.drift.head rev: 152 to: {abc: {sha: aaa}}}
 ```
 
-— the entity that changed is `abc`, nested inside `to`. One stream serves every reader at
-once, so it has to pick one arity, and it picks the ordinary three; a reader whose addresses
-are deeper finds the change nested inside `to`. Nothing is missed, and a rule watching that
-subtree still selects the deep entity, because it re-evaluates against the store rather than
-against the event's address alone.
+— the node the path reaches is `head`, and what changed inside it, `abc`, is nested inside `to`.
+Nothing is missed, and a rule watching that subtree still selects the deep node, because it
+re-evaluates against the store rather than against the event's address alone.
 
-A value shallower than an address is reported where it stands, as a read lists it. After
+A node is reported where it stands, a scalar included, as a read lists it. After
 `verse data a b -put c`, a bare `verse watch`, `verse watch a` and `verse watch a b` each report
 a `set` at `a.b` holding `c`, and `verse data -rm a b` a `delete` at `a.b`. A watch on an
 address reports whatever stands there, a scalar included. A rule reading `demo.pr` is woken by a
 write at `demo` as well as one under it, since that write replaces what the rule reads.
 
 A `delete` carries no payload, so a `-if` filter does not match one: there is nothing left
-to ask about. An entity on its way out is also marked *vanishing* before removal, which is
+to ask about. A node on its way out is also marked *vanishing* before removal, which is
 what stops a rule from acting on — and thereby resurrecting — something that is leaving; see
 [lifecycle](../trigger-model.md#lifecycle-how-an-entity-leaves).

@@ -32,7 +32,7 @@ verse source
 | `-addr` | what to listen on (`SOURCED_ADDR`, default `:9801`) |
 | `-min-interval` | answer from the last reflection when asked again inside this window. The source's own rate limit — verse's resync interval is a constant and an API budget is not. Default off |
 | `-hint-url` | verse's hint route for **this registration** (`VERSE_HINT_URL`): `http://verse:9797/sources/<system>/<name>/hint`. Without it, deliveries are verified and dropped, and only the resync converges |
-| `-system` | the slice this source writes, defaulting to the connector's own name |
+| `-system` | the place this source writes under — the first segment of its addresses — defaulting to the connector's own name |
 
 **`-system` is the operator's, and it is a coarser separation than `owns`.** More than one source
 gets deployed and the partition between them is drawn by whoever runs them — by credential, by
@@ -41,12 +41,12 @@ system is organised. Two deployments sharing a system is the ordinary case and n
 disjoint claims, which are computed from each source's own configuration rather than written by
 hand. One that wants no coordination at all takes a system of its own: two systems are disjoint
 on the first segment, so neither owes the other a proof. It is also how a second *instance* of a
-product — a GitHub Enterprise Server beside github.com — gets a slice that is not confused with
+product — a GitHub Enterprise Server beside github.com — gets a place that is not confused with
 the first, since `org/repo` #42 is unique within a host and not across two.
 
-What it costs is paid by whoever chose it: **a charter cannot glob a system** — it names the
-subtree to watch, so it must be a literal — so every rule about a separated slice names it. That
-is why this is a flag rather than the shape.
+What it costs is paid by whoever chose it: **a charter's path begins with a literal** — it names
+the subtree to watch — so every rule about a separated place names it. That is why this is a flag
+rather than the shape.
 
 A credential is **never a flag**. It comes from the environment, because that is what a k8s
 Secret fills in and what keeps it out of the pod spec, `ps` and shell history.
@@ -130,7 +130,7 @@ same `-repo`/`-mirror` registry the git source takes serves this one.
 questions about one directory — what the repository *is* versus what somebody *filed* in it —
 and an operator who wants branch state without a tracker, or a tracker without fifty commits a
 pass, says so by running one and not the other. Running both over the same repository is the
-ordinary case: they write disjoint slices, so nothing coordinates.
+ordinary case: they write disjoint places, so nothing coordinates.
 
 | entity | payload |
 |---|---|
@@ -148,7 +148,7 @@ wrong. Match on `status`, which is that answer.
 `tony:"-"` upstream — so `# ` is stripped and what remains is the title. `-bodies=false` drops
 the rest, which is the difference between an index of issue state and a copy of everyone's prose.
 
-**One cover per kind, complete**, which is the deliberate difference from the GitHub connector.
+**The issues are covered once, complete**, which is the deliberate difference from the GitHub connector.
 GitHub covers issues twice — the open set complete, the closed set as a window — because its
 closed back catalogue is unbounded and every page costs a request against a budget. Here the
 enumeration is one `git for-each-ref` over a local directory, listing every issue open and
@@ -307,7 +307,7 @@ is written (`github.signadot.verse.pr."42"`). Owns `github.<org>.<name>` per rep
 place, so `acme.app` and `acme.app2` are apart with nothing else said — and the install takes an
 owner record there for its installer.
 
-**The set-shaped kinds are covered twice**: the open set complete, the closed set as a window of
+**The set-shaped places are covered twice**: the open set complete, the closed set as a window of
 the most recent `-settled`. Neither precedent fits — git keeps history, Slack keeps a window —
 because an issue set is unbounded while its *live* part is bounded. An item that closes appears
 in the settled half carrying its new state, ages, and leaves. Exceeding `-max-open` is an error

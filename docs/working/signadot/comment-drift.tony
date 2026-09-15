@@ -45,7 +45,7 @@
 # and the one destination `auto: refs/heads/verse/auto/$sha/$task`. No `push` tool, for the reason
 # verse-fix has none — a fix proposes and never lands, as a property of the environment.
 at: signadot.comment-drift
-reads: [ !verse-path [git] ]
+reads: [git]
 ---
 # The cursor: one entity, patched by rules whose subject it is. It bounces idle → claimed → idle.
 - name: cursor

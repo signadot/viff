@@ -44,7 +44,7 @@ func selectionOn(t *testing.T, srv *Server, chain string) string {
 func spawnedDoer(t *testing.T, srv *Server, doer string) bool {
 	t.Helper()
 	for _, e := range srv.Store.List(func(r entity.Ref) bool {
-		return r.Reserved() && r.System() == mirror.System && r.Kind() == mirror.InstanceKind
+		return mirror.IsTask(r)
 	}) {
 		if entity.Str(e.Payload, "doer") == doer {
 			return true
@@ -56,7 +56,7 @@ func spawnedDoer(t *testing.T, srv *Server, doer string) bool {
 func reviewRule(p *launch.Provider) trigger.Trigger {
 	return trigger.Trigger{
 		Name:      "review",
-		Condition: trigger.Condition{Subject: trigger.Match{"system": "demo", "kind": "pr", "value": map[string]any{"stage": "open"}}},
+		Condition: trigger.Condition{Subject: matchAt("demo.pr.*", map[string]any{"stage": "open"})},
 		Action: trigger.Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Prompt: "review $subject", Grant: "read-only", Provider: p},
@@ -154,7 +154,7 @@ func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
 
 	rule := func(sel string, need int) string {
 		return `- name: review
-  condition: {subject: {system: demo, kind: pr, value: {stage: open}}}
+  condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}}
   action:
     patch: {stage: reviewing}
     spawn:

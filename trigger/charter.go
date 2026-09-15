@@ -37,7 +37,7 @@ const (
 // IsCharterRule reports whether an address is a durable rule's — the namespace's own question,
 // asked by anything that lists the charter.
 func IsCharterRule(r entity.Ref) bool {
-	return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
+	return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
 }
 
 // CharterRef names the entity holding one of BASELINE's rules.
@@ -234,7 +234,7 @@ func (e *Engine) LoadCharter() error {
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
 	// startup — with restorePackages paying it again per package.
 	ents := entity.ListUnder(e.store, func(r entity.Ref) bool {
-		return r.Reserved() && r.System() == CharterSystem && r.Kind() == CharterKind
+		return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
 	}, entity.VerseRoot, CharterSystem)
 	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
 	// second reading brings a verse back running NO RULES and saying nothing about it — which
@@ -288,7 +288,7 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
 	// the check is against the tail: what has to agree is the NAME, and the package half of the
 	// address is not part of it.
-	if t.Name != recordName(ent.Ref.ID()) {
+	if t.Name != recordName(ent.Ref.Name()) {
 		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
 			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
 	}

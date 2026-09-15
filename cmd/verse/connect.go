@@ -262,7 +262,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			// than on the state. A match is asked only of state now, so the outstanding-ness
 			// has to be written down, which is what `validated` is.
 			Subject: trigger.Match{
-				"system": source.FederationSystem, "kind": statusKind,
+				"path": []*ir.Node{ir.FromString(source.FederationSystem), ir.FromString(statusKind), ir.FromString("*")},
 				// ABSENCE, built as a node rather than as a Go map, and both halves of
 				// that are load-bearing.
 				//
@@ -273,12 +273,10 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 				// `{validated: !not null}` — "not any value" — which nothing satisfies, so
 				// the rule selected no file and no file was ever validated.
 				//
-				// And a NODE, because the tag-keyed spelling of an operator (`{not: …}`) is
-				// only recognised on a layout-tagged node — flow style, which is every JSON
-				// object and is the reason the sugar exists. A Go map serialises to block
-				// style, so this arrived as a literal object with a field named `not` and
-				// matched nothing, silently. Match.ToTonyIR renders a predicate node "as
-				// the node it is, operators and all", so a tag put here survives the wire.
+				// And a NODE, because an operator is a tag, and a Go map has nowhere to put
+				// one: it would arrive as a literal object with a field named `not` and match
+				// nothing, silently. Match.ToTonyIR renders a predicate node "as the node it
+				// is, operators and all", so a tag put here survives the wire.
 				//
 				// The "!" on the tag is load-bearing too: mergeop.SplitChild strips a tag's
 				// first byte before looking the operator up, so `WithTag("not")` names "ot",

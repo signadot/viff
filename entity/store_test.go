@@ -107,7 +107,7 @@ func TestListPredicate(t *testing.T) {
 	set(t, s, RefAt("github", "pr", "2"), Obj{}.Payload())
 	set(t, s, RefAt("linear", "issue", "3"), Obj{}.Payload())
 
-	linear := s.List(func(r Ref) bool { return r.System() == "linear" })
+	linear := s.List(func(r Ref) bool { return r.Under("linear") })
 	if len(linear) != 2 {
 		t.Fatalf("want 2 linear entities, got %d", len(linear))
 	}
@@ -236,7 +236,7 @@ func TestNamespaceIsAQuery(t *testing.T) {
 		e, _, _ := s.Get(r)
 		return ToObj(e.Payload)["env"] == "prod"
 	})
-	if len(prodTouching) != 1 || prodTouching[0].Ref.ID() != "1" {
+	if len(prodTouching) != 1 || prodTouching[0].Ref != RefAt("github", "pr", "1") {
 		t.Fatalf("prod-touching query wrong: %+v", prodTouching)
 	}
 }

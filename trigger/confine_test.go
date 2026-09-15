@@ -22,7 +22,7 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 
 	err := eng.AddTrigger(Trigger{
 		Name:      "reach",
-		Condition: Condition{Subject: Match{"system": "other", "kind": "thing"}},
+		Condition: Condition{Subject: mm("other.thing.*")},
 		Action:    Action{Patch: entity.Obj{"touched": true}.Payload()},
 	})
 	if err == nil {
@@ -41,10 +41,10 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
     subject: {path: [demo, pr, *]}
   action:
     derive:
-      other:
-        finding: {value: {seen: true}}
+    - path: [other, finding]
+      value: {seen: true}
 `))
-	if err == nil || !strings.Contains(err.Error(), "other:finding") {
+	if err == nil || !strings.Contains(err.Error(), "other.finding") {
 		t.Fatalf("a derive into another charter's subtree installed, or said the wrong thing: %v", err)
 	}
 }
@@ -181,11 +181,11 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	// what a package's lowest level owns, since its rules select from what they read — and the
 	// package's own above it, because that is the only direction a derive may go.
 	if err := eng.AddStratum(Stratum{Name: "reflected", Level: 0,
-		Match: []Match{{"system": "git"}}}); err != nil {
+		Match: []Match{mm("git")}}); err != nil {
 		t.Fatalf("stratum: %v", err)
 	}
 	if err := eng.AddStratum(Stratum{Name: "ours", Level: 10,
-		Match: []Match{{"system": "drift"}}}); err != nil {
+		Match: []Match{mm("drift")}}); err != nil {
 		t.Fatalf("stratum: %v", err)
 	}
 	if err := eng.AddTrigger(mustParseCharter(t, `
@@ -195,9 +195,9 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-      drift:
-        head:
-          repo: $subject.value.repo
+    - path: [drift, head]
+      value:
+        repo: $subject.value.repo
 `)); err != nil {
 		t.Fatalf("a rule deriving from a source it reads was refused: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestAConfinementDoesNotReachIntoVersesHalf(t *testing.T) {
 	eng := New(entitytest.Store(t), denyResolver{})
 	eng.Confine(SubtreeAt("demo"))
 	eng.SetReads([]Subtree{SubtreeAt(entity.VerseRoot, "demo")})
-	subject := Match{"root": entity.VerseRoot, "system": "demo", "kind": "pr"}
+	subject := mm("verse.demo.pr.*")
 	if err := eng.AddTrigger(Trigger{
 		Name:      "reach-verse",
 		Condition: Condition{Subject: subject},
@@ -262,7 +262,7 @@ func TestAConfinementDoesNotReachIntoVersesHalf(t *testing.T) {
 	// The world's demo.pr stays its own.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "own",
-		Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}},
+		Condition: Condition{Subject: mm("demo.pr.*")},
 		Action:    Action{Patch: entity.Obj{"touched": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("a package at demo could not patch its own demo.pr: %v", err)

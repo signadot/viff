@@ -251,10 +251,9 @@ func (c Condition) validate() error {
 	if c.On == nil {
 		_, names := c.Subject.Names()
 		if !names && !c.Subject.Selects() {
-			return fmt.Errorf(`condition.subject must be an address ("demo.pr.1", "demo.pr.*") or name ` +
-				`both a system and a kind when the condition has its own when: the change that fires ` +
-				`is not the subject then, so the subject has to select out of the store, and it has to ` +
-				`name a definite kind to select and spawn for`)
+			return fmt.Errorf(`condition.subject must be a path beginning with a literal ("demo.pr.1", ` +
+				`"demo.pr.*") when the condition has its own when: the change that fires is not the ` +
+				`subject then, so the subject selects out of the store, and a selection starts at a place`)
 		}
 	}
 	if !c.When.IsMatchAtom() {
@@ -285,16 +284,15 @@ func (c Condition) validateOn() error {
 	if err := c.On.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.on: %w", err)
 	}
-	if c.On.Req.Facts.System() == "" {
-		return fmt.Errorf("condition.on needs a system: it names the subtree whose changes are " +
-			"the cause, and a watch path cannot be a wildcard (kind is optional)")
+	if !c.On.Req.Facts.Selects() {
+		return fmt.Errorf("condition.on needs a path beginning with a literal: it names the subtree " +
+			"whose changes are the cause, and a watch cannot be opened on a wildcard at the top")
 	}
 	_, names := c.Subject.Names()
 	if !names && !c.Subject.Selects() {
-		return fmt.Errorf(`condition.subject must be an address ("demo.pr.1", "demo.pr.*") or ` +
-			`name both a system and a kind when the condition has an ` + "`on`" + `: the cause is ` +
-			`not the subject then, so the subject selects out of the store, and it has to name a ` +
-			`definite kind to select and spawn for`)
+		return fmt.Errorf(`condition.subject must be a path beginning with a literal ("demo.pr.1", ` +
+			`"demo.pr.*") when the condition has an ` + "`on`" + `: the cause is not the subject then, ` +
+			`so the subject selects out of the store, and a selection starts at a place`)
 	}
 	return nil
 }

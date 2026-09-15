@@ -1,9 +1,10 @@
 # The trigger model
 
 One noun and two grammars carry the whole model. An entity is a node at an address — a path in
-the tree, at whatever depth the thing writing it uses: four segments where the git source reflects
-a commit under its repository (`git.acme.commit.9fe1`), four in verse's own half and inside a
-package's tree (`verse-dev.drift.finding.abc`) — carrying a small payload. A match names entities at an instant;
+the tree, as long as the thing writing it makes it: the git source reflects a commit under its
+repository (`git.acme.commit.9fe1`), verse keeps a task under `verse.task.instance`, and a package
+keeps its findings under its own address (`verse-dev.drift.finding.abc`) — carrying a small
+payload. A match names entities at an instant;
 a formula is a match asked of the verse as it moves. Every trigger concept, `when` and `subject`
 and flows, lands on one of those two, and a gate on neither: it asks somebody. Knowing which is
 the thing to be unambiguous about.
@@ -133,7 +134,7 @@ them do:
 
 ```tony
 at: drift                        # where this package writes — its engine is confined to it
-reads: [ !verse-path [git] ]   # …and what it may read besides
+reads: [git]                   # …and what it may read besides
 ---
 - name: reflected           # the level the source sits at
   level: 0
@@ -144,7 +145,7 @@ reads: [ !verse-path [git] ]   # …and what it may read besides
 - name: head-moved          # in the `drift` package
   stratum: reflected
   condition: {subject: git.verse.head}    # a source: read, never written
-  action: {derive: {drift: {head: {repo: $subject.value.repo}}}}
+  action: {derive: [{path: [drift, head], value: {repo: $subject.value.repo}}]}
 ```
 
 Two packages both reacting to `git.*` is the ordinary arrangement, not an exotic one. What each
@@ -177,7 +178,7 @@ back what stood before it (see
 package (`verse.trigger.rule."verse-dev.drift:head-moved"`), so two packages may each declare a `reflected`
 level without one overwriting the other, which is what comment-drift's two halves need, since both
 read the git source and both want a bottom level for it. They are not confined: a package's lowest
-level owns the slice it *reads*, and its rules select from there and derive above it. What makes
+level owns the place it *reads*, and its rules select from there and derive above it. What makes
 per-package levels coherent is the write confinement rather than a second check on the strata. With
 no cross-package write there is no cross-package derive, so there is no cross-package ordering to
 define, and two packages may both declare a level 10 and mean nothing to each other.
@@ -195,7 +196,7 @@ the next writes, all the way round, so a write on any of them can wake the other
 back. A package graph is acyclic: break the loop, or fold the two halves into one package
 ```
 
-Declaring a read of an address no package is installed at adds no edge. `git` is a source's slice,
+Declaring a read of an address no package is installed at adds no edge. `git` is a source's place,
 and reading a source is not depending on a package, which is why two packages both reading it — the
 arrangement above — is not a loop.
 
@@ -257,8 +258,8 @@ verse c -R demo                          # …and every charter under that addre
 a task acts in the world under its `grant`, and store confinement is not world confinement (see
 [provider selection](provider-selection.md)). And verse's own records — a task's mirror, a posed
 question — which the engine writes into
-[verse's half of the tree](reference/entities.md#two-halves-one-tree), where no charter may be
-installed and no charter may write.
+[`verse`'s own part of the tree](reference/entities.md), where no charter may be installed and no
+charter may write.
 
 A package is the same shape as a `verse connect` scope, one axis over. A scope says whose *copy* of
 the verse a charter acts in; an address says which *part* of the verse it acts on. Both stamp their
@@ -291,7 +292,7 @@ rule is addressable (`verse data verse trigger rule review`).
 
 **A rule is stored as structure, under the `!raw` escape.** A write is a tony *patch*, the property
 that makes the store good at everything else, so operator tags in a payload are *executed* by the
-store rather than stored by it. A charter is full of them: `id: !glob "hotfix-*"`,
+store rather than stored by it. A charter is full of them: `path: [demo, pr, !glob "hotfix-*"]`,
 `patch: {tmp: !delete null}`. Stored as bare structure, a rule is not one that reads back wrong. It
 is one that cannot be read back at all, because the write leaves an entity whose own patch log does
 not apply (`glob patching "null" gave cannot patch with glob operation`).
@@ -372,10 +373,11 @@ into it (see [connect](reference/connect.md#the-charter-a-scope-runs)).
 What a restart still cannot do is bring back a scope nobody has reconnected to: enumerating
 the scopes that have a charter needs a scope to be a listable thing, and it is not one yet.
 
-The charter is an observable slice like any other, so a trigger can watch it
-(`subject: {path: [trigger, rule, *]}`). It has to *name* it: `verse.trigger.*` joins `verse.task.*` as the
-engine's own machinery, kept out of the default match set so the loop cannot ignite on itself.
-Meta-observation stays possible, and stays deliberate. The perms mirror (`verse.perms`) is one
+The charter is an observable place like any other, so a trigger can watch it
+(`subject: {path: [verse, trigger, rule, "*"]}`). It has to *name* it: `verse.trigger.*` joins
+`verse.task.*` as the engine's own machinery, and a rule reaches either only with a path that begins
+with `verse`, so the loop cannot ignite on itself. Meta-observation stays possible, and stays
+deliberate. The perms mirror (`verse.perms`) is one
 step further: it is the system's, held out to nobody, so only the system's own charter can
 read it, and a rule of anyone else's naming it is refused at install rather than installed to
 match nothing ([perms.md](perms.md)). A rule reads as its owner, all the way down.
@@ -387,8 +389,8 @@ once, from the store as it stood at the commit. There is no `until` or `deadline
 subject is *selected*, not *awaited*.
 
 It is the one field a condition cannot leave out, because nothing else in a trigger can answer for
-it. The action has no target of its own, and a `when` need not pin one kind: `{path: [demo, *, *]}`
-spans all of them, and a disjunction such as `!or [a.b.c, {path: [d, e, *]}]` makes it plain.
+it. The action has no target of its own, and a `when` need not pin one place: `{path: [demo, *, *]}`
+spans everything two segments under `demo`, and a disjunction such as `!or [a.b.c, {path: [d, e, *]}]` makes it plain.
 "The entity the when matched" answers *which entity fired* when the question is *what is this rule
 about*, and a rule that acts on whichever disjunct happened to fire is not a rule anyone wrote
 down. So the subject is always stated, and everything else in the trigger is read relative to it.
@@ -398,7 +400,7 @@ It resolves in one of two ways, both the same match grammar:
 | subject | resolves to | example |
 |---|---|---|
 | an address naming one entity (`demo.pr.1`) | that entity, whether or not it exists — an action's `patch` *creates* it | publishing a fact nothing has written yet |
-| a pattern — a glob (`demo.pr.*`), or a `system`+`kind` selector with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
+| a pattern — a path with `*` or an operator in it (`demo.pr.*`), with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
 
 A subject is always a *selection*, never "the entity that changed". A rule is a statement about the
 world, so which entities it is about cannot depend on who happened to be written last, and there is
@@ -414,9 +416,9 @@ entity exists*, because naming is addressing by identity rather than selecting f
 Read "every entity this selects" literally and creating an entity would be unspellable: the only
 way to create one would be to already have it.
 
-A subject must name a definite `system` and `kind`, or one entity outright, since that is what
-the engine selects and spawns for. A pattern that selects nothing is a no-op — it never
-conjures an entity called `*`.
+A subject that selects must begin with a literal segment, so that it selects out of a place, or
+name one entity outright, since that is what the engine selects and spawns for. A pattern that
+selects nothing is a no-op — it never conjures an entity called `*`.
 
 The engine starts one firing per selected entity, each about exactly one subject, and that identity
 is what every part of a firing keys on: its spawn id, its gate question, its selection channel,
@@ -439,12 +441,8 @@ So the pattern carries the depth. A `path:` of N segments identifies entities at
 exactly: `{path: [demo, pr, "*"]}` selects three-segment entities and
 `{path: [verse-dev, drift, head, "*"]}` selects four-segment ones. Each element is a match in
 its own right and an operator acts within its segment, so a name, a `!glob` and a `*` all count
-the same: one segment. Nothing means "at or below".
-
-The `{system, kind, id}` shorthand is the exception, and it is fixed at three whatever it omits.
-`{system: demo, kind: pr}` selects the three-segment entities under `demo.pr`, where
-`{path: [demo, pr]}` selects the entity at `demo.pr` itself. A dimension left out is a prefix; a
-segment left out of a `path:` is a shorter address.
+the same: one segment. Nothing means "at or below", and a short path is not a prefix: `{path: [demo, pr]}` names the
+entity at `demo.pr` itself, and `{path: [demo, pr, "*"]}` the ones under it.
 
 A pattern that names the wrong depth does not fail. It selects the node at the depth it asked for,
 a node that exists holding the subtree below it as its payload, reads the fields it wanted, does
@@ -460,19 +458,16 @@ instead.
 ### The string form is an address, in one grammar
 
 There is one string grammar for addressing entities by identity, and both the charter wire and the
-CLI (`verse flow <addr>`) parse it with `ParseExpr`: a kinded path, `*` as a wildcard per segment,
-and a segment that may glob (`hotfix-*`). So `"subject": "demo.pr.*"` in a charter and
-`verse flow demo.pr.*` on the command line mean the same set.
+CLI (`verse flow <addr>`) parse it: a kinded path, with `*` for any one segment. So
+`"subject": "demo.pr.*"` in a charter and `verse flow demo.pr.*` on the command line mean the same
+set. The string is the path it spells, at every length: `"demo.pr"` names the entity at `demo.pr`,
+and `"verse-dev.drift.head.*"` selects four segments deep. Anything else in a segment is a name —
+`hotfix-*` written in the string is the segment called `hotfix-*`, not a glob.
 
-Fewer than three segments is the shorthand rather than a shallower address — `"demo.pr"` is
-`{system: demo, kind: pr}`, which selects at three. Deeper is itself:
-`"verse-dev.drift.head.*"` selects at four.
-
-An operator per segment needs the vector form, `!verse-path [verse-dev drift head "*"]`, or
-`path: [verse-dev, drift, head, "*"]` in the object form. Every element is a match in its own
-right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for equality, `*` for any segment. Nothing
-here enumerates the operators, because `tony.Match` owns them, so a segment is as expressive as a
-payload predicate.
+An operator on a segment needs the object form, `path: [verse-dev, drift, head, !glob "head-*"]`.
+Every element is a match in its own right: `!glob "head-*"`, `!or [hot, cold]`, a bare name for
+equality, `*` for any segment. Nothing here enumerates the operators, because `tony.Match` owns
+them, so a segment is as expressive as a payload predicate.
 
 There is no deferred `$var` form, and nothing in a payload can redirect a subject. A trigger
 whose cause is a `verse.task.instance` change and which acts on PRs acts on the PRs its own
@@ -550,19 +545,19 @@ predicate becomes true, and two properties follow that an author has to know:
   already holds, there is no rising edge to observe. A subject-dispatched trigger does the
   opposite, acting on everything already standing (see [level at open](#the-backlog)).
 
-A match is a predicate over the verse. It conjoins its dimensions — `system`, `kind`, `id`, and a
-payload predicate — and an empty dimension is a wildcard.
+A match is a predicate over the verse. It conjoins a `path` — which addresses it reaches — and a
+payload predicate, `value`, over what stands at them; a match without a `value` asks only where.
 
-There is no `op` dimension. Such a dimension would classify a *change*, `set` or `delete`, and a
+There is no `op` key. Such a key would classify a *change*, `set` or `delete`, and a
 match is asked only of *state*, at a revision, where nothing has one. A create is the rising edge
 of "this exists"; a delete is the rising edge of the
 [vanishing marker](#lifecycle-how-an-entity-leaves) that precedes removal. A charter carrying `op`
 is refused with that explanation rather than an "unknown key", because the author is reaching for a
 distinction the model deliberately does not carry, and "unknown key" would not say so.
 
-The address string is sugar for the identity dimensions, so `demo.pr.*` means
-`{path: [demo, pr, *]}` — and since a trailing wildcard *is* an unset dimension, that is
-what reads back when you read it out of `verse c`: `demo.pr`. Same match, shorter spelling.
+The address string is the path written as one kinded path, so `demo.pr.*` means
+`{path: [demo, pr, "*"]}`, and a match that is only a path of names and `*` reads back out of
+`verse c` in the string form: `demo.pr.*`. Same match, shorter spelling.
 
 Keep it small. This is where complexity hides. To act "only the first time", match a state field
 your action then advances: a **latch**. That is not a nicety. A rule with no latch is considered at
@@ -571,7 +566,7 @@ action that has none is refused at install.
 
 <a id="the-backlog"></a>
 **Installing a trigger fires it on what already matches.** A trigger's observation replays the
-slices it reads when it opens, so the backlog standing in the verse when you install the charter is
+places it reads when it opens, so the backlog standing in the verse when you install the charter is
 acted on immediately, and you do not have to re-touch each entity to announce a state it has held
 all along. An `on` is the exception, for the same reason it does not re-fire: a predicate that
 already holds has no rising edge. The same property means the latch above is what stops an action
@@ -584,10 +579,10 @@ a charter is read. See [Limits today](#limits-today).
 
 ## What a match can say
 
-The leaf is a real tony match, evaluated by `tony.Match`, on every dimension a filter can
-live on.
+The leaf is a real tony match, evaluated by `tony.Match`, in each path segment and in the payload
+predicate.
 
-`id` takes operators — the richer matching a plain glob cannot spell:
+A path segment takes operators — the richer matching a bare name cannot spell:
 
 ```tony
 # filepath globbing
@@ -598,83 +593,43 @@ subject: {path: [demo, pr, !not "1"]}
 subject: {path: [demo, pr, !or ["1", !glob "hf-*"]]}
 ```
 
-In a JSON-shaped charter, write the operator as a single-key object — `{"id": {"glob":
-"hotfix-*"}}` — the same spelling a formula uses for its tags. The two are one grammar; only
-tony can write the tag directly.
-
-**That second spelling reaches the dimensions only.** Inside `value` an operator is written as a
-tag and nothing else:
+An operator is a tag, in a segment and in `value` alike, and nothing else stands in for one.
+Inside `value` that is not a matter of taste:
 
 ```tony
 value: !not {reviewed: null}      # the absence latch
 value: {not: {reviewed: null}}    # a payload EQUAL to that object — which is nothing, ever
 ```
 
-Both lines are legal, and the second means what it says. `value` is a predicate over payload
-*data*, where a field genuinely named `not` holding one key is an ordinary thing to match. That
-ambiguity is exactly what a dimension does not have, since `system`, `kind` and `id` take a string
-or an operator and nothing else, which is why the sugar is unambiguous there and impossible here. A
-charter writing the second earns a note at install. Nothing rewrites it, because rewriting it would
-take away the only way to match the data.
+Both lines are legal, and the second means what it says: `value` is a predicate over payload
+*data*, where a field genuinely named `not` holding one key is an ordinary thing to match.
 
-**So a JSON-shaped charter cannot spell an operator under `value` at all.** JSON has no tag
-syntax, and this is the one position the single-key object does not stand in for one. A
-condition that needs an operator over the payload is written in tony.
+JSON has no tag syntax, so a charter written in JSON has no operators. It can write paths of names
+and `*`, and plain equality predicates; a condition that needs an operator is written in tony.
 
-`system` and `kind` take no operator, and that is structural rather than unfinished. They name the
-subtree verse watches and the set it lists, becoming a docd watch path (`Formula.Subtrees`) and the
-store's `List` prefilter, and a watch path cannot be a predicate. Write the whole segment as `*`
-for "any", and put the operator on `id`.
-
-**`path` segments do take operators**, and without breaking that rule. A segment is matched by
+**An operator on a segment does not make the watch a predicate.** A segment is matched by
 `entity.SegMatches`, which sends a tagged one through the payload matcher, so
-`path: [demo, !glob "pr-*", "*"]` says what it looks like it says. The watch is unaffected because
-the read narrows to the LITERAL PREFIX — `entity.Pattern.literalPrefix` stops at the first
-wildcard or operator — and the operator filters below it. A watch path is still not a predicate;
-the predicate simply lives under the watch rather than in it.
+`path: [demo, !glob "pr-*", "*"]` says what it looks like it says. The read narrows to the LITERAL
+PREFIX — `entity.Pattern.literalPrefix` stops at the first wildcard or operator — and the operator
+filters below it. That is also why a path that selects begins with a literal: the literal prefix is
+the place a watch opens on, and a watch cannot be opened on a wildcard at the top.
 
-`at` is the whole address prefix as one covering path, which is the same three dimensions written
-once:
-
-```tony
-subject: { at: demo.pr, value: {stage: open} }        # {path: [demo, pr, *]}
-subject: { at: verse.gate.question }                   # …and in verse's own half
-subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
-```
-
-`!verse-path [demo pr 1]` is an address written as steps: a list of segments, which is what a
-charter reads and what `verse data` takes on a command line, so no segment needs punctuating around
-a dot or a colon it happens to contain. `verse data -paths` answers in the same steps,
-space-separated, as `demo pr 1`. One spelling serves wherever an address is written by hand or read
-back, since a charter reads a list and a shell reads words, and neither has to punctuate a segment.
-It goes wherever the string form goes:
-
-```tony
-subject: !verse-path [demo pr 1]      # the same as "demo.pr.1"
-when:    !verse-path [git verse head]
-```
-
-The tag is required on a list, so a list of steps cannot be read as anything else, and an address
-is written one way or the other: `{path: [other, *, *], at: demo.pr}` is refused rather than
-merged.
-
-`root` names which half of the verse the match is about, and an unwritten one is the world's:
+`verse` is a segment like any other. What verse writes about its own running stands under it
+([entities](reference/entities.md)), and a rule about it names it first:
 
 ```tony
 # a rule about PRs — the ordinary case, and it cannot see verse's own records
-subject: {path: [demo, pr, *]}
+subject: {path: [demo, pr, "*"]}
 # a rule about what verse writes: a posed question, a task's mirror, an installed rule
-subject: {path: [verse, gate, question, *], value: {status: pending}}
+subject: {path: [verse, gate, question, "*"], value: {status: pending}}
 ```
 
-The default is the point rather than a convenience. `verse:` holds what verse writes about its own
-running ([entities](reference/entities.md#two-halves-one-tree)), and a rule that did not ask for it
-must not select it by omission. Otherwise `{path: [task, *, *]}` on a charter about the world's
-tasks would quietly match the mirror of every run in the verse. Like `system` and `kind`, it takes
-no operator, because it is the first segment of a watch path.
+Nothing has to be excluded by default for that to hold. A path begins with the place it is about,
+so `{path: [task, "*", "*"]}` on a charter about the world's tasks reaches `task.*` and never the
+mirror of a run at `verse.task.instance`.
 
-The payload predicate takes operators too. It is `value`, one dimension: the same tony match,
-evaluated against the payload instead of the id.
+The payload predicate takes operators too. It is `value`: the same tony match, evaluated against
+the payload instead of a segment.
 
 ```tony
 # a record's fields
@@ -686,8 +641,8 @@ when: {path: [demo, count, *], value: !or [10, 100]}
 
 `value` is open in shape because a payload is. An entity's payload is any tony value — a record, a
 count, a flag, a state name, a list — so a predicate over it may be any of those, or an operator
-over one. Almost every charter writes the record form, and the rest are why the dimension is not
-called `fields`.
+over one. Almost every charter writes the record form, and the rest are why the key is not called
+`fields`.
 
 Over a record it is a **subset** constraint, as a tony match over an object always is: the
 fields you name must agree, and any others are ignored. Over a scalar there is nothing to be a
@@ -695,16 +650,16 @@ subset of, so `value: 42` means the payload *is* 42.
 
 That cuts one way worth knowing. `value: "stage=open"` is a legal predicate, matching an entity
 whose whole payload is the string `stage=open`, rather than an expression language. A separate
-dimension that asserted an object would make that an install error, and it would still catch only
+key that asserted an object would make that an install error, and it would still catch only
 the wrong *shape* and never `{stge: open}`, the misspelled key that is the typo people actually
 make. So there is one name, and no shape assertion.
 
 Four semantics are worth knowing before you rely on one.
 
-`!glob` is stricter than a plain string. It is `filepath.Match`, so `*` does not cross `/` and `?`
-and `[…]` are metacharacters: `id: "a*"` matches `a/b` and `id: !glob "a*"` does not. That is the
-point of it, since a path-shaped id can then be matched a segment at a time, but it means the two
-spellings are not interchangeable.
+`!glob` is `filepath.Match`, so `*` does not cross `/` and `?` and `[…]` are metacharacters:
+`!glob "a*"` does not match `a/b`. That is the point of it, since a name holding a `/` — a slack
+message's `<workspace>/<ts>` — can then be matched a piece at a time, but it means `!glob "*"` and a
+bare `*`, which is any one segment whatever it holds, are not interchangeable.
 
 A `null` in a predicate is a presence test, not "is null". A null pattern matches any value,
 so the only thing it constrains is that the field is there. The three questions have three
@@ -726,11 +681,8 @@ Numbers are type-exact. `2` and `2.0` are different values, so a predicate writt
 not match a payload of `{n: 2.0}`. Integer widths do not matter, being an artifact of whoever wrote
 the value rather than of the value.
 
-Operators inside a payload predicate are tony-only. The id dimension accepts the JSON
-single-key spelling because its keyspace is closed, but a payload is *your* document — a key
-in it may itself be named `or` — so that sugar cannot be borrowed here without changing what
-some charter already means. A JSON charter can still write plain equality predicates; an
-operator over a payload needs tony.
+Operators are tags, so they are written in tony. A JSON charter writes paths and plain equality
+predicates.
 
 ## `gates` — whether it proceeds
 
@@ -917,7 +869,7 @@ So a derive states the facts it owns, and the rule that follows it starts from a
 
 ```tony
 # the derive says what it knows, and nothing about the flow's state
-derive: { notes: { row: { sha: $subject.id } } }
+derive: [{path: [notes, row], value: {sha: $subject.name}}]
 # …and the next rule latches on the absence, which is nobody's to overwrite
 condition: { subject: {path: [notes, row, *], value: !not.has-path reviewed} }
 ```
@@ -961,10 +913,10 @@ again. To replace a container deliberately, write the whole value at that key
 does not carry yet is not this case — a patch builds it, which is what every derive that grows
 structure relies on.
 
-`derive` writes an entity that is *not* the subject, the one thing `patch` cannot do. It names a
-place — `<system>.<kind>` in the nested spelling, or `- {path: [verse-dev, drift, head], value: …}`
-for a place of any depth — and its content may reference its own subject and, at or below its own
-level, other entities. It is only installable inside a declared level ordering, where it must land
+`derive` writes an entity that is *not* the subject, the one thing `patch` cannot do. It is a list
+of entries, each naming a place as a path and what goes there —
+`- {path: [verse-dev, drift, head], value: …}` — and its content may reference its own subject and,
+at or below its own level, other entities. It is only installable inside a declared level ordering, where it must land
 strictly above the rule that writes it. See [strata](strata.md).
 
 **Unnamed, the address is the engine's, and it is the provenance**: the place, then the rule, then
@@ -985,8 +937,8 @@ it.
 
 **Naming one is how a derive stays shallow.** `id:` (below) puts the entity at the place plus
 that one segment — `verse-dev.merge.proposal."verse/auto/…"`, four — which is what a reader
-already spells. A derive whose subjects are a slice of one system, read by rules that name the
-place literally, generally wants one.
+already spells. A derive whose subjects stand under one place, read by rules that name the place
+literally, generally wants one.
 
 One firing derives one entity — until it says `!each`, which fans out over a list and derives
 one per element, addressed by a key read out of the element. That is the same invariant with
@@ -1000,9 +952,10 @@ instead of (rule, subject). One entity per value of something, where the same su
 moving: see [strata](strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key with the composition dropped**, and the difference is the reader's. A keyed
-entity's id is `head-moved@git.verse.head@aaaa1111`, and nothing in the grammar composes one, so
-anything that wants that record has to *describe* it — a `"*"` and a predicate on a field it
-happens to know — instead of naming it. With `id: $subject.value.sha` the record is
+entity stands at `verse-dev.drift.head.head-moved.git.verse.head.aaaa1111` — the place, the rule,
+the subject, the key — and nothing in the grammar composes that from a subject, so anything that
+wants that record has to *describe* it — a `"*"` per segment and a predicate on a field it happens
+to know — instead of naming it. With `id: $subject.value.sha` the record is
 `verse-dev.drift.head.aaaa1111`, and a reader spells it:
 `!get-path {at: [verse-dev, drift, head, $subject.value.sha], path: result.report}`.
 
@@ -1165,7 +1118,7 @@ They are facts about a run, with no entity to hang a path off.
 `$subject` is a record, and the bare form is its address:
 
 | `$subject` | the whole ref, `demo.pr.1` |
-| `$subject.ref` `.system` `.kind` `.id` | the address, and its first three segments |
+| `$subject.ref` `.name` | the address, and its last segment — the key the subject stands at |
 | `$subject.value` | the subject's payload **at the commit that caused the firing**, not at the moment the action runs — the two differ by however long a gate took to answer |
 | `$subject.commit` | that commit's revision |
 
@@ -1194,10 +1147,10 @@ action:
     branches: !list-paths {at: [git, repo, "*"], path: branch}
     # …and a predicate narrows the walk to the ones that look like this (list only)
     green:    !list-paths {at: [git, repo, "*"], value: {state: green}, path: branch}
-    # the string form addresses an entity and stops there
-    also:     !get-path "git:repo:$subject.value.head"
+    # the string form is the kinded path, for an address with nothing to expand in it
+    head:     !get-path git.verse.head
     # and `at:` names the address as a path, at whatever depth the tree is
-    says:     !get-path { at: [verse-dev, drift, head, "head-moved@git.verse.head"], path: result.report }
+    says:     !get-path { at: [verse-dev, drift, head, aaaa1111], path: result.report }
     open:     !list-paths { at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says }
 ```
 
@@ -1205,36 +1158,34 @@ The address is `at:` here and `path:` in a condition, which looks like an incons
 In a read, `path:` is already the field path inside the payload, and two things cannot both be
 `path`.
 
-**One grammar, split by cardinality, and the names say which.** A verse is one document,
-`{path: [{kind: {id: payload}}, *, *]}`, so an entity address is a path prefix and `path:` continues
-it into the payload. `!get-path` answers with one node; `!list-paths` answers with a list, and is
+**One grammar, split by cardinality, and the names say which.** A verse is one document, so an
+address is a path to a node in it and `path:` continues it into the payload. `!get-path` answers with one node; `!list-paths` answers with a list, and is
 where the globs live. They mirror go-tony's own split, where `GetKPath` returns one node and rejects
 a wildcard outright while `ListKPath` collects.
 
-Which one you get is legible in the charter rather than inferred from whether some id happened to
-contain a `*`: `!get-path` **refuses** a globbing id or a wildcard path, and names the tag that
-answers that question instead.
+Which one you get is legible in the charter rather than inferred from whether some segment happened
+to be a `*`: `!get-path` **refuses** a wildcard in its last segment or in its `path`, and names the
+tag that answers that question instead.
 
 | | |
 |---|---|
-| `system`, `kind` | always literal — no reference, no glob |
-| `id` | literal, a `$reference`, or (list only) a glob |
-| `at` | the address as a path, any depth; everything above the entity is literal, and the last segment is what `id` would be |
+| a string | the address as a kinded path (`git.verse.head`), with nothing in it to expand; it may go on into the payload (`git.verse.head.sha`) |
+| `at` | the address as a path of at least two segments. Every segment above the last is a literal or `*`; the last is a literal, a `$reference`, or (list only) a `*` or an operator |
 | `path` | a kpath into the payload; wildcards are list-only. Omitted, you get the whole payload |
-| `value` | a payload predicate, **list only** — of the ids the address selects, the ones that look like this |
+| `value` | a payload predicate, **list only** — of the entities the address selects, the ones that look like this |
 
-Everything above the entity must be literal in either spelling, and for the same reason: the
-level check asks whether a read lands at or below the rule's own stratum, and it can only ask
-that of the segments known at install.
+Nothing above the last segment is a reference or a glob, because the level check asks whether a
+read lands at or below the rule's own stratum, and it asks that of the literal prefix, which is all
+that is known at install.
 
-`!get-path` refuses a `value` for the reason it refuses a globbing id. A predicate can name several,
+`!get-path` refuses a `value` for the reason it refuses a wildcard. A predicate can name several,
 an entity that is not there does not satisfy one, and one that is there might not either. On the
-list form a predicate is the *cheaper* read, because `id: "*"` already walks the whole kind and this
-is what narrows it. Neither form is a query that slides: both are answered from one snapshot at the
-causing commit, so a predicate is evaluated against the same world the rule was.
+list form a predicate is the *cheaper* read, because a `*` already walks everything under the place
+and this is what narrows it. Neither form is a query that slides: both are answered from one
+snapshot at the causing commit, so a predicate is evaluated against the same world the rule was.
 
-The string form stops at the entity, because an id may itself contain dots and
-`"git:repo:abc.branch"` has no unambiguous split. Going deeper is the object form's `path:`.
+The string form's dots are its segments, so a `$reference` — which has dots of its own — cannot be
+written inside one. An address that expands a reference is written with `at:`.
 
 **Read at the commit that caused the firing**, the same rule `$subject.value` follows and for the
 same gate reason.
@@ -1594,7 +1545,7 @@ A flow is not a stored key. It is a match evaluated over the subjects of *live* 
 
 ```sh
 verse flow -subject demo.pr.1       # tasks whose subject matches demo.pr.1
-verse flow -subject 'demo.pr.*'     # …the whole kind
+verse flow -subject 'demo.pr.*'     # …every pr
 ```
 
 Relating tasks is what a match *does*, so "relational flows" are not a second primitive to add
@@ -1664,12 +1615,12 @@ the system installed (`by: system:charter` on its record) is the system's alone 
 
 ```json
 { "name": "review",
-  "condition": { "subject": { "system": "demo", "kind": "pr", "value": { "stage": "open" } } },
+  "condition": { "subject": { "path": ["demo", "pr", "*"], "value": { "stage": "open" } } },
   "gates":     [ { "name": "approval", "mode": "ask" } ],
   "action":    { "patch": { "stage": "reviewing" }, "spawn": { "driver": "scripted", "vector": "auto", "prompt": "review $subject" } } }
 { "name": "ship-green",
-  "condition": { "on":      { "system": "ci",   "kind": "status", "value": { "state": "green" } },
-                 "subject": { "system": "demo", "kind": "pr", "value": { "stage": "reviewed" } } },
+  "condition": { "on":      { "path": ["ci", "status", "*"], "value": { "state": "green" } },
+                 "subject": { "path": ["demo", "pr", "*"], "value": { "stage": "reviewed" } } },
   "action":    { "patch": { "stage": "shipped" } } }
 ```
 
@@ -1685,7 +1636,7 @@ at the edge, over the set as it then stood. Written with `when` instead of `on` 
 
 A trigger's rule is a question about the store at a revision rather than about one entity, so it is
 asked once per commit. A docd commit is atomic across many branches, and `LogdStore` reports it
-whole: one `Commit`, carrying one change per entity at path-depth `system/kind/id`.
+whole: one `Commit`, carrying one change per entity it touched.
 
 That framing has to come from the store, because it cannot be recovered downstream. Changes of
 one commit share a revision, but a consumer reading them one at a time cannot tell whether the

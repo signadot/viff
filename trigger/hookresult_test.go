@@ -110,7 +110,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "escalate",
 		Condition: Condition{Subject: Match{
-			"system": "demo", "kind": "pr",
+			"path":  pathOf("demo", "pr", "*"),
 			"value": map[string]any{"stage": "reviewed", "severity": "high"},
 		}},
 		Action: Action{Patch: entity.Obj{"escalated": true}.Payload()},
