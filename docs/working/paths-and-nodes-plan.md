@@ -8,8 +8,10 @@ and deploy/repopulate.sh). Steps 4 and 6 done together (f103b7b9: exact listings
 rebuilt from rows; `place`/`coverPlace` stay as ListAt's arguments, and the watch's replay half is
 still fixed-arity until step 5). Step 5 done (6c9e2d25: an observer names the patterns its
 commits answer at, and the engine asks each commit what it touched; `entity.List`'s own fixed
-depth is what is left, and goes with `entity.Depth`). Step 7 done (9ea61a13). go-tony v0.0.222
-answers `..`, so step 8 is unblocked. The model is [paths-and-nodes.md](paths-and-nodes.md); read that
+depth is what is left, and goes with `entity.Depth`). Step 7 done (9ea61a13). Step 8 done on go-tony
+v0.0.222 (eb20f841 the read, 5ef2eadb subjects and the pattern watch); `!get-path`'s string form
+still refuses a descent, which is right for a read of one node, and `!list-paths` could take one.
+Step 9, the docs sweep, is what is left. The model is [paths-and-nodes.md](paths-and-nodes.md); read that
 first — this file does not restate it, only the order of work and what each step must prove.
 
 The order is set by three things. Live defects go first, each with a test that fails today,
