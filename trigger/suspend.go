@@ -528,19 +528,6 @@ func (t *Suspensions) Lift(id string) {
 	}
 }
 
-// NamingSubject is the ids of the suspensions naming a subject, whatever charter they name and
-// whoever holds them: what the top of a flow tree says. Each position in the tree says, with
-// authority asked, what holds its own work.
-func (t *Suspensions) NamingSubject(subj entity.Ref) []string {
-	var out []string
-	for _, s := range t.List() {
-		if s.CoversSubject(subj) {
-			out = append(out, s.ID())
-		}
-	}
-	return out
-}
-
 // notLoaded is what holds everything while a table has not loaded, named as a suspension would be.
 const notLoaded = "the suspensions have not loaded"
 

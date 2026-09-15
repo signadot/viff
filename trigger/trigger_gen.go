@@ -271,6 +271,11 @@ func (s *FlowTree) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Subject
 	irMap["subject"] = ir.FromString(string(s.Subject))
 
+	// Field: Active
+	if s.Active {
+		irMap["active"] = ir.FromBool(bool(s.Active))
+	}
+
 	// Field: Suspended
 	if len(s.Suspended) > 0 {
 		slice := make([]*ir.Node, len(s.Suspended))
@@ -332,6 +337,12 @@ func (s *FlowTree) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
+		case "active":
+			// Field: Active
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "active", fieldNodeUnwrapped.Type)
+			}
+			s.Active = bool(fieldNodeUnwrapped.Bool)
 		case "suspended":
 			// Field: Suspended
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

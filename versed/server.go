@@ -4706,7 +4706,17 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeOut(w, r, http.StatusOK, trigger.FlowTreesAcross(engines, m))
+	var active *bool
+	switch r.URL.Query().Get("active") {
+	case "":
+	case "true", "false":
+		a := r.URL.Query().Get("active") == "true"
+		active = &a
+	default:
+		http.Error(w, "active is true, false, or absent for every tree", http.StatusBadRequest)
+		return
+	}
+	writeOut(w, r, http.StatusOK, trigger.FlowTreesAcross(engines, m, active))
 }
 
 // eventWire is gone: an Event is written as itself. It used to be rebuilt field by field

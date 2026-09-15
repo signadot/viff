@@ -70,7 +70,7 @@ rows are the live tasks a suspension in those words would hold. Its suspension r
 resume in them would lift: the record the flags spell, and not a wider one that also holds the
 work — `--subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`, and `--subject
 'demo.pr.*'` lists the suspension spelled that way, not each PR's. What holds a subject's work,
-whatever spells it, is `verse flow show <subject>`.
+whatever spells it — including a subject with no work yet — is `verse flow show <subject>`.
 
 ## A run's hold
 
@@ -175,8 +175,12 @@ with it — and a scope may not name a package's charter, which is baseline's.
   they hold and whether they cover anything.
 - `verse status` counts `suspensions`, and `flows: {tasks, subjects}` — live tasks, and the distinct
   subjects they are about. The charter census marks a rule suspended about every subject.
-- `verse flow show <subject>` names the suspensions covering the subject at the top of the tree,
-  `heldBy` on a live task, and `suspended` on each position whose work is held.
+- `verse flow show <subject>` puts at the top of the tree what holds the subject's work — what
+  would hold an installed rule whose subject could select it, and what holds its live tasks — and
+  marks `heldBy` on a live task and `suspended` on each position whose work is held. A subject
+  with no work that something would hold gets a tree too, with no branches: the address itself,
+  or each stored entity a pattern selects. A tree with a live task says `active: true`;
+  `--active` shows only those, `--no-active` only the others, and neither shows every one.
 - A withdrawn question's record says which suspension withdrew it.
 
 Why none of this rides the change stream is in [deployment and

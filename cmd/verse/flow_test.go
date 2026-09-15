@@ -94,6 +94,34 @@ func TestFlowVerbsSendTheirFlags(t *testing.T) {
 	}
 }
 
+// `flow show --active` and `--no-active` ask for the subjects with a live task and those without
+// one; neither asks for every subject, and sends no `active` at all.
+func TestFlowShowSendsActiveOnlyWhenSaid(t *testing.T) {
+	var q url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q = r.URL.Query()
+		w.Write([]byte(`[]`))
+	}))
+	defer ts.Close()
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+	for _, c := range []struct {
+		args []string
+		want string
+		has  bool
+	}{
+		{[]string{"flow", "show", "demo.pr.*"}, "", false},
+		{[]string{"flow", "show", "demo.pr.*", "--active"}, "true", true},
+		{[]string{"flow", "show", "demo.pr.*", "--no-active"}, "false", true},
+	} {
+		if _, err := runCLI(t, c.args...); err != nil {
+			t.Fatalf("verse %v: %v", c.args, err)
+		}
+		if q.Has("active") != c.has || q.Get("active") != c.want || q.Get("subject") != "demo.pr.*" {
+			t.Fatalf("verse %v asked %v, want active=%q (sent: %v)", c.args, q, c.want, c.has)
+		}
+	}
+}
+
 // A verb that does not say what it acts on prints its usage and sends nothing.
 func TestAFlowVerbNarrowsOrIsRefused(t *testing.T) {
 	got, _ := flowServer(t, nil)

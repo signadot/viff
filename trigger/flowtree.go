@@ -100,7 +100,11 @@ const (
 //tony:schemagen=verse-flow-tree,notag
 type FlowTree struct {
 	Subject string `tony:"field=subject"`
-	// Suspended is the suspensions naming the subject, for any charter.
+	// Active is whether a task about the subject is live in some engine now.
+	Active bool `tony:"field=active,omitzero"`
+	// Suspended is the suspensions holding work about the subject: what an installed rule whose
+	// subject could select it would be held by, and what holds its live tasks. A subject with no
+	// work at all has a tree when something would hold it, with this and no roots.
 	Suspended []string   `tony:"field=suspended,omitzero"`
 	Roots     []FlowNode `tony:"field=roots,omitzero"`
 }
@@ -108,22 +112,24 @@ type FlowTree struct {
 // FlowTrees renders the flow tree of every subject the address selects, as this engine alone
 // sees it. FlowTreesAcross is the same over every engine a request may see.
 func (e *Engine) FlowTrees(m Match) []FlowTree {
-	return FlowTreesAcross([]*Engine{e}, m)
+	return FlowTreesAcross([]*Engine{e}, m, nil)
 }
 
-// FlowTreesAcross renders the flow tree of every subject the address selects. A concrete address
-// yields one tree (possibly empty); a pattern yields one per subject that has tasks.
+// FlowTreesAcross renders the flow tree of every subject the address selects: one per subject
+// that has tasks, and one per subject with no work that a suspension would hold — the address
+// itself when it names one entity, else each stored entity it selects. active narrows to the trees
+// with a live task (true) or without one (false); nil is every tree.
 //
 // Subjects come from the mirror rather than from the live registry, so a subject whose work
-// has all finished still has a tree — which is the point of asking after the fact. The mirror is
-// read through the first engine's store, which is baseline's or a scope's.
+// has all finished still has a tree — which is the point of asking after the fact. The mirror and
+// the entities are read through the first engine's store, which is baseline's or a scope's.
 //
 // EACH TASK IS RENDERED BY THE ENGINE THAT MINTED IT. A package's charter runs in an engine of its
 // own, so its rules, its live tasks, who holds them and which suspensions cover them are that
 // engine's to answer: asked of baseline's, a package's task has no charter shape to extend, holds
 // nothing and is covered only by suspensions of every charter. A task goes to the engine tracking
 // it live, else to the engine whose prefix its id carries (ownerOf), else to the first.
-func FlowTreesAcross(engines []*Engine, m Match) []FlowTree {
+func FlowTreesAcross(engines []*Engine, m Match, active *bool) []FlowTree {
 	if len(engines) == 0 {
 		return []FlowTree{}
 	}
@@ -153,15 +159,33 @@ func FlowTreesAcross(engines []*Engine, m Match) []FlowTree {
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}
+		subj = subjectKey(subj)
 		eng := mintedBy(engines, ent.Ref.ID())
 		at(subj)[eng] = append(at(subj)[eng], ent)
 	}
 	// A live task whose mirror has not landed yet still belongs in the tree: the
 	// registry is the present, and a tree that omits what is running now would be worse
 	// than one that omits what ran yesterday.
+	live := map[string]bool{}
 	for _, eng := range engines {
 		for _, fp := range eng.matchFlow(m) {
-			at(fp.subject)
+			at(subjectKey(fp.subject))
+			live[subjectKey(fp.subject)] = true
+		}
+	}
+	// A subject with no work is shown when something would hold it, unless only active trees
+	// were asked for, which it cannot be one of.
+	idle := map[string][]string{}
+	if active == nil || !*active {
+		for _, ref := range m.Select(first.store) {
+			subj := ref.String()
+			if _, worked := bySubject[subj]; worked {
+				continue
+			}
+			if held := coveringAcross(engines, ref); len(held) > 0 {
+				at(subj)
+				idle[subj] = held
+			}
 		}
 	}
 
@@ -173,18 +197,87 @@ func FlowTreesAcross(engines []*Engine, m Match) []FlowTree {
 
 	trees := make([]FlowTree, 0, len(subjects))
 	for _, s := range subjects {
-		tree := FlowTree{Subject: s}
+		tree := FlowTree{Subject: s, Active: live[s]}
+		if active != nil && *active != tree.Active {
+			continue
+		}
+		if held, ok := idle[s]; ok {
+			tree.Suspended = held
+			trees = append(trees, tree)
+			continue
+		}
 		for _, eng := range engines {
 			if ents, ok := bySubject[s][eng]; ok || eng == first {
 				tree.Roots = append(tree.Roots, eng.rootsFor(s, ents)...)
 			}
 		}
-		if first.susp != nil {
-			tree.Suspended = first.susp.NamingSubject(subjectOf(s))
+		held := coveringAcross(engines, subjectOf(s))
+		for _, id := range nodeSuspensions(tree.Roots) {
+			if !slices.Contains(held, id) {
+				held = append(held, id)
+			}
 		}
+		slices.Sort(held)
+		tree.Suspended = held
 		trees = append(trees, tree)
 	}
 	return trees
+}
+
+// subjectKey is a subject in its one spelling, so two quotings of one address are one tree.
+func subjectKey(s string) string {
+	if ref, err := entity.ParseAddr(s); err == nil && ref != (entity.Ref{}) {
+		return ref.String()
+	}
+	return s
+}
+
+// coveringAcross is Covering over every engine, each id once, sorted.
+func coveringAcross(engines []*Engine, subj entity.Ref) []string {
+	var out []string
+	for _, eng := range engines {
+		for _, id := range eng.Covering(subj) {
+			if !slices.Contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// nodeSuspensions is every suspension named on a position of a tree.
+func nodeSuspensions(nodes []FlowNode) []string {
+	var out []string
+	for _, n := range nodes {
+		out = append(out, n.Suspended...)
+		out = append(out, nodeSuspensions(n.Children)...)
+	}
+	return out
+}
+
+// Covering is the suspensions that would hold this engine's rules about a subject: for each
+// installed rule whose subject could select it — by address, since a suspension covers by address
+// and a payload predicate would only say whether the rule selects it now — what holds that rule's
+// work about it, asked with authority as a firing asks. A subject with no work yet is held by
+// these as much as one with work.
+func (e *Engine) Covering(subj entity.Ref) []string {
+	e.trigMu.Lock()
+	trigs := slices.Clone(e.triggers)
+	e.trigMu.Unlock()
+	var out []string
+	for _, t := range trigs {
+		if t.Condition.Subject.IsEmpty() || !t.Condition.Subject.MatchRef(subj) {
+			continue
+		}
+		for _, id := range e.holding(t.Name, subj) {
+			if !slices.Contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // mintedBy is the engine a task belongs to: the one tracking it live, else the one whose id

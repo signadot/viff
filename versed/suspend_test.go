@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -812,13 +813,39 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 	if body := readBody(t, resp); !strings.Contains(body, ":review@*") {
 		t.Fatalf("flow show does not say what suspends review's work:\n%s", body)
 	}
-	resp, err = http.Get(ts.URL + "/flow/tree?subject=demo.pr.1")
-	if err != nil {
-		t.Fatal(err)
+	// THE TOP OF A TREE IS WHAT HOLDS THE SUBJECT'S WORK: what an installed rule that could select
+	// it would be held by, and what holds its live tasks — not a suspension of a charter nobody
+	// installed. A subject with no work is shown when something would hold it, with no roots, and
+	// --active / --no-active narrow to the subjects with a live task or without one.
+	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "3"), entity.Obj{"stage": "closed"}.Payload())
+	trees := func(q string) []trigger.FlowTree {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/flow/tree?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []trigger.FlowTree
+		decodeResp(t, resp, &out)
+		return out
 	}
-	var trees []trigger.FlowTree
-	decodeResp(t, resp, &trees)
-	if len(trees) != 1 || strings.Join(trees[0].Suspended, ",") != `*:*@demo.pr."1",:review@*,verse-dev.gone:*@*` {
-		t.Fatalf("flow show demo.pr.1 = %+v, want every suspension naming the subject at the top", trees)
+	shown := func(ts []trigger.FlowTree) string {
+		var out []string
+		for _, tr := range ts {
+			out = append(out, fmt.Sprintf("%s active=%v roots=%d [%s]", tr.Subject, tr.Active, len(tr.Roots), strings.Join(tr.Suspended, " ")))
+		}
+		return strings.Join(out, "; ")
+	}
+	for _, c := range []struct{ q, want string }{
+		{"subject=demo.pr.1", `demo.pr."1" active=true roots=0 [*:*@demo.pr."1" :review@*]`},
+		{"subject=demo.pr.3", `demo.pr."3" active=false roots=0 [:review@*]`},
+		{"subject=demo.issue.1", ``},
+		{"subject=demo.pr.*", `demo.pr."1" active=true roots=0 [*:*@demo.pr."1" :review@*]; ` +
+			`demo.pr."2" active=false roots=1 [:review@*]; demo.pr."3" active=false roots=0 [:review@*]`},
+		{"subject=demo.pr.*&active=true", `demo.pr."1" active=true roots=0 [*:*@demo.pr."1" :review@*]`},
+		{"subject=demo.pr.*&active=false", `demo.pr."2" active=false roots=1 [:review@*]; demo.pr."3" active=false roots=0 [:review@*]`},
+	} {
+		if got := shown(trees(c.q)); got != c.want {
+			t.Errorf("flow show %s =\n  %s\nwant\n  %s", c.q, got, c.want)
+		}
 	}
 }

@@ -295,26 +295,40 @@ func postFlow(cc *cli.Context, verb string, body api.FlowSelect) error {
 	return printBody(cc, resp)
 }
 
-type flowShowConfig struct{ *cli.Command }
+type flowShowConfig struct {
+	*cli.Command
+	Active bool `cli:"name=active desc='only subjects with a live task; --no-active only those without one; neither, every subject'"`
+}
 
 // flow show renders a subject's work as a shape rather than a list: which trigger acted on
 // it, what that spawned, and the completion branches hanging off it — including branches the
-// charter declares but nothing has reached yet. Bare `flow` answers "what is running and what is
-// held"; this answers "what is happening to this one, and what comes next".
+// charter declares but nothing has reached yet — and, at the top, what suspends it. A subject
+// with no work that a suspension would hold is shown too, with no branches. Bare `flow` answers
+// "what is running and what is held"; this answers "what is happening to this one, and what
+// comes next".
 func flowShowCmd() *cli.Command {
 	cfg := &flowShowConfig{}
+	opts := mustOpts(cfg)
 	return cli.NewCommandAt(&cfg.Command, "show").
-		WithSynopsis("show a subject's flow as a tree: show <subject|demo.pr.*>").WithRun(cfg.run)
-}
-
-func (cfg *flowShowConfig) run(cc *cli.Context, args []string) error {
-	subject, err := oneArg(cfg.Command, cc, args, "flow show wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
-	if err != nil {
-		return err
-	}
-	resp, err := httpGet("/flow/tree", url.Values{"subject": {subject}})
-	if err != nil {
-		return fmt.Errorf("flow show: %w", err)
-	}
-	return printBody(cc, resp)
+		WithSynopsis("show a subject's flow as a tree, and what suspends it: show <subject|demo.pr.*> [--active | --no-active]").
+		WithOpts(opts...).
+		WithRun(func(cc *cli.Context, args []string) error {
+			subject, err := oneArg(cfg.Command, cc, args, "flow show wants a subject address (e.g. demo.pr.1 or demo.pr.*)")
+			if err != nil {
+				return err
+			}
+			q := url.Values{"subject": {subject}}
+			// A bool the command line did not mention has no value, which is how --no-active is
+			// told apart from neither.
+			for _, o := range opts {
+				if o.Name == "active" && o.Value != nil {
+					q.Set("active", fmt.Sprint(cfg.Active))
+				}
+			}
+			resp, err := httpGet("/flow/tree", q)
+			if err != nil {
+				return fmt.Errorf("flow show: %w", err)
+			}
+			return printBody(cc, resp)
+		})
 }

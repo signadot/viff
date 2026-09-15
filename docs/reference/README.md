@@ -294,7 +294,10 @@ verse
                                              while a suspension holds the run
           say     --task | --charter | --subject <text…>   an instruction to what they name
           cancel  --task <id>                end that run (destructive)
-          show <addr>                        a subject's flow as a tree
+          show <addr> [--active | --no-active]
+                                             a subject's flow as a tree, and what suspends it —
+                                             a held subject with no work too; --active only
+                                             those with a live task, --no-active only the rest
           A verb that names nothing prints its usage and does nothing; of --charter and
           --subject, the one left out beside the other is '*'. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)
