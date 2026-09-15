@@ -1612,24 +1612,32 @@ func stateOf(ev *logdapi.WatchEvent) *ir.Node {
 
 // entitiesFromDoc reads the entity set out of a root-rooted subtree document (the doc
 // WatchSubtree maintains by applying watch events), keyed by full Ref. It navigates to
-// the watched (system[,kind]) node and walks the remaining depth to the entity leaves —
-// pure structure, no diff interpretation.
+// the watched node and walks the remaining depth to the entity leaves — pure structure, no
+// diff interpretation.
+//
+// IT NAMES WHAT A READ OF THE SAME PATH NAMES (ListAt): the leaves at the depth asked for, and a
+// value that bottomed out above it, where it stands. A watch that answered less would be a
+// stream missing a change the listing beside it shows.
 func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[Ref]Payload {
 	node := childByKey(doc, root)
 	for _, p := range prefix {
 		node = childByKey(node, p)
 	}
 	out := map[Ref]Payload{}
-	// AN OBJECT, or there is no subtree here to read entities out of — an empty slice, the
-	// watch having opened on a path that holds nothing, or a null somebody wrote at the path
-	// itself. Neither holds entities, and the wire is what says which of them it is (stateOf).
-	if node == nil || node.Type != ir.ObjectType || depth < len(prefix) {
+	if depth < len(prefix) {
 		return out
 	}
 	// What the watch fixed, plus what the document still carries below it, is the address —
 	// so the remaining depth is a subtraction. The TOTAL is the caller's: computing it here
 	// would fix the arity, and a watch could then never report an entity deeper than three
 	// (see Store.WatchSubtree).
+	//
+	// WHATEVER STANDS AT THE PATH is walked, not only an object. A watch ON an address has
+	// nothing left to descend, so the value there is the entity — a scalar, a list, a null
+	// somebody wrote. A watch on a prefix finds a scalar there reported at the path, as a read
+	// finds it, and a null or an empty object there holds nothing: walkLeaves reads a null
+	// above the asked depth as nothing standing, which is also what a path that holds nothing
+	// opens on (stateOf).
 	walkLeaves(node, depth-len(prefix), func(segs []string, v *ir.Node) {
 		// A missing leaf is nothing; a null one is an entity holding null. The document here is
 		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
@@ -1637,13 +1645,10 @@ func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[
 		if v == nil {
 			return
 		}
-		// AT THE DEPTH THIS WATCH WAS ASKED FOR, exactly. The walk also reports a value
-		// standing above it, which is what a read of the store wants and what a watch does
-		// not: a rule is a statement about the nodes at its subject's depth, and one woken by
-		// an address of another depth is answering a question nobody asked it.
-		if len(segs) != depth-len(prefix) {
-			return
-		}
+		// A value above the asked depth is reported where it stands, and a rule over the depth
+		// below it is woken by it: a scalar written over the place a rule's subjects stand
+		// changes what that rule reads, so waking it is the right answer rather than noise.
+		//
 		// RefOfAny, not RefOf: the depth was named by the caller, so the only thing left to
 		// refuse is an empty segment — a nameless level addresses nothing.
 		if ref, ok := RefOfAny(append(append([]string{}, prefix...), segs...)); ok {
@@ -1696,9 +1701,14 @@ func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 			// asked depth a null is a payload like any other and is reported — the difference
 			// is that the caller named that path, so the answer is about it.
 			//
+			// And except A REMOVAL, which is not a null but an operation wearing one: a delta
+			// says `a: b: !delete null` for whatever stood at `a.b`, and that is a change at
+			// the place it names however deep the walk was asked to go. Only a delta carries
+			// one — a materialized document has executed it — so a read never meets it here.
+			//
 			// The depth stays the caller's question: this answers with what there IS at or
 			// above it, and a caller wanting exactly N compares len(segs) itself.
-			if n.Type != ir.NullType {
+			if n.Type != ir.NullType || opIn(n.Tag) == deleteName {
 				fn(segs, n)
 			}
 			return
@@ -2480,10 +2490,13 @@ func walkEntityDoc(node *ir.Node) []Entity {
 // answers no to it while the store answers yes.
 func walkEntityChanges(node *ir.Node) []entityChange {
 	var out []entityChange
-	// RefOf, not RefOfAny: one stream serves every consumer, so Changes reports at the arity
-	// they share and a consumer whose addresses are another depth asks Commit.ChangedAt.
+	// One stream serves every consumer, so Changes reports DEEPER changes at the arity they
+	// share, and a consumer whose addresses are deeper asks Commit.ChangedAt. A value that
+	// bottomed out ABOVE that arity is another matter: there is no address at the arity for it
+	// to be reported against, so it is reported where it stands — RefOfAny, as the listing
+	// reads it (walkEntityDoc) — or the stream would miss a write the listing shows.
 	walkEntityLeaves(node, func(segs []string, n *ir.Node) {
-		ref, ok := RefOf(segs)
+		ref, ok := RefOfAny(segs)
 		if !ok {
 			return
 		}

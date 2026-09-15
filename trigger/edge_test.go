@@ -351,3 +351,28 @@ func TestConditionOnRoundTrips(t *testing.T) {
 		t.Fatalf("a condition with no `on` emitted one: %v", got)
 	}
 }
+
+// A WRITE OVER WHAT A RULE READS WAKES IT, from above as well as below. A scalar written at
+// `demo`, or `demo` removed, replaces every PR a rule about `demo.pr.*` selects, and the change
+// stream reports it where it stands — so the skip has to count it, or the rule sleeps through
+// its subjects going away (git-issue ga22z20vh12krhbcn1n0).
+func TestAWriteAboveWhatARuleReadsTouchesIt(t *testing.T) {
+	rule := Trigger{Name: "review", Condition: Condition{Subject: Match{"system": "demo", "kind": "pr"}}}
+	for _, c := range []struct {
+		ref  entity.Ref
+		want bool
+	}{
+		{entity.RefAt("demo", "pr", "1"), true},
+		{entity.RefAt("demo", "pr"), true},
+		{entity.RefAt("demo"), true},
+		{entity.RefAt("demo", "issue"), false},
+		{entity.RefAt("demo", "issue", "1"), false},
+		{entity.RefAt("other"), false},
+		{entity.RefAt(entity.VerseRoot), false},
+	} {
+		commit := entity.Commit{Rev: 1, Changes: []entity.Event{{Ref: c.ref, Op: entity.Delete, Rev: 1}}}
+		if got := rule.touches(commit); got != c.want {
+			t.Errorf("a change at %s touches a rule reading demo.pr = %v, want %v", c.ref, got, c.want)
+		}
+	}
+}

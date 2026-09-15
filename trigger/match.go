@@ -935,6 +935,40 @@ func (s Subtree) covers(ref entity.Ref) bool {
 	return mine.MatchesPrefix(theirs)
 }
 
+// within reports whether this subtree stands strictly BELOW an address: the place the address
+// names holds the whole of it, so a write there is a write over everything it holds. covers is
+// the other direction, and the two together are "a change at this address can change what this
+// subtree holds".
+//
+// Asked of the subtree cut to the address's length, under the same wildcard rule covers uses.
+func (s Subtree) within(ref entity.Ref) bool {
+	if s.kp == "" {
+		return false
+	}
+	mine, err := kpath.Parse(s.kp)
+	if err != nil {
+		return false
+	}
+	theirs, err := kpath.Parse(entity.JoinSegs(ref.Segs()))
+	if err != nil || theirs == nil {
+		return false
+	}
+	cut := 0
+	for kp := mine; kp != nil; kp = kp.Next {
+		cut++
+	}
+	for kp := theirs; kp != nil; kp = kp.Next {
+		cut--
+	}
+	if cut <= 0 {
+		return false
+	}
+	for ; cut > 0; cut-- {
+		mine = mine.Parent()
+	}
+	return mine.Matches(theirs)
+}
+
 // subtreeOf is the subtree a match reads.
 func subtreeOf(m Match) Subtree {
 	if m.Deep() {

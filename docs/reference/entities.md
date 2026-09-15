@@ -560,6 +560,12 @@ are deeper finds the change nested inside `to`. Nothing is missed, and a rule wa
 subtree still selects the deep entity, because it re-evaluates against the store rather than
 against the event's address alone.
 
+A value shallower than an address is reported where it stands, as a read lists it. After
+`verse data a b --put c`, a bare `verse watch`, `verse watch a` and `verse watch a b` each report
+a `set` at `a.b` holding `c`, and `verse data --rm a b` a `delete` at `a.b`. A watch on an
+address reports whatever stands there, a scalar included. A rule reading `demo.pr` is woken by a
+write at `demo` as well as one under it, since that write replaces what the rule reads.
+
 A `delete` carries no payload, so a `--if` filter does not match one: there is nothing left
 to ask about. An entity on its way out is also marked *vanishing* before removal, which is
 what stops a rule from acting on — and thereby resurrecting — something that is leaving; see

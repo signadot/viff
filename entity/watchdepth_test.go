@@ -3,6 +3,8 @@ package entity
 import (
 	"testing"
 	"time"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // A WATCH REPORTS AT THE DEPTH ITS CALLER NAMED, because nothing else can know it: a document
@@ -78,6 +80,79 @@ func TestChangedAtAnswersAtTheDepthAsked(t *testing.T) {
 	// And the ordinary Changes is the three-segment reading, which is what `ChangedAt(3)` says.
 	if len(c.Changes) != 1 || c.Changes[0].Ref != RefAt("verse-dev", "drift", "head") {
 		t.Fatalf("Changes = %+v, want the ordinary arity", c.Changes)
+	}
+}
+
+// A WATCH ON AN ADDRESS REPORTS WHAT STANDS THERE, whatever it is. There is nothing left below
+// the path to descend, so the value at it is the entity — and a watch that asked for an object
+// there dropped every scalar, at any depth, while the read of the same address answered it
+// (git-issue ke35500vh12krhbcn1n0).
+func TestAWatchOnAnAddressReportsWhateverStandsThere(t *testing.T) {
+	for _, segs := range [][]string{{"a", "b", "c"}, {"x", "y", "z", "w"}} {
+		s := openStore(t)
+		ref := RefAt(segs...)
+		ch, unsub, err := s.WatchSubtreeAt(len(segs), true, segs...)
+		if err != nil {
+			t.Fatalf("watch %s: %v", ref, err)
+		}
+		r := reader(ch)
+		mustWrite(t, s, Write{At: ref.At(), Value: ir.FromString("d")})
+		if ev := r.next(t, "the scalar written at "+ref.String()); ev.Ref != ref || ev.Op != Set || ev.To.String != "d" {
+			t.Fatalf("event = %s %v %+v, want %s set to d", ev.Ref, ev.Op, ev.To, ref)
+		}
+		mustWrite(t, s, Write{At: ref.At()})
+		if ev := r.next(t, "its removal"); ev.Ref != ref || ev.Op != Delete {
+			t.Fatalf("event = %s %v, want %s delete", ev.Ref, ev.Op, ref)
+		}
+		unsub()
+	}
+
+	// The same address watched as a rule watches its subject (trigger.Engine.untilMoot), opening
+	// on what already stands there: the replay carries it.
+	s := openStore(t)
+	ref := RefAt("demo", "pr", "1")
+	mustWrite(t, s, Write{At: ref.At(), Value: ir.FromString("closed")})
+	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr", "1")
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer unsub()
+	if ev := reader(ch).next(t, "the replay of the scalar standing at the subject"); ev.Ref != ref || ev.To.String != "closed" {
+		t.Fatalf("event = %s %+v, want %s holding closed", ev.Ref, ev.To, ref)
+	}
+}
+
+// A VALUE ABOVE THE REPORTING DEPTH IS REPORTED WHERE IT STANDS, on every watch that covers it —
+// the root stream and a watch at any prefix of it — because the read of the same path lists it
+// there (walkLeaves) and a stream answering less misses a write the listing beside it shows
+// (git-issue ga22z20vh12krhbcn1n0).
+func TestAValueAboveTheReportingDepthReachesEveryWatch(t *testing.T) {
+	s := openStore(t)
+	ref := RefAt("a", "b")
+	root, unsubRoot := s.Observe()
+	defer unsubRoot()
+	watches := map[string]*watch{"the root stream": reader(root)}
+	for _, prefix := range [][]string{{"a"}, {"a", "b"}} {
+		ch, unsub, err := s.WatchSubtreeAt(Depth, true, prefix...)
+		if err != nil {
+			t.Fatalf("watch %v: %v", prefix, err)
+		}
+		defer unsub()
+		watches["the watch at "+JoinSegs(prefix)] = reader(ch)
+	}
+	time.Sleep(200 * time.Millisecond) // the root watch opens lazily, on the first observer
+
+	mustWrite(t, s, Write{At: ref.At(), Value: ir.FromString("c")})
+	for name, w := range watches {
+		if ev := w.next(t, name+" to report a.b"); ev.Ref != ref || ev.Op != Set || ev.To.String != "c" {
+			t.Errorf("%s: event = %s %v %+v, want a.b set to c", name, ev.Ref, ev.Op, ev.To)
+		}
+	}
+	mustWrite(t, s, Write{At: ref.At()})
+	for name, w := range watches {
+		if ev := w.next(t, name+" to report a.b removed"); ev.Ref != ref || ev.Op != Delete {
+			t.Errorf("%s: event = %s %v, want a.b deleted", name, ev.Ref, ev.Op)
+		}
 	}
 }
 

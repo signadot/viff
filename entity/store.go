@@ -122,6 +122,10 @@ type Store interface {
 	// The caller always knows. A rule's own pattern says how deep its subjects are, and a
 	// caller watching one entity passes that entity's depth.
 	//
+	// The depth bounds a report from BELOW only. A value that bottomed out above it — a scalar
+	// at the prefix, or at the address being watched — is reported where it stands, as ListAt
+	// lists it.
+	//
 	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
 	// stands in the slice as Set events, then streams changes. A rule is a statement about
 	// the world, and a trigger installed over a populated verse should act on the entities

@@ -193,7 +193,11 @@ func (t Trigger) touches(c entity.Commit) bool {
 			// Segment by segment against the address's own, so the two halves of the verse are
 			// told apart here as everywhere else: a rule about `demo:pr:*` is not woken by the
 			// task record of the run reviewing it.
-			if st.covers(ev.Ref) {
+			//
+			// And a place ABOVE the subtree: a scalar written at `demo`, or `demo` removed,
+			// replaces everything a rule about `demo.pr.*` reads though no address under it is
+			// named, so the rule's answer can change there too.
+			if st.covers(ev.Ref) || st.within(ev.Ref) {
 				return true
 			}
 		}

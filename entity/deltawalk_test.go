@@ -34,6 +34,21 @@ func TestAComposedDeleteIsStillARemoval(t *testing.T) {
 	}
 }
 
+// A REMOVAL ABOVE THE ARITY IS A REMOVAL THERE. `verse data --rm a b` commits `a: b: !delete
+// null`, and there is no address at the arity below it to report the change against, so it is
+// reported at the place it names — as the write before it was.
+func TestARemovalAboveTheArityIsReportedWhereItStands(t *testing.T) {
+	changes := changesOf(t, `a: b: !delete null`)
+	ch, ok := changes[RefAt("a", "b")]
+	if !ok || !ch.deleted {
+		t.Fatalf("changes = %v, want a.b removed", changes)
+	}
+	// A null that is not a removal is not a value above the arity, as a read of the store has it.
+	if changes := changesOf(t, `a: b: null`); len(changes) != 0 {
+		t.Fatalf("changes = %v, want none for a null above the arity", changes)
+	}
+}
+
 // A `!comment` ABOVE AN ENTITY IS NOT A LEVEL OF THE NAMESPACE. It is an ordinary tagged object
 // whose fields name the parts of a statement — head, line, value — so a walk that descends it
 // reads those parts as addresses and reports entities that do not exist.
