@@ -134,7 +134,50 @@ func (p Pattern) MatchRef(ref Ref) bool { return p.pathCovers(ref) }
 // pathCovers reports whether an address is at or under the pattern's path. A segment of `*`
 // matches any one segment, and a segment carrying an operator is asked of the address's own
 // segment as a tony match — the same grammar a dimension takes, one level at a time.
-func (p Pattern) pathCovers(ref Ref) bool { return Under(p.Path, ref.Segs(), SegMatches) }
+func (p Pattern) pathCovers(ref Ref) bool {
+	if PathDescends(p.Path) {
+		return patternReaches(p.Path, ref.Segs())
+	}
+	return Under(p.Path, ref.Segs(), SegMatches)
+}
+
+// PathDescends reports whether a pattern's path reaches across depths — a `..` segment.
+func PathDescends(path []*ir.Node) bool {
+	for _, seg := range path {
+		if PathIsDescend(seg) {
+			return true
+		}
+	}
+	return false
+}
+
+// PathIsDescend reports whether a path segment is the descent `..`, which reaches the node it
+// stands at and every node beneath it. It is the string `..`, as a `*` position is the string
+// `*`: a name that is two dots is written as a quoted step and arrives here as any other name.
+func PathIsDescend(seg *ir.Node) bool {
+	lit, ok := PathLiteral(seg)
+	return ok && lit == ".."
+}
+
+// patternReaches is the pattern asked of one address, `..` reaching zero or more segments —
+// which is what makes a subject of different depths one question.
+func patternReaches(path []*ir.Node, segs []string) bool {
+	for i, seg := range path {
+		if PathIsDescend(seg) {
+			for n := 0; n <= len(segs); n++ {
+				if patternReaches(path[i+1:], segs[n:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(segs) == 0 || !SegMatches(seg, segs[0]) {
+			return false
+		}
+		segs = segs[1:]
+	}
+	return len(segs) == 0
+}
 
 // SafeMatch is tony.Match with a floor under it: a predicate that PANICS comes back as an
 // error, not as a dead process.
@@ -236,8 +279,8 @@ func (p Pattern) literalPrefix() []string {
 	var out []string
 	for i, seg := range p.Path {
 		lit, ok := PathLiteral(seg)
-		if !ok || i == len(p.Path)-1 {
-			break // a wildcard, an operator, or the leaf being selected: read above it
+		if !ok || PathIsDescend(seg) || i == len(p.Path)-1 {
+			break // a wildcard, an operator, a descent, or the leaf being selected: read above it
 		}
 		out = append(out, lit)
 	}
@@ -266,8 +309,14 @@ func (p Pattern) Select(r Reader) []Ref {
 		return nil
 	}
 	// THE PATTERN'S OWN DEPTH is what the store is asked for: a path of four segments selects
-	// nodes four deep, and the literal head of it is the prefix to read under.
-	ents := r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
+	// nodes four deep, and the literal head of it is the prefix to read under. A pattern that
+	// DESCENDS has no one depth, so it reads the subtree and walks it (selectUnder).
+	var ents []Entity
+	if PathDescends(p.Path) {
+		ents = p.selectUnder(r)
+	} else {
+		ents = r.ListAt(p.literalPrefix(), len(p.Path), p.pathCovers)
+	}
 	skipVanishing := !namesVanishing(p.Predicate)
 	out := make([]Ref, 0, len(ents))
 	for _, e := range ents {
@@ -278,6 +327,34 @@ func (p Pattern) Select(r Reader) []Ref {
 			out = append(out, e.Ref)
 		}
 	}
+	return out
+}
+
+// selectUnder is Select's listing for a pattern that reaches across depths: the subtree at its
+// literal prefix, read once, walked for every node the pattern reaches.
+//
+// One read rather than one per depth, and it is the same read `verse data demo '..'` makes —
+// which is the point of a descent being a pattern rather than a loop somebody writes.
+func (p Pattern) selectUnder(r Reader) []Entity {
+	prefix := p.literalPrefix()
+	node, ok, err := r.ReadAt(prefix)
+	if err != nil || !ok {
+		return nil
+	}
+	var out []Entity
+	var walk func(n *ir.Node, segs []string)
+	walk = func(n *ir.Node, segs []string) {
+		if patternReaches(p.Path, segs) {
+			out = append(out, Entity{Ref: RefAt(segs...), Payload: nodeToPayload(n)})
+		}
+		if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+			return
+		}
+		for i, f := range n.Fields {
+			walk(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
+		}
+	}
+	walk(node, prefix)
 	return out
 }
 

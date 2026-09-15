@@ -226,8 +226,8 @@ func (m Match) Names() (entity.Ref, bool) {
 	lits := make([]string, 0, len(segs))
 	for _, n := range segs {
 		lit, ok := entity.PathLiteral(n)
-		if !ok {
-			return entity.Ref{}, false
+		if !ok || entity.PathIsDescend(n) {
+			return entity.Ref{}, false // a descent names a set of places rather than one
 		}
 		lits = append(lits, lit)
 	}
@@ -243,6 +243,9 @@ func (m Match) Selects() bool {
 	segs := m.SegNodes()
 	if len(segs) == 0 {
 		return false
+	}
+	if entity.PathIsDescend(segs[0]) {
+		return false // a descent at the head names no place to read under
 	}
 	_, ok := entity.PathLiteral(segs[0])
 	return ok
@@ -417,7 +420,9 @@ func ParseExpr(s string) (Match, error) {
 			"subject is a pattern matched against the node a firing is about, e.g. \"demo.pr.*\" "+
 			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
-	steps, err := entity.ExprSegs(s)
+	// A SUBJECT IS A QUESTION, so it takes `..`: `verse-dev..finding` selects every finding
+	// beneath verse-dev, at whatever depth the rule that derived it put one.
+	steps, err := entity.PatternSegs(s)
 	if err != nil {
 		return nil, err
 	}
@@ -506,6 +511,11 @@ type Subtree struct {
 	// what the tree operations below do, and they are asked at install and at watch setup
 	// rather than per event.
 	kp string
+	// pat is the whole pattern this subtree was cut from, as a kinded path — `demo.pr.*`,
+	// `verse-dev..finding` — when a match named it. The watch is opened with it: the prefix
+	// says where to read and the pattern says which nodes are reported, which is the only way
+	// to say a question that reaches across depths.
+	pat string
 	// depth is how deep the entities this subtree is watched FOR stand — the whole address's
 	// depth, not the depth below the prefix. A watch cannot work it out (a document does not
 	// say where its entities end), and the thing that knows is whatever named the subtree: a
@@ -519,6 +529,17 @@ type Subtree struct {
 
 // Depth is how deep the entities under this subtree stand. See the field.
 func (s Subtree) Depth() int { return s.depth }
+
+// Pattern is the question this subtree is watched with: the match's own path where one named it,
+// and the prefix at its depth otherwise.
+func (s Subtree) Pattern() *kpath.KPath {
+	if s.pat != "" {
+		if kp, err := kpath.Parse(s.pat); err == nil {
+			return kp
+		}
+	}
+	return entity.PrefixPattern(s.Path(), s.depth)
+}
 
 // SubtreeAt builds the subtree standing at these segments, a leading `verse` being the root
 // like any other segment.
@@ -615,12 +636,16 @@ func subtreeOf(m Match) Subtree {
 		cut = 0
 	}
 	for i, seg := range segs {
-		if seg == "*" && i < cut {
+		if (seg == "*" || seg == "..") && i < cut {
 			cut = i
 			break
 		}
 	}
-	return atDepth(SubtreeAt(segs[:cut]...), len(segs))
+	st := atDepth(SubtreeAt(segs[:cut]...), len(segs))
+	if kp, err := entity.KPathOf(segs); err == nil {
+		st.pat = kp // the whole question, for the watch: a `*` and a `..` are segments of it
+	}
+	return st
 }
 
 // atDepth is a subtree watched for nodes at a depth other than its own — a PREFIX, where what

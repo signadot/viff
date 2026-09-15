@@ -125,7 +125,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 	}
 	// An empty or half-written address, or a leftover $var, is a typo, not a wildcard: it must
 	// fail at install rather than silently matching nothing (or, for a subject, creating "*").
-	for _, bad := range []string{`""`, `"demo..1"`, `".pr.1"`, `"$flow"`, `"demo:pr:$id"`} {
+	for _, bad := range []string{`""`, `".pr.1"`, `"$flow"`, `"demo:pr:$id"`} {
 		var m Match
 		if err := codec.Unmarshal([]byte(bad), &m, codec.JSON); err == nil {
 			t.Errorf("accepted %s (parsed as %#v)", bad, m)

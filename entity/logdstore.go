@@ -1347,7 +1347,17 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
 func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error) {
-	return s.watchSubtree(depth, true, false, prefix...)
+	prefix = trimEmpty(prefix)
+	return s.WatchPattern(prefix, PrefixPattern(prefix, depth), true, false)
+}
+
+// trimEmpty drops a trailing empty segment, which names no level: the two-argument
+// (system, kind) shape still speaking, where `WatchSubtree("demo", "")` is a whole-system watch.
+func trimEmpty(prefix []string) []string {
+	for len(prefix) > 0 && prefix[len(prefix)-1] == "" {
+		prefix = prefix[:len(prefix)-1]
+	}
+	return prefix
 }
 
 // WatchSubtreeAt is WatchSubtree for a caller that did NOT choose the path — a person naming one
@@ -1364,16 +1374,20 @@ func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, fu
 // would make `verse watch` with no cursor replay everything standing at the path, which is what
 // `--since` is for and what a cursorless watch explicitly is not.
 func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...string) (<-chan Commit, func(), error) {
-	return s.watchSubtree(depth, waitIfAbsent, true, prefix...)
+	prefix = trimEmpty(prefix)
+	return s.WatchPattern(prefix, PrefixPattern(prefix, depth), waitIfAbsent, true)
 }
 
-func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ...string) (<-chan Commit, func(), error) {
-	// A trailing empty segment names no level and is dropped, which is the two-argument
-	// (system, kind) shape still speaking: `WatchSubtree("demo", "")` is a whole-system watch
-	// and always was.
-	for len(prefix) > 0 && prefix[len(prefix)-1] == "" {
-		prefix = prefix[:len(prefix)-1]
-	}
+// WatchPattern is the watch a PATTERN opens: it watches the subtree at `prefix` and reports the
+// nodes the pattern reaches whose node differs, commit by commit. The two above are this with
+// the pattern a prefix and a depth spell; a pattern that DESCENDS (`demo..`) has no one depth
+// and is exactly why the watch takes the question rather than a number.
+//
+// THE PLACE AND THE QUESTION ARE TWO ARGUMENTS, because they are two things: a rule about
+// `git.head.verse` watches `git.head` — a watch AT the node would see that node's own changes
+// and never its appearance — and reports the one node its pattern names.
+func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
+	prefix = trimEmpty(prefix)
 	// A MOUNTED PLACE IS NOT IN THE LOG, so a watch on the log's copy of its path would open on
 	// nothing and wait for ever; Since refuses it for the same reason, and this says so the same
 	// way rather than routing it somewhere a history-bearing watch must never span (MountRoot).
@@ -1413,7 +1427,7 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 		// prev is the document the last diff was taken against. It starts EMPTY, so the
 		// first diff reports everything standing at the pattern.
 		var prev *ir.Node
-		pattern := []*kpath.KPath{PrefixPattern(prefix, depth)}
+		pattern := []*kpath.KPath{at}
 		// rev is the commit the reconstructed doc now stands at, stamped on every event the
 		// next diff emits. Without it a subtree event carried no revision at all while a root
 		// event carried its commit — the same stream, one half of it unable to say WHEN.

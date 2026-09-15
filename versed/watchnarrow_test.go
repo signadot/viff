@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 )
 
 // asksAt records the path each catch-up was asked about.
@@ -51,6 +52,9 @@ func (a *asksAt) asked() [][]string {
 // (git-issue 3qf2z59dh12ksdazg9n0).
 func TestAWatchCatchesUpOverTheSliceItWatches(t *testing.T) {
 	srv := testServer(t)
+	// Something standing at the slice, because a watch on a path holding nothing is refused
+	// before there is a catch-up to make (the same answer a read of it gives).
+	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
 	store := &asksAt{Store: srv.Store}
 	srv.Store = store
 	ts := httptest.NewServer(srv.Handler())

@@ -975,6 +975,14 @@ func (a *attributed) WatchSubtree(depth int, prefix ...string) (<-chan Commit, f
 	return a.narrowing(ch), unsub, nil
 }
 
+func (a *attributed) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
+	ch, unsub, err := a.Store.WatchPattern(prefix, at, waitIfAbsent, noInit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a.narrowing(ch), unsub, nil
+}
+
 func (a *attributed) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	snap, err := a.Store.AsOf(rev, within...)
 	if err != nil || IsSystem(a.principal) {

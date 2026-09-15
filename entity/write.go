@@ -779,7 +779,14 @@ func shellSpecial(r rune) bool {
 // An empty segment is refused rather than dropped, which kpath will not do for us: `demo..1`
 // parses as the two fields `demo` and `1`, so a template that expanded to nothing would select
 // something narrower instead of being refused.
-func ExprSegs(s string) ([]string, error) {
+func ExprSegs(s string) ([]string, error) { return exprSegs(s, false) }
+
+// PatternSegs is ExprSegs for a path that may QUERY rather than name one stored place: a rule's
+// subject, a read's address. `..` comes back as the step `..`, which every reader of a pattern
+// knows (entity.PathIsDescend, StepIsDescend); everything else is as ExprSegs reads it.
+func PatternSegs(s string) ([]string, error) { return exprSegs(s, true) }
+
+func exprSegs(s string, descend bool) ([]string, error) {
 	// A LEADING dot is the one thing kpath does not object to and this must: `.demo` parses as
 	// `demo`, so an address with a stray dot in front would silently name a different place.
 	// Everything else about dots belongs to the parser and reports better than a guard here can
@@ -797,19 +804,18 @@ func ExprSegs(s string) ([]string, error) {
 	for p := kp; p != nil; p = p.Next {
 		switch {
 		case p.Descend:
-			// `..` IS RECURSIVE DESCENT, and it is refused here rather than approximated. kpath
-			// carries it as its own thing and says why: it "names a set rather than a step", so
-			// a path holding one is not a stored path. An address selects entities AT a depth
-			// (entity.Store.ListAt), and a set spanning depths is a different question — the one
-			// a reader of derived entities wants and cannot yet ask.
-			//
-			// Refused EXPLICITLY because the alternatives are both bad: flattened to a `*` it
-			// silently selects one level where the author asked for every level, and left to the
-			// lexical guard above it reads as an empty segment, which sends somebody looking for
-			// a typo they did not make.
-			return nil, fmt.Errorf("address %q: `..` is recursive descent, which selects across "+
-				"DEPTHS — and an address selects at one. It is not supported here yet: name the "+
-				"levels, or leave one open with `*`", s)
+			// `..` IS RECURSIVE DESCENT: it names a set rather than a step, as kpath says, so a
+			// path holding one is not a stored path. A QUERY takes it — a read's address, a
+			// rule's subject — and everything that must name one place refuses it here rather
+			// than approximating it, because flattened to a `*` it would silently select one
+			// level where the author asked for every level.
+			if !descend {
+				return nil, fmt.Errorf("address %q: `..` is recursive descent, which reaches every "+
+					"depth beneath it — and this names one stored place. Name the levels, leave "+
+					"one open with `*`, or ask the question of a read or a rule's subject, which "+
+					"take a descent", s)
+			}
+			out = append(out, "..")
 		case p.Field != nil:
 			out = append(out, *p.Field)
 		case p.FieldAll:

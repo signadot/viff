@@ -396,19 +396,28 @@ func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
 //
 // A segment that is not a name or a `*` — an index, a keyed element — is a place INSIDE the node
 // the segments before it reach, so the path reaches that node and the walk stops there.
-func Reaches(at *kpath.KPath, ref Ref) bool {
-	segs := ref.Segs()
-	i := 0
-	for kp := at; kp != nil; kp = kp.Next {
-		if kp.Field == nil && !kp.FieldAll {
-			return i == len(segs)
-		}
-		if i == len(segs) || !KPathAdmits(kp, segs[i]) {
+func Reaches(at *kpath.KPath, ref Ref) bool { return reaches(at, ref.Segs()) }
+
+func reaches(kp *kpath.KPath, segs []string) bool {
+	for ; kp != nil; kp = kp.Next {
+		if kp.Descend {
+			// Every depth beneath, the node itself included: zero or more segments here.
+			for i := 0; i <= len(segs); i++ {
+				if reaches(kp.Next, segs[i:]) {
+					return true
+				}
+			}
 			return false
 		}
-		i++
+		if kp.Field == nil && !kp.FieldAll {
+			return len(segs) == 0
+		}
+		if len(segs) == 0 || !KPathAdmits(kp, segs[0]) {
+			return false
+		}
+		segs = segs[1:]
 	}
-	return i == len(segs)
+	return len(segs) == 0
 }
 
 // KPathSegments is a kinded path as its segments, in order, each still the kpath segment it was —

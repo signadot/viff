@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
@@ -17,11 +19,11 @@ type unwatchable struct {
 	on bool
 }
 
-func (u *unwatchable) WatchSubtree(depth int, prefix ...string) (<-chan entity.Commit, func(), error) {
+func (u *unwatchable) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan entity.Commit, func(), error) {
 	if u.on {
 		return nil, nil, errors.New("context deadline exceeded")
 	}
-	return u.Store.WatchSubtree(depth, prefix...)
+	return u.Store.WatchPattern(prefix, at, waitIfAbsent, noInit)
 }
 
 // A RESTORED RULE WHOSE WATCH COULD NOT BE OPENED IS ARMED, NOT ABANDONED: it stands in the

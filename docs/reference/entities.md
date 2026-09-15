@@ -304,9 +304,10 @@ The answer nests each node where it stands, **spelled in full**: `demo '..' stag
 nodes at different depths and stripping the segments after it would collide two of them into one
 key. A node the read keeps whole already holds what is beneath it, so nothing is answered twice.
 
-`..` is a QUERY, so it is a read's and a rule subject's; a write, a claim, a grant and a
-permissions record each name one stored place and refuse it. A watch does not take it yet and
-says so.
+`..` is a QUERY, so it belongs to reads, watches and rule subjects; a write, a claim, a grant and
+a permissions record each name one stored place and refuse it by that name. `verse watch demo
+'..'` reports every node beneath demo that changes, at the depth each stands at, and a rule's
+subject may descend the same way (see [the trigger model](../trigger-model.md)).
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
 assembled for the wire. So a name is a key rather than a token inside a rendered `at:`, which

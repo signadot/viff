@@ -506,7 +506,7 @@ func (e *Engine) openWatches(ctx context.Context, t Trigger, subtrees []Subtree)
 		// stand at. Reported at the fixed arity instead, a change to anything deeper arrived
 		// as a change to its three-segment ancestor, which is not the entity this rule is
 		// about (see entity.Store.WatchSubtree).
-		ch, unsub, err := e.store.WatchSubtree(st.Depth(), st.Path()...)
+		ch, unsub, err := e.store.WatchPattern(st.Path(), st.Pattern(), true, false)
 		if err != nil {
 			return fmt.Errorf("scoped trigger %q: watch %s: %w", t.Name, strings.Join(st.Path(), ":"), err)
 		}

@@ -628,6 +628,20 @@ Nothing has to be excluded by default for that to hold. A path begins with the p
 so `{path: [task, "*", "*"]}` on a charter about the world's tasks reaches `task.*` and never the
 mirror of a run at `verse.task.instance`.
 
+A `..` segment reaches every depth beneath where it stands, the node included — the subject for a
+rule about things that do not all stand at one depth, which is what derived entities are:
+
+```tony
+# every finding beneath verse-dev, wherever the rule that derived it put one
+subject: {path: [verse-dev, "..", finding], value: {stage: open}}
+subject: "verse-dev..finding"   # the same, as a kinded path
+```
+
+A subject that descends selects by reading the subtree at its literal prefix and walking it, and
+its watch is opened with the pattern rather than with a depth, so a write at any depth it reaches
+wakes the rule. It names a SET, so it is never "one entity named": a rule with a descending
+subject selects.
+
 The payload predicate takes operators too. It is `value`: the same tony match, evaluated against
 the payload instead of a segment.
 

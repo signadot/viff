@@ -37,10 +37,14 @@ func TestParseExpr(t *testing.T) {
 			t.Errorf("ParseExpr(%q) = %q, want %q", c.in, got.Segs(), c.want)
 		}
 	}
-	for _, bad := range []string{"", "   ", "demo..1", ".pr.1"} {
+	for _, bad := range []string{"", "   ", ".pr.1"} {
 		if m, err := ParseExpr(bad); err == nil {
 			t.Errorf("ParseExpr(%q) accepted, got %v", bad, m)
 		}
+	}
+	// A DESCENT IS A QUESTION, and a subject asks one: `demo..1` selects every `1` beneath demo.
+	if m, err := ParseExpr("demo..1"); err != nil || len(m.Segs()) != 3 || m.Segs()[1] != ".." {
+		t.Errorf("ParseExpr(demo..1) = (%v, %v), want the descent as its own segment", m.Segs(), err)
 	}
 }
 

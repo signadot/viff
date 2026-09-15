@@ -67,7 +67,7 @@ func walkChange(kp *kpath.KPath, segs []string, before, after, delta *ir.Node, w
 			whole = true
 		}
 	}
-	if kp == nil || (kp.Field == nil && !kp.FieldAll) {
+	if kp == nil || (kp.Field == nil && !kp.FieldAll && !kp.Descend) {
 		if before != nil || after != nil {
 			fn(segs, before, after)
 		}
@@ -85,6 +85,11 @@ func walkChange(kp *kpath.KPath, segs []string, before, after, delta *ir.Node, w
 		child(*kp.Field)
 		return
 	}
+	if kp.Descend {
+		// The rest of the path tried HERE and at every node beneath, which is what a descent
+		// reaches. changesAt reports each path once, however many ways the walk arrives at it.
+		walkChange(kp.Next, segs, before, after, delta, whole, fn)
+	}
 	var names []string
 	if merge != nil {
 		names = fieldNames(merge)
@@ -92,6 +97,15 @@ func walkChange(kp *kpath.KPath, segs []string, before, after, delta *ir.Node, w
 		names = unionNames(before, after)
 	}
 	for _, name := range names {
+		if kp.Descend {
+			var d *ir.Node
+			if merge != nil {
+				d = childByKey(merge, name)
+			}
+			walkChange(kp, append(append(make([]string, 0, len(segs)+1), segs...), name),
+				childByKey(before, name), childByKey(after, name), d, whole, fn)
+			continue
+		}
 		child(name)
 	}
 }
@@ -204,6 +218,9 @@ func (c Commit) touches(kp *kpath.KPath, segs []string, delta *ir.Node) bool {
 	}
 	if kp == nil {
 		return visible()
+	}
+	if kp.Descend {
+		return visible() // every depth beneath here: whatever the delta holds under it counts
 	}
 	if kp.Field == nil && !kp.FieldAll {
 		return visible() // an access into an array: the node holding it is what is touched

@@ -148,6 +148,12 @@ type Store interface {
 	// leave no trace in the merged diff — and a consumer cannot recover a transition the
 	// stream never reported.
 	WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error)
+	// WatchPattern is WatchSubtree asked with the PATTERN itself, which is what a question that
+	// reaches across depths needs: `demo..` has no one depth to report at, and a prefix and a
+	// number cannot say it. The place watched is its own argument, because a rule about one node
+	// watches the place above it. The two flags are the watch's manners — whether to wait on a
+	// path holding nothing, and whether to open with what already stands there.
+	WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
 	// This is the seam for local-dev / sandbox federation — a developer's working tree

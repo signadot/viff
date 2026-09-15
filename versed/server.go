@@ -1591,16 +1591,6 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	if refused(w, readableAt(store, principalOf(r), sel)) {
 		return
 	}
-	// A DESCENT IS A READ'S QUESTION for now: a watch reports at the depth its path names, and
-	// `..` names every depth, so the subtree watch underneath has no one depth to open at. Said
-	// outright rather than approximated to the path's length, which would report at some depth
-	// the caller did not ask for.
-	if entity.HasDescend(sel.at) {
-		codec.HTTPError(w, r, http.StatusBadRequest,
-			"a watch does not take `..` yet: name the depth you mean (`demo pr '*'`), or read it "+
-				"with `verse data`, which answers every depth a descent reaches")
-		return
-	}
 	// ABSENT MEANS FROM NOW, and it is not the same as `since=0`. A watch with no cursor is
 	// somebody saying "show me what happens", and answering that with a replay of the whole
 	// retained log — or, when the store cannot replay from 0, with a REFUSAL telling them to
@@ -1864,13 +1854,15 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entity.Commit, func(), error) {
 	prefix, _ := entity.LiteralPrefix(sel.at)
 	narrow, hasNarrow := store.(interface {
-		WatchSubtreeAt(int, bool, ...string) (<-chan entity.Commit, func(), error)
+		WatchPattern([]string, *kpath.KPath, bool, bool) (<-chan entity.Commit, func(), error)
 	})
 	if len(prefix) == 0 || !hasNarrow {
 		ch, unsub := store.Observe(sel.at)
 		return ch, unsub, nil
 	}
-	return narrow.WatchSubtreeAt(entity.AtDepth(sel.at), waitIfAbsent, prefix...)
+	// WITH THE PATH ITSELF: what is reported is what the path reaches, whether that is one
+	// depth or — under a `..` — every depth beneath it.
+	return narrow.WatchPattern(prefix, sel.at, waitIfAbsent, true)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
