@@ -305,9 +305,8 @@ verse data -if '{stage: open}'                     # by what it says
 verse data -if '{urgent: true}' -if-at labels      # …rooted inside the payload
 ```
 
-Steps everywhere except the globbed line, and that exception is the point: a `*` typed as a
-step is a name — the shell would expand it bare, and quoting it makes it the literal id `*` —
-so a selector is written as one token. See the spelling table above.
+The globbed line has a steps spelling too: `verse data demo pr '*' stage` is the same read, and
+`'"*"'` is the id that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
 assembled for the wire. So an id is a key rather than a token inside a rendered `at:`, which
