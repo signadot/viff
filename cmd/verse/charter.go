@@ -116,7 +116,11 @@ func charterCmd() *cli.Command {
 					"--rm removes, --rm-recursive removes what is under an address too",
 					cli.ErrUsage)
 			case trig.Add:
-				return charterAdd(cc, joinSteps(steps), trig.File)
+				at, err := charterPath(steps)
+				if err != nil {
+					return err
+				}
+				return charterAdd(cc, at, trig.File)
 			case trig.Rm, trig.RmR:
 				return charterRm(cc, steps, trig.RmR)
 			}
@@ -140,14 +144,27 @@ func charterCmd() *cli.Command {
 func printCharter(cc *cli.Context, steps []string) error {
 	q := url.Values{}
 	at, reach, split := cutAt(steps, "--")
-	full := joinSteps(steps) // everything typed, which is what --paths prefixes its lines with
+	full, err := charterPath(steps) // everything typed, which is what --paths prefixes its lines with
+	if err != nil {
+		return err
+	}
 	if split {
-		q.Set("at", joinSteps(at))
+		atPath, err := charterPath(at)
+		if err != nil {
+			return err
+		}
+		q.Set("at", atPath)
 		steps = reach
-		full = joinSteps(append(append([]string{}, at...), reach...))
+		if full, err = charterPath(append(append([]string{}, at...), reach...)); err != nil {
+			return err
+		}
 	}
 	if len(steps) > 0 {
-		q.Set("path", joinSteps(steps))
+		path, err := charterPath(steps)
+		if err != nil {
+			return err
+		}
+		q.Set("path", path)
 	}
 	if trig.Depth >= 0 {
 		q.Set("depth", fmt.Sprint(trig.Depth))
@@ -171,16 +188,21 @@ func printCharter(cc *cli.Context, steps []string) error {
 	return printBody(cc, resp)
 }
 
-// joinSteps is the path as one token: the steps, dot-joined.
+// charterPath is a charter path's steps as the one token the server reads back with
+// entity.PathSegs: the names they carry, joined by JoinSegs, which is that reader's inverse.
 //
-// PLAIN JOINING, where `verse data`'s address() refuses to MIX the two spellings — `demo.pr a.b`
-// is an error there, because an entity id may contain a dot and `a.b` could be one step or two.
-// No charter name may hold a delimiter (a rule or a level called `v1.2` is refused at install:
-// a name is a bare kpath field, since a chain addresses the action inside a rule as
-// `review.onDone`), so `verse c verse-dev.drift rules watcher` has exactly one reading and the
-// two spellings compose freely. Which is what somebody types: the address they know as one
-// word, then the steps into it.
-func joinSteps(steps []string) string { return strings.Join(steps, ".") }
+// STEPS, AS `verse data` READS THEM, so a word means the same thing on every command that takes
+// a path. A word is one segment whatever is inside it, the quoted clause is a name, and an access
+// or a wildcard is refused — a charter path names one place, made of names. So the path is
+// `verse c verse-dev drift rules watcher`, and `verse c verse-dev.drift` names a system called
+// `verse-dev.drift`, as it would on `verse data`.
+func charterPath(steps []string) (string, error) {
+	names, err := entity.StepNames(steps)
+	if err != nil {
+		return "", fmt.Errorf("%w: charter: %s", cli.ErrUsage, err)
+	}
+	return entity.JoinSegs(names), nil
+}
 
 // printCharterPaths prints what is installed, ONE PATH PER LINE, each of them a path this same
 // command takes back:
@@ -542,10 +564,21 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 	q := url.Values{}
 	at, reach, split := cutAt(steps, "--")
 	if split {
-		q.Set("at", joinSteps(at))
+		atPath, err := charterPath(at)
+		if err != nil {
+			return err
+		}
+		q.Set("at", atPath)
 		steps = reach
 	}
-	q.Set("path", joinSteps(steps))
+	path, err := charterPath(steps)
+	if err != nil {
+		return err
+	}
+	q.Set("path", path)
+	// The names, for what is said back: the quoted clause is gone from them, and they print as
+	// the steps a listing would.
+	names, _ := entity.StepNames(steps)
 	if recurse {
 		q.Set("recurse", "true")
 	}
@@ -566,7 +599,7 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
 	// in a SCOPE was the scope's own — an inherited one is refused as baseline's — so baseline
 	// holds what it held.
-	name, kind, item := lastItem(steps)
+	name, kind, item := lastItem(names)
 	switch {
 	case item && g.Scope != "":
 		fmt.Fprintf(cc.Out, "removed the %s %s in scope %s; baseline is untouched\n",
@@ -578,10 +611,10 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 		// address itself holding nothing and the charters being under it. Saying "the charter
 		// at demo" about a demo that never had one is a sentence somebody will re-check.
 		fmt.Fprintf(cc.Out, "uninstalled the charters at and under %s; what they wrote is still there\n",
-			joinSteps(steps))
+			entity.JoinSteps(names))
 	default:
 		fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n",
-			joinSteps(steps))
+			entity.JoinSteps(names))
 	}
 	return nil
 }

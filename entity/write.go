@@ -102,6 +102,26 @@ func StepName(step string) string {
 	return step
 }
 
+// StepNames reads a vector of steps that must name ONE place made of names — a charter path,
+// the node a permissions record is about — and answers the names, for JoinSegs. The quoted
+// clause is taken literally, as everywhere; an access or a wildcard is refused, since neither
+// names a field, and a command that reads names would otherwise take `[0]` or `*` as one.
+func StepNames(steps []string) ([]string, error) {
+	out := make([]string, 0, len(steps))
+	for _, step := range steps {
+		switch {
+		case StepIsWild(step):
+			return nil, fmt.Errorf("%q: a `*` step selects every field there, and this path names "+
+				"one place — the name that is an asterisk is the step '\"*\"'", strings.Join(steps, " "))
+		case StepIsAccess(step):
+			return nil, fmt.Errorf("%q: %q addresses an array element, and this path is names — "+
+				"the name that begins with a bracket is the step '\"%s\"'", strings.Join(steps, " "), step, step)
+		}
+		out = append(out, StepName(step))
+	}
+	return out, nil
+}
+
 // KPathOf renders a vector of steps as the kinded path they name, applying the four clauses —
 // which is what a READ sends, since the wire takes a kpath and the server parses it with kpath.
 //

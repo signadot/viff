@@ -216,8 +216,13 @@ can only ever mean three.
 | `verse data`, `data/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
 | `verse flow show/pause/resume/cancel/say` | one token — a selector (see above) |
 | `verse runner/source/resolver show/check/remove` | one token: `<kind>.<name>`, or the address as stored |
-| `verse charter [<address>]` | an address in the charter tree, any depth: `verse charter verse-dev drift` |
+| `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter verse-dev drift` |
 | `verse c <address> rules <name>` | a path: the address, then into it |
+| `verse perms <step>…` | the node a record is about, as steps |
+
+`verse charter` and `verse perms` read steps as `verse data` does — a word is one segment, and
+`'"x"'` is the name `x` — but they name one place made of names, so an access (`'[0]'`) or a `*`
+step is refused.
 
 ## Two halves, one tree
 

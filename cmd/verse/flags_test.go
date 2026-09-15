@@ -615,9 +615,9 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 		t.Fatalf("installing at `shadow.rules`: %s", resp.Status)
 	}
 	// Greedy: the package is a longer place than `shadow`, so it wins.
-	out, err := runCLI(t, "charter", "shadow.rules")
+	out, err := runCLI(t, "charter", "shadow", "rules")
 	if err != nil {
-		t.Fatalf("charter shadow.rules: %v", err)
+		t.Fatalf("charter shadow rules: %v", err)
 	}
 	if !strings.Contains(out, "writes: shadow.rules.") {
 		t.Errorf("the package was not reached: %s", out)
@@ -632,6 +632,41 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	}
 	if !strings.Contains(out, "above") {
 		t.Errorf("`--` did not answer shadow's rules: %s", out)
+	}
+}
+
+// A CHARTER PATH IS STEPS, read as `verse data` reads them: one word is one segment, so a dotted
+// word names one system; the quoted clause is the name inside it; and an access or a `*` is
+// refused, since a charter path names one place.
+func TestACharterPathReadsItsStepsAsDataDoes(t *testing.T) {
+	serve(t)
+	if err := installPackageRuleAt(t, "notes"); err != nil {
+		t.Fatalf("installing a package: %v", err)
+	}
+	for _, steps := range [][]string{
+		{"notes", "rules", "note"},
+		{`"notes"`, "rules", `"note"`},
+	} {
+		if out, err := runCLI(t, append([]string{"charter"}, steps...)...); err != nil ||
+			!strings.Contains(out, "name: note") {
+			t.Errorf("charter %q = (%q, %v), want the package's rule", steps, out, err)
+		}
+	}
+	if out, err := runCLI(t, "charter", "notes.rules", "note"); err == nil && strings.Contains(out, "name: note") {
+		t.Errorf("charter notes.rules note reached the rule, but a dotted word is one segment: %s", out)
+	}
+	for _, args := range [][]string{
+		{"charter", "notes", "*"},
+		{"charter", "notes", "rules", "[0]"},
+		{"charter", "-r", "notes", "rules", "*"},
+		{"charter", "-a", "*", "-f", "-"},
+	} {
+		if _, err := runCLI(t, args...); !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("%q = %v, want a usage error: a charter path names one place", args, err)
+		}
+	}
+	if out, err := runCLI(t, "charter", "notes", "rules", "note"); err != nil || !strings.Contains(out, "name: note") {
+		t.Errorf("a refused removal took the rule anyway: (%q, %v)", out, err)
 	}
 }
 

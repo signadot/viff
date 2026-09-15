@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+// perms READS STEPS AS `verse data` DOES: the quoted clause is the name inside it, and an access
+// or a `*` is refused, since a record is about one node.
+func TestPermsReadsItsPathAsSteps(t *testing.T) {
+	serve(t)
+	t.Setenv("VERSE_USER", "walter@example.com")
+	if _, err := runCLI(t, "data", "spaces", "scott", "notes", "--put", `{todo: [buy milk]}`); err != nil {
+		t.Fatalf("put notes: %v", err)
+	}
+	if _, err := runCLI(t, "perms", "spaces", "scott", "--default", "{}"); err != nil {
+		t.Fatalf("perms: %v", err)
+	}
+	plain, err := runCLI(t, "perms", "spaces", "scott")
+	if err != nil {
+		t.Fatalf("perms spaces scott: %v", err)
+	}
+	quoted, err := runCLI(t, "perms", "spaces", `"scott"`)
+	if err != nil || quoted != plain {
+		t.Errorf(`perms spaces "scott" = (%q, %v), want the record perms spaces scott reads:
+%s`, quoted, err, plain)
+	}
+	for _, steps := range [][]string{{"spaces", "*"}, {"spaces", "scott", "[0]"}} {
+		if out, err := runCLI(t, append([]string{"perms"}, steps...)...); err == nil {
+			t.Errorf("perms %q = %q, want a refusal: a record is about one node", steps, out)
+		}
+	}
+}
+
 // A person takes a place of their own and holds nothing out beneath it: what they create
 // there is theirs alone, refused to anybody else on a read as on a write, while what they
 // created before, under the open default, stays readable.

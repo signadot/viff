@@ -218,7 +218,7 @@ verse
                                              since that is the state worth seeing
           <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
                                              levels, one of them by name, and on into that one
-                                             (`c verse-dev.drift rules watcher action`).
+                                             (`c verse-dev drift rules watcher action`).
                                              `c rules watcher` is baseline's, which has no
                                              address. A name that is elsewhere is named in
                                              the refusal, with the path that reaches it

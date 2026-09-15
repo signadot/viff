@@ -55,7 +55,13 @@ func (cfg *permsConfig) run(cc *cli.Context, args []string) error {
 	if args[0] == "list" {
 		return fmt.Errorf("%w: there is no `verse perms list` — bare `verse perms` is the listing", cli.ErrUsage)
 	}
-	at := entity.JoinSegs(args)
+	// STEPS, as `verse data` reads them: the quoted clause is a name, and an access or a `*` is
+	// refused, since a record is about one node.
+	names, err := entity.StepNames(args)
+	if err != nil {
+		return fmt.Errorf("%w: perms: %s", cli.ErrUsage, err)
+	}
+	at := entity.JoinSegs(names)
 	if cfg.Default == "" && cfg.Grants == "" && cfg.Grant == "" && cfg.Revoke == "" {
 		resp, err := httpGet("/perms", url.Values{"at": {at}})
 		if err != nil {
