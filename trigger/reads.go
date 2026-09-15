@@ -197,10 +197,11 @@ func StampReads(in []Subtree) []string {
 // Level by level, where an empty level is a wildcard: `demo` overlaps `demo.pr` because one
 // contains the other, and `demo.pr` and `demo.issue` overlap nowhere.
 func (s Subtree) Overlaps(o Subtree) bool {
-	// ANCESTOR-OR-EQUAL EITHER WAY, which is go-tony's own question about two paths: `demo`
-	// meets `demo.pr` because one contains the other, and `demo.pr` misses `demo.issue` because
-	// neither does. Asking the path grammar rather than comparing segments is what keeps a
-	// quoted segment (`demo."a.b"`) from being split into two by hand.
+	// SEGMENT BY SEGMENT, as far as the shorter goes, each asked of kpath (entity.Overlap,
+	// entity.KPathDisjoint): `demo` meets `demo.pr` because one extends the other, `demo.pr`
+	// misses `demo.issue`, and `demo.*.x` meets `*.pr.x` at `demo.pr.x` — which neither is a
+	// prefix of, so asking MatchesPrefix each way would miss it. Parsing rather than splitting is
+	// what keeps a quoted segment (`demo."a.b"`) one segment.
 	mine, err := kpath.Parse(s.kp)
 	if err != nil {
 		return false
@@ -209,7 +210,7 @@ func (s Subtree) Overlaps(o Subtree) bool {
 	if err != nil {
 		return false
 	}
-	return mine.MatchesPrefix(theirs) || theirs.MatchesPrefix(mine)
+	return entity.Overlap(entity.KPathSegments(mine), entity.KPathSegments(theirs), entity.KPathDisjoint)
 }
 
 // PackageKind is where a package's own declaration lives: `verse:trigger:package:<address>`,

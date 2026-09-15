@@ -268,3 +268,26 @@ func TestAConfinementDoesNotReachIntoVersesHalf(t *testing.T) {
 		t.Fatalf("a package at demo could not patch its own demo.pr: %v", err)
 	}
 }
+
+// TWO SUBTREES OVERLAP where some address is under both: one extends the other, or crossed
+// wildcards meet — `demo.*.x` and `*.pr.x` at `demo.pr.x`, which neither is a prefix of.
+func TestSubtreesOverlapSegmentBySegment(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"demo", "demo.pr", true},
+		{"demo.pr", "demo.issue", false},
+		{"demo.*.x", "*.pr.x", true},
+		{"demo.*.x", "*.pr.y", false},
+		{`demo."a.b"`, "demo.a", false},
+	} {
+		a, b := SubtreeOfPath(c.a), SubtreeOfPath(c.b)
+		if got := a.Overlaps(b); got != c.want {
+			t.Errorf("%s overlaps %s = %v, want %v", c.a, c.b, got, c.want)
+		}
+		if got := b.Overlaps(a); got != c.want {
+			t.Errorf("%s overlaps %s = %v, want %v (asymmetric)", c.b, c.a, got, c.want)
+		}
+	}
+}

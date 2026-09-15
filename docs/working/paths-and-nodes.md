@@ -138,9 +138,9 @@ Nothing downstream of the CLI reads steps, and nothing re-derives segments any o
 
 Two questions are asked of patterns, and each is asked one way. **Reach** — does this pattern
 reach that path, is this write under that confinement — is kpath's (`Matches`, `MatchesPrefix`).
-**Overlap** — can two patterns reach a common path: two strata, two sources' claims — is not a
-question kpath answers, and is one per-segment walk in verse: at each position, can some name
-satisfy both.
+**Overlap** — can two patterns reach a common path: two strata, two sources' claims — is one
+walk to the shorter length asking, at each position, whether the two segments can meet; for
+segments kpath spells, that is kpath's `Matches` asked of the two segments each way.
 
 A charter's subject path may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`),
 and a source's claim may put a literal prefix there (`ws/*`). Either stays a match on the field

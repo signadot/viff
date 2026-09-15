@@ -436,6 +436,16 @@ func KPathSegments(at *kpath.KPath) []*kpath.KPath {
 	return out
 }
 
+// KPathDisjoint reports whether two kinded-path segments can name no common segment — the
+// per-segment half of Overlap for patterns kpath spells. It is kpath's own Matches asked of the
+// two segments alone, each way: a wildcard meets any segment of its kind, two concrete segments
+// only when equal, and kinds never cross.
+func KPathDisjoint(a, b *kpath.KPath) bool {
+	x, y := *a, *b
+	x.Next, y.Next = nil, nil
+	return !x.Matches(&y) && !y.Matches(&x)
+}
+
 // KPathAdmits is one kinded-path segment asked of one address segment: `*` admits any name, a
 // field its own; an index or a keyed element admits none, since no address is spelled that way.
 func KPathAdmits(kp *kpath.KPath, seg string) bool {
