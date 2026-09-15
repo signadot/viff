@@ -1573,7 +1573,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 		grants = a.defaultGrants(ref)
 	}
 	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}
-	if under.Len() > 0 {
+	if len(under.Segs()) > 0 {
 		rec[UnderField] = under.String()
 	}
 	_, _, err := a.Store.Write(Write{

@@ -871,7 +871,7 @@ func (e *Engine) checkGateAnswerers(answerers []string, need int, options []task
 		}
 		// A person, an agent or a runner is taken at their word; a group or a place is a record
 		// somebody installed, and one that is not there is a question nobody is held out to.
-		if stands.Len() > 0 {
+		if len(stands.Segs()) > 0 {
 			if _, ok, gerr := e.store.Get(stands); gerr != nil || !ok {
 				return fmt.Errorf("answerer %q: nothing stands at %s", a, stands)
 			}

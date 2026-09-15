@@ -9,10 +9,9 @@
 2 entity/addr_test.go
 3 entity/doc_test.go
 16 entity/doc.go
-10 entity/entity.go
+7 entity/entity.go
 1 entity/pattern.go
 6 entity/read_test.go
-4 entity/segs_test.go
 2 entity/snapshot.go
 2 runner/entity.go
 1 schema/curated.tony

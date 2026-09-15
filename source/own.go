@@ -380,7 +380,7 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 	// The ref AS A CLAIM: one exact level per segment, at whatever depth it is. A claim covers
 	// it exactly when the two are not disjoint, which is how a short claim (`git`) is asked
 	// about a long address without either side knowing how deep the other goes.
-	point := Claim{Segs: make([]Seg, 0, ref.Len())}
+	point := Claim{Segs: make([]Seg, 0, len(ref.Segs()))}
 	for _, s := range ref.Segs() {
 		point.Segs = append(point.Segs, Seg{Name: s})
 	}
@@ -426,7 +426,7 @@ func Nodes(claims []Claim) []entity.Ref {
 			all = append(all, n)
 		}
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].Len() < all[j].Len() })
+	sort.Slice(all, func(i, j int) bool { return len(all[i].Segs()) < len(all[j].Segs()) })
 	var out []entity.Ref
 	for _, n := range all {
 		within := false

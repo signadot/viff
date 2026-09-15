@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -119,24 +120,31 @@ const replayBudget = 15 * time.Second
 // slice is still addressed as the ordinary ref local:dir-content-<scope>:<path>.
 const MountRoot = DefaultRoot + "mnt"
 
-// mountedKinds are the (system, kind-prefix) slices served by a controller mount rather
-// than by the log, so refPath renders them under MountRoot. Kept here — not derived from
-// package source, which imports this package — and held in step by
-// source.TestFederationKindsAreMountOwned.
+// mounts are the places served by a controller mount rather than by the log, so a path through
+// one renders under MountRoot. Each is a path from the top of the tree whose last segment is a
+// prefix: `local.dir-content-*`. Kept here — not derived from package source, which imports
+// this package — and held in step by source.TestFederationKindsAreMountOwned.
 //
-// Only the content slice is mounted today: `verse connect` serves file bytes on demand at
-// local:dir-content-<scope> and stores nothing. Its sibling local:dir-status-<scope> is
+// Only the content place is mounted today: `verse connect` serves file bytes on demand at
+// local.dir-content-<scope> and stores nothing. Its sibling local.dir-status-<scope> is
 // ordinary log-backed metadata and stays under DefaultRoot, which is what keeps the
 // trigger that matches it watchable.
-var mountedKinds = []struct{ System, KindPrefix string }{
-	{"local", "dir-content-"},
+var mounts = []struct {
+	at     []string // the literal segments above the mounted one
+	prefix string   // what the mounted segment begins with
+}{
+	{[]string{"local"}, "dir-content-"},
 }
 
-// IsMountOwned reports whether a (system, kind) slice is served by a controller mount,
-// and so lives under MountRoot with no history.
-func IsMountOwned(system, kind string) bool {
-	for _, m := range mountedKinds {
-		if m.System == system && strings.HasPrefix(kind, m.KindPrefix) {
+// IsMountOwned reports whether a path reaches a place served by a controller mount, and so
+// renders under MountRoot with no history. It is asked of a path's segments from the top of the
+// tree — `verse` counts like any other — whoever asks: a ref, a read, a watch, a replay.
+func IsMountOwned(segs ...string) bool {
+	for _, m := range mounts {
+		if len(segs) <= len(m.at) || !slices.Equal(segs[:len(m.at)], m.at) {
+			continue
+		}
+		if strings.HasPrefix(segs[len(m.at)], m.prefix) {
 			return true
 		}
 	}
@@ -324,12 +332,7 @@ func (s *LogdStore) refPath(ref Ref) string {
 
 // rootFor picks the top-level segment a ref renders under: MountRoot for a
 // controller-mounted (historyless) slice, this store's root otherwise.
-func (s *LogdStore) rootFor(ref Ref) string {
-	if IsMountOwned(ref.System(), ref.Kind()) {
-		return seg(MountRoot)
-	}
-	return seg(s.root)
-}
+func (s *LogdStore) rootFor(ref Ref) string { return s.rootForAt(ref.Segs()) }
 
 // rootForAt is rootFor for a PATH rather than a ref — the same choice, made from the
 // segments a read was asked at.
@@ -345,27 +348,26 @@ func (s *LogdStore) rootFor(ref Ref) string {
 // root, which loses nothing today — a controller answers null at its own mount root (see
 // source.Content.Match), so there is nothing there to merge in.
 func (s *LogdStore) rootForAt(at []string) string {
-	if len(at) >= 2 && IsMountOwned(at[0], at[1]) {
+	if IsMountOwned(at...) {
 		return seg(MountRoot)
 	}
 	return seg(s.root)
 }
 
-// MountKPath renders the kinded-path <MountRoot>.<system>.<kind> at which a controller
-// mounts to own that (system,kind) slice — e.g. verse connect's content controller
-// mounts the local:dir-content-<scope> slice. A controller task holds no store, so
-// this lets it and the store agree on the path.
+// MountKPath renders the kinded path under MountRoot at which a controller mounts to own a
+// mounted place — e.g. verse connect's content controller mounts local.dir-content-<scope>. A
+// controller task holds no store, so this lets it and the store agree on the path.
 //
-// It renders under MountRoot, disjoint from the entity root, so a mount never sits below
-// a watched path (see MountRoot). A (system,kind) passed here must therefore also satisfy
-// IsMountOwned, or the store would render its refs under the other root and reads would
-// miss the mount — MountKPath panics rather than let the two drift silently.
-func MountKPath(system, kind string) string {
-	if !IsMountOwned(system, kind) {
-		panic("entity.MountKPath: " + system + ":" + kind + " is not a registered mount-owned slice " +
-			"(add it to mountedKinds, else refPath will render it under the entity root and miss the mount)")
+// It renders under MountRoot, disjoint from the entity root, so a mount never sits below a
+// watched path (see MountRoot). The path must reach a mounted place (IsMountOwned), or the store
+// would render what is under it at the other root and reads would miss the mount — MountKPath
+// panics rather than let the two drift silently.
+func MountKPath(segs ...string) string {
+	if !IsMountOwned(segs...) {
+		panic("entity.MountKPath: " + JoinSegs(segs) + " is not a mounted place " +
+			"(add it to mounts, else refPath will render it under the entity root and miss the mount)")
 	}
-	return seg(MountRoot) + "." + seg(system) + "." + seg(kind)
+	return seg(MountRoot) + "." + JoinSegs(segs)
 }
 
 func seg(v string) string {
@@ -1376,6 +1378,13 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 	for len(prefix) > 0 && prefix[len(prefix)-1] == "" {
 		prefix = prefix[:len(prefix)-1]
 	}
+	// A MOUNTED PLACE IS NOT IN THE LOG, so a watch on the log's copy of its path would open on
+	// nothing and wait for ever; Since refuses it for the same reason, and this says so the same
+	// way rather than routing it somewhere a history-bearing watch must never span (MountRoot).
+	if IsMountOwned(prefix...) {
+		return nil, nil, fmt.Errorf("watching %s: a mounted place is served by a controller rather "+
+			"than the log, so it has no commits to watch", JoinSegs(prefix))
+	}
 	// The path as segments as well as a kpath: every event is rooted at the watched path
 	// and the document is rooted at the store root, so the segments are what bridges the two
 	// (see nestAt).
@@ -1895,7 +1904,7 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	// not the log, and MountRoot exists so a history-bearing watch never spans one. Replaying
 	// the log-backed base at that path would answer an empty catch-up successfully, which is
 	// the shape this call is being fixed to stop producing.
-	if len(at) >= 2 && IsMountOwned(at[0], at[1]) {
+	if IsMountOwned(at...) {
 		return nil, fmt.Errorf("replaying %s: a mounted slice is backed by a controller rather "+
 			"than the log, so it has no commits to replay", JoinSegs(at))
 	}

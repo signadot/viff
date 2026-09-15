@@ -729,7 +729,7 @@ func waitDerived(t *testing.T, s entity.Store, target []string, rule string, sub
 // about `subj` lands at — which is what a listing has to say now that entity-hood is a lens.
 func waitCount(t *testing.T, s entity.Store, target []string, subj entity.Ref, want int) {
 	t.Helper()
-	depth := len(target) + 1 + subj.Len() // the target, the rule segment, and the subject
+	depth := len(target) + 1 + len(subj.Segs()) // the target, the rule segment, and the subject
 	deadline := time.After(3 * time.Second)
 	for {
 		ents := s.ListAt(target, depth, nil)

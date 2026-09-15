@@ -274,7 +274,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	// segments of the subject, and the element's key. A listing says how deep it reads now that
 	// a derived entity is as deep as what it is about.
 	drift := func() []entity.Entity {
-		return store.ListAt([]string{"drift", "finding"}, 2+1+subj.Len()+1, nil)
+		return store.ListAt([]string{"drift", "finding"}, 2+1+len(subj.Segs())+1, nil)
 	}
 
 	// Twelve findings, twelve entities.
@@ -495,7 +495,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	}
 
 	// The target, the hook CHAIN as one segment, the subject, and the element's key.
-	got := store.ListAt([]string{"drift", "finding"}, 2+1+subj.Len()+1, nil)
+	got := store.ListAt([]string{"drift", "finding"}, 2+1+len(subj.Segs())+1, nil)
 	if len(got) != 2 {
 		t.Fatalf("derived %d entities from a two-finding answer", len(got))
 	}

@@ -3,6 +3,7 @@ package entity
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -62,7 +63,7 @@ func TestSinceAtOneSlice(t *testing.T) {
 // successfully off the log-backed base underneath it.
 func TestSinceAtAMountedSliceIsRefused(t *testing.T) {
 	s := openStore(t)
-	_, err := s.Since(0, mountedKinds[0].System, mountedKinds[0].KindPrefix+"x")
+	_, err := s.Since(0, append(slices.Clone(mounts[0].at), mounts[0].prefix+"x")...)
 	if err == nil {
 		t.Fatal("a replay of a mounted slice succeeded; a controller-backed slice has no commits")
 	}

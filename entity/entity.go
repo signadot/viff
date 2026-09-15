@@ -127,15 +127,6 @@ func (r Ref) seg(n int) string {
 	return ""
 }
 
-// Len is how many segments the address has below its root: the root is a separate field, not
-// one of these, so it is not counted here.
-func (r Ref) Len() int {
-	if r.key == "" {
-		return 0
-	}
-	return strings.Count(r.key, sep) + 1
-}
-
 // String spells an address as the kinded path it is, at every depth — `demo.pr."1"`,
 // `verse-dev.drift.head.abc`, `git.ref."x@git:ref:y"`. ParseAddr reads back exactly this, and
 // there is nothing else to read.
@@ -194,14 +185,9 @@ func ParseAddr(s string) (Ref, error) {
 	return ref, nil
 }
 
-// Segs is a ref's segments, in order — the form everything that WALKS an address speaks,
-// as against the three names a caller writes.
-//
-// The distinction is the point. A store path, a subtree watch, a document's key levels and
-// the entity a document's leaf stands at are all "a sequence of segments", and each of them
-// used to say so by naming system, kind and id — which is how the arity came to be stated in
-// a dozen places instead of one. They ask here now, so the arity is `Depth`'s business and
-// theirs is the walk.
+// Segs is a ref's path: its segments, in order, `verse` first for an address in verse's own
+// half. Its length is the address's length — there is no second count that leaves the root out
+// (docs/working/paths-and-nodes.md).
 func (r Ref) Segs() []string {
 	var out []string
 	if r.root != "" {
@@ -213,35 +199,11 @@ func (r Ref) Segs() []string {
 	return append(out, strings.Split(r.key, sep)...)
 }
 
-// RefOf is Segs' inverse: the ref standing at these segments.
-//
-// It reports whether the segments name an entity at all, which today means exactly three of
-// them, none empty — the same question ParseRef answers about a string. A caller that has
-// walked to a leaf has segments rather than a rendering, and rebuilding the string for
-// ParseRef to take apart again is how an id containing a colon comes back as a different
-// entity than the one that was found.
-func RefOf(segs []string) (Ref, bool) {
-	// One leading `verse` is the root, and what follows it is the three an address has.
-	want := Depth
-	if len(segs) > 0 && segs[0] == VerseRoot {
-		want++
-	}
-	if len(segs) != want {
-		return Ref{}, false
-	}
-	for _, s := range segs {
-		if s == "" {
-			return Ref{}, false
-		}
-	}
-	return RefAt(segs...), true
-}
-
-// RefOfAny is RefOf without the arity: the segments name a place at whatever depth, and what is
-// refused is an empty one — a segment is a name, and a nameless level addresses nothing.
-//
-// RefOf keeps asking about the three an address has always had, because a walk at a FIXED depth
-// is still what most callers want and "is this an entity" is exactly that question for them.
+// RefOfAny is Segs' inverse: the ref standing at these segments, at whatever depth. What is
+// refused is no segments, or an empty one — a segment is a name, and a nameless level addresses
+// nothing. A caller that has walked to a node has segments rather than a rendering, and
+// rebuilding a string to take apart again is how an id holding a delimiter comes back as a
+// different address than the one that was found.
 func RefOfAny(segs []string) (Ref, bool) {
 	if len(segs) == 0 {
 		return Ref{}, false

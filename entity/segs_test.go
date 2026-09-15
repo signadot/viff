@@ -21,12 +21,9 @@ func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 		RefAt("demo", "pr", "a.b"),
 	} {
 		segs := ref.Segs()
-		if len(segs) != Depth {
-			t.Fatalf("%s has %d segments, want %d", ref, len(segs), Depth)
-		}
-		got, ok := RefOf(segs)
+		got, ok := RefOfAny(segs)
 		if !ok {
-			t.Fatalf("RefOf(%q) refused the segments of a real ref", segs)
+			t.Fatalf("RefOfAny(%q) refused the segments of a real ref", segs)
 		}
 		if got != ref {
 			t.Errorf("round trip: %s → %q → %s", ref, segs, got)
@@ -39,20 +36,22 @@ func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 	}
 }
 
-// RefOf answers whether segments name an entity AT ALL — the question ParseRef answers about a
-// string. A walk that reached the wrong depth, or a document with an empty key, must come back
-// as "not an address" rather than as a ref built out of whatever was there.
-func TestRefOfRefusesWhatIsNotAnAddress(t *testing.T) {
+// RefOfAny answers whether segments name an address AT ALL: a document with an empty key must
+// come back as "not an address" rather than as a ref built out of whatever was there. Any
+// number of segments is an address; none is not.
+func TestRefOfAnyRefusesWhatIsNotAnAddress(t *testing.T) {
 	for _, segs := range [][]string{
 		{},
-		{"demo"},
-		{"demo", "pr"},
-		{"demo", "pr", "1", "extra"},
 		{"demo", "", "1"},
 		{"", "pr", "1"},
 	} {
-		if got, ok := RefOf(segs); ok {
-			t.Errorf("RefOf(%q) = (%s, true), want a refusal", segs, got)
+		if got, ok := RefOfAny(segs); ok {
+			t.Errorf("RefOfAny(%q) = (%s, true), want a refusal", segs, got)
+		}
+	}
+	for _, segs := range [][]string{{"demo"}, {"demo", "pr"}, {"demo", "pr", "1", "extra"}} {
+		if _, ok := RefOfAny(segs); !ok {
+			t.Errorf("RefOfAny(%q) refused an address of %d segments", segs, len(segs))
 		}
 	}
 }
