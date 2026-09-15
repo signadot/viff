@@ -303,11 +303,21 @@ check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is ab
 # serves docs/ and nothing above it, so a link out of the tree (`../../scripts/x.sh`) resolves
 # for a reader of the repo and 404s for a reader of the site. --strict makes that a failure.
 #
+# A link into roadmap/ or working/ 404s the same way, because mkdocs.yml excludes both, but
+# mkdocs reports a link to an excluded page at INFO whatever --strict and the validation levels
+# say. So its message is matched here, and that line is the failure.
+#
 # It skips loudly when mkdocs is absent, for the reason check-mermaid skips without node: `make
 # check` stays runnable on a machine with nothing but Go. `pip install -r requirements.txt`.
 .PHONY: check-docs
 check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
-	@if command -v mkdocs >/dev/null 2>&1; then 		mkdocs build --strict --site-dir "$$(mktemp -d)/site" >/dev/null && echo "the docs build"; 	else 		echo "mkdocs absent — skipping the docs build (pip install -r requirements.txt)"; 	fi
+	@if command -v mkdocs >/dev/null 2>&1; then \
+		out="$$(mkdocs build --strict --site-dir "$$(mktemp -d)/site" 2>&1)" || { echo "$$out"; exit 1; }; \
+		if echo "$$out" | grep 'excluded from the built site'; then exit 1; fi; \
+		echo "the docs build"; \
+	else \
+		echo "mkdocs absent — skipping the docs build (pip install -r requirements.txt)"; \
+	fi
 
 .PHONY: check
 check: check-generate check-json check-mermaid check-docs ## every static check (what CI should run before the tests)

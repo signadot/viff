@@ -256,7 +256,7 @@ whose rule or action has left the charter, or whose subject is gone, is settled 
 - **A human cannot be selected.** A brokered doer is not a driver name — the runner is a
   property of the verse, not of a spawn — so "this needs a person" is still a gate or a
   separate rule rather than a selection whose winner happens to be human. This is the largest
-  missing piece; see [provider selection improvements](working/provider-selection-improvements.md).
+  missing piece; see [provider selection improvements](https://github.com/signadot/verse/blob/main/docs/working/provider-selection-improvements.md).
 - **`tools` is one flat allow-list.** There is no way to say "whatever this driver normally
   offers, minus `run_bash`", or "this work requires `write_file`, so a doer without it is not
   eligible". Same note.

@@ -1,44 +1,55 @@
 site_name: Verse
+# The repository, linked with its icon from the header of every page, as tony-format's site
+# does. edit_uri is empty so the link is to the repository rather than a per-page "Edit on
+# GitHub".
+repo_url: https://github.com/signadot/verse
+repo_name: GitHub
+edit_uri: ""
 
-# The nav follows docs/README.md's subject grouping rather than the directory layout, because
-# that index is the reading order somebody was given: three things that stand on their own,
-# then a deep-dive per subject. Where the two disagree, the index wins and this follows it.
-#
-# working/ is deliberately absent. It is the one directory that owes no coherence — to the
-# roadmap or to another working note — so it has no place in an ordered nav. The pages still
-# BUILD, because docs/README.md links into them from its "ahead" rows and a nav is not a
-# publication boundary; they are simply not listed.
+# The site is what verse does. roadmap/ and working/ are design notes for work that is not
+# built, read in the repository, so the site does not publish them at all: a published page
+# that points at one links to it on GitHub, and `make check-docs` fails on a relative link
+# into either, because that link would 404 here.
+exclude_docs: |
+  /roadmap/
+  /working/
+
+# The nav follows docs/README.md's four kinds rather than the directory layout: a welcome,
+# the walks a person drives, the architecture by subject, and the reference. Where the two
+# disagree, the index wins and this follows it.
 nav:
-- Start:
-  - README.md
-  - overview.md
+- Welcome:
+  - Welcome: README.md
+  - Overview: overview.md
+- Walks:
   - tutorial.md
-  - seams.md
-- Charters and triggers:
-  - trigger-model.md
-  - convergence.md
-  - cycle-throttle.md
-  - strata.md
-  - provider-selection.md
-- Entities and the store:
-  - change-events.md
-  - perms.md
   - perms-guide.md
-- Tasks and autonomy:
-  - task-control.md
-  - attached-resolvers.md
   - auto-supervisor.md
-  - runners.md
-  - external-tasks.md
-- Steering:
-  - control.md
-  - deployment-and-steering.md
-- Federation:
-  - sources.md
-  - content-federation.md
-  - controllers.md
+- Architecture:
+  - seams.md
+  - Entities and the store:
+    - change-events.md
+    - perms.md
+  - Charters and triggers:
+    - convergence.md
+    - cycle-throttle.md
+    - strata.md
+    - provider-selection.md
+  - Tasks and autonomy:
+    - task-control.md
+    - attached-resolvers.md
+    - runners.md
+    - external-tasks.md
+  - Steering:
+    - control.md
+    - deployment-and-steering.md
+  - Federation:
+    - sources.md
+    - content-federation.md
+    - controllers.md
 - Reference:
   - reference/README.md
+  - trigger-model.md
   - reference/up.md
   - reference/entities.md
   - reference/store.md
@@ -49,13 +60,7 @@ nav:
   - reference/sourced.md
   - reference/connect.md
   - reference/representation.md
-- Roadmap:
-  - roadmap/README.md
-  - roadmap/scope-lifecycle.md
-  - roadmap/expose.md
-  - roadmap/authority.md
-  - roadmap/channel-observe.md
-  - roadmap/dynamic-charter.md
+  - reference/examples/README.md
 
 theme:
   name: mkdocs

@@ -8,6 +8,24 @@ Every section has a script that puts the world there in one command. For the sha
 read [the overview](overview.md). For the flat command surface, the config layers and the
 per-topic detail this tutorial skips, read [the reference](reference/README.md).
 
+1. [Start](#1-start)
+2. [Entities](#2-entities) — [read](#read) · [write](#write) · [watch](#watch)
+3. [Tasks](#3-tasks) — [the dial](#the-dial) ·
+   [a task is an entity too](#a-task-is-an-entity-too) · [steering](#steering) ·
+   [where a task runs is a seam](#where-a-task-runs-is-a-seam)
+4. [Charters — relating entities to tasks](#4-charters--relating-entities-to-tasks) —
+   [patch](#patch--a-rule-need-not-spawn-anything) ·
+   [latch](#latch--spawn-a-task-and-react-to-it-finishing) · [ask](#ask--a-human-decides) ·
+   [a service that answers them](#a-service-that-answers-them) · [seq](#seq--steps-in-order) ·
+   [when](#when--a-condition-on-another-entity) · [on](#on--a-cause-not-a-condition) ·
+   [derive](#derive--writing-something-that-is-not-the-subject) ·
+   [reading something the rule is not about](#reading-something-the-rule-is-not-about) ·
+   [the rest of the grammar](#the-rest-of-the-grammar)
+5. [Gates and the docket](#5-gates-and-the-docket) —
+   ["no" is a real outcome](#no-is-a-real-outcome) ·
+   [the same machinery answers *who*](#the-same-machinery-answers-who)
+6. [Where to go next](#6-where-to-go-next)
+
 ---
 
 ## 1. Start
@@ -228,7 +246,7 @@ verse gate approve run-f3e31ed0390f~d1 --as you@example.com
 anywhere else by its id, since it is the same question either way. There is a rough edge in which
 of the two rules applies when you hand verse a *command* and it satisfies it with an *agent*.
 [reference/tasks.md](reference/tasks.md#the-rough-edge-who-you-addressed) states it, and
-[authority](roadmap/authority.md) is where it gets fixed.
+[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md) is where it gets fixed.
 
 ### A task is an entity too
 
@@ -749,7 +767,7 @@ makes a registry anyone can write safe to select from. *Left to do: richer votin
 disciplines — ranked, weighted, secret.*
 
 **Isolation** — [reference/connect.md](reference/connect.md#scopes) and
-[scope lifecycle](roadmap/scope-lifecycle.md). Every command takes `--scope`; a scope is a
+[scope lifecycle](https://github.com/signadot/verse/blob/main/docs/roadmap/scope-lifecycle.md). Every command takes `--scope`; a scope is a
 real copy-on-write overlay, and `verse disconnect --scope` drops the whole thing. Its writes to
 the world are copies; its steers, answers and removals reach what the scope created and are
 refused at what it merely sees ([what a scope owns](reference/connect.md#what-a-scope-owns)).
@@ -772,7 +790,7 @@ and install, the way a runner is: `verse source add git.laptop <url>`.
 only climb, and the two install checks that follow — plus a plain statement of what it does not
 buy, since a charter under strata still does not converge and was never going to. *Left to do:
 fencing a spawned agent's writes to its own level and above, which is
-[authority](roadmap/authority.md)'s.*
+[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md)'s.*
 
 **The store underneath** — [reference/store.md](reference/store.md) and
 [change events](change-events.md). Where verse's deeper properties come from: copy-on-write

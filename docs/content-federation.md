@@ -2,7 +2,7 @@
 
 `verse connect .` federates a working tree under a per-session scope. It writes metadata to
 docd and serves content through a docd controller, so a scoped validator reads file contents
-*through the verse* rather than off the server's disk. [expose](roadmap/expose.md) generalizes
+*through the verse* rather than off the server's disk. [expose](https://github.com/signadot/verse/blob/main/docs/roadmap/expose.md) generalizes
 this to local filesystem trees, and possibly to processes.
 
 ## How `connect` federates
@@ -47,7 +47,7 @@ overlay, and the content mount goes away when the `connect` process exits.
 
 - Only `read_file` is federated. `list_dir`, `write_file` and `run_bash` still hit the local
   filesystem, so a fully-remote validator that needs those wants them federated too.
-  [expose](roadmap/expose.md) carries both halves: the write half, and the mapping of an agent's
+  [expose](https://github.com/signadot/verse/blob/main/docs/roadmap/expose.md) carries both halves: the write half, and the mapping of an agent's
   file tools onto a surface.
 - Read fidelity. Tool results fed to the driver share the read plane's preview cap, wherever the
   contents come from, so an agent can validate a large file from a truncated view. The preview is

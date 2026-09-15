@@ -150,7 +150,7 @@ feature. The plan is also what a second person claims a step of.
 Three things make that a change to the repo's shape rather than a `git mv`, and all belong in
 the landing commit:
 
-- **the index edits** — `docs/README.md`'s tables, `docs/reference/README.md`'s table and
+- **the index edits** — `docs/README.md`'s entry and `mkdocs.yml`'s nav, `docs/reference/README.md`'s table and
   command block, root `README.md` if the top-level story moved (`b78459f`);
 - **the neighbours** — a doc describing the old behaviour, or calling this gap a looseness, is
   now wrong (`319843c`);

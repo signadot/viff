@@ -424,7 +424,7 @@ entity do not clobber each other.
 The address may be as deep as the tree: `verse data verse-dev drift head abc '{sha: …}' --put `
 writes there, and the answer is that place. A write is a value at a path, so where an entity
 "ends" is not a question a write has to answer — see
-[working/entity-tree.md](../working/entity-tree.md).
+[working/entity-tree.md](https://github.com/signadot/verse/blob/main/docs/working/entity-tree.md).
 
 ```sh
 verse data demo pr 1 --put '{stage: open}'      # as steps: nothing needs quoting

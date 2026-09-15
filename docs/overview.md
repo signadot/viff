@@ -136,7 +136,7 @@ below.
 
 `source` federates external state in. `verse connect` reflects a working tree into a scope,
 writing file metadata as entities and serving contents on demand through a docd controller, and
-the same pattern generalizes to git, GitHub and the rest. See [connect](working/connect.md),
+the same pattern generalizes to git, GitHub and the rest. See [connect](https://github.com/signadot/verse/blob/main/docs/working/connect.md),
 [sources](sources.md), and [content federation](content-federation.md).
 
 ## Design decisions

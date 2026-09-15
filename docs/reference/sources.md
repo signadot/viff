@@ -186,7 +186,7 @@ other that it is one place in it, and both readings destroy something.
 about, so a slot cover with no predicate claims its path in *every* entity of that kind. Give it
 the predicate that selects the entities carrying that slot — `{owners: {ENG: null}}`, a null in a
 match being a presence test — or the pass writes a tombstone into a place nobody asked about,
-once per entity per pass. See [working/shared-ownership.md](../working/shared-ownership.md).
+once per entity per pass. See [working/shared-ownership.md](https://github.com/signadot/verse/blob/main/docs/working/shared-ownership.md).
 
 A cover is an `entity.Pattern` — the same selector a charter's `when` becomes — so the payload
 predicate is spelled `value`, as it is in a charter. On the wire each cover also carries an

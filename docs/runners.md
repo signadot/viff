@@ -217,7 +217,7 @@ gets an answer about *this work* rather than about the runner in general. A runn
 fails its spawns, and that failure travels the path a failed spawn already travels.
 
 **No per-runner authority.** Which runners a charter may name belongs to
-[authority](roadmap/authority.md), and the blast radius is larger than for a resolver: a runner is
+[authority](https://github.com/signadot/verse/blob/main/docs/roadmap/authority.md), and the blast radius is larger than for a resolver: a runner is
 a place work executes, so naming one is closer to choosing an execution environment than to
 choosing an answerer. A charter that may name any runner may run its work anywhere the deployment
 can reach. The install probe adds a smaller edge to the same question — writing a runner entity
@@ -246,7 +246,7 @@ should go.
 ## What holds by convention
 
 Two corners are open, and both are recorded in
-[what is left](working/runners-residual.md). The contract does not say *how* a runner applies
+[what is left](https://github.com/signadot/verse/blob/main/docs/working/runners-residual.md). The contract does not say *how* a runner applies
 control, so anything reached over a url is taken to apply it synchronously and a runner that queues
 is relied on to refuse. And `local` is the meaning of *absent* rather than a name a charter can
 write.
