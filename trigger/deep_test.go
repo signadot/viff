@@ -549,3 +549,38 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	}
 	t.Fatal("a live change four segments down did not wake the rule that selects there")
 }
+
+// AN OPERATOR IN A PATH IS ASKED HONESTLY when one pattern is compared with another: it contains
+// and meets only the names it matches, rather than standing in for `*`. `[demo, !glob "a*"]`
+// contains `[demo, abc, x]` and not `[demo, b]` or a `*` that could be `b`, and meets `[demo, b]`
+// nowhere — so a stratum of the one and a stratum of the other are separable.
+func TestAnOperatorInAPathContainsOnlyWhatItMatches(t *testing.T) {
+	glob := mustPathMatch(t, `{path: [demo, !glob "a*"]}`)
+	for _, c := range []struct {
+		inner    string
+		contains bool
+		overlaps bool
+	}{
+		{`{path: [demo, abc, x]}`, true, true},
+		{`{path: [demo, b]}`, false, false},
+		{`{path: [demo, "*"]}`, false, true},
+		{`{path: [demo, !glob "ab*"]}`, false, true},
+		{`{path: [other, abc]}`, false, false},
+	} {
+		inner := mustPathMatch(t, c.inner)
+		if got := matchContains(glob, inner); got != c.contains {
+			t.Errorf("[demo, !glob a*] contains %s = %v, want %v", c.inner, got, c.contains)
+		}
+		if got := matchOverlap(glob, inner); got != c.overlaps {
+			t.Errorf("[demo, !glob a*] overlaps %s = %v, want %v", c.inner, got, c.overlaps)
+		}
+	}
+	// And the ordinary cases are what they were: `*` contains anything, a prefix contains what
+	// extends it, and crossed wildcards meet.
+	if !matchContains(mustPathMatch(t, `{path: [demo, "*"]}`), mustPathMatch(t, `{path: [demo, b, c]}`)) {
+		t.Error("[demo, *] does not contain [demo, b, c]")
+	}
+	if !matchOverlap(mustPathMatch(t, `{path: [demo, "*", x]}`), mustPathMatch(t, `{path: ["*", pr, x]}`)) {
+		t.Error("[demo, *, x] and [*, pr, x] do not meet at demo.pr.x")
+	}
+}

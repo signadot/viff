@@ -241,7 +241,7 @@ func (ms Matches) overlaps(other []Match) bool {
 // is not contained by "system gh".
 func matchContains(outer, inner Match) bool {
 	if outer.Deep() || inner.Deep() {
-		return pathContains(outer.Segs(), inner.Segs())
+		return entity.Under(outer.SegNodes(), inner.SegNodes(), segContains)
 	}
 	if s := outer.System(); s != "" && s != inner.System() {
 		return false
@@ -252,22 +252,28 @@ func matchContains(outer, inner Match) bool {
 	return true
 }
 
-// pathContains reports whether every address the inner path names is one the outer path names.
+// segContains reports whether every name the inner segment admits, the outer one admits too.
 //
-// SEGMENT BY SEGMENT, and the outer may be SHORTER: `[verse-dev, drift]` contains
-// `[verse-dev, drift, head]`, which is the same statement as a system containing its kinds. An
-// outer segment of `*` contains anything at that position; a literal has to be matched by the
-// same literal, because an inner `*` there could be something else.
-//
-// An outer LONGER than the inner cannot contain it: `[verse-dev, drift, head]` does not contain
-// `[verse-dev, drift]`, whose entities include things that are not under `head`.
-func pathContains(outer, inner []string) bool { return entity.Under(outer, inner, entity.Wild) }
+// SEGMENT BY SEGMENT, and the outer path may be SHORTER: `[verse-dev, drift]` contains
+// `[verse-dev, drift, head]` (entity.Under). An outer `*` contains anything at its position. An
+// inner literal is contained by an outer segment that admits it — the same name, or an operator
+// that matches it. An inner `*` or operator admits names nobody listed, so only an outer `*` can
+// contain it: `!glob "a*"` does not contain a `*` that could be `b`.
+func segContains(outer, inner *ir.Node) bool {
+	if isAnySeg(outer) {
+		return true
+	}
+	if lit, ok := entity.PathLiteral(inner); ok {
+		return entity.SegMatches(outer, lit)
+	}
+	return false
+}
 
 // matchOverlap reports whether some ref could satisfy both. Unset is a wildcard on either side,
 // so it overlaps everything at that dimension.
 func matchOverlap(a, b Match) bool {
 	if a.Deep() || b.Deep() {
-		return pathOverlap(a.Segs(), b.Segs())
+		return entity.Overlap(a.SegNodes(), b.SegNodes(), segDisjoint)
 	}
 	if x, y := a.System(), b.System(); x != "" && y != "" && x != y {
 		return false
@@ -278,12 +284,26 @@ func matchOverlap(a, b Match) bool {
 	return true
 }
 
-// pathOverlap reports whether two paths could name one address: as far as the SHORTER goes,
-// each position must be compatible — a `*` on either side is, and two literals only if equal.
-// Past the shorter one there is nothing to disagree about, since one path is then a prefix of
-// the other and a prefix contains what extends it.
-func pathOverlap(a, b []string) bool {
-	return entity.Overlap(a, b, func(x, y string) bool { return x != "*" && y != "*" && x != y })
+// segDisjoint reports whether two segments admit no common name. It PROVES, and answers false
+// whenever it cannot: two literals are disjoint unless equal, a literal and an operator are when
+// the operator does not match the literal, and anything with a `*` or two operators may meet.
+func segDisjoint(a, b *ir.Node) bool {
+	al, aLit := entity.PathLiteral(a)
+	bl, bLit := entity.PathLiteral(b)
+	switch {
+	case aLit && bLit:
+		return al != bl
+	case aLit:
+		return !entity.SegMatches(b, al)
+	case bLit:
+		return !entity.SegMatches(a, bl)
+	}
+	return false
+}
+
+// isAnySeg reports whether a segment is the bare wildcard, which admits every name.
+func isAnySeg(n *ir.Node) bool {
+	return n != nil && n.Tag == "" && n.Type == ir.StringType && n.String == "*"
 }
 
 // validate reports whether the stratum is installable on its own terms. What it does not check

@@ -13,7 +13,7 @@ package entity
 // Under reports whether path is at or under what pattern reaches: the pattern is no longer than
 // the path, and at every position the pattern's segment admits the path's. An empty pattern is
 // the root, and everything is under it.
-func Under[S any](pattern []S, path []string, admits func(S, string) bool) bool {
+func Under[P, T any](pattern []P, path []T, admits func(P, T) bool) bool {
 	if len(path) < len(pattern) {
 		return false
 	}
@@ -28,7 +28,7 @@ func Under[S any](pattern []S, path []string, admits func(S, string) bool) bool 
 // Above reports whether path is a strict ancestor of something pattern reaches: the path is
 // shorter than the pattern, and the pattern's segments admit every segment the path has. So a
 // write at the path is a write over what the pattern reaches.
-func Above[S any](pattern []S, path []string, admits func(S, string) bool) bool {
+func Above[P, T any](pattern []P, path []T, admits func(P, T) bool) bool {
 	if len(path) >= len(pattern) {
 		return false
 	}
