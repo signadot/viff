@@ -65,50 +65,6 @@ func TestAReadOfWhatStandsStillAnswers(t *testing.T) {
 	}
 }
 
-// A WILDCARD STANDS WHERE IT REACHES, not where its literal prefix does: a `*` or an access that
-// picks nothing is a path nothing stands at, and `{}` with exit 0 stays the answer about a
-// filter (git-issue anbz58g6h12krp0sn5n0).
-func TestAWildcardThatReachesNothingSaysSo(t *testing.T) {
-	serve(t)
-	for _, put := range [][]string{
-		{"demo", "pr", "1", "--put", `{stage: open, votes: [{choice: a}], labels: {x: true}}`},
-		{"demo", "hollow", "1", "--put", `{}`},
-	} {
-		if _, err := runCLI(t, append([]string{"data"}, put...)...); err != nil {
-			t.Fatalf("put %q: %v", put, err)
-		}
-	}
-	for _, steps := range [][]string{
-		{"demo", "pr", "[*]"},                // an array access over an object of ids
-		{"demo", "pr", "1", "labels", "[*]"}, // …and over an object inside a payload
-		{"demo", "*", "2"},                   // no kind holds a 2
-		{"demo", "pr", "*", "nope"},          // no id holds the field
-		{"demo", "hollow", "1", "*"},         // an entity with no fields
-	} {
-		for _, extra := range [][]string{nil, {"--if", `{stage: open}`}} {
-			args := append(append([]string{"data"}, steps...), extra...)
-			if out, err := runCLI(t, args...); err == nil {
-				t.Errorf("%q answered %q and exit 0; the wildcard reached nothing", args, out)
-			} else if !strings.Contains(err.Error(), "nothing stands at") {
-				t.Errorf("%q said %q, want nothing stands at the path", args, err)
-			}
-		}
-	}
-	// What a wildcard does reach still reads, and a filter that keeps none of it is the empty
-	// answer rather than a not-found.
-	for _, args := range [][]string{
-		{"data", "demo", "pr", "*"},
-		{"data", "demo", "*", "1"},
-		{"data", "demo", "pr", "1", "votes", "[*]"},
-		{"data", "demo", "pr", "*", "labels"},
-		{"data", "demo", "pr", "*", "--if", `{stage: closed}`},
-	} {
-		if _, err := runCLI(t, args...); err != nil {
-			t.Errorf("%q: %v", args, err)
-		}
-	}
-}
-
 // A WATCH IS REFUSED THE SAME WAY, and says the same thing about the same address.
 //
 // It required two things. `verse watch` observed the ROOT and filtered, so it never asked the

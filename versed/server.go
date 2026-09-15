@@ -1841,16 +1841,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	// NOTHING STANDS THERE is an answer, and a different one from an empty document. Asked only
 	// when the listing came back with nothing — rows in hand already prove the path stands — so
 	// an ordinary read pays for it never.
-	//
-	// A WILDCARD STANDS WHERE IT REACHES. Standing asks of the literal prefix, which for a
-	// literal path is the whole question; for a path with a `*` or an access in it, the prefix
-	// standing says nothing about the places the rest of it names — `issue[*]` over an object of
-	// issues, `demo.*.2` where no kind holds a 2. The listing is that answer: the entities the
-	// path's address picks, nested to the path, BEFORE the predicate. So a wildcard's read is
-	// entity-shaped, as every read at a path is — a place holding no entity at the depth asked
-	// is not in `verse data demo` either, and does not make `demo.*` stand.
-	wild := sel.at != nil && sel.at.HasWild()
-	if len(ents) == 0 && (wild || !pathStands(store, sel)) {
+	if len(ents) == 0 && !pathStands(store, sel) {
 		notFoundAt(w, r, sel.at)
 		return
 	}
@@ -1867,41 +1858,17 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	}
 	// Nothing came back from a path that DOES stand: the read reached it and the selector kept
 	// none of what it held. That is an answer about the filter rather than about the path, so
-	// it is an empty document rather than a not-found — and it does not turn on the depth asked
-	// at. A wildcard reaching nothing even before the filter is the other answer.
+	// it is an empty document rather than a not-found — and it no longer turns on the depth
+	// asked at, which was verse guessing where entities end.
 	if doc.Node == nil {
-		if wild && !reaches(ents, len(kept), sel.at) {
-			notFoundAt(w, r, sel.at)
-			return
-		}
 		doc.Node = ir.FromMap(map[string]*ir.Node{})
 	}
 	writeOut(w, r, http.StatusOK, doc)
 }
 
-// reaches reports whether a wildcard path's listing nests to anything before the predicate: the
-// entities its address picked, followed into their payloads as far as the path goes. kept is
-// how many the predicate let through, and when that is all of them the empty document already
-// is the unfiltered one.
-func reaches(ents []entity.Entity, kept int, at *kpath.KPath) bool {
-	if kept == len(ents) {
-		return false
-	}
-	doc, err := entity.Nest(ents, at)
-	return err == nil && doc.Node != nil
-}
-
 // listAt reads the entities a selector can pick, under the narrowest prefix its path allows.
 // A path that names nothing falls back to the root read, because the whole verse spans both
 // halves and their entities sit at different depths.
-func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
-	prefix, depth, ok := entity.AtPrefix(sel.at)
-	if !ok {
-		return entity.ListErr(store, sel.matchRef)
-	}
-	return entity.ListAtErr(store, prefix, depth, sel.matchRef)
-}
-
 // pathStands asks whether the path a selector names stands at all, for a listing that came back
 // empty. A store that cannot answer says yes: before there was a way to ask, an empty listing was
 // the only answer, and reporting not-found on a store that merely cannot tell would be worse than
@@ -1935,6 +1902,14 @@ func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entit
 		return ch, unsub, nil
 	}
 	return narrow.WatchSubtreeAt(depth, waitIfAbsent, prefix...)
+}
+
+func listAt(store entity.Store, sel selector) ([]entity.Entity, error) {
+	prefix, depth, ok := entity.AtPrefix(sel.at)
+	if !ok {
+		return entity.ListErr(store, sel.matchRef)
+	}
+	return entity.ListAtErr(store, prefix, depth, sel.matchRef)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
