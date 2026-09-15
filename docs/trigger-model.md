@@ -168,7 +168,7 @@ written down.
 One file may hold several packages. A `---` document carrying `at:` opens one, and everything after
 it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is two, a
 `drift` package that reviews and a `merge` package that gates what the review delivers, installed
-by one `verse c -a --file`, all of them or none. Each package goes in **as one step**: its
+by one `verse c -a -file`, all of them or none. Each package goes in **as one step**: its
 declaration, its levels and its rules install together or not at all, so a refusal anywhere puts
 back what stood before it (see
 [strata.md](strata.md#installing-and-the-order-it-does-not-depend-on)).
@@ -211,11 +211,11 @@ question at every depth, and every node answers the same shape.
 verse charter                  # the whole charter
 verse charter drift            # the `drift` package and anything under it
 verse charter demo pr          # …one deeper: the package at demo.pr
-verse charter drift --depth 0  # …that address alone, without what is under it
+verse charter drift -depth 0   # …that address alone, without what is under it
 ```
 
 ```sh
-verse charter --depth 1
+verse charter -depth 1
 # writes: anywhere            ← baseline: no address, so it may write anywhere
 # rules: []
 # children:
@@ -235,17 +235,17 @@ baseline nobody has put anything in. A package at `demo.pr` nests under a `demo`
 `children:`, since nothing is installed at `demo` itself.
 
 It prints the rules themselves rather than their names. This is the program the verse is running,
-and a listing of names would leave what it *does* to a second command per rule. `--depth 0` is how
+and a listing of names would leave what it *does* to a second command per rule. `-depth 0` is how
 it gets short. One rule by name is still one command:
 
 ```sh
 verse charter merge             # that package alone, rules and all
-verse charter merge --depth 0   # …without whatever is installed under it
+verse charter merge -depth 0    # …without whatever is installed under it
 verse c drift rules merge-proposal
 ```
 
 A package comes off whole, too: its rules, its levels, what it reads, and the engine running them.
-What it *wrote* stays, because a charter's writes are the world's, and `verse data --rm` is how
+What it *wrote* stays, because a charter's writes are the world's, and `verse data -rm` is how
 those go.
 
 ```sh
@@ -362,7 +362,7 @@ deadline fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal
 the same way a rule is. Every use case tried against that definition falls short of it, and it
 would cost a top-level concept in a model whose whole claim is that it is small.
 
-A **scoped charter** (`verse c -a --scope`) is restored the same way, when the scope's engine is
+A **scoped charter** (`verse c -a -scope`) is restored the same way, when the scope's engine is
 next built, which is on demand and so in practice when the dev reconnects. Its record carries
 `scope: <name>`, which is what makes it restorable at all: a scoped store reads baseline layered
 underneath, so a listing in a scope returns baseline's rules and the scope's own, and only the
@@ -452,8 +452,8 @@ not find them, and writes its patches there. This is worth knowing wherever a ru
 another rule derived, since a derive's own depth follows from the subjects the producing rule
 selects. See [`action`](#action--what-fires) below.
 
-A write names the place it writes, and a listing walks: `verse data --paths` lists every address
-under the one it was given, and `--depth` bounds how far it goes. Asking a listing for one level
+A write names the place it writes, and a listing walks: `verse data -paths` lists every address
+under the one it was given, and `-depth` bounds how far it goes. Asking a listing for one level
 answers with whatever happens to live there and loses anything deeper, which is why it walks
 instead.
 
@@ -644,7 +644,7 @@ subject: { at: !verse-path [demo pr], value: {…} }     # the same, as steps
 
 `!verse-path [demo pr 1]` is an address written as steps: a list of segments, which is what a
 charter reads and what `verse data` takes on a command line, so no segment needs punctuating around
-a dot or a colon it happens to contain. `verse data --paths` answers in the same steps,
+a dot or a colon it happens to contain. `verse data -paths` answers in the same steps,
 space-separated, as `demo pr 1`. One spelling serves wherever an address is written by hand or read
 back, since a charter reads a list and a shell reads words, and neither has to punctuate a segment.
 It goes wherever the string form goes:
@@ -1593,8 +1593,8 @@ that the shape changed and name the trigger, but not what changed.
 A flow is not a stored key. It is a match evaluated over the subjects of *live* tasks:
 
 ```sh
-verse flow --subject demo.pr.1      # tasks whose subject matches demo.pr.1
-verse flow --subject 'demo.pr.*'    # …the whole kind
+verse flow -subject demo.pr.1       # tasks whose subject matches demo.pr.1
+verse flow -subject 'demo.pr.*'     # …the whole kind
 ```
 
 Relating tasks is what a match *does*, so "relational flows" are not a second primitive to add

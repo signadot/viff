@@ -14,47 +14,47 @@ verb of the same noun.
 
 ## The flags
 
-- `--task <id>` — **that run only**. It combines with neither of the others, so the flags alone
+- `-task <id>` — **that run only**. It combines with neither of the others, so the flags alone
   say whether an act is about one run or is durable.
-- `--charter <address>[:<rule>]` — an installed charter's address, and one rule of it after the
+- `-charter <address>[:<rule>]` — an installed charter's address, and one rule of it after the
   colon. Baseline's charter has no address, so its rule is `:<rule>`, and all of its rules `:`.
-  Every charter is `'*'`. `-r` (`--recursive`) names the charter at the address and every charter
+  Every charter is `'*'`. `-r` (`-recursive`) names the charter at the address and every charter
   installed beneath it.
-- `--subject <address>` — an address with `*` open in any segment, covering what stands at it or
+- `-subject <address>` — an address with `*` open in any segment, covering what stands at it or
   beneath it: `demo.pr.1`, `demo.pr.*`, `demo.*.1`. Every subject is `'*'`. There is no payload
   predicate: a suspension whose subject was a predicate would be lifted by an ordinary write that
   took the subject out of the match.
 
 **An act names something.** A bare verb meaning everything is how somebody typing it to see its
 usage would suspend the verse, so an act that names nothing is refused: `suspend`, `resume` and
-`say` take `--task`, or `--charter`, `--subject` or both; `cancel` takes `--task`. A bare verb
-prints its usage and sends nothing. Of `--charter` and `--subject`, the one left out beside the
-other is `'*'`: `--charter :review` is that rule about every subject, and `--subject demo.pr.2`
+`say` take `-task`, or `-charter`, `-subject` or both; `cancel` takes `-task`. A bare verb
+prints its usage and sends nothing. Of `-charter` and `-subject`, the one left out beside the
+other is `'*'`: `-charter :review` is that rule about every subject, and `-subject demo.pr.2`
 is that subject for every charter. `'*'` for both is refused. Only the listing, a read, answers
 for everything when no flag narrows it.
 
 ```sh
 verse flow                                           # every live task and every suspension
-verse flow --charter verse-dev.drift                 # its live tasks, and its suspension about everything
-verse flow suspend --task review@demo.pr.2           # hold one run at its next boundary
-verse flow resume  --task review@demo.pr.2
-verse flow say     --subject 'demo.pr.*' "hurry"     # to every live task about a PR
-verse flow cancel  --task review@demo.pr.2           # end one run (destructive)
+verse flow -charter verse-dev.drift                  # its live tasks, and its suspension about everything
+verse flow suspend -task review@demo.pr.2            # hold one run at its next boundary
+verse flow resume  -task review@demo.pr.2
+verse flow say     -subject 'demo.pr.*' "hurry"      # to every live task about a PR
+verse flow cancel  -task review@demo.pr.2            # end one run (destructive)
 
-verse flow suspend --charter verse-dev.drift --why "…"                        # a charter, about everything
-verse flow suspend --subject github.signadot.verse.pr.'"42"' --why "…"         # a subject, for every charter
-verse flow suspend --charter verse-dev.drift:claim --subject git.verse.head --why "…"
-verse flow suspend --charter verse-dev -r --why "…"                            # every package under verse-dev
-verse flow resume  --charter verse-dev.drift                                   # the same flags lift it
+verse flow suspend -charter verse-dev.drift -why "…"                          # a charter, about everything
+verse flow suspend -subject github.signadot.verse.pr.'"42"' -why "…"           # a subject, for every charter
+verse flow suspend -charter verse-dev.drift:claim -subject git.verse.head -why "…"
+verse flow suspend -charter verse-dev -r -why "…"                              # every package under verse-dev
+verse flow resume  -charter verse-dev.drift                                    # the same flags lift it
 ```
 
-`--args` prints each row of the listing as the flags that name it, one per line, quoted so that a
+`-args` prints each row of the listing as the flags that name it, one per line, quoted so that a
 shell and `xargs` both read it back — so what was shown is what an act reaches. A task's row is
-`--task <id>` and a suspension's `--charter … --subject …`, so a grep picks one kind:
+`-task <id>` and a suspension's `-charter … -subject …`, so a grep picks one kind:
 
 ```sh
-verse flow --args | grep -v -- --task | xargs -L1 verse flow resume              # lift every suspension
-verse flow --subject demo.pr.2 --args | grep -- --task | xargs -L1 verse flow cancel   # end every run about PR 2
+verse flow -args | grep -v '^-task ' | xargs -L1 verse flow resume               # lift every suspension
+verse flow -subject demo.pr.2 -args | grep '^-task ' | xargs -L1 verse flow cancel     # end every run about PR 2
 ```
 
 The listing answers rows of two kinds. A live task is `{kind: task, task, charter, subject,
@@ -68,14 +68,14 @@ own rather than a field on a task.
 A narrowed listing is what an act with the same flags reaches, an absent flag being `*`. Its task
 rows are the live tasks a suspension in those words would hold. Its suspension row is the one a
 resume in them would lift: the record the flags spell, and not a wider one that also holds the
-work — `--subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`, and `--subject
+work — `-subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`, and `-subject
 'demo.pr.*'` lists the suspension spelled that way, not each PR's. What holds a subject's work,
 whatever spells it — including a subject with no work yet — is `verse flow show <subject>`.
 
 ## A run's hold
 
-`verse flow suspend --task <id>` holds one run at its next boundary — "hold this, I want to look" —
-and `verse flow resume --task <id>` lets it carry on from there. The runtime's
+`verse flow suspend -task <id>` holds one run at its next boundary — "hold this, I want to look" —
+and `verse flow resume -task <id>` lets it carry on from there. The runtime's
 `POST /tasks/{id}/pause|resume` are the same hold. It is the operator's: the task's `heldBy` says
 `operator`, on its record and in `flow show`.
 
@@ -107,7 +107,7 @@ about that subject** in every form, by one test, the way a standing resolver doe
 | a completion hook, or a `seq` step | its writes land; what it would start is parked | the parked launch starts |
 | a deadline on a withdrawn question | its clock stops | it has the time it had left |
 
-`--why` is required: nothing ends a suspension but somebody reading it. There is no expiry. The
+`-why` is required: nothing ends a suspension but somebody reading it. There is no expiry. The
 same suspension held twice is one record with two holders, each with their reason; a person's
 resume lifts it whoever holds it, and a resume made by the system removes only the system's own
 hold. Every charter about every subject is refused.
@@ -129,7 +129,7 @@ The mechanism, rule by rule, is in [the trigger model](trigger-model.md#suspendi
 ## Whose hold it is
 
 A task knows whose hold it is under — `heldBy` lists `operator` and the suspensions that paused it
-— so the two do not undo each other. `verse flow resume --task` of a run a suspension holds is
+— so the two do not undo each other. `verse flow resume -task` of a run a suspension holds is
 refused, 409, naming the suspension, since resuming it would run covered work. A lift resumes only
 what nothing else holds, so an operator's hold outlives a suspension whichever came first.
 
@@ -148,11 +148,11 @@ moment somebody else owns it. A rule the system installed is the system's alone 
 
 ## Scopes
 
-A scope owns what it creates ([connect](reference/connect.md#what-a-scope-owns)). With `--scope`,
+A scope owns what it creates ([connect](reference/connect.md#what-a-scope-owns)). With `-scope`,
 every verb here reaches the runs that scope started and none it merely sees through the overlay;
 addressed at baseline's work it is refused, 409, naming whose the work is and how to re-address.
 From baseline it is the same the other way. A suspension belongs to the scope it was made in and
-covers only that scope's work — baseline's and every package's without `--scope`, a scope's own
+covers only that scope's work — baseline's and every package's without `-scope`, a scope's own
 with it — and a scope may not name a package's charter, which is baseline's.
 
 ## What is not held
@@ -182,7 +182,7 @@ with it — and a scope may not name a package's charter, which is baseline's.
   marks `heldBy` on a live task and `suspended` on each position whose work is held. A subject
   with no work that something would hold gets a tree too, with no branches: the address itself,
   or each stored entity a pattern selects. A tree with a live task says `active: true`;
-  `--active` shows only those, `--no-active` only the others, and neither shows every one.
+  `-active` shows only those, `-no-active` only the others, and neither shows every one.
 - A withdrawn question's record says which suspension withdrew it.
 
 Why none of this rides the change stream is in [deployment and

@@ -3,7 +3,7 @@
 // to reach it, which is the whole point — a laptop, a pod in a private cluster and a person are
 // all reachable by nobody, and all three can still be driven.
 //
-//	verse up --broker --broker-addr :9090          # in another terminal
+//	verse up -broker -broker-addr :9090            # in another terminal
 //	go run ./docs/reference/examples/worker -verse localhost:9797 -as "$USER"
 //	verse task run "summarise what changed in cmd/verse this week"
 //

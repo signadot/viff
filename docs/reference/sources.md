@@ -35,7 +35,7 @@ own.
 ## Ownership
 
 `owns` is a list of claims, and it is what an install proves disjointness against, what a
-`--forget` removal may tombstone, and what names the nodes the source owns. A claim's node is its
+`-forget` removal may tombstone, and what names the nodes the source owns. A claim's node is its
 levels up to the first glob; installing takes each for the installer, so what the source reflects
 beneath is theirs with no owner record per entity, and an install over a node somebody else owns
 is refused ([perms.md](../perms.md#ownership)). An ownership claim is an **address**, not a payload predicate,
@@ -91,17 +91,17 @@ proved apart from nothing, so it is refused beside anything else in its system.
 
 ```
 verse source                                what is installed, with lastReflect/lastError
-        [--probe]                            …and what each one says right now (not recorded)
+        [-probe]                             …and what each one says right now (not recorded)
 verse source add <system>.<name> <url>       install one, probing the url first
-       add --dir <d> <system>.<name>         …or a local git repo, reflected in task
-       add [--file <f>] | [file] | stdin     …or as a document (.tony/.json/.yaml)
-           [--no-probe]                      install without asking it what it is
-           [--allow-overlap]                 install though another source may write the same place
+       add -dir <d> <system>.<name>          …or a local git repo, reflected in task
+       add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
+           [-no-probe]                       install without asking it what it is
+           [-allow-overlap]                  install though another source may write the same place
        show <ref>                            the entity
        check <ref>                           ask it what it is and what it claims, right now
        remove <ref>                          take it away; refused if it reflected anything
-              [--forget]                     …the reflection is over: tombstone what it wrote
-              [--keep]                       …the truth is moving: leave the last known state
+              [-forget]                      …the reflection is over: tombstone what it wrote
+              [-keep]                        …the truth is moving: leave the last known state
 ```
 
 A `<ref>` is `verse.sources.git.laptop` or `git.laptop` — the whole address or the bare pair;
@@ -113,7 +113,7 @@ there because it is the one line of a status that says anything is *arriving*: e
 beside it moves on what verse was already given, so a verse whose last source was removed reads
 exactly like a healthy quiet one until that list is empty.
 
-Every command takes the global `--scope`, and a scoped source is installed, listed, and removed
+Every command takes the global `-scope`, and a scoped source is installed, listed, and removed
 in the scope it reflects into.
 
 ## Routes

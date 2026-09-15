@@ -6,7 +6,7 @@ is how it runs: where the owner is recorded, what a grant is, what the check con
 new node holds out by default, and the one rule that makes a fresh verse usable by everybody
 until somebody takes a place of their own.
 
-The surface is small. A request names who makes it (`user:` in the CLI's config, or `--as`), in
+The surface is small. A request names who makes it (`user:` in the CLI's config, or `-as`), in
 the [grammar](#principals-and-grantees) every name in this model is written in; a
 refused write or read is a 403 that says who wanted what and which record decided; `verse
 status` counts the refusals; `verse perms <path>` is how an owner reads and sets their own
@@ -18,7 +18,7 @@ resolver answers.
 ## Principals and grantees
 
 A principal is a name with its kind before the colon, and a grantee is a principal or a set of
-them. One grammar says both, and every surface that takes a name — `--as`, the config's `user:`,
+them. One grammar says both, and every surface that takes a name — `-as`, the config's `user:`,
 a grant line, a default, a group's members, a gate's `answerers`, a binding's `who` and `group` —
 reads it and refuses what it does not:
 
@@ -42,7 +42,7 @@ among them — and neither does a bare `verse.…` address, which is never a per
 - **a person**, `user:walter@example.com`. The CLI sends it on every request
   (`Verse-Principal`) from its config's `user:`, and the server lists it under
   `verse.principal.user.<email>` the first time it presents itself.
-- **a runner**, `runner:coderunner`. A worker claims brokered work as `--as runner:<identity>`,
+- **a runner**, `runner:coderunner`. A worker claims brokered work as `-as runner:<identity>`,
   and a runner reached by url acts as `runner:` the `identity` on its entity, or its name. The
   claim lists it under `verse.principal.runner.<identity>`. A runner acts as itself, not as
   whoever installed it; and since the kind is in the name, `runner:coderunner` and
@@ -87,7 +87,7 @@ already stored that the grammar does not read admits nobody; nothing rewrites it
 counts every check that meets one under `perms.unparsed`, and versed logs it once per record.
 
 Self-asserted, all of it. There is no login, and the server trusts a principal no harder than
-it trusts `--as`. What the model buys is that every write names a party the check can hold
+it trusts `-as`. What the model buys is that every write names a party the check can hold
 against what its place permits, on the write itself rather than in a field only some verbs
 carry — so that when a principal is verified, nothing else has to change.
 
@@ -142,7 +142,7 @@ executor may not resolve its own gate, and nothing special-cases it.
 **Who else may answer is the question's own `read-write` line.** It is written when the
 question is posed: the gate's `answerers` when it named them; for a gate a worker raises, the
 spawn's gate of that name when it names answerers, else whom the worker named (`task do gate
---to`), a worker asking somebody; else the default on `verse.gate.question` — the docket's
+-to`), a worker asking somebody; else the default on `verse.gate.question` — the docket's
 openness, `read-write: [user:*, agent:*]` in the seed. Binding
 the question to a resolver replaces that line with whoever answers as the binding (`via:` its
 address for a service, the person or the group behind it otherwise), unbinding gives it back to the
@@ -261,22 +261,22 @@ The one verb by which a person writes to the mirror. Bare, it lists the records 
 the requester may read — who owns what you can see, and what each place holds out — since the
 mirror itself is the system's and `verse data verse perms` answers nobody else. With a path it
 reads that node's record to anyone who may read the node, and its owner sets it: a node with no record of its own gets one — the place is taken by whoever already
-holds `owner` there, holding out what the default above says — and then `--default` sets what
-is created beneath, `--grants` replaces what the node itself holds out, and `--grant` adds a
+holds `owner` there, holding out what the default above says — and then `-default` sets what
+is created beneath, `-grants` replaces what the node itself holds out, and `-grant` adds a
 line.
 
 ```sh
-verse data spaces scott notes --put '{todo: [buy milk]}'   # scott's, readable by everyone
-verse perms spaces scott --default '{}' --grants '[]'       # scott's place: nothing held out, beneath or on it
-verse data spaces scott private --put '{…}'                 # scott's alone
+verse data spaces scott notes -put '{todo: [buy milk]}'    # scott's, readable by everyone
+verse perms spaces scott -default '{}' -grants '[]'         # scott's place: nothing held out, beneath or on it
+verse data spaces scott private -put '{…}'                  # scott's alone
 ```
 
 Another user is refused `verse data spaces scott private` — a Get of what they may not read —
 and refused `verse data spaces scott`, since a listing at a place they may not read into is
 refused whole rather than answered empty; `verse data spaces scott notes` still answers them,
 by name, since that record holds out the read it was created with. `verse perms spaces scott
---grant '{read: [ana@example.com]}'` opens the place to one person, and `--revoke '{read:
-[ana@example.com]}'` takes that back and nothing else; `--grants '[]'` takes everything back.
+-grant '{read: [ana@example.com]}'` opens the place to one person, and `-revoke '{read:
+[ana@example.com]}'` takes that back and nothing else; `-grants '[]'` takes everything back.
 
 ## The seed
 
@@ -334,7 +334,7 @@ binding a question is held out to answers it.
 <a id="suspending"></a>
 ## Suspending
 
-`verse flow suspend --charter … --subject …` is a control write ([control](control.md)), and who
+`verse flow suspend -charter … -subject …` is a control write ([control](control.md)), and who
 may make one is asked twice.
 
 **When it is written**, the writer must hold `control` over the charter it names — a package's
@@ -345,7 +345,7 @@ refused.
 **When it applies**, which is what decides what it covers: every time work would make progress, a
 holder's suspension covers that work while the holder holds `control` over the work's charter or at
 its subject, asked of the scope's mirror then. So a wildcard's reach does not grow as owners appear
-beneath it — `--subject 'gitlab.*'` by somebody who owns nothing there stops covering
+beneath it — `-subject 'gitlab.*'` by somebody who owns nothing there stops covering
 `gitlab.alice` the moment alice owns it — and a check the mirror cannot answer covers, since work
 that failed open would run what somebody stopped. A rule the system installed (`by: system:charter`)
 is covered only by a system holder, from either side: a place with no owner record holds `control`
@@ -362,7 +362,7 @@ scope's mirror is loaded from and watched on the scope's own view of the store, 
 answers as the overlay on baseline — so every grant standing in baseline stands in the scope,
 and opening a scope is not a way around one.
 
-A grant made in a scope is copy-on-write, like any world write: `verse perms --scope me` and the
+A grant made in a scope is copy-on-write, like any world write: `verse perms -scope me` and the
 owner record every scoped creation leaves land in the overlay, govern the scope's writes on top
 of baseline's, and are never seen by baseline's mirror. Two devs' scopes therefore hold
 different owners for the same address without either touching baseline's record, and dropping

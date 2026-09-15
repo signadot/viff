@@ -8,33 +8,33 @@ including the two vantages and the seam that makes them the same commands.
 
 ```sh
 verse task run "echo summarizing; sleep 2"       # prints a run-… id
-verse task run --wait "echo done"                # …and block for the final output
-verse task run --attach 'Write a file hello.txt containing "hi".'   # …and stream it
-verse task run --driver scripted "go test ./..."
-verse task run --driver calls "$(cat merge.tony)"   # the actions themselves, no model
-verse task run --answer shape.tony "…"   # …and declare the shape its answer must have
-verse task run --gates gates.tony "…"    # …under gates of its own, each with its question
+verse task run -wait "echo done"                 # …and block for the final output
+verse task run -attach 'Write a file hello.txt containing "hi".'    # …and stream it
+verse task run -driver scripted "go test ./..."
+verse task run -driver calls "$(cat merge.tony)"    # the actions themselves, no model
+verse task run -answer shape.tony "…"    # …and declare the shape its answer must have
+verse task run -gates gates.tony "…"     # …under gates of its own, each with its question
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"
-verse task vector <id> ask --as walter@example.com
-verse task vector <id> --file vector.tony
+verse task vector <id> ask -as walter@example.com
+verse task vector <id> -file vector.tony
 verse task cancel <id>
 ```
 
 `say` and `vector` are different levers. `say` re-prompts the agent — new instructions.
 `vector` re-vectors it, swapping the gate vector that governs its autonomy, applied at the
-next boundary with no restart. `--as` attributes the slide. Both work wherever the task
+next boundary with no restart. `-as` attributes the slide. Both work wherever the task
 runs: the local runtime applies them directly, and a brokered or remote worker gets them
 relayed through its inbox.
 
 A trigger's `spawn` runs a task the same way, from the same `launch.Spec`; what a charter
 may say about one is in [the trigger model](../trigger-model.md#action--what-fires).
 
-### `--answer`: what finished means
+### `-answer`: what finished means
 
 ```sh
-verse task run --answer shape.tony "check every reference in docs/runners.md"
+verse task run -answer shape.tony "check every reference in docs/runners.md"
 ```
 
 The file is a tony match pattern — the ad-hoc face of a charter's `answer:` — and it is the
@@ -104,7 +104,7 @@ out of `err` (the step failed), `blocked` (refused, by a gate or by the far side
 | `fatal: [err]` | these |
 
 `scripted` is this driver with a one-command list built for it. Typed by hand,
-`verse task run --driver calls "$(cat merge.tony)"` reads the same document the charter grammar
+`verse task run -driver calls "$(cat merge.tony)"` reads the same document the charter grammar
 does and sends the field, so a list that will not read is a message on your terminal.
 
 ## The dial
@@ -112,7 +112,7 @@ does and sends the field, so a list that will not read is a message on your term
 The drivers carry different vectors, and the difference is the whole point of a gate: it
 asks about what you have **not** already authorized.
 
-`scripted` **as you type it** runs ungated: `verse task run --driver scripted` sends `auto` on
+`scripted` **as you type it** runs ungated: `verse task run -driver scripted` sends `auto` on
 your behalf, because the prompt *is* the shell command, and asking "run a shell command?" after
 `verse task run "go test ./..."` would be asking you to confirm the sentence you just wrote.
 
@@ -149,7 +149,7 @@ verse gate                                  # task gates, and engine gates that 
 #   reason: "verb write"
 #   tool: write_file
 #   where: task
-verse gate approve run-f3e31ed0390f~d1 --as you@example.com   # or: task approve run-… run-…~d1
+verse gate approve run-f3e31ed0390f~d1 -as you@example.com    # or: task approve run-… run-…~d1
 ```
 
 **Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
@@ -157,11 +157,11 @@ answers what their own work asked; a gate's `answerers`, or the binding a questi
 to, answer it; and a person answers an unbound question by the docket's default. The runner
 working the task holds nothing on the question it raised, and is refused. A refusal is a 403
 naming who holds what and which record decided ([perms.md](../perms.md)). Whoever may answer
-may also hand the question on — `verse gate escalate <id> --as <who> [--say <why>]` — to the
+may also hand the question on — `verse gate escalate <id> -as <who> [-say <why>]` — to the
 next binding covering its subject, and to the docket when there is none.
 
 **A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
-`options` and, as answers arrive, its `ballots`; `verse gate approve <id> --as <who>` casts one, and
+`options` and, as answers arrive, its `ballots`; `verse gate approve <id> -as <who>` casts one, and
 the record settles in the same write as the ballot that reaches a threshold. A gate with a
 `deadline` lists it, and settles on its default when the clock passes.
 
@@ -170,14 +170,14 @@ a question whose options are the eligible doers, each carrying the envelope it w
 and `chain` naming the action it holds up. It is answered by option:
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as you@example.com
+verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as you@example.com
 ```
 
 `within` is its deadline with no default: the clock passing with no pick settles it on `none`,
 and nothing spawns.
 
 The `~` that separates the gate from its task needs no quoting and no escaping, in a shell
-or in a URL. On a terminal, `run --attach` prompts inline instead
+or in a URL. On a terminal, `run -attach` prompts inline instead
 (`⏸ gate "write" (write_file) — approve? [y/N]`); answer `y` to allow, anything else to deny,
 and a denied gate comes back to the agent as an error it re-plans around. Piped (non-tty),
 `attach` just streams. The gate is the same question either way — it stays in `verse gate`
@@ -188,7 +188,7 @@ and stays resolvable by id from anywhere.
 A task's own gate poses the same record a charter gate does, and says the same things about
 it: how many ballots settle it, what it settles on, and how long it stands. A named vector is
 a bare default — `auto`, `ask`, `park` — so a run that wants gates of its own writes them,
-as a spawn's `gates:` or a file handed to `--gates`, in the shape `task vector --file` reads:
+as a spawn's `gates:` or a file handed to `-gates`, in the shape `task vector -file` reads:
 
 ```tony
 - name: shell
@@ -204,7 +204,7 @@ as a spawn's `gates:` or a file handed to `--gates`, in the shape `task vector -
 `need`, `options` and `deadline` mean what they mean on a
 [charter gate](../trigger-model.md#gates--whether-it-proceeds), and are refused the same way
 when they cannot be posed as written — at the spawn, or at `task vector`, never at the boundary
-a running task reaches. The gates ride over `--vector`'s default; gates with no default are
+a running task reaches. The gates ride over `-vector`'s default; gates with no default are
 over `auto`, since the gates are what asks.
 
 **The deadline is the question's own clock, and it settles.** `default: deny` is how an
@@ -222,7 +222,7 @@ takes, `autonomous` lets the child and its subtree answer their own gates within
 scope, and `deny` spawns nothing. Answer by option, as any question with options is answered:
 
 ```sh
-verse gate run-f3e31ed0390f~d2 --answer careful --as you@example.com
+verse gate run-f3e31ed0390f~d2 -answer careful -as you@example.com
 ```
 
 A gate that wrote `options` of its own over a delegation keeps them; `need` on one is the
@@ -242,8 +242,8 @@ creds configured the default driver is llm, so the command you just typed comes 
 The prompt only reveals that verse chose to satisfy your command with an agent.
 
 The driver picks the vector unless the spawn says otherwise, and what verse cannot read is
-which of the two things you meant by the prompt. So today you say it: pass `--driver scripted`
-when your prompt *is* a command — that is exactly what it is for — pass `--vector auto` to keep
+which of the two things you meant by the prompt. So today you say it: pass `-driver scripted`
+when your prompt *is* a command — that is exactly what it is for — pass `-vector auto` to keep
 the agent and drop the asking, or slide the vector once it starts (`task vector <id> auto`).
 A trigger hits the same edge from the other side: its gates approve *the firing*, not the
 actions the spawned agent then chooses. It can say it already decided — `vector: auto` on
@@ -289,7 +289,7 @@ re-fire idempotent and what `verse flow demo.pr.1` addresses.
 
 ```sh
 verse data verse task run '<id>@<occurrence>'
-verse data --if '{flow: "demo.pr.1"}' verse.task.run
+verse data -if '{flow: "demo.pr.1"}' verse.task.run
 ```
 
 `occurrence` is the store revision the run is about — the commit that woke the firing, or the
@@ -302,7 +302,7 @@ cannot do — it holds whatever the newest run has written and nothing of the on
 
 Run records are written twice, at the run's start and at its end, so a run that never finishes
 still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by events,
-and removing them is `verse data --rm`, or a charter that marks the stale ones
+and removing them is `verse data -rm`, or a charter that marks the stale ones
 [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record
@@ -326,7 +326,7 @@ payload:
 select the questions it cares about without reading prose:
 
 ```sh
-verse data --if '{status: pending, effects: {verbs: [write]}}' gate
+verse data -if '{status: pending, effects: {verbs: [write]}}' gate
 ```
 
 It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
@@ -347,10 +347,10 @@ The gate is closed to further answers the moment one is accepted; what is still 
 whether the party who must act on it knows. It clears on the worker's acknowledgement.
 
 ```sh
-verse data --if '{delivered: false}' gate             # answers still in flight
+verse data -if '{delivered: false}' gate              # answers still in flight
 ```
 
-Every answer names its answerer — `verse gate approve <id> --as you@example.com` — and two people
+Every answer names its answerer — `verse gate approve <id> -as you@example.com` — and two people
 answering at once is normal rather than exceptional. Exactly one applies; the other is
 recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only
 the winner cannot show that a question was contested. Answering an id nobody asked about is a
@@ -377,17 +377,17 @@ A completion hook (`onDone` and friends) reads that task's own payload: `$status
 
 A *flow* is not a stored thing: it is a query over live tasks, which is why steering takes a
 selection rather than a ref, and why steering a whole set needs no new machinery — it is the same
-selector at a wider setting. A task run by hand is a flow too: of its `--subject`, or of its own
+selector at a wider setting. A task run by hand is a flow too: of its `-subject`, or of its own
 id when it names none. The verbs, their flags, and how a run's hold differs from a suspension are
 [control](../control.md); this is what they do to a task.
 
 ```sh
 verse flow                                     # live tasks and suspensions
 verse flow show demo.pr.2                      # the tree: what ran, what is running, what comes next
-verse flow suspend --task review@demo.pr.2     # hold that run at its next boundary
-verse flow resume  --task review@demo.pr.2
-verse flow say     --subject demo.pr.2 "hurry" # to every live task about it
-verse flow cancel  --task review@demo.pr.2     # end that run (destructive)
+verse flow suspend -task review@demo.pr.2      # hold that run at its next boundary
+verse flow resume  -task review@demo.pr.2
+verse flow say     -subject demo.pr.2 "hurry" # to every live task about it
+verse flow cancel  -task review@demo.pr.2      # end that run (destructive)
 ```
 
 `say` and `cancel` report how many tasks they reached, echo the selection they reached them by,
@@ -416,10 +416,10 @@ the work about something and keep it stopped — no new firings, questions withd
 docket, hooks recording and starting nothing — suspend it instead:
 
 ```sh
-verse flow suspend --subject demo.pr.2 --why "a person is reviewing it by hand"
+verse flow suspend -subject demo.pr.2 -why "a person is reviewing it by hand"
 verse flow show demo.pr.2                      # heldBy: [<the suspension>] on the live task
-verse flow resume --task review@demo.pr.2      # refused, 409: a suspension holds it
-verse flow resume --subject demo.pr.2
+verse flow resume -task review@demo.pr.2       # refused, 409: a suspension holds it
+verse flow resume -subject demo.pr.2
 ```
 
 A task knows whose hold it is under — `heldBy` on its record and in `flow show` — so the two do
@@ -430,10 +430,10 @@ Every verb here asks `control` of each task it reaches, as `task cancel` does: t
 holds it, and so does the runner its claim granted. A `say` refused for any one of its tasks is
 refused whole, naming that task.
 
-With `--scope`, every verb here — `verse flow suspend|resume|say|cancel`, `task cancel|say|vector`
+With `-scope`, every verb here — `verse flow suspend|resume|say|cancel`, `task cancel|say|vector`
 and the runtime's `/tasks/{id}/pause|resume` — reaches the tasks that scope started and none it
-merely sees. Addressed at baseline's work it refuses and says so, so `verse flow cancel --scope me
---task review@demo.pr.2` never stops baseline's review of that PR by accident; drop the flag to
+merely sees. Addressed at baseline's work it refuses and says so, so `verse flow cancel -scope me
+-task review@demo.pr.2` never stops baseline's review of that PR by accident; drop the flag to
 address baseline. See [what a scope owns](connect.md#what-a-scope-owns).
 
 ## Where a task runs is a seam
@@ -444,11 +444,11 @@ Three backends, one handle. `verse task` and
 | | |
 |---|---|
 | local | the in-process supervisor — the default |
-| remote | `verse up --runner <url>` hosts tasks on another verse's task-control face |
-| broker | `verse up --broker --broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
+| remote | `verse up -runner <url>` hosts tasks on another verse's task-control face |
+| broker | `verse up -broker -broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
 
 Those three are the verse-wide default, set at startup. A spawn can also name its own place —
-`runner: verse.runners.pool.gpu` on a charter, `--runner` on `verse task run` — so a drive can
+`runner: verse.runners.pool.gpu` on a charter, `-runner` on `verse task run` — so a drive can
 run part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
 
@@ -464,7 +464,7 @@ running itself, and `verse task` shows its runner and where to dial in. You neve
 that URL; verse resolves it from the task for you.
 
 ```sh
-verse up --broker --broker-addr :9090
+verse up -broker -broker-addr :9090
 ID=$(verse task run "review the auth change")
 verse task
 # - dialURL: http://localhost:9090/broker/<nonce>
@@ -474,37 +474,37 @@ verse task
 #   prompt: "review the auth change"
 ```
 
-You are the executor. Every action takes `--as runner:<identity>`, because a claim must be
+You are the executor. Every action takes `-as runner:<identity>`, because a claim must be
 attributable, and the first act claims it (`task get` then reads `status: running`):
 
 ```sh
-verse task do note "$ID" "reviewing the auth change" --as runner:scott
+verse task do note "$ID" "reviewing the auth change" -as runner:scott
 ```
 
 Mid-work you reach a decision you should not make alone. Raise it *up* to verse rather than
 deciding — the verse governs who resolves it, and the executor never resolves its own gate.
-`--wait` blocks for the outcome:
+`-wait` blocks for the outcome:
 
 ```sh
-verse task do gate "$ID" deploy-approval --as runner:scott --reason prod --wait
-verse task do gate "$ID" unsure --as runner:scott --to peggy@example.com --reason "which region?"
+verse task do gate "$ID" deploy-approval -as runner:scott -reason prod -wait
+verse task do gate "$ID" unsure -as runner:scott -to peggy@example.com -reason "which region?"
 # gate raised: deploy-approval-a1b2c3d4
 # awaiting resolution…
-verse task approve "$ID" deploy-approval-a1b2c3d4 --as lead@example.com   # …from someone with the authority
-verse task do complete "$ID" "LGTM — one nit on the token TTL" --as runner:scott
+verse task approve "$ID" deploy-approval-a1b2c3d4 -as lead@example.com    # …from someone with the authority
+verse task do complete "$ID" "LGTM — one nit on the token TTL" -as runner:scott
 ```
 
-`--to` is who a worker-raised question is held out to — a person, a group's address, a kind —
+`-to` is who a worker-raised question is held out to — a person, a group's address, a kind —
 since a worker asking somebody is what raising a gate is for. Where the spawn's own gates carry
-a gate of that name with `answerers`, the spawn's stand and `--to` is ignored: that gate is the
+a gate of that name with `answerers`, the spawn's stand and `-to` is ignored: that gate is the
 charter's policy, and the runner does not get to soften it.
 
 A gate raised this way is the same record a charter gate poses, so it can take outcomes of its
 own, a threshold per outcome, and a clock:
 
 ```sh
-verse task do gate "$ID" rollout --as runner:scott --options canary,full:2,abort --deadline 4h:abort --wait
-verse gate <id> --answer canary --as lead@example.com
+verse task do gate "$ID" rollout -as runner:scott -options canary,full:2,abort -deadline 4h:abort -wait
+verse gate <id> -answer canary -as lead@example.com
 # rollout-… settled on canary
 ```
 

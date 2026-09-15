@@ -37,13 +37,13 @@ export VERSE_ADDR=localhost:9797
 ```
 
 `up` brings up logd and docd as children, so the store is durable from the first run — it
-resolves the `o` that hosts them itself (`--o-bin`, else a version-matched one on `PATH`,
+resolves the `o` that hosts them itself (`-o-bin`, else a version-matched one on `PATH`,
 else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the-o-binary)), so
 `up` works wherever you run it, not only in a checkout.
 
 `scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
 reaction that has already happened and one gate waiting for you — then prints what to type
-next. Or do it by hand: `verse c -a …`, `verse data …`, `verse --put gate`,
+next. Or do it by hand: `verse c -a …`, `verse data …`, `verse -put gate`,
 `verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
 `scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
 shapes a rule comes in, one command each). The tutorial walks the lot in five sections —

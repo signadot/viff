@@ -184,7 +184,7 @@ subject would write the same entity, which is the race single-writer exists to r
 
 It is an address rather than an id, so it carries the subject faithfully.
 `derived.feature.raise.gh.issue.1` is the entity `raise` derived about `gh.issue.1`, and reads back
-as exactly those segments. Two things follow. `verse data derived feature raise --paths` is
+as exactly those segments. Two things follow. `verse data derived feature raise -paths` is
 "everything this rule has derived". And **a derived entity is as deep as what it is about**: a rule
 reading one says how deep, and how deep follows from the depth of the subjects the producing rule
 selects, so `{path: [derived, feature, "*", "*", "*", "*"]}` for a rule deriving about

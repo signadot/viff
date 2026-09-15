@@ -215,8 +215,8 @@ Three things it is, and is not:
 - It governs **whose answer counts**, never who may see the question. Nothing changes about the
   docket, and a person may still read — and argue about — what an exclusive binding owns.
 - It is **not real against somebody holding the operator API**, and pretending otherwise would make
-  the dial a lie. So an override stays possible, as a named act: `verse gate approve <id> --as
-  me@example.com --override` lands `overrode: <binding>` beside `by: <who>`, and the record names both parties. The
+  the dial a lie. So an override stays possible, as a named act: `verse gate approve <id> -as
+  me@example.com -override` lands `overrode: <binding>` beside `by: <who>`, and the record names both parties. The
   refusal names the owner and says how, so the flag answers a question the operator has just been
   asked.
 - It is **not a security boundary**. It decides who answers an ask, never what an answer may

@@ -18,7 +18,7 @@ A doer is an entity: `provider.<capability>.<id>`. The capability is what it can
 which one it is.
 
 ```sh
-verse data provider treat fixer --put '{
+verse data provider treat fixer -put '{
   driver: llm, risk: low,
   tools: [read_file, list_dir, write_file, run_bash],
   grant: no-delegate,
@@ -218,7 +218,7 @@ verse gate
 ```
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc --answer fixer --as alice@example.com   # 1 of 2 for fixer
+verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as alice@example.com     # 1 of 2 for fixer
 ```
 
 A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary by

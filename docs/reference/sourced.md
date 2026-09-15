@@ -60,7 +60,7 @@ sourced git -repo   [<id>=]<dir>    a repository already on disk (repeatable, co
 ```
 
 `-repo` is the machine-that-has-it case; verse can also reflect a local repo with no program at
-all (`verse source add --dir`). `-mirror` is the deployed case: a pod has no repositories, so
+all (`verse source add -dir`). `-mirror` is the deployed case: a pod has no repositories, so
 the source clones one at startup and fetches on every pass. **Fetching is the read** — nothing
 is ever pushed — and a fetch that fails fails the pass, so a mirror that has stopped tracking
 says so in `lastError` instead of quietly answering last week's shas.

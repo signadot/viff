@@ -44,12 +44,12 @@ predicate, where a key may itself be named `or`. Plain equality predicates work 
 an operator over a payload needs tony (see [the trigger model](../trigger-model.md)).
 
 Output is colorized on a terminal and plain when piped, so `verse charter | o v` keeps
-working. `--color always` forces it (for a pager), `--color never` or `NO_COLOR=1` turns it
+working. `-color always` forces it (for a pager), `-color never` or `NO_COLOR=1` turns it
 off.
 
 The file suffix decides what a file is read as, so `verse c -a -f charter.json`
 and `-f charter.tony` both work regardless of the default. For input that names no format —
-stdin, an extensionless file, a payload typed on the command line — `--ifmt` decides, then
+stdin, an extensionless file, a payload typed on the command line — `-ifmt` decides, then
 the config default.
 
 To change the default: `format.default` in the config file, or `VERSE_FORMAT`. `format.output`

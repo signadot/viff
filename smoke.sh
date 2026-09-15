@@ -465,7 +465,7 @@ st=$(v status)
 has "$st" "suspensions:" && haskv "$st" count 1 || die "status does not count the suspension: $st"
 ok "nothing fired, nothing was asked, and status counts suspensions: {count: 1}"
 args=$(v flow --charter smoke-susp --args) || die "verse flow --charter smoke-susp --args failed"
-[ "$args" = "--charter smoke-susp --subject '*'" ] || die "the listing's --args is not the flags that name it: $args"
+[ "$args" = "-charter smoke-susp -subject '*'" ] || die "the listing's --args is not the flags that name it: $args"
 printf '%s\n' "$args" | xargs -L1 "$BIN" --addr "$ADDR" flow resume >/dev/null || die "xargs -L1 verse flow resume over --args failed"
 settled=
 for _ in $(seq 1 100); do

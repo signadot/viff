@@ -43,23 +43,23 @@ A listing answers with steps, the same spelling the command line takes, so a lin
 straight back:
 
 ```sh
-verse data --paths demo pr          # demo pr 1
+verse data -paths demo pr           # demo pr 1
                                     # demo pr a.b
                                     # demo pr 'a b.txt'
 
-verse data --paths demo pr | xargs -L1 verse data
+verse data -paths demo pr | xargs -L1 verse data
 ```
 
-`--kpaths` is the same listing as one kinded path per line, which is the spelling that survives
+`-kpaths` is the same listing as one kinded path per line, which is the spelling that survives
 being captured into a shell variable — a line of steps only reaches a read if something splits
 it, and a variable passed as one argument does not:
 
 ```sh
-verse data --kpaths demo pr         # demo.pr."1"
+verse data -kpaths demo pr          # demo.pr."1"
                                     # demo.pr."a.b"
 
-ref=$(verse data --kpaths demo pr | head -1)
-verse data --at "$ref"              # …one argument, and it reads back
+ref=$(verse data -kpaths demo pr | head -1)
+verse data -at "$ref"               # …one argument, and it reads back
 ```
 
 One spelling, in and out. A step is a whole word, so a dot inside one is a character in a
@@ -96,11 +96,11 @@ reason the positional is not — a flag is a different *place* on the line, not 
 of the same word. Which grammar applies is declared rather than guessed:
 
 ```sh
-verse data --at demo.pr.1           an address copied out of a document
-verse data --at 'demo.pr.*.stage'   …and the one spelling that carries a wildcard
+verse data -at demo.pr.1            an address copied out of a document
+verse data -at 'demo.pr.*.stage'    …and the one spelling that carries a wildcard
 ```
 
-An address is given once: as steps, or as `--at`, never both.
+An address is given once: as steps, or as `-at`, never both.
 
 ### `*`: three layers, three rules
 
@@ -110,14 +110,14 @@ reads it differently. They are consistent once seen together, and surprising one
 In the address grammar, a bare `*` is a wildcard only where the spelling is a path.
 
 ```sh
-verse data --at 'demo.pr.*'     # every id under demo.pr — a segment wildcard
-verse data --at 'demo.pr."*"'   # the one entity whose id IS an asterisk
+verse data -at 'demo.pr.*'      # every id under demo.pr — a segment wildcard
+verse data -at 'demo.pr."*"'    # the one entity whose id IS an asterisk
 verse data demo pr '*'          # the same entity — a bare `*` step is a name, never a pattern
 verse data demo pr 1 votes '[*]'  # …but a bracketed one is an access, and steps carry it
 ```
 
 A bare `*` is not self-delimiting — it is a plausible id and the shell expands it — so it stays
-a name in a step, and a segment wildcard is written with `--at`. That is why the `verse flow`
+a name in a step, and a segment wildcard is written with `-at`. That is why the `verse flow`
 verbs take one token and refuse a second: a selector is exactly the case steps cannot express.
 
 The shell gets there first, and a bare `*` as its own word is the dangerous one. Inside a
@@ -126,11 +126,11 @@ alone it matches *every file in the directory*:
 
 ```sh
 verse data demo pr * stage        # bash: expands to every filename in the cwd
-verse data --at demo.pr.*.stage   # …and so does this, unquoted — the shell does not care
+verse data -at demo.pr.*.stage    # …and so does this, unquoted — the shell does not care
                                   # which flag it is after
 ```
 
-So quote it, in either form — `--at 'demo.pr.*.stage'`. `--paths` prints it quoted for the same
+So quote it, in either form — `-at 'demo.pr.*.stage'`. `-paths` prints it quoted for the same
 reason, which is why a listing containing such an id pipes back correctly.
 
 In a charter, quoting does not change it. Tony quoting is about a value's type, not about
@@ -160,7 +160,7 @@ three:
 
 ```sh
 verse data verse task instance run-a1b2       # steps
-verse data --at verse.task.instance.run-a1b2  # …the same address copied out of a document
+verse data -at verse.task.instance.run-a1b2   # …the same address copied out of a document
 verse data verse task instance                # …and a prefix of it: the whole kind
 ```
 
@@ -169,7 +169,7 @@ Two consequences worth knowing in advance:
 - No world system may be called `verse`. `verse x 1` does not parse as an entity — it reads as
   the root plus two segments, and says so: *an address starts with system kind id, and
   "verse x 1" names 3 of the 4*.
-- The address parses; the write is refused. `verse data verse task instance x '{…}' --put` is
+- The address parses; the write is refused. `verse data verse task instance x '{…}' -put` is
   a well-formed address and a 403: what verse writes about itself is written by the verbs that
   own it (`charter -a`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
 
@@ -215,7 +215,7 @@ The root has one reserved key. Everything verse writes about its own running liv
 `verse`; everything the world is about lives beside it, at whatever address a writer chooses.
 
 ```sh
-verse data --paths
+verse data -paths
 # demo.pr.1                          the world's half
 # verse.task.instance.run-a1b2       verse's own
 # verse.trigger.rule.review
@@ -249,7 +249,7 @@ One thing is deliberately not in verse's half: `provider.*` — the registry of 
 by whoever runs the verse.
 
 The reserved half is read like anything else and written only through the verbs that own it.
-`verse data verse trigger rule review` reads a rule; `verse data --put` at any address under
+`verse data verse trigger rule review` reads a rule; `verse data -put` at any address under
 `verse` is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Each verb
 is where its checks live — what a rule may read, what a runner is, whether a source's claim
@@ -284,10 +284,10 @@ verse data demo                                    # {kind: {id: payload}}
 verse data demo pr                                 # {id: payload}
 verse data demo pr 1                               # one payload
 verse data demo pr 1 labels urgent                 # one place inside it
-verse data --at 'demo.pr.*.stage'                  # one field of each, still keyed by id
-verse data --paths demo pr                         # one address per line
-verse data --if '{stage: open}'                    # by what it says
-verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
+verse data -at 'demo.pr.*.stage'                   # one field of each, still keyed by id
+verse data -paths demo pr                          # one address per line
+verse data -if '{stage: open}'                     # by what it says
+verse data -if '{urgent: true}' -if-at labels      # …rooted inside the payload
 ```
 
 Steps everywhere except the globbed line, and that exception is the point: a `*` typed as a
@@ -296,7 +296,7 @@ so a selector is written as one token. See the spelling table above.
 
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
 assembled for the wire. So an id is a key rather than a token inside a rendered `at:`, which
-is what `--paths` is for: a script that wants the addresses gets them one per line instead of
+is what `-paths` is for: a script that wants the addresses gets them one per line instead of
 grepping them back out of a rendering.
 
 **A path naming nothing answers 404, at every depth**, and the command exits non-zero. `{}` is a
@@ -309,7 +309,7 @@ is a question about a system that is not there.
     verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
     verse data                   the verse is empty: nothing has been written yet
 
-An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `--if`
+An EMPTY DOCUMENT still has a meaning, and it is the other one: the path stands, and a `-if`
 predicate kept none of what it holds. That answer is about the filter rather than about the path,
 so it is a 200 with `{}` — which is why the two cannot be spelled the same way.
 
@@ -317,7 +317,7 @@ This used to turn on depth — `{}` with 200 at 0–2 segments, 404 below — wh
 where entities end. The store answers it now: since go-tony v0.0.201 a read reports null only
 where a null was written, and absence is absence at every depth.
 
-A read, a `--put` and a `--rm` all take the same address, at the same depths, because there is
+A read, a `-put` and a `-rm` all take the same address, at the same depths, because there is
 only one thing to take: `demo pr 1` typed and `demo.pr."1"` written down are the one grammar,
 separated by the shell in the first case and by the quoting in the second.
 
@@ -325,7 +325,7 @@ separated by the shell in the first case and by the quoting in the second.
 verse data demo pr 1
 ```
 
-`--if` narrows which entities the document holds, per entity, before the nesting — it never
+`-if` narrows which entities the document holds, per entity, before the nesting — it never
 prunes inside what it keeps. **It asks at the depth the path asks at**: a path of N segments
 identifies entities at depth N, a name and a `*` alike, and a shorter path is a prefix of the
 addresses in its half (three segments in the world's, four in verse's own). A reflected issue
@@ -333,11 +333,11 @@ is four segments down, a repository being a level, so the `*` is what makes each
 thing asked about:
 
 ```sh
-verse data --at 'git-issue.verse.issue.*' --if '{status: open}'   # each open issue
-verse data git-issue verse issue --if '{status: open}'            # the map of issues, as one: {}
+verse data -at 'git-issue.verse.issue.*' -if '{status: open}'     # each open issue
+verse data git-issue verse issue -if '{status: open}'             # the map of issues, as one: {}
 ```
 
-`--trim` projects the same entities. `--if` is a
+`-trim` projects the same entities. `-if` is a
 [tony match](https://signadot.github.io/tony-format/) against the payload — the same predicate
 a charter carries in `value`, so a read answers "what would a rule with this predicate
 select?". Operators (`!or`, `!and`, `!not`, `!glob`, presence and absence) are
@@ -345,7 +345,7 @@ tony's, documented with
 [mergeop](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop); what a match
 can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match-can-say).
 
-`--if-at` roots the predicate at a dot-separated field path. See
+`-if-at` roots the predicate at a dot-separated field path. See
 [Selecting by what an entity says](README.md#selecting-by-what-an-entity-says).
 
 ### Reaching into an array
@@ -355,23 +355,23 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 ```sh
 verse data merge proposal X votes '(scott)'
 verse data merge proposal X votes '[0]' choice
-verse data --at 'merge.proposal.X.votes[0].choice'    # the same, as one token
+verse data -at 'merge.proposal.X.votes[0].choice'     # the same, as one token
 ```
 
-Both spellings reach it: a step beginning `[`, `{` or `(` **is** that access, and `--at` carries
+Both spellings reach it: a step beginning `[`, `{` or `(` **is** that access, and `-at` carries
 the kinded path whole. The shell quoting on the step is the shell's — `(` and `[` are its
 characters too.
 
 `(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been stored.
 That is not automatic: `!key` is a tony merge operator, so an ordinary write executes it — the
 array is merged by key and kept without the tag — which means an array put through
-`verse data --put` is not keyed afterwards. A payload meant to stay addressable this way is
+`verse data -put` is not keyed afterwards. A payload meant to stay addressable this way is
 written as data (`entity.Raw`), which is what the engine's own writers do.
 
 A write reaches an element too, and lands in place:
 
 ```sh
-verse data merge proposal X votes '[0]' choice --put '"approve"'
+verse data merge proposal X votes '[0]' choice -put '"approve"'
 ```
 
 The substrate is what guards it, which is why the CLI does not:
@@ -392,19 +392,19 @@ A guard rides an element write like any other, and it is about the ELEMENT the w
 not about the entity that holds it:
 
 ```sh
-verse data merge proposal X votes '[0]' --expect '{by: scott}' --put '{choice: approve}'
+verse data merge proposal X votes '[0]' -expect '{by: scott}' -put '{choice: approve}'
 ```
 
-`--create`, `--update` and `--expect` reach it with tony's `!at`, which walks the path and
+`-create`, `-update` and `-expect` reach it with tony's `!at`, which walks the path and
 applies the pattern where it lands. So a guard on one ballot says nothing about the others: a
 vote cast beside it neither satisfies nor refuses it, the way a pattern at a field says nothing
 about its siblings. (An array-shaped pattern would say something: tony matches an array
 positionally and by length, so asking about `votes[1]` that way would also swear the array holds
 exactly two ballots.)
 
-`--create` is the odd one, honestly so. An element cannot be created in place, so where nothing
+`-create` is the odd one, honestly so. An element cannot be created in place, so where nothing
 stands the guard holds and the write is refused by the substrate instead, naming the array's
-length — which is the answer worth hearing. Where a ballot does stand, `--create` refuses to
+length — which is the answer worth hearing. Where a ballot does stand, `-create` refuses to
 commit over it, as it does anywhere else.
 
 ### What the document does not cover
@@ -421,20 +421,20 @@ A put merges: fields it does not name are left alone. That is why it answers wit
 at the address written rather than an echo of what was sent, and why two writers advancing one
 entity do not clobber each other.
 
-The address may be as deep as the tree: `verse data verse-dev drift head abc '{sha: …}' --put `
+The address may be as deep as the tree: `verse data verse-dev drift head abc '{sha: …}' -put `
 writes there, and the answer is that place. A write is a value at a path, so where an entity
 "ends" is not a question a write has to answer.
 
 ```sh
-verse data demo pr 1 --put '{stage: open}'      # as steps: nothing needs quoting
-verse data --at demo.pr.1 --put '{owner: ana}'  # …or in one token: adds an owner, keeps the stage
-verse data demo pr 1 labels urgent --put true   # write inside the payload
-verse data demo pr 1 labels urgent --rm         # remove one field
-verse data demo pr 1 --rm                       # the whole entity
+verse data demo pr 1 -put '{stage: open}'       # as steps: nothing needs quoting
+verse data -at demo.pr.1 -put '{owner: ana}'    # …or in one token: adds an owner, keeps the stage
+verse data demo pr 1 labels urgent -put true    # write inside the payload
+verse data demo pr 1 labels urgent -rm          # remove one field
+verse data demo pr 1 -rm                        # the whole entity
 ```
 
 A payload typed on the command line names no file, so it is read in the default input format
-— tony, unless `--ifmt` or the config says otherwise. In tony, `{stage: open}` needs no
+— tony, unless `-ifmt` or the config says otherwise. In tony, `{stage: open}` needs no
 quotes on either half and commas are optional, so `{stage: open, id: 7}` and
 `{stage: open id: 7}` are the same document. A payload in a `.json` or `.yaml` file is read
 by the same command; see [representation.md](representation.md).
@@ -451,8 +451,8 @@ has to be somewhere a field can live. Where nothing stands yet, the write builds
 object stands, it merges into it; where an **array or a scalar** stands, the write is refused.
 
 ```sh
-verse data demo pr 1 --put '{votes: [{by: ana}, {by: bo}]}'
-verse data demo pr 1 votes bo --put '"yes"'
+verse data demo pr 1 -put '{votes: [{by: ana}, {by: bo}]}'
+verse data demo pr 1 votes bo -put '"yes"'
 # the write would replace what it descends through: demo.pr."1".votes holds an array,
 # so "bo" is not a place in it — write the whole value AT demo.pr."1".votes, or address
 # an element of it
@@ -466,11 +466,11 @@ transcript says anything was lost.
 Replacing it is still available and is spelled as what it is — a put AT the array:
 
 ```sh
-verse data demo pr 1 votes --put '[{by: ana}, {by: bo}, {by: cy}]'
+verse data demo pr 1 votes -put '[{by: ana}, {by: bo}, {by: cy}]'
 ```
 
 The guard is a precondition carried with the write, so it is decided at the commit rather than
-in a check beforehand, and `--create`/`--update`/`--expect` compose with it. `--create` is worth
+in a check beforehand, and `-create`/`-update`/`-expect` compose with it. `-create` is worth
 naming, because it does not stand in for this one: it asks whether the LEAF is absent, which
 under an array it truthfully is, so it admits exactly the write that would do the damage.
 
@@ -485,25 +485,25 @@ Each condition is checked *with* the write, in one step at the store, so nothing
 in between. A refused write says so, leaves the entity alone, and exits non-zero.
 
 ```sh
-verse data --create demo pr 1 --put '{stage: open}' # only if nothing is there yet
-verse data --update demo pr 1 --put '{stage: open}' # only if something is
-verse data --expect '{stage: draft}' demo pr 2 --put '{stage: open}' # only if it still looks like this
+verse data -create demo pr 1 -put '{stage: open}' # only if nothing is there yet
+verse data -update demo pr 1 -put '{stage: open}' # only if something is
+verse data -expect '{stage: draft}' demo pr 2 -put '{stage: open}' # only if it still looks like this
 # write refused: a condition did not hold
 ```
 
 This is CAS, spelled as a predicate rather than as a revision number: the write says what it
-believes about the entity rather than which revision it read. `--if` here is a precondition on
-a write, and is not the `--if` that filters a listing — one narrows what is written, the other
+believes about the entity rather than which revision it read. `-if` here is a precondition on
+a write, and is not the `-if` that filters a listing — one narrows what is written, the other
 what is read.
 
 ## Watching
 
 ```sh
 verse watch                                        # from now on
-verse watch --if '{stage: open}' demo              # the same selectors as a read
-verse watch --since 42                             # replay from a revision already in hand
-verse watch --ago 50                               # …or the last 50 commits, whatever the head is
-verse watch --since 0                              # replay everything the store still holds
+verse watch -if '{stage: open}' demo               # the same selectors as a read
+verse watch -since 42                              # replay from a revision already in hand
+verse watch -ago 50                                # …or the last 50 commits, whatever the head is
+verse watch -since 0                               # replay everything the store still holds
 ```
 
 With no cursor a watch starts from now. A cursor is how history is asked for, and asking for
@@ -525,19 +525,19 @@ the next.
 - `to` is the entity's whole state as of that commit, not the delta that was written — so a
   reader matching on two fields still matches when only one of them was written.
 - `rev` is an opaque cursor. Revisions are monotonic but **sparse**, so treat one as a
-  bookmark to hand back to `--since`, never as a count. `--ago 50` is the exception that
+  bookmark to hand back to `-since`, never as a count. `-ago 50` is the exception that
   proves it: it asks the store for the last fifty commits — resolved against its watermark and
   clamped to what it retains — rather than doing arithmetic on a revision, and how many events
   live in that span is still the store's business rather than the number's. It is its own flag
-  because `--since -50` is not spellable: at a command line a leading dash is what an option
+  because `-since -50` is not spellable: at a command line a leading dash is what an option
   looks like, so the relative cursor says so in its name.
 
-A watch with a cursor replays: `--since <rev>` (or `--ago <n>`) delivers what the store
+A watch with a cursor replays: `-since <rev>` (or `-ago <n>`) delivers what the store
 still holds from that revision before it streams anything new, so a reader that was away can
 catch up rather than guess. A cursor it cannot replay from is refused rather than answered with
 a stream carrying no history, and the refusal says which of two things happened: the revision is
 below what the store still retains, so that history is gone — and the refusal names the commit
-it can still serve from, with `--ago <n>` as the way to ask for what it kept without naming one;
+it can still serve from, with `-ago <n>` as the way to ask for what it kept without naming one;
 or the store could not answer, in which case the cursor stands and the same request is worth
 repeating. A catch-up costs what the path it is asked about holds, so watching
 one slice is cheaper than watching the verse in the replay as well as in the stream. With no cursor there is nothing to catch up from and the stream starts at the
@@ -560,12 +560,12 @@ subtree still selects the deep entity, because it re-evaluates against the store
 against the event's address alone.
 
 A value shallower than an address is reported where it stands, as a read lists it. After
-`verse data a b --put c`, a bare `verse watch`, `verse watch a` and `verse watch a b` each report
-a `set` at `a.b` holding `c`, and `verse data --rm a b` a `delete` at `a.b`. A watch on an
+`verse data a b -put c`, a bare `verse watch`, `verse watch a` and `verse watch a b` each report
+a `set` at `a.b` holding `c`, and `verse data -rm a b` a `delete` at `a.b`. A watch on an
 address reports whatever stands there, a scalar included. A rule reading `demo.pr` is woken by a
 write at `demo` as well as one under it, since that write replaces what the rule reads.
 
-A `delete` carries no payload, so a `--if` filter does not match one: there is nothing left
+A `delete` carries no payload, so a `-if` filter does not match one: there is nothing left
 to ask about. An entity on its way out is also marked *vanishing* before removal, which is
 what stops a rule from acting on — and thereby resurrecting — something that is leaving; see
 [lifecycle](../trigger-model.md#lifecycle-how-an-entity-leaves).

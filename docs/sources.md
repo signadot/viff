@@ -152,7 +152,7 @@ one has by construction:
 - **Ownership must be provably disjoint from every standing registration in the same scope**, or
   the install is refused, with both claims in the message: verse could not prove them apart, so the
   operator is the one who can say. Two sources that write different *places* in the same entities
-  say so with a path on the claim and are then proved apart like anything else. `--allow-overlap`
+  say so with a path on the claim and are then proved apart like anything else. `-allow-overlap`
   is what is left for two that genuinely write the same place, with the cost stated rather than
   discovered: two writers on one slice, each tombstoning what the other reflected.
 
@@ -192,10 +192,10 @@ remove and an add of the same physical truth**, and tombstoning it fires every b
 trigger in the verse and then every branch-created one behind it: a bookkeeping change destroying
 and re-creating live facts, which is the runner's rename case in a different costume.
 
-So removal with a non-empty reflected slice is **refused until told which**: `--forget`
-(the reflection is over) or `--keep` (the same truth is moving; leave the last known state, now
+So removal with a non-empty reflected slice is **refused until told which**: `-forget`
+(the reflection is over) or `-keep` (the same truth is moving; leave the last known state, now
 frozen and quietly ageing). A removal with nothing reflected needs no flag, there being nothing
-to be wrong about. What `--forget` may delete is bounded by `owns` and nothing else: it can only
+to be wrong about. What `-forget` may delete is bounded by `owns` and nothing else: it can only
 tombstone what the install proved this source was the single writer of.
 
 ## What verse records, and what it refuses to
@@ -260,7 +260,7 @@ a sixth. **The third and the fourth needed nothing new in `source/`, `versed/` o
 is the seam's claim, tested twice.
 
 **Only one thing differs between them, and it is the credential.** git needs none, nor does
-git-issue, which reads the same directory, so git can also run in task (`--dir`) and its "webhook"
+git-issue, which reads the same directory, so git can also run in task (`-dir`) and its "webhook"
 is a four-line shell script. The three that reach a service hold a token, which is what puts them
 on the far side of the seam for good, and what "nothing new about credentials" below means in
 practice.

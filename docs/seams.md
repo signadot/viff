@@ -194,7 +194,7 @@ sequenceDiagram
 
   V->>B: spawn — in task, because the broker IS verse's runner here
   Note over B: status: unclaimed
-  W->>B: POST /tasks/{id}/claim  (--as runner:<who>)
+  W->>B: POST /tasks/{id}/claim  (-as runner:<who>)
   B-->>W: claim accepted — an epoch is minted
   Note over B: a later claim fences this one
   loop while running
@@ -217,8 +217,8 @@ no-ops.
 The well-known nonce `local` is the built-in supervisor, so the in-process runtime is reached
 through the same shape as everything else. There is no privileged local path.
 
-Because the seam is uniform, a **human is a runner**. `verse task do <verb> --as <who>`
-is the executor's leg of exactly this protocol, and `--as` is required because a claim must be
+Because the seam is uniform, a **human is a runner**. `verse task do <verb> -as <who>`
+is the executor's leg of exactly this protocol, and `-as` is required because a claim must be
 attributable. Every `verse task` verb works the same whether the work is local, remote, or
 in somebody's terminal.
 
@@ -267,7 +267,7 @@ The direction split matters in deployment: in the Kubernetes build, verse reache
 `http://verse:9797/sources/<system>/<name>/hint` to call back. Neither is simply the other's
 client.
 
-Two variants avoid the network entirely or do not exist yet. `--dir` reflects a local git
+Two variants avoid the network entirely or do not exist yet. `-dir` reflects a local git
 repository **in task** — no `sourced`, no port. And `dial-in`, for a source verse must not
 dial, is designed and **refused at install** until it is built ([sources](reference/sources.md)).
 
@@ -330,7 +330,7 @@ Read the whole note as this table.
 ## What is not a seam
 
 Worth naming, so the map is not read as bigger than it is. The **driver** — `scripted`, `calls`,
-`llm`, your own `Next` — is a Go interface and never a wire. A `--dir` **source** runs in task. The
+`llm`, your own `Next` — is a Go interface and never a wire. A `-dir` **source** runs in task. The
 **local runner** is a Go call. The `Store` interface admits a memory implementation with no daemon
 behind it, which is what the tests run on.
 

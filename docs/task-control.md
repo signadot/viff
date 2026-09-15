@@ -1,6 +1,6 @@
 # Task control
 
-The contract behind `verse up --runner <url>` and `verse up --broker`. Walk it first in
+The contract behind `verse up -runner <url>` and `verse up -broker`. Walk it first in
 [reference/tasks.md](reference/tasks.md#executing-one-by-hand), where a human executes a task by
 dialing in; this is the seam that makes that work. It builds on
 [external tasks](external-tasks.md), where it is design D, and makes its "wrapping and enforcing
@@ -26,7 +26,7 @@ So the two dials each carry their own name, and neither is "policy". What runs a
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
-| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up --runner <url>` |
+| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up -runner <url>` |
 | how much it may do unasked | `task.Vector` | `vector` on a launch spec | `verse task vector <id>` |
 
 ## What the interface is
@@ -93,9 +93,9 @@ that has moved on.
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
 mirrors the stream into the `verse.task.instance` entity, so durability lives in verse rather than
 the runner. Which runner runs a given task is a per-spawn binding — `runner: <url>` in the charter
-or spec, like `--driver` — and there is deliberately no in-memory shortcut: `verse task
-cancel|say` and `verse flow suspend --task` go through the same dispatch as a remote one, which
-forces the contract to be complete and keeps local equivalent to remote. The dispatch is per scope: with `--scope` it reaches
+or spec, like `-driver` — and there is deliberately no in-memory shortcut: `verse task
+cancel|say` and `verse flow suspend -task` go through the same dispatch as a remote one, which
+forces the contract to be complete and keeps local equivalent to remote. The dispatch is per scope: with `-scope` it reaches
 a task that scope spawned and refuses one it inherited, naming the scope that holds it (see [what a
 scope owns](reference/connect.md#what-a-scope-owns)).
 
@@ -287,7 +287,7 @@ binding is then uniformly a URL: `<broker>/broker/local`, `<broker>/broker/<nonc
 one. Verse consumes the verse-facing contract from it — as an in-process or forwarded call for a
 hosted broker, over HTTP for an external one.
 
-Two listeners, one deployment. `verse up` exposes the operator API on `--addr` — CLI,
+Two listeners, one deployment. `verse up` exposes the operator API on `-addr` — CLI,
 entities, gates, task control, and broker registration (`POST /broker` mints a nonce),
 trusted and internal — and the broker face on a sibling port, serving `/broker/<nonce>/...`
 and the worker-facing dial-in (`claim`, `inbox`, `report`), nonce-guarded and reachable by

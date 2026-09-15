@@ -107,18 +107,18 @@ func (sel *flowFlags) list(cc *cli.Context) error {
 }
 
 // rowArgs is a row as the flags that name it, each value a word a shell and xargs both read
-// back: `--task <id>` for a live task, `--charter <c> [--recursive] --subject <s>` for a
+// back: `-task <id>` for a live task, `-charter <c> [-recursive] -subject <s>` for a
 // suspension, and the scope the listing was asked in.
 func rowArgs(row api.FlowRow, scope string) string {
 	var words []string
-	flag := func(name, value string) { words = append(words, "--"+name, entity.ShellWord(value)) }
+	flag := func(name, value string) { words = append(words, "-"+name, entity.ShellWord(value)) }
 	switch row.Kind {
 	case api.FlowRowTask:
 		flag("task", row.Task)
 	default:
 		flag("charter", row.Charter)
 		if row.Recursive {
-			words = append(words, "--recursive")
+			words = append(words, "-recursive")
 		}
 		flag("subject", row.Subject)
 	}

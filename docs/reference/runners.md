@@ -20,16 +20,16 @@ segments of the address and of the route that serves it.
 
 ```
 verse runner                              what is installed, with running/total/lastSpawn
-        [--probe]                          …and what each one says right now (not recorded)
+        [-probe]                           …and what each one says right now (not recorded)
 verse runner add <kind>.<name> <url>       install one, probing the url first
-       add [--file <f>] | [file] | stdin   …or as a document (.tony/.json/.yaml)
-           [--no-probe]                    install without asking the url what it is
-           [--identity <id>]               it acts as runner:<id> (default: its name)
+       add [-file <f>] | [file] | stdin    …or as a document (.tony/.json/.yaml)
+           [-no-probe]                     install without asking the url what it is
+           [-identity <id>]                it acts as runner:<id> (default: its name)
        show <ref>                          the entity
        check <ref>                         ask this runner what it is, right now
        remove <ref>                        take it away; refused if work is running on it
-              [--cancel "<why>"]           …the place is going away: end that work, with a reason
-              [--leave]                    …the place stays: leave it running
+              [-cancel "<why>"]            …the place is going away: end that work, with a reason
+              [-leave]                     …the place stays: leave it running
 ```
 
 A `<ref>` is `verse.runners.pool.gpu` or `pool.gpu`: the whole address as it is listed and stored,
@@ -39,8 +39,8 @@ because two ways to say one thing is one too many.
 On the task side:
 
 ```
-verse ps  [--runner <ref>]                 only the work on that runner (`local` = named none)
-verse task run --runner <ref> <prompt>    run this one there
+verse ps  [-runner <ref>]                  only the work on that runner (`local` = named none)
+verse task run -runner <ref> <prompt>     run this one there
 ```
 
 ## Routes
@@ -59,8 +59,8 @@ store — it is answered live and discarded, so a reachability column is always 
 
 ## On a spawn
 
-`runner:` on a charter's `spawn:`, and `--runner` / `runner` on the ad-hoc face. Empty means the
-verse's default runner, which `verse up --runner` / `--broker` set.
+`runner:` on a charter's `spawn:`, and `-runner` / `runner` on the ad-hoc face. Empty means the
+verse's default runner, which `verse up -runner` / `-broker` set.
 
 A spawn naming a runner that is not installed is **refused** on both paths — an ad-hoc run with
 `400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto
@@ -78,4 +78,4 @@ the flow. It is never quietly run somewhere else.
 
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing
 a runner entity cannot strand running work; the name is what a person reads and what
-`verse ps --runner` selects on, which keeps answering after the entity is gone.
+`verse ps -runner` selects on, which keeps answering after the entity is gone.

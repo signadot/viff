@@ -10,7 +10,7 @@ Two tiers, split so the storage fragility stays off the engine:
 
 - **docd** — a `StatefulSet` (1 replica) running `o sys up` (logd+docd) on a `/data` volume.
   The stateful tier: it owns durable state and, on a cloud volume, is AZ-pinned.
-- **versed** — a `Deployment` (1 replica, `Recreate`) running `verse up --docd-addr …`. A
+- **versed** — a `Deployment` (1 replica, `Recreate`) running `verse up -docd-addr …`. A
   stateless singleton engine that *attaches* to docd and floats (any node/AZ, fast restart).
   Singleton because two engines would double-fire triggers; leader-election is the scale-out
   answer later.
@@ -213,7 +213,7 @@ suffix.
 a laptop. `connect` is its own process: it reads docd's two addresses off `/status` and dials
 them from where *it* is, so being told `docd:7071` — true inside the cluster, meaningless
 outside — was enough to stop it. With `tailscaleExpose`, versed is given
-`--docd-advertise-addr verse-docd:7071` and `--docd-mount-advertise-addr verse-docd-mount:7072`
+`-docd-advertise-addr verse-docd:7071` and `-docd-mount-advertise-addr verse-docd-mount:7072`
 ([up.md](../docs/reference/up.md#when-a-client-cannot-reach-docd-where-verse-does)). It keeps
 *dialling* `docd:7071` and `docd-mount:7072` — routing the engine's own traffic through a proxy
 pod to reach a container beside it would be absurd — and only the answer changes.
@@ -223,7 +223,7 @@ one outside. A controller running *inside* the namespace would now be handed tai
 should be passed the Service names directly rather than discovering them.
 
 The broker face is the same arrangement one layer along, and its answer travels on the task
-rather than on `/status`: versed is given `--broker-advertise-addr verse-broker:9090`, so each
+rather than on `/status`: versed is given `-broker-advertise-addr verse-broker:9090`, so each
 brokered task's `dialURL` names the tailnet device while the process goes on binding `:9090`.
 A worker only ever reaches its own task, through the nonce in that URL, which is what makes
 handing it to somebody outside the cluster a different act from handing them the API.
@@ -282,7 +282,7 @@ Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and
 would depend on your current kubectx and skip the version-skew check the CLI's own transport
 does on every request. **The url stays the in-cluster Service name**, because it is *versed*
 that dials it: the CLI only posts `{kind, name, url}`, and the probe happens server-side
-(`versed/sources.go`). The mirror image of `--docd-advertise-addr`, where the client dials and
+(`versed/sources.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
 so the address has to be reachable from where the client is.
 
 ⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod
@@ -304,7 +304,7 @@ verse source add git-issue.cluster http://git-issue-source:9801   # reconcile th
 Driven, on a source moved from one repository to two: only the first repository's entities were
 written while the claim was stale, `check` showed the two values side by side, and the second
 repository's appeared within a pass of the re-add. Removal is the other direction and needs no
-such care — but note it asks for `--forget` or `--keep`, and there is nothing to forget on a
+such care — but note it asks for `-forget` or `-keep`, and there is nothing to forget on a
 source you are only widening.
 
 ### Credentials
@@ -366,7 +366,7 @@ A pod has none, so `-mirror` makes one: it clones the remote at startup and fetc
 pass. That is the read — nothing is ever pushed. The mirror lives on an `emptyDir`, so a restart
 re-clones; swap in a PVC if that gets expensive. For a repository that already exists somewhere,
 run the same binary next to it with `-repo`, or skip the deployment entirely and use
-`verse source add --dir`.
+`verse source add -dir`.
 
 `gitIssueSource` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/issues/*` is already there and this needs no credential
@@ -542,7 +542,7 @@ it by url, and deploying it does not install it.
 ```sh
 make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
 make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-verse runner add pool.coderunner http://coderunner:9802 --identity coderunner   # it acts as runner:coderunner; default: its name
+verse runner add pool.coderunner http://coderunner:9802 -identity coderunner    # it acts as runner:coderunner; default: its name
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
@@ -660,7 +660,7 @@ curl localhost:9798/debug/pprof/goroutine?debug=2      # where every goroutine i
 It is worth a port because it holds **nothing a request handler holds** — its own accept loop,
 its own mux, no store call — so it answers exactly when the API face cannot. The half hour
 versed spent at 0/1 with every read timing out was a question about goroutines that nothing in
-the pod could be asked; this is that answer. `--admin-addr`/`-admin-addr` moves it, `off`
+the pod could be asked; this is that answer. `-admin-addr` moves it, `off`
 disables it, and the address is on `verse status` under `listen.admin`.
 
 ## Not here yet

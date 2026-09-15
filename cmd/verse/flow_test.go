@@ -170,7 +170,7 @@ func TestFlowArgsSurviveXargs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("xargs over %q: %v", out, err)
 	}
-	want := "--task|review@demo.pr.1|" + "--charter|verse-dev.drift:claim|--recursive|--subject|" + subject + "|"
+	want := "-task|review@demo.pr.1|" + "-charter|verse-dev.drift:claim|-recursive|-subject|" + subject + "|"
 	if string(read) != want {
 		t.Fatalf("xargs read\n%s\nas %q, want %q", out, read, want)
 	}

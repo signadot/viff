@@ -74,7 +74,7 @@ or reads from there:
 | `escalatesAt` | when its owner's deadline expires. Absolute (RFC3339 with fraction), stamped at post |
 | `reownedFrom` `reownedWhy` `reownedAt` | the handover. `why` is `escalated`, `overdue` or `removed` |
 | `by` | who answered. A resolver's verdict stamps the **binding**, not the instance |
-| `overrode` | whom an answer was taken over, when `--override` was used |
+| `overrode` | whom an answer was taken over, when `-override` was used |
 | `askedAgain` | this id was posed again after settling; the prior answer is at the commit that made it |
 
 Everything else on the record — `id`, `status`, `subject`, `task`, `origin`, `gate`, `mode`,
@@ -147,7 +147,7 @@ verse resolver remove verse.resolvers.security.review
 
 verse data verse resolvers instance            # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
-verse gate approve <id> --as <who> [--override] # answer, or answer over an exclusive owner
+verse gate approve <id> -as <who> [-override] # answer, or answer over an exclusive owner
 ```
 
 A resolver ref is typed the way it is stored — `verse.resolvers.security.review` — because an
@@ -158,13 +158,13 @@ spellings of one thing. The leading `verse.resolvers.` may be dropped, leaving `
 
 ```sh
 verse task run 'check the migration' \
-  --subject change.pr.1 \
-  --vector ask \
-  --resolver verse.resolvers.security.review
+  -subject change.pr.1 \
+  -vector ask \
+  -resolver verse.resolvers.security.review
 ```
 
-`--vector ask` is what makes the run stop and ask; without it the run is `auto` and a bound
-resolver has nothing to answer. `--resolver` naming a binding that is not installed is refused,
+`-vector ask` is what makes the run stop and ask; without it the run is `auto` and a bound
+resolver has nothing to answer. `-resolver` naming a binding that is not installed is refused,
 rather than left to shadow whatever covers the subject.
 
 In a charter, the same two doors:

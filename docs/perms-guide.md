@@ -23,7 +23,7 @@ addr: "verse:9797"
 user: "walter@example.com"
 ```
 
-`VERSE_USER` in the environment overrides the file for a shell, and `--as` overrides both on
+`VERSE_USER` in the environment overrides the file for a shell, and `-as` overrides both on
 the commands that take one, which is how you act as somebody else for one command to see what
 they see. `VERSE_CONFIG=<file>` replaces both file layers outright, so a second verse gets a
 second file rather than a second identity in one. With no `user` anywhere a request is
@@ -32,17 +32,17 @@ it creates is not its own — with no name to record, the node belongs to whoeve
 above it, the system at the top.
 
 ```sh
-verse data spaces scott notes --put '{todo: [buy milk]}'
+verse data spaces scott notes -put '{todo: [buy milk]}'
 verse perms spaces scott notes | grep owner             # owner: user:walter@example.com
 VERSE_USER=ana@example.com verse perms spaces scott notes | grep owner   # the same record, read as ana
 ```
 
 A name carries its kind before the colon, and a request presents one of three:
-`user:walter@example.com` for a person, which a bare email in `user:` or `--as` is read as;
+`user:walter@example.com` for a person, which a bare email in `user:` or `-as` is read as;
 `agent:<name>` for a harness driving verse from outside, which sets `agent:` in its config
-instead; and `runner:<identity>` for a worker, which claims work as `--as runner:<identity>` (a
-runner reached by url acts as the `--identity` on its entity). A bare word such as
-`--as coderunner` is refused, saying the grammar ([perms.md](perms.md#principals-and-grantees)
+instead; and `runner:<identity>` for a worker, which claims work as `-as runner:<identity>` (a
+runner reached by url acts as the `-identity` on its entity). A bare word such as
+`-as coderunner` is refused, saying the grammar ([perms.md](perms.md#principals-and-grantees)
 has it whole). The name is self-asserted — there is no login — and everything below is about
 what a name may do, not about proving who holds it.
 
@@ -55,7 +55,7 @@ Three things to know before the first step, because each is a reasonable guess t
   outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
   own kind, and today it is granted exactly what a person is. It is a name that grants can
   narrow against later; until they do, read `[user:*, agent:*]` as "people".
-- **Identity is self-asserted.** A request is whoever the config, `VERSE_USER` or `--as` says,
+- **Identity is self-asserted.** A request is whoever the config, `VERSE_USER` or `-as` says,
   and the server trusts it as far as that. The check holds every write to what its place
   permits *for that name*; who is behind the name is a different question, not yet asked.
 
@@ -66,7 +66,7 @@ With `user:` set, everything you type is yours. The seeded entities from
 own:
 
 ```sh
-verse data spaces scott notes --put '{todo: [buy milk]}'
+verse data spaces scott notes -put '{todo: [buy milk]}'
 verse perms spaces scott notes
 ```
 
@@ -84,7 +84,7 @@ it says, which at the root is `read: ["*"]` — readable by everyone, writable b
 alone. Another user is refused the write and told why:
 
 ```
-VERSE_USER=ana@example.com verse data spaces scott notes --put '{todo: []}'
+VERSE_USER=ana@example.com verse data spaces scott notes -put '{todo: []}'
 → 403 refused: user:ana@example.com holds read at spaces.scott.notes and writing it needs
   read-write; the nearest owner on record is user:walter@example.com at spaces.scott.notes
 ```
@@ -97,15 +97,15 @@ expected to pass, that last part is where to look.
 and what you set there governs what is made beneath it:
 
 ```sh
-verse perms spaces scott --default '{}' --grants '[]'   # nothing held out beneath, nothing on it
-verse data spaces scott private --put '{…}'             # scott's alone: no read for anyone
-verse perms spaces scott --grant '{read: [ana@example.com]}'
-verse perms spaces scott --revoke '{read: [ana@example.com]}'
+verse perms spaces scott -default '{}' -grants '[]'     # nothing held out beneath, nothing on it
+verse data spaces scott private -put '{…}'              # scott's alone: no read for anyone
+verse perms spaces scott -grant '{read: [ana@example.com]}'
+verse perms spaces scott -revoke '{read: [ana@example.com]}'
 ```
 
-`--default` is what a node created *beneath* holds out, copied onto each new record at
-creation; `--grants` replaces what the node itself holds out; `--grant` adds a line and
-`--revoke` takes one off. A grant withdrawn stops future acts and touches nothing that exists.
+`-default` is what a node created *beneath* holds out, copied onto each new record at
+creation; `-grants` replaces what the node itself holds out; `-grant` adds a line and
+`-revoke` takes one off. A grant withdrawn stops future acts and touches nothing that exists.
 Ownership changes only by create and delete: there is no transfer, and the way to hand
 something over is to make it under a place the other party owns.
 
@@ -114,7 +114,7 @@ substrate as the commit's author, so the log itself says who, without a second r
 delta replayed or watched from the store carries the author back. The CLI does not print it
 yet; what it prints is the record that decided, which is the same fact from the other side.
 
-**What is not yours to write.** `verse data --put` under `verse.` is refused whatever you hold:
+**What is not yours to write.** `verse data -put` under `verse.` is refused whatever you hold:
 the reserved half is written through the verbs that own it (`verse c -a`, `verse task run`,
 `verse gate approve`, `verse perms`), and beneath each verb the store checks the write against
 its place, so nothing reaching the store can stamp a task or answer a question on your behalf.
@@ -126,7 +126,7 @@ mirror — bare, it lists the records of every node you may read, and with a pat
 A task is an entity the runtime mirrors, and the mirror writes it *as whoever asked for it*:
 
 ```sh
-verse task run 'check the migration' --subject demo.pr.1 --vector ask
+verse task run 'check the migration' -subject demo.pr.1 -vector ask
 verse perms verse task instance <id>
 ```
 
@@ -145,8 +145,8 @@ special-cases this; it is what "a grant does not reach through an owner record" 
 
 **What you may say about its gates.** Four things, and they answer different questions:
 
-- `--vector auto|ask|park` is *whether* the run stops to ask at all. `auto` asks nobody.
-- `--gates <file>` is *which* actions ask, and what each question takes to settle: a list in
+- `-vector auto|ask|park` is *whether* the run stops to ask at all. `auto` asks nobody.
+- `-gates <file>` is *which* actions ask, and what each question takes to settle: a list in
   the shape a charter's `gates:` uses — `match` over verbs and tools, `need`, `options`,
   `deadline`, and `answerers`:
 
@@ -162,8 +162,8 @@ special-cases this; it is what "a grant does not reach through an owner record" 
   `answerers` is *who* may answer: it becomes the question's `read-write` line when the
   question is posed, in place of the docket's default. Left off, the default stands — `[user:*,
   agent:*]` in the seed, which is any person.
-- `--resolver <binding>` hands the run's questions to a binding instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
-- `--as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
+- `-resolver <binding>` hands the run's questions to a binding instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
+- `-as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
 
 What the task may *do* in the world — write files, push, delegate — is a different axis: the
 `grant` on a spawn (`all`, `read-only`, `no-delegate`, `none`, [trigger-model.md](trigger-model.md#action--what-fires))
@@ -176,15 +176,15 @@ named; whoever is named on the line answers too; the runner is refused. Try it a
 and read the refusal:
 
 ```
-VERSE_USER=x@example.com verse gate <id> --answer proceed
+VERSE_USER=x@example.com verse gate <id> -answer proceed
 → 403 refused: user:x@example.com holds read at verse.gate.question."<id>" and answering it
   needs read-write; the nearest owner on record is system:docket at verse.gate.question."<id>"
 ```
 
 `x` holds `read` because the docket's default gave every question `read: ["*"]`; it does not
 hold `read-write` because it is not on the line. A worker that hits something the task cannot
-decide raises a gate up itself, and may say to whom: `verse task do gate <id> <name> --as
-runner:<identity> --to ana@example.com`. The spawn's own gate of that name, when it names answerers,
+decide raises a gate up itself, and may say to whom: `verse task do gate <id> <name> -as
+runner:<identity> -to ana@example.com`. The spawn's own gate of that name, when it names answerers,
 stands over what the worker says.
 
 ## Step 3: a charter, and what it owns
@@ -196,7 +196,7 @@ the person who installed the charter. Everything follows from that one resolutio
 - **Its writes are the installer's.** A `patch` or `derive` a firing makes is written as the
   rule, admitted or refused as the installer would be. Install a charter that patches a place
   you may not write and the firing is refused with your name in the 403, on the same terms a
-  `verse data --put` would be.
+  `verse data -put` would be.
 - **What it spawns is the installer's.** A task a firing starts is owned by whoever owns the
   rule, exactly as a task you ran by hand is yours — and its questions are co-owned by you.
 - **It reads as the installer.** A rule's condition is evaluated over what its owner may read,
@@ -284,15 +284,15 @@ nothing: a question already on the docket keeps the record it was posed with.
 
 ```sh
 verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
-  --grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
+  -grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
 ```
 
 **To close the docket for a whole verse,** narrow the default on `verse.gate.question` — it is
 the one default in the seed, and a private verse sets it to `{read: ["*"]}` or less, after
 which only co-owners, named answerers and bindings answer anything.
 
-**Handing it on.** `verse gate escalate <id> --as <who> [--say <why>]` is open to whoever may
-answer, and it takes no `--to`: the question goes to the next rung of the ladder covering its
+**Handing it on.** `verse gate escalate <id> -as <who> [-say <why>]` is open to whoever may
+answer, and it takes no `-to`: the question goes to the next rung of the ladder covering its
 subject, and the ladder is the standing bindings. On a verse with none, an escalation lands
 the question back on the open docket, where it already was. Giving the ladder a rung is
 [step 5](#step-5-a-gate-with-a-resolver-behind-it).
@@ -302,7 +302,7 @@ the question back on the open docket, where it already was. Giving the ladder a 
 A binding ([reference/resolvers.md](reference/resolvers.md)) is who answers questions about a
 subject: a service that dials in, a person, or a group. It is a grant with a door in front of
 it. The door is `condition.subject`, a match over the entities whose questions it covers, or
-`byRef`, so a spawn's `--resolver` or a rule's `gating.resolver` can name it. The grant is
+`byRef`, so a spawn's `-resolver` or a rule's `gating.resolver` can name it. The grant is
 what binding a question does to the record:
 
 ```sh
@@ -314,7 +314,7 @@ condition:
 method: {driver: person, who: peggy@example.com}
 deadline: {within: "4h", then: escalate}
 EOF
-verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 --as user:walter@example.com
+verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 -as user:walter@example.com
 ```
 
 Binding **replaces the `read-write` line** with whoever answers as the binding: `via:` the

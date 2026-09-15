@@ -44,7 +44,7 @@ working before reading about it:
 ```
 
 `up` decides three things for the whole runtime, and the defaults need no attention now. The
-**store** is a fresh docd on a temp dir; `--data <dir>` keeps it. The default **driver** is a real
+**store** is a fresh docd on a temp dir; `-data <dir>` keeps it. The default **driver** is a real
 llm agent when credentials are configured, and `scripted` — a prompt run as a shell command — when
 they are not. An agent's **root** is an isolated temp dir it prints at start, which is why a file
 an agent writes is not in your cwd.
@@ -72,36 +72,36 @@ without it.
 
 ### Read
 
-The path narrows by *where* an entity lives; `--if` narrows by *what it says*,
+The path narrows by *where* an entity lives; `-if` narrows by *what it says*,
 as a [tony match](https://signadot.github.io/tony-format/) against the payload:
 
 ```sh
 verse data                                         # the whole verse, one document
 verse data demo pr                                 # by where it lives
 verse data demo pr 1                               # one entity, whole
-verse data --at 'demo.pr.*.stage'                  # one field of each, keyed by id
-verse data --if '{stage: open}'                    # by what it says
-verse data --if '{stage: !or [open, merged]}'      # …an operator, not just equality
-verse data --if '{urgent: true}' --if-at labels    # …rooted inside the payload
-verse data demo pr --trim '{stage}'                # …and how much of each entity to print
-verse data --paths demo pr                         # just the addresses
-verse data --at demo.pr.1                          # …an address copied out of a document
+verse data -at 'demo.pr.*.stage'                   # one field of each, keyed by id
+verse data -if '{stage: open}'                     # by what it says
+verse data -if '{stage: !or [open, merged]}'       # …an operator, not just equality
+verse data -if '{urgent: true}' -if-at labels      # …rooted inside the payload
+verse data demo pr -trim '{stage}'                 # …and how much of each entity to print
+verse data -paths demo pr                          # just the addresses
+verse data -at demo.pr.1                           # …an address copied out of a document
 ```
 
 A verse is one document, `{system: {kind: {id: payload}}}`, and `verse data` answers it at a path,
 so the same address works at every depth and the answer is the subtree standing there. An id is a
-key in it rather than a token inside a rendered `at:`, which is what `--paths` is for. A read, a
-`--put` and a `--rm` all take the same address: two spellings of one grammar, steps and a kinded
+key in it rather than a token inside a rendered `at:`, which is what `-paths` is for. A read, a
+`-put` and a `-rm` all take the same address: two spellings of one grammar, steps and a kinded
 path, laid out in [reference/entities §Addressing](reference/entities.md#addressing).
 
 **An address is typed as steps**, which is what a shell makes easy: each step arrives as its own
-word, so nothing needs escaping on the way in. `--paths` answers the same way, so a listing hands
+word, so nothing needs escaping on the way in. `-paths` answers the same way, so a listing hands
 straight back.
 
 ```sh
 verse data demo pr a.b labels urgent           # steps: an id with a dot in it, unquoted
-verse data --paths demo pr                     # demo pr a.b
-verse data --paths demo pr | xargs -L1 verse data
+verse data -paths demo pr                      # demo pr a.b
+verse data -paths demo pr | xargs -L1 verse data
 ```
 
 One spelling in and out. A step is a whole word, so a dot inside one is part of the name. The
@@ -113,16 +113,16 @@ which `xargs` understands.
 token is taken where it is *marked*, which says which grammar applies instead of guessing it:
 
 ```sh
-verse data --at demo.pr.1           # an address copied out of a document
-verse data --at 'demo.pr.*.stage'   # …and the one spelling that carries a wildcard
+verse data -at demo.pr.1            # an address copied out of a document
+verse data -at 'demo.pr.*.stage'    # …and the one spelling that carries a wildcard
 ```
 
-Flags go on either side of the path — `verse data --paths demo pr` and
-`verse data demo pr --paths` are the same command.
+Flags go on either side of the path — `verse data -paths demo pr` and
+`verse data demo pr -paths` are the same command.
 
-`--if-at` takes a dot-separated field path and roots `--if` there, so a predicate about a
-subtree need not restate the shape above it: `--if-at labels --if '{urgent: true}'` is
-`--if '{labels: {urgent: true}}'`, and it also reaches a subtree that is not an object. A
+`-if-at` takes a dot-separated field path and roots `-if` there, so a predicate about a
+subtree need not restate the shape above it: `-if-at labels -if '{urgent: true}'` is
+`-if '{labels: {urgent: true}}'`, and it also reaches a subtree that is not an object. A
 path that leads nowhere does not match.
 
 The pattern language is tony's rather than verse's. `!or`, `!glob`, `!not`, `!and` and the rest are
@@ -137,10 +137,10 @@ A put **merges**. Fields you do not name are left alone, which is why the answer
 entity as it now stands rather than an echo of what you sent:
 
 ```sh
-verse data demo pr 1 --put '{owner: dee}'        # changes the owner field, keeps the stage
-verse data demo pr 1 labels urgent --put true   # one field, deep
-verse data demo pr 1 labels urgent --rm         # and gone again
-verse data demo scratch 1 --rm                  # the whole entity
+verse data demo pr 1 -put '{owner: dee}'         # changes the owner field, keeps the stage
+verse data demo pr 1 labels urgent -put true    # one field, deep
+verse data demo pr 1 labels urgent -rm          # and gone again
+verse data demo scratch 1 -rm                   # the whole entity
 ```
 
 A payload typed on the command line is read as tony, which is why `{stage: open}` needs no quotes
@@ -152,22 +152,22 @@ A write can also refuse to happen. Each condition is checked *with* the write, i
 the store, so nothing can change in between:
 
 ```sh
-verse data demo pr 1  --put '{stage: open}' --create   # only if nothing is there yet → refused
-verse data demo pr 99 --put '{stage: open}' --update   # only if something is        → refused
+verse data demo pr 1  -put '{stage: open}' -create     # only if nothing is there yet → refused
+verse data demo pr 99 -put '{stage: open}' -update     # only if something is        → refused
 # write refused: a condition did not hold
 
-verse data demo pr 4 --put '{owner: dee}' --expect '{stage: merged}'   # only if it still looks like this
+verse data demo pr 4 -put '{owner: dee}' -expect '{stage: merged}'     # only if it still looks like this
 ```
 
 That is how two writers advance one entity without losing each other's fields: CAS spelled as a
 predicate, so you say what you believe about the entity rather than which revision you read it at.
-`--expect` is the same predicate language `--if` reads with, under a different flag because `--if`
+`-expect` is the same predicate language `-if` reads with, under a different flag because `-if`
 on this command is the read's filter. A refused write leaves the entity alone and exits non-zero.
 
 ### Watch
 
 ```sh
-verse watch --if '{stage: open}' demo
+verse watch -if '{stage: open}' demo
 ```
 
 ```tony
@@ -184,13 +184,13 @@ as of that commit rather than the delta, and `op` is `set` — created *or* upda
 Now, in another terminal, write to it and watch the line arrive:
 
 ```sh
-verse data demo pr 2 --put '{stage: open}'
+verse data demo pr 2 -put '{stage: open}'
 ```
 
 Then advance it past the filter, with `'{stage: reviewing}'`, and note that nothing arrives: the
 filter is a predicate over the state rather than a subscription to the entity.
 
-More on refs, deep writes, cursors and `--since` is in
+More on refs, deep writes, cursors and `-since` is in
 [reference/entities.md](reference/entities.md).
 
 ---
@@ -201,16 +201,16 @@ A task is a governed unit of work: an agent, a shell command, a remote worker, a
 directly:
 
 ```sh
-verse task run --driver scripted "echo summarizing; sleep 3"   # prints a run-… id
-verse task run --driver scripted --wait "echo done"            # …and block for the result
+verse task run -driver scripted "echo summarizing; sleep 3"    # prints a run-… id
+verse task run -driver scripted -wait "echo done"              # …and block for the result
 verse task
 verse task get <id>                # status, prompt, driver, runner, result, pending gates
 verse task say <id> "also mention the dial"        # re-prompt the agent mid-run
-verse task vector <id> ask --as walter@example.com        # slide its autonomy (auto|ask|park)
+verse task vector <id> ask -as walter@example.com         # slide its autonomy (auto|ask|park)
 verse task cancel <id>
 ```
 
-`--driver` is explicit here because the default is not: with LLM creds configured a bare
+`-driver` is explicit here because the default is not: with LLM creds configured a bare
 `task run "echo done"` hands your sentence to an *agent* ([reference/up.md](reference/up.md#the-driver)).
 
 `say` and `vector` are different levers. `say` gives the agent new instructions. `vector` swaps the
@@ -221,7 +221,7 @@ gate vector governing how much it must confirm, applied at its next boundary wit
 The two drivers carry different vectors, and the difference is the whole point of a gate: it asks
 about what you have **not** already authorized.
 
-`verse task run --driver scripted` runs ungated, because its prompt *is* the shell command and you
+`verse task run -driver scripted` runs ungated, because its prompt *is* the shell command and you
 authorized it by typing it. That is an argument about **who addressed the request**, so it holds
 for what you type and nothing else. A charter spawning `driver: scripted` typed nothing, asks about
 the command it is about to run, and says `vector: auto` when it means to run unattended. `llm` asks
@@ -238,10 +238,10 @@ verse gate
 #   reason: "verb write"
 #   tool: write_file
 #   where: task
-verse gate approve run-f3e31ed0390f~d1 --as you@example.com
+verse gate approve run-f3e31ed0390f~d1 -as you@example.com
 ```
 
-`run --attach` spawns *and* streams the transcript, prompting you inline on a terminal
+`run -attach` spawns *and* streams the transcript, prompting you inline on a terminal
 (`⏸ gate "write" (write_file) — approve? [y/N]`), while the same gate stays resolvable from
 anywhere else by its id, since it is the same question either way. There is a rough edge in which
 of the two rules applies when you hand verse a *command* and it satisfies it with an *agent*.
@@ -256,7 +256,7 @@ its own running. So observing the fleet is observing entities:
 ```sh
 verse watch verse task                        # the whole fleet's lifecycle
 verse data verse task instance <id>      # its result, still there after it finished
-verse data verse task --trim '{status}'         # …or just where everything got to
+verse data verse task -trim '{status}'          # …or just where everything got to
 ```
 
 ```tony
@@ -281,11 +281,11 @@ a charter and a subject.
 
 ```sh
 verse flow                                     # the live tasks, and what is suspended
-verse flow --subject 'demo.latch.*'            # …narrowed: * per segment
-verse flow suspend --task <id>                 # hold that run at its next boundary
-verse flow resume  --task <id>
-verse flow say     --subject demo.latch.1 "hurry"
-verse flow cancel  --task <id>                 # end that run (destructive)
+verse flow -subject 'demo.latch.*'             # …narrowed: * per segment
+verse flow suspend -task <id>                  # hold that run at its next boundary
+verse flow resume  -task <id>
+verse flow say     -subject demo.latch.1 "hurry"
+verse flow cancel  -task <id>                  # end that run (destructive)
 ```
 
 A flow is not a stored thing. It is a query over live tasks, so `verse flow` lists nothing until
@@ -300,21 +300,21 @@ stop a rule — or everything about a subject — and keep it stopped, suspend i
 seeded demo](#1-start), where `demo-review` is holding `demo.pr.1` at a gate:
 
 ```sh
-verse flow suspend --charter :demo-review --why "reading the review rule"   # baseline's rule, about every subject: its charter has no address
+verse flow suspend -charter :demo-review -why "reading the review rule"     # baseline's rule, about every subject: its charter has no address
 verse gate                                   # the question is withdrawn: nobody can answer it now
-verse data demo pr 2 --put '{stage: open}'   # demo-review does not fire
-verse flow --charter :demo-review            # held by you, why, since when, what it holds
-verse flow resume --charter :demo-review    # both PRs are asked about, once, as they stand now
+verse data demo pr 2 -put '{stage: open}'    # demo-review does not fire
+verse flow -charter :demo-review             # held by you, why, since when, what it holds
+verse flow resume -charter :demo-review     # both PRs are asked about, once, as they stand now
 ```
 
 Nothing that happened meanwhile is replayed: the lift arms the rule again, and it acts on the world
 as it is. A task, while its work is suspended, holds at its next boundary and says whose hold it is
-under, so `verse flow resume --task` will not run it past a suspension.
+under, so `verse flow resume -task` will not run it past a suspension.
 
 ### Where a task runs is a seam
 
-It need not run here. The same verbs drive a task hosted on a remote verse (`up --runner <url>`),
-one behind a dial-in broker that a firewalled worker claims (`up --broker`), and one a **person**
+It need not run here. The same verbs drive a task hosted on a remote verse (`up -runner <url>`),
+one behind a dial-in broker that a firewalled worker claims (`up -broker`), and one a **person**
 executes by hand (`verse task do …`). Verse drives all three through one handle, so nothing above
 changes.
 
@@ -324,8 +324,8 @@ it, and that work runs there, while every spawn that names none goes to the defa
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add pool.demo http://localhost:9800      # `reach: a runner` — the install probes it
-verse task run --runner verse.runners.pool.demo "fetch the data; retrain; report"
-verse ps --runner verse.runners.pool.demo
+verse task run -runner verse.runners.pool.demo "fetch the data; retrain; report"
+verse ps -runner verse.runners.pool.demo
 ```
 
 That is its own subject. [Runners](runners.md) covers installing one, naming it on a spawn, and
@@ -382,7 +382,7 @@ A rule also acts on the **backlog**, which is worth seeing rather than being tol
 
 ```sh
 ./scripts/charter-shapes.sh remove patch          # nothing is watching
-verse data demo patch 2 --put '{stage: open}'
+verse data demo patch 2 -put '{stage: open}'
 verse data demo patch 2                    # stage: open — nobody reacted
 ./scripts/charter-shapes.sh install patch
 verse data demo patch 2                    # stage: triaged — installing it acted
@@ -435,7 +435,7 @@ verse gate
 #   reason: "trigger shape-ask gate approval on demo.ask.1"
 #   spawns: shape-ask@demo.ask.1
 #   subject: demo.ask.1
-verse gate approve trigger.shape-ask.approval~093e7c94 --as you@example.com
+verse gate approve trigger.shape-ask.approval~093e7c94 -as you@example.com
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about, and
@@ -545,7 +545,7 @@ edge:
 ./scripts/charter-shapes.sh run on
 verse data demo on 1                        # stage: released
 
-verse data demo on 2 --put '{stage: waiting}' # CI is still green…
+verse data demo on 2 -put '{stage: waiting}' # CI is still green…
 verse data demo on 2                        # …and this one stays `waiting`
 ```
 
@@ -687,9 +687,9 @@ The rule fired and the action is waiting, not on a person but on a tally. Answer
 naming its answerer, since a question is settled attributably:
 
 ```sh
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as alice@example.com
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 -as alice@example.com
 # verse.trigger.shape-vote.approvals~e23d0b21: recorded: 1 of 2 for proceed
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 --as bob@example.com
+verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 -as bob@example.com
 # approved verse.trigger.shape-vote.approvals~e23d0b21
 verse data demo vote 1              # stage: merged
 ```
@@ -708,7 +708,7 @@ asked, and so does anyone the gate names:
 
 Ana, not named, is refused, and told so. A gate that names nobody is held out to every person,
 which is the open verse's default; a worker raising a gate of its own says who it is for with
-`task do gate --to`; and whoever may answer may hand the question on instead, `verse gate
+`task do gate -to`; and whoever may answer may hand the question on instead, `verse gate
 escalate <id>`, to the next binding covering its subject. `need` over the answerers is what one
 or many means: one ballot each, `need: 1` a race, `need` equal to their number all of them.
 [Permissions](perms.md) is the whole of who may do what.
@@ -747,7 +747,7 @@ which is what a condition is for.
 
 The second question hides in every `spawn`: who does the work. Replace a fixed `driver` with a
 `provider` selection and the eligible doers become the options on the same question a gate poses,
-answered by option (`verse gate <id> --answer <doer> --as <who>`) the same three ways: `auto` picks
+answered by option (`verse gate <id> -answer <doer> -as <who>`) the same three ways: `auto` picks
 by rule, `ask` lets one person pick, `vote` lets the group. Doers
 are ordinary entities, so you add or retire them by writing entities rather than by editing the
 charter, and a doer may only ever *narrow* the authority the spawn granted. That is its own
@@ -765,8 +765,8 @@ entities, selection by capability and a match over attributes, and the narrowing
 makes a registry anyone can write safe to select from. *Left to do: richer voting
 disciplines — ranked, weighted, secret.*
 
-**Isolation** — [reference/connect.md](reference/connect.md#scopes). Every command takes `--scope`; a scope is a
-real copy-on-write overlay, and `verse disconnect --scope` drops the whole thing. Its writes to
+**Isolation** — [reference/connect.md](reference/connect.md#scopes). Every command takes `-scope`; a scope is a
+real copy-on-write overlay, and `verse disconnect -scope` drops the whole thing. Its writes to
 the world are copies; its steers, answers and removals reach what the scope created and are
 refused at what it merely sees ([what a scope owns](reference/connect.md#what-a-scope-owns)).
 *Left to do: scopes as first-class, listable, durable things.*
