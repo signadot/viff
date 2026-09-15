@@ -525,8 +525,7 @@ type watchConfig struct {
 	// word: which grammar applies is declared by which flag was used, not guessed from what is
 	// inside it.
 	//
-	//	--at 'demo.pr.*.stage'     a kinded path — the one spelling that carries a WILDCARD,
-	//	                           which steps cannot (a `*` step is the id that is an asterisk)
+	//	--at demo.pr.1             a kinded path copied out of a document, as one token
 	At string `cli:"name=at desc='the address as a kinded path (demo.pr.1, demo.pr.*.stage) instead of steps'"`
 	// NO DEFAULT, because the default was a question nobody asked. `default=0` sent `since=0`
 	// on every watch — "replay the whole retained log" — so `verse watch <path>` on a store
@@ -1398,7 +1397,7 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	//	demo pr 1
 	//	demo pr a.b                 a dot is ordinary in a step, which is the form's whole point
 	//	demo pr 'a b.txt'
-	//	git ref '*'
+	//	git ref '"*"'               the id that is an asterisk; a bare `*` step selects
 	//
 	// ONE SPELLING, IN AND OUT. Steps are what this command line takes — `verse data demo pr
 	// a.b`, no escaping by the person typing it, because the shell has already separated the
@@ -1448,7 +1447,11 @@ func renderAddr(segs []string, kpaths bool) string {
 // So a whole address in ONE token is taken where it is MARKED — `verse data --at demo.pr.1` —
 // which is unambiguous for the reason the positional is not: it is a different place on the line,
 // not a second reading of the same word. That is the spelling for an address copied out of a
-// document, and the only one that can carry a wildcard.
+// document.
+//
+// A WHOLE `*` WORD IS THE SEGMENT WILDCARD (entity.StepIsWild), which is still one word naming
+// one step: `verse data git-issue verse issue '*'` is every issue. The id that is an asterisk is
+// `'"*"'`, the quoted clause, and that is how a listing prints it.
 func address(args []string) ([]string, error) {
 	// A LEADING `--` IS NOT A STEP. It is how a shell says "the options are over", and every
 	// command that takes an address accepts it rather than answering about an address whose
@@ -1469,10 +1472,9 @@ func address(args []string) ([]string, error) {
 // spellings was used, and exactly one may be.
 //
 // Steps are joined here and never scanned back: KPathOf quotes each segment as kpath needs and
-// applies the three step clauses (a name, a quoted name, an array access), and the server parses
-// with ParseAt, so the round trip holds for every segment. `--at` is already that spelling and
-// goes through verbatim, which is what lets it carry a WILDCARD — the one thing steps cannot
-// say, since a `*` step is the id that is an asterisk.
+// applies the step clauses (a name, a quoted name, an array access, the wildcard), and the
+// server parses with ParseAt, so the round trip holds for every segment. `--at` is already that
+// spelling and goes through verbatim.
 func addressWire(args []string, at string) (string, error) {
 	if at != "" {
 		// Declared as a kinded path, so it goes through as one — WITHOUT the segment view
@@ -1489,8 +1491,8 @@ func addressWire(args []string, at string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// KPathOf, not JoinSegs: the steps carry the three clauses (a name, a quoted name, an
-	// array access), and a READ reaches an element as readily as a field.
+	// KPathOf, not JoinSegs: the steps carry the clauses (a name, a quoted name, an array
+	// access, the wildcard), and a READ reaches an element or every field as readily as one.
 	return entity.KPathOf(segs)
 }
 

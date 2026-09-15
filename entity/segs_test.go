@@ -187,8 +187,8 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 		// made the bare steps form ambiguous and moved this listing to kinded paths for a while.
 		{[]string{"demo", "pr", "a b.txt"}, "demo pr 'a b.txt'"},
 		{[]string{"a b", "pr", "1"}, "'a b' pr 1"},
-		// An id that IS a wildcard, kept from globbing on the way back in.
-		{[]string{"git", "ref", "*"}, "git ref '*'"},
+		// An id that IS an asterisk: the quoted clause, since a bare `*` step selects.
+		{[]string{"git", "ref", "*"}, `git ref '"*"'`},
 		// An empty segment would otherwise vanish from the line entirely.
 		{[]string{"demo", "pr", ""}, "demo pr ''"},
 		// Double quotes are the fallback, for a segment holding a single one.

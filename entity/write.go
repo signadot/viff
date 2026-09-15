@@ -57,11 +57,12 @@ func (p Path) KPath() string {
 // path, and it is the same rendering.
 func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 
-// A STEP IS ONE PLACE, and which one is decided by its first character — three clauses, no
+// A STEP IS ONE PLACE, and which one is decided by its first character — four clauses, no
 // splitting, no delimiter scan:
 //
 //	[0]  {0}  (scott)  [*]  {*}     an array, sparse-array or keyed access
-//	"[0]"  'a.b'                    the NAME inside the quotes, literally
+//	*                               any field: the segment wildcard, for a READ
+//	"[0]"  'a.b'  "*"               the NAME inside the quotes, literally
 //	labels  a.b  x@git:ref:y        the name as given
 //
 // One word in, one path element out, whatever is inside it. The bracketed forms are
@@ -84,8 +85,16 @@ func StepIsAccess(step string) bool {
 	return false
 }
 
+// StepIsWild reports whether a step is the segment wildcard: a whole `*`, and nothing else. A
+// `*` inside a longer word is a character of a name, and `"*"` is the name that is an asterisk.
+//
+// It is a clause of its own rather than a kind of access because it selects FIELDS, which the
+// bracketed forms do not reach: `[*]` is every element of an array, and an id is a key of an
+// object. A write names one place, so TargetOf refuses it; a read sends it as kpath's `.*`.
+func StepIsWild(step string) bool { return step == "*" }
+
 // StepName is the name a step carries — itself, or what is inside its quotes. It is not asked
-// of an access step, which names no field.
+// of an access or a wildcard step, which name no field.
 func StepName(step string) string {
 	if len(step) >= 2 && (step[0] == '"' || step[0] == '\'') && step[len(step)-1] == step[0] {
 		return step[1 : len(step)-1]
@@ -93,12 +102,16 @@ func StepName(step string) string {
 	return step
 }
 
-// KPathOf renders a vector of steps as the kinded path they name, applying the three clauses —
+// KPathOf renders a vector of steps as the kinded path they name, applying the four clauses —
 // which is what a READ sends, since the wire takes a kpath and the server parses it with kpath.
 //
 // An access step is appended with no dot before it (`votes[0]`, not `votes.[0]`), which is the
-// kpath grammar's own shape; a name is appended as a quoted-where-needed field. An access may
-// LEAD, which is what addresses an element of a payload that is itself an array.
+// kpath grammar's own shape; a wildcard as kpath's bare `*` field; a name as a quoted-where-needed
+// field. An access may LEAD, which is what addresses an element of a payload that is itself an
+// array.
+//
+// It reads STEPS, words somebody typed. Segments a program already holds are names whatever
+// they contain, and are joined with JoinSegs.
 func KPathOf(segs []string) (string, error) {
 	var out string
 	for _, step := range segs {
@@ -108,6 +121,10 @@ func KPathOf(segs []string) (string, error) {
 		}
 		if out != "" {
 			out += "."
+		}
+		if StepIsWild(step) {
+			out += "*"
+			continue
 		}
 		out += seg(StepName(step))
 	}
@@ -131,8 +148,15 @@ func KPathOf(segs []string) (string, error) {
 // write records which lens it used, not a boundary anything reads back.
 //
 // The entity's own segments may not be an access: an id is a name, and an entity is not an
-// element of anything.
+// element of anything. No step may be a wildcard, since a write names one place.
 func TargetOf(segs []string) (Path, string, error) {
+	for _, step := range segs {
+		if StepIsWild(step) {
+			return Path{}, "", fmt.Errorf("%q: a `*` step selects every field there, and a write "+
+				"names one place — the name that is an asterisk is the step '\"*\"'",
+				strings.Join(segs, " "))
+		}
+	}
 	want := Depth
 	if len(segs) > 0 && StepName(segs[0]) == VerseRoot {
 		want++
@@ -605,7 +629,7 @@ func JoinSegs(segs []string) string {
 //	demo pr 1
 //	demo pr a.b                 a dot is ordinary in a step — this is the form's whole point
 //	demo pr 'a b.txt'           a space is the delimiter, so the segment carries quotes
-//	git ref '*'                 an id that IS an asterisk, kept from globbing
+//	git ref '"*"'               an id that IS an asterisk, which a bare `*` step would select with
 //	demo pr 1 '"[0]"'           a FIELD named [0], which a bare `[0]` step would read as an access
 //
 // STEPS ARE THE ADDRESSING MODEL'S OWN SPELLING, on the way in and on the way out. `verse data
@@ -635,8 +659,9 @@ func JoinSteps(segs []string) string {
 //
 // TWO QUOTINGS, for two readers. The shell's comes off before verse sees the word, so it only
 // protects a segment from being split or expanded; what arrives is then read by the step
-// clauses, and a name those would read as something else — an access (`[0]`, `(scott)`), or a
-// quoted name (`"x"`) — is first wrapped in the quoted clause, which takes it back literally.
+// clauses, and a name those would read as something else — an access (`[0]`, `(scott)`), the
+// wildcard (`*`), or a quoted name (`"x"`) — is first wrapped in the quoted clause, which takes
+// it back literally.
 // Without that the listing prints `'[0]'`, the shell hands verse `[0]`, and the line reads
 // back as array element 0 rather than the field it named.
 //
@@ -651,7 +676,7 @@ func JoinSteps(segs []string) string {
 // listing can fix that, and an id containing both is not a shape any address in this system
 // produces.
 func quoteStep(s string) string {
-	if StepIsAccess(s) || StepName(s) != s {
+	if StepIsAccess(s) || StepIsWild(s) || StepName(s) != s {
 		// Either quote is the clause; the one the name already holds is the one that keeps the
 		// word to a single kind, which is what the shell quoting below needs for xargs.
 		q := `"`

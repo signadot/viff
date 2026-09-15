@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -341,10 +342,45 @@ func TestAnAddressIsItsSteps(t *testing.T) {
 	}
 }
 
+// A WHOLE `*` STEP IS THE SEGMENT WILDCARD, and it reaches the wire as the same path `--at`
+// sends; the id that is an asterisk is the quoted clause. A write names one place, so the
+// wildcard is refused there.
+func TestAStarStepSelects(t *testing.T) {
+	for _, c := range []struct {
+		steps []string
+		want  string
+	}{
+		{[]string{"git-issue", "verse", "issue", "*"}, `git-issue.verse.issue.*`},
+		{[]string{"demo", "*", "1", "stage"}, `demo.*."1".stage`},
+		{[]string{"demo", "pr", `"*"`}, `demo.pr."*"`},
+		{[]string{"demo", "pr", "hotfix-*"}, `demo.pr.hotfix-*`}, // a character of a name
+	} {
+		got, err := addressWire(c.steps, "")
+		if err != nil || got != c.want {
+			t.Errorf("addressWire(%q) = (%q, %v), want %q", c.steps, got, err, c.want)
+			continue
+		}
+		kp, err := entity.ParseAt(got)
+		if err != nil {
+			t.Errorf("addressWire(%q) = %q, which does not parse: %v", c.steps, got, err)
+			continue
+		}
+		if wild := slices.Contains(c.steps, "*"); kp.HasWild() != wild {
+			t.Errorf("addressWire(%q) = %q, wildcard %v, want %v", c.steps, got, kp.HasWild(), wild)
+		}
+	}
+	if _, _, err := entity.TargetOf([]string{"demo", "pr", "*"}); err == nil {
+		t.Error("a write took a `*` step, which names every id rather than one")
+	}
+	if at, _, err := entity.TargetOf([]string{"demo", "pr", `"*"`}); err != nil ||
+		at.Ref.Segs()[2] != "*" {
+		t.Errorf(`TargetOf(demo pr "*") = (%+v, %v), want the id that is an asterisk`, at, err)
+	}
+}
+
 // AN ADDRESS IN ONE TOKEN IS TAKEN WHERE IT IS MARKED, which is the escape hatch for one copied
-// out of a document (`subject: demo.pr.1`) — and it is the one spelling that carries a WILDCARD:
-// steps cannot, since a `*` step is the id that IS an asterisk. `--at` declares the grammar, so
-// the `*` is read as the selector it is rather than guessed at.
+// out of a document (`subject: demo.pr.1`). `--at` declares the grammar, so a `*` in it is read
+// as the selector it is rather than guessed at.
 func TestAPathIsTakenAsAFlag(t *testing.T) {
 	got, err := addressWire(nil, `demo.pr.*.stage`)
 	if err != nil || got != `demo.pr.*.stage` {

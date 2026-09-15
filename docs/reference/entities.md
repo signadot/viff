@@ -75,10 +75,11 @@ two legal readings — the one segment `w`, and `split(w, delim)` — and choosi
 other unsayable. So there is no delimiter scan on the command line at all, and `verse data
 demo.pr.1` names a system called `demo.pr.1`.
 
-A step is one place, and its first character says which. Three clauses, no splitting:
+A step is one place, and its first character says which. Four clauses, no splitting:
 
 ```sh
 verse data demo pr 1 votes '[0]'     # the array element   — also {0} sparse, (scott) keyed
+verse data demo pr '*'               # every field there   — the segment wildcard, for a read
 verse data demo pr 1 '"[0]"'         # the field named [0] — the name inside the quotes
 verse data demo pr 1 labels urgent   # a name, as given
 ```
@@ -88,9 +89,9 @@ guess about where the word ends. That is what tells this apart from reading a de
 word: a delimiter changes how **many** segments a word is, and this does not. One word in, one
 place out, whatever is inside it.
 
-The quoted clause is the escape, and it reaches every name: one that would read as an access, or
-that itself begins and ends with a quote, is spelled inside one more pair (`'"[0]"'`,
-`'""x""'`). A listing prints it that way, so the line still hands back. Array access is what
+The quoted clause is the escape, and it reaches every name: one that would read as an access or
+the wildcard, or that itself begins and ends with a quote, is spelled inside one more pair
+(`'"[0]"'`, `'"*"'`, `'""x""'`). A listing prints it that way, so the line still hands back. Array access is what
 people address; a field named `[0]` is not, and verse writes none.
 
 A whole address in one token is taken where it is marked, which is unambiguous for the
@@ -99,7 +100,7 @@ of the same word. Which grammar applies is declared rather than guessed:
 
 ```sh
 verse data -at demo.pr.1            an address copied out of a document
-verse data -at 'demo.pr.*.stage'    …and the one spelling that carries a wildcard
+verse data -at 'demo.pr.*.stage'    …wildcards and all
 ```
 
 An address is given once: as steps, or as `-at`, never both.
@@ -109,18 +110,24 @@ An address is given once: as steps, or as `-at`, never both.
 A `*` passes through the shell, the address grammar and a charter match, and each of the three
 reads it differently. They are consistent once seen together, and surprising one at a time.
 
-In the address grammar, a bare `*` is a wildcard only where the spelling is a path.
+In the address grammar, a whole `*` segment is the wildcard in both spellings, and the name that
+is an asterisk is quoted in both.
 
 ```sh
-verse data -at 'demo.pr.*'      # every id under demo.pr — a segment wildcard
-verse data -at 'demo.pr."*"'    # the one entity whose id IS an asterisk
-verse data demo pr '*'          # the same entity — a bare `*` step is a name, never a pattern
-verse data demo pr 1 votes '[*]'  # …but a bracketed one is an access, and steps carry it
+verse data -at 'demo.pr.*'        # every id under demo.pr — a segment wildcard
+verse data demo pr '*'            # the same, as a step
+verse data -at 'demo.pr."*"'      # the one entity whose id IS an asterisk
+verse data demo pr '"*"'          # the same, as a step — the quoted clause
+verse data demo pr 1 votes '[*]'  # every element of an array, which a `*` step is not
 ```
 
-A bare `*` is not self-delimiting — it is a plausible id and the shell expands it — so it stays
-a name in a step, and a segment wildcard is written with `-at`. That is why the `verse flow`
-verbs take one token and refuse a second: a selector is exactly the case steps cannot express.
+Only a whole segment selects: `hotfix-*` is a name with an asterisk in it, as a step and in
+`-at` alike. A `*` selects every *field*, which is what an id is, and `[*]` every array element,
+so the two are different clauses. A write names one place, so it refuses a `*` step and names
+the quoted one.
+
+A `*` step cannot glob inside an id, and a charter's subject can (`demo.pr.hotfix-*`). That is
+why the `verse flow` verbs take one token and refuse a second.
 
 The shell gets there first, and a bare `*` as its own word is the dangerous one. Inside a
 longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
@@ -132,8 +139,9 @@ verse data -at demo.pr.*.stage    # …and so does this, unquoted — the shell 
                                   # which flag it is after
 ```
 
-So quote it, in either form — `-at 'demo.pr.*.stage'`. `-paths` prints it quoted for the same
-reason, which is why a listing containing such an id pipes back correctly.
+So quote it, in either form — `-at 'demo.pr.*.stage'`, `demo pr '*' stage`. `-paths` prints an
+id that is an asterisk as `'"*"'`, the shell's quotes around the quoted clause, which is why a
+listing containing one pipes back to that id and not to all of them.
 
 In a charter, quoting does not change it. Tony quoting is about a value's type, not about
 matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
@@ -147,7 +155,7 @@ path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
 
 An id may itself glob (`demo.pr.hotfix-*`), so `verse flow demo.pr.*` and a charter's
 `subject: demo.pr.*` mean the same set — and the `verse flow` verbs take one token and refuse a
-second rather than reading it as a step, because a selector is exactly the case steps cannot
+second rather than reading it as a step, because a glob inside an id is more than a step can
 express.
 
 In a charter, `!verse-path [demo pr 1]` is the steps spelling: the tag is required, because a
@@ -335,7 +343,8 @@ is four segments down, a repository being a level, so the `*` is what makes each
 thing asked about:
 
 ```sh
-verse data -at 'git-issue.verse.issue.*' -if '{status: open}'     # each open issue
+verse data git-issue verse issue '*' -if '{status: open}'         # each open issue
+verse data -at 'git-issue.verse.issue.*' -if '{status: open}'     # the same
 verse data git-issue verse issue -if '{status: open}'             # the map of issues, as one: {}
 ```
 

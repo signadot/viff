@@ -734,11 +734,9 @@ func descendsThrough(w Write) (Path, bool, error) {
 	if len(segs) < 2 {
 		return Path{}, false, nil // nothing above it to descend through
 	}
-	spelling, err := KPathOf(segs)
-	if err != nil {
-		return Path{}, false, err
-	}
-	at, err := ParseAt(spelling)
+	// JoinSegs, not KPathOf: these are the write's segments, names whatever they hold, and not
+	// words for the step clauses to read.
+	at, err := ParseAt(JoinSegs(segs))
 	if err != nil {
 		return Path{}, false, err
 	}

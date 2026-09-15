@@ -136,7 +136,9 @@ verse
                                              place per word, its first character saying which:
                                              demo pr 1 · demo pr 1 labels urgent  (a name)
                                              demo pr 1 votes '[0]'   (array; also {0} (k))
+                                             demo pr '*'             (every id: a wildcard)
                                              demo pr 1 '"[0]"'       (the FIELD named [0])
+                                             demo pr '"*"'           (the id that is `*`)
                                              (none) = the whole verse.
                                              A path NOTHING STANDS AT is a non-zero exit,
                                              at every depth: `{}` is a document somebody
@@ -144,8 +146,7 @@ verse
                                              nobody wrote. An empty `{}` with exit 0 means
                                              the path stands and a -if kept none of it
           [-at <path>]                       …or whole, as a kinded path — which is how one is
-                                             copied out of a document, and the one spelling
-                                             that carries a SEGMENT wildcard:
+                                             copied out of a document:
                                              demo.pr.1 · 'demo.pr.*.stage'
                                              An address is given ONCE, in one of the two
           [-if <pat>] [-if-at <path>]        … only entities whose payload matches (see below)

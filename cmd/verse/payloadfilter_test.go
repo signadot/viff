@@ -187,7 +187,8 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 // four segments down (`git-issue.verse.issue.<id>`, a repository being a level). Read at three
 // segments the map of issues is the one entity, and an --if about an issue's status keeps
 // nothing — which is how the triage seed came to seed nothing and the drive judged the backlog.
-// The `*` is what says "each issue", and it is a kinded path's: as a step it is the id `*`.
+// The `*` is what says "each issue", in either spelling: the kinded path's segment wildcard, or
+// a whole `*` step. The id that is an asterisk is the quoted step `"*"`.
 func TestAFilterAsksAtThePathsDepth(t *testing.T) {
 	serve(t)
 	for _, e := range []struct{ id, payload string }{
@@ -200,35 +201,57 @@ func TestAFilterAsksAtThePathsDepth(t *testing.T) {
 		}
 	}
 
-	out, err := runState(t, "--at", "tracker.verse.issue.*",
-		"--if", "{status: open}", "--trim", "{id: null, updatedAt: null}")
-	if err != nil {
-		t.Fatalf("data --if --trim: %v", err)
-	}
-	doc, err := codec.ParseNode([]byte(out), codec.Tony)
-	if err != nil {
-		t.Fatalf("parse %q: %v", out, err)
-	}
-	// The answer is rooted at the path, so its keys are the ids.
-	got := map[string]string{}
-	for i, f := range doc.Fields {
-		issue := doc.Values[i]
-		if len(issue.Fields) != 2 {
-			t.Errorf("issue %s kept %d fields, want the 2 --trim names:\n%s", f.String, len(issue.Fields), out)
+	for _, spelling := range [][]string{
+		{"--at", "tracker.verse.issue.*"},
+		{"tracker", "verse", "issue", "*"},
+	} {
+		out, err := runState(t, append(spelling,
+			"--if", "{status: open}", "--trim", "{id: null, updatedAt: null}")...)
+		if err != nil {
+			t.Fatalf("data %q --if --trim: %v", spelling, err)
 		}
-		for j, k := range issue.Fields {
-			if k.String == "updatedAt" {
-				got[f.String] = issue.Values[j].String
+		doc, err := codec.ParseNode([]byte(out), codec.Tony)
+		if err != nil {
+			t.Fatalf("parse %q: %v", out, err)
+		}
+		// The answer is rooted at the path, so its keys are the ids.
+		got := map[string]string{}
+		for i, f := range doc.Fields {
+			issue := doc.Values[i]
+			if len(issue.Fields) != 2 {
+				t.Errorf("%q: issue %s kept %d fields, want the 2 --trim names:\n%s", spelling, f.String, len(issue.Fields), out)
+			}
+			for j, k := range issue.Fields {
+				if k.String == "updatedAt" {
+					got[f.String] = issue.Values[j].String
+				}
 			}
 		}
+		if want := map[string]string{"a": "t1", "c": "t3"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("data %q --if {status: open} = %v, want %v:\n%s", spelling, got, want, out)
+		}
 	}
-	if want := map[string]string{"a": "t1", "c": "t3"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("--if {status: open} at issue.* = %v, want %v:\n%s", got, want, out)
+
+	// The id that IS an asterisk is written and read with the quoted step, a `*` step is refused
+	// by a write, and the listing prints the quoted step so the line reads back as that one id.
+	if _, err := runCLI(t, "data", "tracker", "verse", "issue", "*", "--put", `{status: open}`); err == nil {
+		t.Error("a write took a `*` step, which names every issue rather than one")
+	}
+	if _, err := runCLI(t, "data", "tracker", "verse", "issue", `"*"`, "--put", `{id: star, status: open}`); err != nil {
+		t.Fatalf(`put the id "*": %v`, err)
+	}
+	if out, err := runState(t, "tracker", "verse", "issue", `"*"`); err != nil || !strings.Contains(out, "id: star") ||
+		strings.Contains(out, "title: one") {
+		t.Errorf(`data tracker verse issue "*" = (%q, %v), want the one issue whose id is an asterisk`, out, err)
+	}
+	if out, err := runState(t, "--paths", "--depth", "4", "tracker", "verse", "issue"); err != nil ||
+		!has(lines(out), `tracker verse issue '"*"'`) {
+		t.Errorf("--paths = (%q, %v), want the asterisk id printed as the quoted step", out, err)
 	}
 
 	// One literal id four segments down is that issue, not a place inside the map of them.
 	for pattern, kept := range map[string]bool{"{status: closed}": true, "{status: open}": false} {
-		out, err = runState(t, "tracker", "verse", "issue", "b", "--if", pattern)
+		out, err := runState(t, "tracker", "verse", "issue", "b", "--if", pattern)
 		if err != nil {
 			t.Fatalf("data --if %s at one issue: %v", pattern, err)
 		}
