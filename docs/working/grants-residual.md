@@ -46,20 +46,25 @@ a node, and must share an installer.
 
 ## 4. What is not attributed
 
-- **A resumed task's gates.** A runner reached by url now acts as the identity on its entity
-  from the first reflection, and a brokered task as its claimant. What a resume cannot recover
-  is the spawn's own gates, which the task record does not carry, so a gate a worker raises
-  after a restart is held out to whom the frame names or to the docket's default, not to the
-  spawn's answerers for that name.
-- **The first toucher owns.** A node that exists with no record — one written before the
-  mirror was, or by an unattributed request — is owned by the first principal holding `owner`
-  who writes it, since the store cannot tell a create from a merge into what stands. Staging's
-  pre-ship entities are the case, and the ~90 records owned by a rule's *address* from before
-  the resolution fix are still as written; a wipe (git-issue `hd63vzmfh12krqkhm1n0`) settles
-  both, and a migration for one deployment was deliberately not built.
-- **The cache and a second replica.** The view drops what it cached about a node on every
-  write this process makes to the mirror, and nothing else. One versed runs against one store;
-  a replica writing the mirror would have to be watched for, and is not.
+- **A resumed task's gates.** A runner reached by url acts as the identity on its entity from
+  the first reflection, and a brokered task as its claimant. What a resume cannot recover is
+  the spawn's own gates, which the task record does not carry: the re-attach in
+  `reconcileTasks` hands `reflect` a `mirror.Meta` with no `Gates`, so a gate a worker raises
+  after a restart is held out to whom the frame names (`answerersFor`) or to the docket's
+  default, not to the spawn's answerers for that name. The gates want to ride on the task
+  record.
+- **The first toucher owns.** A node that exists with no record — written by an unattributed
+  request, say — is owned by the first principal holding `owner` who writes it, since the store
+  cannot tell a create from a merge into what stands. This is the model's rule rather than a
+  stale deployment: staging's pre-ship entities were settled by the wipe
+  (git-issue `hd63vzmfh12krqkhm1n0`).
+- **Two caches a second replica would not reach.** The mirror itself is loaded at start and
+  kept by a watch on `verse.perms` (`entity.Track`, per scope too), so a record another process
+  writes reaches this one's cache as it lands. Two things are still per process. A group's
+  members are read once and dropped only when this process writes the group (`members`), so a
+  membership another replica changes is not seen. And until the mirror has loaded, a check
+  reads records from the store and caches them, and what it cached then is dropped only by this
+  process's own writes.
 
 ## 5. What a default is not yet
 
@@ -101,12 +106,15 @@ plain one; the computed edge is the cheaper spelling of the same fact.
 
 ## 8. Smaller things
 
-- A whole delete lists the mirror to forget the records beneath it, which costs the mirror's
-  size per delete; the reaper deletes tasks routinely. Unmeasured on staging's mirror.
-- A listing's filter walks the mirror once per entity, through the cache. `verse ps` on
-  staging's mirror has not been measured under it; if it shows, the answer is a memo per
-  distinct prefix, not a weaker check.
-- `verse data verse perms` is refused a person, as a listing at a place they may not read into;
-  `verse perms <path>` is how they read their own record.
+- A whole delete forgets the records beneath it by scanning the loaded mirror in memory
+  (`forget`), and lists the store only when the mirror has not loaded; the reaper deletes tasks
+  routinely. The scan is the mirror's size per delete and has not been measured.
+- A listing's filter checks each entity against the cache with no store read, except a group's
+  members the first time a group is met. `verse ps` on staging took 5–7s on 2026-09-13 and none
+  of that has been attributed to the filter, since nothing has isolated it; if it shows, the answer is a
+  memo per distinct prefix, not a weaker check.
+- A person cannot read the mirror: a record is refused them and a listing of verse's half
+  leaves the records out (`TestTheOpenVerseReadsEverythingButTheMirror`). `verse perms <path>`
+  is how they read their own record.
 - The runtime authority axis — a task's `Grant` and `Vector`, what a task may *do* — is
   untouched by any of this, and [authority.md](../roadmap/authority.md) is still its note.
