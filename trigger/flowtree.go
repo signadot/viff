@@ -1,7 +1,9 @@
 package trigger
 
 import (
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
@@ -103,17 +105,44 @@ type FlowTree struct {
 	Roots     []FlowNode `tony:"field=roots,omitzero"`
 }
 
-// FlowTrees renders the flow tree of every subject the address selects. A concrete address
+// FlowTrees renders the flow tree of every subject the address selects, as this engine alone
+// sees it. FlowTreesAcross is the same over every engine a request may see.
+func (e *Engine) FlowTrees(m Match) []FlowTree {
+	return FlowTreesAcross([]*Engine{e}, m)
+}
+
+// FlowTreesAcross renders the flow tree of every subject the address selects. A concrete address
 // yields one tree (possibly empty); a pattern yields one per subject that has tasks.
 //
 // Subjects come from the mirror rather than from the live registry, so a subject whose work
-// has all finished still has a tree — which is the point of asking after the fact.
-func (e *Engine) FlowTrees(m Match) []FlowTree {
-	bySubject := map[string][]entity.Entity{}
+// has all finished still has a tree — which is the point of asking after the fact. The mirror is
+// read through the first engine's store, which is baseline's or a scope's.
+//
+// EACH TASK IS RENDERED BY THE ENGINE THAT MINTED IT. A package's charter runs in an engine of its
+// own, so its rules, its live tasks, who holds them and which suspensions cover them are that
+// engine's to answer: asked of baseline's, a package's task has no charter shape to extend, holds
+// nothing and is covered only by suspensions of every charter. A task goes to the engine tracking
+// it live, else to the engine whose prefix its id carries (ownerOf), else to the first.
+func FlowTreesAcross(engines []*Engine, m Match) []FlowTree {
+	if len(engines) == 0 {
+		return []FlowTree{}
+	}
+	// The first engine's roots first, then each package's by its address, so a tree reads the
+	// same at every request whatever order the engines were handed over in.
+	engines = slices.Clone(engines)
+	slices.SortStableFunc(engines[1:], func(a, b *Engine) int { return strings.Compare(a.At(), b.At()) })
+	first := engines[0]
+	bySubject := map[string]map[*Engine][]entity.Entity{}
+	at := func(subj string) map[*Engine][]entity.Entity {
+		if bySubject[subj] == nil {
+			bySubject[subj] = map[*Engine][]entity.Entity{}
+		}
+		return bySubject[subj]
+	}
 	// Instances, not every kind the task system holds: a flow tree is the LIVE shape of the
 	// work, one node per task, and a run record is history about a node already in it (see
 	// mirror.RunKind). Including them would double every node that has run more than once.
-	for _, ent := range entity.ListUnder(e.store, func(r entity.Ref) bool {
+	for _, ent := range entity.ListUnder(first.store, func(r entity.Ref) bool {
 		return mirror.IsTask(r)
 	}, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
 		subj := entity.Str(ent.Payload, "flow")
@@ -124,14 +153,15 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 		if err != nil || !m.MatchRef(ref) {
 			continue
 		}
-		bySubject[subj] = append(bySubject[subj], ent)
+		eng := mintedBy(engines, ent.Ref.ID())
+		at(subj)[eng] = append(at(subj)[eng], ent)
 	}
 	// A live task whose mirror has not landed yet still belongs in the tree: the
 	// registry is the present, and a tree that omits what is running now would be worse
 	// than one that omits what ran yesterday.
-	for _, fp := range e.matchFlow(m) {
-		if _, seen := bySubject[fp.subject]; !seen {
-			bySubject[fp.subject] = nil
+	for _, eng := range engines {
+		for _, fp := range eng.matchFlow(m) {
+			at(fp.subject)
 		}
 	}
 
@@ -143,13 +173,35 @@ func (e *Engine) FlowTrees(m Match) []FlowTree {
 
 	trees := make([]FlowTree, 0, len(subjects))
 	for _, s := range subjects {
-		tree := FlowTree{Subject: s, Roots: e.rootsFor(s, bySubject[s])}
-		if e.susp != nil {
-			tree.Suspended = e.susp.NamingSubject(subjectOf(s))
+		tree := FlowTree{Subject: s}
+		for _, eng := range engines {
+			if ents, ok := bySubject[s][eng]; ok || eng == first {
+				tree.Roots = append(tree.Roots, eng.rootsFor(s, ents)...)
+			}
+		}
+		if first.susp != nil {
+			tree.Suspended = first.susp.NamingSubject(subjectOf(s))
 		}
 		trees = append(trees, tree)
 	}
 	return trees
+}
+
+// mintedBy is the engine a task belongs to: the one tracking it live, else the one whose id
+// prefix it carries — the longest, since baseline's is empty — else the first.
+func mintedBy(engines []*Engine, id string) *Engine {
+	for _, eng := range engines {
+		if _, ok := eng.Live(id); ok {
+			return eng
+		}
+	}
+	best, bestLen := engines[0], 0
+	for _, eng := range engines {
+		if owner := eng.idOwner(); len(owner) > bestLen && strings.HasPrefix(id, owner) {
+			best, bestLen = eng, len(owner)
+		}
+	}
+	return best
 }
 
 // rootsFor builds one subject's roots from its mirrored tasks, then extends each root

@@ -4692,14 +4692,10 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 // yet. A read, so the address rides the query string rather than a body (steering is POST).
 //
 // It is derived per request from the charter, the mirror and the live registry (see
-// trigger.FlowTrees). Nothing about the tree is stored: a materialized one would be the
+// trigger.FlowTreesAcross), over every engine the scope may see. Nothing about the tree is stored: a materialized one would be the
 // flows[subject] index that a flow-as-a-query deliberately replaced.
 func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
-	eng := s.engFor(r.URL.Query().Get("scope"))
-	if eng == nil {
-		writeOut(w, r, http.StatusOK, []trigger.FlowTree{})
-		return
-	}
+	engines := s.flowEngines(r.URL.Query().Get("scope"))
 	addr := r.URL.Query().Get("subject")
 	if addr == "" {
 		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
@@ -4710,7 +4706,7 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeOut(w, r, http.StatusOK, eng.FlowTrees(m))
+	writeOut(w, r, http.StatusOK, trigger.FlowTreesAcross(engines, m))
 }
 
 // eventWire is gone: an Event is written as itself. It used to be rebuilt field by field

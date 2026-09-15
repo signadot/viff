@@ -337,8 +337,8 @@ func suspensionError(w http.ResponseWriter, r *http.Request, err error) {
 // verb that lifts them.
 func heldBySuspension(w http.ResponseWriter, r *http.Request, what string, by []string) {
 	codec.HTTPError(w, r, http.StatusConflict, fmt.Sprintf(
-		"%s is held by %s; resuming it would run what that suspends — `verse flow resume --charter … "+
-			"--subject …` lifts a suspension, and `verse flow` lists them", what, strings.Join(by, ", ")))
+		"%s is held by %s; resuming it would run what that suspends — `verse flow resume` with a "+
+			"suspension's flags lifts it, and `verse flow --args` prints them", what, strings.Join(by, ", ")))
 }
 
 // suspensionCount is how many suspensions are in force in a scope: what status counts.

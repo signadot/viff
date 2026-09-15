@@ -614,6 +614,7 @@ func (e *Engine) held(rule string, subj entity.Ref, whole, settled bool) []strin
 			}
 		}
 	}
+	sort.Strings(out) // one order, so a task's holders compare and its record does not churn
 	return out
 }
 
@@ -811,19 +812,25 @@ func (e *Engine) recordHold(fp flowTask) {
 	})
 }
 
-// holdTasks holds every live task a suspension now covers that no suspension holds yet, at its
-// next boundary.
+// holdTasks has every live task say which suspensions hold it now, and holds at its next boundary
+// the ones nothing held before. A task already held — by the operator, or by another suspension —
+// is not paused again, but a suspension that also covers it is named on it, so its record and a
+// listing count what each suspension holds.
 func (e *Engine) holdTasks() {
 	for _, fp := range e.liveTasks() {
 		held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
-		if len(held) == 0 || len(fp.suspended) > 0 {
+		if len(held) == 0 || slices.Equal(held, fp.suspended) {
 			continue
 		}
-		fp, ok := e.setHold(fp.id, func(fp *flowTask) { fp.suspended = held })
+		var was bool
+		fp, ok := e.setHold(fp.id, func(fp *flowTask) {
+			was = fp.operator || len(fp.suspended) > 0
+			fp.suspended = held
+		})
 		if !ok {
 			continue
 		}
-		if !fp.operator {
+		if !was {
 			fp.h.Pause()
 		}
 		e.recordHold(fp)

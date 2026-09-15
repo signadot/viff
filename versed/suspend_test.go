@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -483,7 +484,7 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 		t.Fatalf("the paused task under a suspension is held by %v, want the operator and %s", got, held.ID)
 	}
 	code, msg = runVerb(t, ts, "resume", "first")
-	if code != http.StatusConflict || !strings.Contains(msg, held.ID) || !strings.Contains(msg, "verse flow resume") {
+	if code != http.StatusConflict || !strings.Contains(msg, held.ID) || !strings.Contains(msg, "verse flow --args") {
 		t.Fatalf("flow resume --task of a suspended task = %d %q, want 409 naming %s and the verb that lifts it", code, msg, held.ID)
 	}
 	if code, msg := control(t, ts, "/tasks/first/resume", "", nil); code != http.StatusConflict || !strings.Contains(msg, held.ID) {
@@ -524,6 +525,105 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	if got := heldBy("second"); len(got) != 1 || got[0] != trigger.HeldByOperator || second.count("resume") != 0 {
 		t.Fatalf("after the lift the task is held by %v and resumed %d times, want the operator's hold standing",
 			got, second.count("resume"))
+	}
+}
+
+// A task a suspension already holds names a second suspension that also covers it, without being
+// paused again: its heldBy and the second suspension's listing both count it, and it runs only
+// once neither holds it.
+func TestASecondSuspensionIsNamedOnTheTaskItAlsoHolds(t *testing.T) {
+	srv, ts := startedServer(t)
+	h := newIdleHandle(t)
+	srv.Eng.Adopt("demo.pr.1", "run", h)
+	narrow := api.FlowSelect{Subject: "demo.pr.1", Why: "this PR"}
+	wide := api.FlowSelect{Subject: "demo.pr.*", Why: "every PR"}
+	for _, sel := range []api.FlowSelect{narrow, wide} {
+		if code, _, msg := suspendAs(t, ts, "suspend", "", "", sel); code != http.StatusOK {
+			t.Fatalf("suspend %+v = %d %s", sel, code, msg)
+		}
+	}
+	both := `*:*@demo.pr,*:*@demo.pr."1"`
+	if got := strings.Join(srv.Eng.HeldBy("run"), ","); got != both || h.count("pause") != 1 {
+		t.Fatalf("the task is held by %s and paused %d times, want both suspensions named and one pause", got, h.count("pause"))
+	}
+	for _, row := range suspensionsIn(t, ts, "") {
+		if row.Holding == nil || row.Holding.Tasks != 1 {
+			t.Fatalf("%s lists as holding %+v, want the one task", row.ID, row.Holding)
+		}
+	}
+	narrow.Why, wide.Why = "", ""
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", narrow); code != http.StatusOK {
+		t.Fatalf("resume %+v = %d %s", narrow, code, msg)
+	}
+	if got := strings.Join(srv.Eng.HeldBy("run"), ","); got != `*:*@demo.pr` || h.count("resume") != 0 {
+		t.Fatalf("after one lift the task is held by %s and resumed %d times, want the wider one holding it", got, h.count("resume"))
+	}
+	if code, _, msg := suspendAs(t, ts, "resume", "", "", wide); code != http.StatusOK {
+		t.Fatalf("resume %+v = %d %s", wide, code, msg)
+	}
+	if len(srv.Eng.HeldBy("run")) != 0 || h.count("resume") != 1 {
+		t.Fatalf("after both lifts the task is held by %v and resumed %d times", srv.Eng.HeldBy("run"), h.count("resume"))
+	}
+}
+
+// A package's work is shown by the package's engine: `flow show` names who holds a package's live
+// task and which of the package's suspensions cover its positions — the live one found in the
+// engine tracking it, and one no engine tracks by the charter its id says minted it.
+func TestAPackagesFlowIsShownByItsEngine(t *testing.T) {
+	srv, ts := startedServer(t)
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring imports = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing a package = %d: %s", code, msg)
+	}
+	pkg := srv.packageEngineIfRunning("notes")
+	if pkg == nil {
+		t.Fatal("the package installed and is running in no engine")
+	}
+	record := func(id, subject string) {
+		t.Helper()
+		if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref(id).At(), Value: entity.Obj{
+			"status": "running", "flow": subject, "chain": "note-the-head"}.Payload()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live, adrift := "notes:note-the-head@notes.seen.head", "notes:note-the-head@notes.seen.later"
+	record(live, "notes.seen.head")
+	pkg.AdoptChain("notes.seen.head", live, "note-the-head", newIdleHandle(t))
+	record(adrift, "notes.seen.later")
+
+	tree := func(subject string) trigger.FlowNode {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/flow/tree?subject=" + subject)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var trees []trigger.FlowTree
+		decodeResp(t, resp, &trees)
+		if len(trees) != 1 || len(trees[0].Roots) != 1 {
+			t.Fatalf("flow show %s = %+v, want one root", subject, trees)
+		}
+		return trees[0].Roots[0]
+	}
+	if code, msg := runVerb(t, ts, "suspend", live); code != http.StatusOK {
+		t.Fatalf("flow suspend --task = %d %s", code, msg)
+	}
+	if got := tree("notes.seen.head").HeldBy; len(got) != 1 || got[0] != trigger.HeldByOperator {
+		t.Fatalf("flow show of the package's held task says heldBy %v, want the operator", got)
+	}
+	code, held, msg := suspendAs(t, ts, "suspend", tester, "", api.FlowSelect{Charter: "notes:note-the-head", Why: "reading it"})
+	if code != http.StatusOK {
+		t.Fatalf("suspend = %d %s", code, msg)
+	}
+	for _, subject := range []string{"notes.seen.head", "notes.seen.later"} {
+		if got := tree(subject).Suspended; !slices.Contains(got, held.ID) {
+			t.Fatalf("flow show %s says suspended %v, want the package's %s", subject, got, held.ID)
+		}
 	}
 }
 
