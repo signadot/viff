@@ -17,36 +17,36 @@ exclude_docs: |
 # The nav follows docs/README.md's four kinds rather than the directory layout: a welcome,
 # the walks a person drives, the architecture by subject, and the reference. Where the two
 # disagree, the index wins and this follows it.
+#
+# Control is in the welcome because it is what to know before letting verse act: how to stop
+# it. The nav is one level deep under each heading. The mkdocs theme draws a nested section as
+# a submenu it positions with script and `position: fixed`, and that submenu does not open
+# reliably, so Architecture lists its subjects in order rather than grouping them.
 nav:
 - Welcome:
   - Welcome: README.md
   - Overview: overview.md
+  - Control: control.md
 - Walks:
   - tutorial.md
   - perms-guide.md
   - auto-supervisor.md
 - Architecture:
   - seams.md
-  - Entities and the store:
-    - change-events.md
-    - perms.md
-  - Charters and triggers:
-    - convergence.md
-    - cycle-throttle.md
-    - strata.md
-    - provider-selection.md
-  - Tasks and autonomy:
-    - task-control.md
-    - attached-resolvers.md
-    - runners.md
-    - external-tasks.md
-  - Steering:
-    - control.md
-    - deployment-and-steering.md
-  - Federation:
-    - sources.md
-    - content-federation.md
-    - controllers.md
+  - change-events.md
+  - perms.md
+  - convergence.md
+  - cycle-throttle.md
+  - strata.md
+  - provider-selection.md
+  - task-control.md
+  - attached-resolvers.md
+  - runners.md
+  - external-tasks.md
+  - deployment-and-steering.md
+  - sources.md
+  - content-federation.md
+  - controllers.md
 - Reference:
   - reference/README.md
   - trigger-model.md

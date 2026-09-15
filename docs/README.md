@@ -5,12 +5,14 @@ agentic autonomy. You install a *charter* of trigger rules; the runtime reacts t
 shared entity store and does the work with governed agent tasks, and every reaction passes a
 gate.
 
-Read the overview first and walk the tutorial. The architecture and the reference are for when
-a subject comes up.
+Read the overview first, and control before you let verse act. Walk the tutorial. The
+architecture and the reference are for when a subject comes up.
 
 ## Welcome
 
 - [Overview](overview.md) — the architecture, the model, and the decisions that hold it up.
+- [Control](control.md) — how to stop work without ending it: a run's hold and a durable
+  suspension, how long each lasts, what it reaches, whose hold it is, and who may.
 
 ## Walks
 
@@ -54,9 +56,9 @@ resolve, do this.
 - [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
 - [External tasks](external-tasks.md) — how the seam was chosen.
 
-**Steering** — observation can lag; steering cannot.
+**Steering** — observation can lag; steering cannot. The acts themselves are
+[control](control.md), above.
 
-- [Control](control.md) — what an operator stops, for how long, and who may.
 - [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs
   a cursor rather than a buffer.
 
