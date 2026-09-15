@@ -268,6 +268,24 @@ func TestASubtreeClaimCoversWhatIsUnderIt(t *testing.T) {
 	}
 }
 
+// A CLAIM COVERS WHAT IS AT OR UNDER IT, AND NOTHING ABOVE: `--forget` tombstones what Claimed
+// answers, and an ancestor of a claim holds things the source never owned.
+func TestAClaimDoesNotCoverWhatIsAboveIt(t *testing.T) {
+	claims := owns("slack.*.acme/*")
+	parsed, err := source.ParseOwns(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []entity.Ref{entity.RefAt("slack", "foo"), entity.RefAt("slack")} {
+		if places := source.Claimed(parsed, ref); len(places) != 0 {
+			t.Errorf("%s is above the claim, and Claimed = %v", ref, places)
+		}
+	}
+	if places := source.Claimed(parsed, entity.RefAt("slack", "chan", "acme/general")); len(places) != 1 {
+		t.Errorf("slack.chan.acme/general is the claim's own, and Claimed = %v", places)
+	}
+}
+
 // The claim a source declares has to be the claim its reflection actually writes under, or the
 // install proves something about a slice nobody touches. This is the one place the two halves
 // meet, so it is asserted rather than assumed.

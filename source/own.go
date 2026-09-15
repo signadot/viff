@@ -377,7 +377,12 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 	}
 	var out []entity.Path
 	for _, c := range claims {
-		if c.Disjoint(point) {
+		// A claim DEEPER than the ref covers something beneath it, not the ref: `slack.*.ws/*`
+		// owns the workspaces under a channel, and a scalar standing at `slack.foo` is not one of
+		// them. Disjoint answers "could they meet" and says yes to that pair, since one is an
+		// ancestor of the other — which is right for an install and wrong for what a removal
+		// deletes, where it tombstoned the ancestor and everything beside the claim with it.
+		if len(c.Segs) > len(point.Segs) || c.Disjoint(point) {
 			continue
 		}
 		out = append(out, entity.Path{Ref: ref, Field: c.Field})
