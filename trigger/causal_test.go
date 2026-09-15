@@ -131,6 +131,32 @@ func TestUncausedFiringStartsAFreshChain(t *testing.T) {
 	}
 }
 
+// A CHANGE IN VERSE'S OWN HALF IS FOUND IN THE COMMIT THAT CARRIED IT, whichever stream delivered
+// it. A subtree watch — what a scoped engine observes — delivers commits with no delta, and
+// changedIn must still see a subject under `verse` in one; otherwise every firing about such a
+// subject has no parent, begins a fresh chain, and the throttle has no loop to see.
+func TestChangedInFindsAVerseHalfSubjectWithoutADelta(t *testing.T) {
+	s := entitytest.Store(t)
+	ref := entity.VerseRef("task", "instance", "run-1")
+	segs := ref.Segs()
+	ch, unsub, err := s.WatchSubtree(len(segs), segs[:len(segs)-1]...)
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer unsub()
+	if _, _, err := s.Write(entity.Write{At: ref.At(), Value: entity.Obj{"status": "running"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case c := <-ch:
+		if !changedIn(c, ref) {
+			t.Fatalf("changedIn(%s) = false over Changes %+v", ref, c.Changes)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the watch never delivered the write")
+	}
+}
+
 // Only a write that COMMITTED is recorded. A refused precondition wrote nothing, and Modify
 // retries — so a patch under contention issues several writes of which at most one lands, and
 // counting the attempts would inflate every chain by however busy the store happened to be.

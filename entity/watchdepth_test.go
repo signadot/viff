@@ -83,6 +83,28 @@ func TestChangedAtAnswersAtTheDepthAsked(t *testing.T) {
 	}
 }
 
+// ONE LENGTH, WITH OR WITHOUT A DELTA. A subtree watch's commit carries no delta, so ChangedAt
+// answers from its Changes, and the depth it is asked at is the address's whole length, `verse`
+// included — the length the delta branch counts and every caller passes (`len(ref.Segs())`).
+// Counted without the root there, every address in verse's own half was one level short, and
+// the causal chain, which asks this of every firing, began afresh at each one.
+func TestChangedAtCountsTheRootWithoutADelta(t *testing.T) {
+	s := openStore(t)
+	ref := VerseRef("task", "instance", "run-1")
+	segs := ref.Segs()
+	ch, unsub, err := s.WatchSubtree(len(segs), segs[:len(segs)-1]...)
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer unsub()
+
+	set(t, s, ref, Obj{"status": "running"}.Payload())
+	c := oneCommitOf(t, ch, "the write in verse's half")
+	if got := c.ChangedAt(len(segs)); len(got) != 1 || got[0] != ref {
+		t.Fatalf("ChangedAt(%d) = %v over Changes %+v, want [%s]", len(segs), got, c.Changes, ref)
+	}
+}
+
 // A WATCH ON AN ADDRESS REPORTS WHAT STANDS THERE, whatever it is. There is nothing left below
 // the path to descend, so the value at it is the entity — and a watch that asked for an object
 // there dropped every scalar, at any depth, while the read of the same address answered it

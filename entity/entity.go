@@ -417,7 +417,8 @@ func (c Commit) ChangedAt(depth int) []Ref {
 		// answer at any depth it can speak to. Nothing else has a delta to walk.
 		out := make([]Ref, 0, len(c.Changes))
 		for _, ev := range c.Changes {
-			if ev.Ref.Len() == depth {
+			// The whole length, root included, which is what the delta walk below counts.
+			if len(ev.Ref.Segs()) == depth {
 				out = append(out, ev.Ref) // Changes already holds only what the reader may see
 			}
 		}
