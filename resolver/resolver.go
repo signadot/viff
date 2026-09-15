@@ -8,9 +8,11 @@ package resolver
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -379,14 +381,25 @@ func List(r entity.Reader) []Resolver {
 		return ref.System() == System && ref.Kind() != InstanceKind
 	}, entity.VerseRoot, System) {
 		var res Resolver
-		if codec.FromNode(ent.Payload, &res) != nil {
-			continue // a binding this build cannot read is one it cannot honour either
+		if err := codec.FromNode(ent.Payload, &res); err != nil {
+			// A binding this build cannot read is one it cannot honour either — and it SAYS so,
+			// once, because the alternative is an answerer that has quietly stopped existing and
+			// questions that go unanswered with nothing pointing at why.
+			if _, said := unreadable.LoadOrStore(ent.Ref.String(), true); !said {
+				slog.Warn("resolver: a binding this build cannot read answers nothing",
+					"binding", ent.Ref.String(), "err", err)
+			}
+			continue
 		}
 		out = append(out, res)
 	}
 	slices.SortFunc(out, func(a, b Resolver) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
+
+// unreadable is the bindings List has already said it cannot read, so it says it once rather
+// than at every question.
+var unreadable sync.Map
 
 // Owner returns the binding that answers questions about subject, and whether there is one.
 //
