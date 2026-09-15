@@ -57,7 +57,7 @@ func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 		t.Errorf("the external write reads at depth %d; a commit the engine did not cause is depth 0", got)
 	}
 
-	fwd, ok := findCause(eng, "fwd")
+	fwd, ok := awaitCause(eng, "fwd")
 	if !ok {
 		t.Fatal("no commit recorded for fwd; the action's write carried no chain")
 	}
@@ -65,7 +65,7 @@ func TestCausalDepthClimbsWithEachHop(t *testing.T) {
 		t.Errorf("fwd wrote {depth %d, parent %d}, want depth 1 off the external commit %d",
 			fwd.depth, fwd.parent, external)
 	}
-	onward, ok := findCause(eng, "onward")
+	onward, ok := awaitCause(eng, "onward")
 	if !ok {
 		t.Fatal("no commit recorded for onward; the second hop carried no chain")
 	}
@@ -84,7 +84,7 @@ func TestMachineryWritesCarryNoChain(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	ch, unsub := store.Observe()
+	ch, unsub := store.Observe(entity.PrefixPattern(nil, 3), entity.PrefixPattern(nil, 4))
 	defer unsub()
 	if err := eng.AddTrigger(Trigger{
 		Name:      "ship",
@@ -186,6 +186,23 @@ func TestRefusedWriteRecordsNothing(t *testing.T) {
 	}
 	if _, ok := eng.causeOf(0); ok {
 		t.Error("a refused write was recorded, under revision 0")
+	}
+}
+
+// awaitCause is findCause, waited for: the store shows a write the instant it commits, and the
+// chain is recorded when the write RETURNS, so a test that has just seen the value may be a
+// goroutine ahead of the bookkeeping.
+func awaitCause(e *Engine, chain string) (link, bool) {
+	deadline := time.After(3 * time.Second)
+	for {
+		if l, ok := findCause(e, chain); ok {
+			return l, true
+		}
+		select {
+		case <-deadline:
+			return link{}, false
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 

@@ -68,7 +68,7 @@ func newStore(t *testing.T) *countingStore {
 func quiet(t *testing.T, store *countingStore, fn func()) bool {
 	t.Helper()
 	writes, before := store.writes, store.Rev()
-	ch, unsub := store.Observe()
+	ch, unsub := store.Observe(entity.PrefixPattern(nil, 3))
 	defer unsub()
 	fn()
 	if n := store.writes - writes; n != 0 {

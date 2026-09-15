@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/entity"
 )
 
@@ -20,9 +22,15 @@ type asksAt struct {
 	at [][]string
 }
 
-func (a *asksAt) Since(from int64, at ...string) ([]entity.Commit, error) {
+func (a *asksAt) Since(from int64, at ...*kpath.KPath) ([]entity.Commit, error) {
 	a.mu.Lock()
-	a.at = append(a.at, append([]string{}, at...))
+	for _, p := range at {
+		prefix, _ := entity.LiteralPrefix(p)
+		a.at = append(a.at, prefix)
+	}
+	if len(at) == 0 {
+		a.at = append(a.at, nil)
+	}
 	a.mu.Unlock()
 	return a.Store.Since(from, at...)
 }

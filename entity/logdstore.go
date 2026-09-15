@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/tony-format/go-tony/system/libctl"
 	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
@@ -157,6 +157,8 @@ func IsMountOwned(segs ...string) bool {
 type observer struct {
 	ch      chan Commit
 	dropped int
+	// at is what the observer asked about: the patterns its commits' Changes are answered at.
+	at []*kpath.KPath
 }
 
 // LogdStore is an entity.Store backed by a logd document server (tony-format), reached
@@ -1410,7 +1412,10 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 		// to: after the first diff prev holds the slice, so a reconnect's State diffs to
 		// the gap alone.
 		doc := ir.Null()
-		prev := map[Ref]Payload{}
+		// prev is the document the last diff was taken against. It starts EMPTY, so the
+		// first diff reports everything standing at the pattern.
+		var prev *ir.Node
+		pattern := []*kpath.KPath{PrefixPattern(prefix, depth)}
 		// rev is the commit the reconstructed doc now stands at, stamped on every event the
 		// next diff emits. Without it a subtree event carried no revision at all while a root
 		// event carried its commit — the same stream, one half of it unable to say WHEN.
@@ -1457,35 +1462,16 @@ func (s *LogdStore) watchSubtree(depth int, waitIfAbsent, noInit bool, prefix ..
 		// commit: this watch reports one subtree, and a consumer of it has no use for the
 		// revisions where its slice stood still.
 		emitDiff := func() bool {
-			cur := entitiesFromDoc(doc, s.root, prefix, depth)
-			var changes []Event
-			for ref, p := range cur {
-				// ir.Node.DeepEqual, NOT reflect.DeepEqual. A node carries structural
-				// metadata — Parent, ParentIndex, ParentField — that says where it sits in
-				// the document rather than what it holds, and a document rebuilt from a fresh
-				// read wires that up anew. reflect compares it; ir's DeepEqual documents that
-				// it does not. With reflect, every entity in a slice compared UNEQUAL to the
-				// identical value after a resync, so re-establishing a watch re-emitted the
-				// whole slice as changed — measured, twenty entities delivered forty events —
-				// and every trigger over it would have fired again for nothing.
-				if old, ok := prev[ref]; !ok || !old.DeepEqual(p) {
-					changes = append(changes, Event{Ref: ref, Op: Set, To: p, Rev: rev})
-				}
-			}
-			for ref := range prev {
-				if _, ok := cur[ref]; !ok {
-					changes = append(changes, Event{Ref: ref, Op: Delete, Rev: rev})
-				}
-			}
-			prev = cur
+			// One change walk (changesAt), with no delta to prune it: a State replaces the
+			// document wholesale, so only the two documents can say what differs. It compares
+			// with ir.Node.DeepEqual, not reflect.DeepEqual — a node carries Parent links that
+			// say where it sits rather than what it holds, and a document rebuilt from a fresh
+			// read wires them anew, which reflect would count as every node changing.
+			changes := changesAt(pattern, childByKey(prev, s.root), childByKey(doc, s.root), nil, rev)
+			prev = doc
 			if len(changes) == 0 {
 				return true
 			}
-			// Stable order, so a consumer acting per entity does so deterministically and a
-			// test can say what it expects. Map iteration above is not.
-			sort.Slice(changes, func(i, j int) bool {
-				return changes[i].Ref.String() < changes[j].Ref.String()
-			})
 			return send(Commit{Rev: rev, Changes: changes})
 		}
 		backoff := 100 * time.Millisecond
@@ -1613,55 +1599,6 @@ func stateOf(ev *logdapi.WatchEvent) *ir.Node {
 	return ev.State
 }
 
-// entitiesFromDoc reads the entity set out of a root-rooted subtree document (the doc
-// WatchSubtree maintains by applying watch events), keyed by full Ref. It navigates to
-// the watched node and walks the remaining depth to the entity leaves — pure structure, no
-// diff interpretation.
-//
-// It reports the nodes at the depth asked for, and a value that bottomed out above it where it
-// stands, so a write replacing what a rule over the depth below reads wakes that rule. A listing
-// answers only the depth (nodesAt); one change walk at the question's depth is step 5 of
-// docs/working/paths-and-nodes-plan.md.
-func entitiesFromDoc(doc *ir.Node, root string, prefix []string, depth int) map[Ref]Payload {
-	node := childByKey(doc, root)
-	for _, p := range prefix {
-		node = childByKey(node, p)
-	}
-	out := map[Ref]Payload{}
-	if depth < len(prefix) {
-		return out
-	}
-	// What the watch fixed, plus what the document still carries below it, is the address —
-	// so the remaining depth is a subtraction. The TOTAL is the caller's: computing it here
-	// would fix the arity, and a watch could then never report an entity deeper than three
-	// (see Store.WatchSubtree).
-	//
-	// WHATEVER STANDS AT THE PATH is walked, not only an object. A watch ON an address has
-	// nothing left to descend, so the value there is the entity — a scalar, a list, a null
-	// somebody wrote. A watch on a prefix finds a scalar there reported at the path, as a read
-	// finds it, and a null or an empty object there holds nothing: walkLeaves reads a null
-	// above the asked depth as nothing standing, which is also what a path that holds nothing
-	// opens on (stateOf).
-	walkLeaves(node, depth-len(prefix), func(segs []string, v *ir.Node) {
-		// A missing leaf is nothing; a null one is an entity holding null. The document here is
-		// materialized — a State, or a State with deltas applied, and tony.Patch executes a
-		// `!delete` by removing the key — so absence never reaches this as a value.
-		if v == nil {
-			return
-		}
-		// A value above the asked depth is reported where it stands, and a rule over the depth
-		// below it is woken by it: a scalar written over the place a rule's subjects stand
-		// changes what that rule reads, so waking it is the right answer rather than noise.
-		//
-		// RefOfAny, not RefOf: the depth was named by the caller, so the only thing left to
-		// refuse is an empty segment — a nameless level addresses nothing.
-		if ref, ok := RefOfAny(append(append([]string{}, prefix...), segs...)); ok {
-			out[ref] = nodeToPayload(v)
-		}
-	})
-	return out
-}
-
 // nodesAt calls fn for every node exactly depth object levels below node — whatever stands there:
 // an object, a list, a scalar, a null, an empty object — and for nothing shallower. It is what a
 // LISTING answers (docs/working/paths-and-nodes.md): the nodes a pattern of that depth reaches. A
@@ -1684,68 +1621,6 @@ func nodesAt(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 	if depth >= 0 {
 		rec(node, nil)
 	}
-}
-
-// walkLeaves descends exactly `depth` object levels from node, invoking fn with the
-// field-name path and value node at each leaf. It underpins both the (system,kind)
-// (depth 1) and whole-system (depth 2) subtree reads.
-//
-// A LEVEL IS AN OBJECT SOMETHING STANDS UNDER, which is why the two ways of saying something
-// about a comment are stepped over rather than descended: a wrapper by unwrapping it, and the
-// `!comment` operation by following what it says the value is (commentOperand). Both sit AT a
-// path and describe what is there; neither is a level of the namespace, and walking one as
-// though it were reads the parts of a statement as addresses.
-func walkLeaves(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
-	var rec func(n *ir.Node, segs []string)
-	rec = func(n *ir.Node, segs []string) {
-		if len(segs) == depth {
-			fn(segs, n)
-			return
-		}
-		n = ir.Uncomment(n) // a comment is not a container
-		if v, ok := commentOperand(n); ok {
-			// What stands here is what the operation says the value is. A comment stated
-			// with no value leaves everything below it as it was, so there is nothing
-			// below to report.
-			if v == nil {
-				return
-			}
-			rec(v, segs)
-			return
-		}
-		if n == nil {
-			return
-		}
-		if n.Type != ir.ObjectType {
-			// A LEAF ABOVE THE ASKED DEPTH IS STILL A LEAF, and it is reported where it
-			// stands. Only an object has anything below it, so a value met on the way down is
-			// the whole of what is at that path — dropping it loses the value entirely, which
-			// is what made a scalar written at two segments invisible to every listing while
-			// an object at the same address came back through its own fields.
-			//
-			// EXCEPT A NULL, which above the asked depth is the store saying nothing stands
-			// there: a Match at a path nothing has been written to answers null, and reading
-			// that as a value invents an entity at every prefix anyone asks about. At the
-			// asked depth a null is a payload like any other and is reported — the difference
-			// is that the caller named that path, so the answer is about it.
-			//
-			// And except A REMOVAL, which is not a null but an operation wearing one: a delta
-			// says `a: b: !delete null` for whatever stood at `a.b`, and that is a change at
-			// the place it names however deep the walk was asked to go. Only a delta carries
-			// one — a materialized document has executed it — so a read never meets it here.
-			//
-			// The depth stays the caller's question: this answers with what there IS at or
-			// above it, and a caller wanting exactly N compares len(segs) itself.
-			if n.Type != ir.NullType || opIn(n.Tag) == deleteName {
-				fn(segs, n)
-			}
-			return
-		}
-		for i, f := range n.Fields {
-			rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
-		}
-	}
-	rec(node, nil)
 }
 
 // Scope returns a copy-on-write view isolated to the named scope: writes land in
@@ -1814,11 +1689,11 @@ func (e errString) Error() string { return string(e) }
 // the contract says, it is a low-latency hint that drops under backpressure; correctness comes
 // from the cursor + Since. Today the only observer is the /watch debug stream (decision:
 // an active whole-verse watch is transient and retries on a mount/unmount force-end).
-func (s *LogdStore) Observe() (<-chan Commit, func()) {
+func (s *LogdStore) Observe(at ...*kpath.KPath) (<-chan Commit, func()) {
 	s.mu.Lock()
 	id := s.nextID
 	s.nextID++
-	o := &observer{ch: make(chan Commit, 256)}
+	o := &observer{ch: make(chan Commit, 256), at: at}
 	s.subs[id] = o
 	if len(s.subs) == 1 && s.watchCancel == nil {
 		s.startRootWatchLocked() // first observer: bring the live root watch up
@@ -1851,6 +1726,25 @@ func (s *LogdStore) startRootWatchLocked() {
 	}
 	s.watchCancel = wcancel
 	go s.runWatch(wctx, w)
+}
+
+// commonPrefix is the literal path every pattern starts with — where a replay of all of them can
+// be read — and the root when they share none.
+func commonPrefix(patterns []*kpath.KPath) []string {
+	var out []string
+	for i, p := range patterns {
+		lit, _ := LiteralPrefix(p)
+		if i == 0 {
+			out = lit
+			continue
+		}
+		n := 0
+		for n < len(out) && n < len(lit) && out[n] == lit[n] {
+			n++
+		}
+		out = out[:n]
+	}
+	return out
 }
 
 // ErrReplayTooOld is the store saying the cursor predates what it still retains: logd refuses
@@ -1909,7 +1803,8 @@ var ErrReplayTooOld = errors.New("the cursor is older than what the store retain
 // that reads as flakiness: the same `--since 700` answering three commits, then nothing.
 //
 // Asking logd is not expensive and it is the only source with standing.
-func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
+func (s *LogdStore) Since(from int64, patterns ...*kpath.KPath) ([]Commit, error) {
+	at := commonPrefix(patterns)
 	s.ensureSynced()
 	// No rev>=from early-out: without a standing watch rev may be stale, so the FromCommit
 	// replay is authoritative — it streams commits after `from` and signals ReplayComplete
@@ -2005,18 +1900,26 @@ func (s *LogdStore) Since(from int64, at ...string) ([]Commit, error) {
 	// A FAILED REPLAY IS STILL LEVELLED, because the commits it did carry happened: a
 	// cursor-keeping caller advances over them and asks again from where they end.
 	doc := s.docAt(ctx, start, at...)
+	if n := len(replayed); n > 0 {
+		s.mu.Lock()
+		if replayed[n-1].commit > s.rev {
+			s.rev = replayed[n-1].commit
+		}
+		s.mu.Unlock()
+	}
 	out := make([]Commit, 0, len(replayed))
 	for _, d := range replayed {
 		// The replay watches AT the path, so its deltas are rooted there while a Ref is
 		// addressed from the store root. They are nested back to it once, and everything
 		// below reads them from there.
 		patch := nestAt(d.patch, at)
+		before := doc
 		doc = s.applyDelta(doc, nestAt(patch, []string{s.root}))
-		out = append(out, Commit{
-			Rev:     d.commit,
-			Author:  d.author,
-			Changes: s.eventsFromDelta(d.commit, patch, doc),
-		}.WithDelta(patch))
+		var changes []Event
+		if len(patterns) > 0 {
+			changes = changesAt(patterns, childByKey(before, s.root), childByKey(doc, s.root), patch, d.commit)
+		}
+		out = append(out, Commit{Rev: d.commit, Author: d.author, Changes: changes}.WithDelta(patch))
 	}
 	return out, replayErr
 }
@@ -2189,14 +2092,17 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		return
 	case ev.Patch != nil:
 		s.mu.Lock()
+		before := s.doc
 		s.doc = s.applyDelta(s.doc, nestAt(ev.Patch, []string{s.root}))
-		doc := s.doc
+		after := s.doc
+		if ev.Commit > s.rev {
+			s.rev = ev.Commit
+		}
 		s.mu.Unlock()
-		// The delta rides along, so a consumer whose addresses are deeper than the arity
-		// Changes was built at can ask ChangedAt for an exact answer. This watch is ON the
-		// root, so what arrives is already rooted where both of those read from.
-		s.emit(Commit{Rev: ev.Commit, Author: ev.Author, Changes: s.eventsFromDelta(ev.Commit, ev.Patch, doc)}.
-			WithDelta(ev.Patch))
+		// The delta rides along, so a consumer can ask Touches about a path it did not observe
+		// at. This watch is ON the root, so what arrives is already rooted where both read from.
+		s.emit(Commit{Rev: ev.Commit, Author: ev.Author}.WithDelta(ev.Patch),
+			childByKey(before, s.root), childByKey(after, s.root))
 	case ev.State != nil || ev.Absent:
 		s.mu.Lock()
 		if ev.Commit > s.rev {
@@ -2205,48 +2111,6 @@ func (s *LogdStore) handleEvent(ev *logdapi.WatchEvent) {
 		s.doc = nestAt(stateOf(ev), []string{s.root})
 		s.mu.Unlock()
 	}
-}
-
-// eventsFromDelta turns a delta rooted at the store root into change events: a tombstone
-// (null leaf) is Delete, any value is Set. Create-vs-update is not distinguished.
-//
-// To is the entity AS OF THIS COMMIT, not the delta — and that difference is the whole
-// reason a field can be written on its own. A consumer asks "does the entity look like
-// this?" (entity.Pattern.MatchEvent matches To), so a delta would answer a question nobody
-// asked: a trigger reading two fields would stop matching the moment one of them was
-// written by itself, though the entity satisfied it perfectly. That failure is silent —
-// nothing errors, the trigger simply never fires — so the level state is the contract, and
-// the store pays for it here rather than leaving every consumer to remember.
-//
-// The level state comes from doc, the watched document with this delta already applied, so
-// an event reports the world as it was at ITS commit — a transient state that has since been
-// overwritten is still dispatched. doc costs nothing: the watch delivers a State to seed it
-// and a delta per commit to advance it, which is what a watch is. Reading the entity back
-// per event would be exact too, and was the first shape this took, but it puts a network
-// round trip per changed entity on the watch goroutine — the stream stalls behind its own
-// bookkeeping, and on a log that has grown, each of those reads is not cheap (see go-tony
-// bvm163tyh12krwcqcsn0). A nil doc falls back to the delta, which for a whole-entity write
-// is the same value.
-func (s *LogdStore) eventsFromDelta(commit int64, patch, doc *ir.Node) []Event {
-	changes := walkEntityChanges(patch)
-	s.mu.Lock()
-	if commit > s.rev {
-		s.rev = commit
-	}
-	s.mu.Unlock()
-	out := make([]Event, 0, len(changes))
-	for _, ch := range changes {
-		if ch.deleted {
-			out = append(out, Event{Ref: ch.ref, Op: Delete, Rev: commit})
-			continue
-		}
-		to := ch.payload
-		if level := payloadIn(doc, s.root, ch.ref); level != nil {
-			to = level
-		}
-		out = append(out, Event{Ref: ch.ref, Op: Set, To: to, Rev: commit})
-	}
-	return out
 }
 
 // payloadIn reads one entity's whole payload out of a root-rooted document, or nil if it does
@@ -2297,15 +2161,20 @@ func (s *LogdStore) applyDelta(doc, patch *ir.Node) *ir.Node {
 }
 
 // emit broadcasts one commit to observers, non-blocking with drop-and-gap accounting — the
-// contract Observe documents (drops are recovered by consumers via Since).
+// contract Observe documents (drops are recovered by consumers via Since). Each observer's
+// Changes are answered at its own patterns, from the verse before and after the commit.
 //
 // A commit is dropped or delivered WHOLE. Dropping part of one would hand a consumer a
 // transaction with entities missing and no way to know it, which is the one shape the
 // framing exists to prevent; the gap count is therefore in commits, not entities.
-func (s *LogdStore) emit(c Commit) {
+func (s *LogdStore) emit(base Commit, before, after *ir.Node) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, o := range s.subs {
+		c := base
+		if len(o.at) > 0 {
+			c.Changes = changesAt(o.at, before, after, base.delta, base.Rev)
+		}
 		if o.dropped > 0 {
 			gapped := c
 			gapped.Gap = o.dropped
@@ -2460,91 +2329,23 @@ func commentOperand(n *ir.Node) (*ir.Node, bool) {
 	return ir.Get(n, commentValueField), true
 }
 
-// walkEntityLeaves descends a node rooted at the verse subtree (its top-level fields are
-// systems) to the depth an address has, and calls fn at each entity leaf. It is walkLeaves at
-// the depth the entity namespace has, and the two walks below are what they do with the leaf.
-//
-// It answers with SEGMENTS rather than a Ref, because "the thing at this depth" and "an address"
-// are two claims and which one a caller may make differs: a listing reads what stands in the
-// store, at whatever depth it stands, while the change stream serves every consumer at once and
-// so keeps one arity (docs/working/entity-tree.md §5). RefOfAny and RefOf are those two answers.
-func walkEntityLeaves(node *ir.Node, fn func(segs []string, n *ir.Node)) {
-	// One level at a time from the top, because the two halves of the verse are different
-	// depths: what the world is about is three levels down, what verse writes about its own
-	// running is four, under the one reserved key.
-	node = ir.Uncomment(node)
-	if node == nil || node.Type != ir.ObjectType {
-		return
-	}
-	for i, f := range node.Fields {
-		top := fieldName(f)
-		depth := Depth - 1 // the top level is this segment; the rest are below it
-		if top == VerseRoot {
-			depth = Depth
-		}
-		walkLeaves(node.Values[i], depth, func(segs []string, v *ir.Node) {
-			fn(append([]string{top}, segs...), v)
-		})
-	}
-}
-
-// walkEntityDoc reads the entities out of a MATERIALIZED verse subtree — what Match returns,
-// what a watch's State carries. Every leaf is a payload, `null` included: a deleted entity has
-// no key here to be read as anything.
+// walkEntityDoc reads List's entities out of a MATERIALIZED verse subtree: the nodes three levels
+// down in the world's half and four in verse's own. It is the one fixed depth left, and it goes
+// with List and Depth (docs/working/paths-and-nodes-plan.md); a caller that knows its depth asks
+// ListAt.
 func walkEntityDoc(node *ir.Node) []Entity {
 	var out []Entity
-	walkEntityLeaves(node, func(segs []string, n *ir.Node) {
-		// RefOfAny: this is a read of what the store HOLDS, and it holds what it holds. A
-		// value standing above the depth an address usually has is still standing there, and
-		// a listing that dropped it would answer that a written value is not there.
-		if ref, ok := RefOfAny(segs); ok {
-			out = append(out, Entity{Ref: ref, Payload: nodeToPayload(n)})
+	for _, name := range fieldNames(node) {
+		depth := Depth - 1 // the top level is this segment; the rest are below it
+		if name == VerseRoot {
+			depth = Depth
 		}
-	})
-	return out
-}
-
-// walkEntityChanges reads the changes out of a DELTA — a commit's patch, where a removal has
-// to be spelled because there is no absence to observe.
-//
-// It is a separate walk from walkEntityDoc for exactly that reason, and the two used to be one
-// function serving both callers, which is how a materialized null came to read as a delete. The
-// tombstone is the `!delete` OPERATION, which is what verse writes (deleteOp) and what tony.Diff
-// emits for a removed key — not the null, which in a delta is a value being set like any other.
-//
-// The operation is asked for BY NAME rather than by comparing the whole tag, because a tag
-// composes: what a patch executes is the first registered label in the chain (opIn), so a
-// removal wearing anything alongside it is still a removal, and a comparison against `!delete`
-// answers no to it while the store answers yes.
-func walkEntityChanges(node *ir.Node) []entityChange {
-	var out []entityChange
-	// One stream serves every consumer, so Changes reports DEEPER changes at the arity they
-	// share, and a consumer whose addresses are deeper asks Commit.ChangedAt. A value that
-	// bottomed out ABOVE that arity is another matter: there is no address at the arity for it
-	// to be reported against, so it is reported where it stands — RefOfAny, as the listing
-	// reads it (walkEntityDoc) — or the stream would miss a write the listing shows.
-	walkEntityLeaves(node, func(segs []string, n *ir.Node) {
-		ref, ok := RefOfAny(segs)
-		if !ok {
-			return
-		}
-		// A `!comment` AT the entity states its comments, and its value only when the
-		// operand names one. With no `value:` the entity holds what it held: neither a
-		// removal nor a payload this walk can read, so it is reported with none and
-		// levelled from the document (eventsFromDelta).
-		if v, ok := commentOperand(n); ok {
-			if v == nil {
-				out = append(out, entityChange{ref: ref})
-				return
+		nodesAt(childByKey(node, name), depth, func(segs []string, v *ir.Node) {
+			if ref, ok := RefOfAny(append([]string{name}, segs...)); ok {
+				out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
 			}
-			n = v
-		}
-		if n == nil || opIn(n.Tag) == deleteName {
-			out = append(out, entityChange{ref: ref, deleted: true})
-			return
-		}
-		out = append(out, entityChange{ref: ref, payload: nodeToPayload(n)})
-	})
+		})
+	}
 	return out
 }
 

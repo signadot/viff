@@ -63,20 +63,18 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		t.Fatalf("a reflected entity has an owner record of its own")
 	}
 	// Written via the source, which is how it comes to be alice's.
-	commits, err := raw.Since(0)
+	commits, err := raw.Since(0, entity.PrefixPattern(head.Segs(), len(head.Segs())))
 	if err != nil {
 		t.Fatal(err)
 	}
 	reflected := 0
 	for _, c := range commits {
-		for _, r := range c.ChangedAt(len(head.Segs())) {
-			if r != head {
-				continue
-			}
-			reflected++
-			if c.Author != entity.Via(source.Ref("git", "first")) {
-				t.Fatalf("a reflection of %s was written by %q, want via the source", head, c.Author)
-			}
+		if !c.Changed(head) {
+			continue
+		}
+		reflected++
+		if c.Author != entity.Via(source.Ref("git", "first")) {
+			t.Fatalf("a reflection of %s was written by %q, want via the source", head, c.Author)
 		}
 	}
 	if reflected == 0 {

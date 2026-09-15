@@ -325,7 +325,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	if got := drift(); len(got) != 12 {
 		t.Errorf("re-firing the same answer derived %d entities, want the same 12", len(got))
 	}
-	commits, err := store.Since(mark)
+	commits, err := store.Since(mark, entity.PrefixPattern(nil, 3), entity.PrefixPattern(nil, 4))
 	if err != nil {
 		t.Fatalf("the store could not answer what changed: %v", err)
 	}

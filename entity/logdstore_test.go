@@ -162,7 +162,7 @@ func TestLogdStore_Remove(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 	eventually(t, "the watch to be live", func() bool { return s.Rev() > 0 })
 
@@ -359,7 +359,7 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 
 	var first []Event
 	eventually(t, "Since to replay both writes", func() bool {
-		commits, err := s.Since(start)
+		commits, err := s.Since(start, ordinary()...)
 		if err != nil || len(changes(commits)) < 2 {
 			return false
 		}
@@ -372,7 +372,7 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 		}
 	}
 	// idempotent: a second identical query yields the same events, unchanged Op.
-	secondCommits, err := s.Since(start)
+	secondCommits, err := s.Since(start, ordinary()...)
 	second := changes(secondCommits)
 	if err != nil || len(second) != len(first) {
 		t.Fatalf("Since not idempotent: first=%d second=%d", len(first), len(second))
@@ -406,7 +406,7 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 		}
 		// Let the writes land, so every concurrent replay has the same window to see.
 		eventually(t, "writes to be replayable", func() bool {
-			evs, err := s.Since(start)
+			evs, err := s.Since(start, ordinary()...)
 			return err == nil && len(evs) >= len(refs)
 		})
 
@@ -421,7 +421,7 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				commits, err := s.Since(start)
+				commits, err := s.Since(start, ordinary()...)
 				results[i] = result{changes(commits), err == nil}
 			}(i)
 		}
@@ -475,7 +475,7 @@ func TestLogdStore_SinceReadsBeforeThisStoreOpened(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s2.Close()
-	commits, err := s2.Since(0)
+	commits, err := s2.Since(0, ordinary()...)
 	if err != nil {
 		t.Fatal("a fresh store refused history logd still holds — this is the case that made " +
 			"every restart truncate what a cursor could read")
@@ -495,7 +495,7 @@ func TestLogdStore_SinceReadsBeforeThisStoreOpened(t *testing.T) {
 // Since replays the window from a cursor natively from logd.
 func TestLogdStore_ObserveSinceRev(t *testing.T) {
 	s := openStore(t)
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 
 	start := s.Rev()
@@ -532,7 +532,7 @@ func TestLogdStore_ObserveSinceRev(t *testing.T) {
 	// Since replays the whole window from before the writes.
 	var evs []Event
 	eventually(t, "Since to replay all writes", func() bool {
-		commits, err := s.Since(start)
+		commits, err := s.Since(start, ordinary()...)
 		if err != nil {
 			return false
 		}

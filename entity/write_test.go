@@ -166,7 +166,7 @@ func TestEventIsLevelNotDelta(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 	eventually(t, "the watch to be live", func() bool { return s.Rev() > 0 })
 
@@ -197,7 +197,7 @@ func TestEventLevelsAtItsOwnCommit(t *testing.T) {
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("deployed")})
 
-	commits, err := s.Since(first)
+	commits, err := s.Since(first, ordinary()...)
 	evs := changes(commits)
 	if err != nil || len(evs) != 2 {
 		t.Fatalf("Since = %d events err=%v, want 2", len(evs), err)
@@ -244,7 +244,7 @@ func TestSinceLevelsFromTheStart(t *testing.T) {
 	mustWrite(t, s, Write{At: Path{Ref: ref}, Value: Obj{"stage": "open", "env": "prod"}.Payload()})
 	mustWrite(t, s, Write{At: ref.At("stage"), Value: ir.FromString("reviewed")})
 
-	commits, err := s.Since(start)
+	commits, err := s.Since(start, ordinary()...)
 	evs := changes(commits)
 	if err != nil || len(evs) != 2 {
 		t.Fatalf("Since(%d) = %d events err=%v, want 2", start, len(evs), err)
@@ -365,9 +365,9 @@ func TestSameValueWriteRaisesNoCommit(t *testing.T) {
 	ref := RefAt("demo", "pr", "1")
 	set(t, s, ref, Obj{"stage": "open"}.Payload())
 
-	root, unsubRoot := s.Observe()
+	root, unsubRoot := s.Observe(ordinary()...)
 	defer unsubRoot()
-	sub, unsubSub, err := s.WatchSubtree(Depth, "demo", "pr")
+	sub, unsubSub, err := s.WatchSubtree(3, "demo", "pr")
 	if err != nil {
 		t.Fatalf("WatchSubtree: %v", err)
 	}

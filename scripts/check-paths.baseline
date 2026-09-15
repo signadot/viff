@@ -1,7 +1,7 @@
 3 cmd/verse/client.go
 2 entity/addr_test.go
 3 entity/entity.go
-6 entity/read_test.go
+5 entity/read_test.go
 2 entity/snapshot.go
 2 runner/entity.go
 11 source/converge_test.go

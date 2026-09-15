@@ -119,7 +119,7 @@ func TestReflectPublishesDialURL(t *testing.T) {
 // by watching entities.
 func TestReflectProjectsTaskState(t *testing.T) {
 	store := entitytest.Store(t)
-	ch, unsub := store.Observe()
+	ch, unsub := store.Observe(entity.PrefixPattern(Ref("").Segs()[:3], 4))
 	defer unsub()
 
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})

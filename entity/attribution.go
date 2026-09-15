@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -715,28 +716,35 @@ func (a *attributed) narrow(c Commit) Commit {
 	if IsSystem(a.principal) {
 		return c
 	}
+	orig := c.Changes
 	c = c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
-	// What an event carries is read like a row: the nodes beneath it the reader may not read are
-	// left out of it. A mirror that did not answer leaves the event as it is, as keep does.
-	refs := make([]Ref, 0, len(c.Changes))
-	for _, ev := range c.Changes {
-		if ev.To != nil {
-			refs = append(refs, ev.Ref)
-		}
-	}
-	beneath, err := a.recordsBeneath(refs)
-	if err != nil || len(beneath) == 0 {
+	// What an event carries is read as a read of its path is: each node in it the reader may not
+	// read is left out, and one held out to them beneath a node they may not read is kept. A
+	// mirror that did not answer leaves the events keep admitted as they are.
+	places, err := a.places()
+	if err != nil {
 		return c
 	}
-	changes := make([]Event, len(c.Changes))
-	copy(changes, c.Changes)
-	for i, ev := range changes {
-		if ev.To == nil {
+	changes := make([]Event, 0, len(orig))
+	for _, ev := range orig {
+		segs := ev.Ref.Segs()
+		acc, err := a.accessOf(a.principal, ev.Ref)
+		if err != nil {
 			continue
 		}
-		if e, err := a.withhold(Entity{Ref: ev.Ref, Payload: ev.To}, beneath[ev.Ref.String()]); err == nil {
-			changes[i].To = e.Payload
+		readable := acc.level.Admits(Read)
+		if ev.To == nil {
+			if readable {
+				changes = append(changes, ev)
+			}
+			continue
 		}
+		to, keep, err := a.prune(clone(ev.To), segs, readable, places.at(segs))
+		if err != nil || !keep {
+			continue
+		}
+		ev.To = to
+		changes = append(changes, ev)
 	}
 	c.Changes = changes
 	return c
@@ -939,7 +947,7 @@ func (a *attributed) ListAt(at []string, depth int, pred func(Ref) bool) []Entit
 	return out
 }
 
-func (a *attributed) Since(from int64, at ...string) ([]Commit, error) {
+func (a *attributed) Since(from int64, at ...*kpath.KPath) ([]Commit, error) {
 	commits, err := a.Store.Since(from, at...)
 	if IsSystem(a.principal) {
 		return commits, err
@@ -950,8 +958,8 @@ func (a *attributed) Since(from int64, at ...string) ([]Commit, error) {
 	return commits, err
 }
 
-func (a *attributed) Observe() (<-chan Commit, func()) {
-	ch, unsub := a.Store.Observe()
+func (a *attributed) Observe(at ...*kpath.KPath) (<-chan Commit, func()) {
+	ch, unsub := a.Store.Observe(at...)
 	return a.narrowing(ch), unsub
 }
 

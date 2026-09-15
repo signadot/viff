@@ -2,15 +2,33 @@ package entity
 
 import (
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// changesOf runs the delta walk over a document written as tony, keyed by ref so a test can
-// say what it expects to be reported and what it expects not to be.
-func changesOf(t *testing.T, src string) map[Ref]entityChange {
+// The change walk over a commit's delta: what a pattern reaches, before the commit and after it.
+// The delta is what the store received, so the operations a patch is spelled with — a removal, a
+// comment stating a node's comments — are read the way the store executes them and never as
+// levels of the namespace.
+
+// changesOf applies a delta to a document and answers the changes a pattern reaches, keyed by
+// address — so a test says what it expects to be reported and what it expects not to be.
+func changesOf(t *testing.T, before, delta, pattern string) map[Ref]Event {
 	t.Helper()
-	out := map[Ref]entityChange{}
-	for _, ch := range walkEntityChanges(doc(t, src)) {
-		out[ch.ref] = ch
+	b := doc(t, before)
+	d := doc(t, delta)
+	a, err := tony.Patch(b, d)
+	if err != nil {
+		t.Fatalf("patching %s with %s: %v", before, delta, err)
+	}
+	kp, err := kpath.Parse(pattern)
+	if err != nil {
+		t.Fatalf("pattern %q: %v", pattern, err)
+	}
+	out := map[Ref]Event{}
+	for _, ev := range changesAt([]*kpath.KPath{kp}, b, a, d, 7) {
+		out[ev.Ref] = ev
 	}
 	return out
 }
@@ -18,116 +36,115 @@ func changesOf(t *testing.T, src string) map[Ref]entityChange {
 // A REMOVAL IS AN OPERATION, NOT A STRING. A tag composes, and what a patch executes is the
 // first registered label in the chain — so a delete carrying anything alongside it is still a
 // delete, and the walk has to ask the same question the patch asks (opIn).
-//
-// Comparing the whole tag answers no to it, and the answer it gives instead is worse than a
-// miss: the entity is reported as SET, to whatever the operand of the removal was, and a
-// consumer acts on an entity the store no longer holds.
 func TestAComposedDeleteIsStillARemoval(t *testing.T) {
-	changes := changesOf(t, `demo: pr: "1": !delete.logd-patch-root null`)
-	ch, ok := changes[RefAt("demo", "pr", "1")]
+	changes := changesOf(t, `demo: pr: "1": {stage: open}`,
+		`demo: pr: "1": !delete.logd-patch-root null`, `demo.pr.*`)
+	ev, ok := changes[RefAt("demo", "pr", "1")]
 	if !ok {
 		t.Fatalf("the removal was not reported at all; got %v", changes)
 	}
-	if !ch.deleted {
-		t.Errorf("reported as a set of %+v, want a removal — `!delete` wearing a second label "+
-			"is the operation the store executed", ch.payload)
+	if ev.Op != Delete {
+		t.Errorf("reported as %s of %+v, want a removal — `!delete` wearing a second label "+
+			"is the operation the store executed", ev.Op, ev.To)
 	}
 }
 
-// A REMOVAL ABOVE THE ARITY IS A REMOVAL THERE. `verse data --rm a b` commits `a: b: !delete
-// null`, and there is no address at the arity below it to report the change against, so it is
-// reported at the place it names — as the write before it was.
-func TestARemovalAboveTheArityIsReportedWhereItStands(t *testing.T) {
-	changes := changesOf(t, `a: b: !delete null`)
-	ch, ok := changes[RefAt("a", "b")]
-	if !ok || !ch.deleted {
-		t.Fatalf("changes = %v, want a.b removed", changes)
+// A REMOVAL TAKES WHAT STOOD BENEATH IT: `verse data --rm a b` commits `a: b: !delete null`, and
+// a pattern reaching the nodes under `a.b` reports each of them gone. The pattern decides where
+// a change is reported, so the same commit is one removal at `a.b` and two beneath it.
+func TestARemovalIsReportedWhereverThePatternReaches(t *testing.T) {
+	const before = `a: b: {x: 1, y: 2}`
+	if changes := changesOf(t, before, `a: b: !delete null`, `a.b`); len(changes) != 1 ||
+		changes[RefAt("a", "b")].Op != Delete {
+		t.Fatalf("at a.b: %v, want a.b removed", changes)
 	}
-	// A null that is not a removal is not a value above the arity, as a read of the store has it.
-	if changes := changesOf(t, `a: b: null`); len(changes) != 0 {
-		t.Fatalf("changes = %v, want none for a null above the arity", changes)
+	changes := changesOf(t, before, `a: b: !delete null`, `a.b.*`)
+	if len(changes) != 2 {
+		t.Fatalf("at a.b.*: %v, want both nodes beneath it removed", changes)
+	}
+	for _, ref := range []Ref{RefAt("a", "b", "x"), RefAt("a", "b", "y")} {
+		if changes[ref].Op != Delete {
+			t.Errorf("%s = %+v, want a removal", ref, changes[ref])
+		}
+	}
+	// A null is a VALUE being written, not a removal, and it is reported as what now stands.
+	if changes := changesOf(t, before, `a: b: null`, `a.b`); changes[RefAt("a", "b")].Op != Set {
+		t.Fatalf("a null wrote %v, want a set of null", changes)
 	}
 }
 
-// A `!comment` ABOVE AN ENTITY IS NOT A LEVEL OF THE NAMESPACE. It is an ordinary tagged object
+// A `!comment` ABOVE A NODE IS NOT A LEVEL OF THE NAMESPACE. It is an ordinary tagged object
 // whose fields name the parts of a statement — head, line, value — so a walk that descends it
-// reads those parts as addresses and reports entities that do not exist.
-//
-// Here the comment is on the KIND, and it says nothing about any entity under it. The right
-// number of changes is none.
-func TestACommentOnAContainerReportsNoEntities(t *testing.T) {
-	changes := changesOf(t, `demo: pr: !comment {head: ["# the prs"]}`)
+// reads those parts as addresses and reports nodes that do not exist.
+func TestACommentOnAContainerReportsNothingBeneathIt(t *testing.T) {
+	changes := changesOf(t, `demo: pr: {}`, `demo: pr: !comment {head: ["# the prs"]}`, `demo.pr.*`)
 	if len(changes) != 0 {
-		t.Fatalf("reported %v, want nothing — a comment on the kind changed no entity under it",
-			changes)
+		t.Fatalf("reported %v, want nothing — head: is not an address", changes)
 	}
 }
 
 // The same node WITH a value states both at once: what the comments are, and what the value is.
-// The entities are under the value, at the depth they always stood at.
+// What is under the value is what changed.
 func TestACommentCarryingAValueReportsWhatIsUnderIt(t *testing.T) {
-	changes := changesOf(t,
-		`demo: pr: !comment {head: ["# the prs"], value: {"1": {stage: "open"}}}`)
-	ch, ok := changes[RefAt("demo", "pr", "1")]
+	changes := changesOf(t, `demo: pr: {}`,
+		`demo: pr: !comment {head: ["# the prs"], value: {"1": {stage: "open"}}}`, `demo.pr.*`)
+	ev, ok := changes[RefAt("demo", "pr", "1")]
 	if !ok {
-		t.Fatalf("the entity under value: was not reported; got %v", changes)
+		t.Fatalf("the node under value: was not reported; got %v", changes)
 	}
-	if got := Str(ch.payload, "stage"); got != "open" {
-		t.Errorf("payload = %+v (stage %q), want the value the operand states", ch.payload, got)
+	if got := Str(ev.To, "stage"); got != "open" {
+		t.Errorf("to = %+v (stage %q), want the value the operand states", ev.To, got)
 	}
 	if len(changes) != 1 {
-		t.Errorf("reported %d changes, want the one entity — head: is not an address", len(changes))
+		t.Errorf("reported %d changes, want the one node — head: is not an address", len(changes))
 	}
 }
 
-// A `!comment` AT the entity whose value: removes it is a removal. The operation says so — with
-// nothing left to hold a comment, the node is gone — and a walk that stopped at the wrapper
-// would report a set whose payload is the statement itself.
-func TestACommentWhoseValueDeletesIsARemoval(t *testing.T) {
-	changes := changesOf(t, `demo: pr: "1": !comment {head: ["# gone"], value: !delete null}`)
-	ch, ok := changes[RefAt("demo", "pr", "1")]
-	if !ok {
-		t.Fatalf("nothing reported for the entity; got %v", changes)
-	}
-	if !ch.deleted {
-		t.Errorf("reported as a set of %+v, want a removal", ch.payload)
-	}
-}
-
-// A `!comment` AT the entity with no value: changed the comments and not the value. The entity
-// still stands and still holds what it held, so the change is reported with NO payload — the
-// walk has none to give — and the level state comes from the document (eventsFromDelta).
-//
-// Reporting the operand as the payload is the failure this rules out: `{head: […]}` is not what
-// the entity holds, and a consumer reading a field off it reads nothing.
-func TestACommentOnlyChangeCarriesNoPayload(t *testing.T) {
-	changes := changesOf(t, `demo: pr: "1": !comment {head: ["# noted"]}`)
-	ch, ok := changes[RefAt("demo", "pr", "1")]
-	if !ok {
-		t.Fatalf("the comment-only change was not reported; got %v", changes)
-	}
-	if ch.deleted {
-		t.Fatalf("reported as a removal — the entity is still there, its comments changed")
-	}
-	if ch.payload != nil {
-		t.Errorf("payload = %+v, want none: the operand is a statement about the entity, "+
-			"not the entity", ch.payload)
-	}
-}
-
-// ChangedAt walks the SAME delta at a depth its caller names, and is what tells a causal chain
-// whether a commit touched a ref. It reads the parts of a statement as addresses in exactly the
-// way the entity walk does, so it is pinned here too.
-func TestChangedAtDoesNotReadACommentOperandAsAddresses(t *testing.T) {
+// Touches walks the SAME delta to answer whether a commit changed anything a path reaches, and
+// it reads a statement's parts as a statement there too.
+func TestTouchesDoesNotReadACommentOperandAsAddresses(t *testing.T) {
 	c := Commit{}.WithDelta(doc(t, `demo: pr: !comment {head: ["# the prs"]}`))
-	if got := c.ChangedAt(Depth); len(got) != 0 {
-		t.Fatalf("ChangedAt(%d) = %v, want nothing — head: is not an entity", Depth, got)
+	if !c.Touches(at(t, "demo.pr")) {
+		t.Error("the kind's own comments changed and Touches(demo.pr) said no")
 	}
-
+	if c.Touches(at(t, `demo.pr."1".stage`)) {
+		t.Error("head: was walked as an address: Touches said a node under the kind changed")
+	}
 	c = Commit{}.WithDelta(doc(t,
 		`demo: pr: !comment {head: ["# the prs"], value: {"1": {stage: "open"}}}`))
-	want := RefAt("demo", "pr", "1")
-	if got := c.ChangedAt(Depth); len(got) != 1 || got[0] != want {
-		t.Fatalf("ChangedAt(%d) = %v, want [%s]", Depth, got, want)
+	if !c.Touches(at(t, `demo.pr."1"`)) {
+		t.Error("the value the comment states was not walked: Touches said the entity did not change")
+	}
+}
+
+// Touches is the question "can what this path reads have changed", so it says yes to a write
+// beneath the path and to one that replaced or removed a place above it, and no to a commit
+// somewhere else — which is what lets a rule skip a commit it cannot be woken by.
+func TestTouchesAnswersAboveBeneathAndElsewhere(t *testing.T) {
+	for _, c := range []struct {
+		delta, path string
+		want        bool
+	}{
+		{`demo: pr: "1": stage: merged`, `demo.pr.*`, true},         // beneath
+		{`demo: pr: "1": stage: merged`, `demo.pr."1".stage`, true}, // at
+		{`demo: !delete null`, `demo.pr.*`, true},                   // removed above
+		{`demo: 5`, `demo.pr.*`, true},                              // replaced above
+		{`demo: issue: "1": {}`, `demo.pr.*`, false},                // a sibling
+		{`other: pr: "1": {}`, `demo.pr.*`, false},                  // somewhere else
+		{`verse: task: instance: x: {}`, `task.instance.*`, false},  // the other half
+	} {
+		got := Commit{}.WithDelta(doc(t, c.delta)).Touches(at(t, c.path))
+		if got != c.want {
+			t.Errorf("delta %s, path %s: Touches = %v, want %v", c.delta, c.path, got, c.want)
+		}
+	}
+}
+
+// A node whose value the commit did not change is not a change, however the patch was spelled:
+// the walk compares what stands before with what stands after.
+func TestAWriteOfTheSameValueIsNoChange(t *testing.T) {
+	if changes := changesOf(t, `demo: pr: "1": {stage: open}`,
+		`demo: pr: "1": stage: open`, `demo.pr.*`); len(changes) != 0 {
+		t.Fatalf("reported %v, want nothing — the node holds what it held", changes)
 	}
 }

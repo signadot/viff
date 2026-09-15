@@ -40,7 +40,7 @@ func TestOnePathRendersUnderOneRoot(t *testing.T) {
 		}
 	}
 	// What has no history says so at every entry point that would look for one.
-	if _, err := s.Since(0, mounted.Segs()...); err == nil || !strings.Contains(err.Error(), "no commits") {
+	if _, err := s.Since(0, PrefixPattern(mounted.Segs(), len(mounted.Segs()))); err == nil || !strings.Contains(err.Error(), "no commits") {
 		t.Errorf("Since at a mounted place = %v, want a refusal naming why", err)
 	}
 	if _, _, err := s.WatchSubtree(len(mounted.Segs()), mounted.Segs()[:2]...); err == nil ||

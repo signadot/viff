@@ -87,7 +87,7 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 		t.Fatalf("bob's listing = %v, want %v", got, want)
 	}
 	// A replay.
-	commits, err := bob.Since(from)
+	commits, err := bob.Since(from, entity.PrefixPattern([]string{"demo", "pr"}, 3))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +99,8 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 			}
 			replayed[ev.Ref.String()] = true
 		}
-		for _, r := range c.ChangedAt(entity.Depth) {
-			if r == mine {
-				t.Fatalf("a replayed commit's ChangedAt names alice's pr: %v", c.Changes)
-			}
+		if c.Changed(mine) {
+			t.Fatalf("a replayed commit says alice's pr changed: %v", c.Changes)
 		}
 	}
 	if len(replayed) != 2 || !replayed[theirs.String()] || !replayed[shared.String()] {
@@ -111,7 +109,7 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	// The live watch: an update to each, once the records stand. (A CREATION is visible for
 	// the one commit before its owner record lands — the record follows the write — so a watch
 	// open across a creation sees it once; see attributed.narrow.)
-	watch, unsub := bob.Observe()
+	watch, unsub := bob.Observe(entity.PrefixPattern([]string{"demo", "pr"}, 3))
 	defer unsub()
 	for _, w := range []struct {
 		as  entity.Store
@@ -211,7 +209,7 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 		}
 	}
 	// A replay.
-	commits, err := ana.Since(from)
+	commits, err := ana.Since(from, entity.PrefixPattern([]string{"demo", "pr"}, 3))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +221,7 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 		}
 	}
 	// A live watch, over a change to the row once the record stands.
-	watch, unsub := ana.Observe()
+	watch, unsub := ana.Observe(entity.PrefixPattern([]string{"demo", "pr"}, 3))
 	defer unsub()
 	if _, _, err := scott.Write(entity.Write{At: pr.At("open"), Value: entity.Val("no")}); err != nil {
 		t.Fatal(err)

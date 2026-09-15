@@ -25,11 +25,11 @@ func TestSinceAtOneSlice(t *testing.T) {
 
 	var narrow, wide []Event
 	eventually(t, "both replays to catch up", func() bool {
-		nc, err := s.Since(start, "demo", "pr")
+		nc, err := s.Since(start, PrefixPattern([]string{"demo", "pr"}, 3))
 		if err != nil {
 			return false
 		}
-		wc, err := s.Since(start)
+		wc, err := s.Since(start, PrefixPattern(nil, 3))
 		if err != nil {
 			return false
 		}
@@ -63,7 +63,7 @@ func TestSinceAtOneSlice(t *testing.T) {
 // successfully off the log-backed base underneath it.
 func TestSinceAtAMountedSliceIsRefused(t *testing.T) {
 	s := openStore(t)
-	_, err := s.Since(0, append(slices.Clone(mounts[0].at), mounts[0].prefix+"x")...)
+	_, err := s.Since(0, PrefixPattern(append(slices.Clone(mounts[0].at), mounts[0].prefix+"x"), 3))
 	if err == nil {
 		t.Fatal("a replay of a mounted slice succeeded; a controller-backed slice has no commits")
 	}
@@ -91,7 +91,7 @@ func TestALongCatchUpCompletes(t *testing.T) {
 	for i := range n {
 		set(t, s, RefAt("demo", "pr", fmt.Sprintf("%d", i)), Obj{"stage": "open"}.Payload())
 	}
-	commits, err := s.Since(start)
+	commits, err := s.Since(start, ordinary()...)
 	if err != nil {
 		t.Fatalf("a %d-commit catch-up failed after %d commits: %v", n, len(commits), err)
 	}

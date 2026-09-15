@@ -116,18 +116,14 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 	if entity.Str(e.Payload, "say") != "working on it" {
 		t.Fatalf("the worker's report did not land: %v", e.Payload)
 	}
-	commits, err := srv.Store.Since(from)
+	commits, err := srv.Store.Since(from, entity.PrefixPattern(taskRef.Segs(), len(taskRef.Segs())))
 	if err != nil {
 		t.Fatal(err)
 	}
 	by := ""
 	for _, c := range commits {
-		if c.ChangedAt(len(taskRef.Segs())) != nil {
-			for _, r := range c.ChangedAt(len(taskRef.Segs())) {
-				if r == taskRef {
-					by = c.Author
-				}
-			}
+		if c.Changed(taskRef) {
+			by = c.Author
 		}
 	}
 	if by != "runner:bot" {

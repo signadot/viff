@@ -582,6 +582,19 @@ func (s Subtree) covers(ref entity.Ref) bool {
 	return mine != nil && entity.Under(mine, ref.Segs(), entity.KPathAdmits)
 }
 
+// pattern is the subtree as one kinded path — the root (nil) when it names no path, which every
+// change is under.
+func (s Subtree) pattern() *kpath.KPath {
+	if s.kp == "" {
+		return nil
+	}
+	kp, err := kpath.Parse(s.kp)
+	if err != nil {
+		return nil
+	}
+	return kp
+}
+
 // segments is the subtree as kinded-path segments, wildcards kept as wildcards and a quoted `*`
 // as a name — which Path, a reader of stored names, cannot say.
 func (s Subtree) segments() []*kpath.KPath {
@@ -590,20 +603,6 @@ func (s Subtree) segments() []*kpath.KPath {
 		return nil
 	}
 	return entity.KPathSegments(kp)
-}
-
-// within reports whether this subtree stands strictly BELOW an address: the place the address
-// names holds the whole of it, so a write there is a write over everything it holds. covers is
-// the other direction, and the two together are "a change at this address can change what this
-// subtree holds".
-//
-// Asked of the subtree cut to the address's length, under the same wildcard rule covers uses.
-func (s Subtree) within(ref entity.Ref) bool {
-	segs := ref.Segs()
-	if s.kp == "" || len(segs) == 0 {
-		return false
-	}
-	return entity.Above(s.segments(), segs, entity.KPathAdmits)
 }
 
 // subtreeOf is the subtree a match reads: the path UP TO ITS FIRST WILDCARD, and never the leaf

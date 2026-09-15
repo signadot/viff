@@ -1,6 +1,9 @@
 package entity
 
-import "github.com/signadot/tony-format/go-tony/ir"
+import (
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+)
 
 // Store is the entity-verse as its consumers (engine, mirror, actions) see it:
 // write changes, read state, observe the change stream, and catch up from a
@@ -53,10 +56,15 @@ type Store interface {
 	// low-latency hint, not the source of truth: it may drop under backpressure, marking
 	// the next delivered commit with a Gap. Correctness comes from the revision cursor +
 	// Since.
-	Observe() (<-chan Commit, func())
-	// Since returns retained commits with Rev > from, in order, over the slice at `at` — the
-	// path segments under the root, or the whole verse when none are given. This is the
-	// cursor-based catch-up (a docd query by revision).
+	//
+	// Each commit's Changes are answered AT THE PATTERNS GIVEN: every node one of them reaches,
+	// before the commit or after it, whose node differs (docs/working/paths-and-nodes.md). With
+	// none, a commit carries no Changes, and Commit.Touches is how to ask about a path.
+	Observe(at ...*kpath.KPath) (<-chan Commit, func())
+	// Since returns retained commits with Rev > from, in order, with Changes answered at the
+	// patterns given as Observe answers them, read under the literal prefix they share — the
+	// whole verse when they share none, or when none are given. This is the cursor-based
+	// catch-up (a docd query by revision).
 	//
 	// THE ERROR IS THE ONE THIS REPLAY FAILED WITH, and the commits are whatever it delivered
 	// before it did — a truncated catch-up comes back with both, so a cursor-keeping caller can
@@ -70,7 +78,7 @@ type Store interface {
 	//
 	// `at` NARROWS WHAT IT COSTS, not just what it returns — the base document and the log range
 	// are both read at that path — so a caller watching one slice should ask about one slice.
-	Since(from int64, at ...string) (commits []Commit, err error)
+	Since(from int64, at ...*kpath.KPath) (commits []Commit, err error)
 	// Rev returns the current store revision, syncing with the store if it must.
 	Rev() int64
 	// Head is the highest commit this PROCESS has been told about, with no round trip to

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -129,21 +131,29 @@ func watchRefs(t *testing.T, q url.Values) []string {
 // same predicate a charter's `when` carries: an operator can watch exactly what a rule fires
 // on.
 func TestWatchFiltersOnThePayload(t *testing.T) {
-	if got := watchRefs(t, url.Values{"if": {"{stage: open}"}}); !sameRefs(got, `demo.pr."1"`, `demo.pr."3"`) {
+	// AT THE PRS, one each: a watch answers at the depth its path names, as a read does.
+	with := func(kv ...string) url.Values {
+		q := url.Values{"at": {"demo.pr.*"}}
+		for i := 0; i < len(kv); i += 2 {
+			q[kv[i]] = []string{kv[i+1]}
+		}
+		return q
+	}
+	if got := watchRefs(t, with("if", "{stage: open}")); !sameRefs(got, `demo.pr."1"`, `demo.pr."3"`) {
 		t.Errorf("?if {stage: open} delivered %v, want the two open PRs", got)
 	}
 	// An operator inside the predicate, which is the point of it being a match rather than a
 	// bag of equalities.
-	if got := watchRefs(t, url.Values{"if": {"{stage: !or [open, merged]}"}}); len(got) != 3 {
+	if got := watchRefs(t, with("if", "{stage: !or [open, merged]}")); len(got) != 3 {
 		t.Errorf("?if with !or delivered %v, want all three PRs", got)
 	}
 	// A predicate only the terminator satisfies: nothing of the fixture reaches the stream.
-	if got := watchRefs(t, url.Values{"if": {"{sentinel: true}"}}); len(got) != 0 {
+	if got := watchRefs(t, with("if", "{sentinel: true}")); len(got) != 0 {
 		t.Errorf("?if {sentinel: true} delivered %v, want nothing but the sentinel", got)
 	}
 	// Unfiltered, everything arrives — the predicate is the only thing being tested here, so
 	// this is what says the fixture reaches the stream at all.
-	if got := watchRefs(t, url.Values{}); len(got) != 3 {
+	if got := watchRefs(t, with()); len(got) != 3 {
 		t.Errorf("an unfiltered watch delivered %v, want all three PRs", got)
 	}
 }
@@ -152,18 +162,18 @@ func TestWatchFiltersOnThePayload(t *testing.T) {
 // restating the shape above it. An entity the path does not reach is not delivered: a
 // predicate that could not be evaluated has not been satisfied.
 func TestWatchRootsThePredicateAtAPath(t *testing.T) {
-	q := url.Values{"if": {"{urgent: true}"}, "if-at": {"labels"}}
+	q := url.Values{"at": {"demo.pr.*"}, "if": {"{urgent: true}"}, "if-at": {"labels"}}
 	if got := watchRefs(t, q); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("?if-at labels delivered %v, want only the urgent PR", got)
 	}
-	// The same question asked at the root, to pin that rooting is sugar rather than a second
-	// semantics.
-	if got := watchRefs(t, url.Values{"if": {"{labels: {urgent: true}}"}}); !sameRefs(got, `demo.pr."1"`) {
+	// The same question asked at the payload's root, to pin that rooting is sugar rather than a
+	// second semantics.
+	if got := watchRefs(t, url.Values{"at": {"demo.pr.*"}, "if": {"{labels: {urgent: true}}"}}); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("the nested spelling delivered %v, want only the urgent PR", got)
 	}
 	// A path arrives as one parameter PER SEGMENT, so a field name is never re-split at this
 	// end — the wire takes the address as a list for the same reason a deep write does.
-	deep := url.Values{"if": {"true"}, "if-at": {"labels", "urgent"}}
+	deep := url.Values{"at": {"demo.pr.*"}, "if": {"true"}, "if-at": {"labels", "urgent"}}
 	if got := watchRefs(t, deep); !sameRefs(got, `demo.pr."1"`) {
 		t.Errorf("?if-at labels&if-at=urgent delivered %v, want only the urgent PR", got)
 	}
@@ -568,7 +578,7 @@ func TestAWatchWithNoCursorStreamsFromNow(t *testing.T) {
 // it answers as itself.
 type cannotReplay struct{ entity.Store }
 
-func (cannotReplay) Since(from int64, _ ...string) ([]entity.Commit, error) {
+func (cannotReplay) Since(from int64, _ ...*kpath.KPath) ([]entity.Commit, error) {
 	return nil, fmt.Errorf("replaying verse from %d: %w", from, entity.ErrReplayTooOld)
 }
 
@@ -577,6 +587,6 @@ func (cannotReplay) Since(from int64, _ ...string) ([]entity.Commit, error) {
 // guessed which — always wrongly, in the direction of blaming the cursor.
 type storeDown struct{ entity.Store }
 
-func (storeDown) Since(from int64, _ ...string) ([]entity.Commit, error) {
+func (storeDown) Since(from int64, _ ...*kpath.KPath) ([]entity.Commit, error) {
 	return nil, fmt.Errorf("replaying verse from %d: context deadline exceeded", from)
 }

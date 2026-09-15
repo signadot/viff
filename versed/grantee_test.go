@@ -54,7 +54,7 @@ func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
 	if strings.Join(answer, ",") != "user:*,agent:*" {
 		t.Fatalf("the docket is answered by %v, want user:* and agent:*", answer)
 	}
-	commits, err := srv.Store.Since(0)
+	commits, err := srv.Store.Since(0, entity.PrefixPattern([]string{entity.VerseRoot, entity.PermsSystem, entity.PermsKind}, 4))
 	if err != nil {
 		t.Fatal(err)
 	}

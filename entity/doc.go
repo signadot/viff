@@ -287,23 +287,26 @@ func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
 	return out
 }
 
-// MatchesAt reports whether a ref falls at or under a path — the ref half of "which entities
-// is this read about", which is what `--system`/`--kind` used to be asked as.
+// Reaches reports whether a path reaches the node at ref — the ref half of "is this change one
+// this read is about". A path of N name-or-`*` segments reaches nodes N segments down and
+// nothing else: not an ancestor, which is a different node, and not a descendant, which a read
+// of this path answers inside the node it reaches rather than at its own address.
 //
-// It is here rather than on Pattern because Pattern is a WIRE type: a source's Covers carries
-// one, so a dimension added for the read face would appear in a document where it means
-// nothing. And it is what makes the read face and the watch face the same selector even though
-// one answers a document and the other a stream — they narrow by this, and by the same
-// Pattern, and a test can say so (TestStateAndWatchNameTheSameSet).
-//
-// Only the segments an address HAS are asked about: below them a path is inside a payload, and
-// an entity is still the thing a change is about. So a ref at or under the path is in it, and so
-// is one ABOVE it — the half that lets a replay or a watch reporting at a fixed arity reach a
-// deeper path, which goes when changes are reported at the question's depth (step 5 of
-// docs/working/paths-and-nodes-plan.md).
-func MatchesAt(ref Ref, at *kpath.KPath) bool {
-	pattern, segs := KPathSegments(at), ref.Segs()
-	return Under(pattern, segs, KPathAdmits) || Above(pattern, segs, KPathAdmits)
+// A segment that is not a name or a `*` — an index, a keyed element — is a place INSIDE the node
+// the segments before it reach, so the path reaches that node and the walk stops there.
+func Reaches(at *kpath.KPath, ref Ref) bool {
+	segs := ref.Segs()
+	i := 0
+	for kp := at; kp != nil; kp = kp.Next {
+		if kp.Field == nil && !kp.FieldAll {
+			return i == len(segs)
+		}
+		if i == len(segs) || !KPathAdmits(kp, segs[i]) {
+			return false
+		}
+		i++
+	}
+	return i == len(segs)
 }
 
 // KPathSegments is a kinded path as its segments, in order, each still the kpath segment it was —
@@ -364,6 +367,26 @@ func ParseAt(s string) (*kpath.KPath, error) {
 		return nil, fmt.Errorf("path %q: %w", s, err)
 	}
 	return at, nil
+}
+
+// PrefixPattern is the pattern a prefix and a depth spell: the prefix's names, then a `*` for each
+// level down to the depth — what a subtree watch of that depth under that prefix is asked about.
+func PrefixPattern(prefix []string, depth int) *kpath.KPath {
+	var head, tail *kpath.KPath
+	add := func(seg *kpath.KPath) {
+		if head == nil {
+			head, tail = seg, seg
+		} else {
+			tail.Next, tail = seg, seg
+		}
+	}
+	for i := range prefix {
+		add(&kpath.KPath{Field: &prefix[i]})
+	}
+	for i := len(prefix); i < depth; i++ {
+		add(&kpath.KPath{FieldAll: true})
+	}
+	return head
 }
 
 // AtDepth counts a path's segments: the depth of the nodes it names.

@@ -321,29 +321,30 @@ type Commit struct {
 	// when the write named nobody, and for a subtree watch, which diffs documents rather than
 	// reading commits.
 	Author string
-	// Changes are the per-entity changes of this commit, each carrying Rev.
+	// Changes are this commit's changes at the patterns its observer asked about (see
+	// changesAt), each carrying Rev: every node those patterns reach whose node differs.
 	Changes []Event
 	// Gap is >0 when commits were dropped before this one (a slow observer). The consumer
 	// recovers them with Since; see Store.Observe.
 	Gap int
 	// delta is the change this commit made, as the store received it, root already stripped.
-	// It is what lets ChangedAt answer at a depth Changes was not built for; see there.
+	// It is what lets Touches answer about a path Changes was not built for; see there.
 	//
 	// Unexported because the delta's ENCODING is the store's — a merge, a `!replace`, a
 	// `!delete`, a field order — and nothing outside this package should learn to read one. A
 	// commit that carries none (a subtree watch's, which diffs a reconstructed document rather
 	// than reading the delta) answers from Changes instead.
 	delta *ir.Node
-	// hidden, when set, is what this commit's reader may not see: ChangedAt leaves those
+	// hidden, when set, is what this commit's reader may not see: Touches leaves those
 	// addresses out, as Only left them out of Changes, so a consumer asking either question
 	// gets the same view. See Only.
 	hidden func(Ref) bool
 }
 
 // Only is the commit as seen by a reader that may not see everything: Changes holds only the
-// events keep admits, and ChangedAt answers only with addresses keep admits. The delta is kept,
-// since a consumer reading through the commit at a depth Changes was not built for still needs
-// it, and hidden is what stops that walk from answering with what Changes withheld.
+// events keep admits, and Touches answers only about addresses keep admits. The delta is kept,
+// since a consumer asking about a path Changes was not built for still needs it, and hidden is
+// what stops that walk from answering with what Changes withheld.
 func (c Commit) Only(keep func(Ref) bool) Commit {
 	kept := make([]Event, 0, len(c.Changes))
 	for _, ev := range c.Changes {
@@ -357,44 +358,7 @@ func (c Commit) Only(keep func(Ref) bool) Commit {
 	return c
 }
 
-// ChangedAt lists the addresses this commit changed, AT A DEPTH THE CALLER NAMES.
-//
-// Changes reports at the ordinary arity, because a stream serving every consumer at once has to
-// pick one and that is the one nearly all of them mean. A consumer whose addresses are deeper —
-// a rule over derived entities, which stand at their target, the rule that derived them and the
-// subject's own segments — asks here instead, and gets an exact answer rather than an ancestor.
-//
-// It is the same question `ListAt` answers about the store, asked of one commit: the document
-// does not say where its entities end, so the depth is the question's (docs/working/entity-tree.md).
-func (c Commit) ChangedAt(depth int) []Ref {
-	if c.delta == nil {
-		// A subtree watch built its Changes at the depth its caller asked for, so that IS the
-		// answer at any depth it can speak to. Nothing else has a delta to walk.
-		out := make([]Ref, 0, len(c.Changes))
-		for _, ev := range c.Changes {
-			// The whole length, root included, which is what the delta walk below counts.
-			if len(ev.Ref.Segs()) == depth {
-				out = append(out, ev.Ref) // Changes already holds only what the reader may see
-			}
-		}
-		return out
-	}
-	var out []Ref
-	walkLeaves(c.delta, depth, func(segs []string, _ *ir.Node) {
-		// EXACTLY the depth asked for, which is what the other branch answers too: the walk
-		// also reports a value standing above it, and that is a different address than the
-		// one this question is about.
-		if len(segs) != depth {
-			return
-		}
-		if ref, ok := RefOfAny(segs); ok && (c.hidden == nil || !c.hidden(ref)) {
-			out = append(out, ref)
-		}
-	})
-	return out
-}
-
 // WithDelta is the store stamping the change it received onto the commit it emits, so a
-// consumer can ask ChangedAt about a depth Changes was not built for. Package-internal by
+// consumer can ask Touches about a path Changes was not built for. Package-internal by
 // convention: only a Store builds a Commit.
 func (c Commit) WithDelta(delta *ir.Node) Commit { c.delta = delta; return c }

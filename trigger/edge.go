@@ -187,19 +187,14 @@ func (t Trigger) reads() []Subtree {
 // way the outcome is indistinguishable from not running, which is what makes per-commit
 // evaluation affordable: a trigger costs nothing at a commit that cannot change its answer.
 func (t Trigger) touches(c entity.Commit) bool {
-	reads := t.reads()
-	for _, ev := range c.Changes {
-		for _, st := range reads {
-			// Segment by segment against the address's own, so the two halves of the verse are
-			// told apart here as everywhere else: a rule about `demo:pr:*` is not woken by the
-			// task record of the run reviewing it.
-			//
-			// And a place ABOVE the subtree: a scalar written at `demo`, or `demo` removed,
-			// replaces everything a rule about `demo.pr.*` reads though no address under it is
-			// named, so the rule's answer can change there too.
-			if st.covers(ev.Ref) || st.within(ev.Ref) {
-				return true
-			}
+	for _, st := range t.reads() {
+		// ASKED AS A PATH, which is what the commit can answer exactly: a write at the subtree,
+		// beneath it, or one that replaced or removed a place ABOVE it — a scalar written at
+		// `demo`, or `demo` removed, replaces everything a rule about `demo.pr.*` reads though
+		// no address under it is named. A rule about `demo.pr.*` is still not woken by the task
+		// record of the run reviewing it: the segments are compared as segments.
+		if c.Touches(st.pattern()) {
+			return true
 		}
 	}
 	return false

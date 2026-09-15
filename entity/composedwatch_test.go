@@ -123,7 +123,7 @@ func storeOverDocd(t *testing.T) (*LogdStore, *docdserver.Server) {
 		t.Fatalf("open store through docd: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	_, unsub := s.Observe()
+	_, unsub := s.Observe(ordinary()...)
 	t.Cleanup(unsub)
 	return s, docd
 }
@@ -134,7 +134,7 @@ func storeOverDocd(t *testing.T) (*LogdStore, *docdserver.Server) {
 func sinceReplays(t *testing.T, s *LogdStore, from int64) ([]Event, bool, time.Duration) {
 	t.Helper()
 	start := time.Now()
-	commits, err := s.Since(from)
+	commits, err := s.Since(from, ordinary()...)
 	return changes(commits), err == nil, time.Since(start)
 }
 

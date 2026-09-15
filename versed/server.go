@@ -1564,7 +1564,7 @@ func querySelector(q url.Values) (selector, error) {
 }
 
 // matchRef is whether a change's path is one the selector's path reaches.
-func (s selector) matchRef(ref entity.Ref) bool { return entity.MatchesAt(ref, s.at) }
+func (s selector) matchRef(ref entity.Ref) bool { return entity.Reaches(s.at, ref) }
 
 // matchNode is the whole question about a node a read reached, and matchEvent the whole question
 // about a change.
@@ -1646,8 +1646,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	var replay []entity.Commit
 	var replayErr error
 	if catchUp {
-		prefix, _ := entity.LiteralPrefix(sel.at)
-		replay, replayErr = store.Since(since, prefix...)
+		replay, replayErr = store.Since(since, sel.at)
 	}
 	if replayErr != nil {
 		// WHAT ACTUALLY HAPPENED, said in the store's own words. This asked a second question
@@ -1858,7 +1857,7 @@ func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entit
 		WatchSubtreeAt(int, bool, ...string) (<-chan entity.Commit, func(), error)
 	})
 	if len(prefix) == 0 || !hasNarrow {
-		ch, unsub := store.Observe()
+		ch, unsub := store.Observe(sel.at)
 		return ch, unsub, nil
 	}
 	return narrow.WatchSubtreeAt(entity.AtDepth(sel.at), waitIfAbsent, prefix...)
@@ -2888,15 +2887,18 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 
 	// Subscribe BEFORE the catch-up, so a commit landing between the two is carried live
 	// rather than lost in the gap; the two overlap and revision order dedups them.
-	ch, unsub := store.Observe()
+	// The spine is three patterns rather than one prefix: the subject's own node, the QUESTIONS
+	// about it and the TASKS naming it as their flow (spineCarries). Narrowing to the subject's
+	// prefix would drop the anchors, which are most of what a supervisor reads here.
+	spine := []*kpath.KPath{
+		entity.PrefixPattern(subject.Segs(), len(subject.Segs())),
+		entity.PrefixPattern([]string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind}, 4),
+		entity.PrefixPattern([]string{entity.VerseRoot, mirror.System, mirror.InstanceKind}, 4),
+	}
+	ch, unsub := store.Observe(spine...)
 	defer unsub()
 	last := since
-	// AT THE ROOT, and it is not an oversight that this one is not narrowed. The spine is three
-	// subtrees, not one: the subject's own ref, the QUESTIONS about it (verse.gate.question) and
-	// the TASKS naming it as their flow (verse.task.instance) — see spineCarries. Narrowing it
-	// to the subject's prefix would drop the anchors, which are most of what a supervisor reads
-	// here, so it wants three replays rather than one prefix and that is its own change.
-	if commits, err := store.Since(since); err == nil {
+	if commits, err := store.Since(since, spine...); err == nil {
 		for _, c := range commits {
 			for _, ev := range c.Changes {
 				if onSpine(ev) {

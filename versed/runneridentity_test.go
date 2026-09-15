@@ -62,15 +62,13 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	by := ""
 	deadline = time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && by != "runner:gpu-bot" {
-		commits, err := srv.Store.Since(from)
+		commits, err := srv.Store.Since(from, entity.PrefixPattern(taskRef.Segs(), len(taskRef.Segs())))
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, c := range commits {
-			for _, r := range c.ChangedAt(len(taskRef.Segs())) {
-				if r == taskRef && c.Author == "runner:gpu-bot" {
-					by = c.Author
-				}
+			if c.Changed(taskRef) && c.Author == "runner:gpu-bot" {
+				by = c.Author
 			}
 		}
 		time.Sleep(20 * time.Millisecond)

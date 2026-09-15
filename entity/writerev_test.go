@@ -17,7 +17,7 @@ import "testing"
 // its writes reported.
 func TestWriteReportsTheRevisionTheStreamCarries(t *testing.T) {
 	s := openStore(t)
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 
 	ref := RefAt("demo", "pr", "1")

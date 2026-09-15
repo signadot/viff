@@ -5,7 +5,15 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
+
+// ordinary is what these tests observe at: the nodes `*.*.*` reaches in the world's half and
+// `verse.*.*.*` in verse's own, which is where the fixtures write. A pattern is what an observer
+// asks with — there is no depth the stream picks for everybody.
+func ordinary() []*kpath.KPath {
+	return []*kpath.KPath{PrefixPattern(nil, 3), PrefixPattern([]string{VerseRoot}, 4)}
+}
 
 func TestParseAddrRoundTrip(t *testing.T) {
 	cases := []string{
@@ -82,7 +90,7 @@ func TestRemoveAndMissing(t *testing.T) {
 
 func TestObserveDeliversChanges(t *testing.T) {
 	s := openStore(t)
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 
 	ref := RefAt("linear", "issue", "1")
@@ -132,7 +140,7 @@ func TestRevAndSince(t *testing.T) {
 	}
 
 	// From the start both replay, in order; from mid only the second; from current, nothing.
-	commits, err := s.Since(start)
+	commits, err := s.Since(start, ordinary()...)
 	evs := changes(commits)
 	if err != nil || len(evs) != 2 || Str(evs[0].To, "stage") != "open" || Str(evs[1].To, "stage") != "reviewed" {
 		t.Fatalf("Since(start) = %+v err=%v", evs, err)
@@ -145,10 +153,10 @@ func TestRevAndSince(t *testing.T) {
 	if len(commits) != 2 {
 		t.Fatalf("Since(start) = %d commits, want 2 (one per write)", len(commits))
 	}
-	if evs, err := s.Since(mid); err != nil || len(changes(evs)) != 1 || Str(changes(evs)[0].To, "stage") != "reviewed" {
+	if evs, err := s.Since(mid, ordinary()...); err != nil || len(changes(evs)) != 1 || Str(changes(evs)[0].To, "stage") != "reviewed" {
 		t.Fatalf("Since(mid) = %+v err=%v", evs, err)
 	}
-	if evs, err := s.Since(end); err != nil || len(evs) != 0 {
+	if evs, err := s.Since(end, ordinary()...); err != nil || len(evs) != 0 {
 		t.Fatalf("Since(end) = %+v err=%v, want empty", evs, err)
 	}
 }
@@ -175,7 +183,7 @@ func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	}
 
 	late := openStoreAt(t, addr) // opens at commit 5; commits 1..5 are before its time
-	evs, err := late.Since(0)
+	evs, err := late.Since(0, ordinary()...)
 	if err != nil {
 		t.Fatal("a store that opened late cannot read history logd still holds — the cursor " +
 			"is a store revision, not a mark in this process's memory")
@@ -185,14 +193,14 @@ func TestSinceIsAboutTheStoreNotThisProcess(t *testing.T) {
 	}
 	cur := late.Rev()
 	set(t, first, ref, Obj{"n": 99}.Payload())
-	if evs, err := late.Since(cur); err != nil || len(evs) != 1 || evs[0].Rev <= cur {
+	if evs, err := late.Since(cur, ordinary()...); err != nil || len(evs) != 1 || evs[0].Rev <= cur {
 		t.Fatalf("Since(%d) within window = %+v err=%v", cur, evs, err)
 	}
 }
 
 func TestObserveGapMarkerUnderBackpressure(t *testing.T) {
 	s := openStore(t)
-	ch, unsub := s.Observe()
+	ch, unsub := s.Observe(ordinary()...)
 	defer unsub()
 
 	ref := RefAt("x", "y", "z")

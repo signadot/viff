@@ -43,7 +43,7 @@ func TestTwoDepthsOverOneSubtreeAreTwoQuestions(t *testing.T) {
 	s := openStore(t)
 	deep := RefAt("verse-dev", "drift", "head", "abc")
 
-	ch, unsub, err := s.WatchSubtree(Depth, "verse-dev", "drift")
+	ch, unsub, err := s.WatchSubtree(3, "verse-dev", "drift")
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -59,36 +59,40 @@ func TestTwoDepthsOverOneSubtreeAreTwoQuestions(t *testing.T) {
 	}
 }
 
-// ChangedAt is the same question asked of a COMMIT rather than of a watch, and it is what lets
-// the root stream — which serves every consumer at once and so must pick one arity — still
-// answer exactly for a consumer whose addresses are deeper.
-func TestChangedAtAnswersAtTheDepthAsked(t *testing.T) {
+// AN OBSERVER ASKS AT ITS OWN PATTERNS, and gets the nodes they reach: the same commit answers
+// the four-segment question with the node written and the three-segment one with the node above
+// it, whole. Neither is the stream picking a depth.
+func TestAnObserverIsAnsweredAtItsOwnPatterns(t *testing.T) {
 	s := openStore(t)
-	ch, unsub := s.Observe()
-	defer unsub()
+	deepCh, unsubDeep := s.Observe(PrefixPattern([]string{"verse-dev", "drift"}, 4))
+	defer unsubDeep()
+	aboveCh, unsubAbove := s.Observe(PrefixPattern([]string{"verse-dev", "drift"}, 3))
+	defer unsubAbove()
+	time.Sleep(200 * time.Millisecond) // the root watch opens lazily, on the first observer
 
 	deep := RefAt("verse-dev", "drift", "head", "abc")
 	set(t, s, deep, Obj{"sha": "deadbeef"}.Payload())
 
-	c := oneCommitOf(t, ch, "the deep write")
-	if got := c.ChangedAt(4); len(got) != 1 || got[0] != deep {
-		t.Fatalf("ChangedAt(4) = %v, want [%s]", got, deep)
+	c := oneCommitOf(t, deepCh, "the deep write")
+	if len(c.Changes) != 1 || c.Changes[0].Ref != deep {
+		t.Fatalf("at the write's own depth: %+v, want [%s]", c.Changes, deep)
 	}
-	if want := RefAt("verse-dev", "drift", "head"); len(c.ChangedAt(3)) != 1 || c.ChangedAt(3)[0] != want {
-		t.Fatalf("ChangedAt(3) = %v, want [%s]", c.ChangedAt(3), want)
+	c = oneCommitOf(t, aboveCh, "the same write, asked about one level up")
+	want := RefAt("verse-dev", "drift", "head")
+	if len(c.Changes) != 1 || c.Changes[0].Ref != want || Get(c.Changes[0].To, "abc") == nil {
+		t.Fatalf("one level up: %+v, want [%s] holding what changed inside it", c.Changes, want)
 	}
-	// And the ordinary Changes is the three-segment reading, which is what `ChangedAt(3)` says.
-	if len(c.Changes) != 1 || c.Changes[0].Ref != RefAt("verse-dev", "drift", "head") {
-		t.Fatalf("Changes = %+v, want the ordinary arity", c.Changes)
+	// And a commit answers about a path it was not observed at, from the delta it carries.
+	if !c.Changed(deep) || !c.Changed(want) || c.Changed(RefAt("verse-dev", "drift", "other")) {
+		t.Fatal("Changed did not answer the write, the node above it, and not a sibling")
 	}
 }
 
-// ONE LENGTH, WITH OR WITHOUT A DELTA. A subtree watch's commit carries no delta, so ChangedAt
-// answers from its Changes, and the depth it is asked at is the address's whole length, `verse`
-// included — the length the delta branch counts and every caller passes (`len(ref.Segs())`).
-// Counted without the root there, every address in verse's own half was one level short, and
+// ONE LENGTH, WITH OR WITHOUT A DELTA. A subtree watch's commit carries no delta, so Changed
+// answers from its Changes, and the path it is asked about carries `verse` as a segment like any
+// other. Counted without the root, every address in verse's own half was one level short, and
 // the causal chain, which asks this of every firing, began afresh at each one.
-func TestChangedAtCountsTheRootWithoutADelta(t *testing.T) {
+func TestChangedCountsTheRootWithoutADelta(t *testing.T) {
 	s := openStore(t)
 	ref := VerseRef("task", "instance", "run-1")
 	segs := ref.Segs()
@@ -100,8 +104,8 @@ func TestChangedAtCountsTheRootWithoutADelta(t *testing.T) {
 
 	set(t, s, ref, Obj{"status": "running"}.Payload())
 	c := oneCommitOf(t, ch, "the write in verse's half")
-	if got := c.ChangedAt(len(segs)); len(got) != 1 || got[0] != ref {
-		t.Fatalf("ChangedAt(%d) = %v over Changes %+v, want [%s]", len(segs), got, c.Changes, ref)
+	if !c.Changed(ref) {
+		t.Fatalf("Changed(%s) = false over Changes %+v", ref, c.Changes)
 	}
 }
 
@@ -134,7 +138,7 @@ func TestAWatchOnAnAddressReportsWhateverStandsThere(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 	mustWrite(t, s, Write{At: ref.At(), Value: ir.FromString("closed")})
-	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr", "1")
+	ch, unsub, err := s.WatchSubtree(3, "demo", "pr", "1")
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -144,35 +148,42 @@ func TestAWatchOnAnAddressReportsWhateverStandsThere(t *testing.T) {
 	}
 }
 
-// A VALUE ABOVE THE REPORTING DEPTH IS REPORTED WHERE IT STANDS, on every watch that covers it —
-// the root stream and a watch at any prefix of it — because a read of its own path answers it,
-// and a stream answering less misses a write that replaced what a rule reads
-// (git-issue ga22z20vh12krhbcn1n0).
-func TestAValueAboveTheReportingDepthReachesEveryWatch(t *testing.T) {
+// A WRITE REACHES EVERY WATCH WHOSE PATH REACHES IT, and each reports it at the node its own
+// path names: a watch at `a b` at `a.b`, one at `a` at `a`, holding it. A watch that answered
+// less would miss a write that replaced what a rule reads (git-issue ga22z20vh12krhbcn1n0).
+func TestAWriteReachesEveryWatchWhosePathReachesIt(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("a", "b")
-	root, unsubRoot := s.Observe()
+	type face struct {
+		w  *watch
+		at Ref
+	}
+	root, unsubRoot := s.Observe(PrefixPattern(nil, 2))
 	defer unsubRoot()
-	watches := map[string]*watch{"the root stream": reader(root)}
+	watches := map[string]face{"the root stream": {reader(root), ref}}
 	for _, prefix := range [][]string{{"a"}, {"a", "b"}} {
-		ch, unsub, err := s.WatchSubtreeAt(Depth, true, prefix...)
+		ch, unsub, err := s.WatchSubtreeAt(len(prefix), true, prefix...)
 		if err != nil {
 			t.Fatalf("watch %v: %v", prefix, err)
 		}
 		defer unsub()
-		watches["the watch at "+JoinSegs(prefix)] = reader(ch)
+		watches["the watch at "+JoinSegs(prefix)] = face{reader(ch), RefAt(prefix...)}
 	}
 	time.Sleep(200 * time.Millisecond) // the root watch opens lazily, on the first observer
 
 	mustWrite(t, s, Write{At: ref.At(), Value: ir.FromString("c")})
-	for name, w := range watches {
-		if ev := w.next(t, name+" to report a.b"); ev.Ref != ref || ev.Op != Set || ev.To.String != "c" {
-			t.Errorf("%s: event = %s %v %+v, want a.b set to c", name, ev.Ref, ev.Op, ev.To)
+	for name, f := range watches {
+		if ev := f.w.next(t, name+" to report the write"); ev.Ref != f.at || ev.Op != Set {
+			t.Errorf("%s: event = %s %v, want a set at %s", name, ev.Ref, ev.Op, f.at)
 		}
 	}
 	mustWrite(t, s, Write{At: ref.At()})
-	for name, w := range watches {
-		if ev := w.next(t, name+" to report a.b removed"); ev.Ref != ref || ev.Op != Delete {
+	for name, f := range watches {
+		ev := f.w.next(t, name+" to report the removal")
+		if ev.Ref != f.at {
+			t.Errorf("%s: event = %s %v, want it at %s", name, ev.Ref, ev.Op, f.at)
+		}
+		if f.at == ref && ev.Op != Delete {
 			t.Errorf("%s: event = %s %v, want a.b deleted", name, ev.Ref, ev.Op)
 		}
 	}

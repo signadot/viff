@@ -65,7 +65,7 @@ A removal is the **`!delete` tag**, not a null. A delta is where a removal has t
 because there is no absence to observe in a patch, and the tag is what verse writes
 (`entity.Removed`) and what `tony.Diff` emits for a key that went away. A bare null in a delta is
 an ordinary value being set: `payload: null` is a legal payload, and reading it as a removal would
-make it one no entity could hold (`entity/logdstore.go`, `walkEntityChanges`).
+make it one no entity could hold (`entity/change.go`, `mergeInto`).
 
 ## The decision
 
@@ -104,8 +104,8 @@ deep write to the same state:             fired = 0
 ```
 
 Nothing errors. The trigger simply never runs. A rule about the world has to be evaluated
-against the world, so the store levels: `LogdStore.eventsFromDelta` reports the entity as of
-the commit, and the store — not each consumer — is where that is paid for.
+against the world, so the store levels: a change carries the node as it stands after the commit
+(`entity.changesAt`), and the store — not each consumer — is where that is paid for.
 
 **As of the commit, not "now".** The level state is read at the event's own commit, so an event
 reports the world as it was when it changed, and a transient state that has already been
@@ -122,10 +122,9 @@ round trip per entity on the watch goroutine, where the stream stalls behind its
 bookkeeping. (It also matters that those reads are not cheap on a grown log: go-tony
 `bvm163tyh12krwcqcsn0`.)
 
-One assumption remains: the **set of changed refs** still comes from
-walking the delta's structure, and only the payloads come from the applied document. That is
-safe for a baseline delta (a verbatim merge) and is the residual noted at the end of the
-next section.
+The delta only PRUNES the walk. Which nodes changed is decided by comparing the document before
+the commit with the document after it, at the paths the observer asked about; the delta says which
+branches are worth comparing, and a branch it does not name is one the commit did not touch.
 
 ## Consuming a delta: apply it, do not decode it
 
@@ -225,12 +224,19 @@ answers it — match a field the action advances — and a re-write to the same 
 
 A logd commit is a single, atomic transaction that can patch many branches at once —
 several paths, anywhere in the tree. But an `entity.Event` names exactly one `Ref`, so the store
-normalises: `walkEntityChanges` recurses the commit's delta and emits one `Event` per changed
-node the stream reports, all sharing that commit's number as their `Rev`
-(`LogdStore.eventsFromDelta`); a consumer whose subjects are deeper than the stream's rows asks
-`Commit.ChangedAt`. Patch five branches in one tx → five events; patch the subtree above them →
-it descends to each and still yields one event apiece. The "one entity per
-change" grain is imposed *here*, at the logd↔store seam, not assumed by the engine.
+normalises — **at the paths the observer asked about**. An observer (`Observe`, `Since`,
+`WatchSubtree`) names one or more patterns, and a commit's `Changes` are the nodes those patterns
+reach whose node differs between the document before the commit and the document after it
+(`entity.changesAt`). Patch five branches in one tx, and a pattern reaching all five yields five
+events; patch the subtree above them, and the same pattern still yields one event apiece, because
+each of those nodes differs. A pattern that reaches the subtree itself yields one event there
+instead — the same commit, a different question. A consumer with no pattern asks
+`Commit.Touches` about a path it holds.
+
+There is no depth the stream picks for everybody. A stream that reported at one arity delivered a
+change to a deeper node as a change to its three-segment ancestor, and every consumer comparing
+that with an address it already held was comparing an ancestor with a descendant
+(docs/working/paths-and-nodes.md).
 
 This is what makes a trigger's subject well-defined. A firing is driven by one event, which carries
 one `Ref`, so `$subject`, and hence the flow keyed on it, is always exactly one entity. Not because

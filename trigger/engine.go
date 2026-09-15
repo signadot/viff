@@ -311,8 +311,12 @@ func (e *Engine) Fired() int {
 func (e *Engine) Start(ctx context.Context) {
 	e.bgctx = ctx            // also bounds action-time monitors (provider selection) — cancelled on stop
 	e.cursor = e.store.Rev() // start live from now; Observe() delivers rev>cursor
+	// NO PATTERNS: this loop asks each commit whether it touched what a rule reads
+	// (Trigger.touches), which the commit answers from its own delta. The task records it acts
+	// on per entity are watched where they stand, below.
 	ch, unsub := e.store.Observe()
 	go e.loop(ctx, ch, unsub)
+	e.watchTaskRecords(ctx)
 }
 
 // ObserveScoped puts the engine in per-trigger (subtree) observation mode: it opens
@@ -344,11 +348,19 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
 	// Where the records are, and at their own length: a run's record is `mirror.Ref(id)`, so the
 	// watch is on the place above it and reports each record whole.
-	instances := mirror.Ref("").Segs()
-	if ch, unsub, err := e.store.WatchSubtree(len(instances)+1, instances...); err == nil {
+	e.watchTaskRecords(ctx)
+}
+
+// watchTaskRecords opens the watch the completion path reads: the task records, at their own
+// length, wherever the engine runs. Store-driven means race-free for a fast task — the property
+// reapOnDone's live-from-now bus lacks — and the atomic retire makes the two exactly-once.
+func (e *Engine) watchTaskRecords(ctx context.Context) {
+	at := mirror.Ref("").Segs() // verse.task.instance.<id>, without the id
+	at = at[:len(at)-1]         // …and without the kind: a run record is taskish too
+	if ch, unsub, err := e.store.WatchSubtree(len(at)+2, at...); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
-		e.tracef("mirror subtree watch: %v", err)
+		e.tracef("task record watch: %v", err)
 	}
 }
 
@@ -702,10 +714,7 @@ func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	trigs := make([]Trigger, len(e.triggers))
 	copy(trigs, e.triggers)
 	e.trigMu.Unlock()
-	for _, ev := range c.Changes {
-		e.reap(ev)             // retire completed tasks from their flow (store-driven bookkeeping)
-		e.subjectMoved(ev.Ref) // a paced firing about this entity is now stale; let it go
-	}
+	e.subjectsMoved(c) // a paced firing about an entity this commit wrote is stale; let it go
 	for i := range trigs {
 		// AS THE RULE'S OWNER SEES IT: a change to what the owner may not read is not a
 		// change this rule is woken by, and the skip is asked of the narrowed commit so a
@@ -1803,13 +1812,7 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 				return
 			}
 			for _, ev := range c.Changes {
-				status := entity.Str(ev.To, "status")
-				if !task.TerminalStatus(status) {
-					continue
-				}
-				if fp, ok := e.retire(ev.Ref.Name()); ok {
-					e.applyHook(fp, task.Status(status), ev)
-				}
+				e.reap(ev)
 			}
 		}
 	}

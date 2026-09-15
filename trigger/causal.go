@@ -198,24 +198,15 @@ func (e *Engine) causeFor(t Trigger, c entity.Commit, subj entity.Ref) int64 {
 	return c.Rev
 }
 
-// changedIn reports whether the commit changed this entity.
-//
-// IT ASKS AT THE SUBJECT'S OWN DEPTH, which is the whole of what a tree costs here: a commit's
-// `Changes` is built at the ordinary arity, because a stream serving every rule at once has to
-// pick one — so a change to something deeper appears there as a change to its three-segment
-// ancestor, and comparing that to a deeper subject answers no however you compare it. The depth
-// is not knowable up front; it IS knowable here, from the subject in hand. So this asks the
-// commit the question it can answer exactly (entity.Commit.ChangedAt).
+// changedIn reports whether the commit changed the node at ref: written at it, beneath it, or
+// replaced or removed above it (entity.Commit.Changed). A commit's Changes are answered at the
+// patterns its observer asked about, which need not be this subject's, so the commit is asked
+// about the subject's own path.
 //
 // Answering no was not a near miss. Every firing about a derived entity began a FRESH chain, so
 // the causal report named the level crossing as an origin, and the throttle — which walks back
 // parents to see a loop — could not see one that ran through a derive.
-func changedIn(c entity.Commit, ref entity.Ref) bool {
-	// len(Segs()), not Len(): Len counts the segments BELOW the reserved root, and the delta a
-	// commit walks has that root as a level like any other. Asked with Len, every address in
-	// verse's own half was looked for one level too shallow.
-	return slices.Contains(c.ChangedAt(len(ref.Segs())), ref)
-}
+func changedIn(c entity.Commit, ref entity.Ref) bool { return c.Changed(ref) }
 
 // blocks reports whether a firing of this trigger will wait on a decision — an ask or a park
 // posed to whoever answers.
@@ -414,6 +405,23 @@ func (e *Engine) subjectMoved(ref entity.Ref) {
 	e.pacingMu.Unlock()
 	for _, c := range waiters {
 		close(c)
+	}
+}
+
+// subjectsMoved tells every paced firing whose subject this commit wrote that it is stale. It
+// asks the commit about each subject's own path rather than reading a list of changes at some
+// depth: what a commit changed is a question with a path in it.
+func (e *Engine) subjectsMoved(c entity.Commit) {
+	e.pacingMu.Lock()
+	subjects := make([]entity.Ref, 0, len(e.pacing))
+	for ref := range e.pacing {
+		subjects = append(subjects, ref)
+	}
+	e.pacingMu.Unlock()
+	for _, ref := range subjects {
+		if c.Changed(ref) {
+			e.subjectMoved(ref)
+		}
 	}
 }
 

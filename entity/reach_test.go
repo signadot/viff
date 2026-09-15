@@ -2,11 +2,11 @@ package entity
 
 import "testing"
 
-// MatchesAt keeps its ABOVE half, and this pins it: a replay or watch reporting at a fixed arity
-// delivers `demo.pr.1` for a read of `demo.pr.1.stage`, and dropping that before changes are
-// reported at the question's depth would drop the events. Step 5 of the paths-and-nodes plan
-// flips the second case, on purpose.
-func TestMatchesAtAdmitsAnAncestorUntilChangesAreExact(t *testing.T) {
+// A PATH REACHES THE NODES AT ITS OWN LENGTH and no others: not an ancestor, which is a
+// different node, and not a descendant, which a read of the path answers inside the node it
+// reaches. This is what a change stream is filtered by, now that a change is reported at the
+// depth its observer asked about (step 5 of docs/working/paths-and-nodes-plan.md).
+func TestAPathReachesItsOwnLength(t *testing.T) {
 	at, err := ParseAt(`demo.pr."1".stage`)
 	if err != nil {
 		t.Fatal(err)
@@ -16,13 +16,22 @@ func TestMatchesAtAdmitsAnAncestorUntilChangesAreExact(t *testing.T) {
 		want bool
 	}{
 		{RefAt("demo", "pr", "1", "stage"), true},
-		{RefAt("demo", "pr", "1"), true}, // above: the fixed-arity event
+		{RefAt("demo", "pr", "1"), false},               // above: a different node
+		{RefAt("demo", "pr", "1", "stage", "x"), false}, // beneath: inside the node it reaches
 		{RefAt("demo", "pr", "2"), false},
-		{RefAt("demo", "pr", "1", "stage", "x"), true},
 	} {
-		if got := MatchesAt(c.ref, at); got != c.want {
-			t.Errorf("MatchesAt(%s, %s) = %v, want %v", c.ref, at, got, c.want)
+		if got := Reaches(at, c.ref); got != c.want {
+			t.Errorf("Reaches(%s, %s) = %v, want %v", at, c.ref, got, c.want)
 		}
+	}
+	// An access into an array is a place INSIDE the node the names reach, so the path reaches
+	// that node.
+	inArray, err := ParseAt(`demo.pr."1".votes(scott)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Reaches(inArray, RefAt("demo", "pr", "1", "votes")) {
+		t.Error("a keyed access did not reach the node holding the array")
 	}
 }
 

@@ -246,7 +246,7 @@ func TestClaimAfterReleaseIsAbsentByTheKey(t *testing.T) {
 // Delete. One walk served both a document and a delta until now, which is why it could not.
 func TestChangesTellNullFromDeleted(t *testing.T) {
 	s := openStore(t)
-	commits, unsub := s.Observe()
+	commits, unsub := s.Observe(ordinary()...)
 	defer unsub()
 
 	ref := RefAt("demo", "pr", "1")

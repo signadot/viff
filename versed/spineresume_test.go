@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
@@ -38,7 +40,7 @@ func waitAnyQuestion(t *testing.T, srv *Server) string {
 // that missed history and a store that cannot be reached are not the same predicament.
 type compacted struct{ entity.Store }
 
-func (compacted) Since(from int64, _ ...string) ([]entity.Commit, error) {
+func (compacted) Since(from int64, _ ...*kpath.KPath) ([]entity.Commit, error) {
 	return nil, fmt.Errorf("replaying verse from %d: %w", from, entity.ErrReplayTooOld)
 }
 

@@ -70,7 +70,7 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 		t.Fatalf("replay floor = %d, want > %d — compaction did not erase the range under test", floor, from)
 	}
 
-	commits, err := s.Since(from)
+	commits, err := s.Since(from, ordinary()...)
 	if err == nil {
 		t.Fatalf("Since(%d) over a compacted range succeeded with %d commits; a truncated "+
 			"catch-up must report the failure so the consumer resyncs", from, len(commits))

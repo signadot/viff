@@ -8,34 +8,28 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// leavesAt collects what walkLeaves reports, as `segs=value`, so a test can say which leaves a
-// walk found rather than which it happened to descend to.
-func leavesAt(n *ir.Node, depth int) []string {
-	var out []string
-	walkLeaves(n, depth, func(segs []string, v *ir.Node) {
-		out = append(out, strings.Join(segs, ".")+"="+v.Type.String())
-	})
-	sort.Strings(out)
-	return out
-}
-
-// A VALUE ABOVE THE DEPTH ASKED FOR IS STILL THERE. Only an object has anything below it, so a
-// walk that descends past a scalar has walked past the whole of what stands at that path — and
-// a listing built on it answers that a written value is not there.
-//
-// It is asymmetric with a null on purpose. A Match at a path nothing has been written to answers
-// null, so reading one as a value would invent an entity at every prefix anybody asks about; at
-// the depth the caller NAMED a null is an ordinary payload, because the caller named that path.
-func TestAWalkKeepsAValueAboveTheDepthAsked(t *testing.T) {
+// A LISTING ANSWERS EXACTLY ITS DEPTH. Only an object has anything below it, so a walk that
+// meets a scalar on the way down has met the whole of what stands at that path — and that value
+// is at ITS OWN path, which is where a read of it answers. A listing that reported it at the
+// depth asked for would name a node that does not stand there.
+func TestAListingAnswersExactlyItsDepth(t *testing.T) {
 	n := doc(t, `{cc: {n: 1}, zz: true, nn: null, deep: {a: {b: 2}}}`)
-	got := leavesAt(n, 2)
-	want := []string{"cc.n=Number", "deep.a=Object", "zz=Bool"}
+	var got []string
+	nodesAt(n, 2, func(segs []string, v *ir.Node) {
+		got = append(got, strings.Join(segs, ".")+"="+v.Type.String())
+	})
+	sort.Strings(got)
+	want := []string{"cc.n=Number", "deep.a=Object"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("walkLeaves(depth 2) = %v, want %v", got, want)
+		t.Errorf("nodesAt(depth 2) = %v, want %v — a scalar two levels up is not at this depth", got, want)
 	}
 	// At the depth the caller named, a null IS the answer about that path.
-	if got := leavesAt(doc(t, `{a: null}`), 1); len(got) != 1 || got[0] != "a=Null" {
-		t.Errorf("walkLeaves(depth 1) over {a: null} = %v, want [a=Null]", got)
+	got = nil
+	nodesAt(doc(t, `{a: null}`), 1, func(segs []string, v *ir.Node) {
+		got = append(got, strings.Join(segs, ".")+"="+v.Type.String())
+	})
+	if len(got) != 1 || got[0] != "a=Null" {
+		t.Errorf("nodesAt(depth 1) over {a: null} = %v, want [a=Null]", got)
 	}
 }
 
@@ -51,14 +45,10 @@ func TestAShortAddressIsReadBack(t *testing.T) {
 	if e, ok, err := s.Get(RefAt("t2", "zz")); err != nil || !ok || !e.Payload.DeepEqual(doc(t, "true")) {
 		t.Fatalf("Get(t2.zz) = (%+v, %v, %v), want the value written there", e, ok, err)
 	}
-	held := map[string]bool{}
-	for _, e := range s.List(nil) {
-		held[e.Ref.String()] = true
-	}
-	for _, want := range []Ref{RefAt("t2", "zz"), RefAt("demo", "pr", "1")} {
-		if !held[want.String()] {
-			t.Errorf("the listing lost %s; it holds %v", want, held)
-		}
+	// And the read of what holds it answers it too, at the key it stands at.
+	node, ok, err := s.ReadAt([]string{"t2"})
+	if err != nil || !ok || Get(node, "zz") == nil || Get(Get(node, "cc"), "n") == nil {
+		t.Errorf("read at t2 = %v (ok=%v, %v), want both the scalar and the object under it", flatten(t, node), ok, err)
 	}
 }
 
@@ -74,7 +64,7 @@ func TestAnUnwrittenPathNamesNothing(t *testing.T) {
 	// A prefix that HAS something under it answers with what is under it, at every depth —
 	// which is what a subtree read is, and is not this question.
 	want := RefAt("demo", "pr", "1").String()
-	for _, e := range s.List(nil) {
+	for _, e := range s.ListAt([]string{"demo"}, 3, nil) {
 		if e.Ref.String() != want {
 			t.Errorf("the listing invented %s, beside the one entity written", e.Ref)
 		}
