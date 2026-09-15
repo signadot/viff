@@ -111,7 +111,7 @@ func withoutContract(frame string) string {
 // gateModeFor evaluates one tool against the vector the way the loop will, using a probe
 // action carrying representative arguments.
 //
-// The arguments matter. demoDeriver classifies read_file/write_file by their `path` and
+// The arguments matter. The deriver classifies read_file/write_file by their `path` and
 // run_bash by its `command`, and an action with no derived effect matches no verb gate — so
 // probing with empty input would report every tool as ungated, quietly reintroducing the
 // exact disagreement this function exists to prevent.

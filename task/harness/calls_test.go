@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -196,5 +197,29 @@ func TestACallListStillRefusesAnAnswerContract(t *testing.T) {
 
 	if _, err := p.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "answer contract") {
 		t.Fatalf("run: %v — want the spawn refused for the contract", err)
+	}
+}
+
+// The harness and the task package classify the verse's tools alike. A scripted run is the same
+// call under the basic deriver, so the two disagreeing would give it a different envelope and
+// different gates than the same call from a list or a model. The harness adds its runtime's own
+// tools and hands the rest on, so there is one answer to what a tool does.
+func TestTheHarnessDerivesTheVerseToolsAsTheTaskPackageDoes(t *testing.T) {
+	for _, tu := range []task.ToolUse{
+		{Name: "run_bash", Input: map[string]any{"command": "go test ./..."}},
+		{Name: "read_file", Input: map[string]any{"path": "notes.md"}},
+		{Name: "list_dir", Input: map[string]any{"path": "docs"}},
+		{Name: "write_file", Input: map[string]any{"path": "notes.md", "content": "x"}},
+		{Name: "call_agent", CallAgent: &task.CallAgentRequest{Agent: "reviewer"}},
+	} {
+		basic, harnessed := tu, tu
+		task.BasicDeriver{}.Derive(&basic)
+		demoDeriver{}.Derive(&harnessed)
+		if len(basic.Effects) == 0 {
+			t.Errorf("%s: the basic deriver classifies nothing", tu.Name)
+		}
+		if !reflect.DeepEqual(basic.Effects, harnessed.Effects) {
+			t.Errorf("%s: basic %+v, harness %+v", tu.Name, basic.Effects, harnessed.Effects)
+		}
 	}
 }

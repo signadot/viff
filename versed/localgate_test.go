@@ -144,3 +144,24 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 		}
 	}
 }
+
+// A scripted run is gated by what it does, as any other run is: its one call is `run_bash`, which
+// is exec, so `verse task run -driver scripted -gates` with a gate over `exec` asks before the
+// command runs.
+func TestAScriptedRunAsksAtAGateOverItsVerb(t *testing.T) {
+	srv := askingServer(t)
+	ops := httptest.NewServer(srv.Handler())
+	defer ops.Close()
+
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "shell-1", Prompt: "true", Vector: "auto",
+		Gates: []task.Gate{{Name: "shell", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Exec}}}}})
+	spawn.Body.Close()
+	if spawn.StatusCode >= 300 {
+		t.Fatalf("spawn = %s", spawn.Status)
+	}
+	qid := waitQuestion(t, srv, "shell-1")
+	e, _, _ := srv.Store.Get(mirror.QuestionRef(qid))
+	if gate := entity.ToObj(e.Payload)["gate"]; gate != "shell" {
+		t.Fatalf("the question is gate %v, want shell: %+v", gate, entity.ToObj(e.Payload))
+	}
+}

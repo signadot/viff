@@ -20,6 +20,11 @@ import (
 // demoDeriver maps the model's tool vocabulary onto typed capabilities so the
 // gate vector can match on them. This is the pluggable classification seam — the
 // place a foreign agent's tools become the platform's typed capabilities.
+//
+// It classifies the runtime's own tools and hands everything else to task.BasicDeriver,
+// which is where the four the harness offers are classified. One classification, because a
+// scripted run proposes the same run_bash under task's supervisor, and the envelope and the
+// gates must read the call the same way whichever driver proposed it.
 type demoDeriver struct {
 	// extra is the runtime's own vocabulary (see Tool). Classification is delegated to
 	// whoever added the tool, because the effect a runtime's action has is exactly the part
@@ -37,24 +42,7 @@ func (d demoDeriver) Derive(tu *task.ToolUse) {
 		}
 		return
 	}
-	if tu.CallAgent != nil {
-		tu.Effects = append(tu.Effects, task.Effect{Verb: task.CallAgent, Resource: task.AgentRes(tu.CallAgent.Agent)})
-		return
-	}
-	path, _ := tu.Input["path"].(string)
-	switch tu.Name {
-	case "read_file", "list_dir":
-		if path != "" {
-			tu.Effects = append(tu.Effects, task.Effect{Verb: task.Read, Resource: task.File(path)})
-		}
-	case "write_file":
-		if path != "" {
-			tu.Effects = append(tu.Effects, task.Effect{Verb: task.Write, Resource: task.File(path)})
-		}
-	case "run_bash":
-		cmd, _ := tu.Input["command"].(string)
-		tu.Effects = append(tu.Effects, task.Effect{Verb: task.Exec, Resource: task.Resource{Kind: task.KindTask, Ref: cmd}})
-	}
+	task.BasicDeriver{}.Derive(tu)
 }
 
 // fsProblem turns a filesystem error into something an agent can act on, in the vocabulary it

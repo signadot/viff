@@ -18,6 +18,12 @@ type Deriver interface {
 // specific agent maps that agent's tool schema onto ToolUse.Name/Input; this
 // then derives effects from conventional argument names. It is a floor, not a
 // ceiling: richer derivers can replace it without touching gate logic.
+//
+// It is also where the verse's own four tools are classified — run_bash, read_file,
+// list_dir, write_file — because every driver proposes them: a model through the harness, a
+// call list, and a scripted run, which is one run_bash under this package's supervisor. A
+// deriver that adds a runtime's own tools hands the rest here, so a call meets the same
+// envelope and the same gates whichever driver proposed it.
 type BasicDeriver struct{}
 
 func (BasicDeriver) Derive(tu *ToolUse) {
@@ -36,6 +42,19 @@ func (BasicDeriver) Derive(tu *ToolUse) {
 		// id carries the origin already.
 		if id := strArg(tu.Input, "id", "question", "gate_id"); id != "" {
 			tu.Effects = append(tu.Effects, Effect{Verb: Resolve, Resource: GateRes(id)})
+		}
+	case "run_bash":
+		// The verse's shell tool. Exec alone, without the guessed files `bash` carries: a
+		// gate over `write` is about the file tools, and a command whose tokens look like
+		// paths is not a write the agent reported.
+		tu.Effects = append(tu.Effects, Effect{Verb: Exec, Resource: Resource{Kind: KindTask, Ref: strArg(tu.Input, "command")}})
+	case "read_file", "list_dir":
+		if p := strArg(tu.Input, "path"); p != "" {
+			tu.Effects = append(tu.Effects, Effect{Verb: Read, Resource: File(p)})
+		}
+	case "write_file":
+		if p := strArg(tu.Input, "path"); p != "" {
+			tu.Effects = append(tu.Effects, Effect{Verb: Write, Resource: File(p)})
 		}
 	case "read", "cat":
 		if p := strArg(tu.Input, "path", "file", "file_path"); p != "" {
