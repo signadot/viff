@@ -286,6 +286,28 @@ verse data demo pr '*' -if '{urgent: true}' -if-at labels   # …rooted inside t
 The globbed line has a steps spelling too: `verse data demo pr '*' stage` is the same read, and
 `'"*"'` is the name that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
 
+### `..`: every depth beneath
+
+A `*` opens one position. `..` opens every depth beneath where it stands, the node it stands at
+included — the question that names no depth at all:
+
+```sh
+verse data '..'                              # the whole verse, walked
+verse data demo '..'                         # demo and everything under it
+verse data demo '..' -if '{stage: open}'     # every node that says it is open, at any depth
+verse data demo '..' stage                   # every `stage` beneath demo
+verse data demo '".."'                       # the node whose NAME is two dots
+```
+
+The answer nests each node where it stands, **spelled in full**: `demo '..' stage` answers
+`{pr: {"1": {stage: open}}}` rather than the `{"1": open}` a `*` gives, because a descent reaches
+nodes at different depths and stripping the segments after it would collide two of them into one
+key. A node the read keeps whole already holds what is beneath it, so nothing is answered twice.
+
+`..` is a QUERY, so it is a read's and a rule subject's; a write, a claim, a grant and a
+permissions record each name one stored place and refuse it. A watch does not take it yet and
+says so.
+
 The answer is the subtree standing at the path, verbatim — what the store holds, not a shape
 assembled for the wire. So a name is a key rather than a token inside a rendered `at:`, which
 is what `-paths` is for: a script that wants the addresses gets them one per line instead of

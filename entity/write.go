@@ -78,12 +78,13 @@ func (p Path) KPath() string {
 // path, and it is the same rendering.
 func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 
-// A STEP IS ONE PLACE, and which one is decided by its first character — four clauses, no
+// A STEP IS ONE PLACE, and which one is decided by its first character — five clauses, no
 // splitting, no delimiter scan:
 //
 //	[0]  {0}  (scott)  [*]  {*}     an array, sparse-array or keyed access
 //	*                               any field: the segment wildcard, for a READ
-//	"[0]"  'a.b'  "*"               the NAME inside the quotes, literally
+//	..                              every depth beneath here, this node included: a READ
+//	"[0]"  'a.b'  "*"  '".."'       the NAME inside the quotes, literally
 //	labels  a.b  x@git:ref:y        the name as given
 //
 // One word in, one path element out, whatever is inside it. The bracketed forms are
@@ -114,6 +115,14 @@ func StepIsAccess(step string) bool {
 // object. A write names one place, so TargetOf refuses it; a read sends it as kpath's `.*`.
 func StepIsWild(step string) bool { return step == "*" }
 
+// StepIsDescend reports whether a step is the whole word `..` — recursive descent, which reaches
+// the node it stands at and every node beneath it, at any depth. `'".."'` is the name.
+//
+// It is a QUERY segment, as kpath says: it names a set rather than a step, so it belongs to
+// reads, listings and rule subjects and never to a write, a claim or a record's address — every
+// one of which names one stored place (PathSegs, ExprSegs, TargetOf refuse it).
+func StepIsDescend(step string) bool { return step == ".." }
+
 // StepName is the name a step carries — itself, or what is inside its quotes. It is not asked
 // of an access or a wildcard step, which name no field.
 func StepName(step string) string {
@@ -134,6 +143,9 @@ func StepNames(steps []string) ([]string, error) {
 		case StepIsWild(step):
 			return nil, fmt.Errorf("%q: a `*` step selects every field there, and this path names "+
 				"one place — the name that is an asterisk is the step '\"*\"'", strings.Join(steps, " "))
+		case StepIsDescend(step):
+			return nil, fmt.Errorf("%q: a `..` step reaches every depth beneath it, and this path "+
+				"names one place — the name that is two dots is the step '\"..\"'", strings.Join(steps, " "))
 		case StepIsAccess(step):
 			return nil, fmt.Errorf("%q: %q addresses an array element, and this path is names — "+
 				"the name that begins with a bracket is the step '\"%s\"'", strings.Join(steps, " "), step, step)
@@ -155,19 +167,28 @@ func StepNames(steps []string) ([]string, error) {
 // they contain, and are joined with JoinSegs.
 func KPathOf(segs []string) (string, error) {
 	var out string
+	sep := false // whether the next segment takes a dot before it
 	for _, step := range segs {
-		if StepIsAccess(step) {
+		switch {
+		case StepIsAccess(step):
 			out += step // no dot before an access: `votes[0]`, and `[0]` when it leads
-			continue
+			sep = true
+		case StepIsDescend(step):
+			// A descend is the empty name between two dots, and it carries its own separator:
+			// `demo..stage`, `..stage`, `demo.*..x` — which is how kpath spells one back.
+			out += ".."
+			sep = false
+		default:
+			if sep {
+				out += "."
+			}
+			if StepIsWild(step) {
+				out += "*"
+			} else {
+				out += seg(StepName(step))
+			}
+			sep = true
 		}
-		if out != "" {
-			out += "."
-		}
-		if StepIsWild(step) {
-			out += "*"
-			continue
-		}
-		out += seg(StepName(step))
 	}
 	return out, nil
 }
@@ -189,6 +210,11 @@ func TargetOf(segs []string) (Path, error) {
 		if StepIsWild(step) {
 			return Path{}, fmt.Errorf("%q: a `*` step selects every field there, and a write "+
 				"names one place — the name that is an asterisk is the step '\"*\"'",
+				strings.Join(segs, " "))
+		}
+		if StepIsDescend(step) {
+			return Path{}, fmt.Errorf("%q: a `..` step reaches every depth beneath it, and a write "+
+				"names one place — the name that is two dots is the step '\"..\"'",
 				strings.Join(segs, " "))
 		}
 	}
@@ -697,7 +723,7 @@ func JoinSteps(segs []string) string {
 // listing can fix that, and an id containing both is not a shape any address in this system
 // produces.
 func quoteStep(s string) string {
-	if StepIsAccess(s) || StepIsWild(s) || StepName(s) != s {
+	if StepIsAccess(s) || StepIsWild(s) || StepIsDescend(s) || StepName(s) != s {
 		// Either quote is the clause; the one the name already holds is the one that keeps the
 		// word to a single kind, which is what the shell quoting below needs for xargs.
 		q := `"`

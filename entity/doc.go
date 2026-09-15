@@ -74,7 +74,7 @@ func reach(node *ir.Node, kp *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, 
 	}
 	switch {
 	case kp.Descend:
-		return nil, false, fmt.Errorf("`..` is not answered by a read yet")
+		return descend(node, kp.Next, keep)
 	case kp.FieldAll:
 		if node.Type != ir.ObjectType {
 			return nil, false, nil
@@ -130,6 +130,72 @@ func reach(node *ir.Node, kp *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, 
 	return reach(child, kp.Next, keep, literal)
 }
 
+// descend answers `..` and whatever follows it: the rest of the path tried at this node and at
+// every node beneath it, each match placed AT ITS OWN PATH below the node the descent started
+// from — `demo..stage` answers `{stage: …, pr: {"1": {stage: …}}}`.
+//
+// IN FULL, where a wildcard's answer strips the concrete segments after it (`demo.*.stage` is
+// `{"1": open}`). A descent reaches nodes at DIFFERENT depths, so stripping would collide two
+// matches into one key and lose which is which; spelling each in full is what keeps the answer
+// addressable, which is the whole point of nesting it.
+//
+// A node the rest of the path answers WHOLE is not descended into: what is beneath it is already
+// inside it, so every node is answered once.
+func descend(node *ir.Node, rest *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, error)) (*ir.Node, bool, error) {
+	here, reached, err := reach(node, rest, keep, false)
+	if err != nil {
+		return nil, false, err
+	}
+	if here != nil && rest == nil {
+		return here, true, nil // this node itself: it holds what is beneath it
+	}
+	out := map[string]*ir.Node{}
+	if here != nil {
+		// The match at this node stands at the path the rest of the pattern names, so that a
+		// deeper match of the same shape nests below rather than over it.
+		if at := restPath(rest); at != nil {
+			out[at[0]] = nestUnder(here, at[1:])
+		}
+	}
+	if n := ir.Uncomment(node); n != nil && n.Type == ir.ObjectType {
+		for i, f := range n.Fields {
+			sub, r, err := descend(n.Values[i], rest, keep)
+			if err != nil {
+				return nil, false, err
+			}
+			reached = reached || r
+			if sub != nil {
+				out[fieldName(f)] = sub
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, reached, nil
+	}
+	return ir.FromMap(out), true, nil
+}
+
+// restPath is the names a path spells, for placing a match where it stands. A path that reaches
+// through an array has no such spelling, and a match under one is placed by its names alone.
+func restPath(kp *kpath.KPath) []string {
+	var out []string
+	for ; kp != nil; kp = kp.Next {
+		if kp.Field == nil {
+			break
+		}
+		out = append(out, *kp.Field)
+	}
+	return out
+}
+
+// nestUnder puts a node under a path of names.
+func nestUnder(node *ir.Node, segs []string) *ir.Node {
+	for i := len(segs) - 1; i >= 0; i-- {
+		node = ir.FromMap(map[string]*ir.Node{segs[i]: node})
+	}
+	return node
+}
+
 // step follows one concrete segment: the value it addresses, or nil when nothing is there.
 //
 // An array with no key to look an element up by is an ERROR where no wildcard came before it:
@@ -183,6 +249,20 @@ func step(node *ir.Node, kp *kpath.KPath, literal bool) (*ir.Node, error) {
 	return nil, fmt.Errorf("%s: not a segment a read follows", kp)
 }
 
+// HasDescend reports whether a path reaches across depths — the question a surface asks when it
+// can answer at one depth and not at every one.
+func HasDescend(kp *kpath.KPath) bool { return hasDescend(kp) }
+
+// hasDescend reports whether a path reaches across depths.
+func hasDescend(kp *kpath.KPath) bool {
+	for ; kp != nil; kp = kp.Next {
+		if kp.Descend {
+			return true
+		}
+	}
+	return false
+}
+
 // answerPath is the path an ANSWER is walked by: the segments of rest that left a level in it.
 // A read answered at `demo.pr.*.stage` is `{1: open}` — the wildcard kept its keys and `stage`
 // was followed — so the answer is walked by `*` alone.
@@ -223,16 +303,35 @@ func (d Doc) Each(at *kpath.KPath, keep func(*ir.Node) (*ir.Node, bool, error)) 
 
 // Reached is each node the read at `at` reached, at the address it stands at in the store. A
 // node reached through an array has no address of names, and is not among them.
+//
+// Under a `..` the answer holds every match at its own path (descend), so the walk there is the
+// answer's own shape: each node in it is one the descent reached, and the node it stands under
+// is another.
 func (d Doc) Reached(at *kpath.KPath) []Entity {
 	prefix, rest := LiteralPrefix(at)
 	var out []Entity
 	var rec func(n *ir.Node, kp *kpath.KPath, segs []string)
+	all := func(n *ir.Node, segs []string) {
+		var walk func(n *ir.Node, segs []string)
+		walk = func(n *ir.Node, segs []string) {
+			out = append(out, Entity{Ref: RefAt(segs...), Payload: n})
+			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+				return
+			}
+			for i, f := range n.Fields {
+				walk(n.Values[i], append(append([]string{}, segs...), fieldName(f)))
+			}
+		}
+		walk(n, segs)
+	}
 	rec = func(n *ir.Node, kp *kpath.KPath, segs []string) {
 		if kp == nil {
 			out = append(out, Entity{Ref: RefAt(segs...), Payload: n})
 			return
 		}
 		switch {
+		case kp.Descend:
+			all(n, segs)
 		case kp.Field != nil:
 			rec(n, kp.Next, append(append([]string{}, segs...), *kp.Field))
 		case kp.FieldAll:
@@ -264,15 +363,18 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 // node, which is the address the reader typed.
 func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
 	_, rest := LiteralPrefix(at)
-	wild := answerPath(rest) != nil
+	wild := answerPath(rest) != nil || hasDescend(rest)
 	var out [][]string
+	seen := map[string]bool{}
 	for _, e := range d.Reached(at) {
 		var rec func(n *ir.Node, segs []string, top bool)
 		rec = func(n *ir.Node, segs []string, top bool) {
 			if max > 0 && len(segs) > max {
 				return
 			}
-			if !top || wild {
+			// The root is not an address anybody can print: `verse data '..'` walks from it.
+			if len(segs) > 0 && (!top || wild) && !seen[RefAt(segs...).String()] {
+				seen[RefAt(segs...).String()] = true
 				out = append(out, append([]string{}, segs...))
 			}
 			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {

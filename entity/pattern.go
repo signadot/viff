@@ -299,7 +299,7 @@ func (p Pattern) matchPayload(payload Payload) bool {
 	if p.Predicate == nil {
 		return true
 	}
-	at := descend(payload, p.At)
+	at := fieldAt(payload, p.At)
 	if at == nil {
 		return false // nothing to match against — a deleted entity, an absent one, or no such field
 	}
@@ -307,10 +307,10 @@ func (p Pattern) matchPayload(payload Payload) bool {
 	return err == nil && ok
 }
 
-// descend walks a payload to a field path, nil if it does not lead anywhere. Get answers nil
+// fieldAt walks a payload to a field path, nil if it does not lead anywhere. Get answers nil
 // for a scalar as well as for an absent field, so a path THROUGH a non-object stops here
 // rather than needing a case of its own.
-func descend(payload Payload, field []string) Payload {
+func fieldAt(payload Payload, field []string) Payload {
 	for _, f := range field {
 		if payload = Get(payload, f); payload == nil {
 			return nil

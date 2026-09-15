@@ -226,6 +226,49 @@ func TestPathsWalkTheAnswerByThePath(t *testing.T) {
 	}
 }
 
+// `..` REACHES EVERY DEPTH BENEATH IT, the node itself included, and the answer nests each match
+// where it stands — in full, since matches at different depths would otherwise collide.
+func TestADescentReachesEveryDepth(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"demo.pr.1..", `{stage: open}`},
+		{"count..", `{n: {hits: 42 nothing: null}}`},
+		// Each match at its own path: the stages of three prs, under the ids they stand at.
+		{"demo..stage", `{pr: {"1": {stage: open} "2": {stage: reviewed} a.b: {stage: open}}}`},
+	} {
+		if got := flatten(t, read(t, fixture(), tc.path).Node); got != tc.want {
+			t.Errorf("%s = %s, want %s", tc.path, got, tc.want)
+		}
+	}
+	// A filter is asked of every node the descent reaches, and what it keeps nests where it
+	// stands — which is what `verse data '..' -if X` answers.
+	open := func(n *ir.Node) (*ir.Node, bool, error) { return n, Str(n, "stage") == "open", nil }
+	out, reached, err := Reach(docOf(fixture()), at(t, "demo.."), open)
+	if err != nil || !reached {
+		t.Fatalf("demo.. with a filter: reached=%v err=%v", reached, err)
+	}
+	if want := `{pr: {"1": {stage: open} a.b: {stage: open}}}`; flatten(t, out) != want {
+		t.Errorf("demo.. -if {stage: open} = %s, want %s", flatten(t, out), want)
+	}
+	// A path that reaches nothing is still nothing, `..` included.
+	if out, reached, err := Reach(docOf(fixture()), at(t, "nosuch.."), nil); err != nil || reached || out != nil {
+		t.Errorf("nosuch.. = %v (reached=%v, err=%v), want nothing", out, reached, err)
+	}
+	// And every address in the answer comes back, once each.
+	var got []string
+	for _, segs := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
+		got = append(got, RefAt(segs...).String())
+	}
+	sort.Strings(got)
+	want := []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`,
+		`demo.pr."2".stage`, `demo.pr."a.b"`, `demo.pr."a.b".stage`}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("demo.pr.. paths = %v, want %v", got, want)
+	}
+}
+
 // `(key)` reaches into an array by identity, which no verse address could do before: a
 // proposal's votes are addressable one voter at a time.
 func TestAKeyedArrayIsAddressable(t *testing.T) {
