@@ -192,10 +192,14 @@ func printCharter(cc *cli.Context, steps []string) error {
 // entity.PathSegs: the names they carry, joined by JoinSegs, which is that reader's inverse.
 //
 // STEPS, AS `verse data` READS THEM, so a word means the same thing on every command that takes
-// a path. A word is one segment whatever is inside it, the quoted clause is a name, and an access
-// or a wildcard is refused — a charter path names one place, made of names. So the path is
-// `verse c verse-dev drift rules watcher`, and `verse c verse-dev.drift` names a system called
-// `verse-dev.drift`, as it would on `verse data`.
+// a path: a word is one segment whatever is inside it, the quoted clause is a name, and an access
+// or a wildcard is refused — a charter path names one place, made of names. The path is written
+// `verse c verse-dev drift rules watcher`.
+//
+// NOT YET WHAT THE SERVER DOES WITH IT. The charter tree keeps package addresses as dotted strings
+// and matches segments by joining them with dots (versed/charterpath.go), so the one segment
+// `verse-dev.drift` still reaches the package at `verse-dev.drift`. A charter address as a kpath
+// from the file to the route is step 7 of docs/working/paths-and-nodes-plan.md.
 func charterPath(steps []string) (string, error) {
 	names, err := entity.StepNames(steps)
 	if err != nil {
