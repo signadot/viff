@@ -1422,11 +1422,18 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 	// Stop the scope's engine (if any) before its data goes away, so it isn't
 	// observing a store whose scope is being deleted.
 	s.scopeMu.Lock()
-	if se, ok := s.scopeEngs[name]; ok {
-		se.cancel()
-		delete(s.scopeEngs, name)
-	}
+	se, ok := s.scopeEngs[name]
+	delete(s.scopeEngs, name)
 	s.scopeMu.Unlock()
+	var eng *trigger.Engine
+	if ok {
+		se.cancel()
+		eng = se.eng
+	}
+	// And its live work, which the shared runtime would otherwise go on running for a scope that
+	// no longer exists, with no records and no store to reflect into. After the engine stops, so
+	// no rule starts more of it.
+	s.cancelScopeTasks(name, eng)
 	// And its perms mirror: the grants the overlay held go with it.
 	if p := entity.PolicyOf(s.Store); p != nil {
 		p.DropScope(name)
@@ -1436,6 +1443,28 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// cancelScopeTasks cancels every live task a scope owns (docs/reference/connect.md#what-a-scope-owns):
+// what its engine tracks — its rules' tasks and `task run --scope`, wherever they run — and
+// what the local runtime hosts under the scope that no engine does. The engine's go without
+// their completion hooks, which would act inside the scope being deleted (Engine.CancelLive).
+func (s *Server) cancelScopeTasks(scope string, eng *trigger.Engine) {
+	reason := "scope " + scope + " was deleted"
+	cancelled := map[string]bool{}
+	if eng != nil {
+		for _, id := range eng.CancelLive(reason) {
+			cancelled[id] = true
+		}
+	}
+	for _, inst := range s.Taskd.Snapshots() {
+		if sc, ok := s.Taskd.ScopeOf(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
+			continue
+		}
+		if t := s.Taskd.Lookup(inst.ID); t != nil {
+			t.Cancel(reason)
+		}
+	}
 }
 
 // scopedStore returns the store view for the request's ?scope (baseline if absent).

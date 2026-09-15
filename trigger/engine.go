@@ -185,6 +185,9 @@ type Engine struct {
 	// delete and spawn-dedupe a lookup. Guarded independently of the loop.
 	liveMu sync.Mutex
 	live   map[string]flowTask
+	// dropped is why this engine's live work was cancelled whole (CancelLive), "" until it is:
+	// a task tracked after that is cancelled as it arrives rather than run with nothing to own it.
+	dropped string
 
 	// the charter (e.triggers, declared above). Guarded because triggers can be
 	// added/removed at runtime (over the wire) while the loop dispatches.
@@ -1311,6 +1314,13 @@ func (e *Engine) track(fp flowTask) {
 	held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 	fp.suspended = held
 	e.liveMu.Lock()
+	if why := e.dropped; why != "" {
+		// A firing that was already past its gate when the work was dropped: what it started
+		// has no program left to belong to.
+		e.liveMu.Unlock()
+		fp.h.Cancel(why)
+		return
+	}
 	e.live[fp.id] = fp
 	e.liveMu.Unlock()
 	if len(held) > 0 {
@@ -1713,6 +1723,28 @@ func (e *Engine) Handle(id string) (task.Handle, bool) {
 	defer e.liveMu.Unlock()
 	fp, ok := e.live[id]
 	return fp.h, ok
+}
+
+// CancelLive cancels every live task this engine tracks, and every one tracked after it, for
+// the owner of an engine whose program is going away with the store it runs over — a scope
+// being deleted. It answers the ids it cancelled.
+//
+// NO COMPLETION HOOK RUNS for them. Each is forgotten before its handle is cancelled, so the
+// reaper that would apply its onCancelled finds nothing to retire: a hook is part of the program
+// being deleted, and one run now would write into, or spawn work into, a scope that is gone.
+func (e *Engine) CancelLive(reason string) []string {
+	e.liveMu.Lock()
+	live := e.live
+	e.live = map[string]flowTask{}
+	e.dropped = reason
+	e.liveMu.Unlock()
+	ids := make([]string, 0, len(live))
+	for id, fp := range live {
+		fp.h.Cancel(reason)
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // TaskSuspended is what suspends one live task by id: what resuming it is refused naming, since

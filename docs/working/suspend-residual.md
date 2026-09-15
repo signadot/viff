@@ -21,10 +21,11 @@ and none may lift automatically in a loop: a lift is a restart's worth of evalua
 
 ## 2. A scope deleted with its suspensions
 
-`POST /scope/delete` cancels the scope's engine and deletes the overlay, and with it the records;
-nothing releases or cancels what the scope's suspensions held first. It follows whatever deleting
-a scope's live work becomes — git-issue `y51f9ce5h12kr2zvmxn0`, which is about the scope's tasks
-left running at all.
+Landed with git-issue `y51f9ce5h12kr2zvmxn0`: `POST /scope/delete` stops the scope's engine, then
+cancels every live task it owns — what the engine tracks, held or not, and what the runtime hosts
+under the scope — before the overlay goes, and the suspension records with it. The engine's go
+without their completion hooks (`Engine.CancelLive`). A launch a suspension parked is not a task
+yet and goes with the engine.
 
 ## 3. A parked launch across a restart
 

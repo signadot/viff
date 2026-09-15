@@ -77,7 +77,9 @@ verse disconnect --scope me                        # drop the whole overlay
 ```
 
 `disconnect --scope me` tears the overlay down in one shot — every scope write, not just
-`local.*` files — via logd's `DeleteScope`.
+`local.*` files — via logd's `DeleteScope`. What the scope started goes first: its sources stop,
+its engine stops, and every live task it owns ([below](#what-a-scope-owns)) is cancelled, those
+its rules started without their `onCancelled`, which would act inside the scope being dropped.
 
 Scopes are the store's, not the surface's: a copy-on-write overlay is something logd/docd
 does, and `disconnect --scope` asks it to drop one. A store without real scopes would answer
