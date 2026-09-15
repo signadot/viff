@@ -70,6 +70,11 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Canonical dimension order, not map order: ir.FromMap sorts, and
 	// {fields, id, kind, system} reads worse than the order people write.
 	var kvs []ir.KeyVal
+	// The root first, as it is written: without it a match in verse's own half is stored as the
+	// world's and restores there.
+	if r := m.Root(); r != "" {
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyRoot), Val: ir.FromString(r)})
+	}
 	for _, k := range []string{mKeySystem, mKeyKind, mKeyID} {
 		// An operator goes back out as a tag, which is how it was written in tony and the
 		// only faithful spelling — the tag-keyed input form is sugar, not a rendering.
@@ -133,10 +138,13 @@ func (m Match) address() (string, bool) {
 			last = i
 		}
 	}
-	out := make([]string, 0, last+1)
+	out := make([]string, 0, last+2)
+	if r := m.Root(); r != "" {
+		out = append(out, r) // a leading `verse` reads back as the root
+	}
 	for _, s := range segs[:last+1] {
-		if s == "" {
-			out = append(out, "*") // a gap is any segment, and a `*` is never quoted
+		if s == "" || s == "*" {
+			out = append(out, "*") // a gap or a wildcard is any segment, and a `*` is never quoted
 			continue
 		}
 		out = append(out, entity.JoinSegs([]string{s}))

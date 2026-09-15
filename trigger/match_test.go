@@ -22,6 +22,8 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		`"demo.pr.1"`,
 		`{"system":"demo","kind":"pr","value":{"stage":"open"}}`,
 		`{"system":"demo","kind":"pr","id":"*"}`,
+		`{"root":"verse","system":"task","kind":"instance"}`,
+		`{"root":"verse","system":"task","kind":"instance","value":{"status":"done"}}`,
 		`{}`,
 	} {
 		var m Match
@@ -40,8 +42,8 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		// string, and `id: "*"` is the same thing as an unset id — a wildcard — so
 		// {"system":"demo","kind":"pr","id":"*"} comes back as demo.pr.* and re-parses with
 		// the id dropped. The dimensions the matcher applies are what has to survive.
-		if back.System() != m.System() || back.Kind() != m.Kind() {
-			t.Fatalf("round-trip lost system/kind: %s → %s", in, out)
+		if back.Root() != m.Root() || back.System() != m.System() || back.Kind() != m.Kind() {
+			t.Fatalf("round-trip lost root/system/kind: %s → %s", in, out)
 		}
 		if wildcard(back.ID()) != wildcard(m.ID()) {
 			t.Fatalf("round-trip changed the id dimension: %s → %s (%q vs %q)",
