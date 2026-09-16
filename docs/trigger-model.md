@@ -358,11 +358,6 @@ what arrived while verse was down. A restart is then just an install over a vers
 moved on, which is the same property described above, and the same reason to write a latch
 rather than an edge.
 
-**There are no goals.** A goal would be a target over this substrate: a `doneWhen` witness, a
-deadline fail-latch, a live `waitingOn`, and owned triggers reaped on a terminal outcome, durable
-the same way a rule is. Every use case tried against that definition falls short of it, and it
-would cost a top-level concept in a model whose whole claim is that it is small.
-
 A **scoped charter** (`verse c -a -scope`) is restored the same way, when the scope's engine is
 next built, which is on demand and so in practice when the dev reconnects. Its record carries
 `scope: <name>`, which is what makes it restorable at all: a scoped store reads baseline layered
