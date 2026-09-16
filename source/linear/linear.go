@@ -5,10 +5,17 @@
 // serves, with verse dialling it and converging its answers. Like the Slack source and unlike
 // the git one, the credential is the whole reason it cannot live in verse.
 //
-// THE TEAM IS THE SLICE. A source reflects a set of teams, every entity carries its team key,
-// every cover is scoped by it, and every ownership claim is spelled with it — which is what
-// makes two Linear sources over two teams provably disjoint, the same way two git sources over
-// two repos are. It is also what decides what is NOT here; see Owns.
+// THE TEAM IS THE SLICE, and it is a LEVEL OF THE ADDRESS: a source reflects a set of teams,
+// and everything one of them has stands under its place.
+//
+//	linear.ENG.team           the team itself — its name, whether it is private
+//	linear.ENG.issue.ENG-12   its issues, keyed by Linear's own identifier
+//	linear.ENG.cycle."4"      its cycles, keyed by number
+//	linear.project.p1.owners.ENG   its place inside a project several teams share
+//
+// That is what makes two Linear sources over two teams provably disjoint, the same way two git
+// sources over two repos are — a comparison of places rather than of id prefixes. It also
+// decides what a claim has to say; see Owns.
 package linear
 
 import (
@@ -16,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/signadot/verse/entity"
@@ -129,12 +137,17 @@ func New(ctx context.Context, cfg Config) (*Linear, error) {
 			"reflects nothing would install, claim nothing, and never write")
 	}
 	for _, key := range l.teams {
-		// A team key is a ref segment before it is anything else, and the ownership claim
-		// `linear:issue:<KEY>-*` is a prefix comparison — so a key carrying the ref's own
-		// punctuation, or the `-` the claim relies on, would address something it does not name.
-		if strings.ContainsAny(key, ":/-") {
-			return nil, fmt.Errorf("linear: team key %q contains : / or -, which are what its "+
-				"entity ids and its ownership claim are built out of", key)
+		// A team key is one segment of an address — the place its entities stand under — so the
+		// only things it may not hold are what a segment cannot hold. The hyphen is ordinary
+		// again: an issue's id is a name under its team rather than a prefix a claim leans on.
+		if strings.ContainsAny(key, ":/.") {
+			return nil, fmt.Errorf("linear: team key %q contains : / or . — it is the place its "+
+				"issues and cycles stand under, and those are a segment's own punctuation", key)
+		}
+		if strings.EqualFold(key, projectKind) {
+			return nil, fmt.Errorf("linear: team key %q is the name the shared projects stand "+
+				"at (%s.%s.<id>), so a team keyed that way would address them", key,
+				l.system, projectKind)
 		}
 	}
 	sort.Strings(l.teams)
@@ -156,65 +169,93 @@ func (l *Linear) System() string { return l.system }
 // Teams is the set of team keys this source reflects.
 func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
 
-// Owns is the ownership claim an install proves disjointness with: four per team, because the
-// four kinds spell their team four different ways.
+// Owns is the ownership claim an install proves disjointness with: TWO PLACES PER TEAM, and
+// neither of them holds a glob inside a segment.
 //
-//	linear:team:ENG                  the team itself, a bare key
-//	linear:issue:ENG-*               Linear's OWN identifier, which is already team-prefixed
-//	linear:cycle:ENG/*               a number, scoped the way git scopes a ref
-//	linear:project:* at owners.ENG   every project, at this team's slot and nowhere else
+//	linear.ENG                     the team's place: its own fields, its issues, its cycles
+//	linear.project.*.owners.ENG    every project, at this team's path and nowhere else
 //
-// The issue claim leans on the hyphen, and it is load-bearing: `ENG-*` does not claim
-// `ENGINE-1`, because that id does not start with `ENG-`. Dropping the hyphen for a bare
-// `ENG*` would be the exact overclaim source/git.go names — not a false alarm but a real one,
-// and one that would make two perfectly disjoint teams refuse to install alongside each other.
+// The first is one claim for everything a team has alone, at whatever depth: its own node, its
+// issues, its cycles. Nothing in it leans on how an id is spelled — `linear.ENG` and
+// `linear.ENGINE` are two places, which a comparison of names says without being told, where a
+// claim over ids would need the hyphen in `ENG-*` to hold `ENGINE-1` out.
 //
-// THE PROJECT CLAIM IS THE INTERESTING ONE, and it used to be an absence. A Linear project
-// belongs to several teams at once, so it has no positional owner: no team can claim it as an
-// address, and two sources over two teams would each tombstone what the other reflected. This
-// source therefore reflected no project at all, and that absence was the first real evidence
-// against ownership-as-an-address.
+// THE PROJECT CLAIM IS THE INTERESTING ONE. A Linear project belongs to several teams at once,
+// so it has no positional owner: no team can claim the whole of it, and two sources over two
+// teams would each tombstone what the other reflected.
 //
-// The way through was not a different vocabulary but a deeper address. A claim may name a path
-// INSIDE a payload, so ENG is not a co-writer of `linear:project:<id>` — it is the single
-// writer of that entity's `owners.ENG`, and OPS of its `owners.OPS`. Two of those are proved
-// apart by the same comparison one segment further down, converge writes, compares and
-// tombstones there and nowhere else, and the last owner out takes the entity with a conditional
-// delete. Sharing an entity is not an exception to single-writership; it is single-writership at
-// a deeper address (docs/working/shared-ownership.md).
+// The way through is a DEEPER ADDRESS: ENG is not a co-writer of `linear.project.<id>` — it is
+// the single writer of `linear.project.<id>.owners.ENG`, which is a node like any other. Two of
+// those are proved apart by the same comparison one segment further down, converge writes,
+// compares and tombstones there, and the last owner out empties `owners` and takes the project
+// with a conditional delete. Sharing is not an exception to single-writership; it is
+// single-writership at a deeper address (docs/working/shared-ownership.md).
 //
 // WHAT IT COSTS is a project with no top. Every field Linear has about a project — its name, its
-// state — is GLOBAL, and a global field has no owner among the teams, so each slot carries its
-// own copy and the entity has no `name` at its root. A charter reads a project through an owner
-// (`owners.ENG.state`), and two owners' slots are the same bytes. That is the honest shape of an
-// entity nobody owns the whole of, and it is worth knowing before writing a rule against one.
+// state — is GLOBAL, and a global field has no owner among the teams, so each owner's path
+// carries its own copy and the node has nothing at its root. A charter reads a project through
+// an owner (`linear.project.<id>.owners.ENG.state`), and two owners hold the same bytes. That is
+// the honest shape of a node nobody owns the whole of, and it is worth knowing before writing a
+// rule against one.
 func (l *Linear) Owns() []source.Own {
-	out := make([]source.Own, 0, 4*len(l.teams))
+	out := make([]source.Own, 0, 2*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			source.Own{At: l.system + ".team." + key},
-			source.Own{At: l.system + ".issue." + key + "-*"},
-			source.Own{At: l.system + ".cycle." + key + "/*"},
-			source.Own{At: l.system + ".project.*", Path: slotOf(key)})
+			source.Own{At: source.ClaimAt(l.system, key)},
+			source.Own{At: source.ClaimAt(l.system, projectKind, "*", ownersField, key)})
 	}
 	return out
 }
 
-// slotOf is the path inside a project this team is the single writer of. One spelling, used by
-// the claim an install proves and by the cover a pass declares — they are the same statement
-// about the same place, and two spellings of it is how they come to disagree.
-func slotOf(key string) []string { return []string{"owners", key} }
+// projectKind is where the shared projects stand, beside the teams' own places, and ownersField
+// is the level beneath a project that one team's place hangs from.
+const (
+	projectKind = "project"
+	ownersField = "owners"
+)
 
-// TeamRef is the ref that targets one team: a reconcile of it reconciles that team's issues
-// and cycles, which is what a hint names.
-func TeamRef(key string) entity.Ref {
-	return entity.RefAt(System, "team", key)
+// place is the address segments one team's entities stand under, followed by more.
+func (l *Linear) place(key string, more ...string) []string {
+	return append([]string{l.system, key}, more...)
 }
 
-// TeamRef is the same ref in THIS source's system, which is what the webhook must hint: a hint
-// at `linear:team:ENG` reaches nothing when the source writes `issues:team:ENG`.
-func (l *Linear) TeamRef(key string) entity.Ref {
-	return entity.RefAt(l.system, "team", key)
+// TeamRef is the place one team's entities stand under: a reconcile of it reconciles that
+// team's issues and cycles, which is what a hint names.
+func TeamRef(key string) entity.Ref { return entity.RefAt(System, key) }
+
+// TeamRef is the same place in THIS source's system, which is what the webhook must hint: a
+// hint at `linear.ENG` reaches nothing when the source writes `issues.ENG`.
+func (l *Linear) TeamRef(key string) entity.Ref { return entity.RefAt(l.place(key)...) }
+
+// SummaryRef is the node describing the team itself — its name, and whether it is private.
+//
+// A child of the team's place rather than the place itself, which is the shape the github
+// source's `repo` summary has and for the same reason: the team's issues and cycles stand under
+// that place, and a node written whole at it would be written over them every pass.
+func (l *Linear) SummaryRef(key string) entity.Ref {
+	return entity.RefAt(l.place(key, "team")...)
+}
+
+// IssueRef is the ref of one issue, under its team and keyed by Linear's own identifier.
+func (l *Linear) IssueRef(key, identifier string) entity.Ref {
+	return entity.RefAt(l.place(key, "issue", identifier)...)
+}
+
+// CycleRef is the ref of one cycle, under its team and keyed by its number alone: the team is
+// the level above it, so the number has nothing to carry but itself.
+func (l *Linear) CycleRef(key string, number int) entity.Ref {
+	return entity.RefAt(l.place(key, "cycle", strconv.Itoa(number))...)
+}
+
+// ProjectRef is the shared node a project stands at: one node for every team that owns it.
+func (l *Linear) ProjectRef(id string) entity.Ref {
+	return entity.RefAt(l.system, projectKind, id)
+}
+
+// ProjectOwnerRef is the node one team owns inside a project — the whole of what it writes
+// there. Its claim is the same address with the id a wildcard, spelled by source.ClaimAt.
+func (l *Linear) ProjectOwnerRef(id, key string) entity.Ref {
+	return entity.RefAt(l.system, projectKind, id, ownersField, key)
 }
 
 // Reflect reads the configured teams and returns what `linear:*` should hold. A zero ref reads
@@ -239,25 +280,19 @@ func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // makes for a repo: the team is what one query reads, so a finer target would cost the same
 // request.
 func (l *Linear) targets(ref entity.Ref) []string {
-	// This source's own layout: `<system>.<kind>.<id>`, which it writes and so reads back.
+	// This source's own layout is a path: `<system>.<team>.<kind>.<id>`, so the team is a
+	// segment rather than something to cut out of an id.
 	segs := ref.Segs()
-	if len(segs) != 3 || segs[0] != l.system || segs[2] == "" {
+	if len(segs) < 2 || segs[0] != l.system {
+		return l.teams // no place of this source's: a full pass cannot be wrong
+	}
+	if segs[1] == projectKind {
+		// A project is owned by whoever owns a path inside it, so a hint about one is a hint
+		// about every team here: each pass writes its own owner's place and nobody else's.
 		return l.teams
 	}
-	kind, id := segs[1], segs[2]
-	var key string
-	switch kind {
-	case "team":
-		key = id
-	case "issue":
-		key, _, _ = strings.Cut(id, "-") // ENG-123
-	case "cycle":
-		key, _, _ = strings.Cut(id, "/") // ENG/42
-	default:
-		return l.teams // a kind this build does not know: a full pass cannot be wrong
-	}
 	for _, k := range l.teams {
-		if k == key {
+		if k == segs[1] {
 			return []string{k}
 		}
 	}
@@ -266,31 +301,26 @@ func (l *Linear) targets(ref entity.Ref) []string {
 	return nil
 }
 
-// reflectTeam reads one team whole. Everything it returns is scoped by the `team` field —
-// including the covers — so one team's pass never tombstones another's issues.
+// reflectTeam reads one team whole. Everything it returns stands under that team's place —
+// covers included — so one team's pass never tombstones another's issues.
 func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection, error) {
 	// Declared BEFORE the read and unconditionally, as the git source declares its per-repo
 	// covers: a team whose every issue was deleted must still cover `linear:issue:{team: key}`,
 	// or the issues it no longer has would stand forever.
-	mine := entity.Obj{"team": key}.Payload()
 	rn := source.Reflection{Covers: []entity.Pattern{
-		withPredicate(source.Cover(l.system, "team", "*"), mine),
-		withPredicate(source.Cover(l.system, "issue", "*"), mine),
-		withPredicate(source.Cover(l.system, "cycle", "*"), mine),
-		// The project cover is narrowed to the projects that CARRY THIS TEAM'S SLOT, which is
-		// what the null in the predicate says (a null in a match is a presence test). The slot
-		// alone is not enough narrowing and the difference is not subtle: an unpredicated slot
-		// cover claims completeness for its slot of every project in the workspace, so a pass
-		// would write a tombstone into `owners.ENG` of projects ENG has never been on — once per
-		// project per pass, forever — and, where one source reflects two teams, each team's
-		// answer would read as "the other team's slot is empty" and delete it.
-		//
-		// Narrowed, it selects exactly the set a tombstone could be right about: a project this
-		// team is recorded on and no longer owns. One it never owned is not covered, and one it
-		// has just joined is written because the ANSWER carries the slot, which is what the
-		// write side matches against.
-		withSlot(withPredicate(source.Cover(l.system, "project", "*"),
-			entity.Obj{"owners": map[string]any{key: nil}}.Payload()), slotOf(key)),
+		// PLACES UNDER THE TEAM, which is what makes them this team's — rather than a pattern
+		// over every id of a kind, narrowed back to one team by a payload predicate every
+		// entity would have to carry.
+		source.Cover(l.place(key, "team")...),
+		source.Cover(l.place(key, "issue", "*")...),
+		source.Cover(l.place(key, "cycle", "*")...),
+		// THE PROJECT COVER IS THIS TEAM'S PLACE INSIDE EVERY PROJECT:
+		// `linear.project.*.owners.ENG` claims completeness for what ENG writes there and
+		// reaches nothing else. A project ENG has never been on holds nothing at that address,
+		// so a pass that does not carry it tombstones nothing; one ENG has just joined is
+		// written because the answer carries it. Another team's place under the same project is
+		// a different address, and neither claim reaches it.
+		source.Cover(l.system, projectKind, "*", ownersField, key),
 	}}
 	page, err := l.api.readTeam(ctx, key, l.pageSize, l.max)
 	if err != nil {
@@ -305,7 +335,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 	if page.Description != "" {
 		t["description"] = page.Description
 	}
-	rn.Add(entity.RefAt(l.system, "team", key), t)
+	rn.Add(l.SummaryRef(key), t)
 
 	for _, c := range page.Cycles.Nodes {
 		p := entity.Obj{"team": key, "id": c.ID, "number": c.Number}
@@ -317,28 +347,25 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 				p[k] = v
 			}
 		}
-		rn.Add(entity.RefAt(l.system, "cycle",
-			fmt.Sprintf("%s/%d", key, c.Number)),
-			p)
+		rn.Add(l.CycleRef(key, c.Number), p)
 	}
 
 	for _, i := range page.Issues.Nodes {
-		rn.Add(entity.RefAt(l.system, "issue", i.Identifier), issuePayload(key, i))
+		rn.Add(l.IssueRef(key, i.Identifier), issuePayload(key, i))
 	}
 
-	// A project is written INTO THIS TEAM'S SLOT, which is what the answer's shape says: the
-	// payload is entity-shaped and the cover above is what makes only `owners.<key>` of it
-	// authoritative. A second team's source answers the same entity with its own slot, and
-	// neither can reach the other's.
+	// A project is written AT THIS TEAM'S PLACE INSIDE IT — `linear.project.<id>.owners.<key>`
+	// — which is an address like any other, so nothing about writing it is special. A second
+	// team's source writes its own place under the same project, and neither can reach the
+	// other's.
 	for _, p := range page.Projects.Nodes {
-		rn.Add(entity.RefAt(l.system, "project", p.ID),
-			entity.Obj{"owners": map[string]any{key: projectPayload(key, p)}})
+		rn.Add(l.ProjectOwnerRef(p.ID, key), entity.Obj(projectPayload(key, p)))
 	}
 	return rn, nil
 }
 
 // projectPayload is one team's view of a project, which is the whole of it: every field here is
-// global, so two owners' slots hold the same bytes. See Owns for why that duplication is the
+// global, so two owners' nodes hold the same bytes. See Owns for why that duplication is the
 // shape rather than a defect.
 func projectPayload(key string, p project) map[string]any {
 	out := map[string]any{"team": key, "id": p.ID, "name": p.Name, "url": p.URL}
@@ -414,17 +441,5 @@ func issuePayload(key string, i issue) entity.Obj {
 	if i.Parent != nil && i.Parent.Identifier != "" {
 		p["parent"] = i.Parent.Identifier
 	}
-	return p
-}
-
-// withPredicate is a cover narrowed by a payload predicate.
-func withPredicate(p entity.Pattern, pred entity.Payload) entity.Pattern {
-	p.Predicate = pred
-	return p
-}
-
-// withSlot is a cover claiming only one path inside what it reaches.
-func withSlot(p entity.Pattern, slot []string) entity.Pattern {
-	p.Slot = slot
 	return p
 }

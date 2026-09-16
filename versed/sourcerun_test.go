@@ -502,14 +502,15 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	}
 }
 
-// A source that claims a SLOT is removed from its slot, and the entity — which other owners are
-// still writing — stays. This is the disjointness check honoured at the last moment rather than
-// undone by it: what a --forget deletes is what the install proved this source was the single
-// writer of, and that is now a place inside an entity rather than the entity.
-func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
+// A source that owns a place INSIDE a shared thing is removed from that place, and the thing —
+// which other owners are still writing — stays. This is the disjointness check honoured at the
+// last moment rather than undone by it: what a --forget deletes is what the install proved this
+// source was the single writer of, which here is a node under the project rather than the
+// project.
+func TestForgetTakesTheOwnedPlaceAndLeavesTheSharedNode(t *testing.T) {
 	srv := testServer(t)
 	e := source.Entity{Name: "eng", System: "linear", URL: "http://x:1",
-		Owns: []source.Own{{At: "linear.project.*", Path: []string{"owners", "ENG"}}}}
+		Owns: []source.Own{{At: "linear.project.*.owners.ENG"}}}
 	entitytest.Set(t, srv.Store, source.Ref("linear", "eng"), entity.Obj{
 		"name": "eng", "system": "linear", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -524,30 +525,27 @@ func TestForgetTakesTheSlotAndLeavesTheEntity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	slot := entity.RefAt("linear", "project", "p1", "owners", "ENG")
-	if len(got) != 1 || got[0].Ref != slot {
-		t.Fatalf("reflectedBy = %v, want the ENG slot of %v and not the node itself", got, shared)
+	place := entity.RefAt("linear", "project", "p1", "owners", "ENG")
+	if len(got) != 1 || got[0].Ref != place {
+		t.Fatalf("reflectedBy = %v, want ENG's place under %v and not the project itself", got, shared)
 	}
-	// The kinded-path spelling, because the address continues INTO what the entity holds:
-	// `linear.project.p1.owners.ENG` is one path, and the quoting is what says where each
-	// segment ends. See entity.Path.String.
 	if want := `linear.project.p1.owners.ENG`; got[0].String() != want {
 		t.Fatalf("the place is %s, want %s", got[0], want)
 	}
-	// And the removal writes there: the slot goes, the entity and the other owner stand.
+	// And the removal writes there: ENG's place goes, the project and the other owner stand.
 	if _, _, err := srv.Store.Write(entity.Write{At: got[0]}); err != nil {
 		t.Fatal(err)
 	}
 	p, ok, err := srv.Store.Get(shared)
 	if err != nil || !ok {
-		t.Fatalf("the shared entity went with the slot: ok=%v err=%v", ok, err)
+		t.Fatalf("the shared project went with ENG's place: ok=%v err=%v", ok, err)
 	}
 	owners := entity.Fields(entity.Get(p.Payload, "owners"))
 	if _, still := owners["ENG"]; still {
-		t.Fatalf("the ENG slot survived a --forget: %v", owners)
+		t.Fatalf("ENG's place survived a --forget: %v", owners)
 	}
 	if _, other := owners["OPS"]; !other {
-		t.Fatalf("a --forget on ENG took the OPS slot with it: %v", owners)
+		t.Fatalf("a --forget on ENG took OPS's place with it: %v", owners)
 	}
 }
 

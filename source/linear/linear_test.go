@@ -57,12 +57,12 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 	}
 	got := payloads(rn)
 
-	if team := got["linear.team.ENG"]; team == nil || team["name"] != "Engineering" {
-		t.Fatalf("linear.team.ENG = %+v", team)
+	if team := got["linear.ENG.team"]; team == nil || team["name"] != "Engineering" {
+		t.Fatalf("linear.ENG.team = %+v", team)
 	}
-	one := got["linear.issue.ENG-1"]
+	one := got["linear.ENG.issue.ENG-1"]
 	if one == nil || one["title"] != "ship the source" || one["team"] != "ENG" {
-		t.Fatalf("linear.issue.ENG-1 = %+v", one)
+		t.Fatalf("linear.ENG.issue.ENG-1 = %+v", one)
 	}
 	// stateType is the one to write a rule against: a workspace renames "In Progress", the
 	// type behind it is Linear's own vocabulary and does not move.
@@ -77,33 +77,46 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 		t.Fatalf("labels = %v, want them sorted so a re-read is not a change", labels)
 	}
 	// The project's NAME stays a field on the issue — it is what a rule about an issue reads,
-	// and it costs no join. The project itself is an entity too now, but by SLOT: see
+	// and it costs no join. The project itself stands too, as one node per owner: see
 	// TestTwoTeamsShareAProjectWithoutTombstoningEachOther.
 	if one["project"] != "Sources" {
 		t.Fatalf("project = %v", one["project"])
 	}
-	if c := got["linear.cycle.ENG/4"]; c == nil || c["endsAt"] != "2026-01-14T00:00:00Z" {
-		t.Fatalf("linear.cycle.ENG/4 = %+v", c)
+	// A CYCLE IS KEYED BY ITS NUMBER, because its team is the level above it rather than
+	// something to pack into an id. The quotes are the address grammar's, not this source's: a
+	// bare `4` in a path is an index, so a name that is a number is written as one.
+	if c := got[`linear.ENG.cycle."4"`]; c == nil || c["endsAt"] != "2026-01-14T00:00:00Z" {
+		t.Fatalf(`linear.ENG.cycle."4" = %+v`, c)
 	}
 
+	// EVERY COVER IS A PLACE, and the team is a level of it rather than a payload field a
+	// predicate narrows a whole kind back to.
 	kinds := map[string]bool{}
+	reach := map[string]entity.Ref{
+		"team":    entity.RefAt("linear", "ENG", "team"),
+		"issue":   entity.RefAt("linear", "ENG", "issue", "ENG-9"),
+		"cycle":   entity.RefAt("linear", "ENG", "cycle", "9"),
+		"project": entity.RefAt("linear", "project", "p9", "owners", "ENG"),
+	}
 	for _, c := range rn.Covers {
-		for _, kind := range []string{"team", "issue", "cycle", "project"} {
-			if c.MatchRef(entity.RefAt("linear", kind, "x")) {
+		for kind, ref := range reach {
+			if c.MatchRef(ref) {
 				kinds[kind] = true
 			}
 		}
-		if c.MatchRef(entity.RefAt("linear", "project", "x")) {
-			// Scoped by its SLOT rather than by a predicate, and the two say the same thing: this
-			// pass is complete for this team's place in every project. A predicate would be the
-			// wrong tool — there is no field on a shared project that names one owner.
-			if len(c.Slot) != 2 || c.Slot[0] != "owners" || c.Slot[1] != "ENG" {
-				t.Fatalf("the project cover is not slotted to the team: %v", c.Slot)
-			}
-			continue
+		if c.Predicate != nil {
+			t.Fatalf("a cover narrowed by a payload rather than by its address: %+v",
+				entity.ToObj(c.Predicate))
 		}
-		if entity.Str(c.Predicate, "team") != "ENG" {
-			t.Fatalf("a cover not scoped to the team: %+v", entity.ToObj(c.Predicate))
+		// NOT ANOTHER TEAM'S, at either address: its own place, or its own place inside a
+		// project. A cover reaching one of those would tombstone what the other source wrote.
+		for _, theirs := range []entity.Ref{
+			entity.RefAt("linear", "OPS", "issue", "OPS-1"),
+			entity.RefAt("linear", "project", "p9", "owners", "OPS"),
+		} {
+			if c.MatchRef(theirs) {
+				t.Fatalf("a cover reaches %s, which is another team's", theirs)
+			}
 		}
 	}
 	for _, want := range []string{"team", "issue", "cycle", "project"} {
@@ -130,7 +143,7 @@ func TestLinearPagesATeamToExhaustion(t *testing.T) {
 	}
 	got := payloads(rn)
 	for _, id := range []string{"ENG-1", "ENG-2", "ENG-3", "ENG-4", "ENG-5"} {
-		if got["linear.issue."+id] == nil {
+		if got["linear.ENG.issue."+id] == nil {
 			t.Fatalf("%s did not survive paging: %d entities", id, len(rn.Entities))
 		}
 	}
@@ -189,14 +202,14 @@ func TestLinearTargetsTheTeamARefBelongsTo(t *testing.T) {
 	src := newSource(t, f, linear.Config{Teams: []string{"ENG"}})
 	for _, ref := range []entity.Ref{
 		linear.TeamRef("ENG"),
-		entity.RefAt("linear", "issue", "ENG-1"),
-		entity.RefAt("linear", "cycle", "ENG/4"),
+		entity.RefAt("linear", "ENG", "issue", "ENG-1"),
+		entity.RefAt("linear", "ENG", "cycle", "4"),
 	} {
 		rn, err := src.Reflect(context.Background(), ref)
 		if err != nil {
 			t.Fatalf("%s: %v", ref, err)
 		}
-		if got := payloads(rn); got["linear.team.ENG"] == nil {
+		if got := payloads(rn); got["linear.ENG.team"] == nil {
 			t.Fatalf("%s did not narrow to ENG", ref)
 		}
 	}
@@ -211,11 +224,11 @@ func TestLinearTargetsTheTeamARefBelongsTo(t *testing.T) {
 	}
 }
 
-// Four claims per team: three addresses, and one place inside an address. The issue claim
-// leans on the hyphen — `ENG-*` must not claim `ENGINE-1`, or two perfectly disjoint teams
-// would refuse to install alongside each other — and the project claim leans on the path, which
-// is what lets two teams share an entity neither of them owns the whole of.
-func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
+// TWO PLACES PER TEAM: the team's own, which everything it owns alone stands under, and its
+// place inside every project, which is what lets two teams share a node neither owns the whole
+// of. No glob inside a segment anywhere — `linear.ENG` and `linear.ENGINE` are two places, and
+// telling them apart is a comparison of names rather than of string prefixes.
+func TestLinearOwnershipIsTwoPlacesPerTeam(t *testing.T) {
 	f := newFake()
 	f.team("ENG", "Engineering")
 	f.team("ENGINE", "Engine")
@@ -223,34 +236,38 @@ func TestLinearOwnershipIsFourClaimsPerTeam(t *testing.T) {
 	other := newSource(t, f, linear.Config{Teams: []string{"ENGINE"}})
 
 	owns := source.Describe(src).Owns
-	want := []source.Own{
-		{At: "linear.team.ENG"}, {At: "linear.issue.ENG-*"}, {At: "linear.cycle.ENG/*"},
-		{At: "linear.project.*", Path: []string{"owners", "ENG"}},
-	}
+	want := []source.Own{{At: "linear.ENG"}, {At: "linear.project.*.owners.ENG"}}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)
 	}
 	for i, w := range want {
-		if owns[i].String() != w.String() {
-			t.Fatalf("owns[%d] = %v, want %v", i, owns[i], w)
+		if owns[i].At != w.At {
+			t.Fatalf("owns[%d] = %v, want %v", i, owns[i].At, w.At)
 		}
 	}
 	ok, err := source.Disjoint(owns, source.Describe(other).Owns)
 	if err != nil || !ok {
-		t.Fatalf("ENG and ENGINE were not provably disjoint (%v, %v) — the hyphen in the "+
-			"issue claim is what separates them", ok, err)
+		t.Fatalf("ENG and ENGINE were not provably disjoint (%v, %v)", ok, err)
 	}
+	// Everything this source writes is claimed — one claim covering a whole subtree, however
+	// deep it goes, which is the bound on what a `--forget` removal may tombstone.
 	for _, ref := range []entity.Ref{
-		entity.RefAt("linear", "team", "ENG"),
-		entity.RefAt("linear", "issue", "ENG-1"),
-		entity.RefAt("linear", "cycle", "ENG/4"),
+		entity.RefAt("linear", "ENG", "team"),
+		entity.RefAt("linear", "ENG", "issue", "ENG-1"),
+		entity.RefAt("linear", "ENG", "cycle", "4"),
+		entity.RefAt("linear", "project", "p1", "owners", "ENG"),
 	} {
 		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)
 		}
 	}
-	if claims(t, owns, entity.RefAt("linear", "issue", "ENGINE-1")) {
-		t.Fatal("ENG claims ENGINE-1")
+	for _, theirs := range []entity.Ref{
+		entity.RefAt("linear", "ENGINE", "issue", "ENGINE-1"),
+		entity.RefAt("linear", "project", "p1", "owners", "ENGINE"),
+	} {
+		if claims(t, owns, theirs) {
+			t.Fatalf("ENG claims %s", theirs)
+		}
 	}
 }
 
@@ -272,7 +289,7 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 		t.Fatal(err)
 	}
 	get := func(id string) (entity.Obj, bool) {
-		e, ok, _ := store.Get(entity.RefAt(linear.System, "issue", id))
+		e, ok, _ := store.Get(entity.RefAt(linear.System, "ENG", "issue", id))
 		return entity.ToObj(e.Payload), ok
 	}
 	if _, ok := get("ENG-1"); !ok {
@@ -314,10 +331,10 @@ func claims(t *testing.T, owns []source.Own, ref entity.Ref) bool {
 
 // THE CASE THAT PRODUCED THE FINDING, end to end.
 //
-// A Linear project belongs to several teams at once, so it has no positional owner: this source
-// used to reflect none at all, because two sources over two teams would each tombstone what the
-// other wrote. Now each is the single writer of one PLACE inside the entity — `owners.ENG`,
-// `owners.OPS` — proved apart at install and kept apart by converge.
+// A Linear project belongs to several teams at once, so it has no positional owner: two sources
+// over two teams would each tombstone what the other wrote if either owned the project itself.
+// Each is instead the single writer of one node INSIDE it — `linear.project.<id>.owners.ENG`,
+// `…owners.OPS` — proved apart at install and kept apart by converge.
 //
 // Two sources, two teams, one shared project and one that is not shared. It is the whole of the
 // design in one test, which is why it is the one to break first when something moves.
@@ -364,14 +381,14 @@ func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
 	// Both owners stand, and each holds the project as its own team saw it.
 	both := owners(shared)
 	if len(both) != 2 || both["ENG"] == nil || both["OPS"] == nil {
-		t.Fatalf("one team tombstoned the other's slot: %v", both)
+		t.Fatalf("one team tombstoned the other's node: %v", both)
 	}
 	if got := entity.Str(both["OPS"], "name"); got != "Migration" {
-		t.Fatalf("OPS's slot = %q", got)
+		t.Fatalf("OPS's node = %q", got)
 	}
-	// And the entity has no top: every field Linear has about a project is global, so it lives
-	// in each owner's slot and a reader picks an owner. This is asserted rather than merely
-	// documented, because it is the shape a charter has to be written against.
+	// And the project has no top: every field Linear has about one is global, so it lives under
+	// each owner and a reader picks an owner. This is asserted rather than merely documented,
+	// because it is the shape a charter has to be written against.
 	e, _, _ := store.Get(shared)
 	if entity.Get(e.Payload, "name") != nil {
 		t.Fatalf("a project grew a top-level field nobody owns: %v", entity.ToObj(e.Payload))
@@ -394,18 +411,19 @@ func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
 		}
 	}
 
-	// OPS stops owning the shared project. Its slot goes; ENG's stands, and so does the entity.
+	// OPS stops owning the shared project. Its node goes; ENG's stands, and so does the project.
 	f.projects["OPS"] = nil
 	pass(ops)
 	left := owners(shared)
 	if _, still := left["OPS"]; still {
-		t.Fatalf("OPS left the project and kept its slot: %v", left)
+		t.Fatalf("OPS left the project and kept its node: %v", left)
 	}
 	if left["ENG"] == nil {
-		t.Fatalf("OPS leaving took ENG's slot with it: %v", left)
+		t.Fatalf("OPS leaving took ENG's node with it: %v", left)
 	}
 
-	// And when the last owner goes, so does the entity — nobody is left to hold it up.
+	// And when the last owner goes, so does the project: the removal empties `owners`, which
+	// empties the project, and each step up is conditional on nothing else standing there.
 	f.projects["ENG"] = nil
 	pass(eng)
 	if _, ok, _ := store.Get(shared); ok {
@@ -416,10 +434,10 @@ func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
 	}
 }
 
-// One source, two teams, one project they share. The same entity is answered with two slots in
-// one payload and two covers, which is the case a per-source claim cannot express and a
-// per-place one can.
-func TestOneSourceOverTwoTeamsWritesBothSlots(t *testing.T) {
+// One source, two teams, one project they share. The same project is answered with two nodes
+// under it and two covers, which is the case a per-source claim cannot express and a per-place
+// one can.
+func TestOneSourceOverTwoTeamsWritesBothOwners(t *testing.T) {
 	f := newFake()
 	f.team("ENG", "Engineering")
 	f.team("OPS", "Operations")

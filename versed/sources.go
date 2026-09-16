@@ -245,17 +245,18 @@ func overlaps(r entity.Reader, e source.Entity) string {
 
 // refusal is the one message this check has, and it carries BOTH claims: verse could not prove
 // them apart, so the operator is the one who can tell whether they really are.
-// It also names the way out that is not a flag, and that is new: two sources that write
-// different PLACES in the same entities are provably disjoint if they say so — `at:` on a claim
-// — and converge then keeps them apart for real. `--allow-overlap` is what is left for two
-// sources that genuinely write the same place, where the safety comes from nothing at all.
+//
+// It also names the way out that is not a flag: two sources that write different PLACES in the
+// same thing are provably disjoint if they say WHERE, one level further down, and converge then
+// keeps them apart for real. `--allow-overlap` is what is left for two sources that genuinely
+// write the same place, where the safety comes from nothing at all.
 func refusal(e, other source.Entity) string {
 	return fmt.Sprintf("refused: %s and the installed %s cannot be proved to write different "+
 		"slices, and two sources on one slice each tombstone what the other reflected.\n"+
 		"    this one owns: %s\n    %s owns: %s\n"+
-		"if they write different PLACES in the same entities, say so — a claim may name a path "+
-		"inside the payload ({ref: \"...\", at: [owners, ENG]}), and two of those are proved "+
-		"apart\n"+
+		"if they write different PLACES in the same things, claim the deeper address — "+
+		"`linear.project.*.owners.ENG` and `…owners.OPS` are two places, and two places are "+
+		"proved apart\n"+
 		"--allow-overlap installs it anyway, with the cost above",
 		source.Ref(e.System, e.Name), source.Ref(other.System, other.Name),
 		claims(e.Owns), source.Ref(other.System, other.Name), claims(other.Owns))
@@ -453,13 +454,9 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 // claimed nothing reflected nothing, as far as a removal is concerned — under-claiming there
 // leaves entities standing, which is the direction to be wrong in.
 //
-// A PLACE rather than a ref, because a claim may be to a slot inside a shared entity. Deleting
-// the entity there would take the other owners' slots with it, so what is removed is what was
-// claimed.
-//
 // A LITERAL CLAIM IS ITS OWN PLACE. `git.verse` claims everything under that node, at whatever
 // depths the source writes there, so the removal is the node — one place standing, however many
-// refs and commits it holds. Only a claim with a glob or a path is asked about entity by entity.
+// refs and commits it holds. Only a claim with a glob in it is asked about entity by entity.
 //
 // The claims are parsed ONCE, and a claim that does not parse fails the whole answer rather
 // than being skipped. This is the caller that deletes: a skipped claim there is either an
@@ -473,41 +470,39 @@ func reflectedBy(r entity.Reader, e source.Entity) ([]entity.Path, error) {
 		return nil, err
 	}
 	var out []entity.Path
-	var patterned []source.Claim
+	seen := map[string]bool{}
+	add := func(p entity.Path) {
+		if key := p.String(); !seen[key] {
+			seen[key] = true
+			out = append(out, p)
+		}
+	}
 	for _, c := range claims {
-		if node, ok := c.Node(); ok && len(c.Field) == 0 && len(node.Segs()) == len(c.Segs) {
+		if node, ok := c.Node(); ok && len(node.Segs()) == len(c.Segs) {
 			segs := node.Segs()
 			if len(r.ListAt(segs, len(segs), nil)) > 0 {
-				out = append(out, node.At())
+				add(node.At())
 			}
 			continue
 		}
-		patterned = append(patterned, c)
-	}
-	if len(patterned) == 0 {
-		sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
-		return out, nil
-	}
-	claims = patterned
-	systems := map[string]bool{}
-	wildcard := false
-	for _, c := range claims {
-		// The first LEVEL, when it is an exact name. A `*` or a glob there names no one system,
-		// so the read cannot be narrowed and every claim has to be asked about every entity.
-		head, exact := c.Head()
-		if !exact {
-			wildcard = true
-			continue
+		// A CLAIM WITH A GLOB IS READ WHERE IT POINTS: its literal levels are the prefix, its
+		// length is the depth, and what stands there is asked one ref at a time. So a claim over
+		// a place inside a shared node — `linear.project.*.owners.ENG`, five levels down — is
+		// answered by a read of `linear.project` and not by an enumeration of the world.
+		//
+		// `!Reserved()` says at the read what `source.Claimed` also refuses at the point: verse's
+		// own half is not a slice a source can own, so a removal cannot tombstone it.
+		var at []string
+		if node, ok := c.Node(); ok {
+			at = node.Segs()
 		}
-		systems[head] = true
-	}
-	// `!Reserved()` says at the enumeration what `source.Claimed` also refuses at the point:
-	// verse's own half is not a slice a source can own, so a removal cannot tombstone it.
-	for _, ent := range r.List(func(ref entity.Ref) bool {
-		segs := ref.Segs()
-		return !ref.Reserved() && len(segs) > 0 && (wildcard || systems[segs[0]])
-	}) {
-		out = append(out, source.Claimed(claims, ent.Ref)...)
+		for _, ent := range r.ListAt(at, len(c.Segs), func(ref entity.Ref) bool {
+			return !ref.Reserved()
+		}) {
+			for _, p := range source.Claimed([]source.Claim{c}, ent.Ref) {
+				add(p)
+			}
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out, nil

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
@@ -256,9 +255,6 @@ func TestReflectionCheckRefusals(t *testing.T) {
 		{"entity at the source's whole place", source.Reflection{
 			Entities: []entity.Entity{{Ref: entity.RefAt("x")}},
 		}},
-		{"cover with an empty slot segment", source.Reflection{
-			Covers: []entity.Pattern{withSlot(source.Cover("x", "a", "*"), "owners", "")},
-		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.rn.Check("x"); err == nil {
@@ -271,77 +267,12 @@ func TestReflectionCheckRefusals(t *testing.T) {
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
 	}
-	// And a slot cover is well-formed: converge honours it.
-	slotted := source.Reflection{Covers: []entity.Pattern{
-		withSlot(source.Cover("x", "a", "*"), "owners", "ENG")}}
-	if err := slotted.Check("x"); err != nil {
-		t.Fatalf("a slot cover should be accepted: %v", err)
-	}
-}
-
-// A source whose covers say both "complete for this entity" and "complete for one slot of it"
-// has contradicted itself, and BOTH readings destroy something: taking the whole spells nulls
-// over the other owners, taking the slot leaves what the source meant to tombstone standing
-// forever. So the pass fails, and nothing is written.
-func TestCoveringAnEntityWholeAndBySlotIsRefused(t *testing.T) {
-	store := entitytest.Store(t)
-	shared := entity.RefAt("x", "project", "p1")
-	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{}}}.Payload())
-
-	rn := source.Reflection{Covers: []entity.Pattern{
-		source.Cover("x", "project", "*"),
-		withSlot(source.Cover("x", "project", "*"), "owners", "ENG"),
-	}}
-	rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": map[string]any{"n": 1}}})
-
-	rf := source.NewReflector(&fakeSource{system: "x", answer: func() source.Reflection { return rn }}, store, 0)
-	err := rf.Reconcile(context.Background(), entity.Ref{})
-	if err == nil {
-		t.Fatal("a contradiction between covers should fail the pass")
-	}
-	for _, want := range []string{"whole", "slot"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal does not say %q: %v", want, err)
-		}
-	}
-	// Nothing written: the entity still holds exactly what it did.
-	got, ok, _ := store.Get(shared)
-	if !ok || len(entity.Fields(entity.Get(got.Payload, "owners"))) != 1 {
-		t.Fatalf("a refused pass wrote something: %v", got.Payload)
-	}
-}
-
-// A slot survives the wire, which is what makes the refusal above a fact about converge rather
-// than about the codec. It is one optional field on a cover — no cover written before it
-// changes shape, and none of the three connectors sends one.
-func TestASlotRidesTheCoverWire(t *testing.T) {
-	in := withSlot(source.Cover("x", "a", "*"), "owners", "ENG")
-	n, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{in}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := codec.NodeBytes(n, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "slot") {
-		t.Fatalf("a slot did not reach the wire: %s", b)
-	}
-	var back source.Reflection
-	if err := codec.FromNode(n, &back); err != nil {
-		t.Fatal(err)
-	}
-	if len(back.Covers) != 1 || !slices.Equal(back.Covers[0].Slot, in.Slot) {
-		t.Fatalf("the slot did not come back: %+v", back.Covers)
-	}
-	// And a cover without one is unchanged, which is the whole claim to being additive.
-	plain, err := codec.ToNode(source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pb, _ := codec.NodeBytes(plain, codec.Tony)
-	if strings.Contains(string(pb), "slot") {
-		t.Fatalf("a slot-less cover grew a slot: %s", pb)
+	// And a cover DEEPER than the entities beside it is well-formed: a source owning one place
+	// inside a shared node covers that place, at whatever depth it is.
+	deep := source.Reflection{Covers: []entity.Pattern{
+		source.Cover("x", "project", "*", "owners", "ENG")}}
+	if err := deep.Check("x"); err != nil {
+		t.Fatalf("a cover over a place inside a shared node was refused: %v", err)
 	}
 }
 
@@ -408,28 +339,29 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	}
 }
 
-// TWO SOURCES, ONE ENTITY, AND A PASS COUNT THAT STOPS GROWING. This is the failure the whole
-// slot design exists not to have, and it is asserted as a count rather than as an equality
-// because the damage is unbounded rather than wrong-once: with a whole-payload replace each
-// source spells a null over the other's slot, the other restores it, and every pass after that
-// commits — forever, at the resync interval, with no error anywhere and both sources reporting
-// success. Nothing in verse would catch it; the install-time disjointness proof is the only
-// protection there is, and this is what makes that proof mean something.
+// TWO SOURCES, ONE SHARED THING, AND A PASS COUNT THAT STOPS GROWING. This is the failure the
+// deeper address exists not to have, and it is asserted as a count rather than as an equality
+// because the damage is unbounded rather than wrong-once: were both sources writing the project
+// itself, each would spell a null over the other's half, the other would restore it, and every
+// pass after that would commit — forever, at the resync interval, with no error anywhere and
+// both sources reporting success. Nothing in verse would catch it; the install-time
+// disjointness proof is the only protection there is, and this is what makes that proof mean
+// something.
 //
 // Wrote counts writes ISSUED, not commits produced, so asserting zero is stronger than counting
 // commits: it says converge did not even ask.
-func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
+func TestTwoSourcesShareAThingWithoutRewritingEachOther(t *testing.T) {
 	store := entitytest.Store(t)
 	shared := entity.RefAt("x", "project", "p1")
 
-	// Each source answers with a whole-entity-shaped payload carrying only its own slot, and a
-	// cover that says which slot that is. Neither has heard of the other.
+	// Each source answers with the node it owns INSIDE the project, and a cover over that node
+	// at every project. Neither has heard of the other, and neither names the project itself.
 	owner := func(team, name string) *source.Reflector {
 		src := &fakeSource{system: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
-				withSlot(source.Cover("x", "project", "*"), "owners", team),
+				source.Cover("x", "project", "*", "owners", team),
 			}}
-			rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"name": name}}})
+			rn.Add(shared.At("owners", team).Ref, entity.Obj{"name": name})
 			return rn
 		}}
 		return source.NewReflector(src, store, 0)
@@ -456,7 +388,7 @@ func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
 	if got := wrote(ops); got != 1 {
 		t.Fatalf("OPS's first pass wrote %d, want 1", got)
 	}
-	// Both slots stand, and neither source deleted the other's.
+	// Both owners stand, and neither source deleted the other's.
 	owners := entity.Fields(entity.Get(mustGet(t, store, shared), "owners"))
 	if len(owners) != 2 || owners["ENG"] == nil || owners["OPS"] == nil {
 		t.Fatalf("one source overwrote the other: %v", owners)
@@ -464,31 +396,31 @@ func TestTwoSourcesShareAnEntityWithoutRewritingEachOther(t *testing.T) {
 	// And now the part that would run forever: four alternating passes, nothing to do in any.
 	for i := 0; i < 2; i++ {
 		if got := wrote(eng); got != 0 {
-			t.Fatalf("ENG rewrote %d after OPS's pass — the comparison is not at the slot", got)
+			t.Fatalf("ENG rewrote %d after OPS's pass — it is reading more than its own node", got)
 		}
 		if got := wrote(ops); got != 0 {
-			t.Fatalf("OPS rewrote %d after ENG's pass — the comparison is not at the slot", got)
+			t.Fatalf("OPS rewrote %d after ENG's pass — it is reading more than its own node", got)
 		}
 	}
 }
 
-// The last owner out takes the entity, and nobody else may. The delete is the one contended
-// write in the design — every other one is at a path a single source owns — so it is
-// conditional, and the condition has to tolerate the tombstone logd leaves where a departed
-// sibling's key was.
-func TestTheLastOwnerOutTakesTheEntity(t *testing.T) {
+// The last owner out takes the shared node with it, and nobody else may. Removing an owner
+// empties `owners`, which empties the project, and each step up is a CONDITIONAL delete — the
+// one contended write in the design, since every other is at a node a single source owns. The
+// condition has to tolerate the tombstone logd leaves where a departed sibling's key was.
+func TestTheLastOwnerOutTakesTheSharedNode(t *testing.T) {
 	store := entitytest.Store(t)
 	shared := entity.RefAt("x", "project", "p1")
 
-	// A source that reflects its slot only while `has` says so; when it stops, its cover still
-	// claims the slot, which is what makes the absence a tombstone rather than a silence.
+	// A source that reflects its own node only while `has` says so; when it stops, its cover
+	// still claims that node, which is what makes the absence a tombstone rather than a silence.
 	owner := func(team string, has *bool) *source.Reflector {
 		src := &fakeSource{system: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
-				withSlot(source.Cover("x", "project", "*"), "owners", team),
+				source.Cover("x", "project", "*", "owners", team),
 			}}
 			if *has {
-				rn.Add(shared, entity.Obj{"owners": map[string]any{team: map[string]any{"n": 1}}})
+				rn.Add(shared.At("owners", team).Ref, entity.Obj{"n": 1})
 			}
 			return rn
 		}}
@@ -504,22 +436,22 @@ func TestTheLastOwnerOutTakesTheEntity(t *testing.T) {
 	pass(eng)
 	pass(ops)
 
-	// ENG leaves. Its slot goes; the entity stays, because OPS is still in it.
+	// ENG leaves. Its node goes; the project stays, because OPS is still in it.
 	engHas = false
 	pass(eng)
 	owners := entity.Fields(entity.Get(mustGet(t, store, shared), "owners"))
 	if owners["ENG"] != nil {
-		t.Fatalf("ENG's slot survived its own tombstone: %v", owners)
+		t.Fatalf("ENG's node survived its own tombstone: %v", owners)
 	}
 	if owners["OPS"] == nil {
 		t.Fatalf("ENG's departure took OPS with it: %v", owners)
 	}
 
-	// OPS leaves too, and now there is nobody left to hold the entity up.
+	// OPS leaves too, and now there is nobody left to hold the project up.
 	opsHas = false
 	pass(ops)
 	if _, ok, err := store.Get(shared); err != nil || ok {
-		t.Fatalf("the last owner left and the entity stands: ok=%v err=%v", ok, err)
+		t.Fatalf("the last owner left and the project stands: ok=%v err=%v", ok, err)
 	}
 }
 
@@ -532,16 +464,17 @@ func mustGet(t *testing.T, s entity.Store, r entity.Ref) entity.Payload {
 	return e.Payload
 }
 
-// A slot is REPLACED, not merged: a field the source stops reporting inside its own slot goes
-// away, and a sibling slot is not touched to do it.
+// AN OWNER'S NODE IS REPLACED, not merged: a field the source stops reporting goes away, and
+// the node beside it is not touched to do it.
 //
 // This is the half of the whole-payload write that actually hurts, and it is not the half it
-// looks like. A replace at the entity root spells its nulls at the TOP level only (withRemovals),
-// and the top level of a shared entity is the container both owners write under — so a root
-// write merges deeply and leaves the other owner's slot standing. What it does NOT do is remove
-// anything inside the writer's own slot, so a field that has gone away stands forever, the
-// entity differs from the answer on every pass, and every trigger over it fires each time.
-func TestASlotIsReplacedNotMerged(t *testing.T) {
+// looks like. A replace spells its nulls at the TOP level of what it writes (withRemovals), so
+// a write aimed at the project — the node both owners stand under — would merge deeply and
+// leave the other owner standing, while never removing anything inside the writer's own. A
+// field that had gone away would stand forever, the answer would differ on every pass, and
+// every trigger over it would fire each time. Aimed at the owner's own node, the nulls land
+// where its fields are.
+func TestAnOwnersNodeIsReplacedNotMerged(t *testing.T) {
 	store := entitytest.Store(t)
 	shared := entity.RefAt("x", "project", "p1")
 	entitytest.Set(t, store, shared, entity.Obj{"owners": map[string]any{
@@ -551,9 +484,9 @@ func TestASlotIsReplacedNotMerged(t *testing.T) {
 	fields := map[string]any{"name": "Migration", "lead": "ana"}
 	src := &fakeSource{system: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
-			withSlot(source.Cover("x", "project", "*"), "owners", "ENG"),
+			source.Cover("x", "project", "*", "owners", "ENG"),
 		}}
-		rn.Add(shared, entity.Obj{"owners": map[string]any{"ENG": fields}})
+		rn.Add(shared.At("owners", "ENG").Ref, entity.Obj(fields))
 		return rn
 	}}
 	rf := source.NewReflector(src, store, 0)
@@ -568,23 +501,23 @@ func TestASlotIsReplacedNotMerged(t *testing.T) {
 	}
 	eng := entity.Fields(entity.Get(entity.Get(mustGet(t, store, shared), "owners"), "ENG"))
 	if _, still := eng["lead"]; still {
-		t.Fatalf("a field the source stopped reporting stands inside its slot: %v", eng)
+		t.Fatalf("a field the source stopped reporting stands in its node: %v", eng)
 	}
 	if eng["name"] == nil {
 		t.Fatalf("the replace took what the source is still reporting: %v", eng)
 	}
 	ops := entity.Fields(entity.Get(entity.Get(mustGet(t, store, shared), "owners"), "OPS"))
 	if ops["name"] == nil {
-		t.Fatalf("replacing ENG's slot reached into OPS's: %v", ops)
+		t.Fatalf("replacing ENG's node reached into OPS's: %v", ops)
 	}
-	// And the pass that changes nothing writes nothing — the same entity, compared at the slot.
+	// And the pass that changes nothing writes nothing — the same node, compared where it is.
 	n := -1
 	rf.OnPass(func(p source.Pass) { n = p.Wrote })
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("a settled slot wrote %d", n)
+		t.Fatalf("a settled owner wrote %d", n)
 	}
 }
 
@@ -687,12 +620,6 @@ func TestAPathCoverNamesItsSystem(t *testing.T) {
 	if err := (source.Reflection{Covers: []entity.Pattern{source.Cover("x", "A", "ref", "*")}}).Check("x"); err != nil {
 		t.Fatalf("a cover at this source's own place was refused: %v", err)
 	}
-}
-
-// withSlot is a cover claiming only the value at this path inside what it reaches.
-func withSlot(p entity.Pattern, slot ...string) entity.Pattern {
-	p.Slot = slot
-	return p
 }
 
 // withPredicate is a cover narrowed by a payload predicate.

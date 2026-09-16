@@ -294,15 +294,6 @@ func (s *Pattern) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["at"] = ir.FromSlice(slice)
 	}
 
-	// Field: Slot
-	if len(s.Slot) > 0 {
-		slice := make([]*ir.Node, len(s.Slot))
-		for i, v := range s.Slot {
-			slice[i] = ir.FromString(string(v))
-		}
-		irMap["slot"] = ir.FromSlice(slice)
-	}
-
 	return ir.FromMap(irMap), nil
 }
 
@@ -380,23 +371,6 @@ func (s *Pattern) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.At = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"at\"", fieldNodeUnwrapped.Type)
-			}
-		case "slot":
-			// Field: Slot
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					elem = v.String
-					slice[i] = string(elem)
-				}
-				s.Slot = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"slot\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {

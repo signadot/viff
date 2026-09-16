@@ -35,7 +35,6 @@ define:
   at: .[array(string)]
   op: .[string]
   path: .[array(tony-base:ir)]
-  slot: .[array(string)]
   value: .[tony-base:ir]
 signature:
   name: verse-pattern

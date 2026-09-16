@@ -75,55 +75,53 @@ func TestClaimDisjoint(t *testing.T) {
 	}
 }
 
-// A claim addresses a PLACE, so two sources may share an entity by owning two slots of it —
-// which is two single writers rather than two writers. The table is the one in
-// docs/working/shared-ownership.md.
-func TestASlotIsAClaimAtADeeperAddress(t *testing.T) {
-	// `linear.project.*` — every project — at the given path. Prefix with an empty ID is `*`.
-	project := func(field ...string) source.Claim {
-		return mustClaim(t, "linear.project.*", field...)
-	}
+// Two sources may share a THING by owning two nodes inside it, which is two single writers
+// rather than two writers of anything. The table is the one in
+// docs/working/shared-ownership.md — and every row of it is the same comparison the table above
+// makes, because a place inside a shared node is an address like any other.
+func TestSharingIsSingleWritershipAtADeeperAddress(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		a, b source.Claim
+		a, b string
 		want bool
 	}{
-		{"two teams' slots", project("owners", "ENG"), project("owners", "OPS"), true},
+		{"two teams' places", "linear.project.*.owners.ENG", "linear.project.*.owners.OPS", true},
 		// Segment-wise, not string-wise. A string prefix test would say the first contains the
 		// second and refuse two sources that share nothing.
-		{"a slot whose name prefixes another's", project("owners", "ENG"), project("owners", "ENGINE"), true},
-		{"the container holds the slot", project("owners"), project("owners", "ENG"), false},
-		{"the whole entity holds every slot", project(), project("owners", "ENG"), false},
-		{"the same slot twice", project("owners", "ENG"), project("owners", "ENG"), false},
-		{"a slot under a deeper one", project("owners", "ENG"), project("owners", "ENG", "seen"), false},
-		// The path is the LAST thing asked, so a difference higher up still decides it: two
-		// kinds that differ are disjoint whatever their paths would have said.
-		{"a different kind, same path", project("owners", "ENG"),
-			mustClaim(t, "linear.cycle.*", "owners", "ENG"), true},
+		{"a place whose name prefixes another's",
+			"linear.project.*.owners.ENG", "linear.project.*.owners.ENGINE", true},
+		{"the level above holds the place", "linear.project.*.owners", "linear.project.*.owners.ENG", false},
+		{"the whole project holds every place", "linear.project.*", "linear.project.*.owners.ENG", false},
+		{"the same place twice", "linear.project.*.owners.ENG", "linear.project.*.owners.ENG", false},
+		{"a place under a deeper one",
+			"linear.project.*.owners.ENG", "linear.project.*.owners.ENG.seen", false},
+		// A difference HIGHER UP still decides it, whatever the tails say.
+		{"a different kind, the same tail",
+			"linear.project.*.owners.ENG", "linear.cycle.*.owners.ENG", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.a.Disjoint(tc.b); got != tc.want {
-				t.Fatalf("%s disjoint %s = %v, want %v", tc.a, tc.b, got, tc.want)
+			a, b := mustClaim(t, tc.a), mustClaim(t, tc.b)
+			if got := a.Disjoint(b); got != tc.want {
+				t.Fatalf("%s disjoint %s = %v, want %v", a, b, got, tc.want)
 			}
 			// Symmetric, for the reason the ref-level table is: an install checks one way and
 			// means both, so an asymmetric answer makes a refusal depend on installation order.
-			if got := tc.b.Disjoint(tc.a); got != tc.want {
-				t.Fatalf("%s disjoint %s = %v, want %v (asymmetric)", tc.b, tc.a, got, tc.want)
+			if got := b.Disjoint(a); got != tc.want {
+				t.Fatalf("%s disjoint %s = %v, want %v (asymmetric)", b, a, got, tc.want)
 			}
 		})
 	}
 }
 
-// The negative that matters most: nothing in the tree has a path, so nothing in the tree
-// compares differently than it did. Every claim the three connectors emit parses to an empty
-// Field, and an empty Field is what the whole existing table above is about.
-func TestTheTerseSpellingIsPathLess(t *testing.T) {
+// EVERY CLAIM IS THE SAME KIND OF THING, at every depth: the ones the connectors ship parse
+// and render back unchanged, which is what lets a refusal quote the operator's own words.
+func TestEveryDeclaredClaimRoundTrips(t *testing.T) {
 	g := source.NewGit()
 	g.AddRepo("verse", t.TempDir())
 	declared := g.Owns() // git's own, built by the code that ships
 	declared = append(declared, owns(
-		"slack.*.acme/*",                                              // slack.Owns
-		"linear.team.ENG", "linear.issue.ENG-*", "linear.cycle.ENG/*", // linear.Owns
+		"slack.Acme",                                // slack.Owns
+		"linear.ENG", "linear.project.*.owners.ENG", // linear.Owns
 	)...)
 	for _, o := range declared {
 		s := o.At
@@ -131,18 +129,18 @@ func TestTheTerseSpellingIsPathLess(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %q: %v", s, err)
 		}
-		if len(c.Field) != 0 {
-			t.Fatalf("%q parsed to a claim with a path %v — the terse spelling has none", s, c.Field)
-		}
 		if c.String() != s {
 			t.Fatalf("%q round-tripped to %q", s, c.String())
 		}
 	}
-	// A claim WITH a path has no terse spelling and does not pretend to: it renders for a
-	// person reading a refusal, and nothing parses it back.
-	slot := mustClaim(t, "linear.project.*", "owners", "ENG")
-	if got, want := slot.String(), "linear.project.* at owners.ENG"; got != want {
-		t.Fatalf("a slot claim renders as %q, want %q", got, want)
+	// And ClaimAt spells one with a wildcard in it, which a Ref cannot: a ref renders `*` as
+	// the quoted NAME, and a claim carrying that is refused rather than read as a wildcard.
+	if got, want := source.ClaimAt("linear", "project", "*", "owners", "ENG"),
+		"linear.project.*.owners.ENG"; got != want {
+		t.Fatalf("ClaimAt spelled %q, want %q", got, want)
+	}
+	if _, err := source.ParseClaim(`linear.project."*".owners.ENG`); err == nil {
+		t.Fatal("a quoted `*` parsed as a claim — it is a name, and one nothing is called")
 	}
 }
 
@@ -399,15 +397,13 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 	}
 }
 
-// mustClaim parses a claim and attaches a payload path — the two halves of a Claim, since the
-// path has no terse spelling of its own (source/own.go).
-func mustClaim(t *testing.T, s string, field ...string) source.Claim {
+// mustClaim parses a claim, which is the only way to get one.
+func mustClaim(t *testing.T, s string) source.Claim {
 	t.Helper()
 	c, err := source.ParseClaim(s)
 	if err != nil {
 		t.Fatalf("ParseClaim(%q): %v", s, err)
 	}
-	c.Field = field
 	return c
 }
 

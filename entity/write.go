@@ -250,17 +250,6 @@ func TargetOf(segs []string) (Path, error) {
 // cannot spell: an array element and what is under it (`votes[0]`, `votes(scott).choice`).
 func (r Ref) Into(access string) Path { return Path{Ref: r, Access: access} }
 
-// Below is the segments of this path beneath ref — the slot inside a node, for a caller that
-// holds both and needs the tail: a source's cover names a place inside what it reflects, and a
-// reflection compares the value there.
-func (p Path) Below(ref Ref) []string {
-	segs, above := p.Ref.Segs(), ref.Segs()
-	if len(segs) < len(above) {
-		return nil
-	}
-	return segs[len(above):]
-}
-
 // Write is one conditional write: Value is applied at At iff every Require holds, with the
 // checks and the write committing as a single step. It is the only write the store has —
 // creating, updating, deleting, patching a field, and claiming an address are all this
@@ -542,7 +531,7 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 	}
 }
 
-// ReplaceFrom writes next as the WHOLE value at ref, given cur — what the caller knows stands
+// ReplaceAt writes next as the WHOLE value at a path, given cur — what the caller knows stands
 // there — and with NO precondition.
 //
 // It is for the single writer, and it is the operation the ownership rule was supposed to buy:
@@ -561,21 +550,10 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 // that has gone away goes away only if somebody writes an explicit null at it. A caller whose
 // cur is stale leaves such a field standing — which is why this is for the writer that has just
 // read the slice it is writing, and not a general-purpose call.
-func ReplaceFrom(s Store, ref Ref, cur, next Payload) error { return ReplaceAt(s, ref.At(), cur, next) }
-
-// ReplaceAt is ReplaceFrom at a place INSIDE an entity: cur and next are the values that stand
-// and should stand AT that path, and everything outside it is untouched — not merged, not
-// re-read, not mentioned.
 //
-// That last part is the whole of what it is for. A replace of a whole payload spells a null at
-// every field the new value does not carry, which is correct when the writer owns the entity
-// and destructive when it owns one slot of it: the nulls would land on the other owners. Scoped
-// here, the removals are computed within the slot and cannot reach a sibling.
-//
-// It carries no precondition, for ReplaceFrom's reason one level down: two writers at disjoint
-// paths of one entity are not two writers of anything, so there is no update to lose. What
-// makes that true is the install-time proof that their claims are disjoint (source/own.go), and
-// nothing here re-checks it.
+// A PATH RATHER THAN A REF, because the removals are computed within what it names and cannot
+// reach outside it. The nulls land where this caller's cur said something stood — so writing
+// one node leaves the node beside it alone, whoever owns that one.
 func ReplaceAt(s Store, at Path, cur, next Payload) error {
 	if _, _, err := s.Write(Write{At: at, Value: withRemovals(AsData(next), cur)}); err != nil {
 		return fmt.Errorf("replace %s: %w", at, err)

@@ -56,44 +56,6 @@ type Pattern struct {
 	// NON-MATCH, for the reason an absent payload is: a predicate that cannot be evaluated
 	// has not been satisfied.
 	At []string `tony:"field=at,omitzero"`
-	// Slot is how MUCH of a matched entity the pattern is about, where At is where to evaluate
-	// its predicate. Empty — the usual case — is the whole entity.
-	//
-	// It selects NOTHING. Every Match* method ignores it, because it is not a dimension of
-	// "which entities": an entity either satisfies the pattern or does not, and the slot says
-	// what the satisfying answer then covers. That makes it meaningful in exactly one use — a
-	// source's Reflection.Covers, where completeness is the question being asked — and
-	// meaningless in the others, which is the shape Op already has from the other side (Op
-	// filters a change, and a cover, which selects stored entities, refuses one).
-	//
-	// It is HERE rather than on a Cover type wrapping this one, and the first reason is the
-	// standing one: Covers is the only wire struct in the tree that carries a Pattern — a
-	// charter spells a trigger.Match, which becomes one — so a `slot` cannot appear in a
-	// document where it would be ignored. A named (non-embedded) Pattern field is worse
-	// still, nesting every cover ever written inside a `pattern:` key to buy a field almost
-	// none of them use.
-	//
-	// It was ALSO a workaround, and no longer is: until go-tony v0.0.117, embedding a type
-	// with a generated codec silently dropped the outer struct's own fields, so
-	// `Cover{Pattern; Slot}` encoded as a bare Pattern (item 20 of
-	// tony-format#f69agjyeh12ksa25cnn0). Fixed, and the embedded form flattens to the same
-	// wire this produces — but it stays here anyway, on a reason the fix does not touch:
-	// embedding would make the encoding depend on the go-tony version, and the failure at an
-	// older one is silent and destructive. A cover that lost its slot is a cover over the
-	// whole entity, so converge would tombstone entities where it meant to tombstone a slot.
-	// That is not a shape to hold correct by a `require` line.
-	//
-	// What it means for a source: this answer is complete for the value at this path in each
-	// entity it matches, and for nothing else there. Two sources may then be the single
-	// writers of two slots of one entity — see docs/working/shared-ownership.md.
-	//
-	// A SLOT IS NOT A NARROWING. It says where the answer is authoritative, not which entities
-	// it is about, so a slot cover with no predicate claims its path in EVERY entity of that
-	// kind — including ones this source has never heard of, where the pass then writes a
-	// tombstone into a place nobody asked about, once per entity per pass. The predicate a slot
-	// cover usually wants is the presence of its own slot (`{owners: {ENG: null}}`, a null in a
-	// match being a presence test): that is exactly the set a tombstone can be right about.
-	Slot []string `tony:"field=slot,omitzero"`
 }
 
 // MatchEvent reports whether an observed CHANGE satisfies every non-empty dimension:
@@ -272,6 +234,11 @@ func PathLiteral(want *ir.Node) (string, bool) {
 	}
 	return text, true
 }
+
+// Place is the literal path this pattern is asked under — what a read narrows to, and the place
+// a source's cover claims. A caller that owns what a pattern reaches collects no higher than
+// this: above it is somebody else's.
+func (p Pattern) Place() []string { return p.literalPrefix() }
 
 // literalPrefix is the leading segments of the path that name a place rather than a wildcard —
 // the deepest subtree a read can be narrowed to before the pattern has to do the picking.

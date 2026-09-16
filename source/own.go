@@ -24,42 +24,28 @@ import (
 // constants — proves `{repo: null}` disjoint from `{repo: verse}` when the second entails the
 // first: a wrong REFUSAL, from a check whose whole job is to be conservative.
 //
-// A claim addresses a PLACE, not only an entity. Field continues the address into the payload,
-// the way entity.Path does for a write — so two sources can share an entity without either
-// being a second writer of anything: one is the single writer of `owners.ENG`, the other of
-// `owners.OPS`, and they are proved apart by the same string comparison one segment further
-// down. Sharing is not an exception to single-writership; it is single-writership at a deeper
-// address (docs/working/shared-ownership.md).
-//
-// THE PATH IS NOT PART OF THE PARSEABLE SPELLING, and that is a fact about ids rather than a
-// first version. `@` — the obvious separator — is trigger.ChainSep and already appears inside
-// ids: `scripts/lineage.sh` writes `lineage.trace.<rule>@<subject>`, which carries both a `@`
-// and two colons, so no split rule recovers a path from one end or the other. A claim that
-// carries a path is therefore spelled as a document; ParseClaim reads the terse form, which is
-// every claim in the tree today and every claim a person types.
+// A CLAIM IS AN ADDRESS AND NOTHING BESIDE IT, and that is what makes sharing cost nothing
+// here. Two sources that share a thing do not share a node: they own two places beneath it —
+// `linear.project.<id>.owners.ENG` and `…owners.OPS` — which are two addresses, proved apart by
+// the same level-by-level comparison as any other pair. Sharing is not an exception to
+// single-writership; it is single-writership at a deeper address, and the depth is free because
+// an address has no fixed arity (docs/working/shared-ownership.md).
 //
 // The cost is stated in docs/working/sources-residual.md and worth knowing: this works when a
-// source's addresses encode ownership positionally, which git's do because a repository is a
-// level of every address git.go writes. What is still not spellable here is ownership that is a VALUE rather than a
-// place — an owner in the payload and a uuid in the ref. That wants a predicate, and predicates
-// do not compare statically; the shape one would have to take is in shared-ownership.md.
+// source's addresses encode ownership positionally, which they do whenever the thing an owner
+// owns is a level of the address — a repository for git, a team for linear. What is still not
+// spellable here is ownership that is a VALUE rather than a place: an owner in the payload and
+// a uuid in the ref. That wants a predicate, and predicates do not compare statically; the
+// shape one would have to take is in shared-ownership.md.
 
 // Own is one ownership claim as a source DECLARES it, and as a registration stores and serves
-// it: an address, and — when the claim is to a place inside an entity rather than to the whole
-// of it — the path to that place.
-//
-// It is a document and not a string, which is a decision the ids forced (see above): there is
-// no terse spelling of a path-carrying claim, and a grammar with two forms would have to be
-// read twice everywhere. The terse spelling survives where it belongs, as the value of `at` —
-// an address has a spelling, and a path is a list.
+// it: an address, as a glob.
 //
 //	{at: "git.*.verse/*"}
-//	{at: "linear.project.*", path: [owners, ENG]}
+//	{at: "linear.project.*.owners.ENG"}
 //
-// `at` IS THE ADDRESS AND `path` IS THE PLACE INSIDE IT, which is what every other surface
-// means by the two words: `!get-path {at: [...], path: sha}` reads a field of an entity, and
-// `POST /entity` takes an `at`. Spelling them any other way here would make `at` an address in
-// one document and a payload path in the next.
+// `at` is the address, which is what every other surface means by the word: `!get-path {at:
+// [...]}` reads at one, and `POST /entity` takes one.
 //
 // It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
@@ -68,8 +54,6 @@ type Own struct {
 	// At is the address, as an address glob: a level may be `*`, and may end in one.
 	// ParseClaim is what reads it.
 	At string `tony:"field=at"`
-	// Path is the path inside the payload, empty for the whole entity.
-	Path []string `tony:"field=path,omitzero"`
 }
 
 // String renders a declaration for a message, via the claim it means.
@@ -82,13 +66,28 @@ func (o Own) String() string {
 }
 
 // Claim parses one declaration.
-func (o Own) Claim() (Claim, error) {
-	c, err := ParseClaim(o.At)
-	if err != nil {
-		return Claim{}, err
+func (o Own) Claim() (Claim, error) { return ParseClaim(o.At) }
+
+// ClaimAt spells a claim from segments, where a segment that is exactly `*` is the WILDCARD at
+// that level and every other is a literal name, quoted where the address grammar needs it.
+//
+// It is how a source builds a claim with a wildcard in it, and a Ref is not: `entity.RefAt(…,
+// "*", …).String()` renders `"*"` — the name that is an asterisk, quoted so it cannot be read
+// as the wildcard — which is a different claim, and one ParseClaim refuses outright. So the one
+// place the two spellings could be confused is here, said once.
+//
+// A level that is a literal asterisk is therefore not spellable through this, which is the
+// right way round: nothing names an entity `*`, and a claim that meant to is spelled by hand.
+func ClaimAt(segs ...string) string {
+	c := Claim{Segs: make([]Seg, 0, len(segs))}
+	for _, s := range segs {
+		if s == "*" {
+			c.Segs = append(c.Segs, Seg{Prefix: true})
+			continue
+		}
+		c.Segs = append(c.Segs, Seg{Name: s})
 	}
-	c.Field = o.Path
-	return c, nil
+	return c.String()
 }
 
 // ParseOwns parses a whole ownership list, once, for a caller that is about to reason with it.
@@ -110,8 +109,7 @@ func ParseOwns(owns []Own) ([]Claim, error) {
 	return out, nil
 }
 
-// Claim is one parsed ownership claim: a pattern per LEVEL of the address, at whatever depth,
-// and optionally a path inside the payload.
+// Claim is one parsed ownership claim: a pattern per LEVEL of the address, at whatever depth.
 //
 // IT IS A TREE. Three named positions with three different rules — the first two a literal or
 // `*`, the third also a prefix glob — is the arity written down three times, and it cannot say
@@ -121,14 +119,6 @@ type Claim struct {
 	// Segs is the address pattern, one per level. A claim SHORTER than an address covers
 	// everything under it, which is what makes `git` a claim on the whole system.
 	Segs []Seg
-	// Field is the path inside the payload this claim is about — {"owners","ENG"} is the `ENG`
-	// key of the `owners` object, and it is the same address entity.Path.Field names for a
-	// write. Empty is the whole entity.
-	//
-	// A claim with no path CONTAINS every claim under it, which is why an empty Field is a
-	// prefix of everything rather than a wildcard: a source claiming a whole entity and one
-	// claiming a slot inside it are two writers of that slot.
-	Field []string
 }
 
 // Seg is one level of a claim: a literal name, or a literal PREFIX when Prefix is set.
@@ -240,12 +230,8 @@ func ParseClaim(s string) (Claim, error) {
 	return c, nil
 }
 
-// String spells the claim back, so a refusal can quote what it was given.
-//
-// A path-less claim round-trips through ParseClaim, which is what makes a refusal quote the
-// operator's own words. A claim WITH a path does not and cannot — there is no terse spelling of
-// one (see above) — so it renders for a person to read rather than for a parser: the address,
-// then `at`, then the path. Nothing consumes this form.
+// String spells the claim back, so a refusal can quote what it was given. It round-trips
+// through ParseClaim, which is what makes a refusal quote the operator's own words.
 func (c Claim) String() string {
 	segs := make([]string, 0, len(c.Segs))
 	for _, s := range c.Segs {
@@ -262,51 +248,22 @@ func (c Claim) String() string {
 		}
 		segs = append(segs, out)
 	}
-	out := strings.Join(segs, ".")
-	if len(c.Field) > 0 {
-		out += " at " + strings.Join(c.Field, ".")
-	}
-	return out
+	return strings.Join(segs, ".")
 }
 
 // Disjoint reports whether no PLACE can satisfy both claims.
 //
 // It PROVES, and answers false whenever it cannot. Two claims are disjoint when ANY level is,
 // since a place must satisfy every one of them — and when neither parts company first, the
-// SHORTER one contains the longer, exactly as a payload path does. That is the whole of it: one
-// walk, the same walk the field path already used, asked once of the address and once inside
-// the payload.
+// SHORTER one contains the longer. That is the whole of it: one walk, level by level.
 //
 // A shorter claim is not a weaker one: `git` owns everything under it, so it overlaps
 // `git.verse.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
-// something, and it is the case the three fixed dimensions could not express at all.
+// something, and it is the case the three fixed dimensions could not express at all. It is also
+// how two owners of one thing are told apart — `linear.project.*.owners.ENG` parts company with
+// `…owners.OPS` at the last level, which is a comparison the levels above never reach.
 func (c Claim) Disjoint(o Claim) bool {
-	// The addresses overlap or they do not; where they do, the payload paths decide.
-	return !entity.Overlap(c.Segs, o.Segs, Seg.Disjoint) || pathsDisjoint(c.Field, o.Field)
-}
-
-// pathsDisjoint reports whether two payload paths can share no place. They cannot when neither
-// contains the other, and one contains the other when it is a prefix of it: a claim on `owners`
-// takes `owners.ENG` with it, and a claim on nothing at all takes the whole entity.
-//
-// SEGMENT-WISE, and never as a string. `owners.ENG` and `owners.ENGINE` are two different
-// fields, and a string-prefix test would say the first contains the second and refuse two
-// perfectly disjoint sources — the same false alarm `git.*.verse*` makes against
-// `verse-extras/main`, which is the mistake the id grammar is shaped to avoid. Here it costs
-// nothing to avoid, because a path is a list of segments before it is ever a string.
-func pathsDisjoint(a, b []string) bool {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
-		if a[i] != b[i] {
-			return true // they part company here, so no place is under both
-		}
-	}
-	// One is a prefix of the other — including the case where one is empty, which is the whole
-	// entity and so contains every path in it.
-	return false
+	return !entity.Overlap(c.Segs, o.Segs, Seg.Disjoint)
 }
 
 // Disjoint reports whether every claim of a is provably disjoint from every claim of b — the
@@ -348,16 +305,10 @@ func Disjoint(a, b []Own) (bool, error) {
 // and a removal deciding what a `--forget` may tombstone — and they must not drift, or verse
 // would delete on removal something it never proved this source owned.
 //
-// PLACES RATHER THAN A YES/NO, and that is what a slot claim forces. "Does this source own
-// something at this ref" is the wrong question for the caller that deletes: a source owning
-// `owners.ENG` of a shared project owns nothing else in it, and a removal that took the entity
-// would take the other owners' slots with it. So the answer says WHERE, and a `--forget` writes
-// a tombstone at each place it is given — which for every claim in the tree today is the entity
-// itself, exactly as it was.
-//
-// A place CONTAINED by another is dropped, so a source that claims both an entity and a slot
-// inside it is asked to delete the entity once rather than twice. Deleting the deeper one after
-// the shallower would write into an entity that is already gone.
+// PLACES RATHER THAN A YES/NO, because several claims may reach one ref and a `--forget` writes
+// a tombstone at each place it is given. A place CONTAINED by another is dropped, so a ref two
+// claims both reach is deleted once rather than twice: the second write would go into a node
+// that is already gone.
 func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. ParseClaim refuses one that NAMES it,
 	// but a wildcard first level — `*.*.*`, which a source with no neighbour may register —
@@ -385,7 +336,7 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 		if len(c.Segs) > len(point.Segs) || c.Disjoint(point) {
 			continue
 		}
-		out = append(out, ref.At(c.Field...))
+		out = append(out, ref.At())
 	}
 	return shallowest(out)
 }
@@ -469,4 +420,10 @@ func shallowest(places []entity.Path) []entity.Path {
 
 // holds reports whether the place at path a contains the one at b — a is a prefix of b, so
 // deleting a takes b with it.
-func holds(a, b []string) bool { return len(a) <= len(b) && !pathsDisjoint(a, b) }
+//
+// SEGMENT-WISE, and never as a string. `owners.ENG` and `owners.ENGINE` are two different
+// places, and a string-prefix test would say the first contains the second — the same false
+// alarm `git.*.verse*` makes against `verse-extras/main`, which is the mistake the address
+// grammar is shaped to avoid. Here it costs nothing to avoid, because an address is a list of
+// segments before it is ever a string.
+func holds(a, b []string) bool { return under(b, a) }
