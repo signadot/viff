@@ -26,11 +26,11 @@ reads: [git]
 ---
 - name: lvl
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 ---
 - name: good
   condition:
-    subject: {path: [elsewhere, thing, x]}
+    subject: {path: "elsewhere.thing.x"}
   action:
     patch: {saw: "yes"}
 `), 0o600); err != nil {
@@ -59,12 +59,12 @@ reads: [git]
 ---
 - name: lvl
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 ---
 - name: good
   condition:
-    when: {path: [git, head, *]}
-    subject: {path: [probe, seen, head]}
+    when: {path: "git.head.*"}
+    subject: {path: "probe.seen.head"}
   action:
     patch: {saw: "yes"}
 `), 0o600); err != nil {
@@ -94,14 +94,14 @@ func TestCharterAddKeepsCommentsInOneRequest(t *testing.T) {
 # why this rule is here
 name: noted
 condition:
-  subject: {path: [demo, pr, *]}
+  subject: {path: "demo.pr.*"}
 action:
   patch:
     saw: true # the flag it sets
 ---
 name: other
 condition:
-  subject: {path: [demo, issue, *]}
+  subject: {path: "demo.issue.*"}
 action:
   patch:
     saw: true
@@ -133,12 +133,12 @@ func TestCharterAddReAppliesAnEditedFile(t *testing.T) {
 		if err := os.WriteFile(f, []byte(`
 - name: lvl
   level: `+level+`
-  match: {path: [demo]}
+  match: {path: "demo"}
 ---
 - name: note
   stratum: lvl
   condition:
-    subject: {path: [demo, pr, *]}
+    subject: {path: "demo.pr.*"}
   action:
     patch: {saw: "`+saw+`"}
 `), 0o600); err != nil {

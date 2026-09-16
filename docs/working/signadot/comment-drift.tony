@@ -51,19 +51,19 @@ reads: [git]
 - name: cursor
   level: 10
   match:
-    path: [signadot, comment-drift, at]
+    path: "signadot.comment-drift.at"
 
 # One entity per range, keyed by its FAR end, which is what every downstream reader names.
 - name: range
   level: 20
   match:
-    path: [signadot, comment-drift, range]
+    path: "signadot.comment-drift.range"
 
 # The ledger: one row per symbol, open or resolved.
 - name: ledger
   level: 30
   match:
-    path: [signadot, comment-drift, finding]
+    path: "signadot.comment-drift.finding"
 ---
 # 1. THE CLAIM. The tip is read here and written down as `covering`, so a commit landing while
 # the review runs is neither covered nor skipped: rule 5 advances to what was CLAIMED. The read
@@ -72,11 +72,11 @@ reads: [git]
   stratum: cursor
   condition:
     subject:
-      path: [signadot, comment-drift, at]
+      path: "signadot.comment-drift.at"
       value: !let
         let:
         - tip: !get-path
-            at: [git, signadot, ref, master]
+            at: "git.signadot.ref.master"
             path: sha
         in:
           stage: idle
@@ -85,7 +85,7 @@ reads: [git]
     patch:
       stage: claimed
       covering: !get-path
-        at: [git, signadot, ref, master]
+        at: "git.signadot.ref.master"
         path: sha
 ---
 # 2. …and the range it claimed becomes an entity, so the review has a subject of its own — and
@@ -95,12 +95,12 @@ reads: [git]
   stratum: cursor
   condition:
     subject:
-      path: [signadot, comment-drift, at]
+      path: "signadot.comment-drift.at"
       value:
         stage: claimed
   action:
     derive:
-    - path: [signadot, comment-drift, range]
+    - path: "signadot.comment-drift.range"
       id: $subject.value.covering
       value:
         from: $subject.value.sha
@@ -116,13 +116,13 @@ reads: [git]
   stratum: range
   condition:
     subject:
-      path: [signadot, comment-drift, range, "*"]
+      path: "signadot.comment-drift.range.*"
       value: !not.has-path stage
   action:
     patch:
       stage: gathered
       outstanding: !list-paths
-        at: [signadot, comment-drift, finding, "*"]
+        at: "signadot.comment-drift.finding.*"
         value:
           status: open
 ---
@@ -132,7 +132,7 @@ reads: [git]
   stratum: range
   condition:
     subject:
-      path: [signadot, comment-drift, range, "*"]
+      path: "signadot.comment-drift.range.*"
       value:
         stage: gathered
   action:
@@ -248,7 +248,7 @@ reads: [git]
         wrong, and if you are asked to repair the SHAPE of your answer, the findings in it stay.
     onDone:
       derive:
-      - path: [signadot, comment-drift, finding]
+      - path: "signadot.comment-drift.finding"
         value: !each
           over: $data.findings
           id: $item.symbol
@@ -290,11 +290,11 @@ reads: [git]
   stratum: cursor
   condition:
     subject:
-      path: [signadot, comment-drift, at]
+      path: "signadot.comment-drift.at"
       value: !let
         let:
         - done: !list-paths
-            at: [signadot, comment-drift, range, "*"]
+            at: "signadot.comment-drift.range.*"
             value:
               status: done
             path: to

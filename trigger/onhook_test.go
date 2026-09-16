@@ -421,7 +421,7 @@ func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: review
   condition:
-    subject: {path: [demo, pr, *], value: {stage: open}}
+    subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     patch: {stage: reviewing}
     spawn: {prompt: "review $subject"}
@@ -464,7 +464,7 @@ func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: rollout
   condition:
-    subject: {path: [demo, pr, *], value: {stage: open}}
+    subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     patch: {stage: deploying}
     seq:

@@ -85,9 +85,9 @@ import (
 //	value: {stage: open}         a record — a SUBSET constraint, as a tony match over an
 //	                             object always is: named fields agree, others are ignored
 //
-//	{path: [demo, pr, "*"], value: {stage: open}}   the prs whose stage is open
-//	{path: [demo, count], value: 42}                the node demo.count, holding 42
-//	{path: [demo, pr, "1"]}                         one node
+//	{path: "demo.pr.*", value: {stage: open}}   the prs whose stage is open
+//	{path: "demo.count", value: 42}                the node demo.count, holding 42
+//	{path: 'demo.pr."1"'}                       one node
 //	{path: [demo, pr, !glob "hotfix-*"]}            a family of them
 //	demo.pr.*                                       the prs, as a kinded path
 //	{}                                              everything
@@ -115,7 +115,7 @@ var matchKeys = map[string]bool{mKeyPath: true, mKeyValue: true}
 // spelling it wants instead of "unknown key".
 var removedKeys = map[string]string{
 	"op": "`op` classified a change, and a match is evaluated against state at a revision, " +
-		"where nothing has one. For \"when this appears\", make it the cause: `on: {path: […]}` " +
+		"where nothing has one. For \"when this appears\", make it the cause: `on: \"a.kinded.path\"` " +
 		"fires at the commit where it first exists",
 	"system": addressIsAPath, "kind": addressIsAPath, "id": addressIsAPath,
 	"root": addressIsAPath, "at": addressIsAPath,
@@ -472,7 +472,7 @@ func (m Match) SegNodes() []*ir.Node {
 	return p
 }
 
-// PathMatch is a path given as nodes — `path: […]` and `!verse-path [a b c]` alike.
+// PathMatch is a path given as nodes — `path: ""…""` and `!verse-path [a b c]` alike.
 func PathMatch(steps []*ir.Node) (Match, error) {
 	segs := make([]*ir.Node, 0, len(steps))
 	for i, n := range steps {

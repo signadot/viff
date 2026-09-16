@@ -31,18 +31,18 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 	for _, src := range []string{`
 - name: proposal-based
   condition:
-    subject: {path: [merge, proposal, *], value: !not.has-path base}
+    subject: {path: "merge.proposal.*", value: !not.has-path base}
   action:
-    patch: {base: !get-path {at: [git, head, verse], path: sha}}
+    patch: {base: !get-path {at: "git.head.verse", path: sha}}
 `, `
 - name: proposal-outrun
   condition:
     subject:
-      path: [merge, proposal, "*"]
+      path: "merge.proposal.*"
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch: {state: stale}

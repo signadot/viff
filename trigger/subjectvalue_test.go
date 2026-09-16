@@ -41,7 +41,7 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: probe
   condition:
-    subject: {path: [verse-dev, drift, *], value: {stage: idle}}
+    subject: {path: "verse-dev.drift.*", value: {stage: idle}}
   action:
     patch: {stage: claimed}
     spawn:

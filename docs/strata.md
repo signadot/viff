@@ -23,11 +23,11 @@ declared level, with rules living in one and derivations only ever climbing.
 - name: urgent-label
   stratum: observe
   condition:
-    subject: {path: [gh, issue, "*"], value: { label: urgent }}
+    subject: {path: "gh.issue.*", value: { label: urgent }}
   action:
     patch: { triaged: true }
     derive:
-    - path: [signadot, feature]
+    - path: "signadot.feature"
       id: $subject.name            # signadot.feature.1, for gh.issue.1
       value:
         priority: urgent
@@ -35,11 +35,11 @@ declared level, with rules living in one and derivations only ever climbing.
 - name: request-approval
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, "*"], value: { priority: urgent }}
+    subject: {path: "signadot.feature.*", value: { priority: urgent }}
   action:
     patch: { stage: awaiting-approval }
     derive:
-    - path: [do, approve]
+    - path: "do.approve"
       value:
         feature: $subject
 ```
@@ -80,8 +80,8 @@ read from opposite directions.
 below it:
 
 ```tony
-- {name: tip,    level: 10, match: {path: [verse-dev, drift, head]}}
-- {name: ledger, level: 20, match: {path: [verse-dev, drift, finding]}}
+- {name: tip,    level: 10, match: {path: "verse-dev.drift.head"}}
+- {name: ledger, level: 20, match: {path: "verse-dev.drift.finding"}}
 ```
 
 `[verse-dev, drift, head]` is the place derivations land under, and a rule's subject
@@ -110,7 +110,7 @@ its content as `value`, so there is no boundary to find:
 
 ```tony
 derive:
-- path: [verse-dev, drift, head]
+- path: "verse-dev.drift.head"
   value: {sha: $subject.value.sha}
 ```
 
@@ -184,7 +184,7 @@ It is an address rather than an id, so it carries the subject faithfully.
 as exactly those segments. Two things follow. `verse data derived feature raise -paths` is
 "everything this rule has derived". And **a derived path is as long as what it is about**: a rule
 reading one says how long, and that follows from the subjects the producing rule selects, so
-`{path: [derived, feature, "*", "*", "*", "*"]}` for a rule deriving about `gh.issue.*`.
+`{path: "derived.feature.*.*.*.*"}` for a rule deriving about `gh.issue.*`.
 
 The linkage is the spawn's rule, for the spawn's reason: a derivation is about exactly one
 subject, and which one is the condition's answer rather than something a charter should have to
@@ -207,7 +207,7 @@ A derive may name a `key:` without fanning out:
 ```tony
 action:
   derive:
-  - path: [verse-dev, merge, train]
+  - path: "verse-dev.merge.train"
     key:  $subject.value.sha      # one train per tip of main
     value: {sha: $subject.value.sha}
 ```
@@ -250,7 +250,7 @@ of them are prose. `!each` is the fan-out:
 ```tony
 action:
   derive:
-  - path: [drift, finding]
+  - path: "drift.finding"
     value: !each
       over:  $data.findings     # a list to walk; each element binds $item
       key:   $item.symbol       # the address, read out of the element

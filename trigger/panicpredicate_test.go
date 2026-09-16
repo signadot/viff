@@ -30,7 +30,7 @@ func TestAPanickingPredicateDoesNotStopTheEngine(t *testing.T) {
 - name: broken
   condition:
     subject:
-      path: [demo, pr, "*"]
+      path: "demo.pr.*"
       value: !let
         let: [{}]
         in: {stage: open}
@@ -43,7 +43,7 @@ func TestAPanickingPredicateDoesNotStopTheEngine(t *testing.T) {
 - name: sound
   condition:
     subject:
-      path: [demo, pr, "*"]
+      path: "demo.pr.*"
       value: {stage: open}
   action:
     patch: {sound: fired}

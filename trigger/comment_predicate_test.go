@@ -30,7 +30,7 @@ import (
 // In a codebase whose charters are more comment than rule, that is the worst possible place for
 // a walk to stop.
 func TestACommentDoesNotHideAReadFromTheWalks(t *testing.T) {
-	const let = "- !let\n  let: [{tip: !get-path {at: [git, head, verse], path: sha}}]\n  in: {sha: .[tip]}\n"
+	const let = "- !let\n  let: [{tip: !get-path {at: \"git.head.verse\", path: sha}}]\n  in: {sha: .[tip]}\n"
 	for _, tc := range []struct{ name, src string }{
 		{"no comment", "!and\n- !has-path branches\n" + let},
 		{"a comment above the read", "!and\n- !has-path branches\n# why this clause is here\n" + let},
@@ -78,7 +78,7 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
 - name: run
   condition:
     subject:
-      path: [verse-dev, merge, train, "*"]
+      path: "verse-dev.merge.train.*"
       value: !and
       # PRESENT AND NON-EMPTY, in that order.
       - !has-path branches
@@ -88,7 +88,7 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
       # AND ABOUT THE MAIN THAT IS ACTUALLY THERE: the address carries the sha, so a new main
       # is a new train and a new question.
       - !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
         in: {sha: .[tip]}
   action:
     patch: {hit: yes}

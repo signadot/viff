@@ -27,7 +27,7 @@ func TestATriggerInstalledOverHTTPKeepsItsComments(t *testing.T) {
 		"    commented: true # the flag it sets\n"+
 		"condition:\n"+
 		"  subject:\n"+
-		"    path: [comment, \"*\", \"*\"]\n"+
+		"    path: \"comment.*.*\"\n"+
 		"name: comment # this is a comment\n")
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/charter/comment", nil)

@@ -24,7 +24,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	ts := httptest.NewServer(first.Handler())
 	if resp := postTony(t, ts.URL+"/charter", map[string]any{
 		"name":      "review",
-		"condition": map[string]any{"subject": map[string]any{"path": []string{"demo", "pr", "*"}, "value": map[string]any{"stage": "open"}}},
+		"condition": map[string]any{"subject": map[string]any{"path": "demo.pr.*", "value": map[string]any{"stage": "open"}}},
 		"action":    map[string]any{"patch": map[string]any{"stage": "reviewed"}},
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the rule = %s: %s", resp.Status, bodyOf(t, resp))

@@ -91,7 +91,7 @@ func TestABlockedInstallAnswers503(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", ts.URL+"/charter?at=notes",
-		strings.NewReader(`{name: r, condition: {subject: {path: [notes, *, *]}}, action: {patch: {seen: true}}}`))
+		strings.NewReader(`{name: r, condition: {subject: {path: "notes.*.*"}}, action: {patch: {seen: true}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -178,7 +178,7 @@ func TestPatchOperatorWorks(t *testing.T) {
 		name, doc string
 		f         codec.Format
 	}{
-		{"tony", `{name: retract, condition: {subject: {path: [demo, pr, *], value: {stage: open}}},
+		{"tony", `{name: retract, condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 			action: {patch: {tmp: !delete null}}}`, codec.Tony},
 	} {
 		t.Run(c.name, func(t *testing.T) {

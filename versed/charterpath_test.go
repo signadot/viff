@@ -32,14 +32,14 @@ func pathFixture(t *testing.T) (*Server, string) {
 	t.Cleanup(ts.Close)
 	if code, msg := installAt(t, ts.URL, "verse-dev.drift", `{
 		name: watcher,
-		condition: {subject: {path: [verse-dev, drift, *]}},
+		condition: {subject: {path: "verse-dev.drift.*"}},
 		action: {patch: {seen: true}},
 	}`); code != 201 {
 		t.Fatalf("installing verse-dev.drift = %d: %s", code, msg)
 	}
 	if code, msg := installAt(t, ts.URL, "", `{
 		name: base-rule,
-		condition: {subject: {path: [demo, pr, *]}},
+		condition: {subject: {path: "demo.pr.*"}},
 		action: {patch: {seen: true}},
 	}`); code != 201 {
 		t.Fatalf("installing baseline = %d: %s", code, msg)
@@ -101,7 +101,7 @@ func TestAnAddressEndingInAKeyIsSettledByAt(t *testing.T) {
 	srv, url := pathFixture(t)
 	if code, msg := installAt(t, url, "verse-dev.rules", `{
 		name: shadowed,
-		condition: {subject: {path: [verse-dev, rules, *]}},
+		condition: {subject: {path: "verse-dev.rules.*"}},
 		action: {patch: {seen: true}},
 	}`); code != 201 {
 		t.Fatalf("installing verse-dev.rules = %d: %s", code, msg)
@@ -111,7 +111,7 @@ func TestAnAddressEndingInAKeyIsSettledByAt(t *testing.T) {
 	// to reach and nothing to disambiguate.
 	if code, msg := installAt(t, url, "verse-dev", `{
 		name: above,
-		condition: {subject: {path: [verse-dev, x, *]}},
+		condition: {subject: {path: "verse-dev.x.*"}},
 		action: {patch: {seen: true}},
 	}`); code != 201 {
 		t.Fatalf("installing verse-dev = %d: %s", code, msg)
@@ -178,7 +178,7 @@ func TestStrataReachTheSameWay(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {path: [notes]}}`); code != 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: lvl, level: 0, match: {path: "notes"}}`); code != 201 {
 		t.Fatalf("installing a level = %d: %s", code, msg)
 	}
 	code, body := charterPath(t, ts.URL, "notes.strata.lvl")
@@ -206,11 +206,11 @@ func TestAPathIsSplitByTheGrammar(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {path: [notes, *, *]}}, action: {patch: {seen: true}}}`); code != 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {path: "notes.*.*"}}, action: {patch: {seen: true}}}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
 	}
 	// The premise: a name cannot hold a delimiter, so a dot in a path is unambiguously a step.
-	if code, msg := installAt(t, ts.URL, "notes", `{name: "v1.2", level: 0, match: {path: [notes]}}`); code == 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: "v1.2", level: 0, match: {path: "notes"}}`); code == 201 {
 		t.Fatalf("a level named `v1.2` installed — a path segment is ambiguous now: %s", msg)
 	}
 	// Quoted, by somebody who does not know that: unquoted by the parser, and it resolves.
@@ -239,8 +239,8 @@ func TestRemovingTakesTheSamePath(t *testing.T) {
 			t.Fatalf("installing at %q = %d: %s", at, code, msg)
 		}
 	}
-	install("notes", `{name: lvl, level: 0, match: {path: [notes]}}`)
-	install("notes", `{name: watcher, stratum: lvl, condition: {subject: {path: [notes, seen, *]}}, action: {patch: {seen: true}}}`)
+	install("notes", `{name: lvl, level: 0, match: {path: "notes"}}`)
+	install("notes", `{name: watcher, stratum: lvl, condition: {subject: {path: "notes.seen.*"}}, action: {patch: {seen: true}}}`)
 
 	// One rule out of a package, by path.
 	if code, body := deletePath(t, ts.URL, "notes.rules.watcher", false); code != http.StatusNoContent {
@@ -254,7 +254,7 @@ func TestRemovingTakesTheSamePath(t *testing.T) {
 		t.Fatalf("removing a level answered %d: %s", code, body)
 	}
 	// And the package itself, by a path that ends at the address.
-	install("notes", `{name: again, condition: {subject: {path: [notes, seen, *]}}, action: {patch: {seen: true}}}`)
+	install("notes", `{name: again, condition: {subject: {path: "notes.seen.*"}}, action: {patch: {seen: true}}}`)
 	if code, body := deletePath(t, ts.URL, "notes", false); code != http.StatusNoContent {
 		t.Fatalf("uninstalling answered %d: %s", code, body)
 	}
@@ -271,7 +271,7 @@ func TestRemovingRefusesAReachIntoARule(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {path: [notes, *, *]}}, action: {patch: {seen: true}}}`); code != 201 {
+	if code, msg := installAt(t, ts.URL, "notes", `{name: watcher, condition: {subject: {path: "notes.*.*"}}, action: {patch: {seen: true}}}`); code != 201 {
 		t.Fatalf("installing = %d: %s", code, msg)
 	}
 	code, body := deletePath(t, ts.URL, "notes.rules.watcher.action", false)

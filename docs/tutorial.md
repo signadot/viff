@@ -371,7 +371,7 @@ once without arguing over an entity.
 ```tony
 - name: shape-patch
   condition:
-    subject: {path: [demo, patch, *], value: { stage: open }}
+    subject: {path: "demo.patch.*", value: { stage: open }}
   action:
     patch: { stage: triaged }
 ```
@@ -402,7 +402,7 @@ announce a state it has held all along, and a restart re-reaches the same verdic
 ```tony
 - name: shape-latch
   condition:
-    subject: {path: [demo, latch, *], value: { stage: open }}
+    subject: {path: "demo.latch.*", value: { stage: open }}
   action:
     patch:  { stage: reviewing }
     spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
@@ -528,8 +528,8 @@ not land.
 
 ```tony
   condition:
-    subject: {path: [demo, when, *], value: { stage: ready }}
-    when:    {path: [ci, status, shapes], value: { state: green }}
+    subject: {path: "demo.when.*", value: { stage: ready }}
+    when:    {path: "ci.status.shapes", value: { state: green }}
 ```
 
 The subject says what to act on; `when` says whether this is a moment to act. *While* CI is green,
@@ -539,7 +539,7 @@ at every commit touching either subtree.
 ### on — a cause, not a condition
 
 ```tony
-    on: {path: [ci, status, release], value: { state: green }}
+    on: {path: "ci.status.release", value: { state: green }}
 ```
 
 Same two entities, a different sentence: fire **at the moment** CI went green, over whatever was
@@ -582,11 +582,11 @@ a circle, it comes with the thing that bounds it: a **stratum**, a declared leve
 - name: shape-derive
   stratum: shapes-source
   condition:
-    subject: {path: [demo, derive, *], value: { stage: open }}
+    subject: {path: "demo.derive.*", value: { stage: open }}
   action:
     patch: { stage: raised }
     derive:
-    - path: [derived, feature]
+    - path: "derived.feature"
       value:
         priority: urgent
         about: $subject
@@ -622,7 +622,7 @@ An action's `$references` read the entity the firing is about: `$stage`, `$subje
 action:
   patch:
     branch:   !get-path {at: [git, repo, $subject.value.head], path: branch}
-    branches: !list-paths {at: [git, repo, "*"], path: branch}
+    branches: !list-paths {at: "git.repo.*", path: branch}
 ```
 
 One grammar split by cardinality. `!get-path` answers with one node and refuses anything that could

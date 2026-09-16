@@ -36,126 +36,6 @@ func matchErr(t *testing.T, src string, f codec.Format) string {
 	return err.Error()
 }
 
-// What an operator BUYS in a path segment: filepath.Match semantics, where "*" is bounded by "/"
-// and "?"/"[…]" are metacharacters. A plain segment is a NAME: a `*` inside it is an ordinary
-// character, and only a whole `*` segment is any one.
-func TestPathSegmentOperatorGrammar(t *testing.T) {
-	ev := func(id string) entity.Event {
-		return entity.Event{Ref: entity.RefAt("demo", "pr", id), Op: entity.Set}
-	}
-	cases := []struct {
-		src  string
-		id   string
-		want bool
-	}{
-		{`{path: [demo, pr, !glob "hotfix-*"]}`, "hotfix-1", true},
-		{`{path: [demo, pr, !glob "hotfix-*"]}`, "cold-1", false},
-		{`{path: [demo, pr, !glob "a?c"]}`, "abc", true},
-		{`{path: [demo, pr, !glob "a?c"]}`, "ac", false},
-		{`{path: [demo, pr, !glob "[ab]1"]}`, "b1", true},
-		{`{path: [demo, pr, !glob "[ab]1"]}`, "c1", false},
-
-		// The separator rule: a path-shaped name can be matched one piece at a time.
-		{`{path: [demo, pr, !glob "a*"]}`, "a/b", false},
-		{`{path: [demo, pr, !glob "a/*"]}`, "a/b", true},
-		// A plain segment is the name it spells, `*` and all.
-		{`{path: [demo, pr, "a*"]}`, "a/b", false},
-		{`{path: [demo, pr, "a*"]}`, "a*", true},
-
-		// Composition, which a name has no spelling for at all.
-		{`{path: [demo, pr, !or ["1", "2"]]}`, "1", true},
-		{`{path: [demo, pr, !or ["1", "2"]]}`, "3", false},
-		{`{path: [demo, pr, !not "1"]}`, "2", true},
-		{`{path: [demo, pr, !not "1"]}`, "1", false},
-		{`{path: [demo, pr, !and [!glob "hotfix-*", !not "hotfix-9"]]}`, "hotfix-1", true},
-		{`{path: [demo, pr, !and [!glob "hotfix-*", !not "hotfix-9"]]}`, "hotfix-9", false},
-	}
-	for _, c := range cases {
-		m := mustMatch(t, c.src, codec.Tony)
-		if got := m.MatchEvent(ev(c.id)); got != c.want {
-			t.Errorf("%s vs %q = %v, want %v", c.src, c.id, got, c.want)
-		}
-	}
-}
-
-// The SET face has to apply the operator too: an operator that only worked on the event path
-// would silently widen every fan-out to every node at the place.
-func TestMatchOperatorSelects(t *testing.T) {
-	store := entitytest.Store(t)
-	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-1"} {
-		entitytest.Set(t, store, entity.RefAt("demo", "pr", id), entity.Obj{"stage": "open"}.Payload())
-	}
-
-	m := mustMatch(t, `{path: [demo, pr, !glob "hotfix-*"]}`, codec.Tony)
-	refs := m.Select(store)
-	if len(refs) != 2 {
-		t.Fatalf("selected %v, want the two hotfix PRs", refs)
-	}
-	for _, r := range refs {
-		if !strings.HasPrefix(r.Name(), "hotfix-") {
-			t.Errorf("selected %s, which the glob excludes", r)
-		}
-	}
-}
-
-// An operator makes a match a SELECTION, never a NAME. This is the one case where getting
-// it wrong does more than fail to match: an action's `set` on a named subject CREATES the
-// entity, so a subject that looked named would conjure `demo.pr.!glob hotfix-*` into being.
-func TestMatchOperatorIsNeverANamedRef(t *testing.T) {
-	m := mustMatch(t, `{path: [demo, pr, !glob "hotfix-*"]}`, codec.Tony)
-	if ref, named := m.Names(); named {
-		t.Errorf("an operator segment was read as a name: %s", ref)
-	}
-	if !m.Selects() {
-		t.Error("the first segment is literal, so this must select")
-	}
-
-	// And it must not render as an address, which would drop the operator entirely and
-	// leave the widest possible match wearing the narrowest one's clothes.
-	out, err := codec.MarshalWire(m, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(out), "!glob") {
-		t.Errorf("the operator did not survive rendering: %s", out)
-	}
-}
-
-// A misspelled or unusable operator fails at INSTALL. The alternative is a charter that
-// parses, deploys, and then matches nothing forever — the failure mode Validate exists to
-// prevent, in its newest form.
-func TestMatchOperatorErrorsAreEarly(t *testing.T) {
-	for _, c := range []struct{ src, want string }{
-		{`{path: [demo, pr, !gloob "hotfix-*"]}`, "unknown operator"},
-		{`{path: [demo, pr, !glob 5]}`, "cannot glob non-string"},
-		{`{path: [demo, pr, !or ["1", !gloob "2"]]}`, "unknown operator"}, // nested, not just at the top
-	} {
-		if got := matchErr(t, c.src, codec.Tony); !strings.Contains(got, c.want) {
-			t.Errorf("%s: got %q, want it to mention %q", c.src, got, c.want)
-		}
-	}
-}
-
-// A segment is a NAME or a MATCH OVER ONE, and a composite is neither: `{a: 1}` or `[a, b]` in a
-// path is refused at install, however the document was laid out. Flow style is how nearly every
-// charter writes a path, and the parser marks a flow collection with a layout tag — which is not
-// an operator, and must not let a composite past the check a block-style one meets.
-func TestAPathSegmentThatIsACompositeIsRefused(t *testing.T) {
-	for _, c := range []struct {
-		src string
-		f   codec.Format
-	}{
-		{`{path: [demo, pr, {a: 1}]}`, codec.Tony},
-		{`{path: [demo, pr, [a, b]]}`, codec.Tony},
-		{`{"path":["demo","pr",{"a":1}]}`, codec.JSON},
-	} {
-		var m Match
-		if err := codec.Unmarshal([]byte(c.src), &m, c.f); err == nil {
-			t.Errorf("%s was accepted as a path; a composite segment names nothing", c.src)
-		}
-	}
-}
-
 // The unknown-tag check cannot be delegated to tony, and this is the pin on why:
 // mergeop.SplitChild walks a tag CHAIN looking for a registered operator and silently skips
 // everything it does not recognize. So `!gloob "x"` is not an error there — it matches by
@@ -186,6 +66,35 @@ func TestUpstreamIgnoresUnknownTags(t *testing.T) {
 // to the list ["open","merged"] and the trigger would simply never fire. Refusing it was the
 // right answer while the predicate was a map of Go values. It is a tony match at the payload
 // root now, so the operator is not something to reject, it is the thing being evaluated.
+// A PATH IS A KINDED PATH, and an operator cannot be written in one. What a `!glob` on a segment
+// used to say is said by a predicate on the payload, which is where both live charters already
+// say it (`value: {name: !glob "verse/auto/*/*"}`) — and a predicate is where a reader looks for
+// a condition on what a node HOLDS.
+//
+// A path holding a match was the only thing the list form carried, and the list form is gone with
+// it: one spelling for an address, the same one `verse data -at` takes.
+func TestAPathTakesNoOperatorAndNoList(t *testing.T) {
+	for _, src := range []string{
+		`{path: [demo, pr, "*"]}`,              // the list form
+		`{path: [demo, pr, !glob "hotfix-*"]}`, // …and what it carried
+		`{path: [demo, pr, !not "1"]}`,
+		`{path: [demo, pr, !or ["1", !glob "hf-*"]]}`,
+	} {
+		if msg := matchErr(t, src, codec.Tony); !strings.Contains(msg, "kinded path") {
+			t.Errorf("%s refused with %q, want it to name the spelling an address has", src, msg)
+		}
+	}
+	// A glob inside a segment is a NAME with an asterisk in it, as it is at a read.
+	m := mustMatch(t, `"demo.pr.hotfix-*"`, codec.Tony)
+	p, err := m.pattern()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.MatchRef(entity.RefAt("demo", "pr", "hotfix-*")) || p.MatchRef(entity.RefAt("demo", "pr", "hotfix-1")) {
+		t.Error("a `*` inside a segment selected a family; it is a character of a name")
+	}
+}
+
 func TestMatchValueAcceptsOperators(t *testing.T) {
 	ev := func(p entity.Obj) entity.Event {
 		return entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: p.Payload()}
@@ -196,7 +105,7 @@ func TestMatchValueAcceptsOperators(t *testing.T) {
 		miss  entity.Obj
 	}{
 		{
-			`{path: [demo, *, *], value: {stage: !or [open, merged]}}`,
+			`{path: "demo.*.*", value: {stage: !or [open, merged]}}`,
 			entity.Obj{"stage": "merged"},
 			entity.Obj{"stage": "closed"},
 		},
@@ -229,7 +138,7 @@ func TestMatchValueAcceptsOperators(t *testing.T) {
 // A record predicate still works normally — the refusal above must not have made the ordinary
 // case harder to write.
 func TestMatchValueStillPlain(t *testing.T) {
-	m := mustMatch(t, `{path: [demo, pr, *], value: {stage: open, n: 2}}`, codec.Tony)
+	m := mustMatch(t, `{path: "demo.pr.*", value: {stage: open, n: 2}}`, codec.Tony)
 	ev := entity.Event{
 		Ref: entity.RefAt("demo", "pr", "1"),
 		Op:  entity.Set, To: entity.Obj{"stage": "open", "n": int64(2)}.Payload(),
@@ -254,7 +163,7 @@ func TestMatchValueRootPredicate(t *testing.T) {
 		match any
 		miss  any
 	}{
-		{`{path: [demo, *, *], value: 42}`, 42, 43},
+		{`{path: "demo.*.*", value: 42}`, 42, 43},
 		{`{value: true}`, true, false},
 		{`{value: open}`, "open", "closed"},
 		{`{value: !or [1, 2]}`, 2, 3},
@@ -286,7 +195,7 @@ func TestMatchValueRootPredicate(t *testing.T) {
 // the wrong SHAPE and never `{stge: open}` — a misspelled key, the typo people actually make,
 // which matches nothing just as silently and which no shape check can catch.
 func TestMatchValueScalarIsTheWholePayload(t *testing.T) {
-	m := mustMatch(t, `{path: [demo, *, *], value: "stage=open"}`, codec.Tony)
+	m := mustMatch(t, `{path: "demo.*.*", value: "stage=open"}`, codec.Tony)
 	ev := func(v entity.Payload) entity.Event {
 		return entity.Event{Ref: entity.RefAt("demo", "pr", "1"), Op: entity.Set, To: v}
 	}
@@ -367,9 +276,9 @@ func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 		src                                 string
 		wantAbsent, wantPresent, wantIsNull bool
 	}{
-		{`{path: [demo, *, *], value: {stage: null}}`, false, true, true},
-		{`{path: [demo, *, *], value: !not {stage: null}}`, true, false, false},
-		{`{path: [demo, *, *], value: {stage: !irtype null}}`, false, false, true},
+		{`{path: "demo.*.*", value: {stage: null}}`, false, true, true},
+		{`{path: "demo.*.*", value: !not {stage: null}}`, true, false, false},
+		{`{path: "demo.*.*", value: {stage: !irtype null}}`, false, false, true},
 	}
 	for _, c := range cases {
 		m := mustMatch(t, c.src, codec.Tony)

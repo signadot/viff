@@ -22,21 +22,21 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 		`
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
       derive:
-      - path: [drift, finding]
+      - path: "drift.finding"
         value: !each
           over: $data.findings
           key: $item.symbol
@@ -48,20 +48,20 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 		`
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
-      derive: [{path: [drift, finding], value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
+      derive: [{path: "drift.finding", value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
 `,
 	} {
 		trigs, _, strata, _, ok := parseBlock(src)
@@ -109,20 +109,20 @@ func TestEachRefusals(t *testing.T) {
 			src := `
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "x"}
     onDone:
       patch: {reviewed: done}
-      derive: [{path: [drift, finding], value: !each ` + c.derive + `}]
+      derive: [{path: "drift.finding", value: !each ` + c.derive + `}]
 `
 			trigs, _, strata, _, ok := parseBlock(src)
 			if !ok {
@@ -149,18 +149,18 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {path: [gh]}
+  match: {path: "gh"}
 - name: sdlc
   level: 10
-  match: {path: [signadot]}
+  match: {path: "signadot"}
 ---
 - name: urgent
   stratum: reflected
   condition:
-    subject: {path: [gh, issue, *], value: {label: urgent}}
+    subject: {path: "gh.issue.*", value: {label: urgent}}
   action:
     patch: {triaged: true}
-    derive: [{path: [signadot, feature], value: {priority: urgent, about: $subject.name}}]
+    derive: [{path: "signadot.feature", value: {priority: urgent, about: $subject.name}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -191,17 +191,17 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 	src := `
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: findings
   condition:
-    subject: {path: [drift, head, *], value: {reviewed: pending}}
+    subject: {path: "drift.head.*", value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "x"}
     onDone:
       patch: {reviewed: done}
-      derive: [{path: [drift, finding], value: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}]
+      derive: [{path: "drift.finding", value: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -228,18 +228,18 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: [drift, finding], value: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}]
+    derive: [{path: "drift.finding", value: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -354,18 +354,18 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: fan
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: [drift, finding], value: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}]
+    derive: [{path: "drift.finding", value: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -443,21 +443,21 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	src := `
 - name: reflected
   level: 0
-  match: {path: [git]}
+  match: {path: "git"}
 - name: findings
   level: 10
-  match: {path: [drift]}
+  match: {path: "drift"}
 ---
 - name: review
   stratum: reflected
   condition:
-    subject: {path: [git, commit, *], value: {reviewed: pending}}
+    subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     spawn: {driver: scripted, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
       derive:
-      - path: [drift, finding]
+      - path: "drift.finding"
         value: !each
           over: $data.findings
           key: $item.symbol
@@ -551,19 +551,19 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 	src := `
 - name: drift
   level: 10
-  match: {path: [drift, head]}
+  match: {path: "drift.head"}
 - name: ledger
   level: 20
-  match: {path: [drift, finding]}
+  match: {path: "drift.finding"}
 ---
 - name: gather
   stratum: drift
   condition:
-    subject: {path: [drift, head, *], value: {reviewed: pending}}
+    subject: {path: "drift.head.*", value: {reviewed: pending}}
   action:
     patch:
       reviewed: gathered
-      outstanding: !list-paths {at: [drift, finding, "*"], value: {status: open}}
+      outstanding: !list-paths {at: "drift.finding.*", value: {status: open}}
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {

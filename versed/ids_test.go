@@ -26,7 +26,7 @@ func TestSameNamedRulesInThreeEnginesAskThreeQuestions(t *testing.T) {
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
 	rule := `{
 		name: review,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		gates: [{name: ok, mode: ask}],
 		action: {patch: {stage: reviewing}},
 	}`
@@ -38,10 +38,10 @@ func TestSameNamedRulesInThreeEnginesAskThreeQuestions(t *testing.T) {
 	// A package may only read a subject outside its address, so its review derives inside it,
 	// which puts the rule in a level below what it derives.
 	for _, def := range []string{
-		`{name: prs, level: 0, match: {path: [demo]}}`,
-		`{name: notes, level: 10, match: {path: [notes]}}`,
+		`{name: prs, level: 0, match: {path: "demo"}}`,
+		`{name: notes, level: 10, match: {path: "notes"}}`,
 		strings.Replace(strings.Replace(rule, "patch: {stage: reviewing}",
-			"derive: [{path: [notes, reviewed], value: {seen: yes}}]", 1), "name: review,", "name: review, stratum: prs,", 1),
+			`derive: [{path: "notes.reviewed", value: {seen: yes}}]`, 1), "name: review,", "name: review, stratum: prs,", 1),
 	} {
 		if code, msg := installAt(t, ts.URL, "notes", def); code != 201 {
 			t.Fatalf("installing the package = %d: %s", code, msg)

@@ -28,7 +28,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
+		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: "demo.batch"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -41,7 +41,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [demo, batch]
+    - path: "demo.batch"
       key: $subject.value.sha
       value: {sha: $subject.value.sha}
 `)); err != nil {
@@ -104,7 +104,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := eng.AddStratum(Stratum{Name: "batches", Level: 10,
-				Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}}); err != nil {
+				Match: []Match{mustPathMatch(t, `{path: "demo.batch"}`)}}); err != nil {
 				t.Fatal(err)
 			}
 			err := eng.AddTrigger(mustParseCharter(t, `
@@ -114,7 +114,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [demo, batch]
+    - path: "demo.batch"
       key: `+tc.key+`
       value: {noted: true}
 `))
@@ -143,7 +143,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
+		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: "demo.batch"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -156,7 +156,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [demo, batch]
+    - path: "demo.batch"
       id: $subject.value.sha
       value: {sha: $subject.value.sha}
 `)); err != nil {
@@ -196,7 +196,7 @@ func TestADeriveRefusesBothKeyAndID(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [git, batch]
+    - path: "git.batch"
       key: $subject.value.sha
       id: $subject.value.sha
       value: {sha: $subject.value.sha}
@@ -218,7 +218,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: [demo, batch]}`)}},
+		{Name: "batches", Level: 10, Match: []Match{mustPathMatch(t, `{path: "demo.batch"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -233,7 +233,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [demo, batch]
+    - path: "demo.batch"
       id: $subject.value.sha
       value: {sha: $subject.value.sha}
 `)); err != nil {
@@ -246,7 +246,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
     subject: git.mark.verse
   action:
     derive:
-    - path: [demo, batch]
+    - path: "demo.batch"
       value: !each
         over: $subject.value.shas
         id: $item

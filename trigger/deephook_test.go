@@ -34,7 +34,7 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
 		return startHookTask(store, id, spec)
 	})
 	if err := eng.AddStratum(Stratum{Name: "tip", Level: 10,
-		Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}}); err != nil {
+		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,7 +46,7 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
   stratum: tip
   condition:
     subject:
-      path: [verse-dev, drift, head, "*"]
+      path: "verse-dev.drift.head.*"
       value: {reviewed: gathered}
   action:
     patch: {reviewed: running}

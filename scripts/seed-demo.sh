@@ -116,7 +116,7 @@ for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; d
 v charter -a -f - >/dev/null <<'TONY' || die "charter -a failed"
 - name: demo-review
   condition:
-    subject: {path: [demo, pr, *], value: { stage: open }}
+    subject: {path: "demo.pr.*", value: { stage: open }}
   gates:
   - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
@@ -127,7 +127,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "charter -a failed"
 
 - name: demo-escalate
   condition:
-    subject: {path: [demo, task, *], value: { priority: high }}
+    subject: {path: "demo.task.*", value: { priority: high }}
   action:
     patch: { stage: escalated }
 TONY

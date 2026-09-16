@@ -394,15 +394,20 @@ func TestGlobSubjectFansOut(t *testing.T) {
 	}
 }
 
-// A glob segment selects a FAMILY at a place, not everything there.
-func TestAGlobSegmentSelectsAFamily(t *testing.T) {
+// A PREDICATE SELECTS A FAMILY at a place, where the path selects the place. A name pattern is a
+// condition on what a node HOLDS — which is where both live charters say it
+// (`value: {name: !glob "verse/auto/*/*"}`) — and a path takes no operator.
+func TestAPredicateSelectsAFamily(t *testing.T) {
 	store := entitytest.Store(t)
-	prs(t, store, "open", "hotfix-1", "hotfix-2", "feature-9")
+	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-9"} {
+		entitytest.Set(t, store, entity.RefAt("demo", "pr", id),
+			entity.Obj{"stage": "open", "branch": id}.Payload())
+	}
 
 	eng := New(store, task.AutoResolver{})
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(`{name: ship-hotfixes,
-		condition: {when: ci.status.*, subject: {path: [demo, pr, !glob "hotfix-*"]}},
+		condition: {when: ci.status.*, subject: {path: "demo.pr.*", value: {branch: !glob "hotfix-*"}}},
 		action: {patch: {stage: shipped}}}`), &tr, codec.Tony); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

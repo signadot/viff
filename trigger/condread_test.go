@@ -21,9 +21,9 @@ const proposalCharter = `
 - name: proposal-stale
   condition:
     subject:
-      path: [merge, proposal, "*"]
+      path: "merge.proposal.*"
       value: !let
-        let: [{tip: !get-path {at: [git, head, verse], path: sha}}]
+        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
         in:  {state: open, base: !not .[tip]}
   action:
     patch: {state: stale}
@@ -129,7 +129,7 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
 - name: self-referential
   condition:
     subject:
-      path: [merge, proposal, "*"]
+      path: "merge.proposal.*"
       value: !let
         let: [{tip: !get-path {at: [git, head, $subject.value.branch], path: sha}}]
         in:  {base: !not .[tip]}
@@ -217,10 +217,10 @@ func TestAConditionHoldsASubjectAgainstAListOfObjects(t *testing.T) {
 - name: judge
   condition:
     subject:
-      path: [tracker, issue, "*"]
+      path: "tracker.issue.*"
       value: !let
         let:
-        - judged: !list-paths {at: [triage, next, "*"], path: judged}
+        - judged: !list-paths {at: "triage.next.*", path: judged}
         in: !and
         - {status: open}
         - !not.or .[judged]

@@ -321,7 +321,7 @@ works). A `<who>` is a principal in the [grammar](../perms.md#principals-and-gra
 The path narrows by where an entity lives. `-if` narrows by what it says: a tony match
 against the payload, which is the same predicate a charter carries in `value` — in its
 `subject`, its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule
-with the subject `{path: [demo, pr, "*"], value: X}` would select.
+with the subject `{path: "demo.pr.*", value: X}` would select.
 
 ```sh
 verse data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality

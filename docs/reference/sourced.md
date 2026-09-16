@@ -97,7 +97,7 @@ condition on what a commit *declared* rather than search prose.
 
 ```tony
 condition:
-  subject: {path: [git, verse, commit, "*"], value: {trailers: {Tier: change}}}
+  subject: {path: "git.verse.commit.*", value: {trailers: {Tier: change}}}
 ```
 
 and `!glob "*"` in place of a value matches any commit that *declared* the key at all — which is

@@ -192,8 +192,8 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	}
 	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(`{
 		name: suspender, stratum: prs,
-		condition: {subject: {path: [demo, pr, "*"]}},
-		action: {derive: [{path: [verse, trigger, suspension], value: {charter: "*"}}]},
+		condition: {subject: {path: "demo.pr.*"}},
+		action: {derive: [{path: "verse.trigger.suspension", value: {charter: "*"}}]},
 	}`))
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.release.*", value: {stage: open}}},
 		gates: [{name: approvals, need: 2}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -400,7 +400,7 @@ func TestAWithdrawnQuestionsClockStops(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.release.*", value: {stage: open}}},
 		gates: [{name: ok, mode: ask, deadline: {within: "10m", default: deny}}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -440,7 +440,7 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: ship,
-		condition: {subject: {path: [demo, release, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.release.*", value: {stage: open}}},
 		gates: [{name: ok, mode: ask}],
 		action: {patch: {stage: shipped}},
 	}`)
@@ -587,7 +587,7 @@ func TestAPackagesFlowIsShownByItsEngine(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		condition: {when: {path: "git.head.*"}, subject: {path: "notes.seen.head"}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing a package = %d: %s", code, msg)
@@ -680,7 +680,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	firstHTTP := httptest.NewServer(first.Handler())
 	addScopedRule(t, firstHTTP, "me", `{
 		name: scoped-review,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	if code, _, msg := suspendAs(t, firstHTTP, "suspend", "", "me", api.FlowSelect{Charter: ":scoped-review", Subject: "*", Why: "reading it"}); code != http.StatusOK {
@@ -699,7 +699,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	entitytest.Set(t, store.Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
 	addScopedRule(t, ts, "me", `{
 		name: connect-probe,
-		condition: {subject: {path: [never, never, *]}},
+		condition: {subject: {path: "never.never.*"}},
 		action: {patch: {seen: true}},
 	}`)
 	if !second.engFor("me").Knows("scoped-review") {
@@ -733,7 +733,7 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 	srv, ts := startedServer(t)
 	addRule(t, ts, `{
 		name: review,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	srv.Eng.Adopt("demo.pr.1", "by-hand", newIdleHandle(t))

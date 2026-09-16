@@ -21,7 +21,7 @@ import (
 func get(addr any) entity.Payload  { return entity.Val(addr).WithTag("!" + GetPathTag) }
 func list(addr any) entity.Payload { return entity.Val(addr).WithTag("!" + ListPathsTag) }
 
-// readOf is a path read written as tony — `!get-path {at: [git, repo, abc], path: branch}`.
+// readOf is a path read written as tony — `!get-path {at: "git.repo.abc", path: branch}`.
 func readOf(src string) entity.Payload {
 	n, err := codec.ParseNode([]byte(src), codec.Tony)
 	if err != nil {
@@ -41,9 +41,9 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 	eng, _ := newEng(t)
 	bad := map[string]entity.Payload{
 		"a wildcard last segment": get("git.repo.*"),
-		"a wildcard path":         readOf(`!get-path {at: [git, repo, abc], path: "labels.*"}`),
-		"a predicate":             readOf(`!get-path {at: [git, repo, abc], value: {x: 1}}`),
-		"an unknown key":          readOf(`!get-path {at: [git, repo, abc], branch: main}`),
+		"a wildcard path":         readOf(`!get-path {at: "git.repo.abc", path: "labels.*"}`),
+		"a predicate":             readOf(`!get-path {at: "git.repo.abc", value: {x: 1}}`),
+		"an unknown key":          readOf(`!get-path {at: "git.repo.abc", branch: main}`),
 		"a glob above the last":   readOf(`!get-path {at: [git, !glob "re*", abc]}`),
 		"a reference above":       readOf(`!get-path {at: [$subject.name, repo, abc]}`),
 		"a bare address":          get("git"),
@@ -61,10 +61,10 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		}
 	}
 	ok := map[string]entity.Payload{
-		"the object form":        readOf(`!get-path {at: [git, repo, abc]}`),
+		"the object form":        readOf(`!get-path {at: "git.repo.abc"}`),
 		"the address form":       get("git.repo.abc"),
 		"a reference last":       readOf(`!get-path {at: [git, repo, $subject.value.head]}`),
-		"a payload path":         readOf(`!get-path {at: [git, repo, abc], path: branch}`),
+		"a payload path":         readOf(`!get-path {at: "git.repo.abc", path: branch}`),
 		"a reference in an addr": get(`git.repo."$subject.value.head"`),
 		// A short path names the node at it: git.repo is a place and something in it.
 		"a short address": get("git.repo"),
@@ -337,8 +337,8 @@ func TestGetPathReachesIntoThePayload(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage":  "read",
-			"branch": readOf(`!get-path {at: [git, repo, abc], path: branch}`),
-			"second": readOf(`!get-path {at: [git, repo, abc], path: "meta.tags[1]"}`),
+			"branch": readOf(`!get-path {at: "git.repo.abc", path: branch}`),
+			"second": readOf(`!get-path {at: "git.repo.abc", path: "meta.tags[1]"}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -374,7 +374,7 @@ func TestListPathsCollects(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage":    "read",
-			"branches": readOf(`!list-paths {at: [git, repo, "*"], path: branch}`),
+			"branches": readOf(`!list-paths {at: "git.repo.*", path: branch}`),
 			"nothing":  readOf(`!list-paths {at: [git, repo, !glob "zz-*"], path: branch}`),
 		}.Payload()},
 	}); err != nil {
@@ -424,7 +424,7 @@ func TestListPathsWildcardPath(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"all":   readOf(`!list-paths {at: [git, repo, abc], path: "labels.*"}`),
+			"all":   readOf(`!list-paths {at: "git.repo.abc", path: "labels.*"}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -478,10 +478,10 @@ func TestListPathsNarrowsByPredicate(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage": "read",
-			"green": readOf(`!list-paths {at: [git, repo, "*"], value: {state: green}, path: branch}`),
+			"green": readOf(`!list-paths {at: "git.repo.*", value: {state: green}, path: branch}`),
 			// A predicate nothing satisfies is an empty list, exactly as a glob that selects
 			// nothing is: the asymmetry is with `!get-path`, not within the list form.
-			"none": readOf(`!list-paths {at: [git, repo, "*"], value: {state: chartreuse}, path: branch}`),
+			"none": readOf(`!list-paths {at: "git.repo.*", value: {state: chartreuse}, path: branch}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -519,7 +519,7 @@ func TestGetPathStillRefusesAPredicate(t *testing.T) {
 	err := eng.AddTrigger(Trigger{
 		Name:      "refused",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
-		Action:    readAction(readOf(`!get-path {at: [git, repo, abc], value: {state: green}}`)),
+		Action:    readAction(readOf(`!get-path {at: "git.repo.abc", value: {state: green}}`)),
 	})
 	if err == nil {
 		t.Fatal("!get-path accepted a payload predicate, which can name several entities")
@@ -546,7 +546,7 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("rel", "tag", "*"), "value": map[string]any{"stage": "cut"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage":  "shipped",
-			"picked": readOf(`!list-paths {at: [tr, trace, "*"], value: {target: $subject.value.target}, path: pr}`),
+			"picked": readOf(`!list-paths {at: "tr.trace.*", value: {target: $subject.value.target}, path: pr}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)

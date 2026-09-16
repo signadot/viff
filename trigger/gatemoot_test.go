@@ -48,7 +48,7 @@ func (d *dropping) droppedWhy(id string) (string, bool) {
 const mootProposalCharter = `
 - name: merge-proposal
   condition:
-    subject: {path: [merge, proposal, *], value: !not.has-path state}
+    subject: {path: "merge.proposal.*", value: !not.has-path state}
   gates:
   - name: merge-to-main
     mode: ask

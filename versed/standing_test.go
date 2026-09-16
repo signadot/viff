@@ -31,7 +31,7 @@ func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string
 }
 
 func standing(name, area string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {path: [change, pr, "*"],` +
+	return `{name: ` + name + `, kind: security, condition: {subject: {path: "change.pr.*",` +
 		` value: {area: ` + area + `}}}, method: {driver: url, url: "https://x"}}`
 }
 
@@ -122,7 +122,7 @@ func TestInstallingReportsWhatItOverlaps(t *testing.T) {
 
 	// A binding over a different kind shares nothing and is told so by silence.
 	third := installResolver(t, ts.URL,
-		`{name: charlie, kind: cost, condition: {subject: {path: [demo, release, *]}}, `+
+		`{name: charlie, kind: cost, condition: {subject: {path: "demo.release.*"}}, `+
 			`method: {driver: url, url: "https://x"}}`)
 	decodeResp(t, third, &out)
 	third.Body.Close()
@@ -183,7 +183,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 	// A rule that names nobody: the standing binding covering the subject owns its gate.
 	addRule(t, ts, `{
 		name: guard,
-		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
+		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
 		gates:  [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewed}},
 	}`)
@@ -196,7 +196,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 	// questions it was already answering rather than competing for these.
 	addRule(t, ts, `{
 		name: named,
-		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
+		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
 		gating: {resolver: "verse.resolvers.security.security-review", gates: [{name: sign, mode: ask}]},
 		action: {patch: {signed: true}},
 	}`)
@@ -298,7 +298,7 @@ func TestAnInstanceFollowsItsOrigin(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	addRule(t, ts, `{
 		name: guard,
-		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
+		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
 		gates:  [{name: approval, mode: ask}],
 		action: {patch: {stage: reviewed}},
 	}`)

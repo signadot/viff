@@ -289,7 +289,7 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 // written when it meant something, and their authors deserve to be told where the meaning
 // went — a create is the rising edge of "this exists", which is what `on` says.
 func TestOpIsNoLongerAMatchDimension(t *testing.T) {
-	const in = `{"path":["local","dir-status-abc","*"],"op":"set"}`
+	const in = `{"path":"local.dir-status-abc.*","op":"set"}`
 	var f Formula
 	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
 		if err := f.Req.Facts.Validate(); err == nil {
@@ -331,7 +331,7 @@ func TestUnknownFormulaTagRejected(t *testing.T) {
 // A `when` round-trips as authored, so `trigger show` reads like the installed charter
 // rather than exposing the internal parse node; the subject round-trips as its path.
 func TestConditionJSONRoundTrip(t *testing.T) {
-	const in = `{"name":"reviewed","condition":{"when":{"path":["task","instance","*"],` +
+	const in = `{"name":"reviewed","condition":{"when":{"path":"task.instance.*",` +
 		`"value":{"status":"done"}},"subject":"demo.pr.*"},"action":{"patch":{"stage":"reviewed"}}}`
 	var tr Trigger
 	if err := codec.Unmarshal([]byte(in), &tr, codec.JSON); err != nil {

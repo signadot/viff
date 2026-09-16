@@ -12,7 +12,7 @@ import (
 
 // A formula is a match: every spelling a match takes reads as one, and renders back as one.
 func TestFormulaIsAMatch(t *testing.T) {
-	for _, in := range []string{`demo.pr.*`, `{path: [demo, pr, *]}`, `{path: [demo, pr, "*"], value: {stage: open}}`, `!match {path: [demo, "*", "*"]}`} {
+	for _, in := range []string{`demo.pr.*`, `{path: "demo.pr.*"}`, `{path: "demo.pr.*", value: {stage: open}}`, `!match {path: "demo.*.*"}`} {
 		var f Formula
 		if err := codec.Unmarshal([]byte(in), &f, codec.Tony); err != nil {
 			t.Fatalf("%s: %v", in, err)

@@ -26,8 +26,8 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}},
-		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -41,7 +41,7 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
     subject: verse-dev.drift.head.*
   action:
     derive:
-    - path: [verse-dev, drift, finding]
+    - path: "verse-dev.drift.finding"
       value: {noted: true}
 `)); err != nil {
 		t.Fatalf("install: %v", err)
@@ -58,7 +58,7 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	// And the level nothing depends on still goes, so this did not turn into "no stratum may
 	// ever be removed".
 	if err := eng.AddStratum(Stratum{Name: "spare", Level: 30,
-		Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, spare]}`)}}); err != nil {
+		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.spare"}`)}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := eng.RemoveStratum("spare"); err != nil {

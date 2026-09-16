@@ -13,7 +13,7 @@ Installed as `verse.resolvers.<kind>.<name>`.
 name:      security-review
 kind:      security
 condition:                                       # the STANDING door
-  subject: {path: [change, pr, "*"], value: { area: payments }}
+  subject: {path: "change.pr.*", value: { area: payments }}
 byRef:     true                                  # the NAMED door
 method:
   driver:  url

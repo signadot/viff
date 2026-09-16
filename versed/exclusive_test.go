@@ -25,7 +25,7 @@ func mustInstall(t *testing.T, base, doc string) {
 
 func exclusiveBinding(name, area string) string {
 	return `{name: ` + name + `, kind: security, exclusive: true, deadline: {within: "1h"},` +
-		` condition: {subject: {path: [change, pr, "*"], value: {area: ` + area + `}}},` +
+		` condition: {subject: {path: "change.pr.*", value: {area: ` + area + `}}},` +
 		` method: {driver: url, url: "https://x"}}`
 }
 

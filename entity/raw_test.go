@@ -67,7 +67,7 @@ func TestRawReplacesRatherThanMerges(t *testing.T) {
 func TestModifyDoesNotExecuteWhatItStores(t *testing.T) {
 	store := openStore(t)
 	ref := RefAt("goal", "instance", "ship")
-	spec := doc(t, `{doneWhen: !fact {facts: {path: [ci, *, *]}}, patch: {tmp: !delete null}}`)
+	spec := doc(t, `{doneWhen: !fact {facts: {path: "ci.*.*"}}, patch: {tmp: !delete null}}`)
 	set(t, store, ref, Obj{"spec": Raw(spec), "status": "active"}.Payload())
 
 	if err := Modify(t.Context(), store, ref, func(cur Payload) Payload {
@@ -222,7 +222,7 @@ func TestAsPatternEscapesWithRawAlone(t *testing.T) {
 func TestTagIsNotComposedByRepeatedWrites(t *testing.T) {
 	store := openStore(t)
 	ref := RefAt("goal", "instance", "ship")
-	spec := doc(t, `{doneWhen: !fact {facts: {path: [ci, *, *]}}}`)
+	spec := doc(t, `{doneWhen: !fact {facts: {path: "ci.*.*"}}}`)
 	set(t, store, ref, Obj{"spec": Raw(spec), "n": 0}.Payload())
 
 	for range 3 {

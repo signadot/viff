@@ -47,7 +47,7 @@ func TestAGateHeldOutToAGroup(t *testing.T) {
 
 	resp = installAs(t, "alice@example.com", ts.URL, `{
 		name: group-ask,
-		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.ask.*", value: {stage: open}}},
 		gates: [{name: approval, mode: ask, need: 2, answerers: [group:payments]}],
 		action: {patch: {stage: reviewing}},
 	}`)
@@ -95,7 +95,7 @@ func TestAGroupAsABindingsResolver(t *testing.T) {
 	resp := groupAs(t, "walter@example.com", ts.URL, "reviewers", "oscar@example.com")
 	resp.Body.Close()
 	mustInstall(t, ts.URL, `{name: review-group, kind: approvals,
-		condition: {subject: {path: [change, pr, "*"], value: {area: payments}}},
+		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
 		method: {driver: group, group: group:reviewers}}`)
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")

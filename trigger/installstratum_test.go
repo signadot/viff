@@ -72,7 +72,7 @@ func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 - name: seen
   stratum: observe
   condition:
-    subject: {path: [gh, pr, *]}
+    subject: {path: "gh.pr.*"}
   action:
     patch: {saw: true}
 `)); err != nil {
@@ -138,7 +138,7 @@ func TestReApplyingAFileReplacesAHeldRule(t *testing.T) {
 - name: waiting
   stratum: later
   condition:
-    subject: {path: [gh, pr, *]}
+    subject: {path: "gh.pr.*"}
   action:
     patch: {saw: "`+patch+`"}
 `)

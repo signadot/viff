@@ -89,17 +89,17 @@ reads: [git, signadot.comment-drift]
 - name: reflected
   level: 0
   match:
-    path: [git]
+    path: "git"
 
 - name: proposal
   level: 30
   match:
-    path: [signadot, pr, proposal]
+    path: "signadot.pr.proposal"
 
 - name: train
   level: 40
   match:
-    path: [signadot, pr, train]
+    path: "signadot.pr.train"
 ---
 # 1. A delivered branch becomes a proposal, and nothing else.
 #
@@ -116,14 +116,14 @@ reads: [git, signadot.comment-drift]
   stratum: reflected
   condition:
     subject:
-      path: [git, signadot, ref, "*"]
+      path: "git.signadot.ref.*"
       value:
         name: !glob "verse/auto/*/*"
   action:
     derive:
     # The branch is the id, so every reader below selects `[signadot, pr, proposal, "*"]` and
     # lands on one proposal rather than on the rule's subtree.
-    - path: [signadot, pr, proposal]
+    - path: "signadot.pr.proposal"
       id: $subject.value.name
       value:
         repo: $subject.value.repo
@@ -136,11 +136,11 @@ reads: [git, signadot.comment-drift]
   stratum: proposal
   condition:
     subject:
-      path: [signadot, pr, proposal, "*"]
+      path: "signadot.pr.proposal.*"
       value: !not.has-path base
   action:
     patch:
-      base: !get-path {at: [git, signadot, ref, master], path: sha}
+      base: !get-path {at: "git.signadot.ref.master", path: sha}
 ---
 # 1c. …and the proposal says what it is about: the review's report for the range that ends at
 # its base, which is the review that proposed it unless master moved between the answer and the
@@ -149,7 +149,7 @@ reads: [git, signadot.comment-drift]
   stratum: proposal
   condition:
     subject:
-      path: [signadot, pr, proposal, "*"]
+      path: "signadot.pr.proposal.*"
       value: !not.has-path state
   action:
     patch:
@@ -163,10 +163,10 @@ reads: [git, signadot.comment-drift]
   stratum: reflected
   condition:
     subject:
-      path: [git, signadot, ref, master]
+      path: "git.signadot.ref.master"
   action:
     derive:
-    - path: [signadot, pr, train]
+    - path: "signadot.pr.train"
       id: $subject.value.sha
       value:
         sha: $subject.value.sha
@@ -182,18 +182,18 @@ reads: [git, signadot.comment-drift]
   stratum: train
   condition:
     subject:
-      path: [signadot, pr, train, "*"]
+      path: "signadot.pr.train.*"
       value: !and
       - !not.has-path stage
       - !let
         let:
-        - tip: !get-path {at: [git, signadot, ref, master], path: sha}
+        - tip: !get-path {at: "git.signadot.ref.master", path: sha}
         - fresh: !list-paths
-            at: [signadot, pr, proposal, "*"]
+            at: "signadot.pr.proposal.*"
             value: !not.has-path state
             path: branch
         - reviewed: !list-paths
-            at: [signadot, comment-drift, range, "*"]
+            at: "signadot.comment-drift.range.*"
             value:
               status: done
             path: to
@@ -204,7 +204,7 @@ reads: [git, signadot.comment-drift]
   action:
     patch:
       branches: !list-paths
-        at: [signadot, pr, proposal, "*"]
+        at: "signadot.pr.proposal.*"
         value: !not.has-path state
         path: branch
       says: !get-path
@@ -224,13 +224,13 @@ reads: [git, signadot.comment-drift]
   stratum: train
   condition:
     subject:
-      path: [signadot, pr, train, "*"]
+      path: "signadot.pr.train.*"
       value: !and
       - !has-path branches
       - !not {branches: []}
       - !not.has-path stage
       - !let
-        let: [{tip: !get-path {at: [git, signadot, ref, master], path: sha}}]
+        let: [{tip: !get-path {at: "git.signadot.ref.master", path: sha}}]
         in: {sha: .[tip]}
   action:
     patch:
@@ -268,11 +268,11 @@ reads: [git, signadot.comment-drift]
   stratum: proposal
   condition:
     subject:
-      path: [signadot, pr, proposal, "*"]
+      path: "signadot.pr.proposal.*"
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: [git, signadot, ref, master], path: sha}}]
+        let: [{tip: !get-path {at: "git.signadot.ref.master", path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch:

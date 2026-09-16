@@ -30,12 +30,12 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      path: [git, head, "*"]
+      path: "git.head.*"
       value: !let
         let:
-        - tip: !get-path {at: [git, head, verse], path: sha}
+        - tip: !get-path {at: "git.head.verse", path: sha}
         - fresh: !list-paths
-            at: [verse-dev, merge, proposal, "*"]
+            at: "verse-dev.merge.proposal.*"
             value: {base: .[tip]}
             path: branch
         in: {branches: .[fresh]}
@@ -50,10 +50,10 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      path: [git, head, "*"]
+      path: "git.head.*"
       value: !let
         let:
-        - tip: !get-path {at: [git, head, verse], path: sha}
+        - tip: !get-path {at: "git.head.verse", path: sha}
         - one: !get-path {at: [merge, proposal, .[tip]], path: branch}
         in: {branch: .[one]}
   action:
@@ -67,11 +67,11 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
 - name: probe
   condition:
     subject:
-      path: [git, head, "*"]
+      path: "git.head.*"
       value: !let
         let:
-        - field: !get-path {at: [git, head, verse], path: which}
-        - one: !get-path {at: [merge, proposal, p1], path: .[field]}
+        - field: !get-path {at: "git.head.verse", path: which}
+        - one: !get-path {at: "merge.proposal.p1", path: .[field]}
         in: {branch: .[one]}
   action:
     patch: {saw: yes}
@@ -100,11 +100,11 @@ func TestAReadThatNamesNoBindingInstalls(t *testing.T) {
 - name: probe
   condition:
     subject:
-      path: [git, head, "*"]
+      path: "git.head.*"
       value: !let
         let:
         - fresh: !list-paths
-            at: [verse-dev, merge, proposal, "*"]
+            at: "verse-dev.merge.proposal.*"
             value: {base: "a.[tip]b"}
             path: branch
         in: {branches: .[fresh]}

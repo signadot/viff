@@ -22,7 +22,7 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "system.tony")
 	if err := os.WriteFile(path, []byte(`{
 		name: system-watch,
-		condition: {subject: {path: [demo, sys, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.sys.*", value: {stage: open}}},
 		action: {patch: {stage: seen}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 	firstHTTP := httptest.NewServer(first.Handler())
 	review := `{
 		name: review,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`
 	if resp := installAs(t, "alice@example.com", firstHTTP.URL, review); resp.StatusCode != http.StatusCreated {
@@ -70,8 +70,8 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 	// A file that changes review and then carries a rule that does nothing is refused whole, and
 	// review is put back as alice's: its record, its owner, and the engine's account of it.
 	resp := installAs(t, "alice@example.com", ts.URL, `[
-		{name: review, condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}}, action: {patch: {stage: looked}}},
-		{name: broken, condition: {subject: {path: [demo, pr, "*"]}}, action: {}},
+		{name: review, condition: {subject: {path: "demo.pr.*", value: {stage: open}}}, action: {patch: {stage: looked}}},
+		{name: broken, condition: {subject: {path: "demo.pr.*"}}, action: {}},
 	]`)
 	if resp.StatusCode == http.StatusCreated {
 		t.Fatal("a file carrying a rule that does nothing installed")

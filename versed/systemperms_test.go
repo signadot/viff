@@ -132,7 +132,7 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "system.tony")
 	if err := os.WriteFile(path, []byte(`{
 		name: system-watch,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: seen}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)

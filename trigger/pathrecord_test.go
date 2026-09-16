@@ -12,7 +12,7 @@ import (
 // store's copy of the charter is the charter, and a spelling that means something else on the way
 // back is a charter nobody edited quietly changing.
 //
-// `{path: [a, b, c]}` is a PLACE at every length, and it must come back as the same place. A
+// `{path: "a.b.c"}` is a PLACE at every length, and it must come back as the same place. A
 // stratum that came back as something else overlapped its neighbour, so restore refused it, and
 // then refused every rule whose derive needed the level it named.
 //
@@ -21,9 +21,9 @@ import (
 // fewer rules than the store held.
 func TestAPathStratumSurvivesBeingWrittenDown(t *testing.T) {
 	head := Stratum{Name: "drift", Level: 10,
-		Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}}
+		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}}
 	ledger := Stratum{Name: "ledger", Level: 20,
-		Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}}
+		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}}
 
 	back := map[string]Stratum{}
 	for _, st := range []Stratum{head, ledger} {
@@ -66,7 +66,7 @@ func TestATaggedListIsRefusedNotAUnion(t *testing.T) {
 		t.Fatalf("`!verse-path` read as %d matches; want a refusal", len(ms))
 	}
 	// The union form reads as a union.
-	node, err = codec.ParseNode([]byte(`[demo.pr.*, {path: [gh, issue, *]}]`), codec.Tony)
+	node, err = codec.ParseNode([]byte(`[demo.pr.*, {path: "gh.issue.*"}]`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestATaggedListIsRefusedNotAUnion(t *testing.T) {
 
 // A SUBJECT TOO: the rendering a rule is stored with has to name the same place the rule named.
 func TestADeepSubjectRendersAsAPath(t *testing.T) {
-	m := mustPathMatch(t, `{path: [verse-dev, drift, head]}`)
+	m := mustPathMatch(t, `{path: "verse-dev.drift.head"}`)
 	node, err := m.ToTonyIR()
 	if err != nil {
 		t.Fatal(err)

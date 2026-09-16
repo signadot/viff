@@ -141,7 +141,7 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 }
 
 func standingWithDeadline(name, area, within string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {path: [change, pr, "*"],` +
+	return `{name: ` + name + `, kind: security, condition: {subject: {path: "change.pr.*",` +
 		` value: {area: ` + area + `}}}, deadline: {within: "` + within + `"},` +
 		` method: {driver: url, url: "https://x"}}`
 }

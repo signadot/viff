@@ -45,7 +45,7 @@ because an install compares declarations with no entities in hand.
 {at: "git.verse"}              a whole subtree: everything under it, at every depth
 {at: "linear.issue.ENG-*"}     a level may be `*`, and may END in one — a literal prefix
 {at: "verse-dev.drift"}        …which is how a source that keeps two levels of its own says so
-{at: "linear.project.*", path: [owners, ENG]}   …at a place INSIDE the payload
+{at: "linear.project.*", path: "owners.ENG"}   …at a place INSIDE the payload
 ```
 
 A claim is **one pattern per level, at whatever depth** — the same shape an address is. It owns
@@ -151,8 +151,8 @@ Two routes, no state, no write face:
 
 ```tony
 covers:
-- {path: [git, verse, ref, "*"]}
-- {path: [git, verse, head]}
+- {path: "git.verse.ref.*"}
+- {path: "git.verse.head"}
 entities:
 - at: git.verse.ref.main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}

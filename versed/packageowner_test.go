@@ -18,20 +18,20 @@ reads: [demo]
 - name: src
   level: 0
   match:
-    path: [demo]
+    path: "demo"
 - name: rows
   level: 10
   match:
-    path: [notes, row]
+    path: "notes.row"
 ---
 - name: copy
   stratum: src
   condition:
     subject:
-      path: [demo, item, "*"]
+      path: "demo.item.*"
   action:
     derive:
-    - path: [notes, row]
+    - path: "notes.row"
       id: $subject.value.id
       value:
         seen: $subject.value.n

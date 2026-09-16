@@ -154,7 +154,7 @@ func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
 
 	rule := func(sel string, need int) string {
 		return `- name: review
-  condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}}
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
   action:
     patch: {stage: reviewing}
     spawn:

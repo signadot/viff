@@ -127,7 +127,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			},
 		},
 		{
-			"tony/bare-match", `{path: [demo, pr, *]}`, codec.Tony,
+			"tony/bare-match", `{path: "demo.pr.*"}`, codec.Tony,
 			func(f *Formula) bool { return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.pr.*") },
 		},
 		{
@@ -135,7 +135,7 @@ func TestCharterGrammarSpellings(t *testing.T) {
 			func(f *Formula) bool { return f.IsMatchAtom() && f.Req.Facts.IsEmpty() },
 		},
 		{
-			"tony/explicit-match-tag", `!match {path: [demo, *, *]}`, codec.Tony,
+			"tony/explicit-match-tag", `!match {path: "demo.*.*"}`, codec.Tony,
 			func(f *Formula) bool { return f.IsMatchAtom() && isPath(f.Req.Facts, "demo.*.*") },
 		},
 

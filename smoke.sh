@@ -220,7 +220,7 @@ step "charter -a + drive (reactive core)"
 # JSON *is* tony, not because anything sniffed it.
 v charter -a -f - >/dev/null <<'JSON' || die "charter -a failed"
 [ { "name": "smoke-advance",
-    "condition": { "subject": { "path": ["demo", "pr", "*"], "value": { "stage": "open" } } },
+    "condition": { "subject": { "path": "demo.pr.*", "value": { "stage": "open" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "reviewed" } } } ]
 JSON
@@ -248,7 +248,7 @@ cat >"$tmp/charter.tony" <<'TONY'
 - name: smoke-advance-tony
   condition:
     subject:
-      path: [demo, pr, *]
+      path: "demo.pr.*"
       value:
         stage: queued
   gates: []
@@ -275,17 +275,17 @@ done
 ok "a tony-authored trigger fires identically to its JSON twin"
 
 # ── an operator on a path segment ────────────────────────────────────────────
-# A segment of a subject's path may carry a tony match rather than a name. Installing one
-# exercises the whole path the unit tests cover in pieces: tag → Validate → the engine's
-# selection, and the rendering back.
-step "trigger subject with an operator on a segment"
+# A subject's PREDICATE may carry a tony match, which is what selects a family at a place — the
+# path says where, the predicate says which. Installing one exercises the whole path the unit
+# tests cover in pieces: tag → Validate → the engine's selection, and the rendering back.
+step "trigger subject with an operator in its predicate"
 # demo.task, not demo.pr: the charters above match every demo.pr, and a subject the fan-out
 # was supposed to exclude would then be indistinguishable from one they had already moved.
 v charter -a -f - >/dev/null <<'TONY' || die "operator charter -a failed"
 - name: smoke-hotfix-only
   condition:
-    when: {path: [demo, note, "*"], value: {seen: true}}
-    subject: {path: [demo, task, !glob "hotfix-*"]}
+    when: {path: "demo.note.*", value: {seen: true}}
+    subject: {path: "demo.task.*", value: {branch: !glob "hotfix-*"}}
   gates: []
   action:
     patch: {stage: escalated}
@@ -293,8 +293,8 @@ TONY
 has "$(v charter rules smoke-hotfix-only)" '!glob' || die "the operator did not survive install"
 ok "installed; the operator renders back as a tag"
 # two candidates, one matching the glob and one not — the fan-out must pick exactly one.
-v data demo task hotfix-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-v data demo task feature-9 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+v data demo task hotfix-9 --put '{"stage":"open","branch":"hotfix-9"}' >/dev/null || die "data --put failed"
+v data demo task feature-9 --put '{"stage":"open","branch":"feature-9"}' >/dev/null || die "data --put failed"
 v data demo note 1 --put '{"seen":true}' >/dev/null || die "data --put failed"
 escalated=
 for _ in $(seq 1 100); do
@@ -304,9 +304,9 @@ for _ in $(seq 1 100); do
 	fi
 	sleep 0.2
 done
-[ -n "$escalated" ] || die "the glob subject did not select demo.task.hotfix-9"
-haskv "$(v data demo task feature-9)" stage open || die "the glob subject escalated a task it excludes"
-ok "!glob subject selected hotfix-9 and left feature-9 alone"
+[ -n "$escalated" ] || die "the glob predicate did not select demo.task.hotfix-9"
+haskv "$(v data demo task feature-9)" stage open || die "the glob predicate escalated a task it excludes"
+ok "!glob predicate selected hotfix-9 and left feature-9 alone"
 
 # ── `on`: a cause as the RISING EDGE of a store predicate ────────────────────
 # The charters above dispatch on a change to their own subject. This one names its cause
@@ -318,8 +318,8 @@ ok "!glob subject selected hotfix-9 and left feature-9 alone"
 step "trigger with an \`on\` (a cause as a rising edge)"
 v charter -a -f - >/dev/null <<'JSON' || die "on-charter -a failed"
 [ { "name": "smoke-on-green",
-    "condition": { "on":      { "path": ["smokeci", "status", "*"], "value": { "state": "green" } },
-                   "subject": { "path": ["demo", "build", "*"], "value": { "stage": "reviewed" } } },
+    "condition": { "on":      { "path": "smokeci.status.*", "value": { "state": "green" } },
+                   "subject": { "path": "demo.build.*", "value": { "stage": "reviewed" } } },
     "gates":     [],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
@@ -355,7 +355,7 @@ ok "the rising edge fired: demo.build.1 reviewed → shipped"
 step "gate: an ask gate holds; answering it releases the action"
 v charter -a --file - >/dev/null <<'JSON' || die "gated charter -a failed"
 [ { "name": "smoke-gated",
-    "condition": { "subject": { "path": ["demo", "release", "*"], "value": { "stage": "open" } } },
+    "condition": { "subject": { "path": "demo.release.*", "value": { "stage": "open" } } },
     "gates":     [ { "name": "ship", "mode": "ask", "onDenied": { "patch": { "stage": "held" } } } ],
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
@@ -395,7 +395,7 @@ step "gate: a threshold gate holds until enough approve"
 v charter -a --file - >/dev/null <<'TONY' || die "threshold charter -a failed"
 - name: smoke-quorum
   condition:
-    subject: {path: [demo, motion, *], value: {stage: open}}
+    subject: {path: "demo.motion.*", value: {stage: open}}
   gates:
   - {name: approvals, need: 2}
   action:
@@ -441,12 +441,12 @@ step "suspend: a suspended charter fires nothing; resuming acts on the world as 
 v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a failed"
 - name: settle
   condition:
-    subject: {path: [smoke-susp, level, *], value: {stage: open}}
+    subject: {path: "smoke-susp.level.*", value: {stage: open}}
   action:
     patch: {stage: settled}
 - name: approve
   condition:
-    subject: {path: [smoke-susp, gated, *], value: {stage: open}}
+    subject: {path: "smoke-susp.gated.*", value: {stage: open}}
   gates:
   - {name: ok, mode: ask}
   action:
@@ -626,14 +626,14 @@ cat >"$tmp/strata.tony" <<'TONY'
   stratum: smoke-observe
   condition:
     subject:
-      path: [smokegh, issue, *]
+      path: "smokegh.issue.*"
       value:
         label: urgent
   action:
     patch:
       triaged: true
     derive:
-    - path: [smokesd, feature]
+    - path: "smokesd.feature"
       value:
         priority: urgent
 - name: smoke-consume
@@ -643,7 +643,7 @@ cat >"$tmp/strata.tony" <<'TONY'
     # derived about. A derived entity is as deep as what it is about, so a rule that reads one
     # says how deep it is.
     subject:
-      path: [smokesd, feature, *, *, *, *]
+      path: "smokesd.feature.*.*.*.*"
       value:
         priority: urgent
   action:
@@ -697,10 +697,10 @@ v charter -a -f - >/dev/null 2>&1 <<'TONY' && die "a derive that does not climb 
 - name: smoke-downward
   stratum: smoke-sdlc
   condition:
-    subject: {path: [smokesd, feature, *]}
+    subject: {path: "smokesd.feature.*"}
   action:
     derive:
-    - path: [smokegh, issue]
+    - path: "smokegh.issue"
       value:
         a: 1
 TONY

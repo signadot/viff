@@ -111,193 +111,20 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	}
 }
 
-// A STEP MAY BE AN OPERATOR, at any position — `{path: [demo, pr, !glob "hot-*"]}`.
-//
-// It used to be dropped on the way in. The failure was quiet in the worst way: a `!glob` at the
-// ID position behaved, because an id containing `*` globs anyway, and the same operator one
-// level along matched a segment literally named `head-*`. A pattern that reads as a glob and
-// selects nothing is worse than one that is refused.
-func TestAStepMayCarryAnOperator(t *testing.T) {
-	store := entitytest.Store(t)
-	for _, ref := range []entity.Ref{
-		entity.RefAt("verse-dev", "drift", "head-main", "abc"),
-		entity.RefAt("verse-dev", "drift", "head-next", "abc"),
-		entity.RefAt("verse-dev", "drift", "finding", "abc"),
-	} {
-		entitytest.Set(t, store, ref, entity.Obj{"seen": true}.Payload())
-	}
-
-	node, err := codec.ParseNode([]byte(`{subject: {path: [verse-dev, drift, !glob "head-*", "*"]}}`), codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var c Condition
-	if err := c.FromTonyIR(node); err != nil {
-		t.Fatalf("an operator in a step was refused: %v", err)
-	}
-
-	if !c.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "head-main", "abc")) {
-		t.Error("the glob did not match what it names")
-	}
-	if c.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "finding", "abc")) {
-		t.Error("the glob matched past itself")
-	}
-
-	pat, err := c.Subject.pattern()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := pat.Select(store); len(got) != 2 {
-		t.Errorf("selected %v, want the two under a head-* level", got)
-	}
-
-	// ANY OPERATOR, not just a string-shaped one: `!or [hot, cold]` is a list, and a step that
-	// had to have a text reading could not hold it at all.
-	node, err = codec.ParseNode([]byte(`{subject: {path: [demo, pr, !or [hot, cold]]}}`), codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var either Condition
-	if err := either.FromTonyIR(node); err != nil {
-		t.Fatalf("a list-shaped operator in a step was refused: %v", err)
-	}
-	for _, id := range []string{"hot", "cold"} {
-		if !either.Subject.MatchRef(entity.RefAt("demo", "pr", id)) {
-			t.Errorf("%q is one of the two named", id)
-		}
-	}
-	if either.Subject.MatchRef(entity.RefAt("demo", "pr", "warm")) {
-		t.Error("the or matched what it does not name")
-	}
-
-	// And the watch it opens stops ABOVE the operator: a level that is constrained but not
-	// named cannot narrow a subtree, so the watch is the literal head and the pattern does the
-	// rest — which is what a `*` position does too.
-	if got := subtreeOf(c.Subject).Path(); len(got) != 2 || got[1] != "drift" {
-		t.Errorf("the watch subtree is %v, want the literal head of the path", got)
-	}
-}
-
-// EACH ELEMENT OF A PATH IS A MATCH, in tony's own grammar, asked of that one segment — so the
-// operators a payload predicate takes work at an address position too, with nothing here
-// enumerating them.
-//
-// Two conveniences sit above that and only two: `*` is any segment, and `!raw` is the escape
-// that says a segment is a NAME. Without the second, an id that happens to be `*` — or to be
-// named after an operator — could not be addressed at all, which is a hole exactly where
-// somebody's id is.
-func TestEveryPathSegmentIsAMatch(t *testing.T) {
-	for _, tc := range []struct {
-		seg  string
-		id   string
-		want bool
-	}{
-		{`!not archived`, "live", true},
-		{`!not archived`, "archived", false},
-		{`!or [hot, cold]`, "cold", true},
-		{`!or [hot, cold]`, "warm", false},
-		{`!and [!glob "h*", !not hold]`, "hot", true},
-		{`!and [!glob "h*", !not hold]`, "hold", false},
-		{`1`, "1", true},     // an untagged scalar is the name it spells
-		{`"*"`, "any", true}, // the wildcard, as everywhere else in an address
-		{`!raw "*"`, "*", true},
-		{`!raw "*"`, "any", false}, // …and escaped, it is the id that IS an asterisk
-	} {
-		node, err := codec.ParseNode([]byte(`{subject: {path: [demo, pr, `+tc.seg+`]}}`), codec.Tony)
-		if err != nil {
-			t.Fatalf("%s: %v", tc.seg, err)
-		}
-		var c Condition
-		if err := c.FromTonyIR(node); err != nil {
-			t.Errorf("%s was refused: %v", tc.seg, err)
-			continue
-		}
-		if got := c.Subject.MatchRef(entity.RefAt("demo", "pr", tc.id)); got != tc.want {
-			t.Errorf("[demo pr %s] vs id %q = %v, want %v", tc.seg, tc.id, got, tc.want)
-		}
-	}
-}
-
-// A RULE WITH OPERATORS IN ITS ADDRESS HAS TO BE STORABLE, which is a different question from
-// whether it parses: a charter record is a WRITE, a write is a tony patch, and a patch carrying
-// `!glob` is executed rather than stored — the failure that has cost staging a wipe three times
-// (entity/raw.go). The charter is persisted under `!raw` for exactly this reason; a path segment
-// is one more place operators now appear, so this is the check that the escape covers it.
-func TestARuleWithOperatorsInItsPathIsDurable(t *testing.T) {
-	store := entitytest.Store(t)
-	eng := New(store, task.AutoResolver{})
-	if err := eng.AddTrigger(mustParseCharter(t, `
-- name: deep-glob
-  condition:
-    subject: {path: [verse-dev, drift, !glob "head-*", "*"]}
-  action:
-    patch: {seen: true}
-`)); err != nil {
-		t.Fatalf("install: %v", err)
-	}
-
-	// It is in the store, and reading it back does not fail — which is what an unescaped
-	// operator would have broken, for this entity and every later read of it.
-	ent, ok, err := store.Get(CharterRef("deep-glob"))
-	if err != nil || !ok {
-		t.Fatalf("the rule was not written down: ok=%v err=%v", ok, err)
-	}
-	stored, err := codec.NodeBytes(ent.Payload, codec.Tony)
-	if err != nil {
-		t.Fatalf("rendering the stored rule: %v", err)
-	}
-	// The escape is CONSUMED by the read — `!raw` is an operation, and applying it is what
-	// leaves the data behind — so what comes back is the document, glob and all.
-	if !strings.Contains(string(stored), "!glob") {
-		t.Errorf("the stored rule lost its operator:\n%s", stored)
-	}
-
-	// AND THE ESCAPE IS WHAT MADE THAT POSSIBLE: the same document written unescaped is refused,
-	// because a write is a patch and `!glob` is not a patch operation. This is the check that
-	// says the charter's `entity.Raw` is load-bearing for a path segment too, rather than
-	// happening to work.
-	spec := entity.Get(ent.Payload, "spec")
-	if spec == nil {
-		t.Fatal("the record has no spec")
-	}
-	if _, _, err := store.Write(entity.Write{
-		At:    entity.RefAt("demo", "unescaped", "rule").At(),
-		Value: spec,
-	}); err == nil {
-		t.Error("an unescaped charter document was accepted; the store would be unreadable after it")
-	}
-
-	// And it comes back as the rule it was: a fresh engine loading the durable charter selects
-	// what the glob names and nothing else.
-	second := New(store, task.AutoResolver{})
-	if err := second.LoadCharter(); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
-	back, ok := second.Trigger("deep-glob")
-	if !ok {
-		t.Fatal("the rule did not come back")
-	}
-	if !back.Condition.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "head-main", "abc")) {
-		t.Error("the restored rule lost its glob")
-	}
-	if back.Condition.Subject.MatchRef(entity.RefAt("verse-dev", "drift", "finding", "abc")) {
-		t.Error("the restored rule matches past its glob")
-	}
-}
-
 // THE ID THAT IS AN ASTERISK is nameable without an escape of verse's own, which is what keeps
 // `!raw` where it belongs — it is the STORE's escape, added when a charter is written down and
 // consumed when it is read back, and a charter never writes one.
 //
-// A bare `*` is the wildcard; inside an operator it is an ordinary character. So the grammar
-// already says both things, and this pins that it survives being stored.
+// A bare `*` is the wildcard and a quoted `"*"` is the name, which is the address grammar's own
+// escape — the same characters `verse data -at 'demo.pr."*"'` reads. This pins that it survives
+// being stored and read back.
 func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: literal-star
   condition:
-    subject: {path: [demo, pr, !glob "[*]"]}
+    subject: 'demo.pr."*"' 
   action:
     patch: {seen: true}
 `)); err != nil {
@@ -333,8 +160,8 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, head]}`)}},
-		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: [verse-dev, drift, finding]}`)}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -349,7 +176,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [verse-dev, drift, head]
+    - path: "verse-dev.drift.head"
       value: {sha: $subject.value.sha}
 `)); err != nil {
 		t.Fatalf("the tip rule did not install: %v", err)
@@ -360,10 +187,10 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: gather
   stratum: tip
   condition:
-    subject: {path: [verse-dev, drift, head, "*"]}
+    subject: {path: "verse-dev.drift.head.*"}
   action:
     derive:
-    - path: [verse-dev, drift, finding]
+    - path: "verse-dev.drift.finding"
       value: {noted: true}
 `)); err != nil {
 		t.Fatalf("the ledger rule did not install: %v", err)
@@ -377,7 +204,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [somebody-else, notes]
+    - path: "somebody-else.notes"
       value: {tampered: true}
 `))
 	if err == nil {
@@ -451,7 +278,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// One node, four segments down, reaching a field of it.
-	got, err := readOne(t, `!get-path {at: [verse-dev, drift, head, abc], path: sha}`, snap)
+	got, err := readOne(t, `!get-path {at: "verse-dev.drift.head.abc", path: sha}`, snap)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -460,7 +287,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// Many, with a wildcard at the leaf and a payload predicate narrowing them.
-	list, err := readOne(t, `!list-paths {at: [verse-dev, drift, finding, "*"], value: {status: open}, path: says}`, snap)
+	list, err := readOne(t, `!list-paths {at: "verse-dev.drift.finding.*", value: {status: open}, path: says}`, snap)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -469,7 +296,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// And a get whose leaf globs is refused, because a value slot takes one thing.
-	if _, err := readOne(t, `!get-path {at: [verse-dev, drift, finding, "f*"], path: says}`, snap); err == nil {
+	if _, err := readOne(t, `!get-path {at: "verse-dev.drift.finding."f*"", path: says}`, snap); err == nil {
 		t.Error("a get with a globbing leaf was accepted")
 	}
 }
@@ -497,7 +324,7 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: notice
   condition:
-    subject: {path: [verse-dev, drift, head, "*"]}
+    subject: {path: "verse-dev.drift.head.*"}
     value: {reviewed: pending}
   action:
     patch: {reviewed: seen}
@@ -522,37 +349,35 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	t.Fatal("a live change four segments down did not wake the rule that selects there")
 }
 
-// AN OPERATOR IN A PATH IS ASKED HONESTLY when one pattern is compared with another: it contains
-// and meets only the names it matches, rather than standing in for `*`. `[demo, !glob "a*"]`
-// contains `[demo, abc, x]` and not `[demo, b]` or a `*` that could be `b`, and meets `[demo, b]`
-// nowhere — so a stratum of the one and a stratum of the other are separable.
-func TestAnOperatorInAPathContainsOnlyWhatItMatches(t *testing.T) {
-	glob := mustPathMatch(t, `{path: [demo, !glob "a*"]}`)
+// ONE PATTERN ASKED OF ANOTHER, segment by segment: a name contains and meets only itself, a `*`
+// contains anything at its position, and two patterns meet where every position can. That is what
+// keeps a stratum of one path and a stratum of another separable.
+func TestAPathContainsOnlyWhatItMatches(t *testing.T) {
+	name := mustPathMatch(t, `{path: "demo.abc"}`)
 	for _, c := range []struct {
 		inner    string
 		contains bool
 		overlaps bool
 	}{
-		{`{path: [demo, abc, x]}`, true, true},
-		{`{path: [demo, b]}`, false, false},
-		{`{path: [demo, "*"]}`, false, true},
-		{`{path: [demo, !glob "ab*"]}`, false, true},
-		{`{path: [other, abc]}`, false, false},
+		{`{path: "demo.abc.x"}`, true, true},
+		{`{path: "demo.b"}`, false, false},
+		{`{path: "demo.*"}`, false, true},
+		{`{path: "other.abc"}`, false, false},
 	} {
 		inner := mustPathMatch(t, c.inner)
-		if got := matchContains(glob, inner); got != c.contains {
-			t.Errorf("[demo, !glob a*] contains %s = %v, want %v", c.inner, got, c.contains)
+		if got := matchContains(name, inner); got != c.contains {
+			t.Errorf("demo.abc contains %s = %v, want %v", c.inner, got, c.contains)
 		}
-		if got := matchOverlap(glob, inner); got != c.overlaps {
-			t.Errorf("[demo, !glob a*] overlaps %s = %v, want %v", c.inner, got, c.overlaps)
+		if got := matchOverlap(name, inner); got != c.overlaps {
+			t.Errorf("demo.abc overlaps %s = %v, want %v", c.inner, got, c.overlaps)
 		}
 	}
 	// And the ordinary cases are what they were: `*` contains anything, a prefix contains what
 	// extends it, and crossed wildcards meet.
-	if !matchContains(mustPathMatch(t, `{path: [demo, "*"]}`), mustPathMatch(t, `{path: [demo, b, c]}`)) {
+	if !matchContains(mustPathMatch(t, `{path: "demo.*"}`), mustPathMatch(t, `{path: "demo.b.c"}`)) {
 		t.Error("[demo, *] does not contain [demo, b, c]")
 	}
-	if !matchOverlap(mustPathMatch(t, `{path: [demo, "*", x]}`), mustPathMatch(t, `{path: ["*", pr, x]}`)) {
+	if !matchOverlap(mustPathMatch(t, `{path: "demo.*.x"}`), mustPathMatch(t, `{path: "*.pr.x"}`)) {
 		t.Error("[demo, *, x] and [*, pr, x] do not meet at demo.pr.x")
 	}
 }

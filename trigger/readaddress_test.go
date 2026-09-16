@@ -29,7 +29,7 @@ func TestADeepReadAddressAnswers(t *testing.T) {
 		{"a kinded path", getPathOf("verse-dev.drift.head.abc.result.report"), "hello"},
 		{"a quoted segment holding @", getPathOf(`verse-dev.drift.head."head-moved@git.head.verse@aaaa1111".result.report`), "deep"},
 		{"a quoted segment holding dots", getPathOf(`verse-dev.drift.head."v1.2.3".result.report`), "dotted"},
-		{"at and path", readNode(`!get-path {at: [verse-dev, drift, head, "v1.2.3"], path: result.report}`), "dotted"},
+		{"at and path", readNode(`!get-path {at: 'verse-dev.drift.head."v1.2.3"', path: result.report}`), "dotted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			spec, err := readSpec(tc.node(t))

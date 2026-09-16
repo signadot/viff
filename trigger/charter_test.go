@@ -116,8 +116,8 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: hotfix,
 		condition: {
-			when:    {path: [demo, pr, *], value: {stage: open}},
-			subject: {path: [demo, pr, !glob "hotfix-*"], value: {stage: open}},
+			when:    {path: "demo.pr.*", value: {stage: open}},
+			subject: {path: "demo.pr.*", value: {stage: open, branch: !glob "hotfix-*"}},
 		},
 		gates:  [{name: approval, mode: ask}],
 		action: {
@@ -146,13 +146,14 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if spec == nil || !entity.IsObj(spec) {
 		t.Fatalf("%s = %v; want the rule as an object", specField, spec)
 	}
-	// The LAST segment of the subject's path still carries its operator as a tag.
-	path := ir.Get(ir.Get(ir.Get(spec, "condition"), "subject"), "path")
-	if path == nil || len(path.Values) != 3 {
-		t.Fatalf("condition.subject.path = %v; want the segments it was written with", path)
+	// The subject's path is stored as the kinded path it was written as, and the operator its
+	// PREDICATE carries survives as a tag — which is where an operator lives now.
+	subject := ir.Get(ir.Get(spec, "condition"), "subject")
+	if path := ir.Get(subject, "path"); path == nil || path.String != "demo.pr.*" {
+		t.Fatalf("condition.subject.path = %v; want the kinded path it was written with", path)
 	}
-	if id := path.Values[2]; id == nil || id.Tag != "!glob" {
-		t.Fatalf("the last segment = %v; the operator did not survive as a tag", id)
+	if br := ir.Get(ir.Get(subject, "value"), "branch"); br == nil || br.Tag != "!glob" {
+		t.Fatalf("the predicate's branch = %v; the operator did not survive as a tag", br)
 	}
 	back, err := ruleOf(ent)
 	if err != nil {
@@ -296,7 +297,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 - name: latched
   condition:
     subject:
-      path: [drift, head, "*"]
+      path: "drift.head.*"
       value: !not
         reviewed: null
   action:
@@ -360,7 +361,7 @@ func TestARuleKeepsItsComments(t *testing.T) {
 	eng, store := newEng(t)
 	src := []byte("# why this rule exists, in the author's words\n" +
 		"name: commented\n" +
-		"condition:\n  subject: {path: [demo, pr, *], value: { stage: open }}\n" +
+		"condition:\n  subject: {path: \"demo.pr.*\", value: { stage: open }}\n" +
 		"action:\n  patch: { stage: reviewing }\n")
 	node, err := codec.ParseNode(src, codec.Tony)
 	if err != nil {
@@ -492,10 +493,10 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 // pinning it would pin the author's field order.
 func TestAConditionKeepsItsFieldComments(t *testing.T) {
 	for _, order := range []string{
-		"  # about the subject\n  subject: {path: [demo, pr, *]}\n" +
-			"  # about the when\n  when: {path: [ci, status, *]}\n",
-		"  # about the when\n  when: {path: [ci, status, *]}\n" +
-			"  # about the subject\n  subject: {path: [demo, pr, *]}\n",
+		"  # about the subject\n  subject: {path: \"demo.pr.*\"}\n" +
+			"  # about the when\n  when: {path: \"ci.status.*\"}\n",
+		"  # about the when\n  when: {path: \"ci.status.*\"}\n" +
+			"  # about the subject\n  subject: {path: \"demo.pr.*\"}\n",
 	} {
 		src := "name: r\ncondition:\n" + order + "action:\n  patch: { stage: x }\n"
 		node, err := codec.ParseNode([]byte(src), codec.Tony)

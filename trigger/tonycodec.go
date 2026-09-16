@@ -44,10 +44,8 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		return ir.FromString(addr), nil
 	}
 	var kvs []ir.KeyVal
-	if segs := m.SegNodes(); len(segs) > 0 {
-		vals := make([]*ir.Node, 0, len(segs))
-		vals = append(vals, segs...)
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyPath), Val: ir.FromSlice(vals)})
+	if addr, ok := m.pathString(); ok {
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(mKeyPath), Val: ir.FromString(addr)})
 	}
 	// The predicate goes back out as the node it is, operators and all.
 	if node, ok := predicateNode(m[mKeyValue]); ok {
@@ -56,30 +54,63 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromKeyVals(kvs), nil // {} for the empty match, which matches everything
 }
 
-// address renders the match as a kinded path when it is an address and nothing else: a path whose
-// every segment is a name or `*`, with no predicate. An operator or a predicate has no string
-// spelling, and rendering one as the string would drop it.
+// address renders the match as the kinded path alone, when it is an address and nothing else: a
+// path, with no predicate beside it. With one, the path is a key of the object form and this
+// answers no.
 func (m Match) address() (string, bool) {
-	segs := m.SegNodes()
-	if len(segs) == 0 || m.HasPredicate() {
+	if m.HasPredicate() {
 		return "", false
 	}
-	out := make([]string, 0, len(segs))
-	for _, n := range segs {
-		if n.Tag != "" {
-			return "", false
-		}
-		t, ok := stepText(n)
-		if !ok {
-			return "", false
-		}
-		if t == "*" {
-			out = append(out, "*") // any one segment, and a `*` is never quoted
-			continue
-		}
-		out = append(out, entity.JoinSegs([]string{t}))
+	return m.pathString()
+}
+
+// pathString renders the match's path as the kinded path it is — the one spelling an address
+// has. A `*` is bare, a `..` is the descent, and a name that would read as either carries the
+// quotes that make it a name (`demo.pr."*"`), which is how it was written and how it is read
+// back.
+func (m Match) pathString() (string, bool) {
+	segs := m.SegNodes()
+	if len(segs) == 0 {
+		return "", false
 	}
-	return strings.Join(out, "."), true
+	steps := make([]string, 0, len(segs))
+	for _, n := range segs {
+		switch {
+		case n.Tag != "":
+			// The one match a path segment can hold: the name a quoted `"*"` or `".."` spells,
+			// which PatternNodes compiles to `!or [name]` because a bare string of those
+			// characters is the query segment.
+			lit, ok := quotedName(n)
+			if !ok {
+				return "", false
+			}
+			steps = append(steps, `"`+lit+`"`)
+		default:
+			t, ok := stepText(n)
+			if !ok {
+				return "", false
+			}
+			steps = append(steps, t)
+		}
+	}
+	out, err := entity.KPathOf(steps)
+	if err != nil {
+		return "", false
+	}
+	return out, true
+}
+
+// quotedName reads the one-name match a quoted segment compiles to, and answers false for any
+// other operator — nothing else can be written in a path now that it is a kinded path.
+func quotedName(n *ir.Node) (string, bool) {
+	if tagName(n) != "or" || n.Type != ir.ArrayType || len(n.Values) != 1 {
+		return "", false
+	}
+	v := unwrap(n.Values[0])
+	if v == nil || v.Type != ir.StringType {
+		return "", false
+	}
+	return v.String, true
 }
 
 // FromTonyIR accepts the address string or the object form — the same two shapes the JSON
@@ -94,7 +125,7 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	// someone may spell it explicitly.
 	if tagName(node) == VersePathTag {
 		return fmt.Errorf("match: !%s is not a spelling of an address — write the kinded path "+
-			"(`demo.pr.*`) or `path: [demo, pr, \"*\"]`", VersePathTag)
+			"(`demo.pr.*`) or `path: \"demo.pr.*\"`", VersePathTag)
 	}
 	if tag := tagName(node); tag != "" && tag != string(ReqMatch) {
 		return fmt.Errorf("match: unexpected tag %q", node.Tag)
@@ -109,7 +140,7 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return nil
 	case ir.ArrayType:
 		return fmt.Errorf("match: a list is not an address — write the kinded path (`demo.pr.*`) " +
-			"or `path: [demo, pr, \"*\"]`")
+			"or `path: \"demo.pr.*\"`")
 	case ir.ObjectType:
 		parsed, err := matchFromObject(node)
 		if err != nil {
@@ -135,12 +166,15 @@ func matchFromObject(node *ir.Node) (Match, error) {
 		val := unwrap(node.Values[i])
 		switch k {
 		case mKeyPath:
-			// A list of segments, each a name, a bare `*`, or a tony match over one segment.
-			if val == nil || val.Type != ir.ArrayType {
-				return nil, fmt.Errorf("match: `%s` is a list of segments (`[demo, pr, \"*\"]`); "+
-					"got %v", mKeyPath, valType(val))
+			// A KINDED PATH, which is the one spelling an address has: `demo.pr.*`, the same
+			// grammar `verse data -at` takes. A list of segments was the other one, and it
+			// existed to carry a match on a segment; a predicate on the payload says what those
+			// said, and says it where a reader looks for it.
+			if val == nil || val.Type != ir.StringType {
+				return nil, fmt.Errorf("match: `%s` is a kinded path (`\"demo.pr.*\"`); got %v",
+					mKeyPath, valType(val))
 			}
-			got, err := PathMatch(val.Values)
+			got, err := ParseExpr(val.String)
 			if err != nil {
 				return nil, err
 			}

@@ -84,10 +84,10 @@ if v charter -a -f - >/dev/null 2>&1 <<'YAML'; then
 - name: close-the-loop
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, "*"]}
+    subject: {path: "signadot.feature.*"}
   action:
     derive:
-    - path: [gh, issue]
+    - path: "gh.issue"
       value:
         reopened: true
 YAML
@@ -98,10 +98,10 @@ v charter -a -f - 2>&1 <<'YAML' | head -3 || true
 - name: close-the-loop
   stratum: sdlc
   condition:
-    subject: {path: [signadot, feature, "*"]}
+    subject: {path: "signadot.feature.*"}
   action:
     derive:
-    - path: [gh, issue]
+    - path: "gh.issue"
       value:
         reopened: true
 YAML

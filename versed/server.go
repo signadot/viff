@@ -3310,7 +3310,16 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL, "who": res.Method.Who, "group": res.Method.Group},
 	}
 	if res.Condition != nil {
-		body["condition"] = entity.Obj{"subject": map[string]any(res.Condition.Subject)}
+		// THROUGH THE MATCH'S OWN CODEC, not as the map it is underneath: a subject is written
+		// down as the kinded path it was authored as, which is also the only spelling read back
+		// (trigger.Match.ToTonyIR). Cast to a map, the record carried the parsed segments and a
+		// later read of it could not say what they were.
+		subject, err := res.Condition.Subject.ToTonyIR()
+		if err != nil {
+			http.Error(w, "condition.subject: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		body["condition"] = entity.Obj{"subject": subject}
 	}
 	if res.Deadline != nil {
 		// The outcome is stored RESOLVED rather than as written: a binding that omitted it

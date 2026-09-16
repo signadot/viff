@@ -102,7 +102,7 @@ func TestACharterReadsAsItsOwner(t *testing.T) {
 	} {
 		resp := postAs(t, who.principal, ts.URL+"/charter", "application/tony", `{
 			name: `+who.name+`,
-			condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+			condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 			action: {patch: {seenBy: {`+who.mark+`: true}}},
 		}`)
 		resp.Body.Close()
@@ -142,7 +142,7 @@ func TestACharterReadsAsItsOwner(t *testing.T) {
 	// And a rule of a person's reading the mirror is refused at install, saying why.
 	resp = postAs(t, "bob@example.com", ts.URL+"/charter", "application/tony", `{
 		name: policy-watch,
-		condition: {subject: {path: [verse, perms, node, "*"]}},
+		condition: {subject: {path: "verse.perms.node.*"}},
 		action: {patch: {noted: true}},
 	}`)
 	body, _ := io.ReadAll(resp.Body)

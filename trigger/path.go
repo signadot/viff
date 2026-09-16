@@ -190,8 +190,8 @@ func (p pathSpec) validateAt() error {
 //
 //	value: !let                                     # what it reads as
 //	  let:
-//	  - tip:   !get-path {at: [git, head, verse], path: sha}
-//	  - fresh: !list-paths {at: [m, proposal, "*"], value: {base: .[tip]}, path: branch}
+//	  - tip:   !get-path {at: "git.head.verse", path: sha}
+//	  - fresh: !list-paths {at: "m.proposal.*", value: {base: .[tip]}, path: branch}
 //	  in: {branches: .[fresh]}
 //
 // Tony's own `let` DOES bind a sibling — `let: [{a: x}, {b: .[a]}]` resolves, checked — so this
@@ -267,8 +267,7 @@ func pathKind(n *ir.Node) string {
 // pathSpec is one path read, as far as it is knowable at install.
 type pathSpec struct {
 	kind string // GetPathTag or ListPathsTag
-	// At is the address the read reaches, one segment at a time — `at: [verse-dev, drift, finding,
-	// "*"]`. `path` below is the FIELD path inside what it reaches and keeps that name, which is why
+	// At is the address the read reaches, one segment at a time — `at: "verse-dev.drift.finding."// "*"""`. `path` below is the FIELD path inside what it reaches and keeps that name, which is why
 	// the address is `at:` here and `path:` in a match: in a read the two would collide.
 	At   []*ir.Node
 	Path string // a kpath into the node read; "" is the whole node
@@ -363,7 +362,7 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 				spec.Path = v.String
 			default:
 				return spec, fmt.Errorf("!%s: unknown key %q (want %s and %s%s) — an address is a "+
-					"path, `at: [git, verse, head]`", kind, f.String, readKeyAt, pathKey,
+					"kinded path, `at: \"git.verse.head\"`", kind, f.String, readKeyAt, pathKey,
 					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}
@@ -406,7 +405,7 @@ func (p pathSpec) validate() error {
 		return err
 	}
 	if len(p.At) == 0 {
-		return fmt.Errorf("!%s has no address: `at: [<segments>]` or a kinded path", p.kind)
+		return fmt.Errorf("!%s has no address: `at: \"a.kinded.path\"`", p.kind)
 	}
 	return p.validateAt()
 }

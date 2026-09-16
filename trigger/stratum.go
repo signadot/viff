@@ -1175,7 +1175,7 @@ func (a Action) validateDerive() error {
 		for i, el := range d.Values {
 			t, ok := derivePathTarget(unwrap(el))
 			if !ok {
-				return fmt.Errorf("action.derive[%d] must be {path: [<segments>], value: …}: the "+
+				return fmt.Errorf("action.derive[%d] must be {path: \"<a.kinded.path>\", value: …}: the "+
 					"path is where it writes and the value is what goes there", i)
 			}
 			if isEach(deriveContentNode(unwrap(el))) {
@@ -1205,7 +1205,7 @@ func (a Action) validateDerive() error {
 		}
 		return nil
 	}
-	return fmt.Errorf("action.derive is a list of {path: [<segments>], value: …} entries: the path " +
+	return fmt.Errorf("action.derive is a list of {path: \"<a.kinded.path>\", value: …} entries: the path " +
 		"is the place it writes under and the value is what goes there")
 }
 

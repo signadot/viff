@@ -153,7 +153,7 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		condition: {when: {path: "git.head.*"}, subject: {path: "notes.seen.head"}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing a package = %d: %s", code, msg)
@@ -220,7 +220,7 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	}
 	if code, msg := installAt(t, ts.URL, "notes", `{
 		name: note-the-head,
-		condition: {when: {path: [git, head, *]}, subject: {path: [notes, seen, head]}},
+		condition: {when: {path: "git.head.*"}, subject: {path: "notes.seen.head"}},
 		action: {patch: {saw: "yes"}},
 	}`); code != 201 {
 		t.Fatalf("installing a package = %d: %s", code, msg)

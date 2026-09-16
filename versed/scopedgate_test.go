@@ -133,7 +133,7 @@ func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
 	const scope = "dev-b"
 	addScopedRule(t, ts, scope, `{
 		name: scoped-ask,
-		condition: {subject: {path: [demo, ask, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.ask.*", value: {stage: open}}},
 		gates: [{name: approval, mode: ask, onDenied: {patch: {stage: rejected}}}],
 		action: {patch: {stage: reviewing}},
 	}`)

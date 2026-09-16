@@ -108,7 +108,7 @@ func TestSubjectMustBeInsideItsStratum(t *testing.T) {
 		{Name: "named", Stratum: "observe", Condition: Condition{Subject: mm("gh.issue.1")}, Action: seenAction()},
 		{Name: "prs", Stratum: "observe", Condition: Condition{Subject: mm("gh.pr.*")}, Action: seenAction()},
 		{Name: "all-of-gh", Stratum: "observe", Condition: Condition{Subject: mm("gh.*.*")}, Action: seenAction()},
-		{Name: "glob", Stratum: "observe", Condition: Condition{Subject: mustPathMatch(t, `{path: [gh, pr, !glob "hot-*"]}`)}, Action: seenAction()},
+		{Name: "deep", Stratum: "observe", Condition: Condition{Subject: mm("gh.pr.hot-1")}, Action: seenAction()},
 	}
 	for _, tr := range ok {
 		if err := eng.AddTrigger(tr); err != nil {
@@ -392,7 +392,7 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 	withStrata(t, eng, demoStrata()...)
 	src := "name: commented-derive\n" +
 		"stratum: observe\n" +
-		"condition:\n  subject: {path: [gh, issue, *]}\n" +
+		"condition:\n  subject: {path: \"gh.issue.*\"}\n" +
 		// `patch:` first, deliberately: a comment before a container's FIRST entry heads the
 		// container, so above `derive:` here it would land on the action and never wrap the
 		// value. Second, it wraps — which is the shape a real charter has, and the one that
@@ -400,7 +400,7 @@ func TestADeriveKeepsItsComment(t *testing.T) {
 		"action:\n" +
 		"  patch: {seen: true}\n" +
 		"  # WHY THIS LEDGER ENTRY EXISTS, in the author's words — and the rule still installs.\n" +
-		"  derive:\n  - path: [signadot, feature]\n    value:\n      urgent: true\n"
+		"  derive:\n  - path: \"signadot.feature\"\n    value:\n      urgent: true\n"
 	node, err := codec.ParseNode([]byte(src), codec.Tony)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -766,7 +766,7 @@ func waitCount(t *testing.T, s entity.Store, target []string, subj entity.Ref, w
 func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 	bad := map[string]entity.Obj{
 		"a misspelled stratum": {"name": "r", "startum": "observe", "condition": entity.Obj{"subject": "gh.issue.*"}},
-		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"derve": []any{entity.Obj{"path": []any{"a", "b"}, "value": entity.Obj{}}}}},
+		"a misspelled derive":  {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"derve": []any{entity.Obj{"path": "a.b", "value": entity.Obj{}}}}},
 		"one in a condition":   {"name": "r", "condition": entity.Obj{"subjekt": "gh.issue.*"}},
 		"one in a hook":        {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"onDone": entity.Obj{"patsh": entity.Obj{}}}},
 		"one in a seq element": {"name": "r", "condition": entity.Obj{"subject": "gh.issue.*"}, "action": entity.Obj{"seq": []any{entity.Obj{"patsh": entity.Obj{}}}}},
@@ -783,7 +783,7 @@ func TestUnknownRuleFieldsAreNamed(t *testing.T) {
 		"gates":     []any{entity.Obj{"mode": "ask"}},
 		"action": entity.Obj{
 			"patch":  entity.Obj{"stage": "x"},
-			"derive": []any{entity.Obj{"path": []any{"sig", "feature"}, "value": entity.Obj{"a": 1}}},
+			"derive": []any{entity.Obj{"path": "sig.feature", "value": entity.Obj{"a": 1}}},
 			"seq":    []any{entity.Obj{"patch": entity.Obj{"a": 1}}},
 			"onDone": entity.Obj{"patch": entity.Obj{"b": 2}},
 		},
@@ -955,7 +955,7 @@ func (r blockingResolver) Resolve(ctx context.Context, q task.GateQuestion, tu t
 }
 
 // mustSteps builds a path match from steps — the spelling a charter writes as
-// `path: [a, b, "*"]`, for a test assembling a rule in Go.
+// `path: "a.b.*"`, for a test assembling a rule in Go.
 func mustSteps(t *testing.T, steps ...string) Match {
 	t.Helper()
 	m, err := ParseSteps(steps)

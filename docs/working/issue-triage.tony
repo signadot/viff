@@ -78,7 +78,7 @@ reads: [git-issue]
 - name: reflected
   level: 0
   match:
-    path: [git-issue]
+    path: "git-issue"
 
 # One row per issue, keyed by the issue: the judgement and the mark of what was judged. It is
 # this package's own slice, since the source is the single writer of `git-issue.*` and a
@@ -86,7 +86,7 @@ reads: [git-issue]
 - name: next
   level: 10
   match:
-    path: [verse-dev, triage, next]
+    path: "verse-dev.triage.next"
 ---
 # 1. An open issue in this repository that no row says was judged as it now stands gets a row:
 # the issue's facts, copied — the judge's prompt binds against the payload that fired it, so
@@ -100,16 +100,16 @@ reads: [git-issue]
   stratum: reflected
   condition:
     subject:
-      path: [git-issue, verse, issue, "*"]
+      path: "git-issue.verse.issue.*"
       value: !let
         let:
-        - judged: !list-paths {at: [verse-dev, triage, next, "*"], path: judged}
+        - judged: !list-paths {at: "verse-dev.triage.next.*", path: judged}
         in: !and
         - {status: open}
         - !not.or .[judged]
   action:
     derive:
-    - path: [verse-dev, triage, next]
+    - path: "verse-dev.triage.next"
       id: $subject.value.id
       value:
         issue: $subject.value.id
@@ -146,7 +146,7 @@ reads: [git-issue]
   stratum: next
   condition:
     subject:
-      path: [verse-dev, triage, next, "*"]
+      path: "verse-dev.triage.next.*"
       value: !not.has-path stage
   action:
     patch:

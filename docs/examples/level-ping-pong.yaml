@@ -39,14 +39,14 @@
 - name: label-fwd
   stratum: triage
   condition:
-    subject: { path: [gh, issue, "*"], value: { stage: triaged } }
+    subject: { path: "gh.issue.*", value: { stage: triaged } }
   action:
     patch: { stage: labeled }
 
 - name: label-back
   stratum: triage
   condition:
-    subject: { path: [gh, issue, "*"], value: { stage: labeled } }
+    subject: { path: "gh.issue.*", value: { stage: labeled } }
   action:
     patch: { stage: triaged }
 
@@ -57,14 +57,14 @@
 - name: raise-feature
   stratum: triage
   condition:
-    subject: { path: [gh, issue, "*"], value: { stage: labeled } }
+    subject: { path: "gh.issue.*", value: { stage: labeled } }
   action:
     derive:
     # `id: $subject.name` puts the feature at signadot.feature.1, the issue's own name under the
     # feature place, so the rules above select it as `signadot.feature.*`. Without an id the
     # engine addresses it by provenance — signadot.feature.raise-feature.gh.issue.1 — and a rule
     # selecting it would have to say how deep that is.
-    - path: [signadot, feature]
+    - path: "signadot.feature"
       id: $subject.name
       value:
         priority: urgent
@@ -91,8 +91,8 @@
 - name: start-review
   stratum: sdlc
   condition:
-    subject: { path: [signadot, feature, "*"], value: { priority: urgent } }
-    on:      { path: [gh, issue, "*"], value: { stage: labeled } }
+    subject: { path: "signadot.feature.*", value: { priority: urgent } }
+    on:      { path: "gh.issue.*", value: { stage: labeled } }
   action:
     patch: { phase: drafted }
 
@@ -100,13 +100,13 @@
 - name: review-fwd
   stratum: sdlc
   condition:
-    subject: { path: [signadot, feature, "*"], value: { phase: drafted } }
+    subject: { path: "signadot.feature.*", value: { phase: drafted } }
   action:
     patch: { phase: reviewing }
 
 - name: review-back
   stratum: sdlc
   condition:
-    subject: { path: [signadot, feature, "*"], value: { phase: reviewing } }
+    subject: { path: "signadot.feature.*", value: { phase: reviewing } }
   action:
     patch: { phase: drafted }

@@ -90,7 +90,7 @@ func TestAScopedGrantGovernsTheScopeAlone(t *testing.T) {
 	// watched, which is the path a connected dev's checks take.
 	addScopedRule(t, firstHTTP, "me", `{
 		name: connect-probe,
-		condition: {subject: {path: [never, never, *]}},
+		condition: {subject: {path: "never.never.*"}},
 		action: {patch: {seen: true}},
 	}`)
 

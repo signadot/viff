@@ -37,7 +37,7 @@ Which spelling goes where.
 |---|---|
 | a path | anywhere a parser reads one and no shell is involved: inside a document (`at: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). Any depth, and it carries on into the payload — `demo.pr."1".labels.urgent` |
 | steps | at a command line, where the shell's own quoting is the only quoting there is: `verse data verse-dev drift head abc`. Taken on the way *in*, and what every listing answers with |
-| a list | in a charter, where an address is a list of segments and a segment may carry an operator: `path: [verse-dev, drift, head, "*"]` |
+| the same path | in a charter, where it is the `path` of a match beside a predicate: `{path: "verse-dev.drift.head.*", value: {…}}` |
 
 A listing answers with steps, the same spelling the command line takes, so a line hands
 straight back:
@@ -126,10 +126,10 @@ and in a charter's kinded path alike. A `*` selects every *field*, which is what
 a node are, and `[*]` every array element, so the two are different clauses. A write names one
 place, so it refuses a `*` step and names the quoted one.
 
-A family of names inside one segment is an operator on that segment, and only a charter's
-`path:` carries one (`path: [demo, pr, !glob "hotfix-*"]`); neither a step nor a kinded path
-string can. The quoted clause is the one match either of those can spell, and it names exactly
-one thing: `demo.pr."*"` is the match `!or ["*"]`, which is the node called `*` and nothing else.
+A family of names is not a segment at all: a path names places, and which of them a rule wants is
+a predicate on what each HOLDS (`{path: "demo.pr.*", value: {branch: !glob "hotfix-*"}}`). The one
+match a path spells is the quoted clause, and it names exactly one thing: `demo.pr."*"` is the node
+called `*` and nothing else.
 
 The shell gets there first, and an unquoted `*` never reaches verse at all. It fails two
 different ways, and the second is the one that bites:
@@ -159,18 +159,8 @@ verse data demo pr '"*"'          # the one node named `*`
 verse data --paths demo pr '*' | xargs -L1 verse data   # each line reads back as what it names
 ```
 
-In a charter's LIST form, quoting does not change it. Tony quoting is about a value's type, not
-about matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment.
-Naming the literal asterisk takes an operator:
-
-```tony
-path: [demo, pr, "*"]           # any name — the quotes change nothing
-path: [demo, pr, !or ["*"]]     # the name that IS an asterisk
-path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
-```
-
-In a charter's STRING form the quoting is the address grammar's, as it is at a read, so the same
-characters mean the same thing on both faces — the string compiles to the operator above:
+In a charter a path is the kinded path it is at a read, so the quoting means what it means there
+and the same characters mean the same thing on both faces:
 
 ```tony
 subject: "demo.pr.*"            # any name
@@ -193,13 +183,12 @@ The address parses; the write is refused. `verse data verse task instance x '{�
 well-formed address and a 403: what verse writes about itself is written by the verbs that own it
 (`charter -a`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
 
-In a charter an address is a `path:`, or the same path as one kinded path string, and every
-segment of it is a match in tony's own grammar, asked of that one segment:
+In a charter an address is a kinded path — on its own, or as the `path` of a match that also
+carries a predicate:
 
 ```tony
-subject: {path: [verse-dev, drift, head, "*"], value: {reviewed: pending}}
-subject: {path: [verse-dev, drift, !glob "head-*", "*"]}
-subject: {path: [verse, task, instance, "*"]}
+subject: {path: "verse-dev.drift.head.*", value: {reviewed: pending}}
+subject: {path: "verse.task.instance.*"}
 subject: demo.pr.1
 ```
 
@@ -210,7 +199,7 @@ owns them. One convention sits above that: a bare `*` is any segment, and inside
 An operator has no string spelling, so a path carrying one is written as `path:`.
 
 A `*` is a position, which is why the length of the path is the depth it selects at:
-`[demo, pr, "*"]` picks the nodes under `demo.pr`, and `[demo, pr]` is the node `demo.pr` itself.
+`demo.pr.*` picks the nodes under `demo.pr`, and `demo.pr` is the node `demo.pr` itself.
 
 **What takes what:**
 
@@ -279,7 +268,7 @@ A charter that wants to react to verse's own state names it by its path, `verse`
 
 ```tony
 condition:
-  subject: {path: [verse, gate, question, "*"], value: {status: pending}}
+  subject: {path: "verse.gate.question.*", value: {status: pending}}
 ```
 
 A path that does not start with `verse` does not reach under it, so a rule about `demo.pr.*`

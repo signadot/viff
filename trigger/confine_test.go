@@ -38,10 +38,10 @@ func TestAConfinedCharterRefusesWhatItCannotWrite(t *testing.T) {
 - name: derive-out
   stratum: low
   condition:
-    subject: {path: [demo, pr, *]}
+    subject: {path: "demo.pr.*"}
   action:
     derive:
-    - path: [other, finding]
+    - path: "other.finding"
       value: {seen: true}
 `))
 	if err == nil || !strings.Contains(err.Error(), "other.finding") {
@@ -62,8 +62,8 @@ func TestAConfinedCharterReadsWhatItDeclares(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: note-the-head
   condition:
-    when: {path: [git, head, *], value: {sha: !glob "*"}}
-    subject: {path: [drift, finding, latest]}
+    when: {path: "git.head.*", value: {sha: !glob "*"}}
+    subject: {path: "drift.finding.latest"}
   action:
     patch: {saw: "yes"}
 `)); err != nil {
@@ -127,11 +127,11 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	}{
 		{mine, `
 - name: mine
-  condition: {when: {path: [git, head, *]}, subject: {path: [mine, note, n]}}
+  condition: {when: {path: "git.head.*"}, subject: {path: "mine.note.n"}}
   action: {patch: {saw: "yes"}}`},
 		{theirs, `
 - name: theirs
-  condition: {when: {path: [git, head, *]}, subject: {path: [theirs, note, n]}}
+  condition: {when: {path: "git.head.*"}, subject: {path: "theirs.note.n"}}
   action: {patch: {saw: "yes"}}`},
 	} {
 		if err := c.eng.AddTrigger(mustParseCharter(t, c.src)); err != nil {
@@ -150,7 +150,7 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 	// other half even by naming it, because the install would have refused it.
 	if err := mine.AddTrigger(mustParseCharter(t, `
 - name: reach
-  condition: {subject: {path: [theirs, note, n]}}
+  condition: {subject: {path: "theirs.note.n"}}
   action: {patch: {tampered: true}}`)); err == nil {
 		t.Fatal("one charter installed a rule that writes into the other's subtree")
 	}
@@ -195,7 +195,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
     subject: git.head.verse
   action:
     derive:
-    - path: [drift, head]
+    - path: "drift.head"
       value:
         repo: $subject.value.repo
 `)); err != nil {

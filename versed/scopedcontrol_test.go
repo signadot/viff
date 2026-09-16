@@ -128,12 +128,12 @@ func TestCharterRemovalActsOnItsOwnScope(t *testing.T) {
 
 	addRule(t, ts, `{
 		name: review,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
 	addScopedRule(t, ts, "me", `{
 		name: only-mine,
-		condition: {subject: {path: [demo, pr, "*"], value: {stage: open}}},
+		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: mine}},
 	}`)
 	remove := func(path, scope string) (int, string) {

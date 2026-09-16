@@ -179,7 +179,7 @@ be automata intersection. Two claims are
 disjoint when any segment is; a `*` segment is disjoint from nothing, so `git.*.*` claims the
 lot and can be proved apart from nothing in its own system.
 
-A claim may also name a place **inside** an entity (`at: [owners, ENG]`), which is the one way
+A claim may also name a place **inside** an entity (`at: "owners.ENG"`), which is the one way
 two sources may write one entity: each is the single writer of its own slot, proved apart by the
 same comparison a segment further down. The Linear source declares one — a project belongs to
 several teams at once, so each team claims `owners.<KEY>` and nothing at the top (below).
@@ -348,8 +348,8 @@ knowable. So the same kind is covered **twice**:
 
 ```tony
 covers:
-- {path: [github, signadot, verse, issue, "*"], value: {state: open}}
-- {path: [github, signadot, verse, issue, "*"], value: {state: closed}}
+- {path: "github.signadot.verse.issue.*", value: {state: open}}
+- {path: "github.signadot.verse.issue.*", value: {state: closed}}
 ```
 
 The first says the answer holds *every* open issue, so one that has gone absent is gone. The

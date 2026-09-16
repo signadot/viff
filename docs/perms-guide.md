@@ -310,7 +310,7 @@ verse resolver add - <<'EOF'
 name: ani
 kind: merge
 condition:
-  subject: {path: [verse-dev, merge, train, "*"]}
+  subject: "verse-dev.merge.train.*"
 method: {driver: person, who: peggy@example.com}
 deadline: {within: "4h", then: escalate}
 EOF

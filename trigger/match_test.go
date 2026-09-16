@@ -21,10 +21,10 @@ import (
 func TestMatchJSONRoundTrip(t *testing.T) {
 	for _, in := range []string{
 		`"demo.pr.1"`,
-		`{"path":["demo","pr","*"],"value":{"stage":"open"}}`,
-		`{"path":["demo","pr","*"]}`,
-		`{"path":["verse","task","instance","*"]}`,
-		`{"path":["verse","task","instance","*"],"value":{"status":"done"}}`,
+		`{"path":"demo.pr.*","value":{"stage":"open"}}`,
+		`{"path":"demo.pr.*"}`,
+		`{"path":"verse.task.instance.*"}`,
+		`{"path":"verse.task.instance.*","value":{"status":"done"}}`,
 		`{}`,
 	} {
 		var m Match
@@ -152,15 +152,15 @@ func TestStringFormWhenConstrains(t *testing.T) {
 }
 
 // Names() is what separates the one case a Subject may bring into existence from a selection
-// over what already exists. A `*` or an operator in any segment must fall to the selection side,
-// so an action can never `set` a node literally called "*".
+// over what already exists. A `*` or a `..` in any segment must fall to the selection side, so an
+// action can never `set` a node literally called "*".
 func TestMatchNames(t *testing.T) {
 	yes := map[string]entity.Ref{
-		`{path: [demo, pr, "1"]}`: entity.RefAt("demo", "pr", "1"),
-		`"demo.pr.1"`:             entity.RefAt("demo", "pr", "1"),
+		`{path: 'demo.pr."1"'}`: entity.RefAt("demo", "pr", "1"),
+		`"demo.pr.1"`:           entity.RefAt("demo", "pr", "1"),
 		// A literal path names one node at whatever length it has.
-		`demo.pr`:                              entity.RefAt("demo", "pr"),
-		`{path: [verse, task, instance, abc]}`: entity.RefAt("verse", "task", "instance", "abc"),
+		`demo.pr`:                           entity.RefAt("demo", "pr"),
+		`{path: "verse.task.instance.abc"}`: entity.RefAt("verse", "task", "instance", "abc"),
 	}
 	for in, want := range yes {
 		var m Match
@@ -173,13 +173,12 @@ func TestMatchNames(t *testing.T) {
 		}
 	}
 	no := []string{
-		`"demo.pr.*"`,                          // the prs
-		`{path: [demo, pr, "*"]}`,              // the same, as a path
-		`{path: [demo, pr, !glob "hotfix-*"]}`, // an operator is never a name
-		`{path: [demo, "*", "1"]}`,             // a wildcard above the leaf
+		`"demo.pr.*"`,          // the prs
+		`{path: "demo.pr.*"}`,  // the same, as a path
+		`{path: 'demo.*."1"'}`, // a wildcard above the leaf
 		// …and neither is a match that says what the node must LOOK like. Naming is by
 		// identity alone, because that is the case whose answer does not depend on the store.
-		`{path: [demo, pr, "1"], value: {stage: open}}`,
+		`{path: 'demo.pr."1"', value: {stage: open}}`,
 	}
 	for _, in := range no {
 		var m Match
@@ -198,9 +197,9 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	// value, so `{"value":"stage=open"}` is a legal predicate on a string payload rather than
 	// a typo verse can name. See TestMatchValueScalarIsTheWholePayload.
 	cases := map[string]string{
-		"unknown key":         `{"sytem":"demo"}`,
-		"a path that is text": `{"path":"demo.pr.*"}`,
-		"an empty path":       `{"path":[]}`,
+		"unknown key":      `{"sytem":"demo"}`,
+		"a path as a list": `{"path":["demo","pr","*"]}`,
+		"an empty path":    `{"path":""}`,
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -217,7 +216,7 @@ func TestAnAddressIsAPath(t *testing.T) {
 	want := []string{"verse", "gate", "question", "*"}
 	for _, src := range []string{
 		`"verse.gate.question.*"`,
-		`{path: [verse, gate, question, "*"]}`,
+		`{path: "verse.gate.question.*"}`,
 	} {
 		var m Match
 		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
@@ -239,7 +238,7 @@ func TestPositionalAddressSpellingsAreRefused(t *testing.T) {
 		`{system: demo}`,
 		`{kind: pr}`,
 		`{id: "1"}`,
-		`{root: verse, path: [task, instance, "*"]}`,
+		`{root: verse, path: "task.instance.*"}`,
 		`{at: demo.pr.1}`,
 		`{at: !verse-path [demo pr 1]}`,
 		`!verse-path [demo pr 1]`,

@@ -10,7 +10,7 @@ import (
 )
 
 // matchAt is a match over the nodes at a kinded path, narrowed by a payload predicate when value
-// is non-nil — the Go spelling of `{path: [demo, pr, "*"], value: {stage: open}}`.
+// is non-nil — the Go spelling of `{path: "demo.pr.*", value: {stage: open}}`.
 func matchAt(path string, value map[string]any) trigger.Match {
 	m, err := trigger.ParseExpr(path)
 	if err != nil {
