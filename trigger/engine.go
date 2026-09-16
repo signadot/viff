@@ -707,8 +707,8 @@ func (e *Engine) Do(fn func()) { e.do(fn) }
 //
 // The commit is the unit throughout: a trigger's rule is a question about the store at a
 // revision, not about one entity, so every trigger is asked once and the commit's changes are
-// only consulted to decide whether asking is worth it (Trigger.touches). Reaping still walks
-// them, because retiring a finished task IS per-entity bookkeeping.
+// only consulted to decide whether asking is worth it (Trigger.touches). Reaping runs off its
+// own watch now (watchTaskRecords), so this asks every trigger and nothing else.
 func (e *Engine) dispatch(ctx context.Context, c entity.Commit) {
 	e.trigMu.Lock()
 	trigs := make([]Trigger, len(e.triggers))

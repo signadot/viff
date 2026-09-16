@@ -8,15 +8,15 @@ package trigger
 //
 //	repo:   !get-path git.repo.acme
 //	branch: !get-path git.repo.acme.branch
-//	all:    !list-paths { system: git, kind: repo, id: "*", path: branch }
-//	ref:    !get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
+//	all:    !list-paths { at: "git.repo.*", path: branch }
+//	ref:    !get-path { at: "git.repo.$subject.value.head", path: branch }
 //
 // ONE ADDRESS, all the way down. A verse is one document — `{system: {kind: {id: payload}}}`
 // (entity/doc.go, and `verse data` answers it) — so an entity address is a path prefix and the
 // path simply continues it into the payload. That used to need the object form's `path:` key,
 // because an id may contain dots and the colon spelling could not say where the id ended; the
 // dot spelling can, quoting where it must, so a whole address fits in one string (see
-// splitAddress). The object form stays for what a string cannot hold: a `value:` predicate, and
+// splitRead). The object form stays for what a string cannot hold: a `value:` predicate, and
 // a `$reference` id that reads better as its own key.
 //
 // THE PAIR IS ONE GRAMMAR SPLIT BY CARDINALITY, and the names say which. `!get-path` answers with ONE
@@ -30,7 +30,7 @@ package trigger
 //
 // A PAYLOAD PREDICATE IS THE LIST FORM'S, and only the list form's:
 //
-//	green: !list-paths { system: ci, kind: status, id: "*", value: {state: green}, path: sha }
+//	green: !list-paths { at: "ci.status.*", value: {state: green}, path: sha }
 //
 // `!get-path` refuses one for the reason it refuses a globbed id — it can name several, and a
 // value slot takes one. `!list-paths` takes one because it has already paid for it. The refusal
@@ -267,7 +267,8 @@ func pathKind(n *ir.Node) string {
 // pathSpec is one path read, as far as it is knowable at install.
 type pathSpec struct {
 	kind string // GetPathTag or ListPathsTag
-	// At is the address the read reaches, one segment at a time — `at: "verse-dev.drift.finding."// "*"""`. `path` below is the FIELD path inside what it reaches and keeps that name, which is why
+	// At is the address the read reaches, one segment at a time — `at: "verse-dev.drift.finding.*"`.
+	// `path` below is the FIELD path inside what it reaches and keeps that name, which is why
 	// the address is `at:` here and `path:` in a match: in a read the two would collide.
 	At   []*ir.Node
 	Path string // a kpath into the node read; "" is the whole node

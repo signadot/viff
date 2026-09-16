@@ -197,7 +197,7 @@ type LogdStore struct {
 	watchCancel context.CancelFunc // cancels the lazy root watch; nil when no Observe subscribers
 	// doc is the watched document as of the last applied commit — seeded by the root
 	// watch's State and advanced by each delta. It is what an event's level payload is read
-	// out of (see eventsFromDelta); nil until a watch has run.
+	// out of (see emit, payloadIn); nil until a watch has run.
 	doc *ir.Node
 
 	// readErr is the last read this store COULD NOT PERFORM, and it exists because List
@@ -709,10 +709,11 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 // and whether there is one to ask about.
 //
 // IT IS COMPUTED ON THE ADDRESS AS A KPATH, which is the canonical spelling of one and the only
-// thing both forms of a write share. `verse data demo pr 1 votes bo` arrives as a Ref plus
-// At.Field; `--at demo.pr."1".votes.bo` arrives as a Ref of that whole depth with no Field at
-// all (versed.addressAt, entity.RefOfAny). Path.segments() is what merges them, so the question
-// is asked once rather than once per spelling.
+// thing both forms of a write share. `verse data demo pr 1 votes bo` arrives as a Path from
+// TargetOf — a Ref of names plus an Access when a step reaches into an array; `--at
+// demo.pr."1".votes.bo` arrives as a Ref of that whole depth with no Access at all
+// (versed.addressAt, entity.RefOfAny). Path.segments() reads the Ref's own segments either way,
+// so the question is asked once rather than once per spelling.
 //
 // The store path is NOT what is parsed, deliberately: refPath prefixes the logd root, which is
 // spelled `verse` by default and would read as the reserved half's own root. The address
@@ -2042,8 +2043,8 @@ func graftAt(verse map[string]*ir.Node, prefix []string, node *ir.Node) {
 func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.Node {
 	// AT THE PATH THE REPLAY WATCHES, so the base costs what that slice holds rather than what
 	// the verse holds — the half of a catch-up that grows with the whole store. The document is
-	// still ROOT-ROOTED, because everything that reads entities out of it (payloadIn,
-	// eventsFromDelta) addresses them from the root; the replay's deltas are nested onto it.
+	// still ROOT-ROOTED, because everything that reads entities out of it (payloadIn, changesAt)
+	// addresses them from the root; the replay's deltas are nested onto it.
 	path := seg(s.root)
 	for _, a := range at {
 		path += "." + seg(a)
@@ -2149,7 +2150,7 @@ func payloadIn(doc *ir.Node, root string, ref Ref) Payload {
 // the diff encoding and decoding it by hand is how a delta gets silently dropped.
 //
 // THE FAILURE IS SAID, not only absorbed. This document is what every event's level payload is
-// read out of (eventsFromDelta), so a delta that did not land leaves each event after it
+// read out of (emit, payloadIn), so a delta that did not land leaves each event after it
 // reporting a state its entity has already left — and it keeps doing so until a reconnect
 // reseeds the document, which may be a long time on a healthy connection. Recovering is the
 // right behaviour and being quiet about it is not: the symptom is a consumer acting on stale
