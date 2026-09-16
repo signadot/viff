@@ -4,7 +4,7 @@
 5 entity/read_test.go
 2 entity/snapshot.go
 2 runner/entity.go
-11 source/converge_test.go
+10 source/converge_test.go
 1 source/git.go
 1 source/gitissue.go
 3 source/http_test.go
