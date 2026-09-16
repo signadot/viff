@@ -1,7 +1,9 @@
 # Addresses without the document, and addresses inside arrays
 
-Status: **step 1 done** — go-tony `v0.0.224` is in (`go.mod:10`) and nothing calls the new
-surface yet. Branch `paths-cli`.
+Status: **steps 1-4 done** — go-tony is in, the listing spells an element, the store answers a
+listing (`LogdStore.PathsAt`) and permission filters it per address. What remains is the route,
+the CLI switch and the cost proof. Branch `paths-cli`, which also carries a LOCAL ONLY `replace`
+for an unreleased go-tony fix — see its commit.
 
 Two changes, and they are independent:
 
@@ -71,10 +73,9 @@ So: add `JoinStepsAt(Path) string` beside `JoinSteps`, which renders the names w
 and `quoteStep` are untouched, and `segs_test.go:167` stays green — the listing never puts
 an access into a name vector, which is the whole point of keeping the two apart.
 
-**The walk descends arrays.** Where today's recursion stops at a non-object, it continues:
-each element contributes an address whose Access is `[i]` (or `{i}`), and anything under an
-element extends that fragment. Keyed elements are discussed under
-[What we do not get yet](#what-we-do-not-get-yet).
+**The walk descends arrays, by position.** Where today's recursion stops at a non-object, it
+continues: each element contributes an address whose Access is `[i]`, and anything under an
+element extends that fragment. Identity is out — see [One keying](#one-keying).
 
 ## What does not change, deliberately
 
@@ -131,14 +132,26 @@ Three ways to stand:
 job is to say what is there; pretending the elements do not exist does not fix a watch that
 accepts a path and ignores it.
 
-## What we do not get yet
+## One keying
 
-**Keyed elements stay theoretical.** `(scott)` reach is implemented and tested, but
-**no verse writer stores a `!key(...)` array** — the tag survives only a write made as data
-(`entity/doc.go:225-232`), and a grep finds it in test fixtures, in Kubernetes manifests
-under `deploy/`, and in charter files that are executed rather than stored. So the walk
-lists positions, and a keyed name appears only where a body was read anyway. Nothing to
-decide until verse stores one.
+**`!key(f)` is refused on a write** (`entity.checkNotKeyed`), and an element is addressed by
+position everywhere: in a listing, in a read, in a write. That is the UX this plan is for — a
+reader writes an address the same way whatever it names.
+
+The tag was a second keying on top of the store's. logd keys an array in its SCHEMA
+(`!logd-key`), which is what makes a name mean an element, refuses a position on a keyed array,
+and renames the elements when the keying changes; verse declares no schema, so its `!key` only
+survived as data and left the store holding a positional array while the value claimed names for
+its elements — readable by verse alone. Nothing used it: the tag appears in test fixtures, in
+Kubernetes manifests under `deploy/`, and in charter files that are executed rather than stored.
+
+It also takes work out of the listing: with no tag to discover, an array is a level like an
+object, so the store's walk asks for its members and **reads no node on any path** — where before
+it had to read every array to learn what its elements were called.
+
+**The verse surface for the store's keying is TBD**: which arrays are keyed, who declares it, and
+what a keying change means for a source writing into one. This plan does not decide it, and paths
+work under either answer — which is the point of settling the spelling first.
 
 **The motivating array is in the world half.** Arrays in stored payloads are small —
 `parents` (0-2), `labels`, `assignees` — with one exception: `discussion`
@@ -200,18 +213,16 @@ walk whose prefix is `IsMountOwned` falls back to materialize-and-walk.
 
 ## Steps
 
-1. **Bump go-tony** — done, `v0.0.224`, suite green, nothing calling it.
-2. **The listing spells an element, client-side only.** `Doc.Paths` answers `[]Path`;
+1. ~~Bump go-tony~~ — done, `v0.0.224`, suite green, nothing calling it.
+2. ~~The listing spells an element, client-side only.~~ Done. `Doc.Paths` answers `[]Path`;
    `JoinStepsAt` renders one; `renderAddr` takes a `Path`; the walk descends arrays. No
-   store change, no server change — `--paths` gains array addresses over the existing
-   transport, where it is cheap to test. This is the address-grammar work, and it lands
-   on its own.
-3. **`LogdStore.PathsAt`** — the level walk on the session, answering `[]Path`. Tested
-   against `Doc.Paths` as the oracle: same order, same dedup, same `--depth`, same
-   addresses.
-4. **Attribution** — `(*attributed).PathsAt` with per-address `keep` and `noteHidden`, and
-   `CheckInto` at the prefix as `ReadAt` has it. Paging interacts: filtering after a page
-   means a page can come back short, so the cursor loop keeps pulling.
+   `Doc.Paths` answers `[]Path`, `JoinStepsAt` renders one, and the walk descends arrays.
+3. ~~`LogdStore.PathsAt`~~ — done: the level walk on the session, tested against `Doc.Paths`
+   as the oracle over a real store. With `!key` refused it reads no node on any path.
+4. ~~Attribution~~ — done: `(*attributed).PathsAt` filters per address with `keep` and
+   `noteHidden`, and a withheld subtree is skipped rather than asked about again. It is on
+   the `Store` interface, which is all-required — a test pins that the attributed store
+   passes every method through, and it is what caught this one.
 5. **The route** — `GET /state` answers a listing when asked, with the same 404/503/403,
    the same scope, the same `--if`.
 6. **The CLI** — `printPaths` becomes a printer of what the server sent; `--depth` ships in
