@@ -48,8 +48,11 @@ monitor, in a gate, which is a different path entirely.
 
 Why it costs what it does:
 [convergence §the cost of asking](../convergence.md#the-cost-of-asking-a-read-per-commit). A
-snapshot read costs the log replay to that commit, the path asked for makes no difference, and
-the commit skip is what keeps this affordable in practice.
+snapshot read costs the log replay to that commit, and — measured again on 2026-09-16, against a
+store of a few thousand commits — **what it names decides what that costs**: a narrowed read is
+flat in the tens of milliseconds, a whole-root read grows about 1.2ms per commit and passes the
+read budget at around 9,500. The commit skip is what keeps the number of reads down; naming the
+places is what keeps each one cheap.
 
 The fix is to carry the rolled-forward document rather than re-read it: a floor plus a bounded
 window of deltas, advanced as commits are consumed in order. Then `store@C` is the last snapshot
@@ -81,9 +84,16 @@ makes an as-of-C read POSSIBLE, it is what would make it free — and free is wh
 flat bindings be pinned too, instead of leaving one datum with two spellings and two answers
 (`$stage` current, `$subject.value.stage` as-of-C).
 
-`AsOf`'s `within` parameter is kept for this: it bounds what crosses the wire, which is the shape
-a per-subtree roll-forward will want. If this never lands, `within` is a candidate for removal,
-since measurement says bounding the path is all it does.
+`AsOf`'s `within` parameter is not a convenience and is not a candidate for removal: it is what
+every read the engine makes now goes through — `evaluate` narrows to the rule's subtrees, and a
+firing's snapshot to those plus the literal prefix of every path read in the rule
+(`trigger.firingWithin`). It is also the shape a per-subtree roll-forward will want, so the
+roll-forward builds on it rather than replacing it.
+
+What is left for the roll-forward, now that the reads are narrowed, is the case narrowing cannot
+reach: a read whose address is settled only at fire time (`!get-path {at: "$subject.value.where"}`)
+names no place to narrow to, so its firing reads the whole verse. A rolled-forward document has
+the whole thing in hand anyway and would make that free too.
 
 ## 3. Two triggers, one field
 

@@ -13,21 +13,26 @@ action writes and what it may read.
 
 ## The cost of asking: a read per commit
 
-`Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. Measured against a
-locally-launched logd, reading the whole verse, reading the one subtree the commits landed in, and
-reading a subtree they never touched all cost the same.
+`Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. **What it costs
+depends on how much of the verse it names**, and the difference is the largest constant in the
+engine: a read narrowed to the places a rule reads is flat in the tens of milliseconds, while a
+read of the whole root grows with the store — measured at ~1.2ms per commit past two thousand, so
+seconds once a few thousand have landed, and past the store's own read budget at around nine and
+a half thousand.
 
-The path makes no difference, because the cost is not the document. It is replaying the log to
-that commit. `AsOf(rev/2)` costs half of `AsOf(head)` on the same store, which is the tell. A
-current read costs the same as a historical one, so this is not about asking for history. The
-`within` argument on `AsOf` bounds what crosses the wire and, measured, does nothing else.
+So every read the engine makes names its places. `evaluate` narrows to the subtrees the rule
+reads, and a firing's snapshot narrows to those plus the literal prefix of every path read in the
+rule (`firingWithin`). The one case that cannot be narrowed is a read whose address is not
+settled until the firing resolves it — `!get-path {at: "$subject.value.where"}` — and there the
+whole verse is read rather than a place that would answer nothing.
 
-Absolute figures are deliberately not recorded. They belong to the substrate and move with it, and
-a doc asserting last month's milliseconds would be read as a promise. What holds across those
-changes is the shape. A read is four layers — client, server, docd, logd — an index lookup and a
-disk read, in the same order as a loopback SQL query. It is also bounded: logd snapshots every
-`MaxCommits` (default 1000, configurable at launch), so a read costs distance-from-snapshot rather
-than distance-from-genesis, and the curve is a sawtooth rather than a ramp.
+Absolute figures are deliberately not asserted as a promise: they belong to the substrate and
+move with it. What holds across those changes is the shape — a read is four layers (client,
+server, docd, logd), an index lookup and a disk read, in the same order as a loopback SQL query,
+and it is bounded by logd's snapshots every `MaxCommits` (default 1000), so a read costs
+distance-from-snapshot rather than distance-from-genesis. What the measurement above pins down is
+the other axis: whatever the substrate's constants, asking for everything costs more than asking
+for what you read, and it costs more as the verse fills.
 
 **What keeps this affordable in practice is not asking.** A trigger is skipped at a commit that
 touched none of the subtrees it reads, and the skip is exact rather than a heuristic. See
