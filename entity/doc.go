@@ -416,16 +416,12 @@ func walkPaths(n *ir.Node, segs []string, access string, max int, seen map[strin
 			walkPaths(n.Values[i], childSegs, childAccess, max, seen, out)
 		}
 	case ir.ArrayType:
-		// An element is addressed by position, and by identity where the array carries one
-		// (`!key(voter)`) — the two spellings a read takes.
-		field, keyed := n.KeyField()
+		// AN ELEMENT IS ADDRESSED BY POSITION. Identity belongs to the store — logd keys an array
+		// in the schema — and a `!key` tag in a payload is refused on the way in
+		// (checkNotKeyed), so nothing standing here is keyed by anything else. When the store's
+		// keying is surfaced, this is where its names go.
 		for i, el := range n.Values {
 			step := fmt.Sprintf("[%d]", i)
-			if keyed {
-				if k, ok := ir.ElemKey(el, field); ok && k != "" {
-					step = "(" + k + ")"
-				}
-			}
 			child := Path{Ref: RefAt(segs...), Access: access + step}
 			if !appendPath(out, seen, child, max) {
 				continue

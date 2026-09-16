@@ -14,17 +14,18 @@ import (
 // comparison rather than a table nobody can check against the old behaviour.
 func TestPathsAtAnswersWhatTheDocumentWalkDoes(t *testing.T) {
 	s := openStore(t)
+	// Positional, like every array the store holds: a `!key` tag is refused on the way in, and
+	// identity is the store's to give (TestAKeyTagIsRefusedOnAWrite).
 	votes := ir.FromSlice([]*ir.Node{
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
-	}).WithTag("!key(voter)")
+	})
 	for _, w := range []Write{
 		{At: RefAt("demo", "pr", "1").At(), Value: Obj{"stage": "open", "labels": Obj{"urgent": true}}.Payload()},
 		{At: RefAt("demo", "pr", "2").At(), Value: Obj{"stage": "closed"}.Payload()},
 		{At: RefAt("demo", "pr", "a.b").At(), Value: Obj{"stage": "open"}.Payload()},
 		{At: RefAt("demo", "note").At(), Value: Obj{"text": "hi"}.Payload()},
-		// An array, written as data so the `!key` annotation stands (doc.go: it is a merge
-		// operator, and an ordinary write executes it).
+		// An array, written as data so it lands as an array rather than being merged.
 		{At: RefAt("merge", "proposal", "X").At(), Value: AsData(ir.FromMap(map[string]*ir.Node{
 			"votes": votes,
 			"tags":  ir.FromSlice([]*ir.Node{ir.FromString("a"), ir.FromString("b")}),

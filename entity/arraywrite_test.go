@@ -49,13 +49,17 @@ func TestTheSubstrateDoesPatchAnInRangeArrayElement(t *testing.T) {
 	}
 }
 
-// A KEYED element is a different answer: the substrate refuses it, and nothing is damaged.
-// `(key)` is therefore not a spelling a write could be given even if the shape were offered.
+// A `(key)` element is a different answer: the substrate refuses it, and nothing is damaged.
+//
+// TWICE OVER NOW. The array below carries no `!key` tag, because verse refuses one on the way in
+// (checkNotKeyed): identity is the store's, given by the schema, and the store's schema keys
+// nothing here. So `(scott)` names no element of a positional array, which is what the patch is
+// told -- and it is why an element is addressed by position everywhere verse spells an address.
 func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 	if _, _, err := s.Write(Write{At: ref.At(), Value: Raw(mustParseNode(t,
-		`{votes: !key(by) [{by: scott, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
+		`{votes: [{by: scott, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

@@ -238,7 +238,56 @@ func CheckPatchable(p Payload) error {
 	if err := checkPatchable(p, ""); err != nil {
 		return err
 	}
+	if err := checkNotKeyed(p, ""); err != nil {
+		return err
+	}
 	return logdapi.ValidateForStorage(p)
+}
+
+// checkNotKeyed refuses `!key(f)` on a stored array. KEYING IS THE SUBSTRATE'S: logd keys an
+// array in the schema (!logd-key), which is what makes an element addressable by identity, what
+// refuses a position on a keyed array, and what rewrites the elements when the keying changes.
+//
+// A `!key` tag in a payload is a second keying on top of that one, and it only survives a write
+// because it is stored as DATA (Raw / AsData) -- so the store keys the array by position while
+// the value claims a name for each element, and only verse's own reader knows. Two mechanisms
+// for one question is what this refuses; the verse surface for the substrate's keying is not
+// designed yet, and an array is positional until it is.
+//
+// It walks ESCAPED subtrees too, unlike checkPatchable: being data is exactly how the tag got
+// in.
+func checkNotKeyed(n *ir.Node, at string) error {
+	if n == nil {
+		return nil
+	}
+	for tag := n.Tag; tag != ""; {
+		head, _, rest := ir.TagArgs(tag)
+		if strings.TrimPrefix(head, "!") == "key" {
+			where := at
+			if where == "" {
+				where = "the value itself"
+			}
+			return fmt.Errorf("%s: `!key` names an array's elements, and keying is the store's "+
+				"to hold: an array written this way is positional in the store while the tag "+
+				"claims a name for each element, so only verse can read it back. Write the array "+
+				"as data without the tag -- its elements are addressed by position ([0]) -- until "+
+				"the store's own keying is surfaced here", where)
+		}
+		tag = rest
+	}
+	for i, v := range n.Values {
+		field := at
+		if i < len(n.Fields) && n.Fields[i] != nil {
+			if field != "" {
+				field += "."
+			}
+			field += n.Fields[i].String
+		}
+		if err := checkNotKeyed(v, field); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func checkPatchable(n *ir.Node, at string) error {
