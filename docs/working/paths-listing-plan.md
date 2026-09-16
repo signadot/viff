@@ -127,8 +127,9 @@ Three ways to stand:
    listing and touches `KPathAdmits`, `Reaches`, `Touches` and every `Subtree`.
 3. **Do not list them**, and keep today's silence.
 
-**Recommendation: 1.** The listing's job is to say what is there; the watch's silence is a
-separate defect, and pretending the elements do not exist does not fix it.
+**Decided: 1**, and the watch's silence is filed as `6a04ga4nh12krh87ndn0`. The listing's
+job is to say what is there; pretending the elements do not exist does not fix a watch that
+accepts a path and ignores it.
 
 ## What we do not get yet
 
@@ -235,8 +236,10 @@ walk whose prefix is `IsMountOwned` falls back to materialize-and-walk.
 
 ## Open questions
 
-- **The watch asymmetry** above: list-and-document (recommended), teach change-detection to
-  name elements, or keep the silence.
+- ~~The watch asymmetry~~ — **filed as `6a04ga4nh12krh87ndn0`**: a watch reaching into an
+  array is accepted and then silent, where the read answers. Decided for this plan: list
+  the addresses and let that issue settle whether a watch refuses such a path, honours it
+  at the holding node, or makes an element a change unit.
 - **`inSteps` prints a line that cannot be typed back** (`demo pr 1 votes[0]`). Cosmetic in
   a `removed …` confirmation, wrong as a spelling. Fix it to use `JoinStepsAt` once that
   exists, or leave it as the one place where a printed address is not an input.
