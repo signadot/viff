@@ -72,3 +72,46 @@ func TestDoubleStarIsTwoOpenPositions(t *testing.T) {
 		t.Errorf("ExprSegs = %q, want %q", segs, want)
 	}
 }
+
+// A PATTERN'S SEGMENTS KEEP THEIR KINDS. `*` and `..` are query segments and a quoted `"*"` or
+// `".."` is the name those characters spell — which text alone cannot carry, since both arrive
+// as the same two or one characters. The name comes back as the match over it, which is how the
+// list form spells one (`path: [demo, pr, !or ["*"]]`).
+func TestPatternNodesKeepEachSegmentsKind(t *testing.T) {
+	for _, c := range []struct {
+		addr string
+		want []string // "*" wildcard, ".." descent, "=x" the name x, "~x" the match naming x
+	}{
+		{`demo.pr.1`, []string{"=demo", "=pr", "=1"}},
+		{`demo.pr.*`, []string{"=demo", "=pr", "*"}},
+		{`demo.pr."*"`, []string{"=demo", "=pr", "~*"}},
+		{`demo..finding`, []string{"=demo", "..", "=finding"}},
+		{`demo.".."`, []string{"=demo", "~.."}},
+	} {
+		segs, err := PatternNodes(c.addr)
+		if err != nil {
+			t.Errorf("PatternNodes(%q): %v", c.addr, err)
+			continue
+		}
+		var got []string
+		for _, seg := range segs {
+			switch {
+			case seg.Tag != "":
+				got = append(got, "~"+seg.Values[0].String)
+			case seg.String == "*":
+				got = append(got, "*")
+			case seg.String == "..":
+				got = append(got, "..")
+			default:
+				got = append(got, "="+seg.String)
+			}
+		}
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("PatternNodes(%q) = %v, want %v", c.addr, got, c.want)
+		}
+	}
+	// An element of a node is not a segment: a pattern names nodes.
+	if _, err := PatternNodes(`demo.pr.1.votes[0]`); err == nil {
+		t.Error("an array access was read as a segment of a pattern")
+	}
+}

@@ -142,6 +142,16 @@ func subjectSelector(subject string) ([]string, Match, error) {
 	if m.HasPredicate() {
 		return nil, nil, fmt.Errorf("subject %q: a suspension's subject has no payload predicate", subject)
 	}
+	// NAMES AND `*`, because the table renders its subject back as steps and a match over a
+	// segment has no step spelling. The one way to write one today is a quoted `"*"` or `".."`,
+	// which names a node whose name is those characters.
+	for _, seg := range m.SegNodes() {
+		if _, ok := entity.PathLiteral(seg); ok || isAnySeg(seg) {
+			continue
+		}
+		return nil, nil, fmt.Errorf("subject %q: a suspension's subject is names and `*`, and a "+
+			"name that would read as one of those has no spelling here", subject)
+	}
 	steps, err := entity.ExprSegs(strings.TrimSpace(subject))
 	if err != nil {
 		return nil, nil, fmt.Errorf("subject %q: %w", subject, err)

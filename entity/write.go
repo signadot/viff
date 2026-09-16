@@ -786,6 +786,64 @@ func ExprSegs(s string) ([]string, error) { return exprSegs(s, false) }
 // knows (entity.PathIsDescend, StepIsDescend); everything else is as ExprSegs reads it.
 func PatternSegs(s string) ([]string, error) { return exprSegs(s, true) }
 
+// PatternNodes reads a pattern's path as the SEGMENTS THEY ARE, keeping what kpath says each one
+// is: `*` the wildcard, `..` the descent, a name a name — and a name that would read as one of
+// those spelled as the match over it.
+//
+// It exists because a segment cannot be a string and keep its kind. PatternSegs flattens each to
+// text, so a quoted `"*"` and a bare `*` both arrive as `*` and the reader downstream takes both
+// for the wildcard — which made `subject: 'demo.pr."*"'` a rule about EVERY pr while the same
+// characters in `verse data -at` name the one node called `*`. Two grammars for one spelling, and
+// the wrong one fires on everything.
+//
+// A quoted `*` or `..` therefore comes back as `!or ["*"]` — the operator the list form already
+// spells it with (`path: [demo, pr, !or ["*"]]`), since tony quoting carries a value's type
+// rather than an escape a matcher unwinds. The string form and the list form then mean the same
+// thing, which is the whole point of having both.
+func PatternNodes(s string) ([]*ir.Node, error) {
+	segs, err := patternKPath(s)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ir.Node, 0, len(segs))
+	for _, kp := range segs {
+		switch {
+		case kp.FieldAll:
+			out = append(out, ir.FromString("*"))
+		case kp.Descend:
+			out = append(out, ir.FromString(".."))
+		case kp.Field != nil:
+			// A Field holding `*` or `..` was QUOTED — an unquoted one parses as the wildcard or
+			// the descent — so it names that text and is spelled as the match over it.
+			if *kp.Field == "*" || *kp.Field == ".." {
+				out = append(out, ir.FromSlice([]*ir.Node{ir.FromString(*kp.Field)}).WithTag("!or"))
+				continue
+			}
+			out = append(out, ir.FromString(*kp.Field))
+		default:
+			return nil, fmt.Errorf("address %q: %q is not a segment — a path names nodes, and an "+
+				"element of one is not a node", s, kp.String())
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("address %q names no segments", s)
+	}
+	return out, nil
+}
+
+// patternKPath is the parse the pattern readers share: the leading-dot guard, then kpath.
+func patternKPath(s string) ([]*kpath.KPath, error) {
+	if strings.HasPrefix(s, ".") && !strings.HasPrefix(s, "..") {
+		return nil, fmt.Errorf("address %q begins with an empty segment: a segment is a name, "+
+			"and `*` is how a position is left open", s)
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return nil, fmt.Errorf("address %q: %w", s, err)
+	}
+	return KPathSegments(kp), nil
+}
+
 func exprSegs(s string, descend bool) ([]string, error) {
 	// A LEADING dot is the one thing kpath does not object to and this must: `.demo` parses as
 	// `demo`, so an address with a stray dot in front would silently name a different place.

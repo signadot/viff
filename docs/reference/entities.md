@@ -128,7 +128,8 @@ place, so it refuses a `*` step and names the quoted one.
 
 A family of names inside one segment is an operator on that segment, and only a charter's
 `path:` carries one (`path: [demo, pr, !glob "hotfix-*"]`); neither a step nor a kinded path
-string can.
+string can. The quoted clause is the one match either of those can spell, and it names exactly
+one thing: `demo.pr."*"` is the match `!or ["*"]`, which is the node called `*` and nothing else.
 
 The shell gets there first, and an unquoted `*` never reaches verse at all. It fails two
 different ways, and the second is the one that bites:
@@ -158,14 +159,23 @@ verse data demo pr '"*"'          # the one node named `*`
 verse data --paths demo pr '*' | xargs -L1 verse data   # each line reads back as what it names
 ```
 
-In a charter, quoting does not change it. Tony quoting is about a value's type, not about
-matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
-the literal asterisk takes an operator:
+In a charter's LIST form, quoting does not change it. Tony quoting is about a value's type, not
+about matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment.
+Naming the literal asterisk takes an operator:
 
 ```tony
 path: [demo, pr, "*"]           # any name — the quotes change nothing
 path: [demo, pr, !or ["*"]]     # the name that IS an asterisk
 path: [demo, pr, !glob "[*]"]   # …the same, spelled as a glob
+```
+
+In a charter's STRING form the quoting is the address grammar's, as it is at a read, so the same
+characters mean the same thing on both faces — the string compiles to the operator above:
+
+```tony
+subject: "demo.pr.*"            # any name
+subject: 'demo.pr."*"'          # the name that IS an asterisk — `verse data -at` reads it so too
+subject: 'demo."..".x'          # the name that is two dots, where a bare `..` descends
 ```
 
 ### `verse` at the front

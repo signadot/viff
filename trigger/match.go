@@ -420,13 +420,18 @@ func ParseExpr(s string) (Match, error) {
 			"subject is a pattern matched against the node a firing is about, e.g. \"demo.pr.*\" "+
 			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
 	}
+	// AS SEGMENTS, KINDS KEPT (entity.PatternNodes): a bare `*` is the wildcard, a bare `..` the
+	// descent, and a quoted `"*"` or `".."` the name, spelled as the match over it — the same
+	// meaning the list form gives those characters. Flattened to text, a quoted `*` read back as
+	// the wildcard and a rule about one node fired on every node beside it.
+	//
 	// A SUBJECT IS A QUESTION, so it takes `..`: `verse-dev..finding` selects every finding
 	// beneath verse-dev, at whatever depth the rule that derived it put one.
-	steps, err := entity.PatternSegs(s)
+	segs, err := entity.PatternNodes(s)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSteps(steps)
+	return PathMatch(segs)
 }
 
 // ParseSteps is an address already SPLIT INTO STEPS, as a path: each step one segment, `*` any one.

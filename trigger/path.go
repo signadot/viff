@@ -102,15 +102,20 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	case v == nil:
 		return nil, fmt.Errorf("is empty")
 	case v.Type == ir.StringType:
-		segs, err := entity.ExprSegs(v.String)
+		// The same reading a subject's string form gets (entity.PatternNodes), so one spelling
+		// means one thing wherever it is written: a bare `*` is the open position, a quoted
+		// `"*"` the name that is an asterisk.
+		segs, err := entity.PatternNodes(v.String)
 		if err != nil {
 			return nil, err
 		}
-		out := make([]*ir.Node, 0, len(segs))
 		for _, sg := range segs {
-			out = append(out, ir.FromString(sg))
+			if entity.PathIsDescend(sg) {
+				return nil, fmt.Errorf("`..` reaches every depth beneath it, and a path read " +
+					"answers at the depth it names: leave a position open with `*`")
+			}
 		}
-		return out, nil
+		return segs, nil
 	case v.Type == ir.ArrayType:
 		if !isLayoutTag(v.Tag) {
 			return nil, fmt.Errorf("an address is a list of segments, and !%s is not one of its "+
