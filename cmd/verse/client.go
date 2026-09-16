@@ -1411,20 +1411,23 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	// `xargs` understands them, and reads the kpath form's `\"` as an unterminated quote.
 	// Checked, both idioms, including a segment holding a space, a `*`, a double quote, and the
 	// empty one.
-	for _, segs := range (entity.Doc{Node: node}).Paths(at, depth) {
-		fmt.Fprintln(cc.Out, renderAddr(segs, kpaths))
+	for _, addr := range (entity.Doc{Node: node}).Paths(at, depth) {
+		fmt.Fprintln(cc.Out, renderAddr(addr, kpaths))
 	}
 	return nil
 }
 
 // renderAddr is one address in the spelling a listing was asked for: STEPS by default — the
 // words this command line takes — or a KINDED PATH under `--kpaths`, which is the one token
-// `--at` reads back. The walk answers in segments so this is the only place either is chosen.
-func renderAddr(segs []string, kpaths bool) string {
+// `--at` reads back. The walk answers addresses so this is the only place either is chosen.
+//
+// An address that reaches into an array carries its access (entity.Path), and both spellings
+// take one: `demo pr 1 votes '[0]'` in steps, `demo.pr."1".votes[0]` as a kinded path.
+func renderAddr(at entity.Path, kpaths bool) string {
 	if kpaths {
-		return entity.JoinSegs(segs)
+		return at.KPath()
 	}
-	return entity.JoinSteps(segs)
+	return entity.JoinStepsAt(at)
 }
 
 // address reads the address positionals a read command takes: a VECTOR OF STEPS, one segment

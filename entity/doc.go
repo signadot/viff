@@ -361,32 +361,75 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 // silently omits everything deeper. `max` bounds how far the walk goes, as the total number of
 // segments an address may have; 0 means no bound. A path naming one node does not print that
 // node, which is the address the reader typed.
-func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
+func (d Doc) Paths(at *kpath.KPath, max int) []Path {
 	_, rest := LiteralPrefix(at)
 	wild := answerPath(rest) != nil || hasDescend(rest)
-	var out [][]string
+	var out []Path
 	seen := map[string]bool{}
 	for _, e := range d.Reached(at) {
-		var rec func(n *ir.Node, segs []string, top bool)
-		rec = func(n *ir.Node, segs []string, top bool) {
-			if max > 0 && len(segs) > max {
+		var rec func(n *ir.Node, segs []string, access string, top bool)
+		rec = func(n *ir.Node, segs []string, access string, top bool) {
+			// An access is a step of the address, so it counts toward the bound as one:
+			// `--depth` reads in the units the rest of the model counts in.
+			if max > 0 && len(segs)+accessDepth(access) > max {
 				return
 			}
+			p := Path{Ref: RefAt(segs...), Access: access}
 			// The root is not an address anybody can print: `verse data '..'` walks from it.
-			if len(segs) > 0 && (!top || wild) && !seen[RefAt(segs...).String()] {
-				seen[RefAt(segs...).String()] = true
-				out = append(out, append([]string{}, segs...))
+			if len(segs) > 0 && (!top || wild || access != "") && !seen[p.KPath()] {
+				seen[p.KPath()] = true
+				out = append(out, p)
 			}
-			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+			n = ir.Uncomment(n)
+			if n == nil {
 				return
 			}
-			for i, f := range n.Fields {
-				rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)), false)
+			switch n.Type {
+			case ir.ObjectType:
+				for i, f := range n.Fields {
+					// Below an element everything is inside a node, so the name extends the
+					// ACCESS rather than the names (Path.Access).
+					if access != "" {
+						rec(n.Values[i], segs, access+"."+seg(fieldName(f)), false)
+						continue
+					}
+					rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)), "", false)
+				}
+			case ir.ArrayType:
+				// An element is addressed by position, and by identity where the array carries
+				// one (`!key(voter)`) — the same two spellings a read takes.
+				field, keyed := n.KeyField()
+				for i, el := range n.Values {
+					step := fmt.Sprintf("[%d]", i)
+					if keyed {
+						if k, ok := ir.ElemKey(el, field); ok && k != "" {
+							step = "(" + k + ")"
+						}
+					}
+					rec(el, segs, access+step, false)
+				}
 			}
 		}
-		rec(e.Payload, e.Ref.Segs(), true)
+		rec(e.Payload, e.Ref.Segs(), "", true)
 	}
 	return out
+}
+
+// accessDepth is how many steps an access fragment is, so a `--depth` bound counts an element
+// and a field of it as the two steps a reader types.
+func accessDepth(access string) int {
+	if access == "" {
+		return 0
+	}
+	kp, err := kpath.Parse(access)
+	if err != nil {
+		return 1
+	}
+	n := 0
+	for p := kp; p != nil; p = p.Next {
+		n++
+	}
+	return n
 }
 
 // Reaches reports whether a path reaches the node at ref — the ref half of "is this change one

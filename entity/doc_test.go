@@ -216,8 +216,8 @@ func TestPathsWalkTheAnswerByThePath(t *testing.T) {
 		{"demo.*", []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`, `demo.pr."2".stage`, `demo.pr."a.b"`, `demo.pr."a.b".stage`}},
 	} {
 		var got []string
-		for _, segs := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
-			got = append(got, RefAt(segs...).String())
+		for _, addr := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
+			got = append(got, addr.KPath())
 		}
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, tc.want) {
@@ -258,8 +258,8 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 	}
 	// And every address in the answer comes back, once each.
 	var got []string
-	for _, segs := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
-		got = append(got, RefAt(segs...).String())
+	for _, addr := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
+		got = append(got, addr.KPath())
 	}
 	sort.Strings(got)
 	want := []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`,
@@ -289,6 +289,79 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 	}
 	if got := flatten(t, read(t, ents, "merge.proposal.X.votes[0].choice").Node); got != "yes" {
 		t.Fatalf("votes[0].choice = %s, want yes", got)
+	}
+}
+
+// A LISTING REACHES WHAT A READ REACHES, elements included. It used to stop at an array, so
+// `--paths` showed less than the address model could address: a read and a write both take
+// `votes[0]`, and the listing that is supposed to say what is there did not mention it.
+//
+// An element is named by POSITION, and by IDENTITY where the array carries one — the two
+// spellings a read takes, and the same ones (6a04ga4nh12krh87ndn0 is the watch's silence at
+// these addresses, which is a separate question).
+func TestPathsReachIntoArrays(t *testing.T) {
+	votes := ir.FromSlice([]*ir.Node{
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
+	}).WithTag("!key(voter)")
+	plain := ir.FromSlice([]*ir.Node{ir.FromString("a"), ir.FromString("b")})
+	ents := []Entity{{
+		Ref:     RefAt("merge", "proposal", "X"),
+		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes, "tags": plain}),
+	}}
+
+	var got []string
+	for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), 0) {
+		got = append(got, addr.KPath())
+	}
+	sort.Strings(got)
+	want := []string{
+		`merge.proposal.X.tags`,
+		`merge.proposal.X.tags[0]`,
+		`merge.proposal.X.tags[1]`,
+		`merge.proposal.X.votes`,
+		`merge.proposal.X.votes(ana)`,
+		`merge.proposal.X.votes(ana).choice`,
+		`merge.proposal.X.votes(ana).voter`,
+		`merge.proposal.X.votes(scott)`,
+		`merge.proposal.X.votes(scott).choice`,
+		`merge.proposal.X.votes(scott).voter`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("paths =\n%v\nwant\n%v", got, want)
+	}
+
+	// EVERY ADDRESS IT PRINTS IS ONE A READ TAKES, which is the whole contract of a listing.
+	for _, kp := range got {
+		if d := read(t, ents, kp); d.Node == nil {
+			t.Errorf("%s was listed and reads as nothing", kp)
+		}
+	}
+
+	// AN ACCESS IS A STEP, so --depth counts it as one and reads in the units a reader types:
+	// `merge proposal X votes` is four steps, `merge proposal X votes '(scott)'` is five.
+	for _, tc := range []struct {
+		depth int
+		want  []string
+	}{
+		{4, []string{`merge.proposal.X.tags`, `merge.proposal.X.votes`}},
+		{5, []string{
+			`merge.proposal.X.tags`,
+			`merge.proposal.X.tags[0]`,
+			`merge.proposal.X.tags[1]`,
+			`merge.proposal.X.votes`,
+			`merge.proposal.X.votes(ana)`,
+			`merge.proposal.X.votes(scott)`,
+		}},
+	} {
+		var bounded []string
+		for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), tc.depth) {
+			bounded = append(bounded, addr.KPath())
+		}
+		sort.Strings(bounded)
+		if !reflect.DeepEqual(bounded, tc.want) {
+			t.Errorf("--depth %d paths =\n%v\nwant\n%v", tc.depth, bounded, tc.want)
+		}
 	}
 }
 
