@@ -2,6 +2,7 @@ package slack_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -63,11 +64,11 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	}
 
 	got := payloads(rn)
-	ch := got["slack.channel.Acme/C1"]
+	ch := got["slack.Acme.channel.C1"]
 	if ch == nil || ch["name"] != "incidents" || ch["channel"] != "C1" {
-		t.Fatalf("slack.channel.Acme/C1 = %+v", ch)
+		t.Fatalf("slack.Acme.channel.C1 = %+v", ch)
 	}
-	msg := got[`slack.message."Acme/C1/1700000001.000100"`]
+	msg := got[`slack.Acme.message.C1."1700000001.000100"`]
 	if msg == nil || msg["text"] != "prod is down" || msg["user"] != "U1" {
 		t.Fatalf("the message = %+v", msg)
 	}
@@ -84,23 +85,34 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	if msg["url"] != "https://acme.slack.com/archives/C1/p1700000001000100" {
 		t.Fatalf("permalink = %v", msg["url"])
 	}
-	reply := got[`slack.message."Acme/C1/1700000002.000100"`]
+	reply := got[`slack.Acme.message.C1."1700000002.000100"`]
 	if reply == nil || reply["thread"] != "1700000001.000100" {
 		t.Fatalf("the thread reply = %+v", reply)
 	}
-	if u := got["slack.user.Acme/U1"]; u == nil || u["email"] != "ada@example.com" {
-		t.Fatalf("slack.user.Acme/U1 = %+v", u)
+	if u := got["slack.Acme.user.U1"]; u == nil || u["email"] != "ada@example.com" {
+		t.Fatalf("slack.Acme.user.U1 = %+v", u)
 	}
 
 	// A full pass covers the workspace in all three kinds — a channel the bot was removed from
 	// has to be tombstonable, which is what the workspace-wide cover is for.
 	kinds := map[string]bool{}
+	reach := map[string]entity.Ref{
+		"channel": entity.RefAt(slack.System, "Acme", "channel", "C9"),
+		"message": entity.RefAt(slack.System, "Acme", "message", "C9", "1700000009.000100"),
+		"user":    entity.RefAt(slack.System, "Acme", "user", "U9"),
+	}
 	for _, c := range rn.Covers {
 		if top, ok := entity.PathLiteral(c.Path[0]); !ok || top != slack.System {
 			t.Fatalf("a cover over %v", c.Path)
 		}
-		for _, kind := range []string{"channel", "message", "user"} {
-			if c.MatchRef(entity.RefAt(slack.System, kind, "Acme/x")) {
+		// UNDER THE WORKSPACE, which is a level of the address rather than a field every
+		// entity has to carry: a cover reaching another workspace's place would be a claim
+		// over somebody else's slice.
+		if ws, ok := entity.PathLiteral(c.Path[1]); !ok || ws != "Acme" {
+			t.Fatalf("a cover not under the workspace: %v", c.Path)
+		}
+		for kind, ref := range reach {
+			if c.MatchRef(ref) {
 				kinds[kind] = true
 			}
 		}
@@ -127,13 +139,15 @@ func TestSlackATargetedPassCoversOnlyItsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		if !strings.Contains(e.Ref.Name(), "C1") {
+		if !slices.Contains(e.Ref.Segs(), "C1") {
 			t.Fatalf("a targeted pass carried %s", e.Ref)
 		}
 	}
+	// SCOPED BY THE PATH, not by a predicate: a cover names the channel it is about, so what it
+	// claims completeness for is visible in the address rather than in a field.
 	for _, c := range rn.Covers {
-		if entity.Str(c.Predicate, "channel") != "C1" {
-			t.Fatalf("a cover not scoped to the channel: %+v", entity.ToObj(c.Predicate))
+		if lit, ok := entity.PathLiteral(c.Path[3]); !ok || lit != "C1" {
+			t.Fatalf("a cover not scoped to the channel: %v", c.Path)
 		}
 	}
 	// A ref in another workspace's slice claims nothing and carries nothing, rather than
@@ -191,11 +205,11 @@ func TestSlackKeepsTheChannelsWhenThePeopleCannotBeRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a users failure failed the whole pass: %v", err)
 	}
-	if got := payloads(rn)["slack.channel.Acme/C1"]; got == nil {
+	if got := payloads(rn)["slack.Acme.channel.C1"]; got == nil {
 		t.Fatal("the channels went with the people")
 	}
 	for _, c := range rn.Covers {
-		if c.MatchRef(entity.RefAt(slack.System, "user", "Acme/U1")) {
+		if c.MatchRef(entity.RefAt(slack.System, "Acme", "user", "U1")) {
 			t.Fatal("a user cover survived a users read that failed — whatever stands under it " +
 				"would be tombstoned by an answer that could not read it")
 		}
@@ -223,8 +237,7 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := func(ts string) bool {
-		_, ok, _ := store.Get(entity.RefAt(slack.System, "message",
-			"Acme/C1/"+ts))
+		_, ok, _ := store.Get(entity.RefAt(slack.System, "Acme", "message", "C1", ts))
 		return ok
 	}
 	if !held("1700000001.000100") || !held("1700000002.000100") {
@@ -258,28 +271,29 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 	}
 }
 
-// One claim per workspace, and two workspaces are provably disjoint — which is what an install
-// checks before it will let both stand.
-func TestSlackOwnershipIsOneClaimPerWorkspace(t *testing.T) {
+// ONE PLACE PER WORKSPACE, with no glob in it, and two workspaces are provably disjoint because
+// they are two places — which is what an install checks before it will let both stand.
+func TestSlackOwnershipIsOnePlacePerWorkspace(t *testing.T) {
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
 	owns := source.Describe(src).Owns
-	if len(owns) != 1 || owns[0].At != "slack.*.Acme/*" {
+	if len(owns) != 1 || owns[0].At != "slack.Acme" {
 		t.Fatalf("owns %v", owns)
 	}
-	ok, err := source.Disjoint(owns, []source.Own{{At: "slack.*.Other/*"}})
+	ok, err := source.Disjoint(owns, []source.Own{{At: "slack.Other"}})
 	if err != nil || !ok {
 		t.Fatalf("two workspaces were not provably disjoint (%v, %v)", ok, err)
 	}
-	if ok, _ := source.Disjoint(owns, []source.Own{{At: "slack.*.Acme/*"}}); ok {
+	if ok, _ := source.Disjoint(owns, []source.Own{{At: "slack.Acme"}}); ok {
 		t.Fatal("a workspace was proved disjoint from itself")
 	}
 	// Every ref this source writes is inside what it claims — which is the bound on what a
-	// --forget removal may tombstone.
+	// --forget removal may tombstone. A place claims what stands beneath it, so this is one
+	// claim rather than one per kind.
 	for _, ref := range []entity.Ref{
-		entity.RefAt("slack", "channel", "Acme/C1"),
-		entity.RefAt("slack", "message", "Acme/C1/1700000001.000100"),
-		entity.RefAt("slack", "user", "Acme/U1"),
+		entity.RefAt("slack", "Acme", "channel", "C1"),
+		entity.RefAt("slack", "Acme", "message", "C1", "1700000001.000100"),
+		entity.RefAt("slack", "Acme", "user", "U1"),
 	} {
 		if !claims(t, owns, ref) {
 			t.Fatalf("%s is written but not claimed", ref)
@@ -302,10 +316,10 @@ func TestSlackNarrowingToChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := payloads(rn)
-	if got["slack.channel.Acme/C1"] == nil {
+	if got["slack.Acme.channel.C1"] == nil {
 		t.Fatal("the named channel was not reflected")
 	}
-	if got["slack.channel.Acme/C2"] != nil {
+	if got["slack.Acme.channel.C2"] != nil {
 		t.Fatal("a channel outside -channel was reflected")
 	}
 	// A targeted pass over the un-watched channel covers it and carries nothing: the cover is

@@ -11,6 +11,15 @@
 // "somebody said this in #incidents", "the deploy thread got a ✅", "a channel was archived" —
 // not every byte the workspace has ever held. A task that needs the rest follows the
 // message's url into Slack.
+//
+// THE WORKSPACE IS A LEVEL OF THE ADDRESS, and a message stands under its channel:
+//
+//	slack.acme.channel.C0193           the channels the bot is in
+//	slack.acme.message.C0193."17000…"  that channel's window, newest last
+//	slack.acme.user.U04AB              the people
+//
+// So a channel and its history are one subtree — `verse data slack acme message C0193` is the
+// window — and the workspace is one claim rather than a prefix inside every id.
 package slack
 
 import (
@@ -37,10 +46,10 @@ const (
 type Config struct {
 	// Token is the bot token (`xoxb-…`), sent as a bearer.
 	Token string
-	// Workspace is the id prefix every entity carries and the ownership claim is spelled with.
-	// Empty takes the team name auth.test answers with — chosen rather than the opaque team id
-	// because it is what appears in a ref an operator reads, and a workspace has exactly one
-	// source. It may not contain `:` or `/`, which are the ref's own punctuation.
+	// Workspace is the PLACE this source writes under (`slack.<workspace>`) and the ownership
+	// claim it proves disjointness with. Empty takes the team name auth.test answers with —
+	// chosen rather than the opaque team id because it is what an operator reads in an address,
+	// and a workspace has exactly one source.
 	Workspace string
 	// Depth is how many recent messages per channel the window holds (0 → DefaultDepth).
 	Depth int
@@ -134,11 +143,10 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	if s.workspace == "" {
 		s.workspace = id.Team
 	}
-	// The workspace is a ref segment before it is anything else, and an id that carried the
-	// ref's own punctuation would address something other than what it names.
-	if s.workspace == "" || strings.ContainsAny(s.workspace, ":/") {
-		return nil, fmt.Errorf("slack: workspace %q may not be empty or contain : or / — it is "+
-			"the id prefix of every entity this source writes", s.workspace)
+	// The workspace is one segment of an address, and it is what a person types as a step.
+	if s.workspace == "" || strings.ContainsAny(s.workspace, ":/.") {
+		return nil, fmt.Errorf("slack: workspace %q may not be empty or contain : / or . — it "+
+			"is the place every entity this source writes stands under", s.workspace)
 	}
 	return s, nil
 }
@@ -148,27 +156,49 @@ func (s *Slack) System() string { return s.system }
 
 // Owns is the ownership claim an install proves disjointness with.
 //
-// ONE ENTRY, where git needs two per repo, because every id here is `<workspace>/…` with no
-// exceptions — the workspace has no bare-id entity of its own the way a repo has its head. A
-// bot token is issued for one workspace, so a source is one workspace's, and two sources are
-// two workspaces: provably disjoint as long as no two workspaces are given the same name.
+// ONE PLACE, with no glob in it: everything this source writes stands under
+// `slack.<workspace>`, so the claim is where its entities live rather than a pattern over ids.
+// A bot token is issued for one workspace, so a source is one workspace's, and two sources are
+// two workspaces — two places, disjoint because they are different places.
 func (s *Slack) Owns() []source.Own {
-	return []source.Own{{At: s.system + ".*." + s.workspace + "/*"}}
+	return []source.Own{{At: s.WorkspaceRef().String()}}
 }
+
+// place is the address segments this workspace's entities stand under, followed by more.
+func (s *Slack) place(more ...string) []string {
+	return append([]string{s.system, s.workspace}, more...)
+}
+
+// WorkspaceRef is the place this source's entities stand under: a reconcile of it reconciles
+// the workspace whole.
+func (s *Slack) WorkspaceRef() entity.Ref { return entity.RefAt(s.place()...) }
 
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted
 // reconcile narrows to.
 func ChannelRef(workspace, channel string) entity.Ref {
-	return entity.RefAt(System, "channel", workspace+"/"+channel)
+	return entity.RefAt(System, workspace, "channel", channel)
 }
 
 // ChannelRef is the same ref in THIS source's system, which is what a delivery endpoint must
-// hint: a hint at `slack:channel:x` reaches nothing when the source writes `chat:channel:x`.
+// hint: a hint at `slack.x.channel.y` reaches nothing when the source writes `chat.x.channel.y`.
 func (s *Slack) ChannelRef(channel string) entity.Ref {
-	return entity.RefAt(s.system, "channel", s.workspace+"/"+channel)
+	return entity.RefAt(s.place("channel", channel)...)
 }
 
-// Workspace is the id prefix this source writes under.
+// MessageRef is the ref of one message: its channel, then Slack's own timestamp.
+//
+// Under a `message` kind keyed by channel rather than inside the channel's own node, which is
+// the shape the github source's comments have and for the same reason: a channel node is
+// written whole on every pass, and a window standing inside it would be rewritten with it.
+// `slack.<ws>.message.<C>.*` is still one place — "the messages in that channel".
+func (s *Slack) MessageRef(channel, ts string) entity.Ref {
+	return entity.RefAt(s.place("message", channel, ts)...)
+}
+
+// UserRef is the ref of one of the workspace's people.
+func (s *Slack) UserRef(id string) entity.Ref { return entity.RefAt(s.place("user", id)...) }
+
+// Workspace is the place this source writes under.
 func (s *Slack) Workspace() string { return s.workspace }
 
 // Reflect reads the workspace and returns what `slack:*` should hold. A zero ref reads every
@@ -191,22 +221,24 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection,
 //
 // A message ref narrows to its channel rather than to itself, which is the same subsumption
 // git makes: the window is read per channel, so a finer target would cost the same call.
+//
+// IT IS A PREFIX READ, because the layout is a path: `slack.<workspace>.<kind>.<…>` says which
+// workspace and which channel in its segments, where an id holding `<ws>/<chan>/<ts>` had to be
+// cut apart and every reader had to know the punctuation.
 func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
-	// This source's own layout: `<system>.<kind>.<workspace>/<rest>`, which it writes and reads back.
 	segs := ref.Segs()
-	if len(segs) != 3 || segs[0] != s.system || segs[2] == "" {
-		return "", true
+	if len(segs) < 2 || segs[0] != s.system {
+		return "", true // no place of this source's: a full pass is never a wrong answer
 	}
-	ws, rest, ok := strings.Cut(segs[2], "/")
-	if !ok || ws != s.workspace {
-		return "", false
+	if segs[1] != s.workspace {
+		return "", false // another workspace's place
 	}
-	switch segs[1] {
-	case "channel":
-		return rest, false
-	case "message":
-		id, _, _ := strings.Cut(rest, "/") // <channel>/<ts>
-		return id, false
+	if len(segs) < 4 {
+		return "", true // the workspace itself, or a kind with no id: read it whole
+	}
+	switch segs[2] {
+	case "channel", "message":
+		return segs[3], false // `channel.<C>`, and `message.<C>.<ts>`
 	default:
 		// A user ref, or a kind this build does not know. A full pass is always a correct
 		// answer to a narrower question, and it is the one that cannot be wrong.
@@ -223,11 +255,14 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 	}
 	// Declared BEFORE the read and unconditionally, exactly as the git source declares its
 	// per-repo covers: a workspace the bot was removed from every channel of must still cover
-	// `slack:channel:{workspace}`, or the channels it can no longer see would stand forever.
-	mine := entity.Obj{"workspace": s.workspace}.Payload()
+	// the channels, or the ones it can no longer see would stand forever.
+	//
+	// PLACES, not predicates. The workspace is a level of the address, so "this workspace's
+	// channels" is `slack.<ws>.channel.*` — where an id carrying the workspace needed a payload
+	// predicate to say it, and a reader had to trust every entity to carry the field.
 	rn := source.Reflection{Covers: []entity.Pattern{
-		cover(source.Cover(s.system, "channel", "*"), mine),
-		cover(source.Cover(s.system, "message", "*"), mine),
+		source.Cover(s.place("channel", "*")...),
+		source.Cover(s.place("message", "*", "*")...),
 	}}
 	for _, c := range channels {
 		if !s.watched(c) {
@@ -250,8 +285,7 @@ func (s *Slack) reflectAll(ctx context.Context) (source.Reflection, error) {
 			s.log("slack: users not reflected this pass (%v) — the `users:read` scope is what "+
 				"this needs; channels are unaffected", err)
 		} else {
-			rn.Covers = append(rn.Covers,
-				cover(source.Cover(s.system, "user", "*"), mine))
+			rn.Covers = append(rn.Covers, source.Cover(s.place("user", "*")...))
 			for _, u := range users {
 				s.addUser(&rn, u)
 			}
@@ -267,10 +301,11 @@ func (s *Slack) reflectChannel(ctx context.Context, id string) (source.Reflectio
 	if err != nil {
 		return source.Reflection{}, err
 	}
-	mine := entity.Obj{"workspace": s.workspace, "channel": id}.Payload()
+	// NARROWED BY THE PATH ITSELF: the channel node, and the messages under that channel — so
+	// this pass cannot tombstone another channel's window.
 	rn := source.Reflection{Covers: []entity.Pattern{
-		cover(source.Cover(s.system, "channel", "*"), mine),
-		cover(source.Cover(s.system, "message", "*"), mine),
+		source.Cover(s.place("channel", id)...),
+		source.Cover(s.place("message", id, "*")...),
 	}}
 	if !s.watched(c) {
 		// Narrowed out of what this source reflects: the covers stand, the entities do not, so
@@ -313,7 +348,7 @@ func (s *Slack) addChannel(rn *source.Reflection, c channel) {
 	if c.Created > 0 {
 		p["created"] = c.Created
 	}
-	rn.Add(ChannelRef(s.workspace, c.ID), p)
+	rn.Add(s.ChannelRef(c.ID), p)
 }
 
 // addMessages reads one channel's window, and the threads hanging off it.
@@ -388,7 +423,7 @@ func (s *Slack) addMessage(rn *source.Reflection, channel string, m message) {
 		p["url"] = strings.TrimRight(s.url, "/") + "/archives/" + channel + "/p" +
 			strings.Replace(m.TS, ".", "", 1)
 	}
-	rn.Add(entity.RefAt(s.system, "message", s.workspace+"/"+channel+"/"+m.TS), p)
+	rn.Add(s.MessageRef(channel, m.TS), p)
 }
 
 func (s *Slack) addUser(rn *source.Reflection, u user) {
@@ -414,11 +449,5 @@ func (s *Slack) addUser(rn *source.Reflection, u user) {
 	if u.TZ != "" {
 		p["tz"] = u.TZ
 	}
-	rn.Add(entity.RefAt(s.system, "user", s.workspace+"/"+u.ID), p)
-}
-
-// cover is a cover narrowed by a payload predicate.
-func cover(p entity.Pattern, pred entity.Payload) entity.Pattern {
-	p.Predicate = pred
-	return p
+	rn.Add(s.UserRef(u.ID), p)
 }
