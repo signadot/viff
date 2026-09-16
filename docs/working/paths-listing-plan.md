@@ -221,9 +221,18 @@ testing against an unreleased go-tony means `verse up --o-bin <path>`.
   (`cmd/verse/charter.go:238-316`), not the store, so nothing here changes it. The
   spelling is already shared: it prints through `renderAddr` (`charter.go:264,296,305`),
   the same function `data` uses, so `--paths` and `--kpaths` mean one thing in both.
-- **Should verse's arrays carry logd's keying?** Decided for this plan: no, not here. The
-  walk lists array members by position and names a keyed element only where a body was
-  read anyway (see [Arrays are listed too](#arrays-are-listed-too)). Teaching verse's
-  arrays `!logd-key` would make `iterType` answer `KeyedArray` and the names free, and it
-  is a data-model change with its own consequences — worth asking on its own, not as a
-  side effect of a listing.
+(None. The one this plan raised is answered below.)
+
+## Should verse's arrays carry logd's keying?
+
+**Not yet, and the argument is size.** Nothing keyed at the docd layer is big: no array
+is large enough for what the keying would buy — `iterType` answering `KeyedArray`, and
+element names costing nothing — to be worth a data-model change. So the walk lists array
+members by position and names a keyed element only where a body was read anyway (see
+[Arrays are listed too](#arrays-are-listed-too)).
+
+That is expected to change, and to change **in the world half first** — the pure data
+sources and `verse d` write into, which grows with whatever is mirrored in — rather than
+in the verse half, the mirror of process instances and suspensions, which does not need
+it. When an array is big enough that walking or naming its elements costs something, this
+is the question to re-ask, with that array as the evidence.
