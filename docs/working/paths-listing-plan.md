@@ -73,8 +73,14 @@ server-side walk has to answer exactly what `Doc.Paths` answers:
 - Paging lives inside `MatchEachReturning`; a page's cursor names the commit the set is
   read at, so every level of one listing reads one state.
 
-The walk is therefore: ask a level, take the ids, recurse into the members whose
-`iterType` is `Object`, stop at `--depth` segments.
+The walk is therefore: ask a level, take the ids, recurse into the members that have
+anything under them, stop at `--depth` segments.
+
+It also lifts a ceiling the present listing has. A read builds the node it answers, under
+the session's read budget (`DefaultReadBudget`, 64 MiB), and a listing today is that read:
+a subtree past the budget is refused, so `--paths` can fail on a container precisely
+because it is large — the case a listing is most wanted for. The walk builds no node, so
+the budget bounds each small level rather than the whole answer.
 
 ### Where the walk runs: the server
 
@@ -211,13 +217,10 @@ testing against an unreleased go-tony means `verse up --o-bin <path>`.
 
 ## Open questions
 
-- **An unbounded listing is unbounded work.** `--depth 0` walks to the leaves, a level of
-  requests at a time. Does the server cap it and say so, or is a listing as expensive as
-  the reader asked for? Today's version pays one big read instead, so this is a change in
-  where the cost lands, not a new cost.
-- **`verse charter --paths`** walks a server-built charter tree
-  (`cmd/verse/charter.go:238`), not the store. It is untouched here; if the two listings
-  should share a renderer, that is a separate cleanup.
+- **`verse charter --paths`** walks a server-built charter tree of rules and levels
+  (`cmd/verse/charter.go:238-316`), not the store, so nothing here changes it. The
+  spelling is already shared: it prints through `renderAddr` (`charter.go:264,296,305`),
+  the same function `data` uses, so `--paths` and `--kpaths` mean one thing in both.
 - **Should verse's arrays carry logd's keying?** Decided for this plan: no, not here. The
   walk lists array members by position and names a keyed element only where a body was
   read anyway (see [Arrays are listed too](#arrays-are-listed-too)). Teaching verse's
