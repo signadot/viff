@@ -207,14 +207,18 @@ Point the app's Event Subscriptions request url at `https://<host>/slack/events`
 
 | entity | payload |
 |---|---|
-| `slack.channel.<ws>/<C…>` | `workspace, channel, name, private, archived`, and `topic, purpose, members, created` |
-| `slack.message.<ws>/<C…>/<ts>` | `workspace, channel, ts, text`, and `user, bot, username, subtype, thread, replies, edited, reactions, url` |
-| `slack.user.<ws>/<U…>` | `workspace, user, name, bot, deleted`, and `real, display, email, title, tz` |
+| `slack.<ws>.channel.<C…>` | `workspace, channel, name, private, archived`, and `topic, purpose, members, created` |
+| `slack.<ws>.message.<C…>."<ts>"` | `workspace, channel, ts, text`, and `user, bot, username, subtype, thread, replies, edited, reactions, url` |
+| `slack.<ws>.user.<U…>` | `workspace, user, name, bot, deleted`, and `real, display, email, title, tz` |
+
+**The workspace is a level of the address**, and a message stands under its channel, so a
+channel and its history are one subtree: `verse data slack acme message C123` is that channel's
+window. A timestamp is quoted because it looks like a number.
 
 `reactions` is an object, name → count, so `{reactions: {shipit: null}}` is the presence test a
 charter writes.
 
-Owns `slack.*.<workspace>/*` — one claim, since every id is workspace-prefixed.
+Owns `slack.<workspace>` — one claim, since everything it writes stands under that place.
 
 **The window is bounded and covered**, which is the deliberate difference from git's commits: a
 repository's history is finite and immutable, a channel's is an unbounded stream, so a message
@@ -244,33 +248,37 @@ Point Settings → API → Webhooks at `https://<host>/linear/webhook`.
 
 | entity | payload |
 |---|---|
-| `linear.team.<KEY>` | `team, id, name, private`, and `description` |
-| `linear.issue.<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
-| `linear.cycle.<KEY>/<n>` | `team, id, number`, and `name, startsAt, endsAt, completedAt` |
-| `linear.project.<uuid>` | `owners: {<KEY>: {team, id, name, url, …}}` — one slot per owning team, and nothing at the top |
+| `linear.<KEY>.team` | `team, id, name, private`, and `description` |
+| `linear.<KEY>.issue.<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
+| `linear.<KEY>.cycle."<n>"` | `team, id, number`, and `name, startsAt, endsAt, completedAt` |
+| `linear.project.<uuid>.owners.<KEY>` | `team, id, name, url, …` — one node per owning team, and nothing at the project itself |
+
+**The team is a level of the address**, so everything a team has alone stands under it and
+`verse data linear ENG` is the whole of it. A cycle number is quoted because it looks like one.
 
 Match on **`stateType`**, not `state`: the type (`triage`, `backlog`, `unstarted`, `started`,
 `completed`, `canceled`) is Linear's own vocabulary, while the name beside it is whatever
 somebody called a column last Tuesday.
 
-Owns `linear.team.<KEY>`, `linear.issue.<KEY>-*`, `linear.cycle.<KEY>/*` and
-`linear.project.*` **at** `owners.<KEY>` per team. The hyphen in the issue claim is load-bearing
-— `ENG-*` does not claim `ENGINE-1`.
+Owns `linear.<KEY>` and `linear.project.*.owners.<KEY>` per team — two places, neither with a
+glob inside a segment. `linear.ENG` and `linear.ENGINE` are different places, which is a
+comparison of names rather than of string prefixes.
 
 **A team is read to exhaustion**, and `-max-issues` is an error rather than a truncation: the
 answer covers the whole team, and a partial list under a complete cover tombstones what it
 merely failed to read.
 
-**A project is reflected by slot**, because it belongs to several teams at once and so has no
-positional owner: no team can claim it as an address, and two sources over two teams would each
-tombstone what the other wrote. Each team is instead the single writer of one place inside it —
-`owners.<KEY>` — proved apart at install and kept apart by converge, with the entity going when
-the last owner leaves.
+**A project is owned one level down**, because it belongs to several teams at once and so has
+no positional owner: no team can claim the project itself, and two sources over two teams would
+each tombstone what the other wrote. Each team is instead the single writer of one node inside
+it — `linear.project.<uuid>.owners.<KEY>` — proved apart at install and kept apart by converge,
+with the project going when the last owner leaves.
 
 What that costs is **a project with no top**: every field Linear has about a project is global,
-so each owner's slot carries its own copy and there is no `name` at the root. A charter reads a
-project through an owner (`owners.ENG.state`). An issue still carries its project's name as a
-plain field, which is what a rule about an issue wants and costs no join.
+so each owner's node carries its own copy and there is no `name` at the project itself. A
+charter reads a project through an owner (`linear.project.<uuid>.owners.ENG.state`). An issue
+still carries its project's name as a plain field, which is what a rule about an issue wants
+and costs no join.
 
 ## github
 

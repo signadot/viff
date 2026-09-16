@@ -102,9 +102,10 @@ none of their own.
 Installing at an address somebody else owns is refused, with the check's words.
 
 **A source takes the nodes its claims name, the same way.** A claim in a source's `owns` names
-a node: its levels up to the first glob. The shipped sources claim a repository's place, so the
-node is the place itself — `git.verse`, `git-issue.verse`, `github.signadot.verse` — and a
-glob such as `linear.issue.ENG-*` names `linear.issue`. Installing the source writes an owner
+a node: its levels up to the first glob. The shipped sources claim a repository's or a team's
+place, so the node is the place itself — `git.verse`, `github.signadot.verse`, `linear.ENG` —
+and a claim with a glob in it, such as `linear.project.*.owners.ENG`, names `linear.project`,
+the deepest place everything it could match lies beneath. Installing the source writes an owner
 record at each node for the installer, and what the source reflects beneath is owned through it
 with no record of its own. Ownership here is not single-writership: two sources whose claims are
 proven disjoint may still share a node, and the node decides who answers for what is reflected

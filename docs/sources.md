@@ -179,10 +179,11 @@ be automata intersection. Two claims are
 disjoint when any segment is; a `*` segment is disjoint from nothing, so `git.*.*` claims the
 lot and can be proved apart from nothing in its own system.
 
-A claim may also name a place **inside** an entity (`at: "owners.ENG"`), which is the one way
-two sources may write one entity: each is the single writer of its own slot, proved apart by the
-same comparison a segment further down. The Linear source declares one — a project belongs to
-several teams at once, so each team claims `owners.<KEY>` and nothing at the top (below).
+A claim may name a place at any **depth**, which is how two sources come to share a thing
+without either being a second writer of anything: each is the single writer of its own node
+beneath it, proved apart by the same comparison one level further down. The Linear source
+declares one — a project belongs to several teams at once, so each team claims
+`linear.project.*.owners.<KEY>` and nothing at the project itself (below).
 
 ## Removing one, and the fork
 
@@ -242,9 +243,10 @@ does not exist in this sandbox", and every scope would be stuck with baseline's 
 can: the tombstone hides the inherited entity from the scope's reads and its watches, leaves
 baseline holding it, and is dropped with the overlay.
 
-**And it holds one level down.** A scope hides an inherited slot the same way, so a sandbox can say
-"that team does not own this project in here", with neither direction leaking: the scoped write
-does not reach baseline's value, and the scoped hide does not remove baseline's key.
+**And it holds at every depth.** A scope hides an inherited node beneath an entity the same
+way, so a sandbox can say "that team does not own this project in here", with neither direction
+leaking: the scoped write does not reach baseline's value, and the scoped hide does not remove
+baseline's key.
 
 Baseline stays the default: one shared reflection everything reads is what most of a deployment
 wants, and an empty `scope` is what it gets.
@@ -312,23 +314,24 @@ two sources over two teams would each tombstone what the other wrote — so for 
 reflected no project at all, and that absence was the first real evidence against the whole
 grammar.
 
-The way out was not a different vocabulary but a **deeper address**. A claim may name a path
-inside a payload, so a team is not a co-writer of `linear.project.<id>` — it is the single writer
-of that entity's `owners.<KEY>`. Two of those are proved apart at install by the comparison one
-segment further down, converge writes, compares and tombstones there and nowhere else, and the
-last owner out takes the entity with a conditional delete. **Sharing an entity is not an
+The way out was not a different vocabulary but a **deeper address**. A team is not a co-writer
+of `linear.project.<id>` — it is the single writer of `linear.project.<id>.owners.<KEY>`, a node
+like any other. Two of those are proved apart at install by the comparison one level further
+down, converge writes, compares and tombstones there and nowhere else, and the last owner out
+empties `owners` and takes the project with a conditional delete. **Sharing a thing is not an
 exception to single-writership; it is single-writership at a deeper address.**
 
 What it costs is a project with no top: every field Linear has about a project is global, and a
-global field has no owner among the teams, so each slot carries its own copy and a charter reads
-a project through an owner. That is the honest shape of an entity nobody owns the whole of.
+global field has no owner among the teams, so each owner's node carries its own copy and a
+charter reads a project through an owner. That is the honest shape of a thing nobody owns the
+whole of.
 
 **And the shape arrived again, in a system sharing no code with Linear.** A GitHub project is
 org- or user-owned and spans repositories, so no per-repo source can claim it as an address
 either — which is what makes this a limit of the address grammar rather than a quirk of one data
 model. A GitHub *user* is a third variant and not the same one: it has exactly one owner and that
-owner is the system, so the way out is not a slot but a source of its own, in a place of its
-own: under `github` the next level is an organisation, and a people source claiming
+owner is the system, so the way out is not a node under a shared one but a source of its
+own, in a place of its own: under `github` the next level is an organisation, and a people source claiming
 a level there would be claiming a name GitHub could give an organisation. Neither kind is
 reflected today.
 

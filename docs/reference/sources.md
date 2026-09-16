@@ -43,21 +43,20 @@ because an install compares declarations with no entities in hand.
 ```tony
 {at: "git.verse.head"}         one entity
 {at: "git.verse"}              a whole subtree: everything under it, at every depth
-{at: "linear.issue.ENG-*"}     a level may be `*`, and may END in one — a literal prefix
+{at: "linear.ENG.issue.*"}     a level may be `*`, and may END in one — a literal prefix
 {at: "verse-dev.drift"}        …which is how a source that keeps two levels of its own says so
-{at: "linear.project.*", path: "owners.ENG"}   …at a place INSIDE the payload
+{at: "linear.project.*.owners.ENG"}   one place inside a node several sources share
 ```
 
 A claim is **one pattern per level, at whatever depth** — the same shape an address is. It owns
 the node it names and everything under it, so `git` owns every repository and
 `verse-dev.drift` owns the tree a package keeps there.
 
-`path` is the path inside the payload the claim is about, the same address a write takes
-(`entity.Path`). It is what lets two sources share an entity without either being a second
-writer of anything: one is the single writer of `owners.ENG`, the other of `owners.OPS`.
-Sharing is not an exception to single-writership; it is single-writership at a deeper address.
-Absent — which is every claim the connectors make but Linear's on a project — the claim is to
-the whole entity.
+**Sharing is a deeper address.** Two sources that share a thing do not share a node: they own
+two nodes beneath it — `linear.project.p1.owners.ENG` and `…owners.OPS` — which are two
+addresses, proved apart by the same level-by-level comparison as any other pair. Sharing is not
+an exception to single-writership; it is single-writership one level down, and the level is
+free because an address has no fixed depth.
 
 Two claims are **disjoint** when any level is: two literal names that differ, or two prefixes
 neither of which prefixes the other. Where neither parts company first, the shorter claim
@@ -171,21 +170,12 @@ begins with `*` would claim every place it is compared against, and is refused. 
 the answer is complete for — GitHub covers a repository's open issues and its recent closed
 ones as two halves of `github.<org>.<name>.issue.*`.
 
-A cover may also carry a **`slot`** — a path inside the payload — saying the answer is complete
-for the value at that path in each entity it matches, and for nothing else there. converge then
-writes, compares and tombstones at that path: two sources can be the single writers of two slots
-of one entity, each proved apart by its `owns` (`at:`), neither able to reach the other. When the
-last slot goes, so does the entity — a conditional delete, the only contended write in the
-design.
-
-Covering an entity both whole and by a slot is **refused**: one says the answer is all of it, the
-other that it is one place in it, and both readings destroy something.
-
-**A slot is not a narrowing.** It says where an answer is authoritative, not which entities it is
-about, so a slot cover with no predicate claims its path in *every* entity its path reaches. Give it
-the predicate that selects the entities carrying that slot — `{owners: {ENG: null}}`, a null in a
-match being a presence test — or the pass writes a tombstone into a place nobody asked about,
-once per entity per pass.
+**A cover goes as deep as the answer does.** A source that owns one place inside a shared thing
+covers that place — `linear.project.*.owners.ENG` — and converge writes, compares and tombstones
+there and nowhere else. Two sources can be the single writers of two nodes under one project,
+each proved apart by its `owns`, neither able to reach the other. Removing the last one empties
+`owners`, which empties the project, and each step up is a conditional delete — the only
+contended write in the design, and it stops the moment something else is still standing.
 
 A cover is an `entity.Pattern` — the same selector a charter's `when` becomes — so the payload
 predicate is spelled `value`, as it is in a charter. On the wire each cover also carries an
