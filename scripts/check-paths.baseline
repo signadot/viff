@@ -17,7 +17,7 @@
 2 trigger/match_test.go
 3 trigger/match.go
 1 trigger/path_test.go
-4 trigger/path.go
+1 trigger/path.go
 2 trigger/reads.go
 2 trigger/trigger_api.go
 5 trigger/trigger.go
