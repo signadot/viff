@@ -130,19 +130,33 @@ A family of names inside one segment is an operator on that segment, and only a 
 `path:` carries one (`path: [demo, pr, !glob "hotfix-*"]`); neither a step nor a kinded path
 string can.
 
-The shell gets there first, and a bare `*` as its own word is the dangerous one. Inside a
-longer token it usually matches no file and is passed through (bash) or refused (zsh); standing
-alone it matches *every file in the directory*:
+The shell gets there first, and an unquoted `*` never reaches verse at all. It fails two
+different ways, and the second is the one that bites:
 
 ```sh
-verse data demo pr * stage        # bash: expands to every filename in the cwd
-verse data -at demo.pr.*.stage    # …and so does this, unquoted — the shell does not care
-                                  # which flag it is after
+verse data demo pr * stage        # the word IS the glob: it becomes every file in the cwd
+                                  #   argv: demo pr demo.pr.1.stage Makefile notes.txt stage
+verse data -at demo.pr.*.stage    # a glob inside a word: it expands only if a file matches,
+                                  #   and then silently becomes that file
+                                  #   argv: -at demo.pr.1.stage
+                                  # with nothing matching, bash passes it through (right by
+                                  #   luck) and zsh refuses the command outright
 ```
 
-So quote it, in either form — `-at 'demo.pr.*.stage'`, `demo pr '*' stage`. `-paths` prints a
-name that is an asterisk as `'"*"'`, the shell's quotes around the quoted clause, which is why a
-listing containing one pipes back to that name and not to all of them.
+Quoting it is the whole fix, in either spelling: `demo pr '*' stage` and
+`-at 'demo.pr.*.stage'` hand verse the asterisk itself. The single quotes are the SHELL's; what
+verse then sees is a bare `*` segment, which is the wildcard.
+
+`'"*"'` is a different address, not a safer way to write the same one. The inner `"*"` is the
+address grammar's quoted clause — the name that is an asterisk — and the outer `'…'` is the shell
+quoting that keeps it intact. That is how `-paths` prints such a node, so a listing pipes back to
+that one node rather than to every name beside it:
+
+```sh
+verse data demo pr '*'            # the wildcard: every name under demo.pr
+verse data demo pr '"*"'          # the one node named `*`
+verse data --paths demo pr '*' | xargs -L1 verse data   # each line reads back as what it names
+```
 
 In a charter, quoting does not change it. Tony quoting is about a value's type, not about
 matching, so `"*"` and `*` are the same string and a bare `*` segment means any segment. Naming
