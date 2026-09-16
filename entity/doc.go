@@ -24,6 +24,27 @@ import (
 //tony:schemagen=verse-state,notag,codec=custom
 type Doc struct{ Node *ir.Node }
 
+// Paths is a LISTING: the addresses a read reaches, one per line when a command prints it.
+//
+// AS KINDED PATHS, one string each, because that is the spelling every address in this system
+// has (CLAUDE.md: addresses are paths, and the command line's steps are one spelling of one). A
+// reader that wants steps splits the path where it stops naming (LiteralPrefix) and renders it,
+// which is what the CLI does -- and `--kpaths` prints what arrived.
+//
+//tony:schemagen=verse-paths,notag
+type Paths struct {
+	Paths []string `tony:"field=paths"`
+}
+
+// PathsDoc is a listing as the wire carries it.
+func PathsDoc(ps []Path) Paths {
+	out := make([]string, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.KPath())
+	}
+	return Paths{Paths: out}
+}
+
 // LiteralPrefix splits a kinded path at its first segment that is not a field name: the prefix
 // a store is read at, and the rest, which is answered over what stands there.
 func LiteralPrefix(at *kpath.KPath) (prefix []string, rest *kpath.KPath) {
