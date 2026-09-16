@@ -1,7 +1,8 @@
 # Addresses without the document: a plan for `--paths` and `--kpaths`
 
-Status: **not started**. Branch `paths-cli`. Needs a go-tony release that does not exist
-yet — see [What this waits on](#what-this-waits-on).
+Status: **step 1 done** — go-tony `v0.0.224` is in (`go.mod:10`), the substrate carries
+everything this needs, and the suite is green against it. Nothing calls the new surface
+yet. Branch `paths-cli`; the rest of [Steps](#steps) is open.
 
 `verse data --paths` prints one address per line. To do it, the CLI asks for the whole
 subtree and walks it: `GET /state?at=…` answers "the node the path reaches, with
@@ -167,20 +168,21 @@ which is what every read of a mounted slice does anyway.
 
 ## What this waits on
 
-go-tony `v0.0.222` is pinned (`go.mod:10`) and has none of this:
-`MatchRequest` there is `{Commit, PathData}` and `MatchResult` is `{Commit, Body}`.
-`v0.0.223` has the set match but **not** `iterType`, which landed after it. So this
-needs **the next go-tony release**, for:
+**Satisfied by go-tony `v0.0.224`**, released 2026-09-16 and now pinned (`go.mod:10`).
+What it took: `v0.0.222`, the version before this, had `MatchRequest{Commit, PathData}`
+and `MatchResult{Commit, Body}` — no set read at all — and `v0.0.223` had the set match
+but **not** `iterType`, which landed after it. The pieces this plan uses:
 
 - a match at a wildcard path answering a set, with `limit`/`cursor` paging;
 - `return: path|id|iterType|body`;
 - `libctl.MatchEachReturning`, `SetMember.IterType`, `api.IterWildcard`;
 - a set read at a past commit listing arrays by that commit's schema.
 
-Bumping is a one-line `go get` — no `replace`, no vendoring. The one coupling: verse
-spawns logd and docd with an `o` binary pinned to its own go-tony version
-(`cmd/verse/docd.go:22-25`), and a local `replace` disables that auto-install, so
-testing against an unreleased go-tony means `verse up --o-bin <path>`.
+The bump was a one-line `go get` — no `replace`, no vendoring, no other edit: verse
+spawns logd and docd with an `o` binary pinned to its own build's go-tony version
+(`cmd/verse/docd.go:22-25`), read from the build info, so it follows the dependency by
+itself. (Had this been tested before the release, a local `replace` would have disabled
+that auto-install and `verse up --o-bin <path>` would have been the way in.)
 
 ## Steps
 
