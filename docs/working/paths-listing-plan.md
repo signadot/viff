@@ -34,8 +34,10 @@ server-side walk has to answer exactly what `Doc.Paths` answers:
 - **`--depth` is a ceiling on the number of segments in an address**, `0` meaning no
   bound (`entity/doc.go:372`), not a level to stop at —
   `TestDepthBoundsTheWalk` (`pathswalk_test.go:52`).
-- **Addresses reached through arrays get none.** `Doc.Paths` recurses into
-  `ObjectType` only (`doc.go:381`).
+- **Addresses reached through arrays get none — and that changes here.** `Doc.Paths`
+  recurses into `ObjectType` only (`doc.go:381`), so a listing shows nothing inside an
+  array. See [Arrays are listed too](#arrays-are-listed-too): the walk gains them, which
+  is the one place it deliberately answers more than it did.
 - **A path naming one node does not print that node**, but a wildcard or descent path
   prints each node it reached (`doc.go:376`, `entity/doc_test.go:209`).
 - **Dedup** by `RefAt(segs...).String()` (`doc.go:375`).
@@ -109,6 +111,38 @@ Not the CLI, for three reasons, in order of weight:
 **`Doc.Paths` stays.** It is the oracle the new walk is tested against, and it still
 answers for a document already in hand.
 
+### Arrays are listed too
+
+The walk emits addresses inside arrays, which today's does not. `entity.step` already
+reads them — `[0]`, `{7}`, and `votes(alice)` where the array carries `!key(voter)`
+(`entity/doc.go:212-235`) — so the model addresses them and only the listing pretends
+they are not there. A walk that shows less than what a read reaches is the silent
+wrongness `--paths` exists to prevent: *"the walk is what makes it impossible to be
+silently wrong"* (`cmd/verse/pathswalk_test.go:17`).
+
+An earlier draft withheld positions on the grounds that they rot under an insert. That
+does not separate them from anything else: delete an entity and its address is gone too,
+and a listing is a snapshot either way. The residual difference is real but narrow — a
+dead field address names the same place and reads as absent, while a shifted position
+names a *different* element and reads as a success — and it is an argument about acting
+on a stale address later, not about what a listing may show.
+
+**Positions cost nothing:** `id` is the index, and `iterType` is `Array` or
+`SparseArray`, so they fall out of the same level walk.
+
+**Keyed elements cost a read, for a mechanical reason worth knowing.** `iterType` reports
+the keying the SCHEMA gives an array (`!logd-key`), and verse uses none — it marks a
+keyed array with `!key(voter)` inside the document, written as data so the merge operator
+is not executed away (`entity/doc.go:225-232`). So over the wire verse's keyed arrays
+arrive as plain `Array`, and the names of their elements live in each element's key
+field: the listing cannot know them without the bodies. Either the walk asks for
+`body` at an array (paying there and nowhere else), or verse's arrays adopt logd's keying
+and `iterType` answers `KeyedArray` for free. That second one is a data-model change with
+its own consequences and is not decided here.
+
+Until then the honest behaviour is: list array members by position, and name a keyed
+element by its key only where the body was read anyway.
+
 ### `--if` and `--if-at`
 
 The pattern needs the node, so a filtered listing asks `return: "id,iterType"` **with**
@@ -146,16 +180,21 @@ testing against an unreleased go-tony means `verse up --o-bin <path>`.
 
 1. **Bump go-tony** to the release carrying `iterType`. No behaviour change; the suite
    must be green before anything else moves.
-2. **`LogdStore.PathsAt`** — the level walk, no permissions, no server. Test it directly
-   against `Doc.Paths` over the fixtures in `entity/doc_test.go:182-209`: same addresses,
-   same order, same dedup, same `--depth` behaviour.
+2. **`LogdStore.PathsAt`** — the level walk, no permissions, no server. Test it against
+   `Doc.Paths` over the fixtures in `entity/doc_test.go:182-209`: same order, same dedup,
+   same `--depth` behaviour, and the same addresses **plus** the ones inside arrays. The
+   oracle holds everywhere the old walk had an opinion; where it had none, the new
+   addresses are the deliberate difference and are asserted on their own.
 3. **Attribution** — `(*attributed).PathsAt` with per-address `keep` and `noteHidden`.
    Test that a principal who cannot read a place does not see its address, and that the
    hidden count matches what a document read reports.
 4. **The route** — `GET /state` answers a listing when asked. Same 404/503/403, same
    scope, same `--if`.
 5. **The CLI** — `printPaths` becomes a printer; `--depth` ships in the query. The
-   existing tests must pass **unchanged**: that is the parity proof.
+   existing tests must pass **unchanged wherever no array is involved**: that is the
+   parity proof. A fixture holding an array now lists more, and those expectations change
+   on purpose — `kpaths_test.go:16` counts lines, so check what its fixtures hold before
+   assuming the count still stands.
 6. **The cost proof** — a test that a listing of N records does not transfer N payloads.
    The honest measure is bytes off the wire or reads at the store; a counting session
    wrapper around `sess` is the cheapest place to see it.
@@ -179,6 +218,9 @@ testing against an unreleased go-tony means `verse up --o-bin <path>`.
 - **`verse charter --paths`** walks a server-built charter tree
   (`cmd/verse/charter.go:238`), not the store. It is untouched here; if the two listings
   should share a renderer, that is a separate cleanup.
-- **Does the entity model want array addresses?** The walk gives none today
-  (`doc.go:381`), and `iterType` would make them easy. Answering that changes what
-  `--paths` means, so it is not in this plan.
+- **Should verse's arrays carry logd's keying?** Decided for this plan: no, not here. The
+  walk lists array members by position and names a keyed element only where a body was
+  read anyway (see [Arrays are listed too](#arrays-are-listed-too)). Teaching verse's
+  arrays `!logd-key` would make `iterType` answer `KeyedArray` and the names free, and it
+  is a data-model change with its own consequences — worth asking on its own, not as a
+  side effect of a listing.
