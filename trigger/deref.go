@@ -471,10 +471,16 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 			"one whose record does not say — a task nothing in the charter started — has none",
 			refSubject, subjPartValue)
 	}
-	// A fan-out member the commit did not touch. THIS is the read that was silently at "now"
-	// before: one firing about a set would mix one member's state at C with another's at
-	// whatever the store had reached by the time the action ran.
-	snap, err := e.store.AsOf(oc.commit.Rev)
+	// A fan-out member the commit did not touch, read at C: one firing about a set would
+	// otherwise mix one member's state at C with another's at whatever the store had reached by
+	// the time the action ran.
+	//
+	// THE FIRING'S OWN SNAPSHOT, which is what makes a fan-out affordable. Taken here, it was a
+	// snapshot PER MEMBER — twenty members, twenty reads of one world, each one a log replay
+	// costing seconds on a store of any age. It is also the same world the rule's other reads
+	// see, and as the rule's owner rather than as the engine, which is what a reference is
+	// supposed to resolve through.
+	snap, err := oc.snapshot(e)
 	if err != nil {
 		return nil, fmt.Errorf("$%s.%s: reading %s at commit %d: %w",
 			refSubject, subjPartValue, subj, oc.commit.Rev, err)

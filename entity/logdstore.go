@@ -1965,12 +1965,23 @@ func (s *LogdStore) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	}
 	// One read per named subtree, assembled into the same root-rooted shape.
 	//
-	// It bounds what crosses the wire, and — measured — that is ALL it does. A read costs what
-	// it costs to replay the log to that commit, which is independent of the path asked for:
-	// on a 300-commit verse, the whole root, the 300-entity slice the commits landed in, and a
-	// one-entity slice they never touched all cost ~73ms. So do not reach for this expecting a
-	// read to get cheaper. What makes a read cheap is not asking for one — see the roll-forward
-	// note in docs/working/firing-residual.md.
+	// IT IS WHAT MAKES A READ AFFORDABLE, and the difference grows with the store. Measured on
+	// an in-process store, small entities, narrowed to two three-segment places against the
+	// whole root:
+	//
+	//	commits     root    narrowed
+	//	   1000    161ms       ~1ms
+	//	   2000   1262ms       ~2ms
+	//	   3000   2421ms      ~37ms
+	//	   6000   6259ms      ~40ms
+	//
+	// The narrowed read is flat and the whole-root read grows about 1.2ms per commit past 2000,
+	// crossing sessionBudget on its own at around 9,500 — with no contention at all. So a caller
+	// that reads at every commit narrows to what it reads, or it pays for every entity it cannot
+	// see, on a store that only grows (scratchpad probe on git-issue sfwhh9sv).
+	//
+	// What makes a read cheaper still is not asking for one — see the roll-forward note in
+	// docs/working/firing-residual.md.
 	verse := map[string]*ir.Node{}
 	for _, st := range within {
 		if len(st) == 0 {

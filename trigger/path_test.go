@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -305,16 +306,24 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 	}
 }
 
-// countingStore counts the snapshots taken through it.
+// countingStore counts the snapshots taken through it, and what each one was narrowed to — a
+// whole-verse read being the empty narrowing, whose cost grows with everything anybody has
+// written rather than with what the rule reads.
 type countingStore struct {
 	entity.Store
-	mu sync.Mutex
-	n  int
+	mu      sync.Mutex
+	n       int
+	whole   int
+	withins [][][]string
 }
 
 func (c *countingStore) AsOf(rev int64, within ...[]string) (entity.Snapshot, error) {
 	c.mu.Lock()
 	c.n++
+	if len(within) == 0 {
+		c.whole++
+	}
+	c.withins = append(c.withins, append([][]string(nil), within...))
 	c.mu.Unlock()
 	return c.Store.AsOf(rev, within...)
 }
@@ -323,6 +332,27 @@ func (c *countingStore) asOf() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.n
+}
+
+// wholeVerse is how many of those snapshots were of the whole verse.
+func (c *countingStore) wholeVerse() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.whole
+}
+
+// narrowedTo reports whether some snapshot was narrowed to a list holding this place.
+func (c *countingStore) narrowedTo(place ...string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, within := range c.withins {
+		for _, p := range within {
+			if len(p) == len(place) && slices.Equal(p, place) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // `!get-path` with a `path:` reaches into the payload rather than taking all of it. That is

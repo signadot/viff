@@ -466,9 +466,13 @@ type occasion struct {
 	// One per FIRING rather than one per reference: Store.AsOf answers by replaying the log to
 	// that commit, so an action with three path reads would otherwise pay three replays to learn
 	// three things about one world — and, worse, could learn them about three different ones if
-	// the replays were not pinned to the same revision. They are, so this is about cost; but
-	// the cost is the kind that is discovered in production rather than in a test.
+	// the replays were not pinned to the same revision. They are, so this is about cost; and the
+	// cost is real: see within.
 	snap *snapCache
+	// within is the places that snapshot holds — firingWithin, computed from the rule. Empty
+	// reads the whole verse, which is what a rule reading a place it cannot name leaves as the
+	// only safe answer.
+	within [][]string
 	// reader is the store this firing reads through: the engine's, as the rule that is
 	// firing, so what a reference resolves to is what the rule's owner may read. nil reads as
 	// the engine itself.
@@ -499,10 +503,72 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 			"belongs to, off its task's record; a task nothing in the charter started has none")
 	}
 	if oc.snap == nil {
-		return oc.reads(e).AsOf(oc.commit.Rev) // no cache wired: correct, just unshared
+		return oc.reads(e).AsOf(oc.commit.Rev, oc.within...) // no cache wired: correct, just unshared
 	}
-	oc.snap.once.Do(func() { oc.snap.snap, oc.snap.err = oc.reads(e).AsOf(oc.commit.Rev) })
+	oc.snap.once.Do(func() {
+		oc.snap.snap, oc.snap.err = oc.reads(e).AsOf(oc.commit.Rev, oc.within...)
+	})
 	return oc.snap.snap, oc.snap.err
+}
+
+// firingWithin is the places a firing's snapshot must hold: every place the rule reads anywhere
+// — its condition's subtrees, and the literal prefix of every path read in its action, its gates
+// and its hooks (Trigger.outsideReads). Nil is the whole verse.
+//
+// IT IS WHAT MAKES A FIRING AFFORDABLE, and the difference is not small. A whole-verse snapshot
+// costs the log replay to that commit and grows with the store — measured at seconds once a few
+// thousand commits have landed, against tens of milliseconds for a narrowed one, which is flat.
+// A firing that read the whole verse paid for every entity its rule cannot see, on a store that
+// only grows, against a read budget that does not (entity.sessionBudget).
+//
+// A PREFIX rather than the address, so what it names is a SUPERSET of what the reads can reach:
+// a templated address (`demo.pr.$id`) narrows to the place it stands in, and its `$id` is
+// resolved inside that. A read whose FIRST segment is templated names no place at all, and there
+// the snapshot is taken whole — narrowing to what could not be worked out would answer "nothing"
+// for a read that should have found something, which is the one failure worth paying seconds to
+// avoid.
+func firingWithin(t Trigger) [][]string {
+	var out [][]string
+	place := func(segs []string) bool {
+		if len(segs) == 0 {
+			return false
+		}
+		for _, s := range segs {
+			// A segment that is a reference is not a place until the firing resolves it, and
+			// `demo.$kind.x` narrowed to `demo.$kind` is a narrowing to nothing at all. Any
+			// dollar at all, rather than a well-formed reference (refAt): a charter may hold a
+			// literal one, and reading the whole verse for a place named `$5` is the cheap way
+			// to be wrong here.
+			if strings.Contains(s, "$") {
+				return false
+			}
+		}
+		out = append(out, segs)
+		return true
+	}
+	for _, st := range t.reads() {
+		if !place(st.Path()) {
+			return nil
+		}
+	}
+	// The action's reads, its gates' and its hooks', by walking the rule's own document — so a
+	// new place to hold one cannot quietly escape this. An error is NOT ignored here, unlike in
+	// outsideReads, where a read it cannot resolve merely goes undeclared: here the same silence
+	// would narrow that read's own place away and answer it with nothing.
+	doc, err := t.ToTonyIR()
+	if err != nil {
+		return nil
+	}
+	specs, err := readTargets(doc)
+	if err != nil {
+		return nil
+	}
+	for _, sp := range specs {
+		if !place(sp.place().Segs()) {
+			return nil
+		}
+	}
+	return out
 }
 
 // Action is what a trigger does when it fires

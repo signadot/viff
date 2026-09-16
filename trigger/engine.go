@@ -801,12 +801,16 @@ func (e *Engine) spawnLabel(t Trigger, subjects []entity.Ref) string {
 // chain is and whether it may run at all (see causeFor and throttled — the throttle is asked
 // per SUBJECT, because a chain is per subject).
 func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, subjects []entity.Ref) {
+	// Worked out once for the rule rather than per subject: it walks the rule's document, and
+	// the answer is the same for every member of a fan-out.
+	within := firingWithin(t)
 	for _, subj := range subjects {
 		parent := e.causeFor(t, c, subj)
 		// The causing commit rides ALONGSIDE the causal parent rather than replacing it: parent
 		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
 		// either way. See occasion.
-		oc := occasion{commit: c, parent: parent, snap: &snapCache{}, reader: e.reader(t.Name)}
+		oc := occasion{commit: c, parent: parent, snap: &snapCache{}, within: within,
+			reader: e.reader(t.Name)}
 		// Before the throttle, which counts the trip and marks the chain reported: a firing a
 		// suspension holds is not one the throttle should have seen.
 		if held := e.holding(t.Name, subj); len(held) > 0 {
@@ -1463,7 +1467,17 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// This is the read only. The causal PARENT stays 0 — a hook does begin a fresh chain for
 	// the cycle throttle, which is causal.go's argument and a different question from which
 	// world the references see.
-	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)}, reader: e.reader(mirror.TriggerOf(fp.chain))}
+	// A hook's snapshot is shared and narrowed like a firing's — it is one: the rule is the one
+	// whose chain this is, and a hook that reads twice must read one world (see occasion.snap).
+	// A rule that has since been removed narrows to nothing and reads whole, which is the same
+	// answer it gave before there was a narrowing to work out.
+	hookOf := mirror.TriggerOf(fp.chain)
+	var hookWithin [][]string
+	if t, ok := e.Trigger(hookOf); ok {
+		hookWithin = firingWithin(t)
+	}
+	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)},
+		snap: &snapCache{}, within: hookWithin, reader: e.reader(hookOf)}
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so
