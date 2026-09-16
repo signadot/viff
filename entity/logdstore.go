@@ -1280,11 +1280,21 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 // reads, and never materializes the subtree — which is also how it lists a container too large
 // for a read's budget to answer at all.
 //
-// AN ARRAY IS READ, NOT WALKED. Its elements are named by identity where it carries `!key(f)`,
-// and that tag is on the array while the names are in the elements — so a level walk would have
-// to fetch the bodies anyway. One read of the array answers both, and verse's arrays are small
-// by construction (an unbounded one is an entity per item, docs/sources.md). The addresses under
-// it come from PathsUnder, so the store's listing and a document's are one set of rules.
+// AN ARRAY IS READ, NOT WALKED, and the reason is verse's own keying rather than anything about
+// levels. logd keys an array in the SCHEMA (!logd-key), and verse uses none: it writes `!key(f)`
+// as part of the value (entity.Raw), so to logd every verse array is positional and iterType
+// says Array. The keying is in the value, so only the value says what an element is named by —
+// and one read of the array answers the tag and the elements together.
+//
+// It is proportionate because verse's arrays are small by construction: an unbounded collection
+// is an entity per item (docs/sources.md), not an array.
+//
+// A SCHEMA-KEYED array would need no read: iterType says KeyedArray, and the member's id is the
+// segment a client would write. If verse ever keys an array in the schema, this arm becomes the
+// object arm with a different id.
+//
+// The addresses under an array come from PathsUnder, the document walk's own recursion, so the
+// store's listing and a document's are one set of rules rather than two kept in step.
 func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -1361,9 +1371,17 @@ func (s *LogdStore) walkPathsAt(ctx context.Context, path string, segs []string,
 	// Depth-first, so the answer reads as the walk a listing prints: each address, then what is
 	// under it, before the next sibling.
 	for _, m := range members {
-		below := append(append([]string{}, segs...), m.id)
+		// The id is read as a kpath SEGMENT, which is what a client would write: a name that
+		// needs quoting arrives quoted, and an address is built from the name inside. Taking it
+		// verbatim made the id `"1"` a segment of that spelling, and `demo.pr."\"1\""` names
+		// nothing.
+		name, isField := kpath.SegmentFieldName(m.id)
+		if !isField {
+			name = m.id
+		}
+		below := append(append([]string{}, segs...), name)
 		*out = append(*out, Path{Ref: RefAt(below...)})
-		if err := s.walkPathsAt(ctx, path+"."+seg(m.id), below, m.kind, max, out); err != nil {
+		if err := s.walkPathsAt(ctx, path+"."+seg(name), below, m.kind, max, out); err != nil {
 			return err
 		}
 	}
