@@ -806,6 +806,47 @@ func (a *attributed) ReadAt(at []string) (*ir.Node, bool, error) {
 	return a.readable(node, at)
 }
 
+// PathsAt is the store's listing with every address the reader may not read left out — the
+// listing's half of what ReadAt does by pruning a node.
+//
+// PER ADDRESS, because a listing has no node to prune: the answer is names, so what decides is
+// the same question asked of each one (keep), and a hidden address is counted as a hidden node
+// is. Whether the reader may ask about the path at all is the route's check (CheckInto), made
+// before the listing as it is before a read.
+//
+// AN ELEMENT IS ITS HOLDING NODE'S. Visibility changes at a place a record or a grant names, and
+// neither names one inside an array — a write at an element is already checked at the node that
+// holds it (Write). So the addresses beneath an array stand or fall with it, which is one
+// accessOf for the array rather than one per element.
+func (a *attributed) PathsAt(at []string, max int) ([]Path, error) {
+	out, err := a.Store.PathsAt(at, max)
+	if err != nil || IsSystem(a.principal) {
+		return out, err
+	}
+	kept := make([]Path, 0, len(out))
+	hidden := ""
+	for _, p := range out {
+		// Beneath an address already withheld there is nothing to ask about: the subtree went
+		// with it, and asking again would count one hidden node many times.
+		if hidden != "" {
+			if strings.HasPrefix(p.KPath(), hidden) {
+				continue
+			}
+			hidden = ""
+		}
+		ok, err := a.keep(p.Ref)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			hidden = p.KPath() + "."
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept, nil
+}
+
 func (a *attributed) readable(node *ir.Node, at []string) (*ir.Node, bool, error) {
 	places, err := a.places()
 	if err != nil {

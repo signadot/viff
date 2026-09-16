@@ -1270,6 +1270,106 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 	return nodeToPayload(node), true, nil
 }
 
+// PathsAt is every address beneath at, deepest last within each branch — the listing
+// `verse data --paths` prints — answered BY THE STORE rather than by walking a document it
+// sent. max bounds the total number of steps an address may have; 0 means no bound.
+//
+// The store knows the names: a wildcard match answers the members of a level one at a time, and
+// a spec with no `body` reads no node at all to do it (libctl.MatchEachReturning with
+// `id,iterType`). So a listing of ten thousand records costs the walk rather than ten thousand
+// reads, and never materializes the subtree — which is also how it lists a container too large
+// for a read's budget to answer at all.
+//
+// AN ARRAY IS READ, NOT WALKED. Its elements are named by identity where it carries `!key(f)`,
+// and that tag is on the array while the names are in the elements — so a level walk would have
+// to fetch the bodies anyway. One read of the array answers both, and verse's arrays are small
+// by construction (an unbounded one is an entity per item, docs/sources.md). The addresses under
+// it come from PathsUnder, so the store's listing and a document's are one set of rules.
+func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	path := s.rootForAt(at)
+	for _, sg := range at {
+		path += "." + seg(sg)
+	}
+	kind, err := s.iterTypeAt(ctx, path)
+	if err != nil || kind == "" {
+		return nil, err
+	}
+	var out []Path
+	if err := s.walkPathsAt(ctx, path, at, kind, max, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// iterTypeAt is what kind of node stands at path — the kind that says what is under it and which
+// wildcard reaches it — or "" when nothing stands there. Nothing is an answer, not a failure:
+// listing a slice before anything is written to it is what an engine and an install both do.
+func (s *LogdStore) iterTypeAt(ctx context.Context, path string) (string, error) {
+	kind := ""
+	_, err := s.sess.MatchEachReturning(ctx, path, nil, logdapi.ReturnIterType, func(m libctl.SetMember) error {
+		kind = m.IterType
+		return nil
+	})
+	if isNotFound(err) {
+		s.noteRead(nil)
+		return "", nil
+	}
+	s.noteRead(err)
+	if err != nil {
+		return "", fmt.Errorf("list %s: %w", path, err)
+	}
+	return kind, nil
+}
+
+// walkPathsAt appends every address beneath the node of kind standing at path, which is the
+// address segs names.
+func (s *LogdStore) walkPathsAt(ctx context.Context, path string, segs []string, kind string, max int, out *[]Path) error {
+	if max > 0 && len(segs) >= max {
+		return nil // nothing beneath this can be within the bound
+	}
+	switch kind {
+	case logdapi.IterArray, logdapi.IterKeyedArray, logdapi.IterSparseArray:
+		node, ok, err := s.ReadAt(segs)
+		if err != nil || !ok {
+			return err
+		}
+		*out = append(*out, PathsUnder(node, segs, "", max)...)
+		return nil
+	case logdapi.IterObject:
+	default:
+		return nil // a scalar holds nothing to list
+	}
+	type member struct {
+		id, kind string
+	}
+	var members []member
+	if _, err := s.sess.MatchEachReturning(ctx, path+".*", nil,
+		logdapi.ReturnID+","+logdapi.ReturnIterType, func(m libctl.SetMember) error {
+			members = append(members, member{id: m.ID, kind: m.IterType})
+			return nil
+		}); err != nil {
+		if isNotFound(err) {
+			s.noteRead(nil)
+			return nil
+		}
+		s.noteRead(err)
+		return fmt.Errorf("list %s: %w", path, err)
+	}
+	s.noteRead(nil)
+	// Depth-first, so the answer reads as the walk a listing prints: each address, then what is
+	// under it, before the next sibling.
+	for _, m := range members {
+		below := append(append([]string{}, segs...), m.id)
+		*out = append(*out, Path{Ref: RefAt(below...)})
+		if err := s.walkPathsAt(ctx, path+"."+seg(m.id), below, m.kind, max, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
 func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
 	if depth < len(at) {

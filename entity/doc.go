@@ -367,52 +367,85 @@ func (d Doc) Paths(at *kpath.KPath, max int) []Path {
 	var out []Path
 	seen := map[string]bool{}
 	for _, e := range d.Reached(at) {
-		var rec func(n *ir.Node, segs []string, access string, top bool)
-		rec = func(n *ir.Node, segs []string, access string, top bool) {
-			// An access is a step of the address, so it counts toward the bound as one:
-			// `--depth` reads in the units the rest of the model counts in.
-			if max > 0 && len(segs)+accessDepth(access) > max {
-				return
-			}
-			p := Path{Ref: RefAt(segs...), Access: access}
-			// The root is not an address anybody can print: `verse data '..'` walks from it.
-			if len(segs) > 0 && (!top || wild || access != "") && !seen[p.KPath()] {
-				seen[p.KPath()] = true
-				out = append(out, p)
-			}
-			n = ir.Uncomment(n)
-			if n == nil {
-				return
-			}
-			switch n.Type {
-			case ir.ObjectType:
-				for i, f := range n.Fields {
-					// Below an element everything is inside a node, so the name extends the
-					// ACCESS rather than the names (Path.Access).
-					if access != "" {
-						rec(n.Values[i], segs, access+"."+seg(fieldName(f)), false)
-						continue
-					}
-					rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)), "", false)
-				}
-			case ir.ArrayType:
-				// An element is addressed by position, and by identity where the array carries
-				// one (`!key(voter)`) — the same two spellings a read takes.
-				field, keyed := n.KeyField()
-				for i, el := range n.Values {
-					step := fmt.Sprintf("[%d]", i)
-					if keyed {
-						if k, ok := ir.ElemKey(el, field); ok && k != "" {
-							step = "(" + k + ")"
-						}
-					}
-					rec(el, segs, access+step, false)
-				}
-			}
+		// A path naming one node does not print that node, which is the address the reader
+		// typed; a wildcard or a descent prints each node it reached.
+		if wild {
+			appendPath(&out, seen, Path{Ref: e.Ref}, max)
 		}
-		rec(e.Payload, e.Ref.Segs(), "", true)
+		walkPaths(e.Payload, e.Ref.Segs(), "", max, seen, &out)
 	}
 	return out
+}
+
+// PathsUnder is every address BENEATH the node n standing at segs, deepest last within each
+// branch — Paths' own walk, over a node a caller already holds. The node's own address is not
+// among them: a caller that wants it has it.
+//
+// It is what the store's listing uses where it has read a node rather than walked it
+// (LogdStore.PathsAt at an array), so the two answer the same addresses by construction rather
+// than by two sets of rules kept in step.
+func PathsUnder(n *ir.Node, segs []string, access string, max int) []Path {
+	var out []Path
+	walkPaths(n, segs, access, max, map[string]bool{}, &out)
+	return out
+}
+
+// walkPaths emits every address beneath n, which stands at segs (+access). It does not emit that
+// address itself.
+func walkPaths(n *ir.Node, segs []string, access string, max int, seen map[string]bool, out *[]Path) {
+	n = ir.Uncomment(n)
+	if n == nil {
+		return
+	}
+	switch n.Type {
+	case ir.ObjectType:
+		for i, f := range n.Fields {
+			// Below an element everything is inside a node, so the name extends the ACCESS
+			// rather than the address of names (Path.Access).
+			child := Path{Ref: RefAt(segs...), Access: access}
+			childSegs, childAccess := segs, ""
+			if access != "" {
+				childAccess = access + "." + seg(fieldName(f))
+			} else {
+				childSegs = append(append([]string{}, segs...), fieldName(f))
+			}
+			child = Path{Ref: RefAt(childSegs...), Access: childAccess}
+			if !appendPath(out, seen, child, max) {
+				continue
+			}
+			walkPaths(n.Values[i], childSegs, childAccess, max, seen, out)
+		}
+	case ir.ArrayType:
+		// An element is addressed by position, and by identity where the array carries one
+		// (`!key(voter)`) — the two spellings a read takes.
+		field, keyed := n.KeyField()
+		for i, el := range n.Values {
+			step := fmt.Sprintf("[%d]", i)
+			if keyed {
+				if k, ok := ir.ElemKey(el, field); ok && k != "" {
+					step = "(" + k + ")"
+				}
+			}
+			child := Path{Ref: RefAt(segs...), Access: access + step}
+			if !appendPath(out, seen, child, max) {
+				continue
+			}
+			walkPaths(el, segs, access+step, max, seen, out)
+		}
+	}
+}
+
+// appendPath records one address, and says whether the walk goes on beneath it: an address past
+// the bound is not printed, and nothing under it is either.
+func appendPath(out *[]Path, seen map[string]bool, p Path, max int) bool {
+	if max > 0 && len(p.Ref.Segs())+accessDepth(p.Access) > max {
+		return false
+	}
+	if kp := p.KPath(); kp != "" && !seen[kp] {
+		seen[kp] = true
+		*out = append(*out, p)
+	}
+	return true
 }
 
 // accessDepth is how many steps an access fragment is, so a `--depth` bound counts an element
