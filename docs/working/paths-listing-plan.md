@@ -2,9 +2,9 @@
 
 Status: **steps 1-7 done** — go-tony is in, the listing spells an element, the store answers a
 listing (`LogdStore.PathsAt`), permission filters it per address, the route answers it and the
-CLI prints it. What remains is dropping the LOCAL ONLY `replace` when the go-tony fixes it needs
-are released — see that commit — and tony-format `3kgxprskh12krjrmndn0`, which is what still
-holds a listing to the read budget. Branch `paths-cli`.
+CLI prints it. What remains is dropping the LOCAL ONLY `replace` once the go-tony fixes it
+needs are released — the docd pass-through and the level listing, `cbf655f1` and
+`3kgxprskh12krjrmndn0`. Branch `paths-cli`.
 
 Two changes, and they are independent:
 
@@ -194,15 +194,12 @@ The listing's behaviour is pinned by tests, and they are the specification:
 - Paging lives inside the call; a page's cursor names the commit, so every level of one
   listing reads one state.
 
-**With no `body` in the spec the store reads no member** — the walk that finds the members
-already knows their names, so a listing ships names rather than what they stand for.
-
-It does **not** yet lift the read budget's ceiling, and the plan said it would. logd enumerates
-a level by building the node above it (`setChildren` reads the container), so a listing of a
-container past the budget is refused exactly as a read of it is. Filed as tony-format
-`3kgxprskh12krjrmndn0`, with the two ways out: enumerate from the index, or take the names off
-the store's event stream as `encodedMatch` already does. Pinned here by
-`TestAListingCostsNamesAndSharesTheReadBudget`, so the day it changes, a test says so.
+**With no `body` in the spec the store reads no node at all** — logd lists a level from its own
+tables (a directory of children per container, tony-format `3kgxprskh12krjrmndn0`) and verse
+walks levels, so neither end holds the container. A listing ships names rather than what they
+stand for, and it answers a container **no read can return**: past the session's read budget the
+read is refused and the listing is not, which `TestAListingAnswersAContainerAReadCannot` pins at
+200 records and an 8 KiB budget.
 
 ## Where the walk runs: the server
 
@@ -233,10 +230,12 @@ walk whose prefix is `IsMountOwned` falls back to materialize-and-walk.
    the same scope, the same `--if`.
 6. **The CLI** — `printPaths` becomes a printer of what the server sent; `--depth` ships in
    the query.
-7. ~~The cost proof~~ — done, and it found the ceiling is still there: versed's
-   `TestStateAnswersALitingAsAddresses` shows the wire carries the names and not the payloads,
-   and `TestAListingCostsNamesAndSharesTheReadBudget` pins that a container past the read
-   budget is still refused, because the enumeration builds it (`3kgxprskh12krjrmndn0`).
+7. ~~The cost proof~~ — done: versed's `TestStateAnswersALitingAsAddresses` shows the wire
+   carries the names and not the payloads, and `TestAListingAnswersAContainerAReadCannot` shows
+   the listing answering a container the read budget refuses. The first version of that test
+   pinned the opposite, because the enumeration built the container; it was filed as
+   `3kgxprskh12krjrmndn0`, fixed in go-tony, and the test failed the day it was — which is what
+   it was written to do.
 
 ## Verification
 

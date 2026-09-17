@@ -9,21 +9,18 @@ import (
 	"github.com/signadot/tony-format/go-tony/system/logd/storage"
 )
 
-// WHAT A LISTING COSTS TODAY, and the ceiling it has not escaped yet.
+// A LISTING ANSWERS A CONTAINER A READ CANNOT, which is the whole point of asking the store for
+// the names.
 //
-// The listing ships names rather than what they stand for -- that much is true and is what
-// versed's TestStateAnswersALitingAsAddresses shows on the wire. The claim it does NOT yet
-// support is the one that sounds best: that it answers a container too wide for a read.
+// A read BUILDS the node it answers, under the session's read budget, so the wider a container
+// gets the more a listing of it costs -- until the read is refused outright, on exactly the
+// container somebody most wants the names of. The listing builds nothing: logd lists a level
+// from its own tables (tony-format 3kgxprskh12krjrmndn0, a directory of children per container),
+// and verse walks levels, so neither end holds the container.
 //
-// It does not, because the substrate enumerates a level by BUILDING the node above it: logd's
-// setChildren reads the container to list its members, under the session read budget, so a
-// listing of a container past that budget is refused with the same error a read of it gets. That
-// is tony-format 3kgxprskh12krjrmndn0, filed from here.
-//
-// This test pins both halves so the limit is written down where somebody will meet it: within
-// the budget a listing answers the whole container, and past it both are refused. When the
-// enumeration stops building the container, the second half is what changes.
-func TestAListingCostsNamesAndSharesTheReadBudget(t *testing.T) {
+// The budget is set small here so the difference is visible in a test rather than in a
+// production incident; the shape is the same at 64 MiB.
+func TestAListingAnswersAContainerAReadCannot(t *testing.T) {
 	store, err := storage.Open(t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
@@ -50,38 +47,17 @@ func TestAListingCostsNamesAndSharesTheReadBudget(t *testing.T) {
 		}
 	}
 
-	// WITHIN THE BUDGET: one record's subtree lists whole, and names what is under it.
-	out, err := s.PathsAt([]string{"demo", "pr", "000"}, 0)
-	if err != nil {
-		t.Fatalf("PathsAt at one record: %v", err)
-	}
-	if len(out) != 2 { // stage, note
-		t.Errorf("one record listed %d addresses, want 2: %v", len(out), kpaths(out))
-	}
-
-	// PAST IT: the read of the whole container is refused, and so -- for now -- is the listing,
-	// because the level is enumerated by building the container (3kgxprskh12krjrmndn0).
+	// The read of the container is refused: it would have to hold every record at once.
 	if _, _, err := s.ReadAt([]string{"demo", "pr"}); err == nil {
 		t.Fatal("the read was answered; this test needs a container the budget refuses")
-	}
-	if _, err := s.PathsAt([]string{"demo", "pr"}, 0); err == nil {
-		t.Fatal("the listing answered a container past the budget: 3kgxprskh12krjrmndn0 is fixed, " +
-			"and this test should now say so")
 	} else if !strings.Contains(err.Error(), "budget") {
-		t.Fatalf("the listing failed for another reason: %v", err)
+		t.Fatalf("the read failed for another reason: %v", err)
 	}
 
-	// The whole container within a bigger budget is the same walk, and answers every address.
-	wide := openStoreAt(t, startDocd(t, startLogd(t)).ClientTCPAddr())
-	for i := range n {
-		ref := RefAt("demo", "pr", fmt.Sprintf("%03d", i))
-		if _, _, err := wide.Write(Write{At: ref.At(), Value: Obj{"stage": "open", "note": body}.Payload()}); err != nil {
-			t.Fatalf("seed %s: %v", ref, err)
-		}
-	}
-	out, err = wide.PathsAt([]string{"demo", "pr"}, 0)
+	// The listing answers it, whole.
+	out, err := s.PathsAt([]string{"demo", "pr"}, 0)
 	if err != nil {
-		t.Fatalf("PathsAt: %v", err)
+		t.Fatalf("PathsAt over a container past the read budget: %v", err)
 	}
 	seen := map[string]bool{}
 	for _, p := range out {
@@ -97,8 +73,9 @@ func TestAListingCostsNamesAndSharesTheReadBudget(t *testing.T) {
 	if len(out) != 3*n {
 		t.Errorf("the listing answered %d addresses, want %d", len(out), 3*n)
 	}
-	// And a record it named reads on its own, which is what the listing is for.
-	if _, ok, err := wide.ReadAt([]string{"demo", "pr", "000"}); err != nil || !ok {
+	// And a record it named reads on its own, which is what the listing is for: the container
+	// is past the budget, one record is not.
+	if _, ok, err := s.ReadAt([]string{"demo", "pr", "000"}); err != nil || !ok {
 		t.Errorf("a listed record does not read: ok=%v err=%v", ok, err)
 	}
 }
