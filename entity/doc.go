@@ -374,8 +374,8 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 // branch — the walk `verse data --paths` prints: each node the path reached where it reached
 // several, and everything beneath each.
 //
-// AS SEGMENTS, so the caller renders them: `--paths` joins with JoinSteps and `--kpaths` with
-// JoinSegs, and the walk has no opinion about which.
+// AS ADDRESSES (Path), so the caller renders them: `--paths` joins with JoinStepsAt and
+// `--kpaths` with Path.KPath, and the walk has no opinion about which.
 //
 // EVERY node beneath, not the ones at some depth: nothing in a document says where an entity
 // ends, so asking for one depth answers with the addresses that happen to live there and
