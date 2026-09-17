@@ -1274,19 +1274,21 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 // `verse data --paths` prints — answered BY THE STORE rather than by walking a document it
 // sent. max bounds the total number of steps an address may have; 0 means no bound.
 //
-// The store knows the names: a wildcard match answers the members of a level one at a time, and
-// a spec with no `body` reads no node at all to do it (libctl.MatchEachReturning with
-// `id,iterType`). So a listing of ten thousand records costs the walk rather than ten thousand
-// reads, and never materializes the subtree — which is also how it lists a container too large
-// for a read's budget to answer at all.
+// The store knows the names: a descent (`<at>..`) with `return: path` answers every node
+// beneath, each once and in document order, reading no node at all to do it -- one table per
+// container it enters, however large the containers are. So a listing of ten thousand records
+// costs the tables rather than ten thousand reads, in one paged request rather than one per
+// container, and never materializes the subtree -- which is also how it lists a container too
+// large for a read's budget to answer at all.
 //
-// AN ARRAY IS A LEVEL LIKE ANY OTHER: its members are positions, and the walk asks for them as
-// it asks for an object's fields. Identity is the store's to give (!logd-key), a `!key` tag is
+// AN ARRAY IS A LEVEL LIKE ANY OTHER: its members are positions, and the descent enters them as
+// it enters an object's fields. Identity is the store's to give (!logd-key), a `!key` tag is
 // refused on the way in (checkNotKeyed), and the verse surface for the store's keying is not
 // designed yet -- so nothing here has to read an array to find out what its elements are called.
 //
 // The addresses beneath an element are the same ones the document walk spells, since below an
-// element a name extends the ACCESS rather than the address (entity.Path).
+// element a name extends the ACCESS rather than the address (entity.Path). A mounted place is
+// the one exception to the descent, walked a level at a time (walkPathsAt).
 func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -1294,15 +1296,73 @@ func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
 	for _, sg := range at {
 		path += "." + seg(sg)
 	}
-	kind, err := s.iterTypeAt(ctx, path)
-	if err != nil || kind == "" {
-		return nil, err
+	// A MOUNTED PLACE IS WALKED, a level at a time: docd does not descend into a mount, and a
+	// controller answers its own levels.
+	if IsMountOwned(at...) {
+		kind, err := s.iterTypeAt(ctx, path)
+		if err != nil || kind == "" {
+			return nil, err
+		}
+		var out []Path
+		if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	// ONE DESCENT, `<at>..`, answers every node beneath in document order — a node before what
+	// is under it, and at each level the store's order — which is the walk a listing prints,
+	// in one paged request rather than one per container. A depth bounds it on the server, so
+	// what is past the bound is neither walked nor shipped. The entity root is a node of its
+	// own beside the mount root, so a descent under it never reaches a mount.
+	q := libctl.SetQuery{Path: path + "..", Return: logdapi.ReturnPath}
+	if max > 0 {
+		depth := max - len(at)
+		if depth <= 0 {
+			return nil, nil // nothing beneath is within the bound
+		}
+		q.Depth = &depth
 	}
 	var out []Path
-	if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
-		return nil, err
+	_, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error {
+		p, err := s.pathOfMember(m.Path)
+		if err != nil {
+			return err
+		}
+		if p.Access == "" && slices.Equal(p.Ref.Segs(), at) {
+			return nil // the node itself: a listing is what is beneath it
+		}
+		out = append(out, p)
+		return nil
+	})
+	if isNotFound(err) {
+		s.noteRead(nil)
+		return nil, nil // nothing stands there, which is an answer (see iterTypeAt)
+	}
+	s.noteRead(err)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", JoinSegs(at), err)
 	}
 	return out, nil
+}
+
+// pathOfMember is the address a member of a descent stands at, from the store's own spelling of
+// its path: the root comes off, the leading field names are the address, and from the first
+// bracket segment on everything is ACCESS inside the node that holds it (entity.Path) — a name
+// after an element extends the access rather than the address, as memberAddress says.
+func (s *LogdStore) pathOfMember(p string) (Path, error) {
+	kp, err := kpath.Parse(p)
+	if err != nil {
+		return Path{}, fmt.Errorf("a member's path %q: %w", p, err)
+	}
+	if kp == nil || kp.Field == nil {
+		return Path{}, fmt.Errorf("a member's path %q does not start at the root", p)
+	}
+	var names []string
+	x := kp.Next // past the root segment
+	for ; x != nil && x.Field != nil; x = x.Next {
+		names = append(names, *x.Field)
+	}
+	return Path{Ref: RefAt(names...), Access: x.String()}, nil
 }
 
 // iterTypeAt is what kind of node stands at path — the kind that says what is under it and which
