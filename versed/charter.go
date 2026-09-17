@@ -361,6 +361,23 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// A schedule is the daemon's record rather than the engine's, and is removed by the
+	// declared name in the charter the path names.
+	if r.URL.Query().Get("scope") == "" {
+		removed, err := s.removeScheduleNamed(s.scopedStore(r), r.URL.Query().Get("at"), name)
+		if errors.Is(err, entity.ErrForbidden) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		if removed {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
 	switch err := eng.RemoveStratum(name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -477,7 +494,7 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
-	tx := &charterTx{s: s, store: store}
+	tx := &charterTx{s: s, store: store, scope: scope}
 	installer := entity.PrincipalOf(store)
 	for _, g := range groups {
 		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
@@ -508,6 +525,15 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 		}
 		for _, def := range g.strata {
 			if code, err := tx.stratum(def); err != nil {
+				code, err := tx.refuse(code, err)
+				return nil, code, err
+			}
+		}
+		// The schedules after the levels and before the rules: a rule reads a schedule's
+		// ticks, and a tick that lands before its reader is armed is one the reader's own
+		// replay picks up, so the order is a courtesy rather than a need.
+		for _, def := range g.schedules {
+			if code, err := tx.schedule(def); err != nil {
 				code, err := tx.refuse(code, err)
 				return nil, code, err
 			}
@@ -581,14 +607,15 @@ func installedReport(groups []charterGroup) []any {
 
 // charterGroup is one package's worth of a file: where it goes, and what it installs there.
 type charterGroup struct {
-	at     string
-	reads  []*ir.Node
-	strata []*ir.Node
-	rules  []*ir.Node
+	at        string
+	reads     []*ir.Node
+	strata    []*ir.Node
+	schedules []*ir.Node
+	rules     []*ir.Node
 }
 
 func (g charterGroup) empty() bool {
-	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.rules) == 0
+	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.schedules) == 0 && len(g.rules) == 0
 }
 
 // charterGroups splits a file into its packages. `at` is the query's, which is where a file
@@ -601,6 +628,8 @@ func charterGroups(defs []*ir.Node, at string) ([]charterGroup, error) {
 		switch charterKind(def) {
 		case "stratum":
 			cur.strata = append(cur.strata, def)
+		case "schedule":
+			cur.schedules = append(cur.schedules, def)
 		case "reads":
 			declared, err := declaredAt(def)
 			if err != nil {
@@ -697,6 +726,7 @@ func (s *Server) charterEngineFor(scope, at string) (*trigger.Engine, error) {
 type charterTx struct {
 	s     *Server
 	store entity.Store
+	scope string
 	at    string
 	eng   *trigger.Engine
 	// fresh is every address this REQUEST brought into being. A refusal drops each one's
@@ -1002,6 +1032,8 @@ func charterKind(node *ir.Node) string {
 		return "trigger"
 	case has["level"] && has["match"]:
 		return "stratum"
+	case has["every"]:
+		return "schedule"
 	case has["reads"] || has["at"]:
 		return "reads"
 	}
