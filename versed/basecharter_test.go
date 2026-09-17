@@ -35,7 +35,7 @@ func TestTheBaseCharterStandsEveryVerseUp(t *testing.T) {
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 
-	for _, id := range []string{"hourly", "daily", "weekly"} {
+	for _, id := range []string{"minutely", "hourly", "daily", "weekly"} {
 		rec, ok := scheduleRecord(t, srv, id)
 		if !ok {
 			t.Fatalf("no standard schedule %s", id)
@@ -60,19 +60,44 @@ func TestTheCalendarIsDerivedFromTheHourlyTick(t *testing.T) {
 	srv.Start(t.Context())
 	scheduleRecord(t, srv, "hourly")
 
-	// Two ticks an hour apart, on one day: the daemon's own write, called by hand so the test
-	// does not wait for the top of the hour.
+	// The daemon's own writes, called by hand so the test does not wait for the clock. A
+	// schedule is armed against an instant before the tick, since a tick ahead of `next`
+	// writes nothing.
+	arm := func(id string, next time.Time) {
+		t.Helper()
+		if _, _, err := srv.Store.Write(entity.Write{
+			At: schedule.Ref(id).At(schedule.NextField), Value: entity.Val(schedule.Key(next)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	first := time.Date(2026, 9, 18, 3, 30, 0, 0, time.UTC)
-	if _, _, err := srv.Store.Write(entity.Write{
-		At: schedule.Ref("hourly").At(schedule.NextField), Value: entity.Val(schedule.Key(first.Truncate(time.Hour))),
-	}); err != nil {
-		t.Fatal(err)
+
+	// The clock, to the minute, from the minutely tick.
+	arm("minutely", first)
+	if err := srv.tickAt("minutely", first); err != nil {
+		t.Fatalf("first minute: %v", err)
 	}
+	if got := calendarFact(t, srv, "time", "time"); got != "03:30" {
+		t.Fatalf("time = %q, want 03:30", got)
+	}
+	if err := srv.tickAt("minutely", first.Add(time.Minute)); err != nil {
+		t.Fatalf("second minute: %v", err)
+	}
+	for range 400 {
+		if got := calendarFact(t, srv, "time", "time"); got == "03:31" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := calendarFact(t, srv, "time", "time"); got != "03:31" {
+		t.Fatalf("time after the second minute = %q, want 03:31", got)
+	}
+
+	// The calendar, from the hourly tick.
+	arm("hourly", first.Truncate(time.Hour))
 	if err := srv.tickAt("hourly", first); err != nil {
-		t.Fatalf("first tick: %v", err)
-	}
-	if got := calendarFact(t, srv, "time", "time"); got != "03:00" {
-		t.Fatalf("time = %q, want 03:00", got)
+		t.Fatalf("first hour: %v", err)
 	}
 	if got := calendarFact(t, srv, "date", "date"); got != "2026-09-18" {
 		t.Fatalf("date = %q", got)
@@ -91,26 +116,30 @@ func TestTheCalendarIsDerivedFromTheHourlyTick(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	// A second hour of the same day, then the first hour of the next: the rule fires for both
+	// in order, so once the date has moved the same-day tick has been evaluated — and it left
+	// no commit at verse.schedule.date, the same bytes being a no-op.
 	if err := srv.tickAt("hourly", first.Add(time.Hour)); err != nil {
-		t.Fatalf("second tick: %v", err)
+		t.Fatalf("second hour: %v", err)
+	}
+	if err := srv.tickAt("hourly", first.Add(21*time.Hour)); err != nil {
+		t.Fatalf("next day: %v", err)
 	}
 	for range 400 {
-		if got := calendarFact(t, srv, "time", "time"); got == "04:00" {
+		if got := calendarFact(t, srv, "date", "date"); got == "2026-09-19" {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if got := calendarFact(t, srv, "time", "time"); got != "04:00" {
-		t.Fatalf("time after the second tick = %q, want 04:00", got)
+	if got := calendarFact(t, srv, "date", "date"); got != "2026-09-19" {
+		t.Fatalf("date after the next day's tick = %q", got)
 	}
-	// The date did not change, so the derive of the same bytes was a no-op: no commit landed
-	// at verse.schedule.date for the second tick.
 	after, err := srv.Store.Since(0, dateKP)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != len(before) {
-		t.Fatalf("verse.schedule.date took %d commits across two ticks of one day, want %d", len(after), len(before))
+	if len(after) != len(before)+1 {
+		t.Fatalf("verse.schedule.date took %d commits across three ticks on two days, want %d",
+			len(after), len(before)+1)
 	}
 }

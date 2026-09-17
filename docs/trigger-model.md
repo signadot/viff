@@ -1755,20 +1755,23 @@ The tick carries `due`, `missed` (how many instants before it went unticked, so 
 was down ticks once on the way up and says how late), and the calendar of its due instant in
 the daemon's zone (`TZ`): `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone`.
 
-**The calendar is the cron line.** Every verse carries the base charter: three schedules,
-`hourly`, `daily` and `weekly`, phased on a Monday at midnight in the zone, and a rule deriving
-one entity per calendar fact from the hourly tick, `verse.schedule.date`, `.time` and the
-rest. The same date is the same bytes and a no-op, so `date` commits once a day and a rule
-reading it wakes once a day, and a rule whose `on` names a fact rises when it becomes true:
+**The calendar is the cron line.** Every verse carries the base charter: four schedules,
+`minutely`, `hourly`, `daily` and `weekly`, phased on a Monday at midnight in the zone, and
+two rules deriving one entity per calendar fact — `verse.schedule.time`, to the minute, from
+the minutely tick, and `.date`, `.weekday` and the rest from the hourly one. The same date is
+the same bytes and a no-op, so `date` commits once a day and a rule reading it wakes once a
+day, while `time` costs two commits a minute, the tick and the derive, that wake nothing unless
+a charter reads there. A rule whose `on` names a fact rises when it becomes true:
 
 ```tony
-    on: {path: "verse.schedule.time", value: {time: "09:00"}}      # daily at nine
+    on: {path: "verse.schedule.time", value: {time: "09:05"}}      # daily at five past nine
 ```
 
 Two readings of downtime, and a rule says which it means by what it reads. A verse down from
-08:30 to 10:30 writes the 10:00 tick with `missed: 1`; `time` goes from `08:00` to `10:00` and
-`09:00` never rises. A rule on the calendar is strict cron: a missed instant is skipped. A rule
-on the tick is anacron: it fires late, once, and `missed` says by how much.
+08:30 to 10:30 writes the 10:00 hourly tick with `missed: 1` and the 10:30 minutely tick with
+`missed: 119`; `time` goes from `08:30` to `10:30` and `09:05` never rises. A rule on the
+calendar is strict cron: a missed instant is skipped. A rule on the tick is anacron: it fires
+late, once, and `missed` says by how much.
 
 A charter declares a schedule of its own in its head document, beside the strata, and it is
 the installer's — its ticks are written with the installer's grant, and removed with the

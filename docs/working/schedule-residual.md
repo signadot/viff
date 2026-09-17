@@ -8,9 +8,9 @@ reconstruct why each was left.
 
 ## Not built, by decision
 
-- **Minute resolution.** The base charter's finest schedule is hourly, so `verse.schedule.time`
-  is `HH:00`. A `minutely` schedule is 1440 ticks and 1440 derives a day; a deployment that wants
-  it declares one and pays for it. The doc says the price.
+- **Finer than a minute.** `verse.schedule.time` is derived to the minute from a `minutely`
+  schedule in the base, at two commits a minute. Seconds would be a hundred and twenty a minute
+  for a fact nothing has asked for; a deployment that wants one declares it and pays for it.
 - **Per-period backfill.** A verse down across several periods ticks once on the way up, with
   `missed` saying how many instants went unticked. One tick per missed instant, capped
   (`catchUp: {each: N}` on the declaration), is the other spelling and waits for a charter that
