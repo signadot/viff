@@ -215,7 +215,8 @@ verse
                                              line, for a line captured into a shell variable. A
                                              package that holds nothing yet prints itself,
                                              since that is the state worth seeing
-          <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
+          <address> rules|strata|schedules [<name>]
+                                             …and INTO the node standing there: its rules, its
                                              levels, one of them by name, and on into that one
                                              (`c verse-dev drift rules watcher action`).
                                              `c rules watcher` is baseline's, which has no
@@ -238,7 +239,8 @@ verse
                                              What a removal leaves is what the charter WROTE —
                                              a charter's writes are the world's
                                              (-R is not `rm -r`'s recursion: -r is the removal)
-          <address> -- rules|strata          where the address ENDS, for a package whose own
+          <address> -- rules|strata|schedules
+                                             where the address ENDS, for a package whose own
                                              address ends in `rules` or `strata` and would
                                              otherwise shadow that key
           A charter file may open a package with a `---` document of its own — `at: drift`

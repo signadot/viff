@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -104,8 +105,21 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
 	markSuspendedRules(eng, node.triggers)
-	node.strata, err = codec.ToNode(eng.Strata())
-	return err
+	if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
+		return err
+	}
+	// The schedules are the daemon's records rather than the engine's, read by the address
+	// they were declared at.
+	rows, err := s.scheduleRows(s.Store, func(row api.ScheduleRow) bool { return row.At == at })
+	if err != nil {
+		return fmt.Errorf("charter at %q: schedules: %w", at, err)
+	}
+	if len(rows) > 0 {
+		if node.schedules, err = codec.ToNode(rows); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // belowAddr reports whether a charter's address is at or under the address asked for, and what
@@ -133,13 +147,14 @@ func belowAddr(at string, want []string) ([]string, bool) {
 // charterNode is one place in the address tree: the charter installed there (or none, for a
 // segment that only leads somewhere) and whatever is installed below it.
 type charterNode struct {
-	here     bool // a charter is installed AT this address, rather than only under it
-	writes   string
-	reads    []string
-	triggers *ir.Node
-	strata   *ir.Node
-	kids     map[string]*charterNode
-	kidOrder []string
+	here      bool // a charter is installed AT this address, rather than only under it
+	writes    string
+	reads     []string
+	triggers  *ir.Node
+	strata    *ir.Node
+	schedules *ir.Node // the schedules declared here, as `verse schedule` lists them; nil for none
+	kids      map[string]*charterNode
+	kidOrder  []string
 }
 
 func (n *charterNode) child(seg string) *charterNode {
@@ -194,6 +209,11 @@ func (n *charterNode) node() *ir.Node {
 	}
 	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))
+	// Only where one is declared: a charter with no schedules is the ordinary case, and a key
+	// saying so at every node would be the `rules: []` mistake again.
+	if n.schedules != nil {
+		add("schedules", n.schedules)
+	}
 	if len(n.kidOrder) > 0 {
 		sort.Strings(n.kidOrder)
 		var kf, kv []*ir.Node
@@ -933,13 +953,33 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
 		return
 	}
-	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata") {
-		http.Error(w, "a removal names one rule or one level — `<address> rules <name>` or "+
-			"`<address> strata <name>` — and a path to an address alone takes the whole "+
-			"package down. "+strings.Join(rest, ".")+" is neither", http.StatusBadRequest)
+	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata" && rest[0] != "schedules") {
+		http.Error(w, "a removal names one rule or one level or one schedule — `<address> rules "+
+			"<name>`, `<address> strata <name>` or `<address> schedules <name>` — and a path to "+
+			"an address alone takes the whole package down. "+strings.Join(rest, ".")+" is none of "+
+			"those", http.StatusBadRequest)
 		return
 	}
 	kind, name := rest[0], rest[1]
+	if kind == "schedules" {
+		// The daemon's record rather than the engine's, and not a scope's.
+		if r.URL.Query().Get("scope") != "" {
+			http.Error(w, "a schedule is not a scope's: it ticks for the verse", http.StatusBadRequest)
+			return
+		}
+		removed, err := s.removeScheduleNamed(s.scopedStore(r), at, name)
+		switch {
+		case errors.Is(err, entity.ErrForbidden):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		case err != nil:
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		case !removed:
+			http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+		return
+	}
 	eng, err := s.engineAt(r, at)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

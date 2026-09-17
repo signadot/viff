@@ -16,10 +16,19 @@ import (
 
 // listSchedules answers GET /schedules.
 func (s *Server) listSchedules(w http.ResponseWriter, r *http.Request) {
-	store := s.scopedStore(r)
-	ents, err := entity.BelowErr(store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System)
+	rows, err := s.scheduleRows(s.scopedStore(r), func(api.ScheduleRow) bool { return true })
 	if unreadable(w, r, err) {
 		return
+	}
+	writeOut(w, r, http.StatusOK, rows)
+}
+
+// scheduleRows is every schedule record the store answers, as rows, kept by keep and sorted by
+// id. The one listing behind the wire and the charter tree.
+func (s *Server) scheduleRows(store entity.Store, keep func(api.ScheduleRow) bool) ([]api.ScheduleRow, error) {
+	ents, err := entity.BelowErr(store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System)
+	if err != nil {
+		return nil, err
 	}
 	rows := make([]api.ScheduleRow, 0, len(ents))
 	for _, ent := range ents {
@@ -41,10 +50,12 @@ func (s *Server) listSchedules(w http.ResponseWriter, r *http.Request) {
 				row.Missed = *m.Int64
 			}
 		}
-		rows = append(rows, row)
+		if keep(row) {
+			rows = append(rows, row)
+		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
-	writeOut(w, r, http.StatusOK, rows)
+	return rows, nil
 }
 
 // tickSchedule answers POST /schedules/{id}/tick: a backfill. The caller must hold write on the

@@ -3,6 +3,7 @@ package versed
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +98,13 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	if _, ok := scheduleRecord(t, srv, "mine"); ok {
 		t.Fatal("the record survived its removal")
 	}
+	// And the owner record went with it, so the name is free for the next declarer.
+	if _, ok, err := srv.Store.Get(entity.PermsRef(schedule.Ref("mine"))); err != nil || ok {
+		t.Fatalf("the perms record survived the removal (ok=%v err=%v)", ok, err)
+	}
+	if resp := installAs(t, "bob@example.com", ts.URL, `{name: mine, every: 1h}`); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("bob declaring the freed name: %s %s", resp.Status, readBody(t, resp))
+	}
 }
 
 func TestAPackagesScheduleCarriesItsAddressAndLeavesWithIt(t *testing.T) {
@@ -121,6 +129,25 @@ func TestAPackagesScheduleCarriesItsAddressAndLeavesWithIt(t *testing.T) {
 	}
 	if next, err := schedule.ParseKey(entity.Str(rec, schedule.NextField)); err != nil || next.Hour() != 2 {
 		t.Fatalf("next = %q, want 02:00 on some day", entity.Str(rec, schedule.NextField))
+	}
+	// The charter tree lists it under its package, and a path reaches it for removal.
+	resp, err := http.Get(ts.URL + "/charter?path=drift")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := readBody(t, resp)
+	if !strings.Contains(tree, "schedules") || !strings.Contains(tree, "drift:nightly") {
+		t.Fatalf("the charter tree at drift does not list the schedule:\n%s", tree)
+	}
+	if code, body := deletePath(t, ts.URL, "drift.schedules.nightly", false); code != http.StatusNoContent {
+		t.Fatalf("removing by path: %d %s", code, body)
+	}
+	if _, ok := scheduleRecord(t, srv, "drift:nightly"); ok {
+		t.Fatal("the schedule survived its removal by path")
+	}
+	// Declared again, it goes with the package.
+	if code, body := installAt(t, ts.URL, "drift", `{name: nightly, every: 24h}`); code != http.StatusCreated {
+		t.Fatalf("re-install at drift: %d %s", code, body)
 	}
 	if code, body := deletePath(t, ts.URL, "drift", false); code != http.StatusNoContent {
 		t.Fatalf("uninstall: %d %s", code, body)

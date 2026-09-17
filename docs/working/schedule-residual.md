@@ -34,16 +34,15 @@ reconstruct why each was left.
 - **The system phase waits for the restore.** Its comment said it installed over what stood;
   it ran before a restore still being asked again had answered. Fixed here; noted because the
   same shape may exist elsewhere in Start.
-- **A schedule's owner record outlives the schedule.** `removeSchedule` deletes the record
-  under `verse.schedule`; the perms mirror's row for it is not swept. Harmless until the name
-  is declared again by somebody else, who is then refused as if the first installer still held
-  it. The perms sweep (`611hz249h12krtm2mnn0`) is the place to fold this into.
+- **A schedule's owner record goes with the schedule**, by the store's own rule: a whole
+  delete through the attributed store forgets the record (`attributed.forget`). Pinned by the
+  install test, since it was first written down here as a leak.
 - **The grid follows the daemon's zone.** `from` defaults to a Monday at midnight in `TZ`, and
   `next` is re-stamped only when the declaration's text changes, so a deployment that changes
   its zone keeps the old instant until the next tick, which then lands on the new grid.
-- **`verse c` does not list schedules**, and `DELETE /charter?path=` does not reach one;
-  `verse schedule` lists them and the remove-by-name path takes one out. Folding schedules into
-  the charter tree is the natural next step once somebody reads the two side by side.
+- **`verse c` lists a charter's schedules** under `schedules`, only where one is declared, and
+  `verse c -r <address> schedules <name>` takes one out. What it does not do is show a
+  standard schedule as anybody's but baseline's, which is what it is.
 - **The patch-before-spawn looseness** (`epst4v76h12kr6jygsn0`) is untouched; a tick rule has
   no patch, so it does not meet it.
 
