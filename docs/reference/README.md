@@ -298,6 +298,11 @@ verse
                                              a subject's flow as a tree, and what suspends it —
                                              a held subject with no work too; -active only
                                              those with a live task, -no-active only the rest
+  schedule (schedules)                       the schedules the verse ticks on: period, next, the
+                                             tick standing (hourly, daily, weekly come with it)
+          tick <name> -due <instant> [-at <address>]
+                                             write the tick for a past instant, as the schedule
+                                             would have; a rule about it fires as it would have
           A verb that names nothing prints its usage and does nothing; of -charter and
           -subject, the one left out beside the other is '*'. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)

@@ -1724,13 +1724,75 @@ any depth.
 That is what makes this a convention rather than a mechanism. Nothing in the engine knows how to
 reap. A charter says when, and what grace period, and whether anything should happen first.
 
+## Schedules: time as a cause
+
+A rule fires on a commit, so for time to be a cause it has to be written down. A **schedule**
+is a record in verse's own half, `verse.schedule.<name>`, holding its period, its phase and
+`next`, the instant the daemon is armed against. When the timer fires, the daemon writes one
+commit as the schedule: `next` advances to the next point on the grid, and the schedule's
+standing **tick** is replaced by the one now due, at an address that is the schedule and the
+instant, `verse.schedule.hourly.tick.2026-09-18T03:00:00Z`. Nothing else ever writes there.
+
+A rule takes the tick as its subject:
+
+```tony
+- name: drift-report
+  condition:
+    subject: {path: "verse.schedule.hourly.tick.*"}
+  action:
+    spawn: {driver: scripted, prompt: "refresh the drift report for the hour ending $subject.name"}
+```
+
+It needs no latch, and may not write one: the tick is consumed by the store, since only a
+replacement touches the place, so the rule fires once per tick, and every rule reading the
+schedule does. A spawn about a tick is once-ever rather than only while live — a tick's address
+never recurs, so a task record standing for the id is the spawn having happened, and a restart
+re-firing the standing tick starts nothing. A gate denied on one tick stands until the next
+replaces it, and is then withdrawn as moot. A completion hook records its outcome by `derive`
+into the charter's own place; it cannot patch the tick, which is the schedule's.
+
+The tick carries `due`, `missed` (how many instants before it went unticked, so a verse that
+was down ticks once on the way up and says how late), and the calendar of its due instant in
+the daemon's zone (`TZ`): `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone`.
+
+**The calendar is the cron line.** Every verse carries the base charter: three schedules,
+`hourly`, `daily` and `weekly`, phased on a Monday at midnight in the zone, and a rule deriving
+one entity per calendar fact from the hourly tick, `verse.schedule.date`, `.time` and the
+rest. The same date is the same bytes and a no-op, so `date` commits once a day and a rule
+reading it wakes once a day, and a rule whose `on` names a fact rises when it becomes true:
+
+```tony
+    on: {path: "verse.schedule.time", value: {time: "09:00"}}      # daily at nine
+```
+
+Two readings of downtime, and a rule says which it means by what it reads. A verse down from
+08:30 to 10:30 writes the 10:00 tick with `missed: 1`; `time` goes from `08:00` to `10:00` and
+`09:00` never rises. A rule on the calendar is strict cron: a missed instant is skipped. A rule
+on the tick is anacron: it fires late, once, and `missed` says by how much.
+
+A charter declares a schedule of its own in its head document, beside the strata, and it is
+the installer's — its ticks are written with the installer's grant, and removed with the
+charter:
+
+```tony
+- name: nightly
+  every: 24h
+  from: 2026-01-01T02:00:00Z     # the phase: ticks stand at from + n*every; default is Monday 00:00
+```
+
+A period of whole days steps by calendar days, so a nightly schedule keeps its wall-clock time
+across a DST change. `verse schedule` lists every schedule with its `next` and its standing
+tick; `verse schedule tick <name> --due <instant>` backfills one, writing the same entity the
+schedule would have, so a rule about it fires as it would have.
+
 ## Limits today
 
 A condition does not compose over time. `on` and `when` are asked of the store at a revision,
 so they have to be answerable at one: a match. The temporal grammar that once lived on gates
 (`!until`, `!quorum`, `!fact`, `!deadline`) is refused by name wherever a charter is read; a
 gate's threshold and deadline are the question's (`need:`, `deadline:`), and waiting for a
-fact is the condition's own match.
+fact is the condition's own match. Time enters as a written fact instead: a
+[schedule's tick](#schedules-time-as-a-cause), or the calendar derived from it.
 
 A rule may declare the stratum it lives in, and then its subject must fall inside that stratum's
 pattern and any `derive` must land strictly above it. Declaring nothing is a complete answer: a
