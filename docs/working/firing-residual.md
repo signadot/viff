@@ -11,6 +11,13 @@ was written.
 
 ## 1. Time as a cause: the clock a ticker would be
 
+**Landed (2026-09-17), and not as either spelling below.** The ticker is a schedule whose
+tick is replaced by the next, so a rule about ticks fires once per tick with no rise-and-fall
+of its own to write; the calendar derived from it is the cron line. See
+[schedules](../trigger-model.md#schedules-time-as-a-cause) and
+[schedule-residual.md](schedule-residual.md) for what that left. The reasoning below is kept as
+the record of why the first spelling was tried; the grace period of §4 now has its clock.
+
 "Time as a cause" is one question with three faces: a cycle check, a grace period, and a temporal
 condition. **The first is answered and needed no clock**; the other two are open and both want the
 same missing thing.

@@ -295,7 +295,7 @@ nothing and an operator's edit stands:
 |---|---|---|
 | `verse.task.instance.*`, `verse.task.run.*`, `verse.task.claim.*` | owner | everyone |
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | owner | everyone |
-| `verse.sources.*`, `verse.runners.*`, `verse.resolvers.*` | owner | everyone |
+| `verse.sources.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | owner | everyone |
 | `verse.gate.question.*` | read-write | `user:*`, `agent:*` |
 | `verse.gate.question.*` | read | everyone |
 | `verse.principal.*` | read | everyone |

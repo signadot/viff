@@ -27,6 +27,7 @@ const (
 	phaseSystem      = "installed the system charter"
 	phaseSelections  = "resumed selections"
 	phaseDeadlines   = "armed deadlines"
+	phaseSchedules   = "armed schedules"
 	phaseSources     = "restored sources"
 )
 

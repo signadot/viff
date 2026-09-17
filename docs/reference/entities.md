@@ -234,7 +234,11 @@ record of a run that happened) and `task.claim.*` (a sequence's run claim); `gat
 for who is watching one run — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
 installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
 `trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
-`runners.*` (where work can run) and `sources.*` (what reflects an external system in). A
+`runners.*` (where work can run) and `sources.*` (what reflects an external system in);
+`schedule.<name>` (a schedule: its period, its phase, the `next` the daemon is armed against,
+and under `schedule.<name>.tick.<instant>` the tick standing, written only by the schedule),
+beside `schedule.date`, `schedule.time` and the other calendar facts the base charter derives
+from the hourly tick. A
 question's ballots live on its record (`gate.question.<id>.ballots.<who>`), written by the
 answer path that tallies them.
 

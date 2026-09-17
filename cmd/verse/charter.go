@@ -107,7 +107,7 @@ func charterCmd() *cli.Command {
 				return err
 			}
 			if len(args) > 0 {
-				return fmt.Errorf("%w: charter takes one path (an address, then rules|strata "+
+				return fmt.Errorf("%w: charter takes one path (an address, then rules|strata|schedules "+
 					"and a name), and %q is after it", cli.ErrUsage, args[0])
 			}
 			switch {

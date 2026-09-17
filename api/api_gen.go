@@ -3076,6 +3076,245 @@ func (s *Group) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts ScheduleRow to a Tony IR node.
+func (s *ScheduleRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: ID
+	irMap["id"] = ir.FromString(string(s.ID))
+
+	// Field: Every
+	irMap["every"] = ir.FromString(string(s.Every))
+
+	// Field: From
+	if s.From != "" {
+		irMap["from"] = ir.FromString(string(s.From))
+	}
+
+	// Field: Next
+	if s.Next != "" {
+		irMap["next"] = ir.FromString(string(s.Next))
+	}
+
+	// Field: Tick
+	if s.Tick != "" {
+		irMap["tick"] = ir.FromString(string(s.Tick))
+	}
+
+	// Field: Missed
+	if s.Missed != 0 {
+		irMap["missed"] = ir.FromInt(int64(s.Missed))
+	}
+
+	// Field: At
+	if s.At != "" {
+		irMap["at"] = ir.FromString(string(s.At))
+	}
+
+	// Field: By
+	if s.By != "" {
+		irMap["by"] = ir.FromString(string(s.By))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates ScheduleRow from a Tony IR node.
+func (s *ScheduleRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for ScheduleRow, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "id":
+			// Field: ID
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "id", fieldNodeUnwrapped.Type)
+			}
+			s.ID = string(fieldNodeUnwrapped.String)
+		case "every":
+			// Field: Every
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "every", fieldNodeUnwrapped.Type)
+			}
+			s.Every = string(fieldNodeUnwrapped.String)
+		case "from":
+			// Field: From
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "from", fieldNodeUnwrapped.Type)
+			}
+			s.From = string(fieldNodeUnwrapped.String)
+		case "next":
+			// Field: Next
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "next", fieldNodeUnwrapped.Type)
+			}
+			s.Next = string(fieldNodeUnwrapped.String)
+		case "tick":
+			// Field: Tick
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "tick", fieldNodeUnwrapped.Type)
+			}
+			s.Tick = string(fieldNodeUnwrapped.String)
+		case "missed":
+			// Field: Missed
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "missed", fieldNodeUnwrapped.Type)
+			}
+			s.Missed = int64(*fieldNodeUnwrapped.Int64)
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "by":
+			// Field: By
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
+			}
+			s.By = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for ScheduleRow", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts ScheduleRow to Tony format bytes.
+func (s *ScheduleRow) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates ScheduleRow.
+func (s *ScheduleRow) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts ScheduleTick to a Tony IR node.
+func (s *ScheduleTick) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Due
+	irMap["due"] = ir.FromString(string(s.Due))
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates ScheduleTick from a Tony IR node.
+func (s *ScheduleTick) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for ScheduleTick, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "due":
+			// Field: Due
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "due", fieldNodeUnwrapped.Type)
+			}
+			s.Due = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for ScheduleTick", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts ScheduleTick to Tony format bytes.
+func (s *ScheduleTick) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates ScheduleTick.
+func (s *ScheduleTick) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts PermsRecord to a Tony IR node.
 func (s *PermsRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -258,6 +259,13 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	for _, ent := range s.Store.ListAt(
 		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharterRecord) {
 		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
+			out = append(out, at)
+		}
+	}
+	// And a fourth, which lives apart: a package's schedules are the daemon's records under
+	// verse.schedule, and a package declaring only a schedule is a package.
+	for _, ent := range entity.Below(s.Store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System) {
+		if at := entity.Str(ent.Payload, schedule.AtField); at != "" {
 			out = append(out, at)
 		}
 	}
@@ -545,6 +553,9 @@ func (s *Server) uninstallOne(store entity.Store, at string) error {
 		if err := eng.RemoveStratum(st.Name); err != nil {
 			return fmt.Errorf("%s: stratum %q: %w", at, st.Name, err)
 		}
+	}
+	if err := s.removePackageSchedules(store, at); err != nil {
+		return fmt.Errorf("%s: %w", at, err)
 	}
 	if _, _, err := store.Write(entity.Write{
 		At: entity.Path{Ref: trigger.PackageRef(confine.Stamp())},

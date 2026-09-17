@@ -917,11 +917,16 @@ func (d deriveTarget) refFor(segs ...string) entity.Ref {
 	return entity.RefAt(append(append([]string{}, d.segs()...), segs...)...)
 }
 
-// match is the target as the pattern the level and confinement checks compare against.
+// match is the target as the pattern the level and confinement checks compare against. A
+// literal `id` is part of the address the checks can see, so a level may own exactly the
+// entity a projection writes rather than the whole place beneath it.
 func (d deriveTarget) match() Match {
-	segs := make([]*ir.Node, 0, len(d.Path))
+	segs := make([]*ir.Node, 0, len(d.Path)+1)
 	for _, sg := range d.Path {
 		segs = append(segs, ir.FromString(sg))
+	}
+	if lit := literalKey(d.ID); lit != "" {
+		segs = append(segs, ir.FromString(lit))
 	}
 	return Match{mKeyPath: segs}
 }
@@ -1199,7 +1204,7 @@ func (a Action) validateDerive() error {
 			if err := checkDeriveKey(t.Key, where); err != nil {
 				return err
 			}
-			if err := checkDeriveKey(t.ID, where); err != nil {
+			if err := checkDeriveID(t.ID, where); err != nil {
 				return err
 			}
 		}
@@ -1392,7 +1397,7 @@ const deriveFromField = "derivedFrom"
 
 // deriveContent resolves what a derive writes: its $subject references expanded, then the
 // engine's linkage merged in.
-func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion, subj entity.Ref) (entity.Payload, error) {
+func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion, subj entity.Ref, projection bool) (entity.Payload, error) {
 	// The wants are read off the derive itself, and `commit` is cleared whatever it asked for:
 	// install refuses $subject.commit here, and clearing it means the reference cannot resolve
 	// either. Two ends saying the same thing, so relaxing one alone cannot open the other.
@@ -1409,7 +1414,7 @@ func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion
 	if err != nil {
 		return nil, err
 	}
-	return deriveLinkage(expanded, chain, subj)
+	return deriveLinkage(expanded, chain, subj, projection)
 }
 
 // eachContent resolves what ONE element derives: its `value` with `$item` and the subject
@@ -1427,7 +1432,7 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 	if err != nil {
 		return nil, err
 	}
-	return deriveLinkage(expanded, chain, subj)
+	return deriveLinkage(expanded, chain, subj, false)
 }
 
 // eachKey resolves one element's address suffix.
@@ -1457,6 +1462,9 @@ func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
 // or the keyed derive re-asking a question it has already had answered. Both are the failure the
 // key was written to prevent, and neither is visible in what stands afterwards.
 func keyText(key entity.Payload, root entity.Payload) (string, error) {
+	if lit := literalKey(key); lit != "" {
+		return lit, nil // an author-named id: the same address for every subject
+	}
 	ref, _ := soleRef(key) // install-checked
 	n, err := deref(root, ref)
 	if err != nil {
@@ -1472,14 +1480,20 @@ func keyText(key entity.Payload, root entity.Payload) (string, error) {
 
 // deriveLinkage merges the engine's record of what this derivation is about into the content the
 // charter wrote.
-func deriveLinkage(payload entity.Payload, chain string, subj entity.Ref) (entity.Payload, error) {
+//
+// A PROJECTION — a derive with a literal `id`, one entity for every subject — records the rule
+// and not the subject. The entity is about whichever subject fired last, and naming it would
+// make every firing new bytes: `verse.schedule.date` would commit at every hourly tick rather
+// than once a day, which is the whole point of a fact standing at its own address.
+func deriveLinkage(payload entity.Payload, chain string, subj entity.Ref, projection bool) (entity.Payload, error) {
+	from := entity.Obj{"rule": chainKPath(chain)}
+	if !projection {
+		from["subject"] = subj.String()
+	}
 	link := entity.Obj{
 		entity.ReservedRoot: entity.Obj{
 			entity.MetaKey: entity.Obj{
-				deriveFromField: entity.Obj{
-					"rule":    chainKPath(chain),
-					"subject": subj.String(),
-				},
+				deriveFromField: from,
 			},
 		},
 	}.Payload()
@@ -1552,6 +1566,27 @@ func checkDeriveKey(key entity.Payload, where string) error {
 			where, "$"+ref, refSubject)
 	}
 	return nil
+}
+
+// checkDeriveID is checkDeriveKey for `id`, which admits one more spelling: A LITERAL. `id:
+// date` names one entity for every subject the rule ever fires about — the projection shape,
+// where the latest firing's bytes stand at an address a reader can spell. It is sound for the
+// reason a keyed derive is: the address is fixed and the content is the subject's, so a
+// re-fire about the same subject is a no-op, and a later subject is the later value. The base
+// charter's calendar is the customer: `verse.schedule.date` is derived from every hourly tick.
+func checkDeriveID(id entity.Payload, where string) error {
+	if literalKey(id) != "" {
+		return nil
+	}
+	return checkDeriveKey(id, where)
+}
+
+// literalKey is the text of a key that is a plain string carrying no reference, "" otherwise.
+func literalKey(key entity.Payload) string {
+	if key == nil || key.Type != ir.StringType || key.String == "" || strings.Contains(key.String, "$") {
+		return ""
+	}
+	return key.String
 }
 
 // checkLiteralDerive is the content check both derive spellings share: an object (the engine

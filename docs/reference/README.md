@@ -215,7 +215,8 @@ verse
                                              line, for a line captured into a shell variable. A
                                              package that holds nothing yet prints itself,
                                              since that is the state worth seeing
-          <address> rules|strata [<name>]    …and INTO the node standing there: its rules, its
+          <address> rules|strata|schedules [<name>]
+                                             …and INTO the node standing there: its rules, its
                                              levels, one of them by name, and on into that one
                                              (`c verse-dev drift rules watcher action`).
                                              `c rules watcher` is baseline's, which has no
@@ -238,7 +239,8 @@ verse
                                              What a removal leaves is what the charter WROTE —
                                              a charter's writes are the world's
                                              (-R is not `rm -r`'s recursion: -r is the removal)
-          <address> -- rules|strata          where the address ENDS, for a package whose own
+          <address> -- rules|strata|schedules
+                                             where the address ENDS, for a package whose own
                                              address ends in `rules` or `strata` and would
                                              otherwise shadow that key
           A charter file may open a package with a `---` document of its own — `at: drift`
@@ -298,6 +300,11 @@ verse
                                              a subject's flow as a tree, and what suspends it —
                                              a held subject with no work too; -active only
                                              those with a live task, -no-active only the rest
+  schedule (schedules)                       the schedules the verse ticks on: period, next, the
+                                             tick standing (hourly, daily, weekly come with it)
+          tick <name> -due <instant> [-at <address>]
+                                             write the tick for a past instant, as the schedule
+                                             would have; a rule about it fires as it would have
           A verb that names nothing prints its usage and does nothing; of -charter and
           -subject, the one left out beside the other is '*'. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)

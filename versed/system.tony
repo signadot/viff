@@ -1,0 +1,52 @@
+# The charter every verse stands on, installed at start as the system (installSystemCharter):
+# the standard schedules, and the calendar derived from the hourly tick.
+#
+# A schedule ticks for the verse: `every` is its period and `from` its phase, defaulting to a
+# Monday at midnight in the daemon's zone (TZ), so hourly ticks on the hour, daily at midnight
+# and weekly on Monday. A rule about a schedule reads its ticks as its subject and needs no
+# latch: `subject: {path: "verse.schedule.hourly.tick.*"}`.
+#
+# The calendar is one entity per fact under verse.schedule, derived from the hourly tick, so a
+# rule reading `date` wakes once a day and one whose `on` names `time` rises once a day:
+#
+#   on: {path: "verse.schedule.time", value: {time: "09:00"}}
+#
+# The strata are what a derive needs -- a level for the subject and a strictly higher one for
+# what it writes -- and sit far up the ordering so a charter of your own has the room below.
+
+- name: hourly
+  every: 1h
+- name: daily
+  every: 24h
+- name: weekly
+  every: 168h
+
+- name: ticks
+  level: 100000
+  match: "verse.schedule.hourly.tick"
+- name: calendar
+  level: 100010
+  match:
+  - "verse.schedule.date"
+  - "verse.schedule.time"
+  - "verse.schedule.year"
+  - "verse.schedule.month"
+  - "verse.schedule.day"
+  - "verse.schedule.weekday"
+  - "verse.schedule.timezone"
+
+---
+
+- name: calendar
+  stratum: ticks
+  condition:
+    subject: {path: "verse.schedule.hourly.tick.*"}
+  action:
+    derive:
+    - {path: "verse.schedule", id: date,     value: {date: $subject.value.date}}
+    - {path: "verse.schedule", id: time,     value: {time: $subject.value.time}}
+    - {path: "verse.schedule", id: year,     value: {year: $subject.value.year}}
+    - {path: "verse.schedule", id: month,    value: {month: $subject.value.month}}
+    - {path: "verse.schedule", id: day,      value: {day: $subject.value.day}}
+    - {path: "verse.schedule", id: weekday,  value: {weekday: $subject.value.weekday}}
+    - {path: "verse.schedule", id: timezone, value: {timezone: $subject.value.timezone}}

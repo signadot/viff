@@ -41,11 +41,12 @@ against something that runs, and three rules follow from that:
   was *not built*; a corner of what was built belongs in the doc that describes it, and appears
   here only when the fix is a design rather than a patch.
 
-The twelve, and what each is a residual of:
+The thirteen, and what each is a residual of:
 
 | | of | what is in it |
 |---|---|---|
 | [firing-residual.md](firing-residual.md) | [trigger-model.md](../trigger-model.md), [convergence.md](../convergence.md) | time as a cause, the read per commit, what `verse entity rm` should mean |
+| [schedule-residual.md](schedule-residual.md) | [trigger-model.md §schedules](../trigger-model.md#schedules-time-as-a-cause) | minute resolution, per-period backfill, a cron field, and what the building found |
 | [attached-resolvers-residual.md](attached-resolvers-residual.md) | [attached-resolvers.md](../attached-resolvers.md) | the two unbuilt drivers, a `by` nobody verifies |
 | [gate-unify-residual.md](gate-unify-residual.md) | [trigger-model.md §gates](../trigger-model.md#gates--whether-it-proceeds), [reference/tasks.md](../reference/tasks.md) | the runtime vector gate, where the record lives, two clocks on one record, what an exclusive binding does not refuse |
 | [runners-residual.md](runners-residual.md) | [runners.md](../runners.md) | how control is applied is convention, and whether `local` should be nameable |

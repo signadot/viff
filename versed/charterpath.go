@@ -164,7 +164,7 @@ func (s *Server) charterPathNotFound(at string, rest []string) string {
 // address ends. Named here rather than derived from a node, because the question is asked when
 // there is no node — a path that reached no address at all.
 var charterKeys = map[string]bool{
-	"writes": true, "reads": true, "rules": true, "strata": true, "children": true,
+	"writes": true, "reads": true, "rules": true, "strata": true, "schedules": true, "children": true,
 }
 
 // oneOf is the key said about a single thing: a charter has RULES and LEVELS in it, and telling

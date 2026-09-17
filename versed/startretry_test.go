@@ -72,7 +72,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	if got := second.Eng.Triggers(); len(got) != 1 || got[0].Name != "review" {
+	if got := userRules(second.Eng); len(got) != 1 || got[0].Name != "review" {
 		t.Fatalf("charter after the store answered = %v", got)
 	}
 	second.srcMu.Lock()

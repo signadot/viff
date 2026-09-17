@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -104,8 +105,21 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
 	markSuspendedRules(eng, node.triggers)
-	node.strata, err = codec.ToNode(eng.Strata())
-	return err
+	if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
+		return err
+	}
+	// The schedules are the daemon's records rather than the engine's, read by the address
+	// they were declared at.
+	rows, err := s.scheduleRows(s.Store, func(row api.ScheduleRow) bool { return row.At == at })
+	if err != nil {
+		return fmt.Errorf("charter at %q: schedules: %w", at, err)
+	}
+	if len(rows) > 0 {
+		if node.schedules, err = codec.ToNode(rows); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // belowAddr reports whether a charter's address is at or under the address asked for, and what
@@ -133,13 +147,14 @@ func belowAddr(at string, want []string) ([]string, bool) {
 // charterNode is one place in the address tree: the charter installed there (or none, for a
 // segment that only leads somewhere) and whatever is installed below it.
 type charterNode struct {
-	here     bool // a charter is installed AT this address, rather than only under it
-	writes   string
-	reads    []string
-	triggers *ir.Node
-	strata   *ir.Node
-	kids     map[string]*charterNode
-	kidOrder []string
+	here      bool // a charter is installed AT this address, rather than only under it
+	writes    string
+	reads     []string
+	triggers  *ir.Node
+	strata    *ir.Node
+	schedules *ir.Node // the schedules declared here, as `verse schedule` lists them; nil for none
+	kids      map[string]*charterNode
+	kidOrder  []string
 }
 
 func (n *charterNode) child(seg string) *charterNode {
@@ -194,6 +209,11 @@ func (n *charterNode) node() *ir.Node {
 	}
 	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))
+	// Only where one is declared: a charter with no schedules is the ordinary case, and a key
+	// saying so at every node would be the `rules: []` mistake again.
+	if n.schedules != nil {
+		add("schedules", n.schedules)
+	}
 	if len(n.kidOrder) > 0 {
 		sort.Strings(n.kidOrder)
 		var kf, kv []*ir.Node
@@ -361,6 +381,23 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// A schedule is the daemon's record rather than the engine's, and is removed by the
+	// declared name in the charter the path names.
+	if r.URL.Query().Get("scope") == "" {
+		removed, err := s.removeScheduleNamed(s.scopedStore(r), r.URL.Query().Get("at"), name)
+		if errors.Is(err, entity.ErrForbidden) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		if removed {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
 	switch err := eng.RemoveStratum(name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -477,7 +514,7 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
-	tx := &charterTx{s: s, store: store}
+	tx := &charterTx{s: s, store: store, scope: scope}
 	installer := entity.PrincipalOf(store)
 	for _, g := range groups {
 		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
@@ -508,6 +545,15 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 		}
 		for _, def := range g.strata {
 			if code, err := tx.stratum(def); err != nil {
+				code, err := tx.refuse(code, err)
+				return nil, code, err
+			}
+		}
+		// The schedules after the levels and before the rules: a rule reads a schedule's
+		// ticks, and a tick that lands before its reader is armed is one the reader's own
+		// replay picks up, so the order is a courtesy rather than a need.
+		for _, def := range g.schedules {
+			if code, err := tx.schedule(def); err != nil {
 				code, err := tx.refuse(code, err)
 				return nil, code, err
 			}
@@ -581,14 +627,15 @@ func installedReport(groups []charterGroup) []any {
 
 // charterGroup is one package's worth of a file: where it goes, and what it installs there.
 type charterGroup struct {
-	at     string
-	reads  []*ir.Node
-	strata []*ir.Node
-	rules  []*ir.Node
+	at        string
+	reads     []*ir.Node
+	strata    []*ir.Node
+	schedules []*ir.Node
+	rules     []*ir.Node
 }
 
 func (g charterGroup) empty() bool {
-	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.rules) == 0
+	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.schedules) == 0 && len(g.rules) == 0
 }
 
 // charterGroups splits a file into its packages. `at` is the query's, which is where a file
@@ -601,6 +648,8 @@ func charterGroups(defs []*ir.Node, at string) ([]charterGroup, error) {
 		switch charterKind(def) {
 		case "stratum":
 			cur.strata = append(cur.strata, def)
+		case "schedule":
+			cur.schedules = append(cur.schedules, def)
 		case "reads":
 			declared, err := declaredAt(def)
 			if err != nil {
@@ -697,6 +746,7 @@ func (s *Server) charterEngineFor(scope, at string) (*trigger.Engine, error) {
 type charterTx struct {
 	s     *Server
 	store entity.Store
+	scope string
 	at    string
 	eng   *trigger.Engine
 	// fresh is every address this REQUEST brought into being. A refusal drops each one's
@@ -903,13 +953,33 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
 		return
 	}
-	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata") {
-		http.Error(w, "a removal names one rule or one level — `<address> rules <name>` or "+
-			"`<address> strata <name>` — and a path to an address alone takes the whole "+
-			"package down. "+strings.Join(rest, ".")+" is neither", http.StatusBadRequest)
+	if len(rest) != 2 || (rest[0] != "rules" && rest[0] != "strata" && rest[0] != "schedules") {
+		http.Error(w, "a removal names one rule or one level or one schedule — `<address> rules "+
+			"<name>`, `<address> strata <name>` or `<address> schedules <name>` — and a path to "+
+			"an address alone takes the whole package down. "+strings.Join(rest, ".")+" is none of "+
+			"those", http.StatusBadRequest)
 		return
 	}
 	kind, name := rest[0], rest[1]
+	if kind == "schedules" {
+		// The daemon's record rather than the engine's, and not a scope's.
+		if r.URL.Query().Get("scope") != "" {
+			http.Error(w, "a schedule is not a scope's: it ticks for the verse", http.StatusBadRequest)
+			return
+		}
+		removed, err := s.removeScheduleNamed(s.scopedStore(r), at, name)
+		switch {
+		case errors.Is(err, entity.ErrForbidden):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		case err != nil:
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		case !removed:
+			http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+		return
+	}
 	eng, err := s.engineAt(r, at)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1002,6 +1072,8 @@ func charterKind(node *ir.Node) string {
 		return "trigger"
 	case has["level"] && has["match"]:
 		return "stratum"
+	case has["every"]:
+		return "schedule"
 	case has["reads"] || has["at"]:
 		return "reads"
 	}

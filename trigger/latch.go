@@ -1,6 +1,10 @@
 package trigger
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/signadot/verse/schedule"
+)
 
 // checkLatch refuses a spawning action that can never stop spawning.
 //
@@ -23,6 +27,15 @@ import "fmt"
 // cannot see. Only the middle one is refused. Here is what to say when it is.
 func checkLatch(c Condition, a Action) error {
 	if !spawns(a) {
+		return nil
+	}
+	// A TICK IS CONSUMED BY THE STORE, not by the charter. Nothing but the schedule writes
+	// under its `tick`, and every tick it writes replaces the one standing, so a rule about
+	// ticks fires once per tick and has an end state this check cannot see; and a tick's
+	// address never recurs, so the spawn is once-ever by id (Engine.spawnHooked) rather than
+	// only while live. The rule needs no latch, and a rule may not write one anyway: a
+	// reader does not own the tick.
+	if schedule.IsTickSubject(c.Subject.Segs()) {
 		return nil
 	}
 	pred := c.Subject.Predicate()

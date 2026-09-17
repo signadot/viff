@@ -231,6 +231,27 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  at: .[string]
+  by: .[string]
+  every: .[string]
+  from: .[string]
+  id: .[string]
+  missed: .[int]
+  next: .[string]
+  tick: .[string]
+signature:
+  name: verse-schedule-row
+---
+context:
+- tony-format/context
+define:
+  due: .[string]
+signature:
+  name: verse-schedule-tick
+---
+context:
+- tony-format/context
 - task: github.com/signadot/verse/task
 define:
   by: .[string]

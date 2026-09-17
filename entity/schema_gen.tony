@@ -30,6 +30,13 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  paths: .[array(string)]
+signature:
+  name: verse-paths
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   at: .[array(string)]

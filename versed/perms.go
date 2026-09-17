@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
@@ -43,6 +44,10 @@ var seed = []struct {
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(source.System), entity.OwnerLevel, []string{entity.Everyone}},
+	// A schedule is declared in a charter and is its installer's, as a rule is; its ticks are
+	// written as the schedule, so they carry the installer's grant and are everybody's to read
+	// unless the installer says otherwise.
+	{entity.VerseRef(schedule.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.ReadWrite, []string{"user:*", "agent:*"}},
 	// The docket is everybody's to read, the runner working a task included; answering is
 	// the row above.
