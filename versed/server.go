@@ -51,6 +51,11 @@ type Server struct {
 	// deployment names one (config.Config.SystemCharter).
 	SystemCharter string
 	Store         entity.Store
+	// Zone is the zone a schedule's ticks are spelled in, and the one a period of whole days
+	// steps in; nil is time.Local, which a deployment sets with TZ (schedule.go).
+	Zone *time.Location
+	// clocks is the schedule timers this process holds (schedule.go).
+	clocks clocks
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
 	users  sync.Map
 	Reg    *task.Registry
@@ -1121,6 +1126,9 @@ func (s *Server) Start(ctx context.Context) {
 	phase(phaseSelections, s.resumeSelections) // baseline AND every package's own engine
 	// And the clocks. A question's deadline is durable and the timer that fires it is not.
 	phase(phaseDeadlines, s.armDeadlines)
+	// And the schedules, for the same reason: the record holds `next`, this process holds the
+	// timer.
+	phase(phaseSchedules, s.armSchedules)
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
