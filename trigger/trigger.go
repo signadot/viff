@@ -957,7 +957,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			segs = namedSegs(key)
 		}
 		ref := d.refFor(segs...)
-		payload, err := e.deriveContent(d.Payload, chain, oc, subj)
+		payload, err := e.deriveContent(d.Payload, chain, oc, subj, literalKey(d.ID) != "")
 		if err != nil {
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err

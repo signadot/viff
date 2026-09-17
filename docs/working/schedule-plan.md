@@ -165,10 +165,25 @@ The tick carries the calendar of its due instant in the deployment's zone
 
 A derive must be an object (`checkLiteralDerive`, `trigger/stratum.go:1560`: the engine writes
 `verse.meta.derivedFrom` into it), so each fact is a one-field object, not the scalar the issue
-wrote:
+wrote. A derive needs a level for its subject and a strictly higher one for what it writes, so
+the base charter declares two strata far up the ordering; and a literal `id` is admitted for a
+derive (one entity for every subject, the projection shape), whose linkage records the rule and
+not the subject, so the same date is the same bytes:
 
 ```tony
+- name: ticks
+  level: 100000
+  match: "verse.schedule.hourly.tick"
 - name: calendar
+  level: 100010
+  match: ["verse.schedule.date", "verse.schedule.time", "verse.schedule.year",
+          "verse.schedule.month", "verse.schedule.day", "verse.schedule.weekday",
+          "verse.schedule.timezone"]
+
+---
+
+- name: calendar
+  stratum: ticks
   condition:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:

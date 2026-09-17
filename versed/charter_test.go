@@ -44,7 +44,7 @@ func TestStartRestoresTheCharter(t *testing.T) {
 	second := NewWithStore(ScriptedBuilder, store)
 	second.Start(t.Context())
 
-	if got := second.Eng.Triggers(); len(got) != 1 || got[0].Name != "review" {
+	if got := userRules(second.Eng); len(got) != 1 || got[0].Name != "review" {
 		t.Fatalf("charter after restart = %v; want the rule the first server was given", got)
 	}
 	// And it is a live rule, not just a listed one: the restored charter observes.

@@ -11,6 +11,7 @@ package versed
 import (
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -1112,9 +1113,15 @@ func (s *Server) Start(ctx context.Context) {
 	// so that it is installed over what stood rather than under it, and every time, since an
 	// install of what already stands is a no-op with a revision attached and the file is the
 	// truth about what the system's charter is.
-	if s.SystemCharter != "" {
-		phase(phaseSystem, func() error { s.installSystemCharter(); return nil })
-	}
+	phase(phaseSystem, func() error {
+		// Over what stood, so it waits for the restore to have answered; a restore still
+		// being asked again is a charter this must not install under.
+		if err := s.awaiting(phaseCharter, phasePackages); err != nil {
+			return err
+		}
+		s.installSystemCharter()
+		return nil
+	})
 
 	// And the docket. A selection's question is durable and the goroutine awaiting it is
 	// not, so one left by the previous verse has nobody reading its ballots: this gives each
@@ -3737,20 +3744,35 @@ func (s *Server) permsStatus() *api.Perms {
 	return &api.Perms{Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden(), Unparsed: pol.Unparsed()}
 }
 
-// installSystemCharter applies the charter file named by SystemCharter as the system: its rules
-// are the system's, its firings act as the system, and a question one of them poses is co-owned
-// by the system alone. A file that cannot be read or installed is reported and the rest of the
-// start goes on; a verse whose system charter is missing is a verse with fewer rules, not one
-// that will not start.
+// baseCharter is the charter every verse stands on, in the binary: the standard schedules and
+// the calendar (system.tony). Installed at every start, before the deployment's own.
+//
+//go:embed system.tony
+var baseCharter []byte
+
+// installSystemCharter applies the system's charter: the embedded base, then the file named by
+// SystemCharter when the deployment names one. Their rules are the system's, their firings act
+// as the system, and a question one of them poses is co-owned by the system alone. A file that
+// cannot be read or installed is reported and the rest of the start goes on; a verse whose
+// system charter is missing is a verse with fewer rules, not one that will not start.
 func (s *Server) installSystemCharter() {
+	s.installAsSystem("the base charter", baseCharter)
+	if s.SystemCharter == "" {
+		return
+	}
 	data, err := os.ReadFile(s.SystemCharter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
 		return
 	}
+	s.installAsSystem("system charter "+s.SystemCharter, data)
+}
+
+// installAsSystem installs one charter's text as the system, saying what it was when it cannot.
+func (s *Server) installAsSystem(what string, data []byte) {
 	docs, err := codec.ParseNodes(data, codec.Tony)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "verse: system charter %s: %v\n", s.SystemCharter, err)
+		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 		return
 	}
 	defs := charterDocs(docs)
@@ -3759,12 +3781,12 @@ func (s *Server) installSystemCharter() {
 	}
 	release, err := s.lockCharter(s.ctxOrBackground())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
+		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 		return
 	}
 	defer release()
 	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemCharter), "", "", defs); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: system charter %s: %v\n", s.SystemCharter, err)
+		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 	}
 }
 

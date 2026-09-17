@@ -83,7 +83,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 		}
 	}
 	// …and baseline is untouched: restoring a scope's charter must not install it at baseline.
-	if got := second.Eng.Triggers(); len(got) != 0 {
+	if got := userRules(second.Eng); len(got) != 0 {
 		t.Fatalf("baseline charter = %v; a scoped rule was restored into baseline", got)
 	}
 }
@@ -197,7 +197,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	}`)
 
 	// Baseline restored its own…
-	if got := second.Eng.Triggers(); len(got) != 1 || got[0].Name != "review" {
+	if got := userRules(second.Eng); len(got) != 1 || got[0].Name != "review" {
 		t.Fatalf("baseline charter after restart = %v", got)
 	}
 	// …and the scope restored the dev's, once, under the same name.
