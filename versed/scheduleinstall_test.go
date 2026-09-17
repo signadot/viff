@@ -48,17 +48,17 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	defer ts.Close()
 
 	file := `[
-		{name: hourly, every: 1h},
+		{name: mine, every: 1h},
 		{name: note-ticks,
-		 condition: {subject: {path: "verse.schedule.hourly.tick.*"}},
+		 condition: {subject: {path: "verse.schedule.mine.tick.*"}},
 		 action: {spawn: {driver: scripted, prompt: "echo $subject"}}},
 	]`
 	if resp := installAs(t, "alice@example.com", ts.URL, file); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s %s", resp.Status, readBody(t, resp))
 	}
-	rec, ok := scheduleRecord(t, srv, "hourly")
+	rec, ok := scheduleRecord(t, srv, "mine")
 	if !ok {
-		t.Fatal("no record at verse.schedule.hourly")
+		t.Fatal("no record at verse.schedule.mine")
 	}
 	if entity.Str(rec, schedule.EveryField) != "1h" || entity.Str(rec, schedule.ByField) != "user:alice@example.com" {
 		t.Fatalf("record = %v", rec)
@@ -72,14 +72,14 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	if resp := installAs(t, "alice@example.com", ts.URL, file); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("re-install: %s %s", resp.Status, readBody(t, resp))
 	}
-	if again, _ := scheduleRecord(t, srv, "hourly"); entity.Str(again, schedule.NextField) != schedule.Key(next) {
+	if again, _ := scheduleRecord(t, srv, "mine"); entity.Str(again, schedule.NextField) != schedule.Key(next) {
 		t.Fatalf("a re-install moved next from %s to %s", schedule.Key(next), entity.Str(again, schedule.NextField))
 	}
 	// A new grid: `next` is stamped afresh, on it.
-	if resp := installAs(t, "alice@example.com", ts.URL, `{name: hourly, every: 2h}`); resp.StatusCode != http.StatusCreated {
+	if resp := installAs(t, "alice@example.com", ts.URL, `{name: mine, every: 2h}`); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("re-grid: %s %s", resp.Status, readBody(t, resp))
 	}
-	moved, _ := scheduleRecord(t, srv, "hourly")
+	moved, _ := scheduleRecord(t, srv, "mine")
 	next2, err := schedule.ParseKey(entity.Str(moved, schedule.NextField))
 	if err != nil || next2.Hour()%2 != 0 || next2.Minute() != 0 || !next2.After(time.Now()) {
 		t.Fatalf("next after the grid changed = %s, want an even hour ahead", next2)
@@ -91,10 +91,10 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	}
 
 	// Removed by name, as a rule or a level is.
-	if resp := del(t, "alice@example.com", ts.URL+"/charter/hourly"); resp.StatusCode != http.StatusNoContent {
+	if resp := del(t, "alice@example.com", ts.URL+"/charter/mine"); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("remove: %s %s", resp.Status, readBody(t, resp))
 	}
-	if _, ok := scheduleRecord(t, srv, "hourly"); ok {
+	if _, ok := scheduleRecord(t, srv, "mine"); ok {
 		t.Fatal("the record survived its removal")
 	}
 }
@@ -133,7 +133,7 @@ func TestAPackagesScheduleCarriesItsAddressAndLeavesWithIt(t *testing.T) {
 func TestAScheduleIsNotAScopes(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	srv.Start(t.Context())
-	docs, err := codec.ParseNodes([]byte(`{name: hourly, every: 1h}`), codec.Tony)
+	docs, err := codec.ParseNodes([]byte(`{name: mine, every: 1h}`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}

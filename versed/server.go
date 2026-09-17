@@ -1169,6 +1169,7 @@ func (s *Server) Handler() http.Handler {
 	// The live tasks and the suspensions a selection names (flows.go): the work in flight and
 	// the work held from now on, one listing narrowed by the flags an act takes.
 	rt.handle("GET /flows", s.listFlows, "", list("verse-flow-row"))
+	rt.handle("GET /schedules", s.listSchedules, "", list("verse-schedule-row"))
 	rt.handle("GET /flow/tree", s.flowTree, "", list("verse-flow-tree"))
 	// ONE ROUTE FOR THE CHARTER: the tree at an address, and one rule or one level by name
 	// inside it. `/triggers` and `/strata` were two surfaces over one idea — see versed/charter.go.
@@ -1182,6 +1183,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
 	rt.handle("POST /charter", s.addCharter, "verse-trigger", nothing)
+	rt.handle("POST /schedules/{id}/tick", s.tickSchedule, "verse-schedule-tick", nothing)
 	rt.handle("DELETE /charter/{name}", s.deleteCharterItem, "", nothing)
 	rt.handle("DELETE /charter", s.deleteCharter, "", nothing)
 	// resolvers — who answers a question. A binding is installed rather than declared in a

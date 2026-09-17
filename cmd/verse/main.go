@@ -199,6 +199,7 @@ func rootCmd() *cli.Command {
 			dataCmd(),
 			taskCmd(),
 			flowCmd(),
+			scheduleCmd(),
 			charterCmd(),
 			resolverCmd(),
 			runnerCmd(),

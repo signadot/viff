@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -90,7 +91,15 @@ func (s *Server) installSchedule(store entity.Store, at string, decl schedule.Sc
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		return fmt.Errorf("schedule %q: writing %s: %w", decl.Name, ref, err)
 	}
-	takePlace(store, installer, ref, "schedule "+id)
+	// THE SYSTEM'S TOO, unlike a package's address: the seed holds `owner` beneath
+	// verse.schedule out to everyone so that anybody may declare one, and that grant reaches
+	// every record below it until an owner record is crossed. A standard schedule with no
+	// record would be everybody's to backfill.
+	if installer != "" {
+		if err := entity.Claim(store, ref, installer); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: schedule %s: taking %s for %s: %v\n", id, ref, installer, err)
+		}
+	}
 	s.armSchedule(id)
 	return nil
 }
