@@ -139,3 +139,27 @@ func TestIsTickSubject(t *testing.T) {
 		t.Error("NameOf")
 	}
 }
+
+// A tick's zone is a name a client can read. time.Local prints as "Local", which is nobody's
+// name for anything, so the name comes from where the process got its zone; a zone with no
+// name at all is spelled as its offset at the instant.
+func TestZoneNameIsOneAClientCanRead(t *testing.T) {
+	at := time.Date(2026, 9, 18, 1, 0, 0, 0, time.UTC)
+	if got := ZoneName(mustZone(t, "Europe/Berlin"), at); got != "Europe/Berlin" {
+		t.Fatalf("a named zone = %q", got)
+	}
+	if got := ZoneName(time.UTC, at); got != "UTC" {
+		t.Fatalf("UTC = %q", got)
+	}
+	if got := ZoneName(time.FixedZone("", 2*3600), at); got != "+02:00" {
+		t.Fatalf("a nameless zone = %q, want its offset", got)
+	}
+	t.Setenv("TZ", "America/New_York")
+	if got := ZoneName(time.Local, at); got != "America/New_York" {
+		t.Fatalf("time.Local with TZ set = %q", got)
+	}
+	t.Setenv("TZ", "")
+	if got := ZoneName(time.Local, at); got == "Local" || got == "" {
+		t.Fatalf("time.Local with no TZ = %q: the word Local reaches a client", got)
+	}
+}

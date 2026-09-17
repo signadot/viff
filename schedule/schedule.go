@@ -11,6 +11,7 @@ package schedule
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -200,8 +201,33 @@ func Tick(due time.Time, missed int64, loc *time.Location) entity.Payload {
 		"month":    int(local.Month()),
 		"day":      local.Day(),
 		"weekday":  local.Weekday().String()[:3],
-		"timezone": loc.String(),
+		"timezone": ZoneName(loc, due),
 	}.Payload()
+}
+
+// ZoneName is the zone as a client can read it: an IANA name. time.Local prints as the word
+// "Local", which says nothing to anybody but this process, so the name is recovered from where
+// the process got the zone — TZ when it is set, else the zoneinfo file /etc/localtime points
+// at — and, when neither names it, the offset in force at the instant, which is at least true.
+func ZoneName(loc *time.Location, at time.Time) string {
+	name := loc.String()
+	if name != "" && name != "Local" {
+		return name
+	}
+	if name == "Local" {
+		if tz := os.Getenv("TZ"); tz != "" {
+			return strings.TrimPrefix(tz, ":")
+		}
+		if target, err := os.Readlink("/etc/localtime"); err == nil {
+			if i := strings.LastIndex(target, "zoneinfo/"); i >= 0 {
+				return target[i+len("zoneinfo/"):]
+			}
+		}
+	}
+	if _, off := at.In(loc).Zone(); off == 0 {
+		return "UTC"
+	}
+	return at.In(loc).Format("-07:00")
 }
 
 // RecordID is the id a declaration's record carries: the name for baseline, `<at>:<name>` for a
