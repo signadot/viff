@@ -20,6 +20,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/task"
 )
 
@@ -1312,6 +1313,18 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 		return fp.h
 	}
 	e.liveMu.Unlock()
+	// ONCE-EVER ABOUT A TICK. A trigger fires on what already matches when it opens, so a
+	// restart or a re-install re-fires the tick standing under its schedule, and the dedupe
+	// above ends with the task. A tick's address never recurs — the schedule and the instant it
+	// was due — so a task record standing for this id, live or done, is the spawn having
+	// happened. The general rule for a world subject stays what it was: a subject may come
+	// round again, and the latch is the charter's to write.
+	if schedule.IsTickSubject(subj.Segs()) {
+		if _, ran, err := e.store.Get(mirror.Ref(id)); err == nil && ran {
+			e.tracef("task %s already ran (subject %s is a tick, which never recurs); not respawning", id, spec.Subject)
+			return nil
+		}
+	}
 
 	e.tracef("spawn task %s (driver=%s): %s", id, spec.Driver, spec.Prompt)
 	h := e.spawn(id, spec)
