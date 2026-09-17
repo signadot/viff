@@ -261,7 +261,7 @@ func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
 		for _, el := range n.Values {
 			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(cc.Out, renderAddr(append(append([]string{}, prefix...), name), trig.KPaths))
+				fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(append(append([]string{}, prefix...), name)...).At(), trig.KPaths))
 			}
 		}
 		return nil
@@ -293,7 +293,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 			}
 			for _, el := range v.Values {
 				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(cc.Out, renderAddr(append(append([]string{}, at...), key.String, name), trig.KPaths))
+					fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(append(append([]string{}, at...), key.String, name)...).At(), trig.KPaths))
 					printed = true
 				}
 			}
@@ -302,7 +302,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		}
 	}
 	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(cc.Out, renderAddr(at, trig.KPaths))
+		fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(at...).At(), trig.KPaths))
 	}
 	if children == nil || children.Type != ir.ObjectType {
 		return

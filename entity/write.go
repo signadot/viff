@@ -719,6 +719,56 @@ func quoteStep(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
+// JoinStepsAt renders an address that may reach INTO an array as the line a listing prints:
+// the names as steps, and then the access as steps of its own.
+//
+//	demo pr 1 votes '[0]'          the element
+//	demo pr 1 votes '[0]' choice   and a field of it
+//	demo pr 1 '"[0]"'              unchanged: a FIELD named [0] (quoteStep)
+//
+// AN ACCESS IS ITS OWN WORD, because that is the word a read takes: the step clauses are read
+// off a word's first character, so `votes[0]` as one word is a field of that name and not an
+// element (KPathOf). It is shell-quoted and NOT wrapped in the quoted clause — the inverse of
+// what quoteStep does for a name that would read as an access — so the shell hands verse `[0]`
+// and the line means the element it names.
+//
+// It is JoinSteps for a Path: an address of names only renders identically, which is what keeps
+// one spelling for both.
+func JoinStepsAt(at Path) string {
+	line := JoinSteps(at.Ref.Segs())
+	for _, step := range accessSteps(at.Access) {
+		if line != "" {
+			line += " "
+		}
+		line += step
+	}
+	return line
+}
+
+// accessSteps is an access fragment as the step words that read it back: `[0].choice` is the
+// element and then the field, two words. A fragment that does not parse is answered as itself,
+// which is what every other renderer here does with a spelling it cannot take apart.
+func accessSteps(access string) []string {
+	if access == "" {
+		return nil
+	}
+	kp, err := kpath.Parse(access)
+	if err != nil || kp == nil {
+		return []string{ShellWord(access)}
+	}
+	var out []string
+	for p := kp; p != nil; p = p.Next {
+		// A name under an element is a NAME, and takes the name quoting: a field called `[0]`
+		// inside an element is as sayable there as anywhere else.
+		if p.Field != nil {
+			out = append(out, quoteStep(*p.Field))
+			continue
+		}
+		out = append(out, ShellWord(p.SegmentString()))
+	}
+	return out
+}
+
 // ShellWord is one argument as a word that a shell and `xargs` both read back as itself: bare
 // when it already is one, and single-quoted otherwise, a single quote inside it spelled as the
 // quote closed, the character backslash-escaped and the quote reopened, which both readers take.

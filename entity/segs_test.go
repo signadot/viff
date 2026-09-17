@@ -240,3 +240,42 @@ func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 		}
 	}
 }
+
+// AN ELEMENT'S LINE READS BACK AS THE ELEMENT, which is what makes a listing that reaches into
+// an array worth printing: the access is its own word, so the step clauses read it as an access
+// rather than as a field of that name. The inverse case is above — a segment that IS the name
+// `[0]` prints wrapped in the quoted clause and reads back as the name.
+func TestAnElementsListingLineReadsBackAsTheElement(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh to split the line with")
+	}
+	for _, at := range []Path{
+		RefAt("demo", "pr", "1", "votes").Into("[0]"),
+		RefAt("demo", "pr", "1", "votes").Into("[0].choice"),
+		RefAt("demo", "pr", "1", "votes").Into("{7}"),
+		RefAt("demo", "pr", "1", "votes").Into("(scott)"),
+		RefAt("demo", "pr", "1", "votes").Into("(scott).choice"),
+		RefAt("demo", "pr", "a b.txt", "votes").Into("[0].by"),
+		RefAt("demo", "pr", "1").Into("[0]"), // an array under the entity itself
+	} {
+		line := JoinStepsAt(at)
+		want := at.KPath()
+		for _, split := range []struct{ name, script string }{
+			{"sh", `eval "set -- $1"; printf '%s\0' "$@"`},
+			{"xargs", `printf '%s\n' "$1" | xargs -L1 sh -c 'printf "%s\0" "$@"' _`},
+		} {
+			out, err := exec.Command(sh, "-c", split.script, "_", line).Output()
+			if err != nil {
+				t.Errorf("%s could not split %s: %v", split.name, line, err)
+				continue
+			}
+			words := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+			got, err := KPathOf(words)
+			if err != nil || got != want {
+				t.Errorf("%s prints %s, which %s reads back as %q (%v), want %q",
+					want, line, split.name, got, err, want)
+			}
+		}
+	}
+}

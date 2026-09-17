@@ -1538,6 +1538,23 @@ func queryPattern(q url.Values) (entity.Pattern, error) {
 	return entity.Pattern{Predicate: pred, At: q["if-at"]}, nil
 }
 
+// queryPaths reads the listing half of a read's query: whether the caller wants ADDRESSES rather
+// than the document, and how far to walk. depth bounds the total number of steps an address may
+// have, and 0 means no bound — the units the rest of the model counts in.
+func queryPaths(q url.Values) (listing bool, depth int, err error) {
+	if q.Get("paths") == "" {
+		return false, 0, nil
+	}
+	if d := q.Get("depth"); d != "" {
+		n, err := strconv.Atoi(d)
+		if err != nil || n < 0 {
+			return false, 0, fmt.Errorf("?depth=%s: a bound is a number of steps, and 0 is no bound", d)
+		}
+		depth = n
+	}
+	return true, depth, nil
+}
+
 // selector is what a read-plane route was asked for: a path reaching nodes, and a predicate over
 // each node it reached.
 //
@@ -1819,6 +1836,30 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	// costs what that registration holds, not what the verse does. The rest of the path — from
 	// its first wildcard, index or key — is answered over the node that came back.
 	prefix, rest := entity.LiteralPrefix(sel.at)
+	// A LISTING IS ANSWERED BY THE STORE, which knows the names without reading the nodes: it
+	// walks its own levels and answers addresses, so listing a wide container costs the walk
+	// rather than the container — and answers one no read could return at all, being past the
+	// read budget. A path with a wildcard or a descent is still answered over the node, since
+	// the addresses it reaches are what the reach decides (paths).
+	if listing, depth, err := queryPaths(r.URL.Query()); err != nil {
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
+		return
+	} else if listing && rest == nil && sel.pat.Predicate == nil {
+		out, err := store.PathsAt(prefix, depth)
+		if unreadable(w, r, err) {
+			return
+		}
+		if _, ok, err := store.ReadAt(prefix); unreadable(w, r, err) {
+			return
+		} else if !ok {
+			// A listing of a path nothing stands at is not an empty listing: `--paths | wc -l`
+			// answering 0 must never be how a reader learns the address was wrong.
+			notFoundAt(w, r, sel.at)
+			return
+		}
+		writeOut(w, r, http.StatusOK, entity.PathsDoc(out))
+		return
+	}
 	node, ok, err := store.ReadAt(prefix)
 	if unreadable(w, r, err) {
 		return

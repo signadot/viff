@@ -114,6 +114,11 @@ type Store interface {
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// ReadAt is the node standing at a path — see Reader.ReadAt.
 	ReadAt(at []string) (node *ir.Node, ok bool, err error)
+	// PathsAt is every address beneath a path, which is what a listing prints — see
+	// LogdStore.PathsAt. It answers NAMES, not nodes: the store walks its own levels and
+	// reads nothing it is not asked for, so a listing of a wide container costs the walk
+	// rather than the container.
+	PathsAt(at []string, max int) ([]Path, error)
 	// WatchSubtree observes exactly the slice standing at a prefix of an address — one
 	// (system, kind), or a whole system given the system alone — rather than the whole store.
 	// It is what a scoped trigger watches, so that observation is precisely what the trigger

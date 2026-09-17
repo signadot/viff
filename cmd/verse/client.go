@@ -1203,13 +1203,24 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
 		return fmt.Errorf("data: %w", err)
 	}
+	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
+	// passed beside --paths.
+	listing := cfg.Paths || cfg.KPaths
+	if listing {
+		// ASKED OF THE SERVER, which asks the store: the addresses come back without the
+		// nodes, so a listing of a wide container ships names rather than everything they
+		// stand for. A read with a predicate still answers the document and is walked here,
+		// since `--if` picks per node the path reached.
+		q.Set("paths", "1")
+		if cfg.Depth > 0 {
+			q.Set("depth", strconv.Itoa(cfg.Depth))
+		}
+	}
 	resp, err := httpGet("/state", q)
 	if err != nil {
 		return fmt.Errorf("data: %w", err)
 	}
-	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
-	// passed beside --paths.
-	if cfg.Paths || cfg.KPaths {
+	if listing {
 		return printPaths(cc, resp, kp, cfg.Depth, cfg.KPaths)
 	}
 	return printDoc(cc, resp, kp)
@@ -1381,50 +1392,59 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	// AS A KINDED PATH, one token per line, rendered the way kpath renders one:
-	// `demo.pr."1"`, `demo.pr."a b.txt"`, `"a b".pr.1`.
-	//
-	// THE QUOTING IS ABOUT TONY TYPES, not about the path. `a.1.b` is three string fields and
-	// an index is the bracket form (`a[1].b`), so a path is unambiguous with or without the
-	// quotes; what they buy is the segment's TYPE, since a bare `1` written into a document is
-	// a number and the id is not. That makes this the conservative rendering — correct wherever
-	// a line is read, at the cost of quotes the path alone would not need.
-	//
-	// AS STEPS — the segments separated by spaces, each quoted only where a shell would
-	// otherwise mis-split or expand it (entity.JoinSteps):
-	//
-	//	demo pr 1
-	//	demo pr a.b                 a dot is ordinary in a step, which is the form's whole point
-	//	demo pr 'a b.txt'
-	//	git ref '"*"'               the id that is an asterisk; a bare `*` step selects
-	//
-	// ONE SPELLING, IN AND OUT. Steps are what this command line takes — `verse data demo pr
-	// a.b`, no escaping by the person typing it, because the shell has already separated the
-	// words — and a listing that answers the same way hands straight back:
-	//
-	//	verse data --paths demo.pr | xargs -L1 verse data
-	//
-	// IT WAS A KINDED PATH FOR A WHILE (`demo.pr."a b.txt"`), because the bare steps form was
-	// ambiguous for a segment holding a SPACE: it printed as two words for one segment and read
-	// back as a different address. Quoting the segment answers that in the grammar the line is
-	// actually read in, and single quotes are what makes it work where the kpath form did not —
-	// `xargs` understands them, and reads the kpath form's `\"` as an unterminated quote.
-	// Checked, both idioms, including a segment holding a space, a `*`, a double quote, and the
-	// empty one.
-	for _, segs := range (entity.Doc{Node: node}).Paths(at, depth) {
-		fmt.Fprintln(cc.Out, renderAddr(segs, kpaths))
+	for _, addr := range answered(node, at, depth) {
+		fmt.Fprintln(cc.Out, renderAddr(addr, kpaths))
 	}
 	return nil
 }
 
+// answered is the addresses a listing prints, from either answer the route gives.
+//
+// A LISTING, where the store answered one: the addresses arrive as kinded paths, and an address
+// is recovered by splitting each where it stops naming (LiteralPrefix) -- the names are the ref,
+// the rest is the access, which is the same cut TargetOf makes on the way in.
+//
+// A DOCUMENT, where the read had to answer one: a path with a wildcard or a descent, or a `--if`
+// that picks per node, is answered over the node the read reached, and the walk over it is the
+// listing (entity.Doc.Paths). It is the same set of addresses either way -- which is what
+// TestPathsAtAnswersWhatTheDocumentWalkDoes says of the two walks.
+func answered(node *ir.Node, at *kpath.KPath, depth int) []entity.Path {
+	var listed entity.Paths
+	if err := codec.FromNode(node, &listed); err == nil && listed.Paths != nil {
+		out := make([]entity.Path, 0, len(listed.Paths))
+		for _, kp := range listed.Paths {
+			out = append(out, pathOfKPath(kp))
+		}
+		return out
+	}
+	return (entity.Doc{Node: node}).Paths(at, depth)
+}
+
+// pathOfKPath reads one listed address: the names it spells, and the access below them.
+func pathOfKPath(kp string) entity.Path {
+	parsed, err := entity.ParseAt(kp)
+	if err != nil {
+		return entity.Path{Ref: entity.RefAt(kp)} // unreadable: echoed as it stands
+	}
+	names, rest := entity.LiteralPrefix(parsed)
+	access := ""
+	if rest != nil {
+		access = rest.String()
+	}
+	return entity.Path{Ref: entity.RefAt(names...), Access: access}
+}
+
 // renderAddr is one address in the spelling a listing was asked for: STEPS by default — the
 // words this command line takes — or a KINDED PATH under `--kpaths`, which is the one token
-// `--at` reads back. The walk answers in segments so this is the only place either is chosen.
-func renderAddr(segs []string, kpaths bool) string {
+// `--at` reads back. The walk answers addresses so this is the only place either is chosen.
+//
+// An address that reaches into an array carries its access (entity.Path), and both spellings
+// take one: `demo pr 1 votes '[0]'` in steps, `demo.pr."1".votes[0]` as a kinded path.
+func renderAddr(at entity.Path, kpaths bool) string {
 	if kpaths {
-		return entity.JoinSegs(segs)
+		return at.KPath()
 	}
-	return entity.JoinSteps(segs)
+	return entity.JoinStepsAt(at)
 }
 
 // address reads the address positionals a read command takes: a VECTOR OF STEPS, one segment

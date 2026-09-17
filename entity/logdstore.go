@@ -1270,6 +1270,131 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 	return nodeToPayload(node), true, nil
 }
 
+// PathsAt is every address beneath at, deepest last within each branch — the listing
+// `verse data --paths` prints — answered BY THE STORE rather than by walking a document it
+// sent. max bounds the total number of steps an address may have; 0 means no bound.
+//
+// The store knows the names: a wildcard match answers the members of a level one at a time, and
+// a spec with no `body` reads no node at all to do it (libctl.MatchEachReturning with
+// `id,iterType`). So a listing of ten thousand records costs the walk rather than ten thousand
+// reads, and never materializes the subtree — which is also how it lists a container too large
+// for a read's budget to answer at all.
+//
+// AN ARRAY IS A LEVEL LIKE ANY OTHER: its members are positions, and the walk asks for them as
+// it asks for an object's fields. Identity is the store's to give (!logd-key), a `!key` tag is
+// refused on the way in (checkNotKeyed), and the verse surface for the store's keying is not
+// designed yet -- so nothing here has to read an array to find out what its elements are called.
+//
+// The addresses beneath an element are the same ones the document walk spells, since below an
+// element a name extends the ACCESS rather than the address (entity.Path).
+func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	path := s.rootForAt(at)
+	for _, sg := range at {
+		path += "." + seg(sg)
+	}
+	kind, err := s.iterTypeAt(ctx, path)
+	if err != nil || kind == "" {
+		return nil, err
+	}
+	var out []Path
+	if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// iterTypeAt is what kind of node stands at path — the kind that says what is under it and which
+// wildcard reaches it — or "" when nothing stands there. Nothing is an answer, not a failure:
+// listing a slice before anything is written to it is what an engine and an install both do.
+func (s *LogdStore) iterTypeAt(ctx context.Context, path string) (string, error) {
+	kind := ""
+	_, err := s.sess.MatchEachReturning(ctx, path, nil, logdapi.ReturnIterType, func(m libctl.SetMember) error {
+		kind = m.IterType
+		return nil
+	})
+	if isNotFound(err) {
+		s.noteRead(nil)
+		return "", nil
+	}
+	s.noteRead(err)
+	if err != nil {
+		return "", fmt.Errorf("list %s: %w", path, err)
+	}
+	return kind, nil
+}
+
+// walkPathsAt appends every address beneath the node of kind standing at path, which is the
+// address segs (and, inside an element, access) names.
+func (s *LogdStore) walkPathsAt(ctx context.Context, path string, segs []string, access, kind string, max int, out *[]Path) error {
+	here := Path{Ref: RefAt(segs...), Access: access}
+	if max > 0 && len(segs)+accessDepth(access) >= max {
+		return nil // nothing beneath this can be within the bound
+	}
+	wild := logdapi.IterWildcard(kind)
+	if wild == "" {
+		return nil // a scalar holds nothing to list
+	}
+	type member struct{ id, kind string }
+	var members []member
+	if _, err := s.sess.MatchEachReturning(ctx, path+wild, nil,
+		logdapi.ReturnID+","+logdapi.ReturnIterType, func(m libctl.SetMember) error {
+			members = append(members, member{id: m.ID, kind: m.IterType})
+			return nil
+		}); err != nil {
+		if isNotFound(err) {
+			s.noteRead(nil)
+			return nil
+		}
+		s.noteRead(err)
+		return fmt.Errorf("list %s: %w", here, err)
+	}
+	s.noteRead(nil)
+	// Depth-first, so the answer reads as the walk a listing prints: each address, then what is
+	// under it, before the next sibling.
+	for _, m := range members {
+		below, belowAccess, step := s.memberAddress(segs, access, kind, m.id)
+		*out = append(*out, Path{Ref: RefAt(below...), Access: belowAccess})
+		if err := s.walkPathsAt(ctx, path+step, below, belowAccess, m.kind, max, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// memberAddress is where one member of a level stands: the names, the access, and the step to
+// append to the store path to reach it.
+//
+// AN OBJECT'S MEMBER EXTENDS THE NAMES, unless it is inside an element, where everything is
+// inside a node and the name extends the access instead (entity.Path). AN ARRAY'S MEMBER IS A
+// POSITION, and extends the access whatever it is inside.
+//
+// The id is read as a kpath SEGMENT — which is what a client would write, and what the segment
+// forms `[0]` and `{7}` already are. A name that needs quoting arrives quoted, and the address is
+// built from the name inside: taken verbatim, the id `"1"` became a segment of that spelling and
+// demo.pr."\"1\"" named nothing.
+func (s *LogdStore) memberAddress(segs []string, access, kind, id string) (below []string, belowAccess, step string) {
+	if kind == logdapi.IterObject {
+		name := id
+		if n, isField := kpath.SegmentFieldName(id); isField {
+			name = n
+		}
+		if access != "" {
+			return segs, access + "." + seg(name), "." + seg(name)
+		}
+		below = append(append([]string{}, segs...), name)
+		return below, "", "." + seg(name)
+	}
+	// An array's member: the id is the position, as a segment (`[0]`) or as the bare value it
+	// used to be — both spelled here as the segment a reader writes.
+	elem := id
+	if kp, err := kpath.Parse(id); err != nil || kp == nil || kp.Field != nil {
+		elem = "[" + id + "]"
+	}
+	return segs, access + elem, elem
+}
+
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
 func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
 	if depth < len(at) {

@@ -24,6 +24,27 @@ import (
 //tony:schemagen=verse-state,notag,codec=custom
 type Doc struct{ Node *ir.Node }
 
+// Paths is a LISTING: the addresses a read reaches, one per line when a command prints it.
+//
+// AS KINDED PATHS, one string each, because that is the spelling every address in this system
+// has (CLAUDE.md: addresses are paths, and the command line's steps are one spelling of one). A
+// reader that wants steps splits the path where it stops naming (LiteralPrefix) and renders it,
+// which is what the CLI does -- and `--kpaths` prints what arrived.
+//
+//tony:schemagen=verse-paths,notag
+type Paths struct {
+	Paths []string `tony:"field=paths"`
+}
+
+// PathsDoc is a listing as the wire carries it.
+func PathsDoc(ps []Path) Paths {
+	out := make([]string, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.KPath())
+	}
+	return Paths{Paths: out}
+}
+
 // LiteralPrefix splits a kinded path at its first segment that is not a field name: the prefix
 // a store is read at, and the rest, which is answered over what stands there.
 func LiteralPrefix(at *kpath.KPath) (prefix []string, rest *kpath.KPath) {
@@ -361,32 +382,104 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 // silently omits everything deeper. `max` bounds how far the walk goes, as the total number of
 // segments an address may have; 0 means no bound. A path naming one node does not print that
 // node, which is the address the reader typed.
-func (d Doc) Paths(at *kpath.KPath, max int) [][]string {
+func (d Doc) Paths(at *kpath.KPath, max int) []Path {
 	_, rest := LiteralPrefix(at)
 	wild := answerPath(rest) != nil || hasDescend(rest)
-	var out [][]string
+	var out []Path
 	seen := map[string]bool{}
 	for _, e := range d.Reached(at) {
-		var rec func(n *ir.Node, segs []string, top bool)
-		rec = func(n *ir.Node, segs []string, top bool) {
-			if max > 0 && len(segs) > max {
-				return
-			}
-			// The root is not an address anybody can print: `verse data '..'` walks from it.
-			if len(segs) > 0 && (!top || wild) && !seen[RefAt(segs...).String()] {
-				seen[RefAt(segs...).String()] = true
-				out = append(out, append([]string{}, segs...))
-			}
-			if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
-				return
-			}
-			for i, f := range n.Fields {
-				rec(n.Values[i], append(append([]string{}, segs...), fieldName(f)), false)
-			}
+		// A path naming one node does not print that node, which is the address the reader
+		// typed; a wildcard or a descent prints each node it reached.
+		if wild {
+			appendPath(&out, seen, Path{Ref: e.Ref}, max)
 		}
-		rec(e.Payload, e.Ref.Segs(), true)
+		walkPaths(e.Payload, e.Ref.Segs(), "", max, seen, &out)
 	}
 	return out
+}
+
+// PathsUnder is every address BENEATH the node n standing at segs, deepest last within each
+// branch — Paths' own walk, over a node a caller already holds. The node's own address is not
+// among them: a caller that wants it has it.
+//
+// It is what the store's listing uses where it has read a node rather than walked it
+// (LogdStore.PathsAt at an array), so the two answer the same addresses by construction rather
+// than by two sets of rules kept in step.
+func PathsUnder(n *ir.Node, segs []string, access string, max int) []Path {
+	var out []Path
+	walkPaths(n, segs, access, max, map[string]bool{}, &out)
+	return out
+}
+
+// walkPaths emits every address beneath n, which stands at segs (+access). It does not emit that
+// address itself.
+func walkPaths(n *ir.Node, segs []string, access string, max int, seen map[string]bool, out *[]Path) {
+	n = ir.Uncomment(n)
+	if n == nil {
+		return
+	}
+	switch n.Type {
+	case ir.ObjectType:
+		for i, f := range n.Fields {
+			// Below an element everything is inside a node, so the name extends the ACCESS
+			// rather than the address of names (Path.Access).
+			child := Path{Ref: RefAt(segs...), Access: access}
+			childSegs, childAccess := segs, ""
+			if access != "" {
+				childAccess = access + "." + seg(fieldName(f))
+			} else {
+				childSegs = append(append([]string{}, segs...), fieldName(f))
+			}
+			child = Path{Ref: RefAt(childSegs...), Access: childAccess}
+			if !appendPath(out, seen, child, max) {
+				continue
+			}
+			walkPaths(n.Values[i], childSegs, childAccess, max, seen, out)
+		}
+	case ir.ArrayType:
+		// AN ELEMENT IS ADDRESSED BY POSITION. Identity belongs to the store — logd keys an array
+		// in the schema — and a `!key` tag in a payload is refused on the way in
+		// (checkNotKeyed), so nothing standing here is keyed by anything else. When the store's
+		// keying is surfaced, this is where its names go.
+		for i, el := range n.Values {
+			step := fmt.Sprintf("[%d]", i)
+			child := Path{Ref: RefAt(segs...), Access: access + step}
+			if !appendPath(out, seen, child, max) {
+				continue
+			}
+			walkPaths(el, segs, access+step, max, seen, out)
+		}
+	}
+}
+
+// appendPath records one address, and says whether the walk goes on beneath it: an address past
+// the bound is not printed, and nothing under it is either.
+func appendPath(out *[]Path, seen map[string]bool, p Path, max int) bool {
+	if max > 0 && len(p.Ref.Segs())+accessDepth(p.Access) > max {
+		return false
+	}
+	if kp := p.KPath(); kp != "" && !seen[kp] {
+		seen[kp] = true
+		*out = append(*out, p)
+	}
+	return true
+}
+
+// accessDepth is how many steps an access fragment is, so a `--depth` bound counts an element
+// and a field of it as the two steps a reader types.
+func accessDepth(access string) int {
+	if access == "" {
+		return 0
+	}
+	kp, err := kpath.Parse(access)
+	if err != nil {
+		return 1
+	}
+	n := 0
+	for p := kp; p != nil; p = p.Next {
+		n++
+	}
+	return n
 }
 
 // Reaches reports whether a path reaches the node at ref — the ref half of "is this change one

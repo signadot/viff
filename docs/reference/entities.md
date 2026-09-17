@@ -380,23 +380,29 @@ can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match
 
 ### Reaching into an array
 
-`(key)` addresses an array element by identity, and `[0]` by position:
+`[0]` addresses an array element by position:
 
 ```sh
-verse data merge proposal X votes '(scott)'
+verse data merge proposal X votes '[0]'
 verse data merge proposal X votes '[0]' choice
 verse data -at 'merge.proposal.X.votes[0].choice'     # the same, as one token
 ```
 
-Both spellings reach it: a step beginning `[`, `{` or `(` **is** that access, and `-at` carries
-the kinded path whole. The shell quoting on the step is the shell's — `(` and `[` are its
-characters too.
+A step beginning `[`, `{` or `(` **is** that access, and `-at` carries the kinded path whole. The
+shell quoting on the step is the shell's — `(` and `[` are its characters too.
 
-`(key)` needs the array to carry `!key(<field>)`, and the annotation has to have been stored.
-That is not automatic: `!key` is a tony merge operator, so an ordinary write executes it — the
-array is merged by key and kept without the tag — which means an array put through
-`verse data -put` is not keyed afterwards. A payload meant to stay addressable this way is
-written as data (`entity.Raw`), which is what the engine's own writers do.
+**An element is addressed by position, and only by position.** `(key)` — an element by identity —
+is the store's to give: logd keys an array in its schema, which is what makes a name mean an
+element, refuses a position on a keyed array, and renames the elements when the keying changes.
+verse declares no such schema yet, so every array it holds is positional.
+
+A `!key(<field>)` tag in a written payload is **refused**. It used to land, because `!key` is a
+tony merge operator that an ordinary write executes and a payload written as data keeps — which
+left the store holding a positional array while the value claimed a name for each element, and
+only verse able to read the second. One keying, and it is the store's.
+
+A listing spells what a read takes, so `verse data merge proposal X --paths` prints
+`merge proposal X votes '[0]'`, and that line reads and writes as it stands.
 
 A write reaches an element too, and lands in place:
 

@@ -216,8 +216,8 @@ func TestPathsWalkTheAnswerByThePath(t *testing.T) {
 		{"demo.*", []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`, `demo.pr."2".stage`, `demo.pr."a.b"`, `demo.pr."a.b".stage`}},
 	} {
 		var got []string
-		for _, segs := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
-			got = append(got, RefAt(segs...).String())
+		for _, addr := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
+			got = append(got, addr.KPath())
 		}
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, tc.want) {
@@ -258,8 +258,8 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 	}
 	// And every address in the answer comes back, once each.
 	var got []string
-	for _, segs := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
-		got = append(got, RefAt(segs...).String())
+	for _, addr := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
+		got = append(got, addr.KPath())
 	}
 	sort.Strings(got)
 	want := []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`,
@@ -289,6 +289,80 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 	}
 	if got := flatten(t, read(t, ents, "merge.proposal.X.votes[0].choice").Node); got != "yes" {
 		t.Fatalf("votes[0].choice = %s, want yes", got)
+	}
+}
+
+// A LISTING REACHES WHAT A READ REACHES, elements included. It used to stop at an array, so
+// `--paths` showed less than the address model could address: a read and a write both take
+// `votes[0]`, and the listing that is supposed to say what is there did not mention it.
+//
+// AN ELEMENT IS NAMED BY POSITION, which is the one spelling now: identity is the store's
+// (!logd-key), a `!key` tag is refused on the way in (TestAKeyTagIsRefusedOnAWrite), and the
+// verse surface for the store's keying is not designed yet. 6a04ga4nh12krh87ndn0 is the watch's
+// silence at these addresses, which is a separate question.
+func TestPathsReachIntoArrays(t *testing.T) {
+	votes := ir.FromSlice([]*ir.Node{
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
+	}).WithTag("!key(voter)")
+	plain := ir.FromSlice([]*ir.Node{ir.FromString("a"), ir.FromString("b")})
+	ents := []Entity{{
+		Ref:     RefAt("merge", "proposal", "X"),
+		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes, "tags": plain}),
+	}}
+
+	var got []string
+	for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), 0) {
+		got = append(got, addr.KPath())
+	}
+	sort.Strings(got)
+	want := []string{
+		`merge.proposal.X.tags`,
+		`merge.proposal.X.tags[0]`,
+		`merge.proposal.X.tags[1]`,
+		`merge.proposal.X.votes`,
+		`merge.proposal.X.votes[0]`,
+		`merge.proposal.X.votes[0].choice`,
+		`merge.proposal.X.votes[0].voter`,
+		`merge.proposal.X.votes[1]`,
+		`merge.proposal.X.votes[1].choice`,
+		`merge.proposal.X.votes[1].voter`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("paths =\n%v\nwant\n%v", got, want)
+	}
+
+	// EVERY ADDRESS IT PRINTS IS ONE A READ TAKES, which is the whole contract of a listing.
+	for _, kp := range got {
+		if d := read(t, ents, kp); d.Node == nil {
+			t.Errorf("%s was listed and reads as nothing", kp)
+		}
+	}
+
+	// AN ACCESS IS A STEP, so --depth counts it as one and reads in the units a reader types:
+	// `merge proposal X votes` is four steps, `merge proposal X votes '(scott)'` is five.
+	for _, tc := range []struct {
+		depth int
+		want  []string
+	}{
+		{4, []string{`merge.proposal.X.tags`, `merge.proposal.X.votes`}},
+		{5, []string{
+			`merge.proposal.X.tags`,
+			`merge.proposal.X.tags[0]`,
+			`merge.proposal.X.tags[1]`,
+			`merge.proposal.X.votes`,
+			`merge.proposal.X.votes[0]`,
+			`merge.proposal.X.votes[1]`,
+		}},
+	} {
+		var bounded []string
+		for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), tc.depth) {
+			bounded = append(bounded, addr.KPath())
+		}
+		sort.Strings(bounded)
+		if !reflect.DeepEqual(bounded, tc.want) {
+			t.Errorf("--depth %d paths =\n%v\nwant\n%v", tc.depth, bounded, tc.want)
+		}
 	}
 }
 
@@ -361,36 +435,41 @@ func flatten(t *testing.T, n *ir.Node) string {
 	return strings.TrimSpace(string(b))
 }
 
-// `(key)` reaches a stored array, against a real store — the end of the claim the unit test
-// above makes about the walk.
+// A `!key` TAG IS REFUSED ON A WRITE, because keying is the store's to hold.
 //
-// The annotation has to be STORED, and that is the whole subtlety: `!key` is a registered merge
-// operator, so an ordinary write EXECUTES it — logd merges the array by key and keeps the
-// result without the tag, and the array that comes back is not keyed. Raw is what says "this
-// tag is data", so the payload lands carrying its own annotation and a read can follow it.
-func TestKeyedReachAgainstTheStore(t *testing.T) {
+// It used to land: `!key` is a merge operator, so an ordinary write executes it and keeps the
+// merged array untagged, and a payload written as data (Raw) kept the annotation — which is how
+// an array came to be positional in the store while its value claimed a name for each element.
+// Two keyings for one array, and only verse could read the second.
+//
+// logd keys an array in the SCHEMA (!logd-key), which is what makes an element addressable by
+// identity, refuses a position on a keyed array, and rewrites the elements when the keying
+// changes. Surfacing that in verse is not designed yet; until it is, an array is positional and
+// its elements are addressed by position, which is what every path in a listing now spells.
+func TestAKeyTagIsRefusedOnAWrite(t *testing.T) {
 	s := openStore(t)
-	ref := RefAt("merge", "proposal", "X")
 	votes := ir.FromSlice([]*ir.Node{
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
 	}).WithTag("!key(voter)")
-	if ok, _, err := s.Write(Write{
-		At:    ref.At(),
-		Value: Raw(ir.FromMap(map[string]*ir.Node{"votes": votes})),
-	}); err != nil || !ok {
-		t.Fatalf("write: committed=%v err=%v", ok, err)
+	for _, tc := range []struct {
+		name  string
+		value Payload
+	}{
+		{"as data", Raw(ir.FromMap(map[string]*ir.Node{"votes": votes}))},
+		{"as an ordinary write", ir.FromMap(map[string]*ir.Node{"votes": votes})},
+		{"at the value itself", Raw(votes)},
+	} {
+		ok, _, err := s.Write(Write{At: RefAt("merge", "proposal", "X").At(), Value: tc.value})
+		if err == nil || ok {
+			t.Errorf("%s: committed=%v err=%v, want a refusal", tc.name, ok, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), "keying is the store's to hold") {
+			t.Errorf("%s: %v", tc.name, err)
+		}
 	}
-
-	node, ok, err := s.ReadAt(ref.Segs())
-	if err != nil || !ok {
-		t.Fatalf("read: ok=%v err=%v", ok, err)
-	}
-	out, _, err := Reach(node, at(t, "votes(scott)"), nil)
-	if err != nil {
-		t.Fatalf("reach: %v", err)
-	}
-	if got := Str(out, "choice"); got != "yes" {
-		t.Fatalf("votes(scott).choice = %q, want yes — the stored array did not keep its key", got)
+	// And nothing of it landed.
+	if _, ok, err := s.ReadAt([]string{"merge", "proposal", "X"}); ok || err != nil {
+		t.Errorf("a refused write left something: ok=%v err=%v", ok, err)
 	}
 }
