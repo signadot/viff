@@ -2150,9 +2150,11 @@ func (a *attributed) forget(ref Ref) {
 	a.attr.mu.Unlock()
 	if !loaded {
 		// Not loaded: the mirror is listed, which costs its size once per whole delete.
-		for _, rec := range a.Store.ListAt([]string{VerseRoot, PermsSystem, PermsKind}, Depth+1, func(r Ref) bool {
+		// A record is a CHILD of the mirror — the same thing ChildOf says at the top of this
+		// file — so the listing asks for one level below it and not for a depth from the root.
+		for _, rec := range Below(a.Store, func(r Ref) bool {
 			return strings.HasPrefix(r.Name(), prefix)
-		}) {
+		}, 1, VerseRoot, PermsSystem, PermsKind) {
 			beneath = append(beneath, rec.Ref.Name())
 		}
 	}
@@ -2183,11 +2185,14 @@ func Track(ctx context.Context, s Store) error {
 	}
 	// Both failures are the store not answering, and both are marked so: a mirror that could
 	// not be loaded is not a mirror that is empty, and the caller asks again until it loads.
-	ents, err := ListAtErr(a.Store, []string{VerseRoot, PermsSystem, PermsKind}, Depth+1, nil)
+	mirror := []string{VerseRoot, PermsSystem, PermsKind}
+	ents, err := BelowErr(a.Store, nil, 1, mirror...)
 	if err != nil {
 		return Unread(fmt.Errorf("loading the perms mirror: %w", err))
 	}
-	ch, unsub, err := a.Store.WatchSubtree(Depth+1, VerseRoot, PermsSystem, PermsKind)
+	// The watch wants the depth of the records themselves, which is the mirror's own length and
+	// the one level its records stand below it.
+	ch, unsub, err := a.Store.WatchSubtree(len(mirror)+1, mirror...)
 	if err != nil {
 		return Unread(fmt.Errorf("watching the perms mirror: %w", err))
 	}

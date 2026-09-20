@@ -401,7 +401,7 @@ func TestLogdStore_ListAtReachesAMountedSlice(t *testing.T) {
 	}
 
 	// …and the same slice, asked for as a PATH.
-	ents := s.ListAt([]string{"local", contentMountKind, "a.txt"}, Depth, nil)
+	ents := s.ListAt([]string{"local", contentMountKind, "a.txt"}, 3, nil)
 	if len(ents) != 1 {
 		t.Fatalf("ListAt at the mounted slice found %d entities, want the one the ref answers with", len(ents))
 	}
@@ -416,7 +416,7 @@ func TestLogdStore_ListAtReachesAMountedSlice(t *testing.T) {
 	// this must not have moved: the two roots are disjoint and a wrong choice is silent.
 	logged := RefAt("local", "dir-status-a1b2c3", "a.txt")
 	set(t, s, logged, Obj{"stage": "seen"}.Payload())
-	if ents := s.ListAt([]string{"local", "dir-status-a1b2c3"}, Depth, nil); len(ents) != 1 {
+	if ents := s.ListAt([]string{"local", "dir-status-a1b2c3"}, 3, nil); len(ents) != 1 {
 		t.Fatalf("the log-backed sibling read %d entities, want 1 — the root choice moved", len(ents))
 	}
 }

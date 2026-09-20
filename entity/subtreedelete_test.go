@@ -14,7 +14,7 @@ func TestWatchSubtreeReportsARemoval(t *testing.T) {
 	set(t, s, keep, Obj{"stage": "open"}.Payload())
 	set(t, s, gone, Obj{"stage": "open"}.Payload())
 
-	ch, unsub, err := s.WatchSubtree(Depth, "demo", "pr")
+	ch, unsub, err := s.WatchSubtree(3, "demo", "pr")
 	if err != nil {
 		t.Fatalf("watch subtree: %v", err)
 	}

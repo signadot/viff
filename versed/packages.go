@@ -256,8 +256,8 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	// wire, filtered here — so this cost three full reads, on a function `verse charter` calls
 	// on every request and installs call again. On staging that was the difference between an
 	// answer and a timeout.
-	for _, ent := range s.Store.ListAt(
-		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharterRecord) {
+	for _, ent := range entity.Below(s.Store, isCharterRecord, 2,
+		entity.VerseRoot, trigger.CharterSystem) {
 		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
 			out = append(out, at)
 		}
@@ -432,8 +432,8 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 	}
 	// At the subtree, for the reason packagesSeen gives: a package declaration lives under
 	// `verse.trigger.package`, and List reads the root.
-	for _, ent := range s.Store.ListAt(
-		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, trigger.IsCharterPackage) {
+	for _, ent := range entity.Below(s.Store, trigger.IsCharterPackage, 2,
+		entity.VerseRoot, trigger.CharterSystem) {
 		at := entity.Str(ent.Payload, trigger.AtField)
 		if at == "" {
 			at = ent.Ref.Name()
@@ -617,8 +617,8 @@ func (s *Server) uninstallOne(store entity.Store, at string) error {
 	// This is the same listing packagesSeen does, with the same predicate, which is the point:
 	// what makes a package visible is what a removal has to reach.
 	left := 0
-	for _, ent := range s.Store.ListAt(
-		[]string{entity.VerseRoot, trigger.CharterSystem}, entity.Depth+1, isCharterRecord) {
+	for _, ent := range entity.Below(s.Store, isCharterRecord, 2,
+		entity.VerseRoot, trigger.CharterSystem) {
 		if entity.Str(ent.Payload, trigger.AtField) != at {
 			continue
 		}

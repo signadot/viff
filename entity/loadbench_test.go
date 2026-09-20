@@ -46,7 +46,7 @@ func TestLoadUnderWatches(t *testing.T) {
 	var wg sync.WaitGroup
 	openStart := time.Now()
 	for i := range watches {
-		ch, unsub, err := s.WatchSubtree(Depth, "bench", "k"+strconv.Itoa(i))
+		ch, unsub, err := s.WatchSubtree(3, "bench", "k"+strconv.Itoa(i))
 		if err != nil {
 			t.Fatalf("watch %d: %v", i, err)
 		}

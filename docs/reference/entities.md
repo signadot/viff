@@ -135,8 +135,10 @@ name at that position; the structure around it — its length, its wildcards, it
 
 > **Pending.** Descent is the corner where the tree has not caught up with this. A match compares
 > a segment as a name, so `verse-dev..finding` and `verse-dev.drift.finding` do not meet, and
-> kpath answers false for any pattern holding `..`, so containment cannot use it yet. A fixed
-> `Depth` also survives in the store's walk. Tracked as `jabt2frr` here and
+> kpath answers false for any pattern holding `..`, so containment cannot use it yet. One fixed
+> arity also survives, in the walk behind `List` (`listWalkArity`): a listing that names no
+> address has nothing to count from, where every other walk says how far *below its own place*
+> its records stand. Tracked as `jabt2frr` here and
 > `17hj5ygkh12ks7j7n5n0` upstream; until they close, this section says what will be true of a
 > descent rather than what is.
 

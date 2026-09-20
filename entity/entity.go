@@ -207,14 +207,6 @@ func RefOfAny(segs []string) (Ref, bool) {
 	return RefAt(segs...), true
 }
 
-// Depth is how many segments name an entity BELOW its root — system, kind, id.
-//
-// It is the ONE place the arity is written down. Everything else asks Segs, RefOf or this
-// constant, which is what makes an address of another depth a change to this line and its
-// grammar rather than to every walk in the tree. An address in verse's own half is one segment
-// deeper, and `Segs` is what says so.
-const Depth = 3
-
 // Entity is a Ref plus its payload — one node of the verse. The payload is the small
 // metadata the entity carries (not the underlying system's contents); stages and other
 // lifecycle facts are conventions on it — a "stage" field a trigger matches and an action

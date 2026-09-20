@@ -736,7 +736,9 @@ func validTriggerName(name string) error {
 // one vector with a NUL between each segment AND between each subject, so nothing about where
 // one address ends is lost to the hash.
 func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
-	segs := make([]string, 0, len(subjects)*entity.Depth)
+	// No capacity hint: how many segments a subject has is the subject's, not a number this
+	// package knows, and a hint computed from a wrong arity is worse than letting append size it.
+	var segs []string
 	for _, s := range subjects {
 		segs = append(segs, s.Segs()...)
 		segs = append(segs, "") // an empty segment bounds one subject from the next: none can be one

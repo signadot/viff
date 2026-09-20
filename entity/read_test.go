@@ -41,7 +41,7 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 		t.Fatalf("the system reads the mirror: ok=%v err=%v", ok, err)
 	}
 	// And a listing across verse's half leaves the mirror out for bob.
-	all := refs(bob.ListAt([]string{entity.VerseRoot}, entity.Depth+1, nil))
+	all := refs(entity.Below(bob, nil, 3, entity.VerseRoot))
 	if all[entity.PermsRef(pr).String()] {
 		t.Fatal("bob's listing of verse's half holds a perms record")
 	}
@@ -91,7 +91,7 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	want := map[string]bool{theirs.String(): true, shared.String(): true}
 
 	// A listing.
-	if got := refs(bob.ListAt([]string{"demo", "pr"}, entity.Depth, nil)); len(got) != 2 || !got[theirs.String()] || !got[shared.String()] {
+	if got := refs(entity.Below(bob, nil, 1, "demo", "pr")); len(got) != 2 || !got[theirs.String()] || !got[shared.String()] {
 		t.Fatalf("bob's listing = %v, want %v", got, want)
 	}
 	// A replay.
@@ -149,17 +149,17 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := refs(snap.ListAt([]string{"demo", "pr"}, entity.Depth, nil)); len(got) != 2 || got[mine.String()] {
+	if got := refs(entity.Below(snap, nil, 1, "demo", "pr")); len(got) != 2 || got[mine.String()] {
 		t.Fatalf("bob's snapshot = %v, want %v", got, want)
 	}
 	if _, _, err := snap.Get(mine); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("bob's snapshot answers alice's pr: %v", err)
 	}
 	// alice and the system see everything of theirs.
-	if got := refs(alice.ListAt([]string{"demo", "pr"}, entity.Depth, nil)); len(got) != 1 || !got[mine.String()] {
+	if got := refs(entity.Below(alice, nil, 1, "demo", "pr")); len(got) != 1 || !got[mine.String()] {
 		t.Fatalf("alice's listing = %v", got)
 	}
-	if got := refs(system.ListAt([]string{"demo", "pr"}, entity.Depth, nil)); len(got) != 3 {
+	if got := refs(entity.Below(system, nil, 1, "demo", "pr")); len(got) != 3 {
 		t.Fatalf("the system's listing = %v", got)
 	}
 }

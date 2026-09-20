@@ -2,6 +2,7 @@ package entity
 
 import (
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -54,18 +55,26 @@ func TestRefOfAnyRefusesWhatIsNotAnAddress(t *testing.T) {
 	}
 }
 
-// The arity is stated ONCE. This is the guard on that claim: it fails the moment somebody
-// writes a literal 3 into a walk instead of asking, because the walk and the constant would
-// then disagree the day the constant changes.
-func TestDepthIsWhatEveryAddressHas(t *testing.T) {
-	ref := RefAt("demo", "pr", "1")
-	if got := len(ref.Segs()); got != Depth {
-		t.Fatalf("a ref has %d segments and Depth says %d", got, Depth)
-	}
-	segs, err := PathSegs(ref.String())
-	if err != nil || len(segs) != Depth {
-		t.Fatalf("the string spelling reads back as %d segments (%v) and Depth says %d",
-			len(segs), err, Depth)
+// An address has the segments it was given, whatever their number. This used to assert that
+// every address has exactly Depth of them, guarding a constant that said three — a claim
+// RefOfAny above already refuses to enforce, since it accepts one, two and four. What is
+// actually true, and what a walk depends on, is that the count survives the round trip: a ref
+// spelled as a string and read back names the same segments it was built from.
+func TestAnAddressKeepsTheSegmentsItWasGiven(t *testing.T) {
+	for _, want := range [][]string{
+		{"demo"},
+		{"demo", "pr"},
+		{"demo", "pr", "1"},
+		{"demo", "pr", "1", "labels"},
+	} {
+		ref := RefAt(want...)
+		if got := ref.Segs(); !slices.Equal(got, want) {
+			t.Errorf("RefAt(%q).Segs() = %q", want, got)
+		}
+		segs, err := PathSegs(ref.String())
+		if err != nil || !slices.Equal(segs, want) {
+			t.Errorf("PathSegs(%q) = %q, %v; want %q", ref.String(), segs, err, want)
+		}
 	}
 	// And a write's target keeps every segment it was given: there is no split in an address.
 	p, err := TargetOf([]string{"demo", "pr", "1", "labels", "urgent"})

@@ -2709,15 +2709,21 @@ func commentOperand(n *ir.Node) (*ir.Node, bool) {
 }
 
 // walkEntityDoc reads List's entities out of a MATERIALIZED verse subtree: the nodes three levels
-// down in the world's half and four in verse's own. It is the one fixed depth left, and it goes
-// with List and Depth; a caller that knows its depth asks
-// ListAt.
+// down in the world's half and four in verse's own.
+//
+// IT IS THE ONE FIXED ARITY LEFT, and the reason is that List names no address, so there is
+// nothing to count from — every other walk was able to say how far BELOW its own place its
+// records stand (entity.Below) once it had a place to say it about. This one has to guess, and
+// three is the guess. It is tracked as a residual; a caller that knows its depth asks ListAt or
+// Below and does not come through here.
+const listWalkArity = 3
+
 func walkEntityDoc(node *ir.Node) []Entity {
 	var out []Entity
 	for _, name := range fieldNames(node) {
-		depth := Depth - 1 // the top level is this segment; the rest are below it
+		depth := listWalkArity - 1 // the top level is this segment; the rest are below it
 		if name == VerseRoot {
-			depth = Depth
+			depth = listWalkArity
 		}
 		nodesAt(childByKey(node, name), depth, func(segs []string, v *ir.Node) {
 			if ref, ok := RefOfAny(append([]string{name}, segs...)); ok {

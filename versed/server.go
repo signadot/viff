@@ -2296,8 +2296,8 @@ func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
 // records through this verb rather than through `verse data verse perms` for exactly that
 // reason. The check per record costs a walk through the cache and no read.
 func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
-	ents, err := entity.ListAtErr(entity.As(s.scopedStore(r), entity.SystemPerms),
-		[]string{entity.VerseRoot, entity.PermsSystem, entity.PermsKind}, entity.Depth+1, nil)
+	ents, err := entity.BelowErr(entity.As(s.scopedStore(r), entity.SystemPerms), nil, 1,
+		entity.VerseRoot, entity.PermsSystem, entity.PermsKind)
 	if unreadable(w, r, err) {
 		return
 	}
@@ -2656,9 +2656,8 @@ func pendingQuestionsErr(store entity.Store) ([]entity.Entity, error) {
 	// At the questions subtree. This is on the READINESS path (`/status` reports the count),
 	// and a List(pred) is a Match on the root — so a probe every five seconds read the entire
 	// verse to count what was pending.
-	ents, err := entity.ListAtErr(store,
-		[]string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind},
-		entity.Depth+1, mirror.IsQuestion)
+	ents, err := entity.BelowErr(store, mirror.IsQuestion, 1,
+		entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
 	if err != nil {
 		return nil, err
 	}

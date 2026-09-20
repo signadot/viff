@@ -1,7 +1,6 @@
 2 cmd/verse/client.go
 2 entity/addr_test.go
-3 entity/entity.go
-5 entity/read_test.go
+2 entity/entity.go
 2 entity/snapshot.go
 1 source/converge_test.go
 1 source/own_test.go
@@ -13,7 +12,6 @@
 1 trigger/path_test.go
 1 trigger/path.go
 2 trigger/reads.go
-2 trigger/trigger_api.go
+1 trigger/trigger_api.go
 5 trigger/trigger.go
-3 versed/packages.go
-3 versed/server.go
+1 versed/server.go
