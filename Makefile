@@ -299,6 +299,18 @@ check-paths: ## fail if the system:kind:id vocabulary moves off its baseline (it
 #
 # It needs node, which this repo otherwise does not, so it SKIPS loudly rather than failing
 # when there is none: `make check` has to stay runnable on a machine with nothing but Go.
+# The claims are in one file and the work is in three places, so the join is derived rather than
+# kept: a note carries a `Claimed:` line only if it wants to, and this fails when one says
+# something owners.tony does not. A note that says nothing is free to be free — the only way to
+# be wrong is to say something, which is the property worth checking.
+.PHONY: check-claims
+check-claims: ## fail if a note's Claimed: line disagrees with docs/working/owners.tony
+	@./scripts/claims.sh --check
+
+.PHONY: claims
+claims: ## who holds which work, what has lapsed, and what is free
+	@./scripts/claims.sh
+
 .PHONY: check-mermaid
 check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is absent)
 	@./scripts/check-mermaid.sh
@@ -324,7 +336,7 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 	fi
 
 .PHONY: check
-check: check-generate check-json check-paths check-mermaid check-docs ## every static check (what CI should run before the tests)
+check: check-generate check-json check-paths check-claims check-mermaid check-docs ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an ephemeral port)

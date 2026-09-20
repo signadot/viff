@@ -4,12 +4,14 @@ Design thinking that is worth keeping in the repo but has not been reconciled wi
 else: ideas, half-designs, an argument still finding its shape. These are durable so they
 survive being picked up again, not because they are settled.
 
-The notes are in [`work/`](work/). Beside it stand the two ledgers that say where the work
-stands, which is why they are not in it:
+The notes are in [`work/`](work/). Beside it stand the files that say how the work is governed
+and where it stands, which is why they are not in it:
 
 | | |
 |---|---|
-| [contributing.md](contributing.md) | how a contribution takes shape in this repository |
+| [charter.md](charter.md) | what verse is for, who owns it, and how work under it is owned |
+| [contributing.md](contributing.md) | how the repository carries that out |
+| [owners.tony](owners.tony) | who holds which work, and until when |
 | [done.md](done.md) | what landed, and where it is described now |
 | [residuals.md](residuals.md) | what a landing did not build, and where each gap is tracked |
 
@@ -30,15 +32,43 @@ Two things follow, both worth stating because the temptation runs the other way:
   nothing here runs") costs one sentence and saves a reader from mistaking a sketch for a
   plan. Whether the reasoning argues from code that exists is a separate matter and no
   reason to file it elsewhere — most good design notes do.
+  The same line says whether the note is **in work**, by naming the claim in
+  [owners.tony](owners.tony) that carries it (see [Unclaimed](#unclaimed) below).
 - **Do not tidy by deleting.** A note that was wrong is more useful than no note, provided
   it says so. Mark it, keep the reasoning, and link what replaced it.
 
-## Done
+## In work, free, done
 
-When the work lands the note leaves, its headline and commits going to [done.md](done.md) — so
-this directory holds what is coming and what is stalled, never what is finished. A note can also
-be finished by being overtaken, which is a row there with no commits and a line saying what
-serves the need instead.
+Three states, and one place says each. A note is **in work** when a live claim in
+[owners.tony](owners.tony) carries it — a named owner, a pending item, and a deadline that has
+not passed. When the work lands the note leaves, its headline and commits going to
+[done.md](done.md). Everything else is **free**.
+
+A claim over a note names the note: `work: task-budget` claims `work/task-budget.md`. Work that
+is not a note names itself the same way, so one file holds both.
+
+```sh
+make claims          # who holds what, what has lapsed, and what is free
+```
+
+**Lapsed is its own list.** The [charter](charter.md) says an expired claim is void, so lapsed
+work and work nobody ever claimed are equally free — but they do not tell you the same thing,
+and the difference is worth knowing before you pick one up: somebody meant to, and life moved.
+
+**A note may say who holds it, and then it is checked.** One line under the title, and
+`make check` fails when it disagrees with `owners.tony`:
+
+```
+Claimed: trent@example.com until 2026-11-01
+```
+
+A note that says nothing is free to be free. Saying something is the only way to be wrong, which
+is why that is the part a check looks at — the claims themselves live in one file, so they cannot
+drift from themselves.
+
+Deriving all of this rather than keeping it by hand is the `tracking-unclaimed` work in
+[owners.tony](owners.tony), and `scripts/claims.sh` is its bootstrap and its acceptance test: a
+charter that reads the same three places should answer what the script answers.
 
 ## Residuals
 

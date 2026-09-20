@@ -8,6 +8,10 @@ out wrong rather than deleting it ([working/README.md](README.md)). It leaves `w
 any other note — when this is what we actually do, it lands as root `CONTRIBUTING.md` and this
 file goes away.
 
+It serves [the charter](charter.md): the charter says what verse is for and how work under it
+is owned, and this note is how the repository carries that out. Where the two disagree the
+charter governs, and this one gets edited.
+
 ## Where we are
 
 The core is stablish; the trigger model got there by iterating against itself, and ten `!`
@@ -16,6 +20,11 @@ straight onto `main`. No pull requests, no CI, no tags.
 
 The goal now is to get verse *driven*, by the handful of us who will engage, and let what the
 driving finds set the agenda. The remote stops being a backup and starts being where we meet.
+
+The charter names its owners and leaves it to each of them how to organise building, review
+and fixes, with `main` kept fast-forward only. So what follows is a recommendation carrying its
+reasons, not a rule: take it, adapt it, or say what you do instead. The exception is what a
+commit *declares*, which is not yours alone because it is what everybody else reads.
 
 The order below is the priority order: dogfooding, then how thinking gets shared, then the
 push mechanics that serve both.
@@ -93,6 +102,11 @@ not reach it.
 Deploying a tag is one command when that is what you want — `git checkout dogfood/<name>.N &&
 make ship`, which the refuse-if-dirty guard and the immutable image ref both survive.
 
+**A shared instance is named separately.** `deploy/<I>.N` says what instance `I` is running,
+and its annotation lists the components ([charter](charter.md)). A `dogfood/<name>.N` tag is
+one drive's ground; a `deploy/<I>.N` tag is the ground of everybody dialling into `I`, which
+is why deploying one is owned work rather than a thing anyone does in passing.
+
 **And a tag is cut when somebody needs ground**, not when main moves. `N` advances when a drive
 deliberately moves, which is a decision somebody makes for a reason: a new drive starting, an
 upgrade being coordinated, an announcement that wants a name. Cutting one per improvement turns
@@ -122,7 +136,8 @@ Force-push your own `use/` branch freely. Never force-push `main`.
 *is* an SDLC flow, which is the shape verse claims to run, so it was the fastest honest feedback
 available: the tree as entities, and commits landing as facts. Both walked into walls, which was
 the point, and what it bootstrapped is now carried by targeted efforts instead — the comment
-drift charters that run, and the gaps it left, which are tracked as issues.
+drift charters that run, and the pieces named in
+[owners.tony](owners.tony). Its residual has what it left.
 
 ## From a note, to a plan, to a doc
 
@@ -132,6 +147,19 @@ practice; just unwritten.
 **1. `docs/working/$X.md` — the note.** What is wrong, what you propose, why. Opens
 `Status: proposal, nothing here runs`. Push it early: cheap to disagree with in week one,
 expensive to discover in week three.
+
+A claim over the note names the note — `work: task-budget` claims `work/task-budget.md` — and
+lives in [owners.tony](owners.tony).
+
+**A note whose subject is a document outside this repo carries `Source:`.** The repo holds the
+relation and not a copy: what the document is, who wrote it, where it lives, and what the team
+decides about it. A reading can be claimed and a review can be asked over it, which is how the
+charter's *review may happen out of band, and lands back here* reads when the document itself is
+out of band too. It says what it was read at, because the source moves under it the way the tree
+moves under a residual. The note may carry one `Claimed: <owner> until <date>` line
+if it wants to say so, which `make check` holds to what is written there; one that says nothing
+is free to be free, and `make claims` lists it as such. A note nobody holds is an invitation
+rather than a plan.
 
 **2. `docs/working/$X-plan.md` — the plan.** The order of work, and per step *what it proves*
 ([llm-memory-plan.md](work/llm-memory-plan.md) is the reference). Each step leaves the tree green.
@@ -167,7 +195,11 @@ this and should just land.
 
 ## Pushing to `main`
 
-Three tiers, graded by what you owe the reader. All go to `main`.
+Three tiers, graded by what a reader needs from you. All go to `main`.
+
+**These are recommendations.** How you organise your own building and review is yours under the
+charter. What a commit declares is not, because everybody else reads it — so the recommendation
+is about the declaration, and `Breaks:` is the last line to drop.
 
 ### `fix` — no trailers, no ceremony
 
@@ -175,13 +207,13 @@ Three tiers, graded by what you owe the reader. All go to `main`.
 revert. Write a normal commit message and push. You never write `Tier: fix` — silence *is* the
 declaration, and it says "anyone reading the diff would agree."
 
-Trailers are owed by the two tiers below, not by everyone.
+Trailers are recommended for the two tiers below, not for everyone.
 
 ### `change` — significant, but the contract holds
 
 New capability, an internal rewrite, better behaviour — where nothing anybody else wrote stops
 working. The body is the record: what changed, why, what a reader would notice
-(`3acac29` and neighbours are the standard). Carries `Tier:` and `Checked:`.
+(`3acac29` and neighbours are the standard). Recommended: `Tier:` and `Checked:`.
 
 The trap is the change that looks contract-preserving because the types did not move. A rule
 that now fires where it did not is a contract change to whoever's charter it is. When in
@@ -202,7 +234,8 @@ that directory describes what is true and those two are where we promised the op
 working note is retired, contradicted or rewritten as the thinking moves — that is the genre,
 not a break — and the roadmap is resynthesized whole. Nobody's checkout depends on either.
 
-Carries the `!` marker and all three trailers.
+Recommended: the `!` marker and all the trailers below. `Breaks:` is the one another owner's
+checkout depends on.
 
 ### Say what you held yourself to
 
@@ -212,6 +245,7 @@ checkmark nobody produced. Under-declaring is what the `fix` default is for; ove
 the only thing that breaks this.
 
 ```
+Work: <a claim in owners.tony>                             # what this commit is under
 Tier: change | contract                                  # omit entirely for a fix
 Checked: make check && make test && ./smoke.sh
 Breaks: <surface> — <what a reader must do>              # contract only
@@ -220,6 +254,15 @@ Breaks: <surface> — <what a reader must do>              # contract only
 `Checked:` is free text — `by hand: drove §4`, `smoke only`, `nothing — see body` are all
 valid, and the last earns the mechanism its keep. Note load-bearing skips: `make test-long` is
 not part of the ritual, but a timeout change that skipped it should say so.
+
+`Work:` names the claim in [owners.tony](owners.tony) this commit is under, and it is the trailer
+the charter gives a use: a claim stays alive by being engaged with, and the log is where that
+shows. Omit it on a commit no claim carries.
+
+```sh
+fmt='%h %ad %s ::%(trailers:key=Work,valueonly)'
+git log --date=short --format="$fmt" | grep '::auth'   # what has moved on the auth claim
+```
 
 Trailers rather than prose, because the log becomes queryable — which is what makes the tag
 message above generatable:
@@ -271,8 +314,9 @@ Each has a trigger that would change the answer; naming it is what stops "not ye
 "never."
 
 - **CI** — *trigger:* a wrong `Checked:` line survives a week, or a `dogfood/*` tag is re-cut.
-- **Pull requests** — *trigger:* a contributor outside this handful, or a change that costs
-  more than a day to unpick.
+- **Pull requests, repo-wide** — the charter leaves reviewing to each owner, so use them on
+  your own work if you want them. What stays off the table is requiring them of everybody, and
+  `main` stays fast-forward only.
 - **Versioning and releases** — *trigger:* a consumer outside the team.
 - **Protected `main`, required trailers, hooks** — no trigger. Discipline is cheaper than
   policy here, and revert is one command.
@@ -287,16 +331,13 @@ Each has a trigger that would change the answer; naming it is what stops "not ye
   the most likely source of a break nobody sees coming.
 - **Does a `--data` directory survive a binary upgrade?** Untried. Until somebody tries, the
   honest advice on advancing a tag is "start fresh" — bad for anyone driving something real.
-- **How do you ask someone to read something?** Nothing above addresses a person. The only
-  attention mechanism here is a `contract` commit's `Breaks:` trailer, which is the opposite
-  register on purpose — announcement not permission, seen rather than answered. Left open
-  deliberately, because the convention is that review
-  happens *out of band* — chat, a call, someone's afternoon — and the repo is the home of what
-  applying it produced: an edited note, a commit, a residual. That much is consistent with this
-  note being subject to itself ("disagree by editing it and pushing to `main`"), and with a
-  reply that is a commit beating a comment thread nobody rereads. What is unsettled is whether
-  the *ask* wants a trace in here at all — a line in a note's `Status:`, or a gate over the doc,
-  since a review request is the case that genuinely is one (`!quorum 1`).
+- **How do you ask someone to read something?** *Answered by [the charter](charter.md),* and it
+  went the way the last sentence of this bullet used to guess at: asking for a design review is
+  a gate over the doc, whose default the owner of the design work sets. The reading may happen
+  out of band — chat, a call, someone's afternoon — but it lands back here as a note beside the
+  doc or edits to it, which keeps the repo the home of what applying it produced. What remains
+  open is the mechanism rather than the convention: a gate reaches nobody until verse's gates
+  can be answered from Slack, which the charter names as the prerequisite.
 - **Where does friction go?** Not a defect, but "this took an hour and I'm still unsure" is the
   most valuable thing dogfooding produces and fits none of the buckets above.
 - **Do per-drive tags proliferate?** No proposal for retiring a drive or its tags, and
