@@ -17,6 +17,7 @@ import (
 
 	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
@@ -60,6 +61,17 @@ type upConfig struct {
 	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
+	// ReseedPerms writes the deployment's top — the root record, verse's half and the admin
+	// group — OVER what stands, for the one start that applies a policy that changed. Without
+	// it the seed writes them once, since after that they are where an operator's own edits
+	// live and nothing can tell an edit from a config that moved.
+	ReseedPerms bool `cli:"name=reseed-perms desc='write the root, verse and admin-group records from config OVER what stands (a policy change; the seed is once otherwise)'"`
+	// UnmigratePerms is the step BEFORE rolling the image back past the `child-owner` spelling:
+	// it rewrites the mirror as that binary reads it and exits without serving, since this one
+	// reads the new spelling alone. A binary from before cannot read a record that says
+	// `child-owner`, and a line it cannot read refuses the whole field — so without this every
+	// seed row holds out nothing under it, and nobody spawns a task.
+	UnmigratePerms bool `cli:"name=unmigrate-perms desc='rewrite the perms mirror in the spelling a binary from before child-owner reads, and EXIT without serving: the step before rolling the image back'"`
 }
 
 // validate rejects contradictory flag combinations BEFORE anything is started.
@@ -261,7 +273,51 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("connect to docd at %s: %w", d.clientAddr, err)
 	}
 	defer store.Close()
-	srv := versed.NewWithStore(build, store)
+	if cfg.UnmigratePerms {
+		// The levels first, since they are found under the field's new name; then the field.
+		view := entity.As(store, entity.SystemPerms)
+		n, err := entity.UnmigrateChildOwner(view)
+		if err != nil {
+			return fmt.Errorf("verse up --unmigrate-perms: %w", err)
+		}
+		m, err := entity.UnmigrateChildGrants(view)
+		if err != nil {
+			return fmt.Errorf("verse up --unmigrate-perms: %w", err)
+		}
+		fmt.Fprintf(cc.Out, "verse up: rewrote %d perms record(s) in the old spelling, and renamed the "+
+			"field on %d; not serving — start the older binary on this store now\n", n, m)
+		return nil
+	}
+	// The permission policy this deployment set, read and REFUSED HERE rather than seeded
+	// wrong: a verse holding out something nobody asked for is what these settings exist to
+	// prevent, and the seed runs inside the constructor below.
+	perms, err := permsPolicy(appCfg.Perms)
+	if err != nil {
+		return err
+	}
+	// The flag, or the env a cluster sets without editing a pod's args
+	// (`kubectl set env deploy/versed VERSE_RESEED_PERMS=true`, watched, then unset). It
+	// overwrites an operator's live edits of the top, the admin group's membership included,
+	// which is why it is one start's worth and not a setting in the config file.
+	perms.Reseed = cfg.ReseedPerms
+	if v := os.Getenv("VERSE_RESEED_PERMS"); v != "" {
+		// A BOOL, read as one: `=0` and `=false` are what somebody writes to turn a thing OFF,
+		// and a test for non-empty would have them rewrite the top over an operator's live
+		// edits at every start.
+		on, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("VERSE_RESEED_PERMS=%q: true or false", v)
+		}
+		perms.Reseed = perms.Reseed || on
+	}
+	srv := versed.NewWithStore(build, store, versed.WithPerms(perms))
+	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
+	// that could not write it would refuse every request from every person — which reads as a
+	// verse that lost its data, and is worth failing loudly at the start instead.
+	if err := srv.SeedError(); err != nil {
+		return fmt.Errorf("verse up: the permission seed did not land, so this verse would "+
+			"admit nobody: %w", err)
+	}
 	// Publish docd's faces on /status so `verse connect` (its own process) can find
 	// the mount face and run the file controller against it — as the CLIENT should reach
 	// them, which is not always how versed did (--docd-advertise-addr). storeKind below
@@ -291,19 +347,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return err
 	} else if set {
 		srv.SetTripPace(d)
-	}
-	// The root's default: what a node created with no default above it holds out. Refused at
-	// startup for the reason the pace is, since a verse holding out something nobody asked for
-	// is what the setting exists to prevent.
-	if appCfg.Perms.Default != nil {
-		levels, _, err := entity.ParseLevels(entity.Obj{"default": appCfg.Perms.Default}.Payload(), "perms.default")
-		if err != nil {
-			return err
-		}
-		if levels == nil {
-			levels = entity.Levels{}
-		}
-		entity.PolicyOf(srv.Store).SetRootDefault(levels)
 	}
 	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
@@ -446,4 +489,33 @@ func brokerFace(addr string) string {
 		host = "localhost"
 	}
 	return "http://" + net.JoinHostPort(host, port)
+}
+
+// permsPolicy reads the deployment's permission settings: the root's default, and the admins
+// the seed writes into the `admin` group and the root holds `owner` out to.
+//
+// Every value is parsed HERE, at startup, and a bad one is an error rather than a policy nobody
+// meant. An admin that does not parse is the whole point of refusing: a grantee the grammar
+// cannot read admits nobody, so a verse seeded with one would stand with a top no living person
+// can create beneath.
+func permsPolicy(c config.PermsConfig) (versed.Perms, error) {
+	var p versed.Perms
+	if c.ChildGrants != nil {
+		levels, _, err := entity.ParseLevels(entity.Obj{entity.ChildGrantsField: c.ChildGrants}.Payload(), entity.ChildGrantsField)
+		if err != nil {
+			return p, fmt.Errorf("perms.%w", err)
+		}
+		if levels == nil {
+			levels = entity.Levels{}
+		}
+		p.ChildGrants = levels
+	}
+	for _, a := range c.Admins {
+		g, err := entity.ParseGrantee(a)
+		if err != nil {
+			return p, fmt.Errorf("perms.admins: %w", err)
+		}
+		p.Admins = append(p.Admins, g.String())
+	}
+	return p, nil
 }

@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -130,6 +131,56 @@ func (s Subtree) String() string {
 //
 // A subject that NAMES one entity is checked the same way a selecting one is — the containment
 // question is about the address, and naming does not make it somebody else's to write.
+// VERSE'S HALF IS WRITTEN BY THE VERBS THAT OWN IT, and a rule's action is not one of them. The
+// api refuses a generic write under `verse` for that reason (a rule is installed by `charter -a`,
+// a runner by `runner add`, a question answered by `gate approve`), and a firing's patch or
+// derive is the same generic write arriving by another door. Left open, it is how a name the
+// system has not used yet is taken: the rows there hold `child-owner` out to everyone, so a
+// person's rule deriving `verse.schedule.date` before the base charter first does creates it,
+// owns it, and the system then writes into a node that is theirs. A rule READS verse's half
+// freely — a posed question, a tick, a task's mirror are subjects like any other.
+//
+// The system's own rules are the exception, being how the system writes there: the base
+// charter derives the calendar.
+//
+// Asked twice, as the confinement is: checkReserved at install, of what the rule names
+// literally, so its author hears it; and reservedWrite at the write, of the address itself,
+// since a derive's target and a subject's first segment may not be literal.
+var errReservedWrite = fmt.Errorf("%w: what stands under %s is written by the verbs that own it "+
+	"(charter -a, runner add, source add, resolver add, gate approve), not by a rule's patch or "+
+	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.VerseRoot)
+
+// checkReserved refuses, at install, a rule of anybody's but the system's that names an address
+// under `verse` to write: a subject it patches, or a derive's target.
+func (e *Engine) checkReserved(t Trigger, as string) error {
+	if entity.PolicyOf(e.store) == nil || entity.IsSystem(e.installer(as)) {
+		return nil
+	}
+	under := func(segs []string) bool { return len(segs) > 0 && segs[0] == entity.VerseRoot }
+	if t.writesSubject() && under(t.Condition.Subject.Segs()) {
+		return fmt.Errorf("subject %s is patched by this rule: %w", subjectText(t.Condition.Subject), errReservedWrite)
+	}
+	for _, d := range t.Action.allDerives() {
+		if under(d.segs()) {
+			return fmt.Errorf("derive into %s: %w", d.addr(), errReservedWrite)
+		}
+	}
+	return nil
+}
+
+// reservedWrite is the same refusal at the moment of the write, of the address written. Whose
+// the rule is, is its owner record's to say (OwnerOf): one with none is nobody's, and refused.
+func (e *Engine) reservedWrite(chain string, ref entity.Ref) error {
+	if !ref.Reserved() || entity.PolicyOf(e.store) == nil {
+		return nil
+	}
+	name, _, _ := strings.Cut(chain, ".")
+	if entity.IsSystem(e.OwnerOf(name)) {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", ref, errReservedWrite)
+}
+
 func (e *Engine) checkConfined(t Trigger) error {
 	if !e.confine.confined() {
 		return nil

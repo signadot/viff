@@ -25,9 +25,9 @@ const VersionHeader = "Verse-Version"
 // self-asserted, exactly as `--as` is, and the server trusts it no harder — what it buys is
 // that a write names a party, on the write, rather than in a field only some verbs carry.
 //
-// A request without it is unattributed: nothing is refused, and what it creates reads as its
-// parent's, which is what an api used by hand from curl gets. One carrying a name the grammar
-// does not read, or a name versed makes — `via:`, `system:` — is refused 400.
+// A request without it names nobody, and may read: every method but GET and HEAD is refused 400
+// (versed's principals), since what nobody writes would be the system's. One carrying a name the
+// grammar does not read, or a name versed makes — `via:`, `system:` — is refused 400 too.
 const PrincipalHeader = "Verse-Principal"
 
 // Version is this binary's own verse version, read from its build info — the version that

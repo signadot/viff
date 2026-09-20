@@ -30,8 +30,8 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// System is the entity slice a Linear source owns and is the single writer of.
-const System = "linear"
+// Root is the entity slice a Linear source owns and is the single writer of.
+const Root = "linear"
 
 // Defaults for one team's read.
 const (
@@ -52,10 +52,10 @@ type Config struct {
 	// guard, and exceeding it is an ERROR rather than a truncation — see api.readTeam.
 	PageSize, MaxIssues int
 
-	// System is the slice this source writes, empty meaning System. The operator's to choose,
+	// Root is the slice this source writes, empty meaning the package's Root. The operator's to choose,
 	// for the reason the GitHub source's is: more than one gets deployed, and the partition
 	// between them is drawn by whoever runs them rather than by how Linear is organised.
-	System string
+	Root string
 
 	// Base overrides the GraphQL endpoint (a test server). HTTPClient overrides the transport.
 	Base       string
@@ -67,7 +67,7 @@ type Config struct {
 // Linear is the Source.
 type Linear struct {
 	api      *api
-	system   string
+	root     string
 	teams    []string // team keys, sorted, so two passes answer in one order
 	pageSize int
 	max      int
@@ -89,17 +89,17 @@ func New(ctx context.Context, cfg Config) (*Linear, error) {
 	}
 	l := &Linear{
 		api:      newAPI(cfg.Auth, cfg.Base, cfg.HTTPClient),
-		system:   cfg.System,
+		root:     cfg.Root,
 		pageSize: cfg.PageSize,
 		max:      cfg.MaxIssues,
 		log:      cfg.Log,
 	}
-	if l.system == "" {
-		l.system = System
+	if l.root == "" {
+		l.root = Root
 	}
-	if strings.ContainsAny(l.system, ":/") {
-		return nil, fmt.Errorf("linear: system %q may not contain : or / — it is a segment of "+
-			"the address (verse.sources.<system>.<name>) and of the route that serves it", l.system)
+	if strings.ContainsAny(l.root, ":/.") {
+		return nil, fmt.Errorf("linear: root %q may not contain : / or . — it is the first "+
+			"segment of every address this source writes", l.root)
 	}
 	if l.pageSize <= 0 {
 		l.pageSize = DefaultPageSize
@@ -147,7 +147,7 @@ func New(ctx context.Context, cfg Config) (*Linear, error) {
 		if strings.EqualFold(key, projectKind) {
 			return nil, fmt.Errorf("linear: team key %q is the name the shared projects stand "+
 				"at (%s.%s.<id>), so a team keyed that way would address them", key,
-				l.system, projectKind)
+				l.root, projectKind)
 		}
 	}
 	sort.Strings(l.teams)
@@ -163,8 +163,8 @@ func keysOf(ts []team) []string {
 	return out
 }
 
-// System is the owned slice.
-func (l *Linear) System() string { return l.system }
+// Root is the owned slice.
+func (l *Linear) Root() string { return l.root }
 
 // Teams is the set of team keys this source reflects.
 func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
@@ -201,8 +201,8 @@ func (l *Linear) Owns() []source.Own {
 	out := make([]source.Own, 0, 2*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			source.Own{At: source.ClaimAt(l.system, key)},
-			source.Own{At: source.ClaimAt(l.system, projectKind, "*", ownersField, key)})
+			source.Own{At: source.ClaimAt(l.root, key)},
+			source.Own{At: source.ClaimAt(l.root, projectKind, "*", ownersField, key)})
 	}
 	return out
 }
@@ -216,14 +216,14 @@ const (
 
 // place is the address segments one team's entities stand under, followed by more.
 func (l *Linear) place(key string, more ...string) []string {
-	return append([]string{l.system, key}, more...)
+	return append([]string{l.root, key}, more...)
 }
 
 // TeamRef is the place one team's entities stand under: a reconcile of it reconciles that
 // team's issues and cycles, which is what a hint names.
-func TeamRef(key string) entity.Ref { return entity.RefAt(System, key) }
+func TeamRef(key string) entity.Ref { return entity.RefAt(Root, key) }
 
-// TeamRef is the same place in THIS source's system, which is what the webhook must hint: a
+// TeamRef is the same place in THIS source's root, which is what the webhook must hint: a
 // hint at `linear.ENG` reaches nothing when the source writes `issues.ENG`.
 func (l *Linear) TeamRef(key string) entity.Ref { return entity.RefAt(l.place(key)...) }
 
@@ -249,13 +249,13 @@ func (l *Linear) CycleRef(key string, number int) entity.Ref {
 
 // ProjectRef is the shared node a project stands at: one node for every team that owns it.
 func (l *Linear) ProjectRef(id string) entity.Ref {
-	return entity.RefAt(l.system, projectKind, id)
+	return entity.RefAt(l.root, projectKind, id)
 }
 
 // ProjectOwnerRef is the node one team owns inside a project — the whole of what it writes
 // there. Its claim is the same address with the id a wildcard, spelled by source.ClaimAt.
 func (l *Linear) ProjectOwnerRef(id, key string) entity.Ref {
-	return entity.RefAt(l.system, projectKind, id, ownersField, key)
+	return entity.RefAt(l.root, projectKind, id, ownersField, key)
 }
 
 // Reflect reads the configured teams and returns what `linear:*` should hold. A zero ref reads
@@ -280,10 +280,10 @@ func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 // makes for a repo: the team is what one query reads, so a finer target would cost the same
 // request.
 func (l *Linear) targets(ref entity.Ref) []string {
-	// This source's own layout is a path: `<system>.<team>.<kind>.<id>`, so the team is a
+	// This source's own layout is a path: `<root>.<team>.<kind>.<id>`, so the team is a
 	// segment rather than something to cut out of an id.
 	segs := ref.Segs()
-	if len(segs) < 2 || segs[0] != l.system {
+	if len(segs) < 2 || segs[0] != l.root {
 		return l.teams // no place of this source's: a full pass cannot be wrong
 	}
 	if segs[1] == projectKind {
@@ -320,7 +320,7 @@ func (l *Linear) reflectTeam(ctx context.Context, key string) (source.Reflection
 		// so a pass that does not carry it tombstones nothing; one ENG has just joined is
 		// written because the answer carries it. Another team's place under the same project is
 		// a different address, and neither claim reaches it.
-		source.Cover(l.system, projectKind, "*", ownersField, key),
+		source.Cover(l.root, projectKind, "*", ownersField, key),
 	}}
 	page, err := l.api.readTeam(ctx, key, l.pageSize, l.max)
 	if err != nil {

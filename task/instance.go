@@ -14,7 +14,7 @@ type Instance struct {
 	Driver string `tony:"field=driver,omitzero"`
 	Status Status `tony:"field=status"`
 	Runner string `tony:"field=runner,omitzero"` // which runner hosts it (local|<ref>|broker)
-	// RunnerName is the installed runner a spawn NAMED (`runners:<kind>:<name>`), when it
+	// RunnerName is the installed runner a spawn NAMED (`verse.runners.<name>`), when it
 	// named one. Empty for a spawn that took the verse's default, which Runner reads as
 	// `local`. It is what `verse ps --runner <name>` selects on, and it keeps answering for a
 	// runner that has since been removed — which is when an operator most wants it.

@@ -16,7 +16,7 @@ import (
 // `a:b` is installable and then unfindable.
 func TestRegistrationRefRoundTrips(t *testing.T) {
 	for _, name := range []string{"laptop", "build-host", "a:b"} {
-		ref := source.Ref("git", name)
+		ref := source.Ref(name)
 		parsed, err := entity.ParseAddr(ref.String())
 		if err != nil {
 			t.Fatalf("ParseAddr(%q): %v", ref, err)
@@ -24,19 +24,19 @@ func TestRegistrationRefRoundTrips(t *testing.T) {
 		if parsed != ref {
 			t.Fatalf("%q round-tripped to %q", ref, parsed)
 		}
-		if !slices.Equal(parsed.Segs(), []string{entity.VerseRoot, source.System, "git", name}) {
-			t.Fatalf("the address should be verse.sources.<system>.<name>, got %+v", parsed)
+		if !slices.Equal(parsed.Segs(), []string{entity.VerseRoot, source.System, name}) {
+			t.Fatalf("the address should be verse.sources.<name>, got %+v", parsed)
 		}
 	}
 }
 
 // Every refusal Check owes, and each is something that cannot be discovered later.
 func TestRegistrationCheck(t *testing.T) {
-	ok := source.Entity{Name: "laptop", System: "git", URL: "http://build-host:9801"}
+	ok := source.Entity{Name: "laptop", Root: "git", URL: "http://build-host:9801"}
 	if err := ok.Check(); err != nil {
 		t.Fatalf("a well-formed registration should pass: %v", err)
 	}
-	if err := (source.Entity{Name: "local", System: "git", Dir: "/repos/verse"}).Check(); err != nil {
+	if err := (source.Entity{Name: "local", Root: "git", Dir: "/repos/verse"}).Check(); err != nil {
 		t.Fatalf("`dir` is a way in, not a missing url: %v", err)
 	}
 
@@ -45,22 +45,24 @@ func TestRegistrationCheck(t *testing.T) {
 		e    source.Entity
 		want string // a fragment of the message, so the refusal has to SAY something
 	}{
-		{"no name", source.Entity{System: "git", URL: "http://x:1"}, "name is required"},
-		{"no system", source.Entity{Name: "a", URL: "http://x:1"}, "system is required"},
-		{"a colon in the system", source.Entity{Name: "a", System: "gi:t", URL: "http://x:1"},
+		{"no name", source.Entity{Root: "git", URL: "http://x:1"}, "name is required"},
+		{"no root", source.Entity{Name: "a", URL: "http://x:1"}, "root is required"},
+		{"a dot in the root", source.Entity{Name: "a", Root: "git.verse", URL: "http://x:1"},
 			"may not contain"},
-		{"a slash in the name", source.Entity{Name: "a/b", System: "git", URL: "http://x:1"},
+		{"a colon in the root", source.Entity{Name: "a", Root: "gi:t", URL: "http://x:1"},
+			"may not contain"},
+		{"a slash in the name", source.Entity{Name: "a/b", Root: "git", URL: "http://x:1"},
 			"path segment"},
-		{"no way in", source.Entity{Name: "a", System: "git"}, "exactly one way in"},
-		{"two ways in", source.Entity{Name: "a", System: "git", URL: "http://x:1", Dir: "/r"},
+		{"no way in", source.Entity{Name: "a", Root: "git"}, "exactly one way in"},
+		{"two ways in", source.Entity{Name: "a", Root: "git", URL: "http://x:1", Dir: "/r"},
 			"three different ways in"},
 		// The typo an operator actually makes: url.Parse takes "build-host:9801" as a scheme
 		// with an opaque body, and it would install as a source nothing can dial.
-		{"a url with no scheme", source.Entity{Name: "a", System: "git", URL: "build-host:9801"},
+		{"a url with no scheme", source.Entity{Name: "a", Root: "git", URL: "build-host:9801"},
 			"http:// or https://"},
-		{"a url with no host", source.Entity{Name: "a", System: "git", URL: "http://"},
+		{"a url with no host", source.Entity{Name: "a", Root: "git", URL: "http://"},
 			"no host"},
-		{"an unparseable claim", source.Entity{Name: "a", System: "git", URL: "http://x:1",
+		{"an unparseable claim", source.Entity{Name: "a", Root: "git", URL: "http://x:1",
 			Owns: []source.Own{{At: "git.ref.a*b"}}}, "TRAILING"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,7 +81,7 @@ func TestRegistrationCheck(t *testing.T) {
 // that installed and never dialled would sit in a listing looking installed — the one state an
 // operator cannot debug from the outside.
 func TestDialInIsRefusedUntilItIsBuilt(t *testing.T) {
-	err := (source.Entity{Name: "laptop", System: "git", DialIn: "nonce"}).Check()
+	err := (source.Entity{Name: "laptop", Root: "git", DialIn: "nonce"}).Check()
 	if err == nil {
 		t.Fatal("dial-in should be refused while it is unbuilt")
 	}
@@ -102,9 +104,9 @@ func TestRegistrationCheckFields(t *testing.T) {
 		return n
 	}
 	for _, src := range []string{
-		"{name: a, system: git, ulr: \"http://x:1\"}",
-		"{name: a, system: git, url: \"http://x:1\", scoep: s}",
-		"{name: a, system: git, url: \"http://x:1\", ownes: [\"git.*.a/*\"]}",
+		"{name: a, root: git, ulr: \"http://x:1\"}",
+		"{name: a, root: git, url: \"http://x:1\", scoep: s}",
+		"{name: a, root: git, url: \"http://x:1\", ownes: [\"git.*.a/*\"]}",
 	} {
 		err := source.CheckFields(parse(t, src))
 		if err == nil {
@@ -113,7 +115,7 @@ func TestRegistrationCheckFields(t *testing.T) {
 	}
 	// Everything verse itself writes is known, so `verse source show` piped back into
 	// `verse source add` is not refused for carrying what it was just handed.
-	full := "{name: a, system: git, url: \"http://x:1\", owns: [{at: \"git.*.a/*\"}], scope: s, " +
+	full := "{name: a, root: git, url: \"http://x:1\", owns: [{at: \"git.*.a/*\"}], scope: s, " +
 		"lastReflect: \"2026-01-01T00:00:00Z\", lastError: \"\"}"
 	if err := source.CheckFields(parse(t, full)); err != nil {
 		t.Fatalf("a registration verse wrote should be re-installable: %v", err)
@@ -123,7 +125,7 @@ func TestRegistrationCheckFields(t *testing.T) {
 	// of ref globs; a claim is now a document, because it may name a path inside a payload and
 	// there is no terse spelling of one. The decoder's own complaint is "expected object, got
 	// String" — true, and no help to the person reading it, who is upgrading.
-	err := source.CheckFields(parse(t, "{name: a, system: git, owns: [\"git.*.verse/*\"]}"))
+	err := source.CheckFields(parse(t, "{name: a, root: git, owns: [\"git.*.verse/*\"]}"))
 	if err == nil {
 		t.Fatal("a list of ref globs should be refused")
 	}
@@ -143,23 +145,23 @@ func TestRegistrationFindAndList(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		entitytest.Set(t, store, source.Ref(e.System, e.Name), node)
+		entitytest.Set(t, store, source.Ref(e.Name), node)
 	}
-	write(source.Entity{Name: "laptop", System: "git", URL: "http://a:1",
+	write(source.Entity{Name: "laptop", Root: "git", URL: "http://a:1",
 		Owns: []source.Own{{At: "git.*.verse/*"}}})
-	write(source.Entity{Name: "build", System: "git", Dir: "/repos"})
-	write(source.Entity{Name: "eng", System: "linear", URL: "http://b:1", Scope: "s"})
+	write(source.Entity{Name: "build", Root: "git", Dir: "/repos"})
+	write(source.Entity{Name: "eng", Root: "linear", URL: "http://b:1", Scope: "s"})
 
 	got := source.List(store)
 	if len(got) != 3 {
 		t.Fatalf("List = %d registrations, want 3", len(got))
 	}
-	// Ordered by address, so two readers see one order.
-	if got[0].Name != "build" || got[1].Name != "laptop" || got[2].System != "linear" {
+	// Ordered by address — which is the name — so two readers see one order.
+	if got[0].Name != "build" || got[1].Name != "eng" || got[2].Name != "laptop" {
 		t.Fatalf("List order = %+v", got)
 	}
 
-	for _, spelling := range []string{"git.laptop", "verse.sources.git.laptop"} {
+	for _, spelling := range []string{"laptop", "verse.sources.laptop"} {
 		e, ok := source.Find(store, spelling)
 		if !ok {
 			t.Fatalf("Find(%q) found nothing", spelling)
@@ -170,10 +172,14 @@ func TestRegistrationFindAndList(t *testing.T) {
 			t.Fatalf("Find(%q) = %+v", spelling, e)
 		}
 	}
-	if _, ok := source.Find(store, "git.nope"); ok {
+	if _, ok := source.Find(store, "nope"); ok {
 		t.Fatal("Find should answer false for a registration that is not there")
 	}
-	if _, ok := source.Find(store, "laptop"); ok {
-		t.Fatal("a ref with no system half is not a ref")
+	// The middle form — the address without its reserved root — is not a spelling of it, and
+	// neither is a path with more to it than a name.
+	for _, not := range []string{"sources.laptop", "git.laptop", "verse.sources.git.laptop"} {
+		if _, ok := source.Find(store, not); ok {
+			t.Fatalf("Find(%q) found a registration: that is no spelling of one", not)
+		}
 	}
 }

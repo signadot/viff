@@ -88,11 +88,11 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const binding = "verse.resolvers.security.security-review"
+	const binding = "verse.resolvers.security-review"
 
 	askingRun(t, srv, ts, "byhand", "")
 	byHand := planeOf(t, ts, "byhand", func(qid string) {
-		r := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+		r := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
 		r.Body.Close()
 	})
 
@@ -109,7 +109,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	}
 
 	hand, res := decisionOf(t, byHand), decisionOf(t, byResolver)
-	if hand.By != "human:scott" {
+	if hand.By != "user:scott@example.com" {
 		t.Fatalf("the human's decision is attributed to %q", hand.By)
 	}
 	if res.By != "via:"+binding {
@@ -122,7 +122,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 
 	// And both settle their question the same way — the docket cannot tell them apart
 	// either, except by reading who answered.
-	for _, c := range []struct{ task, by string }{{"byhand", "human:scott"}, {"watched", "via:" + binding}} {
+	for _, c := range []struct{ task, by string }{{"byhand", "user:scott@example.com"}, {"watched", "via:" + binding}} {
 		q := settledQuestion(t, srv, c.task+"~d1")
 		if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" || q["by"] != c.by {
 			t.Fatalf("%s settled as %+v", c.task, q)
@@ -144,7 +144,7 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	askingRun(t, srv, ts, "watched", "verse.resolvers.security.security-review")
+	askingRun(t, srv, ts, "watched", "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "watched")
 	ref := resolver.InstanceRef("security-review", "watched")
 
@@ -167,6 +167,15 @@ func TestWatchingIsNotDeciding(t *testing.T) {
 	// The question is untouched by all that reading: it is still open, still nobody's answer.
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("reading settled the question: %+v", q)
+	}
+	// AND THE INSTANCE IS ITS BINDING'S TO WRITE, and nobody else's: the system mints it beneath
+	// a row that holds `owner` out to everyone, so it carries the system's record under its
+	// binding — whose owner co-owns it, which is who wrote the positions above.
+	if got := owner(t, srv, ref); !entity.IsSystem(got) {
+		t.Errorf("the instance's record is %q's, want the system's, under its binding", got)
+	}
+	if ok, _ := entity.Holds(srv.Store, "user:mallory@example.com", entity.ReadWrite, ref); ok {
+		t.Error("a stranger writes a binding's instance: its position, and whose it is")
 	}
 }
 

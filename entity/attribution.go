@@ -26,13 +26,49 @@ const OwnerField = "owner"
 // PermsKind is the kind of a perms record: one per NODE whose owner is on record.
 const PermsKind = "node"
 
+// PermsRootKind is where the ROOT's record stands: `verse.perms.root`, beside the mirror rather
+// than in it. The root's address is the empty path, which as a key would be no key at all — the
+// record's fields would land on `verse.perms.node` itself, where every other record stands
+// under them, so a listing of the mirror would answer `owner` and `grants` as though they were
+// records of nodes by those names. One address, spelled once here, rather than a skip rule
+// every reader of the mirror has to know.
+const PermsRootKind = "root"
+
 // PermsRef is the perms record about a node: `verse.perms.node.<address>`, the address spelled
 // as one segment. Flat rather than nested under the node's own segments, so a field named
 // `owner` in the mirror can never be mistaken for a child node called owner, and so that the
 // owner of any node is a walk up its address prefixes rather than a walk down a second tree.
 // Four segments, because that is how deep an entity in verse's half stands: a listing under
 // `verse` walks to that depth, and a record one shorter reads as an entity per field.
-func PermsRef(of Ref) Ref { return VerseRef(PermsSystem, PermsKind, of.String()) }
+//
+// THE ROOT IS THE ONE EXCEPTION, and it is here so that it is nowhere else: its record is
+// PermsRootKind, since the empty path is a key that is not one.
+func PermsRef(of Ref) Ref { return permsRecordAt(of.String()) }
+
+// permsRecordAt is where the record for a node's address stands, which is the one place a key
+// becomes an address again: the root's beside the mirror, every other in it.
+func permsRecordAt(key string) Ref {
+	if key == "" {
+		return permsRoot
+	}
+	return VerseRef(PermsSystem, PermsKind, key)
+}
+
+// permsRoot is the root's record, `verse.perms.root` — a node of its own beside the mirror, so
+// every reader of the mirror asks for it apart from the rest.
+var permsRoot = VerseRef(PermsSystem, PermsRootKind)
+
+// mirrorKey is the node whose record a mirror address holds, and whether it holds one at all: a
+// child's name, or the empty path at the mirror's own node.
+func mirrorKey(ref Ref) (string, bool) {
+	switch {
+	case ref.ChildOf(VerseRoot, PermsSystem, PermsKind):
+		return ref.Name(), true
+	case ref == permsRoot:
+		return "", true
+	}
+	return "", false
+}
 
 // ErrForbidden is a write or a read refused by policy: the principal holds nothing at the
 // path that admits it. It is the CALLER's answer and not the store's: nothing failed, nothing
@@ -75,12 +111,26 @@ type Attribution struct {
 	// groups memoises a group's members, dropped when the group is written through this
 	// process, since membership is meant to move.
 	groups map[string][]string
-	// rootDefault is what a node created with no default above it holds out — the root's
+	// takenAt is the fence's trie over the loaded mirror — where somebody's places stand —
+	// dropped whenever a record moves and rebuilt on the next check that asks. nil until one
+	// does, and never kept for a mirror that is not whole: a partial trie would fence the wrong
+	// places, and the fence is the one answer that must not be optimistic.
+	takenAt *takenTrie
+	// takenGen counts every time a record moved. A trie is built with the lock released, from a
+	// copy of the records, so one that finishes after a record landed is already stale — and
+	// storing it would bring back exactly the place the fence had just learned about. It is
+	// stored only if nothing moved while it was built.
+	takenGen int
+	// placesAt is the trie of where access can differ (places), kept for the loaded mirror under
+	// the same counter: a read prunes by it, and now every write walks its value by it, so
+	// rebuilding it from every record per call is a cost a source's pass pays per row.
+	placesAt *placeTrie
+	// rootChildGrants is what a node created with no default above it holds out — the root's
 	// default (DefaultField), the one default that is not data since the root has no record.
 	// The open verse's is `read: ["*"]`: whatever anybody creates is readable by everyone
 	// until a default beneath says otherwise. A record written before defaults existed carries
 	// no grants field and is read as holding out this.
-	rootDefault Levels
+	rootChildGrants Levels
 	// refused counts what the check refused, by the level the write or read wanted; unreadable
 	// counts checks the mirror could not answer, apart, since a store that is down is not a
 	// policy that refused; hidden counts what listings, replays and watches left out for a
@@ -112,9 +162,88 @@ func (a *Attribution) scope(name string) *Attribution {
 	if a.children == nil {
 		a.children = map[string]*Attribution{}
 	}
-	c := &Attribution{rootDefault: a.rootDefault, parent: a}
+	c := &Attribution{rootChildGrants: a.rootChildGrants, parent: a}
 	a.children[name] = c
 	return c
+}
+
+// dropGroups forgets who is in every group, in baseline's attribution and every scope's. A
+// group written in baseline is read through every scope's overlay, and each scope memoises what
+// it read: dropped only where the write went, somebody taken out of `admin` kept an admin's
+// authority in every open scope for the life of the process. All of them rather than the one
+// written, since a write beneath a group — its members alone — names the group no less.
+func (a *Attribution) dropGroups() {
+	top := a
+	for top.parent != nil {
+		top = top.parent
+	}
+	var drop func(*Attribution)
+	drop = func(at *Attribution) {
+		at.mu.Lock()
+		at.groups = nil
+		kids := make([]*Attribution, 0, len(at.children))
+		for _, c := range at.children {
+			kids = append(kids, c)
+		}
+		at.mu.Unlock()
+		for _, c := range kids {
+			drop(c)
+		}
+	}
+	drop(top)
+}
+
+// dropInScopes brings every scope opened through this attribution up to date about a node whose
+// record has just moved HERE, in the store s this attribution is over. A scope reads baseline's
+// records through its overlay and memoises them — an absence included — so without this a read
+// withdrawn in baseline is still honoured under `?scope=<anything>`, and a place just taken in
+// baseline is still anybody's there.
+//
+// A scope that is not loaded forgets the key and reads it again when next asked. A LOADED one
+// (Track) cannot forget it, since a key missing from a loaded mirror reads as absent, and it
+// cannot wait for its own watch to deliver the write either: that arrives when it arrives, and
+// until then the scope checks against the record as it was. So the record is read through the
+// scope's store now — which answers overlaid, the scope's own record over baseline's — and put
+// where the watch will put the same thing later. A read that fails leaves what was there for the
+// watch to correct.
+func (a *Attribution) dropInScopes(s Store, key string) {
+	a.mu.Lock()
+	kids := make(map[string]*Attribution, len(a.children))
+	for name, c := range a.children {
+		kids[name] = c
+	}
+	a.mu.Unlock()
+	for name, c := range kids {
+		scoped := s.Scope(name)
+		c.mu.Lock()
+		loaded := c.loaded
+		if !loaded {
+			delete(c.records, key)
+		}
+		c.dropTaken()
+		c.owners = nil
+		if ref, err := ParseAddr(key); err == nil {
+			delete(c.decided, ref)
+		}
+		rootDefault := c.rootChildGrants
+		c.mu.Unlock()
+		if loaded {
+			if e, ok, err := scoped.Get(permsRecordAt(key)); err == nil {
+				c.mu.Lock()
+				if c.records == nil {
+					c.records = map[string]*permsRecord{}
+				}
+				if ok {
+					c.records[key] = parseRecord(key, e.Payload, rootDefault)
+				} else {
+					delete(c.records, key)
+				}
+				c.dropTaken()
+				c.mu.Unlock()
+			}
+		}
+		c.dropInScopes(scoped, key)
+	}
 }
 
 // DropScope forgets a scope's attribution: what the scope's overlay held is going with the
@@ -130,10 +259,10 @@ type permsRecord struct {
 	owner  string
 	under  string
 	grants []Grant
-	// defaults is what is created beneath this node holds out, when the record says
+	// childGrants is what is created beneath this node holds out, when the record says
 	// (hasDefault); a record that says nothing inherits.
-	defaults   Levels
-	hasDefault bool
+	childGrants    Levels
+	hasChildGrants bool
 }
 
 // UnderField is the field of a perms record naming the node this node is ALSO under, for
@@ -149,14 +278,13 @@ const UnderField = "under"
 // place permits, and every entity a write brings into being gets its owner recorded. A store
 // already attributed is re-derived rather than wrapped twice, sharing what the first knows.
 //
-// The empty principal is a view that stamps nothing — an api request that named nobody —
-// and records no owner, so the node reads as its parent's, which is the answer a
-// read-write grantee's creation gets too.
+// The empty principal is a view that stamps nothing and records no owner — a READ that named
+// nobody, which holds what is held out to everyone. versed lets no request write through one.
 func As(s Store, principal string) Store {
 	if a, ok := s.(*attributed); ok {
 		return &attributed{Store: a.Store, attr: a.attr, principal: principal}
 	}
-	return &attributed{Store: s, attr: &Attribution{rootDefault: Levels{Read: {Everyone}}}, principal: principal}
+	return &attributed{Store: s, attr: &Attribution{rootChildGrants: Levels{Read: {Everyone}}}, principal: principal}
 }
 
 // PrincipalOf reports the principal a store acts as, and "" for one that is not attributed.
@@ -176,26 +304,26 @@ func PolicyOf(s Store) *Attribution {
 	return nil
 }
 
-// SetRootDefault sets what a node created with no default above it holds out. nil or empty
+// SetRootChildGrants sets what a node created with no default above it holds out. nil or empty
 // is nothing: a verse where what anybody creates is theirs and their grantees' alone.
-func (a *Attribution) SetRootDefault(l Levels) {
+func (a *Attribution) SetRootChildGrants(l Levels) {
 	a.mu.Lock()
 	children := make([]*Attribution, 0, len(a.children))
 	for _, c := range a.children {
 		children = append(children, c)
 	}
-	a.rootDefault = l
+	a.rootChildGrants = l
 	a.mu.Unlock()
 	for _, c := range children { // a scope's is baseline's: the root has no record anywhere
-		c.SetRootDefault(l)
+		c.SetRootChildGrants(l)
 	}
 }
 
-// RootDefault reports what a node created with no default above it holds out.
-func (a *Attribution) RootDefault() Levels {
+// RootChildGrants reports what a node created with no default above it holds out.
+func (a *Attribution) RootChildGrants() Levels {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.rootDefault
+	return a.rootChildGrants
 }
 
 // Refusals is what the check has refused since this process started, by the level the write
@@ -244,6 +372,14 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if w.Principal == "" {
 		w.Principal = a.principal
 	}
+	// A NAME IN THE ACCESS IS A NAME IN THE ADDRESS (Path.Settled): `{team, "c.secret"}` is
+	// `team.c.secret`, and checked as `team` it was a write into somebody else's place by
+	// whoever could write the place above it, and a delete of one without being its owner.
+	settled, err := w.At.Settled()
+	if err != nil {
+		return false, 0, err
+	}
+	w.At = settled
 	// THE PATH WRITTEN, however it was spelled: `demo pr 1 stage` and a rule patching `stage` of
 	// `demo.pr.1` are one place, so they are checked at one place and recorded at one place. A
 	// record stands where ownership CHANGES, so a write into a node the writer already owns
@@ -260,35 +396,156 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if wholeDelete {
 		act = "deleting it"
 	}
-	acc, err := a.check(w.Principal, need, ref, act)
+	return a.write(w, ref, need, act, !wholeDelete, 0)
+}
+
+// write is Write once the path is settled and what it needs is known. creating says whether the
+// write may be admitted on the right to create — every write that is not a delete is asked that
+// way first — and asked counts the askings before this one that the store refused as a creation.
+//
+// WHERE THAT RIGHT IS WHAT ADMITTED IT, THE WRITE SAYS SO TO THE STORE: it goes down conditional
+// on nothing standing at each node it was admitted at by a `child-owner` line (access.byGrant),
+// and the store settles that at the commit, which is the only moment it is true or false. A
+// condition refused means the node stands, and a node that stands is its nearest owner's: the
+// write is then asked again as what it turned out to be — not a creation — and is admitted on
+// whatever else the writer holds there, or refused.
+func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bool, asked int) (bool, int64, error) {
+	// A refusal reads as the writer's own condition only on the asking that is NOT a creation
+	// (orUncommitted): asked again as one, a refusal by the check is a refusal.
+	again := asked > 0 && !creating
+	wholeDelete := w.Value == nil && w.At.Access == ""
+	acc, err := a.checkFor(w.Principal, need, ref, act, creating)
 	if err != nil {
-		return false, 0, err
+		return a.orUncommitted(again, ref, err)
 	}
-	committed, rev, err := a.Store.Write(w)
-	if !committed || err != nil {
+	// AND WHAT IT ASKS ABOUT IS WHAT ITS WRITER MAY READ. A precondition is a match the store
+	// answers with committed-or-not, so one placed on a node the writer may not read is a read
+	// of it, a guess at a time: `when: [{at: vault.k, pattern: {secret: GUESS}}]` on a write to
+	// a place of one's own. Refused as a read of that node is, whatever stands there.
+	if !IsSystem(acc.who) {
+		if err := a.mayAsk(w.Principal, w.At, w.When); err != nil {
+			return false, 0, err
+		}
+	}
+	// AND EVERY NODE THE VALUE REACHES, not only the one the write names. A write is checked at
+	// its address, and a value is a tree: `{c: {secret: x}}` written AT `team` lands in
+	// `team.c`, which may be somebody else's place — refused when addressed, and admitted when
+	// it arrived through its parent. A record governs its node whichever ancestor the write was
+	// asked at, which is what a read already promises (prune).
+	// absent is what this write is conditional on because it was admitted as a creation there:
+	// its own node, or — the node standing, or being somebody's by record — each node its value
+	// reaches that a `child-owner` line alone admitted it at. Beneath a node that must be absent
+	// nothing stands either, so the one condition covers everything under it.
+	var absent []Require
+	if acc.byGrant {
+		absent = append(absent, Require{At: Path{Ref: ref}, Absent: true})
+	}
+	if !wholeDelete && w.At.Access == "" && !IsSystem(acc.who) {
+		more, err := a.writeBeneath(w.Principal, w.Value, ref.Segs(), creating, acc.byGrant)
+		if err != nil {
+			return a.orUncommitted(again, ref, err)
+		}
+		absent = append(absent, more...)
+	}
+	// WHERE THE RECORD WILL GO, asked BEFORE the write, because afterwards everything the write
+	// made exists and nothing can say which of it is new. A write of `probe.thing.1` into an
+	// empty place brings `probe`, `probe.thing` and the row into being, and all three are the
+	// writer's: the tree is the state space this verse reacts to, so the structure somebody adds
+	// is their contribution and not scaffolding around it. Recording only the row left the
+	// containers inheriting from above, which reads the same in an open verse and stops the
+	// writer dead the day the top is narrowed — they keep the rows they own and cannot make
+	// another beside them.
+	var made []Ref
+	if !wholeDelete && w.Principal != "" && acc.level == OwnerLevel {
+		if made, err = a.created(ref, w.Principal, acc.who); err != nil {
+			return false, 0, err
+		}
+	}
+	// AND THE CONDITION SITS AT THE TOPMOST NODE THIS WRITE MAKES, which is where its record
+	// goes. `made` was decided by asking what stands, before the write; with the condition at the
+	// written node alone, an ancestor somebody else brought into being in between — the system,
+	// leaving no record — would be recorded as this writer's, though it stood by the time they
+	// wrote. Nothing stands beneath a node that is absent, so the one condition covers the rest.
+	aboveStood := false
+	if acc.byGrant && len(made) > 0 {
+		absent[0] = Require{At: Path{Ref: made[0]}, Absent: true}
+		aboveStood = true
+	}
+	sent := w
+	if len(absent) > 0 {
+		sent.When = append(append(make([]Require, 0, len(w.When)+len(absent)), w.When...), absent...)
+	}
+	committed, rev, err := a.Store.Write(sent)
+	if err != nil {
 		return committed, rev, err
+	}
+	if !committed {
+		if len(absent) > 0 {
+			// One of them stands, or the writer's own condition did not hold. Where the condition
+			// sat above the written node, what came to stand may be an ancestor alone, and the
+			// write is still a creation beneath it: asked once more as one, with `made` decided
+			// afresh. Otherwise it is asked as not a creation, which tells a node that stands from
+			// the writer's own condition without reading anything on this path.
+			if aboveStood && asked < maxCreatingAsks {
+				return a.write(w, ref, need, act, true, asked+1)
+			}
+			return a.write(w, ref, need, act, false, asked+1)
+		}
+		return committed, rev, nil
 	}
 	if ref.Under(VerseRoot, PermsSystem) {
 		// The mirror keeps no records about itself, and what this process cached about the
 		// node the record is about is stale the moment the record moves.
-		if ref.ChildOf(VerseRoot, PermsSystem, PermsKind) {
-			a.invalidate(ref.Name())
+		if key, ok := mirrorKey(ref); ok {
+			a.invalidate(key)
 		}
 		return committed, rev, nil
 	}
-	if IsGroup(ref) {
-		a.attr.mu.Lock()
-		delete(a.attr.groups, ref.String())
-		a.attr.mu.Unlock()
+	if ref.Under(VerseRoot, PrincipalSystem, GroupKind) {
+		a.attr.dropGroups()
 	}
 	if wholeDelete {
 		a.forget(ref)
 		return committed, rev, nil
 	}
 	if w.Principal != "" && acc.level == OwnerLevel {
-		a.record(ref, acc.who)
+		// FROM THE TOP OF WHAT THIS WRITE MADE, DOWN, until a record is the writer's. Where it
+		// goes was decided before the write and the record is written after it, and between the
+		// two somebody else may have made the same place: two people writing `probe.a.1` and
+		// `probe.b.1` into an empty `probe` both mean to record at `probe`, and one of them
+		// wins. The other's record goes at the next node down that they made — `probe.a` — and
+		// not nowhere, which left them holding `read` on a row they had just created, inside
+		// somebody else's place.
+		for _, at := range append(made, ref) {
+			if a.record(at, acc.who) {
+				break
+			}
+		}
 	}
 	return committed, rev, nil
+}
+
+// maxCreatingAsks bounds how often a write is asked again AS A CREATION because something came to
+// stand above it between the check and the commit. Once: the asking decides afresh what it
+// makes, which settles an ancestor that appeared, and a place being built above by somebody
+// else as fast as this writer can ask is not one to keep racing for — nor is a writer whose own
+// condition is what failed to be charged a write per ancestor for finding out.
+const maxCreatingAsks = 1
+
+// orUncommitted is how a refusal reads on the second asking (write): the write was refused by
+// the store as a creation, and refused here as anything else. If the node stands, that is the
+// answer — it is somebody's, and the refusal names whose. If nothing stands there, no node was
+// in the way and what the store refused was the writer's own condition, which is an ordinary
+// uncommitted write and not a refusal of the writer.
+func (a *attributed) orUncommitted(again bool, ref Ref, refused error) (bool, int64, error) {
+	if !again || !errors.Is(refused, ErrForbidden) {
+		return false, 0, refused
+	}
+	stands, err := a.Store.StandsAt(ref.Segs())
+	if err != nil || stands {
+		return false, 0, refused
+	}
+	return false, 0, nil
 }
 
 // Scope re-wraps rather than delegating, so a scoped write off an attributed store keeps its
@@ -324,7 +581,13 @@ func Check(s Store, principal string, level Level, ref Ref, act string) error {
 }
 
 func (a *attributed) check(principal string, need Level, ref Ref, act string) (access, error) {
-	acc, err := a.accessOf(principal, ref)
+	return a.checkFor(principal, need, ref, act, false)
+}
+
+// checkFor is check for a caller that says whether it is creating, which is what a
+// `child-owner` line is about (accessFor).
+func (a *attributed) checkFor(principal string, need Level, ref Ref, act string, creating bool) (access, error) {
+	acc, err := a.accessFor(principal, ref, creating)
 	if err != nil {
 		a.attr.noteUnreadable()
 		return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
@@ -348,6 +611,18 @@ type access struct {
 	level   Level
 	control bool
 	nearest string
+	// fenced says an `owner` grant was held back here because somebody else's place stands
+	// beneath this node, and names them where they are one principal. It is what turns "you
+	// hold nothing here" into a refusal a reader can act on, since the record that decided is
+	// not above the node but under it.
+	fenced string
+	// unowned says the principal is a place acting with no owner on record, which holds nothing
+	// anywhere; the refusal says so rather than naming an owner above that did not decide.
+	unowned bool
+	// byGrant says `owner` here came from a `child-owner` line and not from a record: it is the
+	// right to CREATE the node, so whoever acts on it has to make sure nothing stands there —
+	// a write by carrying that as its own condition, a claim by asking.
+	byGrant bool
 }
 
 // Holds reports whether principal holds level at ref through s, which must be an attributed
@@ -367,6 +642,22 @@ func Holds(s Store, principal string, level Level, ref Ref) (bool, error) {
 		return acc.control, nil
 	}
 	return acc.level.Admits(level), nil
+}
+
+// MayCreate reports whether principal may bring ref into being: `owner` there, asked as a
+// creation, which is what a `child-owner` line above it holds out. It says nothing about whether
+// anything stands at ref — a write finds that out at the commit, and CheckTake asks — so it is
+// the question "is this held out to them", and the error is a mirror that did not answer.
+func MayCreate(s Store, principal string, ref Ref) (bool, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return false, fmt.Errorf("%s is not an attributed store", ref)
+	}
+	acc, err := a.accessFor(principal, ref, true)
+	if err != nil {
+		return false, err
+	}
+	return acc.level.Admits(OwnerLevel), nil
 }
 
 // CheckInto is the check a listing or a watch makes at a path: may principal read INTO ref —
@@ -414,19 +705,49 @@ func CheckInto(s Store, principal string, ref Ref) error {
 //     up — a grant does not cross a node carrying its own owner. The grants on that owner
 //     record itself do reach it, since they hang there; the grants above do not.
 //
-// And the base case at the top, where no record was found: the root is the system's, and the
-// world's half of the tree is open — everyone holds `owner` there until a record says
-// otherwise, which is the open verse the model describes, and the one grant that is not data.
+// The walk ends at the ROOT, which is a node with a record like any other: what an untaken
+// place permits is that record's grants — `owner` beneath the root to everyone in an open verse,
+// to an admin group in a shaped one — rather than a line here nobody could read or narrow. Where
+// even that record is missing, nobody holds anything and the system still holds everything,
+// since it owns the root: a verse whose seed failed refuses rather than standing wide open.
 func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
-	who := a.resolve(principal)
+	return a.accessFor(principal, ref, false)
+}
+
+// accessFor is accessOf for a caller that says whether it is CREATING, which is what a
+// `child-owner` line is about: it confers `owner` on whoever brings a node into being beneath
+// it, and says nothing about a node that stands. A node that stands has an owner already — the
+// nearest record above it — and a line wide enough to reach it does not make it anybody
+// else's. So a read, a listing, a delete, a control verb and every other caller that is not
+// creating gets nothing from the line.
+//
+// THE CHECK DOES NOT ASK WHETHER THE NODE STANDS. It cannot know at the moment that matters,
+// which is the commit. A creating caller is told the right it was admitted on (access.byGrant)
+// and carries the rest itself: a write goes down conditional on nothing standing there, and
+// the store settles it.
+func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access, error) {
+	who, err := a.resolve(principal)
+	if err != nil {
+		return access{}, err
+	}
 	acc := access{who: who, nearest: SystemDefault + " (the root)"}
 	if IsSystem(who) {
 		acc.level, acc.control = OwnerLevel, true
 		return acc, nil
 	}
+	// A PLACE NOBODY OWNS ACTS AS NOBODY, and holds nothing — not what is held out to everyone
+	// either: an address is not a party, so a node it created would have an owner nobody can
+	// be, and what it may do has to come from somebody who answers for it.
+	if KindOf(who) == ViaKind {
+		acc.unowned = true
+		return acc, nil
+	}
 	segs := ref.Segs()
 	crossed := false
-	for i := len(segs); i >= 1; i-- {
+	// Down to the root itself, whose address is the empty path: it is a node like any other and
+	// its record decides what stands beneath it, which is where a deployment says who may create
+	// a top-level place.
+	for i := len(segs); i >= 0; i-- {
 		key := RefAt(segs[:i]...).String()
 		rec, err := a.recordAt(key, false)
 		if err != nil {
@@ -436,7 +757,7 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 			continue
 		}
 		if rec.owner != "" && rec.owner == who {
-			acc.level, acc.control = OwnerLevel, true
+			acc.level, acc.control, acc.byGrant = OwnerLevel, true, false
 			return acc, nil
 		}
 		if rec.under != "" {
@@ -445,7 +766,7 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 				return access{}, err
 			}
 			if co {
-				acc.level, acc.control = OwnerLevel, true
+				acc.level, acc.control, acc.byGrant = OwnerLevel, true, false
 				return acc, nil
 			}
 		}
@@ -457,6 +778,27 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 				for l, names := range g.To {
 					if !a.named(names, principal, who, key) {
 						continue
+					}
+					if l == OwnerLevel && !creating {
+						continue
+					}
+					if l == OwnerLevel {
+						// THE FENCE: ownership concluded from a grant does not apply at a node
+						// somebody else's place stands beneath. Taking a node takes everything
+						// under it — ownership descends — so a grant that reaches an untaken
+						// node would otherwise hand the taker every place already made beneath
+						// it: `github`, taken above somebody's `github.signadot.verse`.
+						// Ownership from a RECORD is untouched above:
+						// an owner who holds a place keeps it, grantees and all.
+						by, f, err := a.fenced(ref, who)
+						if err != nil {
+							return access{}, err
+						}
+						if f {
+							acc.fenced = by
+							continue
+						}
+						acc.byGrant = true
 					}
 					if l == Control || l == OwnerLevel {
 						acc.control = true // an owner holds control, by grant as by record
@@ -470,10 +812,10 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 		if rec.owner != "" && !crossed {
 			crossed = true
 			acc.nearest = rec.owner + " at " + key
+			if key == "" {
+				acc.nearest = rec.owner + " at the root"
+			}
 		}
-	}
-	if !crossed && !ref.Reserved() {
-		acc.level, acc.control = OwnerLevel, true
 	}
 	return acc, nil
 }
@@ -592,8 +934,8 @@ func (a *attributed) withholdAll(ents []Entity) ([]Entity, error) {
 // row out of a listing, and counts it as Hidden.
 //
 // ONLY A RECORD BENEATH THE ROW CAN NARROW IT. The access walk takes the nearest owner on the
-// way up and stops taking grants from above once it has crossed one; a grant, a co-owner and the
-// open base case only ever add. So a node below a readable row reads narrower than the row only
+// way up and stops taking grants from above once it has crossed one; a grant and a co-owner only
+// ever add. So a node below a readable row reads narrower than the row only
 // where a record stands between them, and those records are the only places asked. A node left
 // out takes what is beneath it, even where a deeper grant would admit the reader: that node is
 // still read at its own address, where the walk answers for it exactly.
@@ -710,7 +1052,7 @@ func dropPath(n *ir.Node, path []string) bool {
 // answer hides nothing here: a watch has no error to return, and a commit withheld would read
 // as a gap, so the check's own count is what says a read went unchecked.
 //
-// A CREATION IS SEEN ONCE by everyone the open base case admits: the owner record follows the
+// A CREATION IS SEEN ONCE by everyone the root's grants admit: the owner record follows the
 // write it records, so the commit that creates a node reaches a live watch before the record
 // that would hide it lands, and is judged by what stands then. Every commit after it is judged
 // by the record. Writing the record first would close that window and open a worse one — a
@@ -818,31 +1160,134 @@ func (a *attributed) ReadAt(at []string) (*ir.Node, bool, error) {
 // neither names one inside an array — a write at an element is already checked at the node that
 // holds it (Write). So the addresses beneath an array stand or fall with it, which is one
 // accessOf for the array rather than one per element.
-func (a *attributed) PathsAt(at []string, max int) ([]Path, error) {
-	out, err := a.Store.PathsAt(at, max)
+func (a *attributed) PathsAt(at []string, depth int) ([]Path, error) {
+	out, err := a.Store.PathsAt(at, depth)
 	if err != nil || IsSystem(a.principal) {
 		return out, err
 	}
+	return a.keepPaths(out)
+}
+
+// PathsMatching is narrowed as PathsAt is — what the store listed, less what the reader may not
+// see, a withheld node taking what is beneath it — AND SO IS WHAT DECIDED THE LISTING. The
+// pattern is the store's to match, against what the store holds, so a row is kept only if it
+// still matches as this reader reads it: `--if '{secret: {key: hunter2}}'` answering the row for
+// a right guess and nothing for a wrong one is a read of `secret` by whoever may not read it.
+// And a path reached something only if it reached something they may see, or a listing that
+// comes back empty rather than not-found says a withheld node stands.
+func (a *attributed) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, _ *Narrow) ([]Path, bool, error) {
+	if IsSystem(a.principal) {
+		return a.Store.PathsMatching(at, depth, pattern, nil)
+	}
+	places, err := a.places()
+	if err != nil {
+		a.attr.noteUnreadable()
+		return nil, false, err
+	}
+	sees := func(p Path) (bool, error) {
+		acc, err := a.accessOf(a.principal, p.Ref)
+		if err != nil {
+			a.attr.noteUnreadable()
+		}
+		return acc.level.Admits(Read), err
+	}
+	out, reached, err := a.Store.PathsMatching(at, depth, pattern, &Narrow{
+		Sees:  sees,
+		Keeps: func(p Path) (bool, error) { return a.matchesAsRead(p, pattern, places) },
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	kept, err := a.keepPaths(out)
+	if err != nil {
+		return nil, false, err
+	}
+	// Everything the path reached is withheld: for this reader it reached nothing.
+	return kept, reached && (len(out) == 0 || len(kept) > 0), nil
+}
+
+// matchesAsRead reports whether the node at p, which the store's pattern kept, matches as the
+// view's principal reads it. A node with no place at or beneath it reads whole or not at all, so
+// the store's answer stands for whoever may read it, and nothing is read here; only a node part
+// of which may be withheld is read, pruned and matched again.
+func (a *attributed) matchesAsRead(p Path, pattern *ir.Node, places *placeTrie) (bool, error) {
+	segs := p.Ref.Segs()
+	acc, err := a.accessOf(a.principal, p.Ref)
+	if err != nil {
+		a.attr.noteUnreadable()
+		return false, err
+	}
+	readable := acc.level.Admits(Read)
+	t := places.at(segs)
+	if t == nil || (len(t.children) == 0 && !t.below) {
+		return readable, nil
+	}
+	node, ok, err := a.Store.ReadAt(segs)
+	if err != nil || !ok {
+		return false, err
+	}
+	node, keep, err := a.prune(clone(node), segs, readable, t)
+	if err != nil || !keep {
+		return false, err
+	}
+	if p.Access != "" {
+		kp, err := kpath.Parse(p.Access)
+		if err != nil {
+			return false, nil
+		}
+		if node, ok, err = Reach(node, kp, nil); err != nil || !ok {
+			return false, nil
+		}
+	}
+	matched, err := SafeMatch(node, pattern)
+	return err == nil && matched, nil
+}
+
+// keepPaths is a listing as the view's principal may see it: what a READ of the same node would
+// carry, path for path. A withheld node takes what is beneath it — except a place beneath it
+// that is held out to the reader, which a read keeps (prune), so a listing keeps it too: one
+// principal sees one set whichever way they ask. Only where nothing beneath a withheld node can
+// differ from it is the subtree passed over without asking.
+func (a *attributed) keepPaths(out []Path) ([]Path, error) {
+	places, err := a.places()
+	if err != nil {
+		a.attr.noteUnreadable()
+		return nil, err
+	}
 	kept := make([]Path, 0, len(out))
-	hidden := ""
+	// skip is a withheld node nothing beneath can differ from; under is one something can,
+	// beneath which each path is asked and none is counted again as hidden.
+	skip, under := "", ""
 	for _, p := range out {
-		// Beneath an address already withheld there is nothing to ask about: the subtree went
-		// with it, and asking again would count one hidden node many times.
-		if hidden != "" {
-			if strings.HasPrefix(p.KPath(), hidden) {
+		key := p.KPath()
+		if skip != "" {
+			if key == skip || beneath(key, skip) {
 				continue
 			}
-			hidden = ""
+			skip = ""
 		}
-		ok, err := a.keep(p.Ref)
+		quiet := under != "" && (key == under || beneath(key, under))
+		if !quiet {
+			under = ""
+		}
+		acc, err := a.accessOf(a.principal, p.Ref)
 		if err != nil {
+			a.attr.noteUnreadable()
 			return nil, err
 		}
-		if !ok {
-			hidden = p.KPath() + "."
+		if acc.level.Admits(Read) {
+			kept = append(kept, p)
 			continue
 		}
-		kept = append(kept, p)
+		if quiet {
+			continue
+		}
+		a.attr.noteHidden()
+		if t := places.at(p.Ref.Segs()); t == nil || (len(t.children) == 0 && !t.below) {
+			skip = key
+		} else {
+			under = key
+		}
 	}
 	return kept, nil
 }
@@ -869,10 +1314,10 @@ func (a *attributed) readable(node *ir.Node, at []string) (*ir.Node, bool, error
 }
 
 // placeTrie is the paths where what a reader may read can differ from the node above: every
-// perms record, every path a grant names, and the reserved root, which the check's base case
-// treats apart from the world's half. Beneath a node with nothing in the trie below it, every
-// node reads as that node does — ownership descends, a grant covers what is beneath its path,
-// and the base case is one answer throughout a half — so only the trie's paths are asked.
+// perms record, every path a grant names, and the reserved root, whose own record fences verse's
+// half off from the root's grants. Beneath a node with nothing in the trie below it, every node
+// reads as that node does — ownership descends and a grant covers what is beneath its path — so
+// only the trie's paths are asked.
 type placeTrie struct {
 	children map[string]*placeTrie
 	below    bool // a grant here covers what is beneath the node and not the node
@@ -920,13 +1365,22 @@ func (a *attributed) places() (*placeTrie, error) {
 		}
 	}
 	a.attr.mu.Lock()
+	if a.attr.placesAt != nil {
+		kept := a.attr.placesAt
+		a.attr.mu.Unlock()
+		return kept, nil
+	}
 	loaded := a.attr.loaded
 	if loaded {
+		// Built under the lock, from the records themselves, so it is the truth as of this
+		// moment and is kept until one of them moves (dropTaken). It is read and never
+		// written once built, so every view shares it.
 		for key, rec := range a.attr.records {
 			add(key, rec)
 		}
+		a.attr.placesAt = t
 	}
-	root := a.attr.rootDefault
+	root := a.attr.rootChildGrants
 	a.attr.mu.Unlock()
 	if loaded {
 		return t, nil
@@ -939,6 +1393,13 @@ func (a *attributed) places() (*placeTrie, error) {
 	for _, rec := range recs {
 		key := rec.Ref.Name()
 		add(key, parseRecord(key, rec.Payload, root))
+	}
+	// The root's, beside the mirror and so not in that listing: its grants are the ones every
+	// place without a record of its own reads through.
+	if e, ok, err := a.Store.Get(permsRoot); err != nil {
+		return nil, err
+	} else if ok {
+		add("", parseRecord("", e.Payload, root))
 	}
 	return t, nil
 }
@@ -980,6 +1441,187 @@ func (a *attributed) prune(n *ir.Node, segs []string, readable bool, t *placeTri
 		return nil, false, nil
 	}
 	return n, true, nil
+}
+
+// mayAsk refuses a write whose preconditions ask about what its writer may not read: the node a
+// require names, and every place beneath it THE PATTERN REACHES. A pattern is a tree as a value
+// is, and a match is of what it names: `{note: y}` at `team` asks nothing about `team.c`, so
+// somebody's closed place inside a node does not stop whoever writes the node from guarding
+// their write — which is every compare-and-swap, the pattern being what its writer read. A
+// require about the write's own place is asked too: its writer holds read-write there, and a
+// place inside it may still be somebody else's.
+func (a *attributed) mayAsk(principal string, at Path, when []Require) error {
+	if len(when) == 0 {
+		return nil
+	}
+	places, err := a.places()
+	if err != nil {
+		a.attr.noteUnreadable()
+		return fmt.Errorf("checking what %s may ask about: %w", principal, err)
+	}
+	for _, r := range when {
+		p := r.At
+		if p.Access == "" && len(p.Ref.Segs()) == 0 {
+			p = at // the zero path is the write's own place
+		}
+		if p, err = p.Settled(); err != nil {
+			return err
+		}
+		segs := p.Ref.Segs()
+		if err := a.readsAll(principal, segs, nil, true); err != nil {
+			return err
+		}
+		if r.Absent {
+			continue // about the path and nothing under it
+		}
+		if err := a.asksInto(principal, r.Pattern, segs, places.at(segs)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// asksInto is mayAsk beneath one node its caller has admitted the pattern AT: t is the places
+// at and beneath it. A plain object — `!not` of one included — names the fields it asks about,
+// and only those are followed. Anything else compares the node whole or in a way this does not
+// follow — a scalar, a literal (`!raw`), an operator — so where something beneath could be
+// withheld, all of it has to be readable.
+func (a *attributed) asksInto(principal string, pat Payload, segs []string, t *placeTrie) error {
+	if t == nil || (len(t.children) == 0 && !t.below) {
+		return nil // reads as the node above it does
+	}
+	n := ir.Uncomment(pat)
+	if n == nil || (n.Type == ir.NullType && n.Tag == "") {
+		return nil // "something stands here": about the node, which was asked
+	}
+	// `!not` alone, since a longer tag (`!not.or`, `!not.glob`) composes it with another operator.
+	followed := opIn(n.Tag) == "" || n.Tag == "!"+notName
+	if n.Type != ir.ObjectType || escaped(n.Tag) || !followed {
+		return a.readsAll(principal, segs, t, false)
+	}
+	for i, f := range n.Fields {
+		name := fieldName(f)
+		sub := t.children[name]
+		if sub == nil && !t.below {
+			continue
+		}
+		child := append(append(make([]string, 0, len(segs)+1), segs...), name)
+		if err := a.readsAll(principal, child, nil, true); err != nil {
+			return err
+		}
+		if err := a.asksInto(principal, n.Values[i], child, sub); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// notName is the match operator that negates its operand, which names fields as a plain object
+// does.
+const notName = "not"
+
+// readsAll refuses unless principal may read the node at segs and every place beneath it.
+func (a *attributed) readsAll(principal string, segs []string, t *placeTrie, nodeOnly bool) error {
+	acc, err := a.accessOf(principal, RefAt(segs...))
+	if err != nil {
+		a.attr.noteUnreadable()
+		return fmt.Errorf("checking %s at %s: %w", principal, JoinSegs(segs), err)
+	}
+	if !acc.level.Admits(Read) {
+		a.attr.noteRefusal(Read)
+		return refusal(Read, "asking about it in a precondition", principal, RefAt(segs...), acc)
+	}
+	if t == nil || nodeOnly {
+		return nil
+	}
+	for name, sub := range t.children {
+		child := append(append(make([]string, 0, len(segs)+1), segs...), name)
+		if err := a.readsAll(principal, child, sub, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeBeneath refuses a write whose VALUE reaches a node its writer may not write. The node at
+// segs has been checked already; this asks about what the value carries beneath it, and only
+// where the answer can differ from the node above — a record, or a path a grant names (places)
+// — so a write into a place with nothing recorded beneath it asks nothing at all, which is every
+// row a source reflects.
+func (a *attributed) writeBeneath(principal string, v Payload, segs []string, creating, absent bool) ([]Require, error) {
+	places, err := a.places()
+	if err != nil {
+		a.attr.noteUnreadable()
+		return nil, fmt.Errorf("checking %s beneath %s: %w", principal, JoinSegs(segs), err)
+	}
+	var must []Require
+	if err := a.writeInto(principal, v, segs, places.at(segs), creating, absent, &must); err != nil {
+		return nil, err
+	}
+	return must, nil
+}
+
+// writeInto is writeBeneath at one node, which its caller has admitted the write AT: t is the
+// places at and beneath it, nil where nothing there can differ.
+func (a *attributed) writeInto(principal string, v Payload, segs []string, t *placeTrie, creating, absent bool, must *[]Require) error {
+	if t == nil || (len(t.children) == 0 && !t.below) {
+		return nil
+	}
+	// ask is the check at one node the value reaches, and says whether the node is one this
+	// write creates: where a `child-owner` line is what admits it, the write is made conditional
+	// on nothing standing there — unless a node above is conditional already, beneath which
+	// nothing stands either.
+	ask := func(need Level, act string, at []string) (bool, error) {
+		acc, err := a.accessFor(principal, RefAt(at...), creating)
+		if err != nil {
+			a.attr.noteUnreadable()
+			return false, fmt.Errorf("checking %s at %s: %w", principal, JoinSegs(at), err)
+		}
+		if !acc.level.Admits(need) {
+			a.attr.noteRefusal(need)
+			return false, refusal(need, act, principal, RefAt(at...), acc)
+		}
+		if acc.byGrant && !absent {
+			*must = append(*must, Require{At: Path{Ref: RefAt(at...)}, Absent: true})
+		}
+		return acc.byGrant, nil
+	}
+	// A VALUE THAT IS NOT AN OBJECT REPLACES THE NODE WHOLE, and so does one an operator is
+	// written on: a scalar over `team` takes `team.c` with it as surely as a delete does.
+	// Something stands beneath that could differ, so this is the owner's act — and `owner` from
+	// a record descends, while `owner` from a grant is already held back here (the fence).
+	obj := ir.Uncomment(v)
+	if obj == nil || obj.Type != ir.ObjectType || replaces(obj) {
+		_, err := ask(OwnerLevel, "replacing it whole, with what stands beneath it", segs)
+		return err
+	}
+	for i, f := range obj.Fields {
+		name := fieldName(f)
+		sub := t.children[name]
+		if sub == nil && !t.below {
+			continue // reads as the node above it does, which the caller was admitted at
+		}
+		child := append(append(make([]string, 0, len(segs)+1), segs...), name)
+		need, act := ReadWrite, "writing it"
+		if replaces(ir.Uncomment(obj.Values[i])) {
+			need, act = OwnerLevel, "deleting it"
+		}
+		made, err := ask(need, act, child)
+		if err != nil {
+			return err
+		}
+		if err := a.writeInto(principal, obj.Values[i], child, sub, creating, absent || made, must); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// replaces reports whether a value carries a merge operator — `!delete` above all — so that what
+// stands at its node goes rather than being merged into. An escaped tag is data and replaces
+// nothing.
+func replaces(n *ir.Node) bool {
+	return n != nil && !escaped(n.Tag) && opIn(n.Tag) != ""
 }
 
 func (a *attributed) List(pred func(Ref) bool) []Entity {
@@ -1194,6 +1836,18 @@ func refusal(need Level, act, principal string, ref Ref, acc access) error {
 	if acc.level != NoAccess {
 		held = string(acc.level)
 	}
+	// A FENCE SAYS WHAT IS UNDER, not what is above: the record that decided stands beneath the
+	// node, and naming the owner above would send the reader to a record that admits them.
+	if acc.unowned {
+		return fmt.Errorf("%w: %s holds nothing at %s and %s needs %s; it has no owner on record, "+
+			"and a place acts as whoever owns it — install it again as somebody",
+			ErrForbidden, principal, ref, act, need)
+	}
+	if acc.fenced != "" {
+		return fmt.Errorf("%w: %s holds %s at %s and %s needs %s; a place beneath it is %s's, "+
+			"and ownership here would take it with it",
+			ErrForbidden, who, held, ref, act, need, acc.fenced)
+	}
 	return fmt.Errorf("%w: %s holds %s at %s and %s needs %s; the nearest owner on record is %s",
 		ErrForbidden, who, held, ref, act, need, acc.nearest)
 }
@@ -1232,13 +1886,10 @@ func (a *Attribution) noteUnreadable() {
 // system owns writes none. What it does write goes under an absence precondition: the first
 // writer of a node is its owner and a later write by anybody cannot move that, which is the
 // "fixed when the node is created" half of the model with no read ahead of the write.
-func (a *attributed) record(ref Ref, owner string) {
-	a.attr.mu.Lock()
-	_, seen := a.attr.decided[ref]
-	a.attr.mu.Unlock()
-	if seen {
-		return
-	}
+//
+// It reports whether the node is the writer's — by this record, by one of theirs already
+// standing, or through the owner above — and false only where somebody else's record stands.
+func (a *attributed) record(ref Ref, owner string) bool {
 	// A RECORD ALREADY IN HAND IS THE DECISION. With the mirror loaded every record stands in
 	// the cache, and a node written again in a later life of this process — a source
 	// re-reflecting an entity it first reflected weeks ago — has its record there. Writing it
@@ -1246,20 +1897,37 @@ func (a *attributed) record(ref Ref, owner string) {
 	// write by reading what it descended through: the mirror's whole slice, once per such
 	// node, on a store already busy with the pass. Nothing is read here: a cached record is
 	// what the checks consult, and it is not less true for having arrived by the load.
+	//
+	// WHOSE it is comes before whether it is settled: a node this process settled as somebody
+	// else's is settled, and is still not this writer's, which is the one answer that sends the
+	// caller further down.
 	a.attr.mu.Lock()
 	known := a.attr.records[ref.String()]
+	_, seen := a.attr.decided[ref]
 	a.attr.mu.Unlock()
 	if known != nil {
-		a.decide(ref, known)
-		return
+		if !seen {
+			a.decide(ref, known)
+		}
+		return known.owner == "" || known.owner == owner
 	}
-	// THE SYSTEM IS ONE OWNER, whichever part wrote: a part is attribution on the write, not a
-	// change of ownership, so the docket creating a question beneath the system's root records
+	if seen {
+		return true
+	}
+	// THE SYSTEM IS ONE OWNER, whichever part wrote, AND IT OWNS THE ROOT: a part is attribution
+	// on the write and not a change of ownership, so the docket creating a question records
 	// nothing — and the question's own record, written next under an absence precondition
-	// (Establish), is not refused by one this wrote first.
-	if above := a.ownerAbove(ref); owner == above || IsSystem(owner) && IsSystem(above) {
+	// (Establish), is not refused by one this wrote first. It holds wherever the system writes,
+	// including a world-half node beneath a root somebody administers: a record naming a system
+	// part there would take the place out of the root's grants and hand it to nobody: a fixture
+	// the system wrote, unreachable by the people the root admits.
+	above, err := a.ownerAbove(ref)
+	if err != nil {
+		return true // the store did not answer; the next write closes the gap, and nothing is remembered
+	}
+	if owner == above || IsSystem(owner) {
 		a.decide(ref, nil)
-		return
+		return true
 	}
 	// A REFUSED WRITE IS THE RECORD STANDING ALREADY, and an error is the store not answering;
 	// only the second leaves the node unknown, so only the second is not remembered. Nothing
@@ -1269,47 +1937,83 @@ func (a *attributed) record(ref Ref, owner string) {
 	// default up the tree, the root's at the top, copied onto the record as a grant at the
 	// node. Always with a grants field, empty or not, so a record that holds out nothing is
 	// told apart from one written before defaults existed.
-	grants := a.defaultGrants(ref)
+	grants, err := a.childGrants(ref)
+	if err != nil {
+		return true // as above: a record holding out a default nobody read is worse than none yet
+	}
 	committed, _, err := a.Store.Write(Write{
 		At:        PermsRef(ref).At(),
-		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
+		Value:     Obj{OwnerField: owner, GrantsField: GrantsPayload(SegsOf(ref), grants)}.Payload(),
 		When:      []Require{Created()},
 		Principal: SystemPerms,
 	})
 	if err != nil {
-		return
+		return true // the store did not answer; the next write closes the gap, as it always did
 	}
 	rec := &permsRecord{owner: owner, grants: grants}
 	if !committed {
 		rec, err = a.recordAt(ref.String(), true) // whoever got there first
 		if err != nil {
-			return
+			return true
 		}
 	}
 	a.decide(ref, rec)
+	// Somebody else's record standing here is the one answer that sends the caller further
+	// down: the node is theirs, and this writer's own begins beneath it.
+	return rec == nil || rec.owner == "" || rec.owner == owner
 }
 
-// defaultGrants is what a node created at ref holds out: the nearest default above it as a
+// childGrants is what a node created at ref holds out: the nearest default above it as a
 // grant at the node, and nothing when that default is empty.
-func (a *attributed) defaultGrants(ref Ref) []Grant {
-	levels := a.defaultAbove(ref)
-	if len(levels) == 0 {
-		return []Grant{}
+func (a *attributed) childGrants(ref Ref) ([]Grant, error) {
+	levels, err := a.defaultAbove(ref)
+	if err != nil {
+		return nil, err
 	}
-	return []Grant{{At: ref.Segs(), To: map[Level][]string(levels)}}
+	if len(levels) == 0 {
+		return []Grant{}, nil
+	}
+	return grantsOf(ref.Segs(), false, levels), nil
 }
+
+// grantsOf is levels as grants at a path: `child-owner` always about what is beneath it, and
+// the rest about the path itself unless below says otherwise.
+func grantsOf(at []string, below bool, levels Levels) []Grant {
+	rest := map[Level][]string{}
+	var out []Grant
+	for l, names := range levels {
+		if l == OwnerLevel {
+			out = append(out, Grant{At: at, Below: true, To: map[Level][]string{OwnerLevel: names}})
+			continue
+		}
+		rest[l] = names
+	}
+	if len(rest) > 0 {
+		out = append(out, Grant{At: at, Below: below, To: rest})
+	}
+	return out
+}
+
+// GrantsOf is grantsOf for a caller holding levels somebody typed (`verse perms --grant`).
+func GrantsOf(at []string, below bool, levels Levels) []Grant { return grantsOf(at, below, levels) }
 
 // defaultAbove is the default in force for a node created at ref: the nearest record above it
-// that says one, and the root's where none does.
-func (a *attributed) defaultAbove(ref Ref) Levels {
+// that says one — the ROOT's record included, which is where a deployment and an operator say
+// it — and the process's own where no record does. A record that could not be read is an error
+// and not an absence: the default beneath a private place is the private one, and falling back
+// to the process's would create what everyone reads because the store was slow.
+func (a *attributed) defaultAbove(ref Ref) (Levels, error) {
 	segs := ref.Segs()
-	for i := len(segs) - 1; i >= 1; i-- {
+	for i := len(segs) - 1; i >= 0; i-- {
 		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
-		if err == nil && rec != nil && rec.hasDefault {
-			return rec.defaults
+		if err != nil {
+			return nil, err
+		}
+		if rec != nil && rec.hasChildGrants {
+			return rec.childGrants, nil
 		}
 	}
-	return a.attr.RootDefault()
+	return a.attr.RootChildGrants(), nil
 }
 
 // decide remembers that ref's owner record is settled, and what the mirror now says at that
@@ -1330,6 +2034,7 @@ func (a *attributed) decide(ref Ref, rec *permsRecord) {
 			a.attr.records = map[string]*permsRecord{}
 		}
 		a.attr.records[key] = rec
+		a.attr.dropTaken()
 	}
 	if rec != nil && rec.owner != "" {
 		if a.attr.owners == nil {
@@ -1338,19 +2043,28 @@ func (a *attributed) decide(ref Ref, rec *permsRecord) {
 		a.attr.owners[ViaKind+":"+key] = rec.owner // what the node confers when it acts (resolve)
 	}
 	a.attr.mu.Unlock()
+	if rec != nil {
+		a.attr.dropInScopes(a.Store, key)
+	}
 }
 
 // ownerAbove is the owner on record nearest above ref: its longest prefix with a record,
-// and the system where none has one, since the system owns the root.
-func (a *attributed) ownerAbove(ref Ref) string {
+// and the system where none has one, since the system owns the root. A record that could not be
+// read is an error and not an absence, since the answer where none stands is the system: a
+// place acting through a record the store was slow to return would act as the system, which is
+// the one principal nothing checks.
+func (a *attributed) ownerAbove(ref Ref) (string, error) {
 	segs := ref.Segs()
-	for i := len(segs) - 1; i >= 1; i-- {
+	for i := len(segs) - 1; i >= 0; i-- {
 		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
-		if err == nil && rec != nil && rec.owner != "" {
-			return rec.owner
+		if err != nil {
+			return "", err
+		}
+		if rec != nil && rec.owner != "" {
+			return rec.owner, nil
 		}
 	}
-	return SystemDefault
+	return SystemDefault, nil
 }
 
 // recordAt reads the perms record at an address, nil when the mirror holds none, through the
@@ -1369,7 +2083,7 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 			return nil, nil // the whole mirror is here, and this key is not in it
 		}
 	}
-	e, ok, err := a.Store.Get(VerseRef(PermsSystem, PermsKind, key))
+	e, ok, err := a.Store.Get(permsRecordAt(key))
 	if err != nil {
 		return nil, err
 	}
@@ -1381,13 +2095,14 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 		// kept, and admits nobody when the check meets it (named). A RECORD WRITTEN BEFORE
 		// DEFAULTS EXISTED carries an owner and no grants field at all, and is read as holding out
 		// what the root's default says: the open verse's, which is what it held out when written.
-		rec = parseRecord(key, e.Payload, a.attr.RootDefault())
+		rec = parseRecord(key, e.Payload, a.attr.RootChildGrants())
 	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {
 		a.attr.records = map[string]*permsRecord{}
 	}
 	a.attr.records[key] = rec
+	a.attr.dropTaken()
 	a.attr.mu.Unlock()
 	return rec, nil
 }
@@ -1399,12 +2114,14 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 func (a *attributed) invalidate(key string) {
 	a.attr.mu.Lock()
 	delete(a.attr.records, key)
+	a.attr.dropTaken()
 	a.attr.owners = nil
 	if ref, err := ParseAddr(key); err == nil {
 		delete(a.attr.decided, ref)
 	}
 	loaded := a.attr.loaded
 	a.attr.mu.Unlock()
+	a.attr.dropInScopes(a.Store, key)
 	if loaded {
 		_, _ = a.recordAt(key, true)
 	}
@@ -1440,7 +2157,7 @@ func (a *attributed) forget(ref Ref) {
 		}
 	}
 	for _, key := range beneath {
-		_, _, _ = a.Store.Write(Write{At: VerseRef(PermsSystem, PermsKind, key).At(), Principal: SystemPerms})
+		_, _, _ = a.Store.Write(Write{At: permsRecordAt(key).At(), Principal: SystemPerms})
 		a.invalidate(key)
 	}
 }
@@ -1474,18 +2191,49 @@ func Track(ctx context.Context, s Store) error {
 	if err != nil {
 		return Unread(fmt.Errorf("watching the perms mirror: %w", err))
 	}
+	// THE ROOT'S RECORD IS WATCHED APART, because it stands beside the mirror and not in it
+	// (PermsRootKind) and a watch reports at one depth. One record, at its own address, so the
+	// depth is that address's own.
+	rootCh, rootUnsub, err := a.Store.WatchSubtree(len(permsRoot.Segs()), permsRoot.Segs()...)
+	if err != nil {
+		unsub()
+		return Unread(fmt.Errorf("watching the root's perms record: %w", err))
+	}
 	a.attr.mu.Lock()
 	if a.attr.records == nil {
 		a.attr.records = map[string]*permsRecord{}
 	}
 	for _, e := range ents {
-		a.attr.records[e.Ref.Name()] = parseRecord(e.Ref.Name(), e.Payload, a.attr.rootDefault)
+		a.attr.records[e.Ref.Name()] = parseRecord(e.Ref.Name(), e.Payload, a.attr.rootChildGrants)
+	}
+	a.attr.dropTaken()
+	// And the root's own, which the listing above cannot carry: it stands beside the mirror
+	// rather than in it. A loaded mirror answers every key from the map, so a root record left
+	// out here would read as absent — the one node whose record decides every other.
+	if e, ok, err := a.Store.Get(permsRoot); err != nil {
+		a.attr.mu.Unlock()
+		unsub()
+		rootUnsub()
+		return Unread(fmt.Errorf("loading the root's perms record: %w", err))
+	} else if ok {
+		a.attr.records[""] = parseRecord("", e.Payload, a.attr.rootChildGrants)
+		a.attr.dropTaken()
 	}
 	a.attr.owners = nil
 	a.attr.loaded = true
 	a.attr.mu.Unlock()
 	go func() {
 		defer unsub()
+		defer rootUnsub()
+		apply := func(c Commit) {
+			for _, ev := range c.Changes {
+				key, ok := mirrorKey(ev.Ref)
+				if !ok {
+					continue
+				}
+				a.apply(key, ev)
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -1494,12 +2242,12 @@ func Track(ctx context.Context, s Store) error {
 				if !ok {
 					return
 				}
-				for _, ev := range c.Changes {
-					if !ev.Ref.ChildOf(VerseRoot, PermsSystem, PermsKind) {
-						continue
-					}
-					a.apply(ev)
+				apply(c)
+			case c, ok := <-rootCh:
+				if !ok {
+					return
 				}
+				apply(c)
 			}
 		}
 	}()
@@ -1513,9 +2261,10 @@ func (a *Attribution) Tracked() bool {
 	return a.loaded
 }
 
-// apply is one change to the mirror, as the watch delivered it.
-func (a *attributed) apply(ev Event) {
-	key := ev.Ref.Name()
+// apply is one change to the mirror, as the watch delivered it, at the node whose record moved
+// (mirrorKey: a child's name, or the empty path for the root's own).
+func (a *attributed) apply(key string, ev Event) {
+	defer a.attr.dropInScopes(a.Store, key) // after the lock below is released
 	a.attr.mu.Lock()
 	defer a.attr.mu.Unlock()
 	if a.attr.records == nil {
@@ -1524,8 +2273,9 @@ func (a *attributed) apply(ev Event) {
 	if ev.Op == Delete || ev.To == nil {
 		delete(a.attr.records, key)
 	} else {
-		a.attr.records[key] = parseRecord(key, ev.To, a.attr.rootDefault)
+		a.attr.records[key] = parseRecord(key, ev.To, a.attr.rootChildGrants)
 	}
+	a.attr.dropTaken()
 	a.attr.owners = nil
 	if ref, err := ParseAddr(key); err == nil {
 		delete(a.attr.decided, ref)
@@ -1535,10 +2285,22 @@ func (a *attributed) apply(ev Event) {
 // parseRecord reads one mirror record as the check holds it, applying the transition rule for
 // a record from before defaults existed (see recordAt).
 func parseRecord(key string, payload Payload, root Levels) *permsRecord {
-	node, _ := PathSegs(key)
-	grants, _ := readGrants(node, payload)
+	// Never nil: the key is an address, the root's being the empty one, and a grants line with
+	// no `at` is about the node the record is on (SegsOf).
+	node := []string{}
+	if segs, err := PathSegs(key); err == nil {
+		node = append(node, segs...)
+	}
+	grants, err := readGrants(node, payload)
+	if err != nil {
+		// A field the grammar refuses holds out NOTHING, which is the safe way for it to be
+		// wrong and a silent one: a record written in a spelling this process no longer reads —
+		// in a scope that outlived an upgrade, which the startup migration cannot reach, since
+		// nothing enumerates scopes — closes its place with no sign of why. So it is said.
+		slog.Warn("perms: a record's grants do not parse, so it holds out nothing", "record", key, "err", err)
+	}
 	rec := &permsRecord{owner: Str(payload, OwnerField), under: Str(payload, UnderField), grants: grants}
-	rec.defaults, rec.hasDefault, _ = readLevels(payload, DefaultField)
+	rec.childGrants, rec.hasChildGrants, _ = readLevels(payload, ChildGrantsField)
 	if rec.owner != "" && Get(payload, GrantsField) == nil && len(root) > 0 {
 		if ref, err := ParseAddr(key); err == nil {
 			rec.grants = []Grant{{At: ref.Segs(), To: map[Level][]string(root)}}
@@ -1548,33 +2310,40 @@ func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 }
 
 // resolve is the owner a principal confers: itself, unless it is a place acting — `via:` a
-// rule, a source, a binding — in which case the owner of that node: the nearest record at or
-// above it, and the system where none stands, since the system owns every kind-rooted node. A
-// rule installed before its record had an owner therefore acts as the system until the charter
-// is re-applied, and not as an address, because an address is not a party and cannot be
-// answerable for anything. An owner on record is always a principal that resolved already, so
-// one record is the whole walk.
+// rule, a source, a binding — in which case the owner ON THAT PLACE'S OWN RECORD, and nobody
+// where it has none. An owner on record is always a principal that resolved already, so one
+// record is the whole walk.
+//
+// ITS OWN RECORD, and not the nearest above. Above an acting place is verse's half, which is the
+// system's, so "the owner above" is a way to act as the system by having no record: an install
+// that named nobody, or one by somebody holding less than `owner` where they installed. What the
+// system installs says so on a record (trigger.Engine.takeForTheSystem, the schedule's claim),
+// and a place with no record resolves to itself — an address, which is no party and holds
+// nothing (accessOf).
 //
 // Only a resolution that found a record is kept: the record can arrive at any install, and a
-// miss remembered would leave every entity the rule creates the system's for the life of the
-// process. A record this process writes is what the next resolution reads (decide).
-func (a *attributed) resolve(principal string) string {
+// miss remembered would leave a rule acting as nobody for the life of the process. A record this
+// process writes is what the next resolution reads (decide).
+func (a *attributed) resolve(principal string) (string, error) {
 	if KindOf(principal) != ViaKind {
-		return principal
+		return principal, nil
 	}
 	a.attr.mu.Lock()
 	if o, ok := a.attr.owners[principal]; ok {
 		a.attr.mu.Unlock()
-		return o
+		return o, nil
 	}
 	a.attr.mu.Unlock()
 	ref, err := ParseAddr(strings.TrimPrefix(principal, ViaKind+":"))
 	if err != nil {
-		return principal // a via that names no one place acts as nobody's
+		return principal, nil // a via that names no one place acts as nobody's
 	}
 	rec, err := a.recordAt(ref.String(), false)
-	if err != nil || rec == nil || rec.owner == "" {
-		return a.ownerAbove(ref)
+	if err != nil {
+		return "", err
+	}
+	if rec == nil || rec.owner == "" {
+		return principal, nil
 	}
 	a.attr.mu.Lock()
 	if a.attr.owners == nil {
@@ -1582,7 +2351,7 @@ func (a *attributed) resolve(principal string) string {
 	}
 	a.attr.owners[principal] = rec.owner
 	a.attr.mu.Unlock()
-	return rec.owner
+	return rec.owner, nil
 }
 
 // AddGrant appends a grant to the perms record of ref, as the system. The mirror is versed's
@@ -1597,6 +2366,9 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 	if !ok {
 		return nil // a store that attributes nothing keeps no mirror
 	}
+	if err := g.check(); err != nil {
+		return err
+	}
 	rec := PermsRef(ref)
 	for {
 		cur, exists, err := a.Store.Get(rec)
@@ -1606,13 +2378,17 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = readGrants(ref.Segs(), cur.Payload)
-			when = Require{Pattern: Unchanged(cur.Payload)}
+			grants, _ = readGrants(SegsOf(ref), cur.Payload)
+			when = Require{Pattern: Exactly(cur.Payload)}
 		}
 		grants = append(grants, g)
+		var standing Payload
+		if exists {
+			standing = cur.Payload
+		}
 		committed, _, err := a.Store.Write(Write{
 			At:        rec.At(),
-			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
+			Value:     Obj{GrantsField: GrantsOver(SegsOf(ref), grants, standing)}.Payload(),
 			When:      []Require{when},
 			Principal: SystemPerms,
 		})
@@ -1635,24 +2411,51 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	if !ok {
 		return nil
 	}
-	value := Obj{GrantsField: GrantsPayload(ref.Segs(), gs)}
-	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPerms})
-	if err != nil {
-		return fmt.Errorf("granting at %s: %w", ref, err)
+	for _, g := range gs {
+		if err := g.check(); err != nil {
+			return err
+		}
+	}
+	// THE LIST IS REPLACED, NOT MERGED, in one write guarded by what it read (GrantsOver): no
+	// moment stands between the old list and the new one, and a record that changed underneath
+	// is read again rather than written over.
+	rec := PermsRef(ref)
+	for {
+		cur, exists, err := a.Store.Get(rec)
+		if err != nil {
+			return fmt.Errorf("granting at %s: %w", ref, err)
+		}
+		when := Created()
+		var standing Payload
+		if exists {
+			when, standing = Require{Pattern: Exactly(cur.Payload)}, cur.Payload
+		}
+		committed, _, err := a.Store.Write(Write{
+			At:        rec.At(),
+			Value:     Obj{GrantsField: GrantsOver(SegsOf(ref), gs, standing)}.Payload(),
+			When:      []Require{when},
+			Principal: SystemPerms,
+		})
+		if err != nil {
+			return fmt.Errorf("granting at %s: %w", ref, err)
+		}
+		if committed {
+			break
+		}
 	}
 	a.invalidate(ref.String())
 	return nil
 }
 
-// SetDefault sets what a node created beneath ref holds out (DefaultField), as the system: a
+// SetChildGrants sets what a node created beneath ref holds out (DefaultField), as the system: a
 // nil map removes the field, so the node inherits again; an empty one says nothing is held
 // out.
-func SetDefault(s Store, ref Ref, levels Levels) error {
+func SetChildGrants(s Store, ref Ref, levels Levels) error {
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil
 	}
-	value := Obj{DefaultField: Removed()}
+	value := Obj{ChildGrantsField: Removed()}
 	if levels != nil {
 		// A write MERGES, and the default is an object: a level the new default does not name
 		// has to be removed by name, or it stands from the default before.
@@ -1664,7 +2467,7 @@ func SetDefault(s Store, ref Ref, levels Levels) error {
 				d[string(l)] = Removed()
 			}
 		}
-		value[DefaultField] = d
+		value[ChildGrantsField] = d
 	}
 	_, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Value: value.Payload(), Principal: SystemPerms})
 	if err != nil {
@@ -1672,6 +2475,46 @@ func SetDefault(s Store, ref Ref, levels Levels) error {
 	}
 	a.invalidate(ref.String())
 	return nil
+}
+
+// CheckTake is the check a verb makes before it takes a place for principal — an install at a
+// place, a record set on one: principal owns ref, or may create it and nothing stands there. It
+// is Claim's own admission without the record, for a verb that has work to refuse first.
+func CheckTake(s Store, principal string, ref Ref, act string) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	_, err := a.mayTake(principal, ref, act)
+	return err
+}
+
+// mayTake is whether principal may take ref: `owner` there, asked as a creation — and where
+// that came from a `child-owner` line, nothing may stand at the node, since the line is the
+// right to create one and a node that stands is its nearest owner's. A place is taken ahead of
+// what goes in it, so this asks the store where a write would carry a condition; a node made
+// in between is then its maker's by the record their write leaves, which the claim's own
+// absence condition loses to.
+func (a *attributed) mayTake(principal string, ref Ref, act string) (access, error) {
+	acc, err := a.checkFor(principal, OwnerLevel, ref, act, true)
+	if err != nil || !acc.byGrant {
+		return acc, err
+	}
+	stands, err := a.Store.StandsAt(ref.Segs())
+	if err != nil {
+		return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
+	}
+	if !stands {
+		return acc, nil
+	}
+	// What is held there otherwise, which is not `owner` — a record would have said so above —
+	// and is what the refusal names, with whose the node is.
+	held, err := a.accessOf(principal, ref)
+	if err != nil {
+		return acc, fmt.Errorf("checking %s at %s: %w", principal, ref, err)
+	}
+	a.attr.noteRefusal(OwnerLevel)
+	return acc, refusal(OwnerLevel, act, principal, ref, held)
 }
 
 // Claim writes the owner record of ref for principal where none stands — the record a place
@@ -1684,7 +2527,7 @@ func Claim(s Store, ref Ref, principal string) error {
 	if !ok {
 		return nil
 	}
-	acc, err := a.check(principal, OwnerLevel, ref, "taking it")
+	acc, err := a.mayTake(principal, ref, "taking it")
 	if err != nil {
 		return err
 	}
@@ -1695,10 +2538,33 @@ func Claim(s Store, ref Ref, principal string) error {
 	if rec != nil {
 		return nil
 	}
-	grants := a.defaultGrants(ref)
+	// IN VERSE'S HALF A PLACE IS TAKEN ONLY WHERE SOMETHING STANDS. What stands there is made by
+	// the verb that owns it — an install, a spawn, the system's own charter — and the generic
+	// write does not reach it, so a record for a node nothing stands at is a reservation: of a
+	// name the system has not used yet (`verse.schedule.date`, a rule the next release adds, a
+	// task id a rule will mint), or of a kind nobody has installed into, and whatever is made
+	// there afterwards is the reserver's. The world's half is where a place is taken ahead of
+	// what goes in it, and is untouched.
+	if ref.Reserved() && !IsSystem(acc.who) {
+		stands, err := a.Store.StandsAt(ref.Segs())
+		if err != nil {
+			return fmt.Errorf("claiming %s: %w", ref, err)
+		}
+		if !stands {
+			a.attr.noteRefusal(OwnerLevel)
+			return fmt.Errorf("%w: nothing stands at %s, and in verse's half a place is taken only "+
+				"where something does: what stands there is made by the verb that owns it "+
+				"(charter -a, resolver add, runner add, source add, task run), and is its maker's",
+				ErrForbidden, ref)
+		}
+	}
+	grants, err := a.childGrants(ref)
+	if err != nil {
+		return fmt.Errorf("claiming %s: %w", ref, err)
+	}
 	committed, _, err := a.Store.Write(Write{
 		At:        PermsRef(ref).At(),
-		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(ref.Segs(), grants)}.Payload(),
+		Value:     Obj{OwnerField: acc.who, GrantsField: GrantsPayload(SegsOf(ref), grants)}.Payload(),
 		When:      []Require{Created()},
 		Principal: SystemPerms,
 	})
@@ -1728,7 +2594,7 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 		if !exists {
 			return nil // nothing held out here to take back
 		}
-		grants, _ := readGrants(ref.Segs(), cur.Payload)
+		grants, _ := readGrants(SegsOf(ref), cur.Payload)
 		kept := make([]Grant, 0, len(grants))
 		for _, g := range grants {
 			to := map[Level][]string{}
@@ -1751,10 +2617,13 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 				kept = append(kept, Grant{At: g.At, Below: g.Below, To: to})
 			}
 		}
+		// Written OVER what stands (GrantsOver): a line that lost its last grantee leaves, the
+		// ones beneath it move up, and a level taken off a line is gone from it — none of which
+		// a plain array write does, since it merges by position.
 		committed, _, err := a.Store.Write(Write{
 			At:        rec.At(),
-			Value:     Obj{GrantsField: GrantsPayload(ref.Segs(), kept)}.Payload(),
-			When:      []Require{{Pattern: Unchanged(cur.Payload)}},
+			Value:     Obj{GrantsField: GrantsOver(SegsOf(ref), kept, cur.Payload)}.Payload(),
+			When:      []Require{{Pattern: Exactly(cur.Payload)}},
 			Principal: SystemPerms,
 		})
 		if err != nil {
@@ -1770,10 +2639,10 @@ func Revoke(s Store, ref Ref, levels Levels) error {
 // DefaultFor is what a node created at ref holds out: the nearest default up the tree, the
 // root's at the top — for a caller that writes a record of its own (Establish) and wants to
 // say so in the same words a creation would.
-func DefaultFor(s Store, ref Ref) Levels {
+func DefaultFor(s Store, ref Ref) (Levels, error) {
 	a, ok := s.(*attributed)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return a.defaultAbove(ref)
 }
@@ -1790,9 +2659,12 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 		return nil
 	}
 	if grants == nil {
-		grants = a.defaultGrants(ref)
+		var err error
+		if grants, err = a.childGrants(ref); err != nil {
+			return fmt.Errorf("establishing %s: %w", ref, err)
+		}
 	}
-	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(ref.Segs(), grants)}
+	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(SegsOf(ref), grants)}
 	if len(under.Segs()) > 0 {
 		rec[UnderField] = under.String()
 	}
@@ -1804,6 +2676,246 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 	}
 	a.invalidate(ref.String())
 	return nil
+}
+
+// OwnedForSystem says that a node a place of the system's has just made is the system's: where
+// principal — a rule firing, `via:` its address — acts as the system, and no record stands at
+// ref, and none above it is somebody's, the system's own record is written there, holding out
+// the default above. Nothing otherwise, a person's creation having been recorded by their write.
+//
+// THE RECORD DOES TWO THINGS, and the second is why it is written at all. It says whose the node
+// is — which a node with no record says too, by the nearest record above, and that is the
+// system's here either way. And it STOPS THE GRANTS ABOVE: a grant does not reach through an
+// owner record, and the rows of verse's half hold `child-owner` out to everyone beneath them at
+// any depth, so that anybody may make a task or a schedule there. With no record at what the
+// system made, that line reaches INSIDE it: a new child beneath a system-spawned task, or a
+// field added to a derived calendar fact, is a creation like any other, admitted and recorded
+// as its creator's. That a node which stands is not TAKEN by the line (accessFor) does not
+// stop it being written into through children that do not stand yet.
+//
+// SAID BY WHOEVER MAKES THE NODE, rather than concluded by every system write. A write by the
+// system records no owner, since the system owns the root; and in verse's half the node above
+// is often a seed row that holds `owner` beneath it out to everyone, so that anybody may make a
+// task or a schedule there — a grant that, with no record to stop at, reaches what the system
+// made too: a task a system rule spawned was anybody's to take, and its gate's with it. But it
+// cannot be a rule of the check, because some of what the system makes there is made FOR
+// somebody who then writes it — a binding's instance — and a system record on it would shut
+// them out. So each maker says: this one here, a question at pose, an instance under its
+// binding (mirror.Watch).
+func OwnedForSystem(s Store, ref Ref, principal string) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	who, err := a.resolve(principal)
+	if err != nil || !IsSystem(who) {
+		return err
+	}
+	if rec, err := a.recordAt(ref.String(), false); err != nil || rec != nil {
+		return err
+	}
+	above, err := a.ownerAbove(ref)
+	if err != nil || !IsSystem(above) {
+		return err
+	}
+	return Establish(s, ref, who, Ref{}, nil)
+}
+
+// RecordSnapshot is a node's perms record as it stood: what a caller that may have to put a node
+// back keeps beside the node's content, since whose a node is lives in its record and not in it.
+type RecordSnapshot struct {
+	ref     Ref
+	payload Payload // nil where no record stood
+}
+
+// SnapshotRecord reads ref's own perms record, as the system.
+func SnapshotRecord(s Store, ref Ref) (RecordSnapshot, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return RecordSnapshot{ref: ref}, nil
+	}
+	e, ok, err := a.Store.Get(PermsRef(ref))
+	if err != nil {
+		return RecordSnapshot{}, fmt.Errorf("reading the record of %s: %w", ref, err)
+	}
+	snap := RecordSnapshot{ref: ref}
+	if ok {
+		snap.payload = clone(e.Payload)
+	}
+	return snap, nil
+}
+
+// RestoreRecord puts a node's perms record back as the snapshot has it — the record that stood,
+// or none. It is the other half of putting a node back: content restored under somebody else's
+// record is that party's node with the old content in it.
+func RestoreRecord(s Store, snap RecordSnapshot) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	rec := PermsRef(snap.ref)
+	defer a.invalidate(snap.ref.String())
+	// ONE WRITE, whichever it is. A record taken away and then written passes through having
+	// none — and a place with no record acts as nobody, in this process and, as the mirror's
+	// watch replays the two writes, a moment later again. A raw value replaces what stands
+	// whole, the grants list included, which a plain write would merge by position.
+	w := Write{At: rec.At(), Principal: SystemPerms}
+	if snap.payload != nil {
+		w.Value = Raw(AsData(snap.payload))
+	}
+	if _, _, err := a.Store.Write(w); err != nil {
+		return fmt.Errorf("restoring the record of %s: %w", snap.ref, err)
+	}
+	return nil
+}
+
+// ActsAs is who the place at ref acts as when it fires, reflects, answers or ticks — the owner
+// on its OWN record (resolve) — and "" where it has none, which is nobody: such a place holds
+// nothing anywhere. It is what a verb that makes an acting place asks once it has made it,
+// since whose a place is was decided by a record written after the place, and a place left
+// standing without one looks installed and does nothing.
+func ActsAs(s Store, ref Ref) (string, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return "", fmt.Errorf("%s is not an attributed store", ref)
+	}
+	via := Via(ref)
+	who, err := a.resolve(via)
+	if err != nil || who == via {
+		return "", err
+	}
+	return who, nil
+}
+
+// OwnedByOther reports whether ref is somebody's other than whoever principal acts as, and
+// whose. The system is one owner whichever part is named. It is what a maker asks before making
+// something under an id that may already be somebody's: a task's id names the work, so a run
+// under an id that stands writes over what the last run left — which is right for the party
+// whose work it is, and for nobody else.
+//
+// Whose a node is, is its own record's say where it has one. Where it has none it is somebody's
+// only if it STANDS — it is then its nearest owner's, as what the system made is the system's
+// with nothing said beside it — and an id nothing stands at is nobody's yet, whoever owns the
+// place above it.
+func OwnedByOther(s Store, ref Ref, principal string) (string, bool, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return "", false, nil
+	}
+	who, err := a.resolve(principal)
+	if err != nil {
+		return "", false, err
+	}
+	rec, err := a.recordAt(ref.String(), false)
+	if err == nil && rec == nil {
+		rec, err = a.recordAt(ref.String(), true)
+	}
+	if err != nil {
+		return "", false, err
+	}
+	owner := ""
+	if rec != nil {
+		owner = rec.owner
+	}
+	if owner == "" {
+		stands, err := a.Store.StandsAt(ref.Segs())
+		if err != nil || !stands {
+			return "", false, err
+		}
+		if owner, err = a.ownerAbove(ref); err != nil || owner == "" {
+			return "", false, err
+		}
+	}
+	if owner == who || (IsSystem(owner) && IsSystem(who)) {
+		return owner, false, nil
+	}
+	return owner, true, nil
+}
+
+// ClaimForSystem is Claim for a node the SYSTEM makes under a name it decides — a rule of the
+// base charter — where a record already standing is not left as it is. Claim leaves one,
+// whoever's, because a place is taken by whoever may and never from its owner; but these names
+// are the system's to decide, the seed holds `owner` beneath them out to everyone, and a record
+// somebody put there first would make what the system installed theirs: written by the system,
+// firing as them, and suspendable by nobody. Theirs is removed and the system's written, which
+// is ownership changing the one way it does — delete and create — and displaced says whose went.
+func ClaimForSystem(s Store, ref Ref, system string) (displaced string, err error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return "", nil
+	}
+	if !IsSystem(system) {
+		return "", fmt.Errorf("claiming %s for the system: %q is not the system", ref, system)
+	}
+	rec, err := a.recordAt(ref.String(), true)
+	if err != nil {
+		return "", fmt.Errorf("claiming %s: %w", ref, err)
+	}
+	if rec != nil && !IsSystem(rec.owner) {
+		displaced = rec.owner
+		if _, _, err := a.Store.Write(Write{At: PermsRef(ref).At(), Principal: SystemPerms}); err != nil {
+			return "", fmt.Errorf("claiming %s: removing %s's record: %w", ref, displaced, err)
+		}
+		a.invalidate(ref.String())
+	}
+	return displaced, Claim(s, ref, system)
+}
+
+// Reestablish is Establish for a node that is made again under the address it had: the record is
+// written where none stands, and where one does its grants and its link are REPLACED with these.
+// A question is the case — its id is a function of what asked it, so a gate fired again about
+// the same subject poses the same id — and who may answer belongs to the asking, not to the id:
+// left as the first asking wrote it, a gate whose answerers changed goes on admitting the old
+// ones and refusing the new.
+func Reestablish(s Store, ref Ref, owner string, under Ref, grants []Grant) error {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil
+	}
+	if grants == nil {
+		var err error
+		if grants, err = a.childGrants(ref); err != nil {
+			return fmt.Errorf("establishing %s: %w", ref, err)
+		}
+	}
+	rec := Obj{OwnerField: owner, GrantsField: GrantsPayload(SegsOf(ref), grants)}
+	if len(under.Segs()) > 0 {
+		rec[UnderField] = under.String()
+	}
+	created, _, err := a.Store.Write(Write{
+		At: PermsRef(ref).At(), Value: rec.Payload(), When: []Require{Created()}, Principal: SystemPerms,
+	})
+	if err != nil {
+		return fmt.Errorf("establishing %s: %w", ref, err)
+	}
+	a.invalidate(ref.String())
+	if created {
+		return nil
+	}
+	if err := SetGrants(s, ref, grants); err != nil {
+		return err
+	}
+	if len(under.Segs()) > 0 {
+		return SetUnder(s, ref, under)
+	}
+	return nil
+}
+
+// Recorded reports whether an owner record stands at ref ITSELF, rather than somewhere above it:
+// what a caller asks when the record is what makes the node safe to act on — a question, which
+// until its own record stands is held out by the docket's row to everybody. An absence is read
+// again from the store before it is believed, since the caller is usually waiting for a record
+// another write is about to land.
+func Recorded(s Store, ref Ref) (bool, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return true, nil
+	}
+	rec, err := a.recordAt(ref.String(), false)
+	if err == nil && rec == nil {
+		rec, err = a.recordAt(ref.String(), true)
+	}
+	return rec != nil && rec.owner != "", err
 }
 
 // SetLevel replaces who holds level on ref's own lines — the grants at the node itself, not
@@ -1824,8 +2936,8 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 		var grants []Grant
 		when := Created()
 		if exists {
-			grants, _ = readGrants(ref.Segs(), cur.Payload)
-			when = Require{Pattern: Unchanged(cur.Payload)}
+			grants, _ = readGrants(SegsOf(ref), cur.Payload)
+			when = Require{Pattern: Exactly(cur.Payload)}
 		}
 		own := -1
 		out := make([]Grant, 0, len(grants)+1)
@@ -1855,8 +2967,12 @@ func SetLevel(s Store, ref Ref, level Level, names []string) error {
 		} else if own >= 0 && len(out[own].To) == 0 {
 			out = append(out[:own], out[own+1:]...)
 		}
+		var standing Payload
+		if exists {
+			standing = cur.Payload
+		}
 		committed, _, err := a.Store.Write(Write{
-			At: rec.At(), Value: Obj{GrantsField: GrantsPayload(ref.Segs(), out)}.Payload(), When: []Require{when}, Principal: SystemPerms,
+			At: rec.At(), Value: Obj{GrantsField: GrantsOver(SegsOf(ref), out, standing)}.Payload(), When: []Require{when}, Principal: SystemPerms,
 		})
 		if err != nil {
 			return fmt.Errorf("setting %s at %s: %w", level, ref, err)
@@ -1935,6 +3051,18 @@ func PrincipalRef(kind, principal string) Ref { return VerseRef(PrincipalSystem,
 
 func (a *attributed) ReadError() error { return ReadFailed(a.Store) }
 
+// StandsAt answers only for what the principal may read into. Whether a node exists is something
+// a read tells you, so it is refused where the read would be: asked freely, it would say which
+// names stand inside a place held out to nobody.
+func (a *attributed) StandsAt(at []string) (bool, error) {
+	if !IsSystem(a.principal) {
+		if err := CheckInto(a, a.principal, RefAt(at...)); err != nil {
+			return false, err
+		}
+	}
+	return a.Store.StandsAt(at)
+}
+
 func (a *attributed) ListErr(pred func(Ref) bool) ([]Entity, error) {
 	ents, err := ListErr(a.Store, pred)
 	if err != nil {
@@ -1970,4 +3098,236 @@ func (a *attributed) Close() error {
 		return h.Close()
 	}
 	return nil
+}
+
+// takenTrie is where somebody's places stand, by path: what the fence asks about. Only records
+// naming a NON-SYSTEM owner are in it, since the system owns the root and co-owns everything
+// beneath it — a system-owned place is not somebody else's, and `verse` itself is one.
+type takenTrie struct {
+	children map[string]*takenTrie
+	// mark is the owner of the place standing AT this node, empty where none does. beneath
+	// counts the places strictly beneath it, and sole is their owner where they are all one
+	// principal's — which is what lets an owner take the node above their own places while
+	// stopping everybody else.
+	mark    string
+	beneath int
+	sole    string
+}
+
+// addTaken records one owner's place, building the path as it goes.
+func (t *takenTrie) addTaken(segs []string, owner string) {
+	for _, s := range segs {
+		if t.children == nil {
+			t.children = map[string]*takenTrie{}
+		}
+		next := t.children[s]
+		if next == nil {
+			next = &takenTrie{}
+			t.children[s] = next
+		}
+		t = next
+	}
+	t.mark = owner
+}
+
+// count fills in beneath and sole from the marks in the subtree, post-order. It answers what
+// the subtree holds INCLUDING this node's own mark, which is what its parent counts; a node's
+// own place is not beneath itself.
+func (t *takenTrie) count() (int, string) {
+	total, sole := 0, ""
+	merge := func(n int, owner string) {
+		if n == 0 {
+			return
+		}
+		switch {
+		case total == 0:
+			sole = owner
+		case owner != sole:
+			sole = "" // more than one owner in there, so nobody may take the node above them
+		}
+		total += n
+	}
+	for _, c := range t.children {
+		merge(c.count())
+	}
+	t.beneath, t.sole = total, sole
+	if t.mark != "" {
+		merge(1, t.mark)
+	}
+	return total, sole
+}
+
+// at is the trie node at a path, nil when nothing is taken at or beneath it.
+func (t *takenTrie) at(segs []string) *takenTrie {
+	for _, s := range segs {
+		if t == nil {
+			return nil
+		}
+		t = t.children[s]
+	}
+	return t
+}
+
+// fenced reports whether ownership concluded from a grant is held back at ref: a place beneath
+// it is somebody else's. It is false where every place beneath is the asker's own, so an owner
+// may still take the node above their own places, and false where nothing beneath is taken. The
+// string is whose place it is, where they are one principal — what the refusal names.
+func (a *attributed) fenced(ref Ref, who string) (string, bool, error) {
+	if IsSystem(who) {
+		return "", false, nil
+	}
+	t, err := a.taken()
+	if err != nil {
+		return "", false, err
+	}
+	n := t.at(ref.Segs())
+	if n == nil || n.beneath == 0 {
+		return "", false, nil
+	}
+	// An empty sole is SEVERAL owners, and an empty who is nobody: the two are not the same
+	// principal, and a request that names nobody takes no node above other people's places.
+	if n.sole != "" && n.sole == who {
+		return "", false, nil
+	}
+	return n.sole, true, nil
+}
+
+// taken builds the trie from the mirror: from the cache when the whole of it is loaded, and by
+// listing it otherwise — the same shape places() has, and for the same reason. It is rebuilt
+// when a record moves rather than kept in step, since a record moving is rare and a trie that
+// disagreed with the mirror would fence the wrong places.
+func (a *attributed) taken() (*takenTrie, error) {
+	a.attr.mu.Lock()
+	if a.attr.takenAt != nil {
+		t := a.attr.takenAt
+		a.attr.mu.Unlock()
+		return t, nil
+	}
+	gen := a.attr.takenGen
+	loaded := a.attr.loaded
+	var recs map[string]*permsRecord
+	if loaded {
+		recs = make(map[string]*permsRecord, len(a.attr.records))
+		for k, v := range a.attr.records {
+			recs[k] = v
+		}
+	}
+	a.attr.mu.Unlock()
+
+	t := &takenTrie{}
+	add := func(key string, rec *permsRecord) {
+		if rec == nil || rec.owner == "" || IsSystem(rec.owner) {
+			return
+		}
+		if ref, err := ParseAddr(key); err == nil {
+			t.addTaken(ref.Segs(), rec.owner)
+		}
+	}
+	if loaded {
+		for key, rec := range recs {
+			add(key, rec)
+		}
+	} else {
+		mirror := []string{VerseRoot, PermsSystem, PermsKind}
+		ents, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
+		if err != nil {
+			return nil, err
+		}
+		root := a.attr.RootChildGrants()
+		for _, e := range ents {
+			key := e.Ref.Name()
+			add(key, parseRecord(key, e.Payload, root))
+		}
+	}
+	t.count()
+	if loaded {
+		a.attr.mu.Lock()
+		if a.attr.takenGen == gen {
+			a.attr.takenAt = t
+		}
+		a.attr.mu.Unlock()
+	}
+	return t, nil
+}
+
+// dropTaken forgets the fence's trie because a record moved. The caller holds the lock.
+func (a *Attribution) dropTaken() {
+	a.takenAt, a.placesAt = nil, nil
+	a.takenGen++
+}
+
+// created is the nodes ABOVE ref that a write at ref is about to bring into being and that its
+// writer holds `owner` at, topmost first — where a creation's owner record may be written. The
+// writer made those nodes and everything under them, and ownership is fixed when a node is
+// created; the topmost is where the record goes, and the rest are where it goes if somebody
+// else's lands there first (Write).
+//
+// ASKED BEFORE THE WRITE, once, and only where a record would be written at all — the writer
+// holds `owner` and the owner above is somebody else. A source reflecting beneath the claim node
+// it installed never reaches here: its owner is the one on that record, and record's own
+// shortcut answers without a read. So this is a walk per NEW BRANCH, not per entity.
+//
+// The walk goes UP from the node being written and stops at the first ancestor that fails any
+// of three questions, each of which is a way of not being this write's to own:
+//
+//   - IT IS TAKEN. A record stands there, which `verse perms` writes without an entity.
+//   - THE WRITER DOES NOT HOLD `owner` THERE. Holding it at the row says nothing about the node
+//     above: a grant of what is BENEATH `sandbox` is not a grant of `sandbox`, and recording the
+//     first writer beneath it as its owner handed them a space they were only invited into —
+//     and shut everybody else out of it, since a grant does not reach through an owner record.
+//     The check is the whole check, so the fence is asked with it.
+//   - IT STANDS ALREADY, asked without reading it (StandsAt): the ancestor that ends the walk is
+//     as often as not a container with everything in it.
+func (a *attributed) created(ref Ref, principal, who string) ([]Ref, error) {
+	segs := ref.Segs()
+	if len(segs) < 2 {
+		return nil, nil // the node itself is the top; record lands where it always would
+	}
+	// NOT IN VERSE'S HALF, where the structure is the system's rather than anybody's
+	// contribution: the kinds under `verse` are seeded, the rows beneath them are held out by
+	// the seed, and a task's record belongs at the task. Spawning the first one would otherwise
+	// make its requester the owner of `verse.task` — and of every task anybody ran after.
+	if ref.Reserved() {
+		return nil, nil
+	}
+	a.attr.mu.Lock()
+	_, decided := a.attr.decided[ref]
+	a.attr.mu.Unlock()
+	if decided {
+		return nil, nil // this process has settled this node already
+	}
+	above, err := a.ownerAbove(ref)
+	if err != nil {
+		return nil, err
+	}
+	if who == above || IsSystem(who) {
+		return nil, nil // no record is coming, so nothing to place
+	}
+	var made []Ref
+	for i := len(segs) - 1; i >= 1; i-- {
+		at := RefAt(segs[:i]...)
+		rec, err := a.recordAt(at.String(), false)
+		if err != nil {
+			return nil, err
+		}
+		if rec != nil {
+			break
+		}
+		acc, err := a.accessFor(principal, at, true)
+		if err != nil {
+			return nil, err
+		}
+		if acc.level != OwnerLevel {
+			break
+		}
+		stands, err := a.Store.StandsAt(at.Segs())
+		if err != nil {
+			return nil, fmt.Errorf("asking whether %s stands, before recording its owner: %w", at, err)
+		}
+		if stands {
+			break
+		}
+		made = append([]Ref{at}, made...)
+	}
+	return made, nil
 }

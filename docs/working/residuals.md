@@ -22,6 +22,11 @@ gap is missing from, and where it is tracked. Nothing here owes coherence to the
 | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own | `3eskdzrq` |
 | — (removed) | why goals came out, and the shapes a better definition might take | `9by2kc0n` |
 | [perms.md](../perms.md) | policy edits as gated changes, what is not attributed yet | `e5cmt50r` |
+| [perms.md](../perms.md) | a kept store's seed rows and what `--reseed-perms` reaches, the grant not re-checked at the commit, the container above a source's claim nodes, a name the system's charter collides on | `zf1ep7wr` |
+| [perms.md](../perms.md#ownership) | a place named for somebody can be taken by somebody else first: a grant says who may create beneath a node, never which name is whose | `b737wbpb` |
+| [perms.md](../perms.md), [reference/tasks.md](../reference/tasks.md) | a task's snapshot, events and inbox are served with no permission check | `97g07t23` |
+| [reference/connect.md](../reference/connect.md) | a scope name nobody made opens a store session and an attribution, and nothing deletes them | `f80cejye` |
+| [runners.md](../runners.md) | `/broker/local` serves the whole local runtime to anybody who can reach the port | `jp9dy8an` |
 | [reference/examples/README.md §push](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations) | what a person is actually asked, and the gate nothing withdraws | `8wt1ta8r` |
 | [reference/entities.md](../reference/entities.md) | descent in a match, `Depth`, a ref keyed as text | `jabt2frr` |
 | [provider-selection.md](../provider-selection.md) | required/excluded tools, a vector a provider may not set | `5ny7rn0r` |

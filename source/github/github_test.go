@@ -289,10 +289,10 @@ func TestASecondPassAsksConditionallyAndIsAnsweredFromTheCache(t *testing.T) {
 func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 	f := newFake()
 	f.repo("acme/app").issue(1, "first", "open", "2026-01-01T00:00:00Z")
-	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, System: "github-internal"})
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Root: "github-internal"})
 
-	if src.System() != "github-internal" {
-		t.Fatalf("System() = %q", src.System())
+	if src.Root() != "github-internal" {
+		t.Fatalf("Root() = %q", src.Root())
 	}
 	rn, err := src.Reflect(context.Background(), entity.Ref{})
 	if err != nil {
@@ -934,7 +934,7 @@ func TestEverythingFollowsTheChosenSystemIncludingHints(t *testing.T) {
 	f := newFake()
 	f.repo("acme/app")
 	h := &hinted{}
-	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, System: "gh-internal"})
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Root: "gh-internal"})
 	wh := src.Webhook(hookSecret, h.hint)
 
 	post(t, wh, "issues", map[string]any{

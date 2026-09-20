@@ -36,12 +36,12 @@ func TestTheBaseCharterStandsEveryVerseUp(t *testing.T) {
 	srv.Start(t.Context())
 
 	for _, id := range []string{"minutely", "hourly", "daily", "weekly"} {
-		rec, ok := scheduleRecord(t, srv, id)
+		_, ok := scheduleRecord(t, srv, id)
 		if !ok {
 			t.Fatalf("no standard schedule %s", id)
 		}
-		if entity.Str(rec, schedule.ByField) != entity.SystemCharter {
-			t.Fatalf("%s is by %q, want the system's charter", id, entity.Str(rec, schedule.ByField))
+		if who, err := entity.ActsAs(srv.Store, schedule.Ref(id)); err != nil || who != entity.SystemCharter {
+			t.Fatalf("%s is %q's (%v), want the system's charter", id, who, err)
 		}
 	}
 	daily, _ := scheduleRecord(t, srv, "daily")

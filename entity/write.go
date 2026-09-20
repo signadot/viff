@@ -31,6 +31,32 @@ type Path struct {
 	Access string
 }
 
+// Settled is the path with every NAME its access leads with moved onto the ref, which is where a
+// name belongs: Access is for what an address of names cannot spell, and is empty for every
+// write that names a node. A caller that hands over `{team, "c.secret"}` has named the node
+// `team.c.secret` in two pieces, and what is asked about a write — who may make it, whether it
+// removes a node, what it reaches — is asked about the node it names, not about the piece in the
+// ref. An access that does not parse is an error: nothing can be asked about it.
+func (p Path) Settled() (Path, error) {
+	if p.Access == "" || StepIsAccess(p.Access) {
+		return p, nil
+	}
+	kp, err := kpath.Parse(p.Access)
+	if err != nil {
+		return p, fmt.Errorf("%s %s: %w", p.Ref, p.Access, err)
+	}
+	segs := append([]string{}, p.Ref.Segs()...)
+	x := kp
+	for ; x != nil && x.Field != nil; x = x.Next {
+		segs = append(segs, *x.Field)
+	}
+	out := Path{Ref: RefAt(segs...)}
+	if x != nil {
+		out.Access = x.String()
+	}
+	return out, nil
+}
+
 // At returns the path to a place beneath this one — with no arguments, the node itself. The
 // names simply extend the path: a node and a place inside it are one grammar, and nothing here
 // decides where an entity ends.
@@ -453,6 +479,26 @@ func Unchanged(cur Payload) Payload {
 		return ir.Null().WithTag(irTypeTag)
 	}
 	return AsPattern(cur)
+}
+
+// Exactly spells "what stands here is what I read AND NOTHING MORE". Unchanged is a match, and a
+// match is of what the pattern names: a field somebody added since is not in it, so it still
+// matches, which is what lets two writers of different fields of one entity both land. A writer
+// that REPLACES what it read cannot take that — a grants list is rewritten by position, so a
+// level added to a line since the read would be carried onto whichever line now stands there —
+// and asks for this instead: the value compared literally, whole.
+func Exactly(cur Payload) Payload {
+	if cur == nil {
+		return nil
+	}
+	if cur.Type == ir.NullType && cur.Tag == "" {
+		return Unchanged(cur)
+	}
+	out := clone(cur)
+	if !escaped(out.Tag) {
+		out.Tag = patternEscape(out.Tag)
+	}
+	return out
 }
 
 // irTypeTag is tony's type-match operator. `!irtype null` asks whether what stands here has

@@ -5,23 +5,22 @@ The surface. For what a runner *is* and why it is shaped this way, see
 [../task-control.md](../task-control.md). To build one, copy
 [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `verse.runners.<kind>.<name>` carrying one field:
+A runner is an entity at `verse.runners.<name>` carrying one field:
 
 | | |
 |---|---|
 | `url` | the verse-facing task-control base — what `runner.HTTP` drives and what a restart reconstructs from. Required |
 | `identity` | the principal the runner acts as: what a task's reports are written as, and what a spawn grants `read-write` and `control` on the task. A runner acts as itself, never as its installer or as whoever's work it runs. Default: the runner's name ([perms.md](../perms.md)) |
 
-`kind` is the operator's own category (what this runner *is*: pool, host, sandbox); `name` is
-its name within that kind. Neither may contain `/`, and `kind` may not contain `:` — both are
-segments of the address and of the route that serves it.
+`name` is the whole of the address. It may not contain `/`: it is a segment of the route that
+serves it.
 
 ## Commands
 
 ```
 verse runner                              what is installed, with running/total/lastSpawn
         [-probe]                           …and what each one says right now (not recorded)
-verse runner add <kind>.<name> <url>       install one, probing the url first
+verse runner add <name> <url>              install one, probing the url first
        add [-file <f>] | [file] | stdin    …or as a document (.tony/.json/.yaml)
            [-no-probe]                     install without asking the url what it is
            [-identity <id>]                it acts as runner:<id> (default: its name)
@@ -32,9 +31,10 @@ verse runner add <kind>.<name> <url>       install one, probing the url first
               [-leave]                     …the place stays: leave it running
 ```
 
-A `<ref>` is `verse.runners.pool.gpu` or `pool.gpu`: the whole address as it is listed and stored,
-or the bare pair typed on a command line. The middle form, `runners.pool.gpu`, is not accepted,
-because two ways to say one thing is one too many.
+A `<ref>` is `verse.runners.gpu` or `gpu`: the whole address as it is listed and stored, or
+the name typed on a command line. The middle form, `runners.gpu`, is not accepted, because two
+ways to say one thing is one too many. A runner's address is its name and nothing else, so names
+are unique on their own, and adding one that stands replaces it.
 
 On the task side:
 
@@ -49,9 +49,9 @@ verse task run -runner <ref> <prompt>     run this one there
 |---|---|
 | `GET /runners` | list; `?probe=true` adds a live `reach` per runner |
 | `POST /runners` | install; `?probe=false` skips the check. `201` with `{ref, reach}`, plus `warning` when unreachable |
-| `GET /runners/{kind}/{name}` | the entity |
-| `GET /runners/{kind}/{name}/check` | `{ref, url, reach}` and `why` when it is not a runner |
-| `DELETE /runners/{kind}/{name}` | remove. `?cancel=<why>` or `?leave=true`; `409` with both named when work is running and neither is given |
+| `GET /runners/{name}` | the entity |
+| `GET /runners/{name}/check` | `{ref, url, reach}` and `why` when it is not a runner |
+| `DELETE /runners/{name}` | remove. `?cancel=<why>` or `?leave=true`; `409` with both named when work is running and neither is given |
 | `GET /tasks?runner=<ref>` | the work on one runner |
 
 `reach` is one of `a runner`, `not a runner`, `unreachable`. Nothing about it is written to the
@@ -73,7 +73,7 @@ the flow. It is never quietly run somewhere else.
 | | |
 |---|---|
 | `runner` | the resolved url (or `local`) — what a restart re-attaches with |
-| `runnerName` | the `verse.runners.<kind>.<name>` the spawn named, when it named one |
+| `runnerName` | the `verse.runners.<name>` the spawn named, when it named one |
 | `startedAt` | when the task began; carried across a re-attach rather than re-stamped |
 
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing

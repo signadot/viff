@@ -207,11 +207,11 @@ func (s *PermsConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Default
-	if len(s.Default) > 0 {
+	// Field: ChildGrants
+	if len(s.ChildGrants) > 0 {
 		var node *ir.Node
 		ns0 := make(map[string]*ir.Node)
-		for k0, e0 := range s.Default {
+		for k0, e0 := range s.ChildGrants {
 			var vn0 *ir.Node
 			ns1 := make([]*ir.Node, len(e0))
 			for i1, e1 := range e0 {
@@ -223,7 +223,16 @@ func (s *PermsConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			ns0[string(k0)] = vn0
 		}
 		node = ir.FromMap(ns0)
-		irMap["default"] = node
+		irMap["child-grants"] = node
+	}
+
+	// Field: Admins
+	if len(s.Admins) > 0 {
+		slice := make([]*ir.Node, len(s.Admins))
+		for i, v := range s.Admins {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["admins"] = ir.FromSlice(slice)
 	}
 
 	return ir.FromMap(irMap), nil
@@ -259,8 +268,8 @@ func (s *PermsConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "default":
-			// Field: Default
+		case "child-grants":
+			// Field: ChildGrants
 			if fieldNodeUnwrapped.Type == ir.ObjectType {
 				m0 := make(map[string][]string)
 				for k0, v0 := range ir.ToMap(fieldNodeUnwrapped) {
@@ -271,7 +280,7 @@ func (s *PermsConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 							var e1 string
 							var x2 string
 							if v1.Type != ir.StringType {
-								return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", fmt.Sprintf("%s: key %q", "field \"default\"", k0), i1), v1.Type)
+								return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", fmt.Sprintf("%s: key %q", "field \"child-grants\"", k0), i1), v1.Type)
 							}
 							x2 = v1.String
 							e1 = string(x2)
@@ -279,13 +288,30 @@ func (s *PermsConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 						}
 						mv0 = sl1
 					} else {
-						return fmt.Errorf("%s: expected array, got %v", fmt.Sprintf("%s: key %q", "field \"default\"", k0), v0.Type)
+						return fmt.Errorf("%s: expected array, got %v", fmt.Sprintf("%s: key %q", "field \"child-grants\"", k0), v0.Type)
 					}
 					m0[string(k0)] = mv0
 				}
-				s.Default = m0
+				s.ChildGrants = m0
 			} else {
-				return fmt.Errorf("%s: expected object, got %v", "field \"default\"", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("%s: expected object, got %v", "field \"child-grants\"", fieldNodeUnwrapped.Type)
+			}
+		case "admins":
+			// Field: Admins
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Admins = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"admins\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {

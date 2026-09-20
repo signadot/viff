@@ -3,8 +3,8 @@
 # attached-resolver.sh — a service that answers a run's gates, one act each, so you can watch
 # supervision happen instead of reading about it.
 #
-# A resolver is a BINDING (`verse.resolvers.<kind>.<name>`) plus whatever is currently reading for
-# it (`verse.resolvers.instance.<name>@<origin>`). It is not a callback verse invokes: the service
+# A resolver is a BINDING (`verse.resolvers.<name>`) plus whatever is currently reading for
+# it (`verse.watch.<name>@<origin>`). It is not a callback verse invokes: the service
 # dials IN, reads the run's own stream, and posts a verdict — which is why the two commands
 # that ACT as the resolver here use curl, and everything else is `verse`.
 #
@@ -58,7 +58,6 @@ describe() {
 binding_named() {
 	cat <<-'TONY'
 		name:   reviewer
-		kind:   security
 		byRef:  true
 		method: { driver: url, url: "https://reviewer.internal/verse" }
 	TONY
@@ -67,7 +66,6 @@ binding_named() {
 binding_standing() {
 	cat <<-'TONY'
 		name: payments-review
-		kind: security
 		condition:
 		  subject: {path: "change.pr.*", value: { area: payments }}
 		method: { driver: url, url: "https://payments.internal/verse" }
@@ -77,7 +75,6 @@ binding_standing() {
 binding_deadline() {
 	cat <<-'TONY'
 		name:     reviewer
-		kind:     security
 		byRef:    true
 		deadline: { within: "20s" }
 		method:   { driver: url, url: "https://reviewer.internal/verse" }
@@ -87,7 +84,6 @@ binding_deadline() {
 binding_exclusive() {
 	cat <<-'TONY'
 		name:      payments-review
-		kind:      security
 		exclusive: true
 		deadline:  { within: "1h" }
 		condition:
@@ -116,18 +112,18 @@ setup() {
 	case "$1" in
 	named)
 		binding_named | v resolver add - >/dev/null
-		bound=verse.resolvers.security.reviewer
+		bound=verse.resolvers.reviewer
 		;;
 	standing) binding_standing | v resolver add - >/dev/null ;;
 	layered)
 		binding_named | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=verse.resolvers.security.reviewer
+		bound=verse.resolvers.reviewer
 		;;
 	deadline)
 		binding_deadline | v resolver add - >/dev/null
 		binding_standing | v resolver add - >/dev/null
-		bound=verse.resolvers.security.reviewer
+		bound=verse.resolvers.reviewer
 		;;
 	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
 	esac
@@ -174,11 +170,12 @@ setup() {
 run_id() {
 	# STEPS in and steps out: the address is a vector, and `--paths` answers one address per
 	# line as words — so the run id is the LAST word. The `*` makes each instance what --if asks
-	# of, and `--depth 4` bounds the walk to the instances themselves (verse + task + instance +
-	# id); without it the walk goes on into each payload and the last word is a field name.
+	# of, and `--depth 0` bounds the walk to the instances themselves — the addresses the path
+	# names, nothing beneath them; without it the walk goes on into each payload and the last
+	# word is a field name.
 	# SINGLE-quoted inside the pattern: an address whose own segment is quoted (`change.pr."1"`)
 	# carries double quotes, and nesting them would end the tony string early.
-	v data --paths --depth 4 --if "{flow: '$SUBJECT', pending: null}" verse task instance '*' 2>/dev/null |
+	v data --paths --depth 0 --if "{flow: '$SUBJECT', pending: null}" verse task instance '*' 2>/dev/null |
 		awk 'NF {print $NF}' | head -1
 }
 
@@ -224,7 +221,7 @@ state() {
 	step "the bindings — who may answer, and for what"
 	v resolver
 	step "the instances — who is READING, one per (binding, origin)"
-	v data verse resolvers instance
+	v data verse watch
 	printf '\n  the address is `<name>@<origin>`, so one `verse data verse resolvers` shows both what is\n'
 	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
 	local q
@@ -269,7 +266,7 @@ instance_of() {
 # invisibly — which is a claim worth seeing rather than being told.
 #
 #   {kind: pending,  id: …~d1, mode: ASK, tool: run_bash}
-#   {kind: decision, by: via:verse.resolvers.security.reviewer, proceed: true}
+#   {kind: decision, by: via:verse.resolvers.reviewer, proceed: true}
 #   {kind: exec,     tool: run_bash, text: reviewing}
 #   {kind: status,   text: done}
 attach() {

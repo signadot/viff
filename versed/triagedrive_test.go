@@ -15,7 +15,7 @@ func TestTheTriageDriveInstalls(t *testing.T) {
 	defer ts.Close()
 
 	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{
-		"kind": "pool", "name": "coderunner", "url": "http://127.0.0.1:1", "identity": "coderunner",
+		"name": "coderunner", "url": "http://127.0.0.1:1", "identity": "coderunner",
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner: %s: %s", resp.Status, bodyOf(t, resp))
 	}

@@ -13,11 +13,11 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// A rule's record says who installed it, and keeps saying so: across a restart, through a
-// charter file refused and put back, and as `system:charter` for the charter the deployment
-// names. Perms cannot tell the system's rules from a person's whose owner write failed; the
-// install can, and this is where it writes it down.
-func TestARuleRecordCarriesItsInstaller(t *testing.T) {
+// WHOSE A RULE IS, IS ITS OWNER RECORD'S TO SAY, and nothing else says it: the rule's own entity
+// carries no installer, and the engine keeps no account of one. It is its installer's across a
+// restart, through a charter file refused and put back, and the system's for the charter the
+// deployment names — read, each time, from the one place that is checked.
+func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 	const alice = "user:alice@example.com"
 	path := filepath.Join(t.TempDir(), "system.tony")
 	if err := os.WriteFile(path, []byte(`{
@@ -47,13 +47,16 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("no record for %s (ok=%v err=%v)", name, ok, err)
 		}
-		return entity.Str(e.Payload, "by")
+		if said := entity.Get(e.Payload, "by"); said != nil {
+			t.Fatalf("%s's entity says who installed it (%v): that is its owner record's to say", name, entity.ToObj(e.Payload))
+		}
+		return srv.Eng.OwnerOf(name)
 	}
 	if got := by(first, "review"); got != alice {
-		t.Fatalf("review's record says by %q, want %q", got, alice)
+		t.Fatalf("review is %q's, want %q", got, alice)
 	}
 	if got := by(first, "system-watch"); got != entity.SystemCharter {
-		t.Fatalf("the system charter's rule says by %q, want %q", got, entity.SystemCharter)
+		t.Fatalf("the system charter's rule is %q's, want %q", got, entity.SystemCharter)
 	}
 	firstHTTP.Close()
 	down()
@@ -63,8 +66,8 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 	second.Start(t.Context())
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()
-	if got := second.Eng.InstalledBy("review"); got != alice {
-		t.Fatalf("after a restart the engine has review installed by %q, want %q", got, alice)
+	if got := by(second, "review"); got != alice {
+		t.Fatalf("after a restart review is %q's, want %q", got, alice)
 	}
 
 	// A file that changes review and then carries a rule that does nothing is refused whole, and
@@ -78,12 +81,9 @@ func TestARuleRecordCarriesItsInstaller(t *testing.T) {
 	}
 	resp.Body.Close()
 	if got := by(second, "review"); got != alice {
-		t.Fatalf("after the refused re-apply review's record says by %q, want %q", got, alice)
+		t.Fatalf("after the refused re-apply review is %q's, want %q", got, alice)
 	}
 	if got := owner(t, second, trigger.CharterRef("review")); got != alice {
 		t.Fatalf("after the refused re-apply review's record is owned by %q, want %q", got, alice)
-	}
-	if got := second.Eng.InstalledBy("review"); got != alice {
-		t.Fatalf("after the refused re-apply the engine has review by %q, want %q", got, alice)
 	}
 }

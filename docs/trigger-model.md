@@ -446,9 +446,9 @@ another rule derived, since a derive's own depth follows from the subjects the p
 selects. See [`action`](#action--what-fires) below.
 
 A write names the place it writes, and a listing walks: `verse data -paths` lists every address
-under the one it was given, and `-depth` bounds how far it goes. Asking a listing for one level
-answers with whatever happens to live there and loses anything deeper, which is why it walks
-instead.
+under the one it was given, and `-depth` bounds how far it goes beneath that address. Asking a
+listing for one level answers with whatever happens to live there and loses anything deeper,
+which is why it walks instead.
 
 ### The string form is an address, in one grammar
 
@@ -726,7 +726,7 @@ auto asks nobody.
 `answerers` is who the question is held out to: grantees in the
 [grammar](perms.md#principals-and-grantees) a grant names them in — a person (`user:<email>`, or
 the bare email), a whole kind (`user:*`), `*`, a group (`group:<name>`), a binding
-(`via:verse.resolvers.<kind>.<name>`). It is written as the question's
+(`via:verse.resolvers.<name>`). It is written as the question's
 `read-write` grant when the question is posed, in place of the docket's default, and `need` over
 it is what one-or-many means: one ballot per answerer, `need: 1` a race, `need` equal to their
 number all of them. The charter's owner co-owns what their rule asked and answers it without
@@ -1086,7 +1086,7 @@ and wrong for anything that branches.
 
 ```tony
 gating:
-  resolver: verse.resolvers.security.security-review
+  resolver: verse.resolvers.security-review
   gates:    [{name: ship, mode: ask}]
 ```
 

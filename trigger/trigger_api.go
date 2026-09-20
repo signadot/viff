@@ -38,8 +38,77 @@ func (e *Engine) InstallTrigger(t Trigger) error { return e.InstallTriggerAs("",
 // theirs, so the charter acts as its installer from then on. The empty principal is the
 // store's own — the system, for a restore — and is what InstallTrigger passes.
 func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
-	e.RemoveTrigger(t.Name)
-	return e.addTrigger(t, true, as)
+	// REPLACING A RULE IS ITS OWNER'S ACT, asked before anything is touched: what stands is
+	// taken out of the engine through the engine's own hands, which are the system's, so a
+	// check made only by the write that puts the new rule down comes after the old one is gone.
+	if err := e.MayRemoveTrigger(as, t.Name); err != nil {
+		return err
+	}
+	// AND NOTHING MOVES UNTIL THE REPLACEMENT IS KNOWN GOOD. Every check a rule faces is made
+	// of the replacement first, with the old one still installed: a file re-applied with a
+	// mistake in it is refused and leaves what stood standing.
+	if _, err := e.vet(t, as); err != nil {
+		return err
+	}
+	old, had := e.Rule(t.Name)
+	if !had {
+		// NOT IN THE ENGINE IS NOT THE SAME AS NOT WRITTEN DOWN. A rule whose restore failed, or
+		// one this engine refused at a restart, stands in the store with its record and is in
+		// neither list here — and installed as though fresh, a write that then fails would be
+		// cleaned up by removing what stands. The store is asked.
+		_, stands, err := e.store.Get(e.RuleRef(t.Name))
+		if err != nil {
+			return fmt.Errorf("%w: trigger %q: reading %s: %w", ErrCharter, t.Name, e.RuleRef(t.Name), err)
+		}
+		return e.place(t, true, as, true, stands)
+	}
+	// WRITTEN OVER, NOT DELETED AND WRITTEN. A rule's spec is stored raw, so a write replaces
+	// it whole, and deleting the entity first would take its owner record with it — the grants
+	// on it, and whose the rule is: the replacement would be recorded as whoever replaced it
+	// and fire as them. A rule stays its installer's through an edit by a co-owner; only the
+	// system, installing at a name it decides, takes it (takeForTheSystem).
+	e.unplace(t.Name)
+	if err := e.place(t, true, as, true, true); err != nil {
+		if back := e.RestoreTrigger(old); back != nil {
+			e.logger.Error("the rule that stood could not be put back", "trigger", old.Name, "err", back)
+		}
+		return err
+	}
+	return nil
+}
+
+// RestoreTrigger puts a rule back as it stood — the undo of a replacement, for a transaction
+// that is backing out. It is the engine's own act and is asked of nobody: it writes the old
+// content over what stands and CLAIMS NOTHING, so whose the rule is does not move — restored as
+// an install would be, a rule put back by the engine would be taken for the system.
+func (e *Engine) RestoreTrigger(old Trigger) error {
+	e.unplace(old.Name)
+	return e.place(old, true, "", false, true)
+}
+
+// MayRemoveTrigger reports whether principal may remove the rule of this name, installed or
+// held: they hold `owner` on its record, since removing a node is its owner's act and what goes
+// with this one is whatever fires through it. nil where no such rule stands, and for the empty
+// principal and the system, which are the engine's own callers (a restore, an undo).
+//
+// The engine asks because the engine is what removes: its store acts as the system, so a caller
+// that did not ask first has had the system delete somebody's rule on a stranger's say-so.
+func (e *Engine) MayRemoveTrigger(principal, name string) error {
+	if principal == "" || entity.IsSystem(principal) {
+		return nil
+	}
+	if _, ok := e.Rule(name); !ok {
+		return nil
+	}
+	return entity.Check(e.store, principal, entity.OwnerLevel, CharterRefAt(e.confine.stamp(), name), "removing it")
+}
+
+// RemoveTriggerAs is RemoveTrigger on behalf of a principal, refused where they may not.
+func (e *Engine) RemoveTriggerAs(principal, name string) (bool, error) {
+	if err := e.MayRemoveTrigger(principal, name); err != nil {
+		return false, err
+	}
+	return e.RemoveTrigger(name), nil
 }
 
 // addTrigger installs a trigger, writing it to the durable charter when durable.
@@ -52,8 +121,14 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 // owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
 // Goals were the case that motivated the flag; see git-issue 9by2kc0n.
 func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
+	return e.place(t, durable, as, true, false)
+}
+
+// vet is every check an install makes of a rule, and changes nothing: it reports whether the
+// rule's stratum is installed (false is a rule to HOLD, not one to refuse).
+func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	if err := validTriggerName(t.Name); err != nil {
-		return err
+		return false, err
 	}
 	// A RULE THAT COULD NEVER MATCH IS REFUSED, not installed silent. The perms mirror is the
 	// system's, with no read held out on it, so a rule reading it matches nothing unless it is
@@ -63,7 +138,7 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 		for _, st := range t.reads() {
 			if p := st.Path(); len(p) >= 2 && p[0] == entity.VerseRoot && p[1] == entity.PermsSystem {
 				if ok, _ := entity.Holds(e.store, as, entity.Read, entity.VerseRef(entity.PermsSystem)); !ok {
-					return fmt.Errorf("trigger %q reads %s, which is the perms mirror: it is the "+
+					return false, fmt.Errorf("trigger %q reads %s, which is the perms mirror: it is the "+
 						"system's and held out to nobody, so a rule of anyone else's reading it "+
 						"would never match. Policy is watched by the system's own charter", t.Name,
 						entity.JoinSegs(p))
@@ -72,13 +147,13 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 		}
 	}
 	if err := e.checkAnswerers(t); err != nil {
-		return err
+		return false, err
 	}
 	if err := t.Condition.validate(); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
 	if err := t.Action.validate(); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
 	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
 	// rendered back with `action: {}`, and then watched its subtree for the life of the verse
@@ -89,34 +164,34 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	// half-written field to notice: the whole action is missing. A gate does not rescue it
 	// either. A gate with no action poses a question whose answer nothing reads.
 	if !t.Action.does() {
-		return fmt.Errorf("trigger %q: the action does nothing — it has no patch, derive, spawn "+
+		return false, fmt.Errorf("trigger %q: the action does nothing — it has no patch, derive, spawn "+
 			"or seq, so the rule watches its subtree and writes nothing whatever it sees. Give "+
 			"it an action (a `patch` is one line), or remove the rule", t.Name)
 	}
 	if err := t.Action.noNestedSeq(false); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
 	// One spelling or the other, never both. `gates:` at the top level means
 	// `gating: {gates: …}`; a rule that writes both has said which gates it has twice, and
 	// picking one silently is how a charter comes to gate on something its author removed.
 	if t.Gating != nil && len(t.Gating.Gates) > 0 && len(t.Gates) > 0 {
-		return fmt.Errorf("trigger %q: gates are written twice — at the top level and under "+
+		return false, fmt.Errorf("trigger %q: gates are written twice — at the top level and under "+
 			"`gating`. They are one field read two ways; keep the one under `gating`, which "+
 			"is also where a resolver for them is named", t.Name)
 	}
 	for _, g := range t.AllGates() {
 		if err := g.validate(); err != nil {
-			return fmt.Errorf("trigger %q: gate %q: %w", t.Name, g.Name, err)
+			return false, fmt.Errorf("trigger %q: gate %q: %w", t.Name, g.Name, err)
 		}
 		if _, err := g.mode(); err != nil {
-			return err
+			return false, err
 		}
 		// An onDenied is an ordinary action and faces every check one faces — including
 		// that ITS own completion hooks need a spawn. What it does not need is a spawn of
 		// its own: it is not a completion hook, it is what a refusal means.
 		if g.OnDenied != nil {
 			if err := g.OnDenied.validate(); err != nil {
-				return fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
+				return false, fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
 			}
 		}
 	}
@@ -127,25 +202,31 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	// some other way should be told about THAT — and a rule acting outside the level it declared
 	// is another way, and a more specific one.
 	//
+	// VERSE'S OWN HALF FIRST, which no rule but the system's writes (checkReserved): it is the
+	// more specific answer, and a rule told only that its derive needs a level would be given
+	// one and told this next.
+	if err := e.checkReserved(t, as); err != nil {
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
 	// The verdict is held rather than acted on, because a rule whose stratum is not installed yet
 	// is not refused (see below) and must still face every check that does not depend on the
 	// ordering.
 	ok, levelErr := e.checkLevels(t)
 	if levelErr != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, levelErr)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, levelErr)
 	}
 	// The confinement, before the ordering below: a rule that may not write where it acts is
 	// refused whatever its levels say, and "outside this charter's address" is the more
 	// specific answer of the two.
 	if err := e.checkConfined(t); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
 	// And what it READS, against what the package declares. After the write check because the
 	// two answer different questions and the write one is the sharper failure: a rule reaching
 	// past its address to WRITE is a mistake, and one reaching past it to read is a dependency
 	// somebody has not written down. See reads.go.
 	if err := e.checkReads(t); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
 	// LAST, and fatal. A charter that cannot stop spawning is refused rather than logged: it
 	// is not a style question but a rule with no end state, and the operator installing it is
@@ -155,7 +236,25 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	// sequence also fails this check, and "your action re-spawns" would be a true answer to
 	// the wrong question.
 	if err := checkLatch(t.Condition, t.Action); err != nil {
-		return fmt.Errorf("trigger %q: %w", t.Name, err)
+		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
+	}
+	return ok, nil
+}
+
+// place installs a rule that vet admits: into the engine, and into the store when durable. as
+// is who the write is made as; take is whether a system install claims the record
+// (takeForTheSystem); over is whether a record of this name already stands and is being written
+// over.
+//
+// OVER DECIDES WHAT A FAILURE UNDOES. A fresh install that cannot be made durable is taken out
+// whole, the record with it. A replacement that cannot is taken out of the ENGINE and nothing
+// else: the record standing is the one before it, with its owner and its grants, and removing
+// it would turn a store that refused one write into a rule that is gone and a name that is
+// anybody's.
+func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) error {
+	ok, err := e.vet(t, as)
+	if err != nil {
+		return err
 	}
 	// A rule naming a stratum that is not installed yet is HELD rather than refused: a rule and
 	// a stratum are separate entities, either can arrive first, and making that order matter is
@@ -172,11 +271,10 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 			return err
 		}
 		e.pending = append(e.pending, t)
-		e.installers[t.Name] = e.installer(as)
 		e.trigMu.Unlock()
 		if durable {
-			if err := e.persist(t, as); err != nil {
-				e.unhold(t.Name)
+			if err := e.persist(t, as, take); err != nil {
+				e.unplace(t.Name)
 				return err
 			}
 		}
@@ -201,7 +299,6 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 		return err
 	}
 	e.triggers = append(e.triggers, t)
-	e.installers[t.Name] = e.installer(as)
 	e.trigMu.Unlock()
 	// Persist before observing: in subtree mode the watch is what makes the trigger fire,
 	// so a rule that cannot be made durable never starts. (In baseline mode the dispatch
@@ -209,8 +306,13 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	// back after it — the same way removing a trigger stops FURTHER firings rather than
 	// cancelling one in flight.)
 	if durable {
-		if err := e.persist(t, as); err != nil {
-			e.RemoveTrigger(t.Name) // an installed rule the next restart would lose is worse than none
+		if err := e.persist(t, as, take); err != nil {
+			// An installed rule the next restart would lose is worse than none.
+			if over {
+				e.unplace(t.Name)
+			} else {
+				e.RemoveTrigger(t.Name)
+			}
 			return err
 		}
 	}
@@ -245,6 +347,16 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 // removal that only stops the live engine leaves the rule standing in the store, and the
 // next start reinstalls what an operator removed.
 func (e *Engine) RemoveTrigger(name string) bool {
+	found := e.unplace(name)
+	if found {
+		e.forget(name) // the durable copy — off the charter lock, since it is a store write
+	}
+	return found
+}
+
+// unplace takes a rule out of the ENGINE — installed or held — and leaves what is written down:
+// the half of a removal a replacement needs, since what it writes goes over what stands.
+func (e *Engine) unplace(name string) bool {
 	e.trigMu.Lock()
 	found := false
 	var nt []Trigger
@@ -273,13 +385,7 @@ func (e *Engine) RemoveTrigger(name string) bool {
 		np = append(np, t)
 	}
 	e.pending = np
-	if found {
-		delete(e.installers, name)
-	}
 	e.trigMu.Unlock()
-	if found {
-		e.forget(name) // the durable copy — off the charter lock, since it is a store write
-	}
 	return found
 }
 

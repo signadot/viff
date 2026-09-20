@@ -36,9 +36,8 @@ func runnerCmd() *cli.Command {
 		}, runnerAddCmd(), runnerShowCmd(), runnerCheckCmd(), runnerRemoveCmd())
 }
 
-// runnerPath turns the address an operator types into the route's two segments — see pairPath,
-// the one reader the three registries share.
-func runnerPath(ref string) (string, error) { return pairPath("runners", "runners", ref) }
+// runnerPath turns the address an operator types into the route — see namePath.
+func runnerPath(ref string) (string, error) { return namePath("runners", "runners", ref) }
 
 type runnerShowConfig struct{ *cli.Command }
 
@@ -178,12 +177,12 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) == 2 {
 		ref, rawURL := args[0], args[1]
-		parts, ok := pairSegs("runners", ref)
+		name, ok := nameSeg("runners", ref)
 		if !ok {
-			return fmt.Errorf("%w: want `runner add <kind>.<name> <url>`, got %q",
+			return fmt.Errorf("%w: want `runner add <name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		body := map[string]any{"kind": parts[0], "name": parts[1], "url": rawURL}
+		body := map[string]any{"name": name, "url": rawURL}
 		if cfg.Identity != "" {
 			body["identity"] = cfg.Identity
 		}
@@ -191,15 +190,15 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 		return runnerAdded(cc, resp, err)
 	}
 	// More positionals than either form takes. Worth its own message, because the fall-through
-	// below reads args[0] as a FILENAME — so `runner add pool:code <url> <anything else>` failed
-	// with "open pool:code: no such file or directory", which names a file nobody mentioned and
+	// below reads args[0] as a FILENAME — so `runner add code <url> <anything else>` fails
+	// with "open code: no such file or directory", which names a file nobody mentioned and
 	// sends the reader looking for one.
 	//
 	// The way it actually happens is a pasted command with a trailing comment: interactive zsh
 	// has INTERACTIVE_COMMENTS off, so `# prints: …` arrives as four more arguments. Naming that
 	// here is cheap and it is what the reader needs.
 	if cfg.File == "" && len(args) > 2 {
-		return fmt.Errorf("%w: `runner add` takes `<kind>:<name> <url>` or one file, and got %d "+
+		return fmt.Errorf("%w: `runner add` takes `<name> <url>` or one file, and got %d "+
 			"arguments: %q.\nIf you pasted a line with a trailing `#` comment, zsh keeps it — it "+
 			"is not stripped outside a script", cli.ErrUsage, len(args), strings.Join(args, " "))
 	}

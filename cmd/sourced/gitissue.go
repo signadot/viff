@@ -64,7 +64,7 @@ func gitIssueMain(args []string) error {
 		}
 		log.Printf("reflecting issues in %s, mirrored from %s into %s", id, remote, dir)
 	}
-	if err := gi.SetSystem(c.system); err != nil {
+	if err := gi.SetRoot(c.root); err != nil {
 		return err
 	}
 	// No delivery routes, and no hook either. There is one reference-transaction hook per
@@ -75,5 +75,5 @@ func gitIssueMain(args []string) error {
 		log.Printf("hints accepted at %s — name %s to reconcile a repository",
 			c.hintURL, gi.RepoRef("<repo>"))
 	}
-	return c.serve(gi.System(), gi, nil)
+	return c.serve(gi.Root(), gi, nil)
 }

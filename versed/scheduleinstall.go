@@ -40,15 +40,25 @@ func (tx *charterTx) schedule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
+	before, err := entity.ActsAs(store, schedule.Ref(id))
+	if err != nil {
+		return http.StatusServiceUnavailable, err
+	}
 	if err := tx.s.installSchedule(store, at, decl, tx.as()); err != nil {
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
 		if !had {
-			return tx.s.removeSchedule(store, id)
+			// As the system: what this install made is taken back out whoever it turned out to
+			// be — a schedule that landed as nobody's is not its installer's to remove.
+			return tx.s.removeSchedule(entity.As(store, entity.SystemCharter), id)
 		}
 		return tx.s.putScheduleRecord(store, id, old.Payload)
 	})
+	// Its ticks are written as the schedule, which acts as whoever its record says.
+	if err := actsAsInstaller(store, schedule.Ref(id), tx.as(), before); err != nil {
+		return charterCode(err), err
+	}
 	return http.StatusCreated, nil
 }
 
@@ -69,9 +79,6 @@ func (s *Server) installSchedule(store entity.Store, at string, decl schedule.Sc
 	}
 	if at != "" {
 		rec[schedule.AtField] = at
-	}
-	if installer != "" {
-		rec[schedule.ByField] = installer
 	}
 	// The grid moved, or there was none: stamp `next` afresh. Otherwise the standing instant is
 	// the one to arm against, as a deadline's stamp is (mirror.StampDeadline).
@@ -119,26 +126,42 @@ func (s *Server) putScheduleRecord(store entity.Store, id string, rec entity.Pay
 	return nil
 }
 
-// removeSchedule drops a schedule's timer and its record.
+// removeSchedule removes a schedule's record and then drops its timer, in that order: the delete
+// is the requester's and is checked, the timer is this process's and is not, so dropped first a
+// refused removal would leave the schedule standing and stopped — `minutely`, and with it the
+// calendar, by anybody who asked. A timer that fires in between writes nothing: its tick is
+// conditional on the `next` it read.
 func (s *Server) removeSchedule(store entity.Store, id string) error {
-	s.dropClock(id)
 	if _, _, err := store.Write(entity.Write{At: schedule.Ref(id).At()}); err != nil {
 		return fmt.Errorf("removing schedule %s: %w", id, err)
 	}
+	s.dropClock(id)
 	return nil
+}
+
+// packageSchedules is the record of every schedule a package declared.
+func (s *Server) packageSchedules(at string) ([]entity.Ref, error) {
+	ents, err := entity.BelowErr(s.Store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System)
+	if err != nil {
+		return nil, err
+	}
+	var out []entity.Ref
+	for _, ent := range ents {
+		if entity.Str(ent.Payload, schedule.AtField) == at {
+			out = append(out, ent.Ref)
+		}
+	}
+	return out, nil
 }
 
 // removePackageSchedules removes every schedule a package declared, at its uninstall.
 func (s *Server) removePackageSchedules(store entity.Store, at string) error {
-	ents, err := entity.BelowErr(s.Store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System)
+	refs, err := s.packageSchedules(at)
 	if err != nil {
 		return err
 	}
-	for _, ent := range ents {
-		if entity.Str(ent.Payload, schedule.AtField) != at {
-			continue
-		}
-		if err := s.removeSchedule(store, ent.Ref.Name()); err != nil {
+	for _, ref := range refs {
+		if err := s.removeSchedule(store, ref.Name()); err != nil {
 			return err
 		}
 	}

@@ -29,7 +29,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 	charter := `{ name: braced,
 	  condition: { subject: { path: "demo.pr.*", value: { stage: open } } },
 	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, prompt: "echo hi" } } }`
-	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(charter))
+	resp, err := httpPost(ts.URL+"/charter", "application/tony", strings.NewReader(charter))
 	if err != nil {
 		t.Fatalf("post charter: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestAStoredPayloadRendersInOneShape(t *testing.T) {
 	defer ts.Close()
 
 	body := `{"at":"demo.pr.1","payload":{"stage":"open","tags":["a","b"]}}`
-	resp, err := http.Post(ts.URL+"/entity", "application/json", strings.NewReader(body))
+	resp, err := httpPost(ts.URL+"/entity", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("put entity: %v", err)
 	}

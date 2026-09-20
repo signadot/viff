@@ -187,8 +187,9 @@ func (s *Server) flowSuspend(w http.ResponseWriter, r *http.Request) {
 	}
 	scope := r.URL.Query().Get("scope")
 	by := principalOf(r)
-	if by == "" {
-		by = entity.SystemDefault
+	if by == "" { // refused at the door already; never the system's hold for want of a name
+		http.Error(w, "a suspension is held by somebody: "+api.PrincipalHeader+" is required", http.StatusBadRequest)
+		return
 	}
 	held, err := s.hold(scope, sus, by, b.Why)
 	if err != nil {
@@ -228,8 +229,9 @@ func (s *Server) flowResume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	by := principalOf(r)
-	if by == "" {
-		by = entity.SystemDefault
+	if by == "" { // as above: nobody's release is not the system's
+		http.Error(w, "a suspension is released by somebody: "+api.PrincipalHeader+" is required", http.StatusBadRequest)
+		return
 	}
 	rest, _, err := s.release(scope, sus.ID(), by)
 	if err != nil {
@@ -343,6 +345,10 @@ func (s *Server) taskHandle(holder, id string) task.Handle {
 func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 	b, ok := readSelection(w, r)
 	if !ok {
+		return
+	}
+	// Said BY whoever the request is made as (actor), which is who control is asked of below.
+	if b.By, ok = actor(w, s.scopedStore(r), b.By); !ok {
 		return
 	}
 	if b.Task == "" && b.Charter == "" && b.Subject == "" {

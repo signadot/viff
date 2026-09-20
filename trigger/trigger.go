@@ -119,7 +119,7 @@ type Gating struct {
 	ResolverNote []string `tony:"-"`
 	GatesDoc     []string `tony:"-"`
 	GatesNote    []string `tony:"-"`
-	// Resolver names the binding that answers these gates — `resolvers:<kind>:<name>`. Same
+	// Resolver names the binding that answers these gates — `verse.resolvers.<name>`. Same
 	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
 	// and one word for it is worth more than either word being marginally better in its own
 	// place. Empty leaves the question to the standing layer, then to the human docket.

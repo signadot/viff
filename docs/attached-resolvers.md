@@ -23,8 +23,7 @@ It is installed rather than declared in a charter, and it carries the whole bind
 pointing at one: what it supervises, how it answers, under what envelope, and its two dials.
 
 ```tony
-name:      security-review                       # verse.resolvers.security.security-review
-kind:      security
+name:      security-review                       # verse.resolvers.security-review
 condition:                                       # optional — the standing door
   subject: {path: "change.pr.*", value: { area: payments }}
 byRef:     true                                  # optional — the named door
@@ -62,7 +61,7 @@ name: validate
 condition:
   subject: {path: "change.pr.*", value: { stage: proposed }}
 gating:
-  resolver: verse.resolvers.security.security-review   # answers this RULE's own gates
+  resolver: verse.resolvers.security-review   # answers this RULE's own gates
   gates:  [{ name: ship, mode: ask }]
 action:
   spawn:
@@ -70,7 +69,7 @@ action:
     prompt:     "Validate $subject and fix what is trivially wrong."
     grant:    no-delegate                        # what the WORK may do at all
     vector:   ask                                # …and how much of it asks
-    resolver: verse.resolvers.security.security-review # answers this RUN's gates
+    resolver: verse.resolvers.security-review # answers this RUN's gates
   onDone:
     patch: { stage: validated }                  # the latch: out of its own selection
 ```
@@ -249,7 +248,7 @@ is no supervised run that reads as unsupervised, and no way to answer invisibly.
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
-{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.security.reviewer, proceed: true}
+{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.reviewer, proceed: true}
 {kind: exec,     tool: run_bash, text: reviewing}
 {kind: status,   text: done}
 ```

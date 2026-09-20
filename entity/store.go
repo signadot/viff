@@ -114,11 +114,24 @@ type Store interface {
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// ReadAt is the node standing at a path — see Reader.ReadAt.
 	ReadAt(at []string) (node *ir.Node, ok bool, err error)
+	// StandsAt reports whether anything stands at a path WITHOUT READING IT. ReadAt answers the
+	// same question by handing back the whole subtree, which for a container is everything in
+	// it; a caller that only wants to know whether a node is there asks this instead.
+	StandsAt(at []string) (bool, error)
 	// PathsAt is every address beneath a path, which is what a listing prints — see
 	// LogdStore.PathsAt. It answers NAMES, not nodes: the store walks its own levels and
 	// reads nothing it is not asked for, so a listing of a wide container costs the walk
-	// rather than the container.
-	PathsAt(at []string, max int) ([]Path, error)
+	// rather than the container. depth is how far beneath the path to walk, counted from it:
+	// 0 is the path alone, and Unbounded is everything.
+	PathsAt(at []string, depth int) ([]Path, error)
+	// PathsMatching is PathsAt for a PATH rather than a place: every node a kinded path reaches
+	// — a wildcard, a descent — and every address beneath each, answered by the store, with the
+	// depth handed to it as it was given. pattern, when it is one, is asked of each node the
+	// path REACHED, and never prunes inside one it keeps. reached says whether the path reached
+	// anything at all, so a caller can tell a path that names nothing from a filter that kept
+	// nothing. as is how a view narrows what the store matched to what its reader may ask about
+	// (Narrow), nil for a caller that reads everything.
+	PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, as *Narrow) (paths []Path, reached bool, err error)
 	// WatchSubtree observes exactly the slice standing at a prefix of an address — one
 	// (system, kind), or a whole system given the system alone — rather than the whole store.
 	// It is what a scoped trigger watches, so that observation is precisely what the trigger
@@ -174,3 +187,15 @@ type Store interface {
 // which the store recognized structurally and never evaluated. See Require.Absent — the
 // question moved onto its own field, where it cannot be mistaken for the value question that
 // spelling actually asks.
+
+// Narrow is what a view asks of a listing the store answers on its behalf. The store matches a
+// pattern against what it holds and says what a path reached, and both are more than a reader
+// who may not read everything may learn: a row kept on the strength of a field withheld from
+// them, and a node standing where they may not look.
+type Narrow struct {
+	// Sees reports whether the reader may see the node at a path at all.
+	Sees func(Path) (bool, error)
+	// Keeps reports whether a node the store's pattern kept is kept as its READER reads it:
+	// readable, and still a match with what is withheld from them left out.
+	Keeps func(Path) (bool, error)
+}

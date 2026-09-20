@@ -29,15 +29,15 @@ const (
 	ViaKind = "via"
 )
 
-// Everyone is the grantee that names every principal — the unattributed one included, which is
-// what makes an open verse open to a request made from curl with no `user:` behind it.
+// Everyone is the grantee that names every principal — a request that names nobody included,
+// which is what lets a read made from curl with no `user:` behind it see an open verse.
 const Everyone = "*"
 
 // actors is where in verse's half a place acts, by system, and the kind beneath it that does
 // ("" for any): a rule fires as `verse.trigger.rule.<name>`, a source reflects as
-// `verse.sources.<system>.<name>`, a binding answers as `verse.resolvers.<kind>.<name>`. A
+// `verse.sources.<name>`, a binding answers as `verse.resolvers.<name>`. A
 // `via:` naming anywhere else names nobody — a runner has an address and acts as
-// `runner:<identity>`, so `via:verse.runners.pool.coderunner` would look right and admit no one.
+// `runner:<identity>`, so `via:verse.runners.coderunner` would look right and admit no one.
 // The owning packages import this one, so the names are spelled here and a test in versed holds
 // them to the packages' own.
 var actors = map[string]string{"trigger": "rule", "sources": "", "resolvers": ""}
@@ -62,7 +62,7 @@ func Grammar() string {
 
 // ParseGrantee reads a name in the grammar. A bare string holding an `@` and no colon is a
 // person's email, `user:<s>` — unless it is an address in verse's own half, as a resolver
-// instance's is (`verse.resolvers.instance.<name>@<origin>`), which is no person. Every other
+// instance's is (`verse.watch.<name>@<origin>`), which is no person. Every other
 // bare word names nothing and is refused — which is where `user`, `agent`, `coderunner` and
 // `verse.principal.group.<name>` stop meaning anything.
 func ParseGrantee(s string) (Grantee, error) {
@@ -131,7 +131,7 @@ func viaPath(s string) ([]string, error) {
 	kind, acts := actors[segs[1]]
 	if !acts || (kind != "" && len(segs) > 2 && segs[2] != Everyone && segs[2] != kind) {
 		return nil, fmt.Errorf("nothing acts through %s: a rule acts as verse.trigger.rule.<name>, "+
-			"a source as verse.sources.<system>.<name>, a binding as verse.resolvers.<kind>.<name>", s)
+			"a source as verse.sources.<name>, a binding as verse.resolvers.<name>", s)
 	}
 	return segs, nil
 }

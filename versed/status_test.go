@@ -99,15 +99,15 @@ func TestStatusSources(t *testing.T) {
 	// No probe: what is asserted is that the REGISTRATION shows up, and reaching the far side is
 	// `verse sources`' question — see the type doc on api.Status.
 	resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-		"system": "git", "name": "laptop", "url": "http://127.0.0.1:1/",
+		"root": "git", "name": "laptop", "url": "http://127.0.0.1:1/",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	resp.Body.Close()
 
-	if got := sources(); len(got) != 1 || got[0] != "verse.sources.git.laptop" {
-		t.Fatalf("sources = %v, want [sources.git.laptop]", got)
+	if got := sources(); len(got) != 1 || got[0] != "verse.sources.laptop" {
+		t.Fatalf("sources = %v, want [verse.sources.laptop]", got)
 	}
 }
 

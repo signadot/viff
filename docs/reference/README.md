@@ -13,7 +13,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [connect.md](connect.md) | federating a working tree, and scopes |
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
-| [../perms.md](../perms.md) | who may write where and who may read: principals, owners, grants, defaults, and `verse perms` |
+| [perms.md](perms.md) | permissions in detail: the grammar, a record's fields, what is checked on a write and a read, installed things, questions, the seed, `verse perms` — the model itself is [../perms.md](../perms.md) |
 | [sources.md](sources.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
 | [sourced.md](sourced.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
@@ -261,20 +261,20 @@ verse
                   [-options id[:need],…] [-deadline within[:default]]    …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [-probe]                  where work can run
-          add <kind>.<name> <url> [-no-probe] · add [-file <f>|-] [file] · show <ref>
+          add <name> <url> [-no-probe] · add [-file <f>|-] [file] · show <ref>
           check <ref>                        ask a runner what it is, right now
           remove <ref> [-cancel "<why>" | -leave]     what becomes of the work still on it
   group (groups)                             named sets of grantees, granted as group:<name>
           add <name> <member>… · show <name> · remove <name>
   perms [-if <pattern>] [-trim <match>]      the records of every node you may read: who
                                              owns what you can see, and what it holds out
-  perms <step>… [-default '{…}'] [-grants '[…]'] [-grant '{…}' [-below]] [-revoke '{…}']
+  perms <step>… [-child-grants '{…}'] [-grants '[…]'] [-grant '{…}' [-below]] [-revoke '{…}']
                                              one node's record, as its owner: read with no
                                              flags; take the place and set what it and what
                                              is created beneath it hold out
   source (sources) [-probe]                  what reflects an external system in
-          add <system>.<name> <url> [-no-probe] [-allow-overlap]
-          add -dir <d> <system>.<name>       a local git repo, reflected in task
+          add <name> <url> -root <root> [-no-probe] [-allow-overlap]
+          add -dir <d> <name>               a local git repo, reflected in task
           add [-file <f>|-] [file] · show <ref>
           check <ref>                        ask it what it is and what it claims, right now
           remove <ref> [-forget | -keep]     what becomes of what it reflected

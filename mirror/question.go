@@ -1,6 +1,8 @@
 package mirror
 
 import (
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -52,14 +54,18 @@ func RecordID(at, name string) string {
 
 // poseRecord writes the question's own record, once: the system's, under what posed it — the task,
 // or the rule of the charter that asked — and holding out what the default on
-// `verse.gate.question` says, or the gate's own answerers when it named them.
+// `verse.gate.question` says, or the gate's own answerers when it named them, or the binding
+// that answers it when it is bound. The binding is on the record FROM THE WRITE THAT MAKES IT:
+// a record that held the default out first and was narrowed to the binding afterwards is a
+// question every person may settle for as long as the second write takes, and for good when it
+// fails.
 //
 // AN OWNER RECORD, though the question is the system's like the node above it and the elision
 // would have written none: what reaches a question is decided on its record, so that a grant
 // held out above — the docket's open default — stops here, and a gate held out to davido is
 // held out to davido. The link under is what lets the task's owner, or the charter's, answer
 // what their own work asked, with the question standing at its own address.
-func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
+func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 	var origin entity.Ref
 	switch {
 	case taskID != "":
@@ -68,16 +74,55 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
 		origin = RuleRef(q.At, q.Origin)
 	}
 	ref := QuestionRef(q.ID)
+	answers := entity.Canonical(q.Answerers)
+	if q.BoundTo != "" {
+		answers = boundNames(store, q.BoundTo)
+	}
+	// NOT THROWN AWAY. A question whose record did not land stands with none, and one with none
+	// is answered by whoever the docket's row admits — every person — so a store refusing this
+	// one write would turn a gate held out to five named people into one anybody settles, for
+	// good and with nothing to show for it. Tried a few times, since a store under load refuses
+	// a write now and then, and then said, to a caller that does not pose without it.
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = poseRecordOnce(store, ref, origin, answers); err == nil {
+			return nil
+		}
+		time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
+	}
+	return err
+}
+
+// poseRecordOnce is one try at poseRecord, every read in it included: the default it copies is
+// read from the mirror, and a mirror that did not answer is the same store refusing.
+//
+// WHO MAY ANSWER BELONGS TO THE ASKING, not to the id. A gate fired again about the same subject
+// poses the same id, so where the question standing is one that SETTLED, this is a new asking
+// and the record is rewritten to say who answers it (entity.Reestablish). Where it stands
+// pending it is the same asking reported a second time — a local run posts from the registry
+// and again from the frame — and the record is left as it is: a binding it has been handed to
+// since keeps it.
+func poseRecordOnce(store entity.Store, ref, origin entity.Ref, answers []string) error {
 	var grants []entity.Grant
-	if len(q.Answerers) > 0 {
-		levels := entity.DefaultFor(store, ref)
-		to := map[entity.Level][]string{entity.ReadWrite: entity.Canonical(q.Answerers)}
+	if len(answers) > 0 {
+		levels, err := entity.DefaultFor(store, ref)
+		if err != nil {
+			return err
+		}
+		to := map[entity.Level][]string{entity.ReadWrite: answers}
 		if reads := levels[entity.Read]; len(reads) > 0 {
 			to[entity.Read] = reads
 		}
 		grants = []entity.Grant{{At: ref.Segs(), To: to}}
 	}
-	_ = entity.Establish(store, ref, entity.SystemDocket, origin, grants)
+	standing, ok, err := store.Get(ref)
+	if err != nil {
+		return err
+	}
+	if ok && entity.Str(standing.Payload, "status") == QuestionPending {
+		return entity.Establish(store, ref, entity.SystemDocket, origin, grants)
+	}
+	return entity.Reestablish(store, ref, entity.SystemDocket, origin, grants)
 }
 
 // Bind holds the question out to the binding that answers it: `read-write` on the question's
@@ -87,17 +132,55 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) {
 // verdict is admitted, and a binding with no question to answer holds nothing. Exactly one
 // binding at a time: a change of hands replaces the level, and unbinding gives the question
 // back to whoever the default holds it out to. `read` is left as the record has it.
-func Bind(store entity.Store, id, binding string) {
+func Bind(store entity.Store, id, binding string) error {
 	ref := QuestionRef(id)
-	names := []string{viaBinding(binding)}
+	names := boundNames(store, binding)
 	if binding == "" {
-		names = entity.DefaultFor(store, ref)[entity.ReadWrite]
-	} else if AnswererOf != nil {
-		if who := AnswererOf(store, binding); who != "" {
-			names = entity.Canonical([]string{who})
+		// BACK TO WHOM THE GATE NAMED, and to the default only where it named nobody. A bound
+		// question's record carries its binding alone, so the gate's own answerers are kept on
+		// the question (AnswerersField): handed up to the docket without them, a gate held out
+		// to davido became every person's the moment its binding let go.
+		q, _, err := store.Get(ref)
+		if err != nil {
+			return err
+		}
+		if names = entity.Canonical(entity.Strs(q.Payload, AnswerersField)); len(names) == 0 {
+			levels, err := entity.DefaultFor(store, ref)
+			if err != nil {
+				return err
+			}
+			names = levels[entity.ReadWrite]
 		}
 	}
-	_ = entity.SetLevel(store, ref, entity.ReadWrite, names)
+	return entity.SetLevel(store, ref, entity.ReadWrite, names)
+}
+
+// AnswerersField is who the gate itself named to answer, on the question: what unbinding gives
+// the question back to. Absent where the gate named nobody.
+const AnswerersField = "answerers"
+
+// boundNames is who a question bound to binding is held out to.
+func boundNames(store entity.Store, binding string) []string {
+	if AnswererOf != nil {
+		if who := AnswererOf(store, binding); who != "" {
+			return entity.Canonical([]string{who})
+		}
+	}
+	return []string{viaBinding(binding)}
+}
+
+// answerersValue is the gate's named answerers as the question carries them, REMOVED where it
+// named nobody so that an asking that names none does not inherit the last one's.
+func answerersValue(names []string) any {
+	names = entity.Canonical(names)
+	if len(names) == 0 {
+		return entity.Removed()
+	}
+	out := make([]any, len(names))
+	for i, n := range names {
+		out[i] = n
+	}
+	return out
 }
 
 // viaBinding is the principal a binding acts as, from its address: `via:<address>`. An address
@@ -146,7 +229,7 @@ const (
 // A charter matches on values, so `effects: {verbs: [write]}` has to be sayable without
 // knowing the shape of a Go struct, and the three lists are what a gate predicate already
 // speaks in (`GateMatch.Verbs`, `.Resources`, `.Paths`).
-func PostQuestion(store entity.Store, p task.Pending, taskID string) {
+func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool) {
 	q := p.Question
 	rec := entity.Obj{
 		"id":      q.ID,
@@ -183,6 +266,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 	if eff := effectLists(p.Effects); len(eff) > 0 {
 		rec["effects"] = eff
 	}
+	rec[AnswerersField] = answerersValue(q.Answerers)
 	// Always written, default included, so the record says what can be chosen without a
 	// reader having to know what a question with no options means. The tally reads it back.
 	rec["options"] = optionList(q.OptionsOrDefault())
@@ -196,11 +280,37 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) {
 		}
 		rec["deadline"] = d
 	}
+	// THE RECORD BEFORE THE QUESTION. A question with no record of its own is answered by
+	// whoever the docket's row admits — every person — so written the other way round there is
+	// a moment, for every question that names its answerers, in which anybody who sees it on the
+	// docket answers it: a stranger's vote counted toward a gate that needs three of five named
+	// people. An owner record normally FOLLOWS the write it records, because a record
+	// standing for a node whose write then failed makes the next creator there not its owner;
+	// that cannot happen here, where the id is this question's alone and the record is the
+	// system's, and a record for a question that never landed holds out nothing to nobody.
+	if err := poseRecord(store, q, taskID); err != nil {
+		// Closed, and loud: nobody is asked until it is posed again, which is a gate that waits
+		// rather than one that anybody settles.
+		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
+			"written, so nobody is asked until it is posed again: %v\n", q.ID, err)
+		return false
+	}
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
-	poseRecord(store, q, taskID)
 	if q.BoundTo != "" {
-		Bind(store, q.ID, q.BoundTo)
+		rebind(store, q.ID, q.BoundTo)
+	}
+	return true
+}
+
+// rebind is Bind for a question posed AGAIN: its record stands from the first asking and is left
+// as it is (poseRecord), so a binding that has changed since is written over it here. A failure
+// is said and leaves the record as the last asking had it — held out to the last binding, never
+// to everybody.
+func rebind(store entity.Store, id, binding string) {
+	if err := Bind(store, id, binding); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: question %s is still held out as it was last posed; "+
+			"holding it out to %s failed: %v\n", id, binding, err)
 	}
 }
 
@@ -215,20 +325,30 @@ func DeadlineOf(p entity.Payload) (within, dflt, at string) {
 // is honoured and returned, so a re-pose after a restart arms against the instant the question
 // was first given rather than a fresh one — elapsed wall time counts. The effective stamp is
 // read back after the write, which is what makes two armings of one question agree.
+//
+// ONLY ON A QUESTION THAT STANDS. A write beneath an address brings the address into being, so a
+// stamp on a question that was never posed would pose it: a node with a deadline and nothing
+// else, no record saying who may answer it, on the docket for anybody.
 func StampDeadline(store entity.Store, id string, at time.Time) (string, error) {
 	ref := QuestionRef(id)
 	want := at.UTC().Format(time.RFC3339Nano)
 	_, _, err := store.Write(entity.Write{
 		At:    ref.At("deadline"),
 		Value: entity.Obj{"at": want}.Payload(),
-		When:  []entity.Require{{At: ref.At("deadline", "at"), Absent: true}},
+		When: []entity.Require{
+			{At: ref.At(), Pattern: entity.Present()},
+			{At: ref.At("deadline", "at"), Absent: true},
+		},
 	})
 	if err != nil {
 		return "", err
 	}
 	e, ok, err := store.Get(ref)
-	if err != nil || !ok {
-		return want, err
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("question %s is not posed: there is nothing to put a deadline on", id)
 	}
 	if _, _, got := DeadlineOf(e.Payload); got != "" {
 		return got, nil
@@ -366,7 +486,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner string, answerers []string) {
+func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner string, answerers []string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -428,6 +548,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 			rec[k] = v
 		}
 	}
+	rec[AnswerersField] = answerersValue(answerers)
 	// What the question offers, as a posed one carries it: the frame's options, or the
 	// default two when the worker named none, and its deadline when it named one.
 	q := task.GateQuestion{Options: ev.Options}
@@ -439,6 +560,13 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		}
 		rec["deadline"] = d
 	}
+	// The record first, for the reason Pose writes it first: a question standing without one is
+	// everybody's to answer.
+	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers, BoundTo: owner}, taskID); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
+			"written, so nobody is asked until it is posed again: %v\n", ev.ID, err)
+		return false
+	}
 	writeAt(store, ref, rec)
 	// Still pending, or not there at all — a brokered question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this
@@ -448,10 +576,10 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
-	poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers}, taskID)
 	if owner != "" {
-		Bind(store, ev.ID, owner)
+		rebind(store, ev.ID, owner)
 	}
+	return true
 }
 
 // notStatus is the precondition "this record does not say status: s".
@@ -489,10 +617,22 @@ func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 //
 // `delivered: false` is present only while that is the case; it is cleared when the worker's
 // acknowledgement arrives. Absent means delivered, which is what it has always meant.
+//
+// UNLESS THE ACKNOWLEDGEMENT IS ALREADY IN. The answer is delivered before it is recorded
+// (Server.settle), so a quick worker's decision frame can be projected first, and it settles the
+// question as the worker's for want of anything else to go on. Written over that, `delivered:
+// false` would never clear — the acknowledgement it waits for has been and gone. The write is
+// therefore conditional on the question not being answered yet, and where it is, the answer is
+// recorded as what it now is: delivered, and the answerer's.
 func QueuedAnswer(store entity.Store, id string, res task.Resolution) {
 	rec := answerRecord(res)
 	rec["delivered"] = false
-	writeAt(store, QuestionRef(id), rec)
+	committed, _, err := store.Write(entity.Write{
+		At: QuestionRef(id).At(), Value: rec.Payload(), When: []entity.Require{notStatus(QuestionAnswered)},
+	})
+	if err == nil && !committed {
+		AnswerQuestion(store, id, res)
+	}
 }
 
 // Overrode records that an answer was taken against an exclusive binding's claim on the
@@ -742,7 +882,14 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	// the same reason: the clock started when the question was first asked.
 	if status == QuestionAnswered {
 		rec["ballots"] = entity.Removed()
-		rec["deadline"] = entity.Removed()
+		// The INSTANT goes with the round it timed; the terms are this asking's own, written
+		// above, and removing the whole deadline would take them with it — a question asked
+		// again with `within: 72h` would stand with no deadline at all.
+		if d, ok := rec["deadline"].(entity.Obj); ok {
+			d["at"] = entity.Removed()
+		} else {
+			rec["deadline"] = entity.Removed()
+		}
 	}
 	rec["askedAgain"] = true
 }

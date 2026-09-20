@@ -122,7 +122,7 @@ func statusOf(t *testing.T, dir, xidr string) string {
 	}
 	var found []entity.Obj
 	for _, e := range rn.Entities {
-		if e.Ref == entity.RefAt(source.GitIssueSystem, "A", "issue", xidr) {
+		if e.Ref == entity.RefAt(source.GitIssueRoot, "A", "issue", xidr) {
 			found = append(found, entity.ToObj(e.Payload))
 		}
 	}

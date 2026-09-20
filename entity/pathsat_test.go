@@ -40,15 +40,19 @@ func TestPathsAtAnswersWhatTheDocumentWalkDoes(t *testing.T) {
 		at    []string
 		depth int
 	}{
+		{[]string{"demo"}, Unbounded},
+		{[]string{"demo", "pr"}, Unbounded},
+		{[]string{"demo", "pr", "1"}, Unbounded},
+		{[]string{"merge", "proposal", "X"}, Unbounded},
+		{[]string{"merge"}, Unbounded},
+		// Bounded, counted from the address: one level under demo, then two, then three
+		// under merge — and 0, which is the address alone and so lists nothing.
+		{[]string{"demo"}, 1},
+		{[]string{"demo"}, 2},
+		{[]string{"merge"}, 3},
 		{[]string{"demo"}, 0},
 		{[]string{"demo", "pr"}, 0},
-		{[]string{"demo", "pr", "1"}, 0},
-		{[]string{"merge", "proposal", "X"}, 0},
-		{[]string{"merge"}, 0},
-		{[]string{"demo"}, 2},
-		{[]string{"demo"}, 3},
-		{[]string{"merge"}, 4},
-		{[]string{"nosuch"}, 0},
+		{[]string{"nosuch"}, Unbounded},
 	} {
 		got, err := s.PathsAt(tc.at, tc.depth)
 		if err != nil {
@@ -79,7 +83,7 @@ func TestPathsAtAnswersAddressesThatRead(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.PathsAt([]string{"demo"}, 0)
+	got, err := s.PathsAt([]string{"demo"}, Unbounded)
 	if err != nil {
 		t.Fatalf("PathsAt: %v", err)
 	}

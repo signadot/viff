@@ -33,20 +33,20 @@ const (
 // the other installed sources PROVED, which is a fact about the install rather than an error
 // here.
 type Descriptor struct {
-	System string `tony:"field=system"`
-	Owns   []Own  `tony:"field=owns,omitzero"`
+	Root string `tony:"field=root"`
+	Owns []Own  `tony:"field=owns,omitzero"`
 }
 
 // Owner is the optional face a source uses to declare what it claims to be the single writer
 // of. It is separate from Source because a source deployed alone, into a verse with no other
-// source of its system, needs nothing from it.
+// source of its root, needs nothing from it.
 type Owner interface {
 	Owns() []Own
 }
 
 // Describe builds the descriptor for a source, asking it what it owns if it will say.
 func Describe(src Source) Descriptor {
-	d := Descriptor{System: src.System()}
+	d := Descriptor{Root: src.Root()}
 	if o, ok := src.(Owner); ok {
 		d.Owns = o.Owns()
 	}
@@ -76,37 +76,37 @@ const ReflectTimeout = 2 * time.Minute
 // Client is a Source reached over HTTP: the same contract as an in-process one, with the
 // answers arriving from another program. See docs/sources.md.
 type Client struct {
-	system string
-	base   string
-	cl     *http.Client
+	root string
+	base string
+	cl   *http.Client
 }
 
 var _ Source = (*Client)(nil)
 
-// HTTP returns the source at baseURL, which owns `system`.
+// HTTP returns the source at baseURL, which owns `root`.
 //
-// The system is passed rather than discovered, and that is not a shortcut. `Source.System()`
+// The root is passed rather than discovered, and that is not a shortcut. `Source.Root()`
 // cannot fail — it is asked on every converge — while discovering it costs a call that can,
 // so a client that learned it lazily would have to answer the question wrongly or block on a
-// network at an unrelated moment. The registration names the system (`verse.sources.<system>.<name>`
-// is the address), so verse always has it; whether the far side AGREES is a separate question,
-// asked once at install by Probe, where an operator is present to hear the answer.
+// network at an unrelated moment. The registration names it (its `root` field), so verse
+// always has it; whether the far side AGREES is a separate question, asked once at install by
+// Probe, where an operator is present to hear the answer.
 //
 // tr is the transport, and it is the only thing that changes for a source verse cannot dial:
 // a dial-in source's transport opens a connection the source itself made, and everything below
 // stays as it is. nil takes http.DefaultTransport.
-func HTTP(system, baseURL string, tr http.RoundTripper) *Client {
+func HTTP(root, baseURL string, tr http.RoundTripper) *Client {
 	return &Client{
-		system: system,
-		base:   strings.TrimRight(baseURL, "/"),
+		root: root,
+		base: strings.TrimRight(baseURL, "/"),
 		// Its OWN client, never http.DefaultClient: that one is shared task-wide, so the
 		// timeout below would silently bound every other caller's requests too.
 		cl: &http.Client{Timeout: ReflectTimeout, Transport: tr},
 	}
 }
 
-// System is the slice this source owns, as the registration named it.
-func (c *Client) System() string { return c.system }
+// Root is the slice this source owns, as the registration named it.
+func (c *Client) Root() string { return c.root }
 
 // Describe asks the source what it is. It is the cheapest question that has an answer, and it
 // has no effect on the source — which is what makes it the probe.
@@ -115,8 +115,8 @@ func (c *Client) Describe(ctx context.Context) (Descriptor, error) {
 	if err := c.get(ctx, DescribePath, &d); err != nil {
 		return Descriptor{}, err
 	}
-	if d.System == "" {
-		return Descriptor{}, fmt.Errorf("%w: %s described itself with no system", ErrNotSource, c.base)
+	if d.Root == "" {
+		return Descriptor{}, fmt.Errorf("%w: %s described itself with no root", ErrNotSource, c.base)
 	}
 	return d, nil
 }
@@ -228,7 +228,7 @@ func (r Reach) String() string {
 // Probe asks a url what it is, and returns what it said.
 //
 // The descriptor comes back with the reach because it is the point: an install checks that the
-// system the far side claims is the one the operator named, and reads its ownership to prove
+// root the far side claims is the one the operator named, and reads its ownership to prove
 // disjointness from what is already installed. A reach alone would answer the smaller half of
 // the question.
 func Probe(ctx context.Context, baseURL string, tr http.RoundTripper) (Reach, Descriptor, error) {

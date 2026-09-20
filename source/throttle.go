@@ -52,11 +52,11 @@ type answer struct {
 
 var _ Source = (*throttled)(nil)
 
-func (t *throttled) System() string { return t.src.System() }
+func (t *throttled) Root() string { return t.src.Root() }
 
 // Owns delegates when the wrapped source will say, and answers nothing when it will not —
 // which is what Describe would have read from the source itself. A wrapper that swallowed the
-// claim would install a source that owns nothing, and every later install in its system would
+// claim would install a source that owns nothing, and every later install in its root would
 // then need --allow-overlap for a reason belonging to this file.
 func (t *throttled) Owns() []Own {
 	if o, ok := t.src.(Owner); ok {

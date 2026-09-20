@@ -15,8 +15,8 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// GitSystem is the entity slice a git Source owns and is the single writer of.
-const GitSystem = "git"
+// GitRoot is the entity slice a git Source owns and is the single writer of.
+const GitRoot = "git"
 
 // Git reflects one or more git repositories into the git.* slice of the verse — read-only
 // reflection, the inbound half of a Source (docs/sources.md). It is the single writer of
@@ -35,37 +35,37 @@ const GitSystem = "git"
 type Git struct {
 	repos       repoSet
 	commitDepth int // how many tip commits to reflect as git.<repo>.commit.<sha>
-	// system is the slice this source writes, GitSystem unless an operator said otherwise.
+	// root is the slice this source writes, GitRoot unless an operator said otherwise.
 	// Set once before serving and read without the lock thereafter, as a Config field would be
-	// on the connectors that have one — see SetSystem.
-	system string
+	// on the connectors that have one — see SetRoot.
+	root string
 }
 
 // NewGit returns an empty git Source; register repositories with AddRepo or AddMirror.
-func NewGit() *Git { return &Git{repos: newRepoSet(), commitDepth: 50, system: GitSystem} }
+func NewGit() *Git { return &Git{repos: newRepoSet(), commitDepth: 50, root: GitRoot} }
 
-// SetSystem points this source at a slice other than `git.*`. Call it before serving; it is read
+// SetRoot points this source at a slice other than `git.*`. Call it before serving; it is read
 // on every pass and never written again.
 //
 // A source is deployed, and more than one of them will be — different hosts, different
 // credentials, a partition drawn by whoever runs them. Two deployments sharing `git.*` is the
 // ordinary case and needs only disjoint claims; one that wants no coordination at all takes a
-// system of its own, and two systems are disjoint on the first segment. See
+// root of its own, and two roots are disjoint on the first segment. See
 // docs/sources.md, where the argument is made at length for the connector that raised
 // it.
 //
-// The system is a segment of the address and of the route that serves the registration, so
-// neither punctuation survives — the same check source.Entity.Check makes, made here so a bad
-// flag fails the program rather than the install.
-func (g *Git) SetSystem(system string) error {
-	if system == "" {
+// The root is the first segment of every address this source writes, so no punctuation of an
+// address survives — the same check source.Entity.Check makes, made here so a bad flag fails
+// the program rather than the install.
+func (g *Git) SetRoot(root string) error {
+	if root == "" {
 		return nil
 	}
-	if strings.ContainsAny(system, ":/") {
-		return fmt.Errorf("git: system %q may not contain : or / — it is a segment of the "+
-			"address (verse.sources.<system>.<name>) and of the route that serves it", system)
+	if strings.ContainsAny(root, ":/.") {
+		return fmt.Errorf("git: root %q may not contain : / or . — it is the first segment of "+
+			"every address this source writes", root)
 	}
-	g.system = system
+	g.root = root
 	return nil
 }
 
@@ -99,8 +99,8 @@ func (g *Git) AddMirror(ctx context.Context, id, remote, dir string) (string, er
 	return id, nil
 }
 
-// System is the owned slice.
-func (g *Git) System() string { return g.system }
+// Root is the owned slice.
+func (g *Git) Root() string { return g.root }
 
 // Owns is the ownership claim an install checks against the other installed sources: ONE PLACE
 // PER REPOSITORY, `git.<repo>`, with no glob in it.
@@ -123,18 +123,18 @@ func (g *Git) Owns() []Own {
 	return out
 }
 
-// RepoRef is the place one repository's entities stand under, in this source's system — what a
+// RepoRef is the place one repository's entities stand under, in this source's root — what a
 // hint names, since a reconcile of it reconciles that repository and a per-repo pass is
 // content-addressed and subsumes finer targeting. A hook this source installs has to name it in
-// THIS system: a hint at `git.x` reaches nothing when the source writes `mirror.x`.
+// THIS root: a hint at `git.x` reaches nothing when the source writes `mirror.x`.
 func (g *Git) RepoRef(id string) entity.Ref {
-	return entity.RefAt(g.system, id)
+	return entity.RefAt(g.root, id)
 }
 
-// RepoRef is a repository's place in the default system, which is what a hint for a git source
-// registered without a system of its own names.
+// RepoRef is a repository's place in the default root, which is what a hint for a git source
+// registered without a root of its own names.
 func RepoRef(id string) entity.Ref {
-	return entity.RefAt(GitSystem, id)
+	return entity.RefAt(GitRoot, id)
 }
 
 // hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
@@ -144,7 +144,7 @@ const hookMarker = "# verse git Source hook"
 // verse on every ref change — the git-native "webhook". It refuses to clobber a pre-existing
 // reference-transaction hook that isn't ours. Idempotent for ours.
 //
-// hintURL is the registration's hint route, `<verse>/sources/git/<name>/hint`. The ref is
+// hintURL is the registration's hint route, `<verse>/sources/<name>/hint`. The ref is
 // appended HERE, because which ref targets a repo is git's knowledge and not the route's: a
 // reconcile of `git.<id>` is a reconcile of that repo. verse never parses this delivery —
 // there is nothing to parse, which is the point.
@@ -239,7 +239,7 @@ func (g *Git) Reflect(ctx context.Context, ref entity.Ref) (Reflection, error) {
 // else the single repo whose place the ref is at or under — the second level of the address.
 func (g *Git) targets(ref entity.Ref) map[string]repo {
 	segs := ref.Segs()
-	if len(segs) < 2 || segs[0] != g.system {
+	if len(segs) < 2 || segs[0] != g.root {
 		return g.repos.all()
 	}
 	id := segs[1]
@@ -271,8 +271,8 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// are carried in Entities and covered by nothing, so one that has fallen out of the bounded
 	// tip window is simply not mentioned — and an unmentioned, uncovered entity stays.
 	rn := Reflection{Covers: []entity.Pattern{
-		Cover(g.system, id, "ref", "*"),
-		Cover(g.system, id, "head"),
+		Cover(g.root, id, "ref", "*"),
+		Cover(g.root, id, "head"),
 	}}
 
 	// Refs: refs/heads, refs/tags, refs/remotes — git.<repo>.ref.<short> {repo, name, sha, type}.
@@ -288,14 +288,14 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	sort.Strings(names)
 	for _, name := range names {
 		r := refs[name]
-		rn.Add(entity.RefAt(g.system, id, "ref", name),
+		rn.Add(entity.RefAt(g.root, id, "ref", name),
 			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
 	if head := gitHead(ctx, dir); head != nil {
 		head["repo"] = id
-		rn.Add(entity.RefAt(g.system, id, "head"), head)
+		rn.Add(entity.RefAt(g.root, id, "head"), head)
 	}
 
 	// Recent commits: a bounded tip window. Scoped per-repo (git.<repo>.commit.<sha>) — a
@@ -313,7 +313,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		if len(c.trailers) > 0 {
 			p["trailers"] = c.trailers
 		}
-		rn.Add(entity.RefAt(g.system, id, "commit", c.sha), p)
+		rn.Add(entity.RefAt(g.root, id, "commit", c.sha), p)
 	}
 	return rn, nil
 }

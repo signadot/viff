@@ -3341,9 +3341,9 @@ func (s *PermsRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["grants"] = s.Grants
 	}
 
-	// Field: Default (optional)
-	if s.Default != nil {
-		irMap["default"] = s.Default
+	// Field: ChildGrants (optional)
+	if s.ChildGrants != nil {
+		irMap["child-grants"] = s.ChildGrants
 	}
 
 	return ir.FromMap(irMap), nil
@@ -3397,11 +3397,11 @@ func (s *PermsRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 			} else {
 				s.Grants = fieldNodeUnwrapped
 			}
-		case "default":
+		case "child-grants":
 			if gomap.GetUnmapComments(opts...) {
-				s.Default = fieldNode
+				s.ChildGrants = fieldNode
 			} else {
-				s.Default = fieldNodeUnwrapped
+				s.ChildGrants = fieldNodeUnwrapped
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -3451,9 +3451,9 @@ func (s *PermsEdit) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: At
 	irMap["at"] = ir.FromString(string(s.At))
 
-	// Field: Default (optional)
-	if s.Default != nil {
-		irMap["default"] = s.Default
+	// Field: ChildGrants (optional)
+	if s.ChildGrants != nil {
+		irMap["child-grants"] = s.ChildGrants
 	}
 
 	// Field: Grants (optional)
@@ -3515,11 +3515,11 @@ func (s *PermsEdit) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
 			s.At = string(fieldNodeUnwrapped.String)
-		case "default":
+		case "child-grants":
 			if gomap.GetUnmapComments(opts...) {
-				s.Default = fieldNode
+				s.ChildGrants = fieldNode
 			} else {
-				s.Default = fieldNodeUnwrapped
+				s.ChildGrants = fieldNodeUnwrapped
 			}
 		case "grants":
 			if gomap.GetUnmapComments(opts...) {

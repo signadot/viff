@@ -35,7 +35,7 @@ func linearMain(args []string) error {
 
 	ctx := context.Background()
 	src, err := linear.New(ctx, linear.Config{
-		System:    c.system,
+		Root:      c.root,
 		Auth:      secret("LINEAR_API_KEY"),
 		Teams:     teams,
 		PageSize:  *pageSize,
@@ -57,5 +57,5 @@ func linearMain(args []string) error {
 	routes := map[string]http.Handler{
 		"POST /linear/webhook": src.Webhook(signing, c.hinter()),
 	}
-	return c.serve(src.System(), src, routes)
+	return c.serve(src.Root(), src, routes)
 }

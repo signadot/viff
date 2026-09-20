@@ -30,13 +30,13 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	installResolver(t, ts.URL,
-		`{name: security-review, kind: security, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
+		`{name: security-review, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
 
 	// Named beats standing, so the run's own resolver owns it first.
-	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security.security-review")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
-	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.security.security-review" {
+	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.security-review" {
 		t.Fatalf("owned by %v before any escalation", got)
 	}
 
@@ -47,10 +47,10 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 		t.Fatalf("escalate = %s, want 204", resp.Status)
 	}
 	got := question(t, srv, qid)
-	if got["resolver"] != "verse.resolvers.security.payments-review" {
+	if got["resolver"] != "verse.resolvers.payments-review" {
 		t.Fatalf("hop one landed on %v, want the standing binding", got["resolver"])
 	}
-	if got["reownedFrom"] != "verse.resolvers.security.security-review" || got["reownedWhy"] != "escalated" {
+	if got["reownedFrom"] != "verse.resolvers.security-review" || got["reownedWhy"] != "escalated" {
 		t.Fatalf("the transfer left no trace, or the wrong one: %+v", got)
 	}
 	if got["status"] != mirror.QuestionPending {
@@ -72,7 +72,7 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 		t.Fatalf("the question changed as it moved: %+v", got)
 	}
 	// And a person can now answer it, which is what ⊤ means.
-	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
 	ans.Body.Close()
 	if ans.StatusCode != http.StatusNoContent {
 		t.Fatalf("a person answering an escalated question = %s", ans.Status)
@@ -98,7 +98,7 @@ func TestEscalatingWhatIsNotYours(t *testing.T) {
 		t.Fatalf("escalating another instance's question = %s, want 403", resp.Status)
 	}
 
-	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: mine, Choice: "proceed", By: "human:scott"})
+	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: mine, Choice: "proceed", By: "user:" + tester})
 	ans.Body.Close()
 	resp = escalateAs(t, ts, inst, mine)
 	resp.Body.Close()
@@ -118,18 +118,18 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	installResolver(t, ts.URL,
-		`{name: security-review, kind: security, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
+		`{name: security-review, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
 	subject := entity.RefAt("change", "pr", "1")
 	pr(t, srv, "1", "payments")
-	mirror.Watch(srv.Store, "verse.resolvers.security.payments-review", "payments-review", subject)
+	mirror.Watch(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
 
-	spawnFor(t, ts, "run-1", subject.String(), "verse.resolvers.security.security-review")
+	spawnFor(t, ts, "run-1", subject.String(), "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
 	escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid).Body.Close()
 
 	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).Name()
 	transfer := func(ev entity.Event) bool {
-		return ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.security.payments-review"
+		return ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.payments-review"
 	}
 	var arrived bool
 	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+spine+"/events?since=0", carries(1, transfer)) {
@@ -141,7 +141,7 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 }
 
 func standingWithDeadline(name, area, within string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {path: "change.pr.*",` +
+	return `{name: ` + name + `, condition: {subject: {path: "change.pr.*",` +
 		` value: {area: ` + area + `}}}, deadline: {within: "` + within + `"},` +
 		` method: {driver: url, url: "https://x"}}`
 }
@@ -182,11 +182,11 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	installResolver(t, ts.URL,
-		`{name: security-review, kind: security, byRef: true, deadline: {within: "300ms"}, `+
+		`{name: security-review, byRef: true, deadline: {within: "300ms"}, `+
 			`method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
 
-	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security.security-review")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
 
 	// Armed, and absolute: a duration on the binding becomes an instant on the question,
@@ -202,7 +202,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	// question, so failing that read would be failing the machine.
 	docket(t, srv)
 	if time.Now().Before(due) {
-		if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.security.security-review" {
+		if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.security-review" {
 			t.Fatalf("a question inside its deadline moved to %v", q["resolver"])
 		}
 	} else {
@@ -213,10 +213,10 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	docket(t, srv) // a reader arrives, and that is when it is evaluated
 
 	got = question(t, srv, qid)
-	if got["resolver"] != "verse.resolvers.security.payments-review" {
+	if got["resolver"] != "verse.resolvers.payments-review" {
 		t.Fatalf("overdue, and owned by %v — want the layer above", got["resolver"])
 	}
-	if got["reownedWhy"] != "overdue" || got["reownedFrom"] != "verse.resolvers.security.security-review" {
+	if got["reownedWhy"] != "overdue" || got["reownedFrom"] != "verse.resolvers.security-review" {
 		t.Fatalf("the transfer says the wrong thing moved it: %+v", got)
 	}
 	if got["id"] != qid || got["status"] != mirror.QuestionPending {
@@ -229,7 +229,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	}
 	// And reading again does not move it again.
 	docket(t, srv)
-	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.security.payments-review" {
+	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.payments-review" {
 		t.Fatalf("a second read moved it to %v", q["resolver"])
 	}
 }
@@ -264,7 +264,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	if got["reownedWhy"] != nil {
 		t.Fatalf("an answered question was moved by its own deadline: %+v", got)
 	}
-	if got["by"] != "via:verse.resolvers.security.payments-review" {
+	if got["by"] != "via:verse.resolvers.payments-review" {
 		t.Fatalf("answered by %v, want the binding that answered in time", got["by"])
 	}
 }
@@ -282,10 +282,10 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 	defer ts.Close()
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 	installResolver(t, ts.URL,
-		`{name: security-review, kind: security, byRef: true, deadline: {within: "10ms"}, `+
+		`{name: security-review, byRef: true, deadline: {within: "10ms"}, `+
 			`method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
-	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security.security-review")
+	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
 	time.Sleep(30 * time.Millisecond) // overdue
 
@@ -300,7 +300,7 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 	if got["reownedWhy"] != nil {
 		t.Fatalf("a settled question was handed on anyway: %+v", got)
 	}
-	if got["by"] != "via:verse.resolvers.security.security-review" || got["status"] != mirror.QuestionAnswered {
+	if got["by"] != "via:verse.resolvers.security-review" || got["status"] != mirror.QuestionAnswered {
 		t.Fatalf("the answer did not survive: %+v", got)
 	}
 }

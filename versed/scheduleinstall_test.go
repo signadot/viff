@@ -61,8 +61,11 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	if !ok {
 		t.Fatal("no record at verse.schedule.mine")
 	}
-	if entity.Str(rec, schedule.EveryField) != "1h" || entity.Str(rec, schedule.ByField) != "user:alice@example.com" {
+	if entity.Str(rec, schedule.EveryField) != "1h" {
 		t.Fatalf("record = %v", rec)
+	}
+	if who, err := entity.ActsAs(srv.Store, schedule.Ref("mine")); err != nil || who != "user:alice@example.com" {
+		t.Fatalf("the schedule is %q's (%v), want alice's", who, err)
 	}
 	next, err := schedule.ParseKey(entity.Str(rec, schedule.NextField))
 	if err != nil || !next.After(time.Now()) || next.Minute() != 0 {

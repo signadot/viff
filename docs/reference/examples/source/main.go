@@ -4,7 +4,7 @@
 // one that has not been written yet.
 //
 //	go run ./docs/reference/examples/source -addr :9801 -repo verse=/path/to/verse
-//	verse source add git.build-host http://localhost:9801
+//	verse source add build-host http://localhost:9801 -root git
 //	verse source
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
@@ -63,7 +63,7 @@ func main() {
 	// it sees. verse drives exactly this over HTTP, and its own in-process source is the same
 	// value behind the same handler — so there is no privileged local path for this to differ
 	// from.
-	log.Printf("source listening on %s — install it with: verse source add <system>.<name> http://<host>%s",
+	log.Printf("source listening on %s — install it with: verse source add <name> http://<host>%s -root <root>",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, sourced.New(src).Handler()); err != nil {
 		log.Fatalf("source: %v", err)
@@ -74,10 +74,10 @@ func main() {
 // against a real system out of the box; replace the delegation with your own reading.
 type demo struct{ git *source.Git }
 
-// System is the slice this source owns and is the SINGLE WRITER of: `git:*`, `linear:*`,
+// Root is the slice this source owns and is the SINGLE WRITER of: `git:*`, `linear:*`,
 // whatever you are reflecting. One source per system per scope — verse refuses an install
 // that cannot be proved disjoint from the ones already standing.
-func (d *demo) System() string { return d.git.System() }
+func (d *demo) Root() string { return d.git.Root() }
 
 // Owns is what this source claims across every pass, which is what verse proves that
 // disjointness against. Coarser than a Covers below — it says what nobody else may write — and
@@ -100,11 +100,9 @@ func (d *demo) Owns() []source.Own { return d.git.Owns() }
 //	    if err != nil {
 //	        return source.Reflection{}, err          // an error, NEVER an empty reflection
 //	    }
-//	    rn := source.Reflection{Covers: []entity.Pattern{{
-//	        System:    "linear",
-//	        Kind:      "issue",
-//	        Predicate: entity.Obj{"project": project}.Payload(),   // say what you are complete FOR
-//	    }}}
+//	    cover := source.Cover("linear", "issue", "*")
+//	    cover.Predicate = entity.Obj{"project": project}.Payload() // say what you are complete FOR
+//	    rn := source.Reflection{Covers: []entity.Pattern{cover}}
 //	    for _, i := range issues {
 //	        rn.Add(entity.RefAt("linear", "issue", i.ID),
 //	            entity.Obj{"project": project, "title": i.Title, "stage": i.State})

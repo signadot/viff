@@ -59,6 +59,11 @@ func startedServer(t *testing.T) (*Server, *httptest.Server) {
 // twice is one record with two holders, and two spellings of one subject are one shape.
 func TestASuspensionIsOneRecordPerThingItCovers(t *testing.T) {
 	srv, ts := startedServer(t)
+	// Alice's charter and the places she and bob both watch: a suspension is its holder's say
+	// over a place they hold `control` at, so the places are somebody's, with bob let in.
+	owns(t, srv, "user:alice@example.com",
+		[]entity.Grant{{To: map[entity.Level][]string{entity.Control: {"user:bob@example.com"}, entity.Read: {entity.Everyone}}}},
+		entity.RefAt("verse-dev"), entity.RefAt("demo"), entity.RefAt("git"))
 
 	for _, c := range []struct {
 		as   string
@@ -109,6 +114,11 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 	if _, err := srv.hold("", sus, throttle, "the cycle throttle tripped"); err != nil {
 		t.Fatal(err)
 	}
+	// Her rule, as an install leaves it, with bob let in: a person's resume lifts what another
+	// person holds, where both hold `control` over what it covers.
+	owns(t, srv, "user:alice@example.com",
+		[]entity.Grant{{To: map[entity.Level][]string{entity.Control: {"user:bob@example.com"}, entity.Read: {entity.Everyone}}}},
+		trigger.CharterRef("loop"))
 	if code, _, msg := suspendAs(t, ts, "suspend", "alice@example.com", "", api.FlowSelect{Charter: ":loop", Subject: "*", Why: "and I want to read it"}); code != http.StatusOK {
 		t.Fatalf("alice's suspend = %d %s", code, msg)
 	}
@@ -139,6 +149,7 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 // name baseline's charter at all.
 func TestASuspensionBelongsToItsScope(t *testing.T) {
 	srv, ts := startedServer(t)
+	testerOwns(t, srv, entity.RefAt("demo"))
 
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "me", api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "mine"}); code != http.StatusOK {
 		t.Fatalf("suspend --scope me = %d %s", code, msg)
@@ -190,7 +201,7 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 	if resp.StatusCode/100 == 2 {
 		t.Fatalf("a raw put of a suspension record = %s %s, want it refused", resp.Status, body)
 	}
-	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(`{
+	resp, err := httpPost(ts.URL+"/charter", "application/tony", strings.NewReader(`{
 		name: suspender, stratum: prs,
 		condition: {subject: {path: "demo.pr.*"}},
 		action: {derive: [{path: "verse.trigger.suspension", value: {charter: "*"}}]},
@@ -215,6 +226,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	first.susp.Unload() // where a restore begins
+	testerOwns(t, first, entity.RefAt("verse-dev"))
 	ts := httptest.NewServer(first.Handler())
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "verse-dev.drift", Subject: "*", Why: "early"}); code != http.StatusServiceUnavailable {
 		t.Fatalf("a suspend before the table loaded = %d %s, want 503", code, msg)
@@ -259,7 +271,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	sus, ok := second.susp.Get(held.ID)
-	if !ok || sus.Held[entity.SystemDefault].Why != "across a restart" {
+	if !ok || sus.Held["user:"+tester].Why != "across a restart" {
 		t.Fatalf("after a restart the table has %s = %+v (ok=%v), want it back with its holder", held.ID, sus, ok)
 	}
 }
@@ -314,7 +326,7 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 		action: {patch: {stage: shipped}},
 	}`)
 	subject := entity.RefAt("demo", "release", "1")
-	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, asTester(srv), subject, entity.Obj{"stage": "open"}.Payload())
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
 
 	ballot := func(by string) int {
@@ -405,7 +417,7 @@ func TestAWithdrawnQuestionsClockStops(t *testing.T) {
 		action: {patch: {stage: shipped}},
 	}`)
 	subject := entity.RefAt("demo", "release", "1")
-	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, asTester(srv), subject, entity.Obj{"stage": "open"}.Payload())
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
 
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
@@ -445,13 +457,13 @@ func TestMootnessDuringASuspensionEndsTheFiring(t *testing.T) {
 		action: {patch: {stage: shipped}},
 	}`)
 	subject := entity.RefAt("demo", "release", "1")
-	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, asTester(srv), subject, entity.Obj{"stage": "open"}.Payload())
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
 	if code, _, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1", Why: "hold"}); code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
 	}
 	waitQuestionStatus(t, srv, id, mirror.QuestionOrphaned)
-	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "withdrawn"}.Payload())
+	entitytest.Set(t, asTester(srv), subject, entity.Obj{"stage": "withdrawn"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if code, _, msg := suspendAs(t, ts, "resume", "", "", api.FlowSelect{Charter: "*", Subject: "demo.release.1"}); code != http.StatusOK {
 		t.Fatalf("resume = %d %s", code, msg)
@@ -482,6 +494,7 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	heldBy := func(id string) []string { return srv.Eng.HeldBy(id) }
 
 	// suspend --task, suspend, resume --task → refused; lift → still held by the operator.
+	testerOwns(t, srv, entity.RefAt("demo"), mirror.Ref("first"), mirror.Ref("second"))
 	first := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "first", first)
 	if code, msg := runVerb(t, ts, "suspend", "first"); code != http.StatusOK {
@@ -544,6 +557,7 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 // once neither holds it.
 func TestASecondSuspensionIsNamedOnTheTaskItAlsoHolds(t *testing.T) {
 	srv, ts := startedServer(t)
+	testerOwns(t, srv, entity.RefAt("demo"))
 	h := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "run", h)
 	narrow := api.FlowSelect{Subject: "demo.pr.1", Why: "this PR"}
@@ -602,6 +616,7 @@ func TestAPackagesFlowIsShownByItsEngine(t *testing.T) {
 			"status": "running", "flow": subject, "chain": "note-the-head"}.Payload()}); err != nil {
 			t.Fatal(err)
 		}
+		testerOwns(t, srv, mirror.Ref(id)) // the package is the tester's, and so is what it spawns
 	}
 	live, adrift := "notes:note-the-head@notes.seen.head", "notes:note-the-head@notes.seen.later"
 	record(live, "notes.seen.head")
@@ -642,6 +657,7 @@ func TestAPackagesFlowIsShownByItsEngine(t *testing.T) {
 // about a suspended subject — is held as it is tracked, and says so on its record and its flow.
 func TestATaskTrackedUnderASuspensionIsHeld(t *testing.T) {
 	srv, ts := startedServer(t)
+	testerOwns(t, srv, entity.RefAt("demo"))
 	code, held, msg := suspendAs(t, ts, "suspend", "", "", api.FlowSelect{Charter: "*", Subject: "demo.pr.1", Why: "hold it"})
 	if code != http.StatusOK {
 		t.Fatalf("suspend = %d %s", code, msg)
@@ -696,7 +712,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()
 	ref := entity.RefAt("demo", "pr", "1")
-	entitytest.Set(t, store.Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, entity.As(store, "user:"+tester).Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
 	addScopedRule(t, ts, "me", `{
 		name: connect-probe,
 		condition: {subject: {path: "never.never.*"}},
@@ -736,6 +752,7 @@ func TestASuspensionIsSeenWhereTheWorkIsRead(t *testing.T) {
 		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {patch: {stage: reviewed}},
 	}`)
+	testerOwns(t, srv, entity.RefAt("demo"), entity.RefAt("verse-dev"))
 	srv.Eng.Adopt("demo.pr.1", "by-hand", newIdleHandle(t))
 	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("review@demo.pr.2").At(),
 		Value: entity.Obj{"status": "running", "flow": "demo.pr.2", "chain": "review"}.Payload()}); err != nil {

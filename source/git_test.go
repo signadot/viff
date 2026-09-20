@@ -76,7 +76,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	}
 
 	get := func(segs ...string) entity.Obj {
-		ref := entity.RefAt(append([]string{source.GitSystem}, segs...)...)
+		ref := entity.RefAt(append([]string{source.GitRoot}, segs...)...)
 		e, ok, _ := store.Get(ref)
 		if !ok {
 			t.Fatalf("missing %s", ref)
@@ -104,7 +104,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Fatalf("git.A.commit.%s = %+v", shaA, c)
 	}
 	// a commit is repo-scoped, not a global sha key.
-	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "commit", shaA)); ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitRoot, "commit", shaA)); ok {
 		t.Fatal("a commit should stand under its repository, git.<repo>.commit.<sha>, not by bare sha")
 	}
 
@@ -113,7 +113,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	if err := rf.Reconcile(ctx, g.RepoRef("A")); err != nil {
 		t.Fatalf("targeted reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "A", "ref", "feature")); ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitRoot, "A", "ref", "feature")); ok {
 		t.Fatal("A/feature should have tombstoned after branch delete")
 	}
 	get("B", "ref", "dev") // B's slice untouched by A's targeted reconcile
@@ -160,7 +160,7 @@ func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	get := func(segs ...string) entity.Obj {
-		ref := entity.RefAt(append([]string{source.GitSystem}, segs...)...)
+		ref := entity.RefAt(append([]string{source.GitRoot}, segs...)...)
 		e, ok, _ := store.Get(ref)
 		if !ok {
 			t.Fatalf("missing %s", ref)

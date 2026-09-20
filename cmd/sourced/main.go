@@ -11,7 +11,7 @@
 //
 // Then install it, from anywhere that can reach verse:
 //
-//	verse source add git.build-host http://localhost:9801
+//	verse source add build-host http://localhost:9801 -root git
 //	verse source
 //
 // WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
@@ -93,7 +93,7 @@ type common struct {
 	adminAddr   string
 	minInterval time.Duration
 	hintURL     string
-	system      string
+	root        string
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
@@ -102,17 +102,17 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.DurationVar(&c.minInterval, "min-interval", 0,
 		"answer from the last reflection when asked again inside this window — the source's "+
 			"own rate limit, since verse's resync interval is a constant and an API budget is not")
-	fs.StringVar(&c.system, "system", "",
+	fs.StringVar(&c.root, "root", "",
 		"the slice this source writes, defaulting to the connector's own name. More than one "+
 			"source gets deployed and the partition between them is drawn by whoever runs them; "+
-			"two deployments sharing a system need only disjoint claims, and one that wants no "+
-			"coordination at all takes a system of its own — two systems are disjoint on the "+
+			"two deployments sharing a root need only disjoint claims, and one that wants no "+
+			"coordination at all takes a root of its own — two roots are disjoint on the "+
 			"first segment. It is also how a second instance of the same product gets a slice "+
 			"that is not confused with the first")
 	fs.StringVar(&c.adminAddr, "admin-addr", envOr("SOURCED_ADMIN_ADDR", ""),
 		"admin/pprof listen address, or off to disable (default: the -addr port + 1)")
 	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
-		"verse's hint route for THIS registration (http://verse:9797/sources/<system>/<name>/hint); "+
+		"verse's hint route for THIS registration (http://verse:9797/sources/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
 }
 
@@ -122,12 +122,12 @@ func (c *common) bind(fs *flag.FlagSet) {
 // what it does not serve, which is the answer a client reads as "whatever is at this url, it
 // does not serve this contract" — so mounting it as the fallback keeps that true for
 // everything except the routes named here.
-func (c *common) serve(system string, src source.Source, routes map[string]http.Handler) error {
+func (c *common) serve(root string, src source.Source, routes map[string]http.Handler) error {
 	// The admin face, for the same reason versed has one: a source that has stopped
 	// answering is a source whose goroutines are the whole question, and `kubectl logs` on a
 	// wedged reflection says nothing at all. Started before the contract is mounted.
 	adm, err := adminface.Start(adminface.Spec{
-		Name: "sourced " + system, Addr: c.adminAddr, Serve: c.addr, Log: log.Printf,
+		Name: "sourced " + root, Addr: c.adminAddr, Serve: c.addr, Log: log.Printf,
 	})
 	if err != nil {
 		return err
@@ -141,8 +141,8 @@ func (c *common) serve(system string, src source.Source, routes map[string]http.
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	log.Printf("%s source on %s — install it with: verse source add %s.<name> %s",
-		system, c.addr, system, dialable(c.addr))
+	log.Printf("%s source on %s — install it with: verse source add <name> %s -root %s",
+		root, c.addr, dialable(c.addr), root)
 	if c.hintURL == "" && len(routes) > 0 {
 		log.Printf("no -hint-url: deliveries will be verified and dropped, and only verse's " +
 			"periodic resync will converge")

@@ -19,9 +19,11 @@ func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 	if _, err := runCLI(t, "data", "demo", "pr", "1", "--put", `{stage: open}`); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	rec, ok, err := store.Get(entity.PermsRef(entity.RefAt("demo", "pr", "1")))
+	// The record stands at the place the put brought into being, which is `demo`: the row
+	// beneath it is the configured user's through that.
+	rec, ok, err := store.Get(entity.PermsRef(entity.RefAt("demo")))
 	if err != nil || !ok {
-		t.Fatalf("no owner record for demo.pr.1 (ok=%v err=%v)", ok, err)
+		t.Fatalf("no owner record for demo (ok=%v err=%v)", ok, err)
 	}
 	if got := entity.Str(rec.Payload, entity.OwnerField); got != "user:alice@example.com" {
 		t.Fatalf("owner = %q, want the configured user", got)

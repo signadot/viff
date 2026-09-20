@@ -67,7 +67,8 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 	// A dev's write into their scope, which the restored rule should act on.
 	scoped := store.Scope("me")
 	ref := entity.RefAt("demo", "pr", "1")
-	entitytest.Set(t, scoped, ref, entity.Obj{"stage": "open"}.Payload())
+	// The dev's, so that their rule — which acts as them — may advance it.
+	entitytest.Set(t, asTester(second).Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
 
 	deadline := time.After(3 * time.Second)
 	for {
@@ -90,7 +91,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 
 func addScopedRule(t *testing.T, ts *httptest.Server, scope, doc string) {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/charter?scope="+scope, "application/tony", strings.NewReader(doc))
+	resp, err := httpPost(ts.URL+"/charter?scope="+scope, "application/tony", strings.NewReader(doc))
 	if err != nil {
 		t.Fatalf("scoped trigger add: %v", err)
 	}
@@ -210,7 +211,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 		t.Fatalf("the scope's charter after restart = %v; want the shadow and the probe", scoped)
 	}
 	ref := entity.RefAt("demo", "pr", "1")
-	entitytest.Set(t, store.Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, asTester(second).Scope("me"), ref, entity.Obj{"stage": "open"}.Payload())
 	deadline := time.After(3 * time.Second)
 	for {
 		e, ok, _ := store.Scope("me").Get(ref)

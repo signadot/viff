@@ -37,9 +37,9 @@ func sourceCmd() *cli.Command {
 		}, sourceAddCmd(), sourceShowCmd(), sourceCheckCmd(), sourceRemoveCmd())
 }
 
-// sourcePath turns the address an operator types into the route's two segments — see pairPath,
+// sourcePath turns the address an operator types into the route — see namePath,
 // the one reader the three registries share.
-func sourcePath(ref string) (string, error) { return pairPath("sources", "sources", ref) }
+func sourcePath(ref string) (string, error) { return namePath("sources", "sources", ref) }
 
 type sourceShowConfig struct{ *cli.Command }
 
@@ -149,6 +149,7 @@ type sourceAddConfig struct {
 	*cli.Command
 	File         string `cli:"name=file aliases=f desc='read the source from FILE (- = stdin); also accepts a positional [file]'"`
 	Dir          string `cli:"name=dir desc='reflect this local git repository, in task — instead of a url'"`
+	Root         string `cli:"name=root desc='the root of the tree this source writes, which is which connector it is: git, github, linear, slack (default with --dir: git)'"`
 	NoProbe      bool   `cli:"name=no-probe desc='install without asking it what it is'"`
 	AllowOverlap bool   `cli:"name=allow-overlap desc='install even though another source may write the same slice (both will tombstone what the other reflected)'"`
 }
@@ -160,7 +161,7 @@ func sourceAddCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "add").
-		WithSynopsis("add a source: add <system>.<name> <url>, add --dir <d> <system>.<name>, " +
+		WithSynopsis("add a source: add <name> <url> --root <root>, add --dir <d> <name>, " +
 			"or add --file <f> (- = stdin) | [file] | stdin").
 		WithOpts(opts...).
 		WithRun(cfg.run)
@@ -183,12 +184,23 @@ func (cfg *sourceAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) >= 1 && (len(args) == 2 || cfg.Dir != "") {
 		ref := args[0]
-		parts, ok := pairSegs("sources", ref)
+		name, ok := nameSeg("sources", ref)
 		if !ok {
-			return fmt.Errorf("%w: want `source add <system>.<name> <url>`, got %q",
+			return fmt.Errorf("%w: want `source add <name> <url> --root <root>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		body := map[string]any{"system": parts[0], "name": parts[1]}
+		// WHICH CONNECTOR IT IS is said, not discovered: the install checks it against what the
+		// source says of itself, and a check against something read off the same source checks
+		// nothing. `--dir` is the in-process git source and can only be that.
+		root := cfg.Root
+		if root == "" && cfg.Dir != "" {
+			root = "git"
+		}
+		if root == "" {
+			return fmt.Errorf("%w: `source add %s <url>` wants --root: the root of the tree it "+
+				"writes, which is which connector it is (git, github, linear, slack)", cli.ErrUsage, name)
+		}
+		body := map[string]any{"root": root, "name": name}
 		if cfg.Dir != "" {
 			body["dir"] = cfg.Dir
 		} else {

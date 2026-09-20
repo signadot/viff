@@ -9,6 +9,8 @@
 package mirror
 
 import (
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -100,7 +102,7 @@ type Meta struct {
 	// Runner is the task-control backend hosting it — "local", "broker", or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
-	// RunnerName is the runner ENTITY a spawn named — `runners:<kind>:<name>` — when it named
+	// RunnerName is the runner ENTITY a spawn named — `verse.runners.<name>` — when it named
 	// one. Empty for a spawn that took the verse's default.
 	//
 	// It is stamped BESIDE Runner rather than instead of it, and that split is the one place
@@ -151,6 +153,9 @@ type Meta struct {
 	// suspensions that paused it — asked at every write, since the engine holding the task is
 	// who knows and this record is replaced whole at each one. Nil holds nothing.
 	HeldBy func() []string
+	// SlidBy is the last slide of this task's vector the control route relayed: the actor the
+	// route checked, and the mode it relayed. by is "" where none was.
+	SlidBy func() (by, mode string)
 	// Gates are the spawn's own gates, the policy a task's questions are posed under. A gate a
 	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
 	// the frame says: that gate is the charter's, and the runner does not get to soften it.
@@ -322,6 +327,22 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		st["occurrence"] = rev
 	}
 	writeRun(store, id, occurrenceOf(st), st)
+	// A TASK THE SYSTEM'S RULE SPAWNED CARRIES THE SYSTEM'S RECORD. A person's task is theirs by
+	// the write above; the system's write records no owner, and the row above holds
+	// `child-owner` beneath it out to everyone at any depth — so with no record of its own that
+	// line reaches inside the task, and whatever somebody adds beneath it is theirs
+	// (entity.OwnedForSystem).
+	if p := entity.PrincipalOf(store); p != "" {
+		made := []entity.Ref{Ref(id)}
+		if occ := occurrenceOf(st); occ != 0 {
+			made = append(made, RunRef(id, occ))
+		}
+		for _, ref := range made {
+			if err := entity.OwnedForSystem(store, ref, p); err != nil {
+				fmt.Fprintf(os.Stderr, "verse: task %s: %s has no record of its own: %v\n", id, ref, err)
+			}
+		}
+	}
 	// A runner known at spawn is granted the task now, before its first report lands, and
 	// the reports are written as it from the first frame: the assignment is the owner's act,
 	// made at the moment of assigning.
@@ -376,6 +397,63 @@ func answerersFor(gates []task.Gate, ev task.Frame) []string {
 		}
 	}
 	return ev.Answerers
+}
+
+// LocalRunner is Meta.Runner for a task hosted in this process, whose frames are verse's own.
+const LocalRunner = "local"
+
+// settleRelayed records a relayed task's decision frame.
+//
+// WHERE THE ANSWER ROUTE ACCEPTED AN ANSWER, the question already says everything — who, what
+// they chose, their ballot — written when the answer was queued for the worker (QueuedAnswer),
+// and the frame is the worker's acknowledgement that it arrived: `delivered` is cleared and
+// nothing else is touched. The frame's verdict is not read, so it cannot differ.
+//
+// WHERE NOBODY WAS ASKED, the worker settled it, and the verdict is the frame's because there
+// is no other: by the runtime's own name where the frame says the runtime did it (auto, the
+// deadline, a cancel — names that are nobody's), and otherwise by the worker of record, never
+// the name the frame carries. It casts NO BALLOT: a ballot is an answerer's, and the worker is
+// not one — and an echo that outruns the route's own write (settle delivers first) would
+// otherwise leave the runner a ballot beside the answerer's.
+func settleRelayed(docket entity.Store, questionID string, res task.Resolution, claimant string) {
+	ref := QuestionRef(questionID)
+	if e, ok, err := docket.Get(ref); err == nil && ok &&
+		entity.Str(e.Payload, "status") == QuestionAnswered && entity.Str(e.Payload, "by") != "" {
+		writeAt(docket, ref, entity.Obj{"delivered": entity.Removed()})
+		return
+	}
+	if res.Cast() {
+		res.By = claimant
+	}
+	rec := answerRecord(res)
+	delete(rec, "ballots")
+	rec["delivered"] = entity.Removed()
+	writeAt(docket, ref, rec)
+}
+
+// slidBy is who a relayed task's slide is recorded as by: the actor the control route relayed
+// this mode for (Meta.SlidBy), and the worker of record for a slide to a mode nobody relayed.
+// The relayed slide is not used up by the first frame that matches it: the broker reports the
+// slide itself and the worker echoes it, and both are the same slide.
+func slidBy(m Meta, mode, claimant string) string {
+	if m.SlidBy != nil {
+		if by, relayed := m.SlidBy(); by != "" && relayed == mode {
+			return by
+		}
+	}
+	return claimant
+}
+
+// mayClaim reports whether a name on a running status is one a worker claims as: somebody, and
+// not a name verse makes. The broker holds a claim to the same (broker.claim), and a stream from
+// anywhere else — a remote runner's — is held to it here, since what follows is a grant to that
+// name and every projection written as it.
+func mayClaim(by string) bool {
+	switch entity.KindOf(by) {
+	case entity.SystemKind, entity.ViaKind:
+		return false
+	}
+	return by != ""
 }
 
 // asPrincipal is the store's view acting as principal, and the store itself where it
@@ -434,8 +512,19 @@ func backoff(attempt int) time.Duration {
 // answerer was checked; the worker's grant is on its task and must reach no question, and a
 // projection written as the worker would pass exactly the check that grant is meant to fail. The
 // worker's grant at the claim is the mirror's own act (entity.SystemMirror).
+//
+// WHO A FRAME SAYS DID SOMETHING IS NOT THE FRAME'S TO SAY, where the frame came from a worker.
+// A hosted task's frames are made in this process, by routes that checked their actor, and are
+// trusted. A relayed task's — a broker's worker's, a remote runner's — are whatever the worker
+// wrote, and a `by` on one is a name the worker chose: a decision "by" the answerer a gate is
+// held out to, a slide "by" the docket. AND WHAT WAS DECIDED IS NOT THE FRAME'S EITHER, where
+// verse already holds it: an answer the route accepted is on the question, verdict, ballot and
+// all, and a worker reporting another verdict under it would leave a record saying the
+// answerer chose what they did not. So a relayed task's decision is settled from what verse
+// holds (settleRelayed), and its slide named from what verse relayed (slidBy).
 func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame, claimant *string) (ended, heard bool) {
 	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
+	relayed := m.Runner != "" && m.Runner != LocalRunner
 	if *claimant != "" {
 		store = asPrincipal(store, *claimant)
 	}
@@ -474,10 +563,10 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if owner == "" && subject != "" && m.Owner != nil {
 					owner = m.Owner(subject)
 				}
-				PostFrameQuestion(docket, ev, id, subject, owner, answerersFor(m.Gates, ev))
+				posed := PostFrameQuestion(docket, ev, id, subject, owner, answerersFor(m.Gates, ev))
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
-				if ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
+				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
 					m.Arm(ev.ID, ev.Deadline.Within)
 				}
 			case task.EvDecision:
@@ -489,8 +578,15 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// A gate the vector allowed outright reports a decision without ever having
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
-				if st["pending"] != nil {
-					AnswerQuestion(docket, ev.ID, task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text})
+				// AND ONLY THE QUESTION THIS TASK IS WAITING ON. A frame names the question it
+				// decides, and one naming another task's would settle that one.
+				if st["pending"] == QuestionRef(ev.ID).String() {
+					res := task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text}
+					if relayed {
+						settleRelayed(docket, ev.ID, res, *claimant)
+					} else {
+						AnswerQuestion(docket, ev.ID, res)
+					}
 				}
 				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool
@@ -516,7 +612,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					// A CLAIM: a worker took the task and named itself. The grant a spawn makes
 					// to its runner is written now, naming the party that actually turned up,
 					// and every report from here on is written as them.
-					if ev.Text == string(task.Running) && ev.By != "" && *claimant == "" {
+					if ev.Text == string(task.Running) && mayClaim(ev.By) && *claimant == "" {
 						claimed(projector, id, st, ev.By)
 						*claimant = ev.By
 						store = asPrincipal(store, ev.By)
@@ -548,8 +644,12 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				continue
 			case task.EvVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
-				if ev.By != "" {
-					st["vectorBy"] = ev.By
+				by := ev.By
+				if relayed {
+					by = slidBy(m, ev.Mode, *claimant)
+				}
+				if by != "" {
+					st["vectorBy"] = by
 				}
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
@@ -560,7 +660,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 	return false, heard
 }
 
-// BindResolver mints the record of a resolver watching one run: `resolvers:instance:<name>@<id>`.
+// BindResolver mints the record of a resolver watching one run: `verse.watch.<name>@<id>`.
 //
 // At SPAWN rather than at the first question, because a resolver reads context before the ask
 // — that is the whole reason it is attached rather than handed a question — so the thing that
@@ -609,8 +709,14 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 	if binding == "" || name == "" {
 		return
 	}
-	ref := entity.VerseRef(resolverSystem, resolverInstance, name+"@"+OriginKey(origin))
-	_, _, _ = store.Write(entity.Write{
+	ref := entity.VerseRef(resolverInstances, name+"@"+OriginKey(origin))
+	// AS THE SYSTEM, whatever view it was handed. Minting an instance is the mirror's act, and
+	// the caller's view is as often somebody else's: an escalation mints the NEXT binding's
+	// instance from the request of the binding handing the question up, and written as that one
+	// the instance would be refused — nothing is held out to be made here — or, were it
+	// admitted, recorded as the wrong binding's installer's.
+	store = asPrincipal(store, entity.SystemMirror)
+	committed, _, err := store.Write(entity.Write{
 		At: ref.At(),
 		Value: entity.Obj{
 			"binding": binding,
@@ -622,6 +728,25 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 		}.Payload(),
 		When: []entity.Require{entity.Created()},
 	})
+	if err != nil {
+		return
+	}
+	// THE INSTANCE IS ITS BINDING'S, and says so. It is minted by the system, whose write records
+	// no owner, beneath a row that holds `owner` out to everyone — so with no record of its own
+	// an instance is anybody's to write: its position, and whose it is. The system's record,
+	// under the binding: whoever owns the binding co-owns its instances, which is who writes
+	// them. Written when the instance is minted, and for one standing with none; this runs at
+	// every question posed, and an instance already recorded costs a look at the mirror in hand.
+	if !committed {
+		if ok, err := entity.Recorded(store, ref); err != nil || ok {
+			return
+		}
+	}
+	if bound, err := entity.ParseAddr(binding); err == nil {
+		if err := entity.Establish(store, ref, entity.SystemMirror, bound, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: instance %s has no record of its own: %v\n", ref, err)
+		}
+	}
 }
 
 // The resolver system, spelled here rather than imported: mirror is what every runtime writes
@@ -630,10 +755,7 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 //
 // Which is the polite reading. The blunt one is that the import is a cycle, and this is one
 // fact with two spellings until that is cut — see Meta.Owner.
-const (
-	resolverSystem   = "resolvers"
-	resolverInstance = "instance"
-)
+const resolverInstances = "watch" // resolver.InstanceSystem
 
 // write projects the accumulated state onto the task's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the

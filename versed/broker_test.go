@@ -25,7 +25,7 @@ func TestTaskRunHonorsRunner(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
+	resp, err := httpPost(ts.URL+"/tasks", "application/json",
 		strings.NewReader(`{"prompt":"ad-hoc run","driver":"human","runner":"broker"}`))
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -140,7 +140,7 @@ func TestServingABrokerLeavesTheDefaultAlone(t *testing.T) {
 	runOn := func(t *testing.T, id, runnerField string) string {
 		t.Helper()
 		body := `{"id":"` + id + `","prompt":"work","driver":"human"` + runnerField + `}`
-		resp, err := ts.Client().Post(ts.URL+"/tasks", "application/json", strings.NewReader(body))
+		resp, err := httpPost(ts.URL+"/tasks", "application/json", strings.NewReader(body))
 		if err != nil {
 			t.Fatalf("spawn %s: %v", id, err)
 		}
@@ -216,7 +216,7 @@ func TestTaskListUnionsBrokered(t *testing.T) {
 	// Spawn through the API (not the broker directly) so it mirrors a task:instance
 	// entity, as production does — the unified list filters by scope membership via that
 	// entity, so a task with no entity would (correctly) not appear.
-	sp, err := ts.Client().Post(ts.URL+"/tasks", "application/json",
+	sp, err := httpPost(ts.URL+"/tasks", "application/json",
 		strings.NewReader(`{"id":"bp1","prompt":"brokered review","driver":"human","runner":"broker"}`))
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
@@ -269,13 +269,14 @@ func TestTaskInboxAndControlRouting(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
 	b.Spawn(task.Launch{ID: "bp1", Prompt: "brokered task", Driver: "human"}, nil)
+	testerOwns(t, srv, mirror.Ref("bp1")) // as the spawn route would have left it
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	cl := ts.Client()
 
 	// say routes to the broker: it enqueues a control item for the worker.
-	resp, err := cl.Post(ts.URL+"/tasks/bp1/say", "application/json",
-		strings.NewReader(`{"instruction":"focus on auth","by":"op"}`))
+	resp, err := httpPost(ts.URL+"/tasks/bp1/say", "application/json",
+		strings.NewReader(`{"instruction":"focus on auth","by":"user:tester@example.com"}`))
 	if err != nil {
 		t.Fatalf("say: %v", err)
 	}
@@ -296,7 +297,7 @@ func TestTaskInboxAndControlRouting(t *testing.T) {
 	decodeResp(t, ir, &items)
 	var sawSay bool
 	for _, it := range items {
-		if it.Kind == "say" && it.Text == "focus on auth" && it.By == "op" {
+		if it.Kind == "say" && it.Text == "focus on auth" && it.By == "user:"+tester {
 			sawSay = true
 		}
 	}
@@ -305,7 +306,7 @@ func TestTaskInboxAndControlRouting(t *testing.T) {
 	}
 
 	// cancel routes to the broker too: the task latches terminal (verse-authoritative).
-	cr, err := cl.Post(ts.URL+"/tasks/bp1/cancel", "application/json", nil)
+	cr, err := httpPost(ts.URL+"/tasks/bp1/cancel", "application/json", nil)
 	if err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
@@ -356,7 +357,7 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	defer ts.Close()
 
 	// claim, routed through /broker/<nonce>/tasks/p1/claim.
-	resp, err := ts.Client().Post(
+	resp, err := httpPost(
 		ts.URL+"/broker/"+nonce+"/tasks/p1/claim", "application/json",
 		strings.NewReader(`{"identity":"runner:scott"}`))
 	if err != nil {
@@ -377,7 +378,7 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	}
 
 	// an unregistered nonce is not found.
-	bad, err := ts.Client().Post(
+	bad, err := httpPost(
 		ts.URL+"/broker/deadbeef/tasks/p1/claim", "application/json",
 		strings.NewReader(`{}`))
 	if err != nil {

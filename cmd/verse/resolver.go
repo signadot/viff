@@ -17,9 +17,8 @@ func resolverCmd() *cli.Command {
 		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd())
 }
 
-// resolverPath turns the address an operator types into the route's two segments — see
-// pairPath, the one reader the three registries share.
-func resolverPath(ref string) (string, error) { return pairPath("resolvers", "resolvers", ref) }
+// resolverPath turns the address an operator types into the route — see namePath.
+func resolverPath(ref string) (string, error) { return namePath("resolvers", "resolvers", ref) }
 
 type resolverShowConfig struct{ *cli.Command }
 

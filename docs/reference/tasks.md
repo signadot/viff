@@ -494,7 +494,7 @@ Three backends, one handle. `verse task` and
 | broker | `verse up -broker -broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
 
 Those three are the verse-wide default, set at startup. A spawn can also name its own place —
-`runner: verse.runners.pool.gpu` on a charter, `-runner` on `verse task run` — so a drive can
+`runner: verse.runners.gpu` on a charter, `-runner` on `verse task run` — so a drive can
 run part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
 

@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed runners live: `verse.runners.<kind>.<name>`.
+// System is where installed runners live: `verse.runners.<name>`.
 //
 // A runner is an ENTITY rather than a startup flag, because the ask this answers is
 // "deploying arbitrary runners in the verse namespace" — adding one is a deployment act, a
@@ -20,9 +20,10 @@ import (
 // doer or a resolver.
 const System = "runners"
 
-// Ref addresses an installed runner.
-func Ref(kind, name string) entity.Ref {
-	return entity.VerseRef(System, kind, name)
+// Ref addresses an installed runner: one name beneath the registry, which is the whole of its
+// address.
+func Ref(name string) entity.Ref {
+	return entity.VerseRef(System, name)
 }
 
 // Entity is one installed runner: an address and somewhere to reach it.
@@ -32,10 +33,8 @@ func Ref(kind, name string) entity.Ref {
 // narrowing a doer answers, and answering it in two places without deciding how they compose
 // is how a ceiling comes to mean two things.
 type Entity struct {
-	// Name and Kind together are the address. Kind is the operator's own category — what this
-	// runner IS (pool, host, broker) — the way a resolver's kind is what it is FOR.
+	// Name is the address: `verse.runners.<name>`.
 	Name string `tony:"field=name"`
-	Kind string `tony:"field=kind"`
 
 	// URL is the runner's verse-facing base: what runner.HTTP drives, and what a restart
 	// reconstructs from. Required, with no default and no local special case — `local` is what
@@ -64,19 +63,7 @@ func (e Entity) Principal() string {
 // one of the three that can change on its own.
 func (e Entity) Check() error {
 	if e.Name == "" {
-		return fmt.Errorf("runner: name is required — it is half of the address")
-	}
-	if e.Kind == "" {
-		return fmt.Errorf("runner %q: kind is required — it is the other half of the address, "+
-			"and it is what this runner IS (pool, host), the way a resolver's kind is what it "+
-			"is FOR", e.Name)
-	}
-	// The id may contain colons — ParseRef splits three ways and the rest is the id — but the
-	// kind may not, and neither may survive a slash: both are path segments on the route that
-	// serves them, so a name with a slash addresses something else or nothing.
-	if strings.ContainsAny(e.Kind, ":/") {
-		return fmt.Errorf("runner %q: kind %q may not contain : or / — it is a segment of the "+
-			"address (verse.runners.<kind>.<name>) and of the route that serves it", e.Name, e.Kind)
+		return fmt.Errorf("runner: name is required — it is the address")
 	}
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("runner %q: a name may not contain / — it is a path segment on the "+
@@ -116,7 +103,7 @@ func (e Entity) Check() error {
 // not recognise, so `ulr:` would install a runner with no address and report success — and the
 // url is the entire content of this entity, so the silence is total.
 func CheckFields(node *ir.Node) error {
-	known := map[string]string{"name": "", "kind": "", "url": "", "identity": ""}
+	known := map[string]string{"name": "", "url": "", "identity": ""}
 	node = unwrapNode(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
@@ -144,18 +131,15 @@ func unwrapNode(n *ir.Node) *ir.Node {
 	return n
 }
 
-// Find reads one installed runner by the address a charter or a CLI argument names, accepting
-// it as it is stored (`verse.runners.<kind>.<name>`) or as the bare pair below it (`pool.gpu`) —
-// an operator reading `verse data` and one typing `verse runner show` should not have to know
-// two spellings of one thing. The middle form is refused; trimAddress says why.
-//
-// ONE GRAMMAR, TWO DEPTHS — see source.Find, which is the same reader for the same reason.
+// Find reads one installed runner by what a charter or a CLI argument names: its address as it
+// is stored and listed (`verse.runners.gpu`), or its name (`gpu`) — an operator reading `verse
+// data` and one typing `verse runner show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
-	parts, ok := trimAddress(ref)
+	name, ok := NameOf(ref)
 	if !ok {
 		return Entity{}, false
 	}
-	e, ok, err := r.Get(Ref(parts[0], parts[1]))
+	e, ok, err := r.Get(Ref(name))
 	if err != nil || !ok {
 		return Entity{}, false
 	}
@@ -182,7 +166,8 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 	// read of everything every source had ever reflected. On a store carrying two mirrored
 	// repositories that was 455 KB a call, and `verse status` (which lists runners, sources
 	// and questions) paid it three times per readiness probe.
-	ents, err := entity.ListAtErr(r, []string{entity.VerseRoot, System}, entity.Depth+1, Is)
+	registry := []string{entity.VerseRoot, System}
+	ents, err := entity.ListAtErr(r, registry, len(registry)+1, Is)
 	if err != nil {
 		return nil, err
 	}
@@ -193,12 +178,7 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 		}
 		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Name < out[j].Name
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
@@ -206,23 +186,19 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 // the reserved root rather than the system is what makes it verse's (see mirror.IsTask).
 func Is(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
 
-// trimAddress takes the two segments that name one of these, from either spelling an operator
-// has in front of them: the whole address as it is listed and stored
-// (`verse.runners.<kind>.<name>`), or the bare pair typed on a command line (`pool.gpu`).
-//
-// The middle form — the address without its reserved root — is deliberately NOT accepted. It
-// was the whole spelling before verse's own half of the tree had a name, and keeping it would
-// leave two ways to say one address, which is the mush the reserved root exists to end.
-func trimAddress(ref string) ([2]string, bool) {
+// NameOf is the runner's name from either spelling an operator has in front of them: the whole
+// address as it is listed and stored (`verse.runners.gpu`), or the name alone. Anything else —
+// the address without its reserved root, a path with more to it — names no runner.
+func NameOf(ref string) (string, bool) {
 	segs, err := entity.PathSegs(ref)
 	if err != nil {
-		return [2]string{}, false
+		return "", false
 	}
-	if len(segs) == entity.Depth+1 && segs[0] == entity.VerseRoot && segs[1] == System {
-		segs = segs[2:]
+	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, System) {
+		return at.Name(), at.Name() != ""
 	}
-	if len(segs) != 2 || segs[0] == "" || segs[1] == "" {
-		return [2]string{}, false
+	if len(segs) != 1 || segs[0] == "" {
+		return "", false
 	}
-	return [2]string{segs[0], segs[1]}, true
+	return segs[0], true
 }

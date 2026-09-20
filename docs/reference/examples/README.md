@@ -25,9 +25,9 @@ go run ./docs/reference/examples/runner -addr :9800
 Then, against a verse:
 
 ```sh
-verse runner add pool.gpu http://localhost:9800
-verse task run -runner verse.runners.pool.gpu "fetch the data; retrain; report"
-verse ps -runner verse.runners.pool.gpu
+verse runner add gpu http://localhost:9800
+verse task run -runner verse.runners.gpu "fetch the data; retrain; report"
+verse ps -runner verse.runners.gpu
 ```
 
 It is a placeholder driver — it splits the prompt on semicolons and does each part — so you can
@@ -70,8 +70,8 @@ somewhere its result goes, plus which driver runs the work, which tools exist, a
 may reach — and a spawn names one:
 
 ```sh
-verse runner add pool.coderunner http://localhost:9802 -identity coderunner    # its reports are written as runner:coderunner
-verse task run -runner verse.runners.pool.coderunner -environment local -as "$USER@example.com" "add a test for firstLine"
+verse runner add coderunner http://localhost:9802 -identity coderunner    # its reports are written as runner:coderunner
+verse task run -runner verse.runners.coderunner -environment local -as "$USER@example.com" "add a test for firstLine"
 ```
 
 ### A workspace per task

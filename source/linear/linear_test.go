@@ -52,7 +52,7 @@ func TestLinearReflectsATeamWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rn.Check(linear.System); err != nil {
+	if err := rn.Check(linear.Root); err != nil {
 		t.Fatalf("the reflection is not safe to converge: %v", err)
 	}
 	got := payloads(rn)
@@ -289,7 +289,7 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 		t.Fatal(err)
 	}
 	get := func(id string) (entity.Obj, bool) {
-		e, ok, _ := store.Get(entity.RefAt(linear.System, "ENG", "issue", id))
+		e, ok, _ := store.Get(entity.RefAt(linear.Root, "ENG", "issue", id))
 		return entity.ToObj(e.Payload), ok
 	}
 	if _, ok := get("ENG-1"); !ok {

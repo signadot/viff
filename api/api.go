@@ -183,7 +183,7 @@ type Spawn struct {
 	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
 	// spawn's `resolver:`, so `verse task run` and a firing can bind the same way.
 	Resolver string `tony:"field=resolver,omitzero"`
-	// Runner names WHERE this run runs — `runners:<kind>:<name>`, installed with `verse
+	// Runner names WHERE this run runs — `verse.runners.<name>`, installed with `verse
 	// runner add`. Empty means the verse's own default runner, which is what `local` means
 	// on a task:instance.
 	//
@@ -520,9 +520,9 @@ type Status struct {
 	// these three are things somebody put here, and a verse that has lost them looks healthy by
 	// every other line — which is exactly the state a wiped store comes back in.
 	//
-	// Runners are the refs a spawn may name (`runners:pool:code`), which is a different question
+	// Runners are the refs a spawn may name (`verse.runners.code`), which is a different question
 	// from `runner` below — that one is how THIS verse runs a task when a spawn names nobody.
-	// Sources are the refs of what WRITES into this verse (`sources:git:main`) — the one line
+	// Sources are the refs of what WRITES into this verse (`verse.sources.main`) — the one line
 	// here that says anything is arriving at all, since a verse whose sources are gone goes on
 	// reporting a fine store rev and an idle charter.
 	//
@@ -619,27 +619,27 @@ type ScheduleTick struct {
 //
 //tony:schemagen=verse-perms-record,notag
 type PermsRecord struct {
-	At      string         `tony:"field=at"`
-	Owner   string         `tony:"field=owner,omitzero"`
-	Grants  entity.Payload `tony:"field=grants,omitzero"`
-	Default entity.Payload `tony:"field=default,omitzero"`
+	At          string         `tony:"field=at"`
+	Owner       string         `tony:"field=owner,omitzero"`
+	Grants      entity.Payload `tony:"field=grants,omitzero"`
+	ChildGrants entity.Payload `tony:"field=child-grants,omitzero"`
 }
 
 // PermsEdit is what an owner sets on a node's record (`PUT /perms`). A node with no record of
 // its own gets one — the place is taken by its owner, holding out what the default above says
-// — and then: `default` sets what a node created beneath holds out (`{}` nothing, null
+// — and then: `child-grants` sets what a node created beneath holds out (`{}` nothing, null
 // inherits again), `grants` replaces what the node itself holds out (`[]` nothing), `grant`
 // adds one line at the node, beneath it when `below` is set, and `revoke` takes the named
 // grantees off the named levels of every line at the node, leaving the rest standing.
 //
 //tony:schemagen=verse-perms-edit,notag
 type PermsEdit struct {
-	At      string         `tony:"field=at"`
-	Default entity.Payload `tony:"field=default,omitzero"`
-	Grants  entity.Payload `tony:"field=grants,omitzero"`
-	Grant   entity.Payload `tony:"field=grant,omitzero"`
-	Below   bool           `tony:"field=below,omitzero"`
-	Revoke  entity.Payload `tony:"field=revoke,omitzero"`
+	At          string         `tony:"field=at"`
+	ChildGrants entity.Payload `tony:"field=child-grants,omitzero"`
+	Grants      entity.Payload `tony:"field=grants,omitzero"`
+	Grant       entity.Payload `tony:"field=grant,omitzero"`
+	Below       bool           `tony:"field=below,omitzero"`
+	Revoke      entity.Payload `tony:"field=revoke,omitzero"`
 }
 
 // Perms is the permission check's census: refusals by the level a write or read wanted, checks

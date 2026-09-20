@@ -14,7 +14,9 @@ func seedVoted(t *testing.T, store entity.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.Write(entity.Write{At: entity.RefAt("demo", "pr", "1").At(), Value: v}); err != nil {
+	// As the person who goes on to edit it: what the system writes carries no record, so it is
+	// the root owner's, and nobody else's to write into.
+	if _, _, err := entity.As(store, "user:tester@example.com").Write(entity.Write{At: entity.RefAt("demo", "pr", "1").At(), Value: v}); err != nil {
 		t.Fatal(err)
 	}
 }

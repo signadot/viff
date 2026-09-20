@@ -79,7 +79,7 @@ func TestAClaimGrantsTheWorkerItsTaskAndItsReportsAreWrittenAsIt(t *testing.T) {
 	if ok, err := entity.Holds(srv.Store, "runner:bot", entity.ReadWrite, taskRef); err != nil || !ok {
 		t.Fatalf("bot holds read-write on its task: %v %v", ok, err)
 	}
-	if ok, _ := entity.Holds(srv.Store, "runner:bot", entity.OwnerLevel, taskRef); ok {
+	if ok, _ := entity.MayCreate(srv.Store, "runner:bot", taskRef); ok {
 		t.Fatal("bot owns the task")
 	}
 	if ok, _ := entity.Holds(srv.Store, "runner:bot", entity.ReadWrite, mirror.QuestionRef(sp.ID+"~d1")); ok {

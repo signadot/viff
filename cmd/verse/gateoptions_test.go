@@ -41,6 +41,7 @@ func TestParseOptions(t *testing.T) {
 // id's flags are parsed on their own, which these two refusals prove reach the flags: one is
 // the missing --as, which only a parsed --answer asks for, and one is a second positional.
 func TestGateAnswersWithFlagsAfterTheID(t *testing.T) {
+	t.Setenv("VERSE_USER", "") // nobody configured, which is who the missing --as is about
 	root := rootCmd()
 	cc := cli.DefaultContext()
 	gate := root.FindSub(cc, "gate")

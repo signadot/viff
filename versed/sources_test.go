@@ -72,15 +72,15 @@ func TestSourceAddListShow(t *testing.T) {
 	defer ts.Close()
 
 	resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "laptop", "url": face.URL,
+		"root": "git", "name": "laptop", "url": face.URL,
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s, want 201", resp.Status)
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["at"] != "verse.sources.git.laptop" {
-		t.Fatalf("at = %v, want sources.git.laptop", got["at"])
+	if got["at"] != "verse.sources.laptop" {
+		t.Fatalf("at = %v, want verse.sources.laptop", got["at"])
 	}
 	if got["reach"] != "a source" {
 		t.Fatalf("reach = %v — a live source face read as something else", got["reach"])
@@ -89,7 +89,7 @@ func TestSourceAddListShow(t *testing.T) {
 	// The ownership claim the operator did not write, taken from what the source SAID. Without
 	// it `source add <ref> <url>` would install a registration that claims nothing, and the
 	// next install in this system would be refused for a reason belonging to this one.
-	sr, err := ts.Client().Get(ts.URL + "/sources/git/laptop")
+	sr, err := ts.Client().Get(ts.URL + "/sources/laptop")
 	if err != nil {
 		t.Fatalf("show: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["at"] != "verse.sources.git.laptop" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["at"] != "verse.sources.laptop" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed source with its url", list)
 	}
 }
@@ -123,7 +123,7 @@ func TestSourceAddRefusesASystemMismatch(t *testing.T) {
 	defer ts.Close()
 
 	resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "github", "name": "laptop", "url": face.URL,
+		"root": "github", "name": "laptop", "url": face.URL,
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a github registration on a git source = %s, want 400", resp.Status)
@@ -147,34 +147,34 @@ func TestSourceAddProvesDisjointness(t *testing.T) {
 	again := sourceFace(t, "verse")
 
 	if resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "a", "url": verse.URL,
+		"root": "git", "name": "a", "url": verse.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("first install = %s", resp.Status)
 	}
 	// Different repos: provably disjoint, so no flag. This is the case the whole rule exists
 	// for — if it needed --allow-overlap the flag would be the ordinary path and mark nothing.
 	if resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "b", "url": kernel.URL,
+		"root": "git", "name": "b", "url": kernel.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("two sources over different repos should install: %s", resp.Status)
 	}
 	// The same repo, twice: refused, with both claims in the message, because the operator is
 	// the one who can tell whether they really are apart.
 	resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "c", "url": again.URL,
+		"root": "git", "name": "c", "url": again.URL,
 	})
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("two sources over one repo = %s, want 409", resp.Status)
 	}
 	body := bodyOf(t, resp)
-	for _, want := range []string{"git.verse", "verse.sources.git.a", "--allow-overlap"} {
+	for _, want := range []string{"git.verse", "verse.sources.a", "--allow-overlap"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the refusal should mention %q, got: %s", want, body)
 		}
 	}
 	// …and the way past it, with the cost stated rather than discovered.
 	if resp := postTony(t, ts.URL+"/sources?allow-overlap=true", map[string]any{
-		"system": "git", "name": "c", "url": again.URL,
+		"root": "git", "name": "c", "url": again.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("--allow-overlap should install anyway: %s", resp.Status)
 	}
@@ -190,13 +190,13 @@ func TestASourceThatClaimsNothingIsRefused(t *testing.T) {
 
 	face := sourceFace(t, "verse")
 	if resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "a", "url": face.URL,
+		"root": "git", "name": "a", "url": face.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("first install = %s", resp.Status)
 	}
 	// --no-probe means nothing asked it what it owns, so the registration carries no claim.
 	resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-		"system": "git", "name": "b", "url": "http://nowhere:9801",
+		"root": "git", "name": "b", "url": "http://nowhere:9801",
 	})
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("a source claiming nothing = %s, want 409", resp.Status)
@@ -216,7 +216,7 @@ func TestSourceAddProbeDispositions(t *testing.T) {
 	other := httptest.NewServer(http.NotFoundHandler())
 	defer other.Close()
 	if resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "a", "url": other.URL,
+		"root": "git", "name": "a", "url": other.URL,
 	}); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a non-source = %s, want 400", resp.Status)
 	}
@@ -227,7 +227,7 @@ func TestSourceAddProbeDispositions(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
 	resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "b", "url": dead.URL,
+		"root": "git", "name": "b", "url": dead.URL,
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("an unreachable source = %s, want 201 with a warning", resp.Status)
@@ -251,7 +251,7 @@ func TestADirSourceIsDescribedInTask(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
 	resp := postTony(t, ts.URL+"/sources", map[string]any{
-		"system": "git", "name": "local", "dir": dir,
+		"root": "git", "name": "local", "dir": dir,
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("a dir source = %s, want 201: %s", resp.Status, bodyOf(t, resp))
@@ -262,7 +262,7 @@ func TestADirSourceIsDescribedInTask(t *testing.T) {
 		t.Fatalf("a dir source should describe itself in task, got %+v", got)
 	}
 	// And it claims what it will write, with no probe and no url.
-	sr, _ := ts.Client().Get(ts.URL + "/sources/git/local")
+	sr, _ := ts.Client().Get(ts.URL + "/sources/local")
 	var one map[string]any
 	decodeResp(t, sr, &one)
 	if owns, _ := one["owns"].([]any); len(owns) != 1 {

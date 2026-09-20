@@ -272,9 +272,9 @@ They run `sourced`, the connector binary in the same image
 standing, so it stays a verb somebody runs.
 
 ```sh
-verse source add git.cluster     http://git-source:9801
-verse source add slack.workspace http://slack-source:9801
-verse source add linear.teams    http://linear-source:9801
+verse source add cluster   http://git-source:9801   -root git
+verse source add workspace http://slack-source:9801 -root slack
+verse source add teams     http://linear-source:9801 -root linear
 verse source
 ```
 
@@ -286,7 +286,7 @@ that dials it: the CLI only posts `{kind, name, url}`, and the probe happens ser
 so the address has to be reachable from where the client is.
 
 ⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod
-(`http://verse:9797/sources/slack/<name>/hint`), so a registration under a different name means
+(`http://verse:9797/sources/<name>/hint`), so a registration under a different name means
 verse 404s every delivery — loud, but only if you look.
 
 ⚠️ **Widening what a source reflects is two steps, and the deploy is only the first.** A
@@ -297,8 +297,8 @@ outside what was proved. The symptom is a source that looks healthy and reflects
 Re-run the same `verse source add` afterwards; it updates the claim in place.
 
 ```sh
-verse source check git-issue.cluster   # `owns` is what verse holds, `says` is what it claims now
-verse source add git-issue.cluster http://git-issue-source:9801   # reconcile them
+verse source check issues   # `owns` is what verse holds, `says` is what it claims now
+verse source add issues http://git-issue-source:9801 -root git-issue   # reconcile them
 ```
 
 Driven, on a source moved from one repository to two: only the first repository's entities were
@@ -376,7 +376,7 @@ slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like t
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
-verse source add git-issue.cluster http://git-issue-source:9801
+verse source add issues http://git-issue-source:9801 -root git-issue
 ```
 
 It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say
@@ -391,7 +391,7 @@ cloning one it can reflect nothing from.
 | `gitIssueSource` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
 | `slackSource` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
-| `slackSourceName` | `workspace` | the registration name — must match `verse source add slack.<name>` |
+| `slackSourceName` | `workspace` | the registration name — must match `verse source add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
 | `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
 | `linearSource` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
@@ -542,7 +542,7 @@ it by url, and deploying it does not install it.
 ```sh
 make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
 make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-verse runner add pool.coderunner http://coderunner:9802 -identity coderunner    # it acts as runner:coderunner; default: its name
+verse runner add coderunner http://coderunner:9802 -identity coderunner    # it acts as runner:coderunner; default: its name
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own

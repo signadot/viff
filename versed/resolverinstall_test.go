@@ -14,7 +14,7 @@ import (
 
 func installResolver(t *testing.T, url, doc string) *http.Response {
 	t.Helper()
-	resp, err := http.Post(url+"/resolvers", codec.MediaType(codec.Tony), strings.NewReader(doc))
+	resp, err := httpPost(url+"/resolvers", codec.MediaType(codec.Tony), strings.NewReader(doc))
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -23,7 +23,6 @@ func installResolver(t *testing.T, url, doc string) *http.Response {
 
 const goodResolver = `{
 	name:   security-review,
-	kind:   security,
 	byRef:  true,
 	method: {driver: url, url: "https://reviewer.example/verse"},
 }`
@@ -42,7 +41,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	}
 
 	// At the address the design gives it, readable field by field like any other entity.
-	e, ok, _ := srv.Store.Get(resolver.Ref("security", "security-review"))
+	e, ok, _ := srv.Store.Get(resolver.Ref("security-review"))
 	if !ok {
 		t.Fatal("nothing at resolvers.security.security-review")
 	}
@@ -61,11 +60,11 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	defer list.Body.Close()
 	var out []map[string]any
 	decodeResp(t, list, &out)
-	if len(out) != 1 || out[0]["at"] != "verse.resolvers.security.security-review" {
+	if len(out) != 1 || out[0]["at"] != "verse.resolvers.security-review" {
 		t.Fatalf("list = %v, want the one installed", out)
 	}
 
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/resolvers/security/security-review", nil)
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/resolvers/security-review", nil)
 	req.Header.Set(api.PrincipalHeader, tester)
 	del, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -75,7 +74,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	if del.StatusCode != http.StatusNoContent {
 		t.Fatalf("remove = %s, want 204", del.Status)
 	}
-	if _, ok, _ := srv.Store.Get(resolver.Ref("security", "security-review")); ok {
+	if _, ok, _ := srv.Store.Get(resolver.Ref("security-review")); ok {
 		t.Fatal("the binding survived its removal")
 	}
 }
@@ -94,31 +93,33 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 
 	for _, c := range []struct{ what, doc, wantIn string }{
 		{"no door open",
-			`{name: r, kind: security, method: {driver: url, url: "https://x"}}`,
+			`{name: r, method: {driver: url, url: "https://x"}}`,
 			"needs a door"},
 		{"a condition that claims everything",
-			`{name: r, kind: security, condition: {subject: {path: "*.pr.*"}}, method: {driver: url, url: "https://x"}}`,
+			`{name: r, condition: {subject: {path: "*.pr.*"}}, method: {driver: url, url: "https://x"}}`,
 			"must be a path beginning with a literal"},
 		{"a condition that dispatches rather than covers",
-			`{name: r, kind: security, condition: {subject: {path: "demo.pr.*"}, when: {path: "demo.*.*"}}, method: {driver: url, url: "https://x"}}`,
+			`{name: r, condition: {subject: {path: "demo.pr.*"}, when: {path: "demo.*.*"}}, method: {driver: url, url: "https://x"}}`,
 			"no firing here"},
 		{"the design's older spelling for a deadline",
-			`{name: r, kind: security, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
+			`{name: r, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
 			"is not read yet"},
 		{"an exclusivity with nothing to bound it",
-			`{name: r, kind: security, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
+			`{name: r, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
 			"needs a deadline"},
 		{"a driver that is not built",
-			`{name: r, kind: security, byRef: true, method: {driver: llm, url: "https://x"}}`,
+			`{name: r, byRef: true, method: {driver: llm, url: "https://x"}}`,
 			"not built yet"},
 		{"a url driver with nowhere to dial",
-			`{name: r, kind: security, byRef: true, method: {driver: url}}`,
+			`{name: r, byRef: true, method: {driver: url}}`,
 			"method.url is required"},
-		{"the reserved kind",
-			`{name: r, kind: instance, byRef: true, method: {driver: url, url: "https://x"}}`,
-			"reserved"},
+		// A binding's address is its name. One that still files itself under a kind is told which
+		// field it is, rather than installed with the field dropped in silence.
+		{"a kind",
+			`{name: r, kind: security, byRef: true, method: {driver: url, url: "https://x"}}`,
+			`has no field "kind"`},
 		{"a typo the decoder would swallow",
-			`{name: r, kind: security, byRef: true, metod: {driver: url}}`,
+			`{name: r, byRef: true, metod: {driver: url}}`,
 			`has no field "metod"`},
 	} {
 		resp := installResolver(t, ts.URL, c.doc)
@@ -159,16 +160,16 @@ func TestExclusiveNeedsADeadline(t *testing.T) {
 
 	for _, c := range []struct{ what, doc, wantIn string }{
 		{"exclusive with nothing to bound it",
-			`{name: a, kind: security, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
+			`{name: a, byRef: true, exclusive: true, method: {driver: url, url: "https://x"}}`,
 			"exclusive needs a deadline"},
 		{"a duration that is not one",
-			`{name: a, kind: security, byRef: true, deadline: {within: soon}, method: {driver: url, url: "https://x"}}`,
+			`{name: a, byRef: true, deadline: {within: soon}, method: {driver: url, url: "https://x"}}`,
 			"is not a duration"},
 		{"an outcome this build does not have",
-			`{name: a, kind: security, byRef: true, deadline: {within: "4h", then: proceed}, method: {driver: url, url: "https://x"}}`,
+			`{name: a, byRef: true, deadline: {within: "4h", then: proceed}, method: {driver: url, url: "https://x"}}`,
 			"is not built"},
 		{"the design's older spelling",
-			`{name: a, kind: security, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
+			`{name: a, byRef: true, escalatesAfter: "4h", method: {driver: url, url: "https://x"}}`,
 			"is not read yet"},
 	} {
 		resp := installResolver(t, ts.URL, c.doc)
@@ -187,13 +188,13 @@ func TestExclusiveNeedsADeadline(t *testing.T) {
 	// The two together install, and the record says the outcome even where the author left
 	// it implicit — a later reader should not have to know the default to read the record.
 	resp := installResolver(t, ts.URL,
-		`{name: strict, kind: security, byRef: true, exclusive: true, `+
+		`{name: strict, byRef: true, exclusive: true, `+
 			`deadline: {within: "4h"}, method: {driver: url, url: "https://x"}}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("exclusive with a deadline = %s, want 201", resp.Status)
 	}
-	e, _, _ := srv.Store.Get(resolver.Ref("security", "strict"))
+	e, _, _ := srv.Store.Get(resolver.Ref("strict"))
 	got := entity.ToObj(e.Payload)
 	if got["exclusive"] != true {
 		t.Fatalf("exclusive did not survive the install: %+v", got)
@@ -205,7 +206,7 @@ func TestExclusiveNeedsADeadline(t *testing.T) {
 
 	// And a deadline alone installs: without exclusivity it is just a slow hand-off.
 	resp = installResolver(t, ts.URL,
-		`{name: patient, kind: security, byRef: true, deadline: {within: "30m", then: escalate}, `+
+		`{name: patient, byRef: true, deadline: {within: "30m", then: escalate}, `+
 			`method: {driver: url, url: "https://x"}}`)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {

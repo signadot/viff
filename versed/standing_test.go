@@ -31,7 +31,7 @@ func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string
 }
 
 func standing(name, area string) string {
-	return `{name: ` + name + `, kind: security, condition: {subject: {path: "change.pr.*",` +
+	return `{name: ` + name + `, condition: {subject: {path: "change.pr.*",` +
 		` value: {area: ` + area + `}}}, method: {driver: url, url: "https://x"}}`
 }
 
@@ -116,13 +116,13 @@ func TestInstallingReportsWhatItOverlaps(t *testing.T) {
 	decodeResp(t, second, &out)
 	second.Body.Close()
 	over, _ := out["overlaps"].([]any)
-	if len(over) != 1 || over[0] != "verse.resolvers.security.alpha" {
+	if len(over) != 1 || over[0] != "verse.resolvers.alpha" {
 		t.Fatalf("overlaps = %v, want the binding it shares a kind with", out["overlaps"])
 	}
 
 	// A binding over a different kind shares nothing and is told so by silence.
 	third := installResolver(t, ts.URL,
-		`{name: charlie, kind: cost, condition: {subject: {path: "demo.release.*"}}, `+
+		`{name: charlie, condition: {subject: {path: "demo.release.*"}}, `+
 			`method: {driver: url, url: "https://x"}}`)
 	decodeResp(t, third, &out)
 	third.Body.Close()
@@ -149,17 +149,17 @@ func TestTheLayerRuleDecidesWhoOwnsAQuestion(t *testing.T) {
 	// A run about a covered subject, whose spawn ALSO names one: the named layer owns it.
 	// Installed, because a spawn naming a binding that does not exist is refused — it would
 	// shadow the standing layer below with something that cannot answer.
-	installResolver(t, ts.URL, `{name: security-review, kind: security, byRef: true,`+
+	installResolver(t, ts.URL, `{name: security-review, byRef: true,`+
 		` method: {driver: url, url: "https://x"}}`).Body.Close()
 	pr(t, srv, "1", "payments")
-	spawnFor(t, ts, "named", `change.pr."1"`, "verse.resolvers.security.security-review")
-	if got := waitOwned(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "verse.resolvers.security.security-review" {
+	spawnFor(t, ts, "named", `change.pr."1"`, "verse.resolvers.security-review")
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "named"))["resolver"]; got != "verse.resolvers.security-review" {
 		t.Fatalf("a named run is owned by %v, want the binding its spawn named", got)
 	}
 
 	// The same run with no name: the standing binding covering its flow owns it.
 	spawnFor(t, ts, "unnamed", `change.pr."1"`, "")
-	if got := waitOwned(t, srv, waitQuestion(t, srv, "unnamed"))["resolver"]; got != "verse.resolvers.security.payments-review" {
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "unnamed"))["resolver"]; got != "verse.resolvers.payments-review" {
 		t.Fatalf("an unnamed run over a covered subject is owned by %v, want the standing binding", got)
 	}
 
@@ -188,7 +188,7 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 		action: {patch: {stage: reviewed}},
 	}`)
 	pr(t, srv, "1", "payments")
-	if got := waitOwner(t, srv, "guard"); got != "verse.resolvers.security.payments-review" {
+	if got := waitOwner(t, srv, "guard"); got != "verse.resolvers.payments-review" {
 		t.Fatalf("a firing's gate is owned by %q, want the standing binding", got)
 	}
 
@@ -197,18 +197,18 @@ func TestAFiringsGateIsOwnedByItsLayer(t *testing.T) {
 	addRule(t, ts, `{
 		name: named,
 		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
-		gating: {resolver: "verse.resolvers.security.security-review", gates: [{name: sign, mode: ask}]},
+		gating: {resolver: "verse.resolvers.security-review", gates: [{name: sign, mode: ask}]},
 		action: {patch: {signed: true}},
 	}`)
 	pr(t, srv, "2", "payments")
-	if got := waitOwner(t, srv, "named"); got != "verse.resolvers.security.security-review" {
+	if got := waitOwner(t, srv, "named"); got != "verse.resolvers.security-review" {
 		t.Fatalf("a rule that named its resolver has its gate owned by %q", got)
 	}
 }
 
 func addRule(t *testing.T, ts *httptest.Server, doc string) {
 	t.Helper()
-	resp, err := http.Post(ts.URL+"/charter", "application/tony", strings.NewReader(doc))
+	resp, err := httpPost(ts.URL+"/charter", "application/tony", strings.NewReader(doc))
 	if err != nil {
 		t.Fatalf("trigger add: %v", err)
 	}
@@ -275,9 +275,7 @@ func watching(all map[string]map[string]any, origin string) int {
 func instances(t *testing.T, srv *Server) map[string]map[string]any {
 	t.Helper()
 	out := map[string]map[string]any{}
-	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}) {
+	for _, ent := range entity.Below(srv.Store, resolver.IsInstance, 1, entity.VerseRoot, resolver.InstanceSystem) {
 		out[ent.Ref.Name()] = entity.ToObj(ent.Payload)
 	}
 	return out
@@ -376,7 +374,7 @@ func TestWatchingAgainDoesNotResetAPosition(t *testing.T) {
 	// A second run about the same subject, and a second question on the first run.
 	spawnFor(t, ts, "run-2", `change.pr."1"`, "")
 	waitQuestion(t, srv, "run-2")
-	mirror.Watch(srv.Store, "verse.resolvers.security.payments-review", "payments-review", mirror.Ref("run-1"))
+	mirror.Watch(srv.Store, "verse.resolvers.payments-review", "payments-review", mirror.Ref("run-1"))
 
 	e, _, _ := srv.Store.Get(ref)
 	got := entity.ToObj(e.Payload)
@@ -415,18 +413,18 @@ func TestRemovingABindingReRoutesWhatItOwned(t *testing.T) {
 
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.security.alpha" {
+	if got := waitOwned(t, srv, qid)["resolver"]; got != "verse.resolvers.alpha" {
 		t.Fatalf("owned by %v before removal, want alpha", got)
 	}
 
-	removeResolverAt(t, ts.URL, "security/alpha")
+	removeResolverAt(t, ts.URL, "alpha")
 
 	got := question(t, srv, qid)
-	if got["resolver"] != "verse.resolvers.security.bravo" {
+	if got["resolver"] != "verse.resolvers.bravo" {
 		t.Fatalf("re-owned by %v, want the next covering binding", got["resolver"])
 	}
 	// The handover is readable rather than inferred.
-	if got["reownedFrom"] != "verse.resolvers.security.alpha" || got["reownedAt"] == nil {
+	if got["reownedFrom"] != "verse.resolvers.alpha" || got["reownedAt"] == nil {
 		t.Fatalf("the handover left no trace: %+v", got)
 	}
 	// And it is still open — a change of owner is not an answer.
@@ -435,7 +433,7 @@ func TestRemovingABindingReRoutesWhatItOwned(t *testing.T) {
 	}
 	// Its instances are gone: machinery for a reader that no longer exists.
 	for id, inst := range instances(t, srv) {
-		if inst["binding"] == "verse.resolvers.security.alpha" {
+		if inst["binding"] == "verse.resolvers.alpha" {
 			t.Fatalf("the removed binding still has an instance %q", id)
 		}
 	}
@@ -453,13 +451,13 @@ func TestRemovingTheLastBindingSendsAQuestionToTheDocket(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 
 	inst := resolver.InstanceRef("alpha", "run-1")
-	removeResolverAt(t, ts.URL, "security/alpha")
+	removeResolverAt(t, ts.URL, "alpha")
 
 	got := question(t, srv, qid)
 	if got["resolver"] != nil {
 		t.Fatalf("owned by %v after its only binding went, want nobody", got["resolver"])
 	}
-	if got["reownedFrom"] != "verse.resolvers.security.alpha" {
+	if got["reownedFrom"] != "verse.resolvers.alpha" {
 		t.Fatalf("the handover left no trace: %+v", got)
 	}
 	// `verse gate` still lists it: unowned is not unasked, and ⊤ is where it belongs.

@@ -94,13 +94,13 @@ func TestAGroupAsABindingsResolver(t *testing.T) {
 	withoutTheDocketDefault(t, srv)
 	resp := groupAs(t, "walter@example.com", ts.URL, "reviewers", "oscar@example.com")
 	resp.Body.Close()
-	mustInstall(t, ts.URL, `{name: review-group, kind: approvals,
+	mustInstall(t, ts.URL, `{name: review-group,
 		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
 		method: {driver: group, group: group:reviewers}}`)
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	waitOwnedBy(t, srv, qid, "verse.resolvers.approvals.review-group")
+	waitOwnedBy(t, srv, qid, "verse.resolvers.review-group")
 	resp = answerAs(t, "bob@example.com", ts.URL, qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {

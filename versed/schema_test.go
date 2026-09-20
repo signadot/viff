@@ -12,6 +12,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/schema"
 )
 
@@ -405,12 +406,13 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	srv.Eng.Adopt("demo.pr.1", "run", newIdleHandle(t))
+	testerOwns(t, srv, mirror.Ref("run")) // as the spawn that made it would have left it
 
 	for _, c := range []struct{ path, body, wantVerb string }{
 		{"/flow/say", `{subject: "demo.pr.*", text: "hi"}`, "say"},
 		{"/flow/cancel", `{task: run}`, "cancel"},
 	} {
-		resp, err := http.Post(ts.URL+c.path, "application/tony", strings.NewReader(c.body))
+		resp, err := httpPost(ts.URL+c.path, "application/tony", strings.NewReader(c.body))
 		if err != nil {
 			t.Fatalf("post %s: %v", c.path, err)
 		}

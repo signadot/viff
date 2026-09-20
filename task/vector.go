@@ -52,7 +52,7 @@ type GateQuestion struct {
 	// existing. Empty when the action starts nothing, and note these are ids-to-be: a
 	// denied gate, or a provider selection that resolves to no doer, creates none of them.
 	Spawns string
-	// Boundto is the resolver BINDING that owns this question — `resolvers:<kind>:<name>` —
+	// Boundto is the resolver BINDING that owns this question — `verse.resolvers.<name>` —
 	// empty when nobody is bound and the question belongs to whoever reads the docket.
 	//
 	// The binding rather than the live instance, because a question is owned by what was

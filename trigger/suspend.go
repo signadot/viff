@@ -602,7 +602,7 @@ func (e *Engine) mayHold(holder, rule string, subj entity.Ref) bool {
 	if entity.IsSystem(holder) {
 		return true
 	}
-	if rule != "" && entity.IsSystem(e.InstalledBy(rule)) {
+	if rule != "" && entity.IsSystem(e.OwnerOf(rule)) {
 		return false
 	}
 	if entity.PolicyOf(e.store) == nil {

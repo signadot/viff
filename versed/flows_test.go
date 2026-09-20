@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger"
 )
 
 // idleHandle is a task that is running and does nothing: the engine holds a flow open around
@@ -103,6 +104,9 @@ func flowAct(t *testing.T, ts *httptest.Server, verb, as, scope string, sel api.
 	doc, err := codec.Marshal(sel, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if as == "" {
+		as = tester // a steer is somebody's; a caller that does not care who is the tester
 	}
 	resp := postAs(t, as, u, "application/tony", string(doc))
 	defer resp.Body.Close()
@@ -232,6 +236,7 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	subject := entity.RefAt("notes", "seen", "head").String()
 	packaged := newIdleHandle(t)
 	pkg.Adopt(subject, "note-the-head-run", packaged)
+	testerOwns(t, srv, mirror.Ref("note-the-head-run")) // the package's task is its installer's
 	about := api.FlowSelect{Subject: subject, Text: "hurry"}
 
 	// Baseline's verbs reach the package's task: the row `verse flow` lists is steerable.
@@ -251,6 +256,7 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// Busy in baseline too: the count is of tasks reached, so two.
 	base := newIdleHandle(t)
 	srv.Eng.Adopt(subject, "baseline-run", base)
+	testerOwns(t, srv, mirror.Ref("baseline-run"))
 	if code, msg := flowAct(t, ts, "say", tester, "", about); code != 200 || steered(t, msg).Affected != 2 {
 		t.Fatalf("flow say = %d %s, want 2 over one subject busy in two engines", code, msg)
 	}
@@ -277,6 +283,10 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// The scope's own task, about the same subject: the scope's say reaches it and it alone.
 	mine := newIdleHandle(t)
 	srv.scopeEngine("me").Adopt(subject, "me-run", mine)
+	// In the scope, where a spawn there would have written the task and its record.
+	if err := entity.Establish(srv.Store.Scope("me"), mirror.Ref("me-run"), "user:"+tester, entity.Ref{}, nil); err != nil {
+		t.Fatal(err)
+	}
 	if code, msg := flowAct(t, ts, "say", tester, "me", about); code != 200 || steered(t, msg).Affected != 1 {
 		t.Fatalf("flow say --scope me = %d %s, want 1 over the scope's own task", code, msg)
 	}
@@ -327,7 +337,8 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 	defer ts.Close()
 
 	subject := entity.RefAt("demo", "pr", "1").String()
-	// alice's task, with the record that says it is hers, and one nobody's record claims.
+	// alice's task, with the record that says it is hers, and one whose owner holds `control`
+	// out to everyone — a task with no record at all is the system's, and nobody's to steer.
 	alices := newIdleHandle(t)
 	if _, _, err := entity.As(srv.Store, "user:alice@example.com").Write(entity.Write{
 		At: mirror.Ref("alice-run").At(), Value: entity.Obj{"status": "running", "flow": subject}.Payload(),
@@ -336,6 +347,9 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 	}
 	srv.Eng.Adopt(subject, "alice-run", alices)
 	open := newIdleHandle(t)
+	owns(t, srv, "user:carol@example.com",
+		[]entity.Grant{{To: map[entity.Level][]string{entity.Control: {entity.Everyone}, entity.Read: {entity.Everyone}}}},
+		mirror.Ref("open-run"))
 	srv.Eng.Adopt(subject, "open-run", open)
 
 	for _, c := range []struct {
@@ -370,6 +384,7 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 // the side left out is every one.
 func TestAFlowActIsNarrowedOrRefused(t *testing.T) {
 	srv, ts := startedServer(t)
+	testerOwns(t, srv, entity.RefAt("demo"), trigger.CharterRef("review"), mirror.Ref("run"))
 	h := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "run", h)
 	for _, c := range []struct {

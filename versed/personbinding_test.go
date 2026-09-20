@@ -19,7 +19,7 @@ func personBinding(name, area, who, deadline string) string {
 	if deadline != "" {
 		d = `deadline: {within: "` + deadline + `"},`
 	}
-	return `{name: ` + name + `, kind: approvals, ` + d +
+	return `{name: ` + name + `, ` + d +
 		` condition: {subject: {path: "change.pr.*", value: {area: ` + area + `}}},` +
 		` method: {driver: person, who: ` + who + `}}`
 }
@@ -53,7 +53,7 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.approvals.payments-owner" {
+	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.payments-owner" {
 		t.Fatalf("the question is owned by %v, want the person's binding", q["resolver"])
 	}
 	if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
@@ -76,7 +76,7 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 		rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
 		t.Fatalf("davido could not answer: %s %s\nrecord: %v", resp.Status, body, entity.ToObj(rec.Payload))
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "oscar@example.com" {
+	if q := settledQuestion(t, srv, qid); q["by"] != "user:oscar@example.com" {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }
@@ -97,7 +97,7 @@ func TestAPersonEscalates(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	waitOwnedBy(t, srv, qid, "verse.resolvers.approvals.alpha")
+	waitOwnedBy(t, srv, qid, "verse.resolvers.alpha")
 
 	resp := handOnAs(t, "bob@example.com", ts.URL, qid, "")
 	resp.Body.Close()
@@ -109,8 +109,8 @@ func TestAPersonEscalates(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("davido could not escalate: %s", resp.Status)
 	}
-	q := waitOwnedBy(t, srv, qid, "verse.resolvers.approvals.zulu")
-	if q["reownedWhy"] != "escalated by oscar@example.com: not mine: infra" {
+	q := waitOwnedBy(t, srv, qid, "verse.resolvers.zulu")
+	if q["reownedWhy"] != "escalated by user:oscar@example.com: not mine: infra" {
 		t.Fatalf("the handover is not on the record: %v", q["reownedWhy"])
 	}
 	if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {

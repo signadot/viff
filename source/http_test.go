@@ -22,7 +22,7 @@ func serve(t *testing.T, src source.Source) *source.Client {
 	t.Helper()
 	ts := httptest.NewServer(sourced.New(src).Handler())
 	t.Cleanup(ts.Close)
-	return source.HTTP(src.System(), ts.URL, nil)
+	return source.HTTP(src.Root(), ts.URL, nil)
 }
 
 // The test that earns the transport: ONE source.Git, one Reflection, compared across both
@@ -101,9 +101,9 @@ func sameReflection(t *testing.T, want, got source.Reflection) {
 
 // erroring is a source whose external system is not answering — the ordinary state of one,
 // and the state this transport must not render as good news.
-type erroring struct{ system string }
+type erroring struct{ root string }
 
-func (e erroring) System() string { return e.system }
+func (e erroring) Root() string { return e.root }
 
 func (e erroring) Reflect(context.Context, entity.Ref) (source.Reflection, error) {
 	return source.Reflection{}, errors.New("the repo is on a laptop that is asleep")
@@ -119,7 +119,7 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 	standing := entity.RefAt("x", "a", "1")
 
 	// Something the source reflected earlier, standing in the store.
-	ok := &fakeSource{system: "x", answer: func() source.Reflection {
+	ok := &fakeSource{root: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 		rn.Add(standing, entity.Obj{"n": 1})
 		return rn
@@ -128,7 +128,7 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	rn, err := serve(t, erroring{system: "x"}).Reflect(ctx, entity.Ref{})
+	rn, err := serve(t, erroring{root: "x"}).Reflect(ctx, entity.Ref{})
 	if err == nil {
 		t.Fatalf("a failed reflect answered %+v instead of an error", rn)
 	}
@@ -138,7 +138,7 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 	}
 
 	// And the whole point of the above: converge never runs, so what was reflected stands.
-	if err := source.NewReflector(serve(t, erroring{system: "x"}), store, 0).
+	if err := source.NewReflector(serve(t, erroring{root: "x"}), store, 0).
 		Reconcile(ctx, entity.Ref{}); err == nil {
 		t.Fatal("a reconcile over a failing source should report the failure")
 	}
@@ -181,8 +181,8 @@ func TestProbe(t *testing.T) {
 	if reach != source.IsSource || err != nil {
 		t.Fatalf("probe of a source = %v (%v)", reach, err)
 	}
-	if d.System != source.GitSystem {
-		t.Fatalf("descriptor system = %q, want git", d.System)
+	if d.Root != source.GitRoot {
+		t.Fatalf("descriptor root = %q, want git", d.Root)
 	}
 	// The ownership claim an install proves disjointness with: one place per repo.
 	want := []source.Own{{At: "git.A"}}
@@ -261,7 +261,7 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 	}
 
 	d := fields(source.DescribePath)
-	has("the descriptor", d, "system", "owns")
+	has("the descriptor", d, "root", "owns")
 
 	rn := fields(source.ReflectPath)
 	has("a reflection", rn, "covers", "entities")

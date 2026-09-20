@@ -235,7 +235,7 @@ func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 // is what a client does and what installAt's single-document helper cannot express.
 func postCharterFile(t *testing.T, base, file string) (int, string) {
 	t.Helper()
-	resp, err := http.Post(base+"/charter", "application/tony", strings.NewReader(file))
+	resp, err := httpPost(base+"/charter", "application/tony", strings.NewReader(file))
 	if err != nil {
 		t.Fatal(err)
 	}

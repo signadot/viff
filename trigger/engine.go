@@ -234,10 +234,6 @@ type Engine struct {
 	// progress; nil suspends nothing. Set once, before anything is installed.
 	susp *Suspensions
 
-	// installers holds, by name, who installed each rule of the charter, installed or held — see
-	// InstalledBy. Guarded by trigMu, with the charter it describes.
-	installers map[string]string
-
 	// shapes fingerprints each installed sequence by its carrier's chain, so a running
 	// sequence can tell that the charter moved under it. Recorded at install (see
 	// recordShapes) because hashing an action mutates its nodes.
@@ -249,16 +245,15 @@ type Engine struct {
 func New(store entity.Store, resolver task.Resolver) *Engine {
 	return &Engine{
 		store: store, resolver: resolver, logger: slog.Default(),
-		control:    make(chan func(), 64),
-		stopped:    make(chan struct{}),
-		live:       map[string]flowTask{},
-		causes:     map[int64]link{},
-		tripPace:   DefaultTripPace,
-		shapes:     map[string]string{},
-		watchers:   map[string]func(){},
-		arming:     map[string]bool{},
-		installers: map[string]string{},
-		armWait:    time.Second,
+		control:  make(chan func(), 64),
+		stopped:  make(chan struct{}),
+		live:     map[string]flowTask{},
+		causes:   map[int64]link{},
+		tripPace: DefaultTripPace,
+		shapes:   map[string]string{},
+		watchers: map[string]func(){},
+		arming:   map[string]bool{},
+		armWait:  time.Second,
 	}
 }
 
@@ -1898,8 +1893,26 @@ func (e *Engine) modifyOn(s entity.Store, ref entity.Ref, fn func(entity.Payload
 	}
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	// READ AS WHOEVER WRITES. A firing's store reads as the engine, which is the system and sees
+	// everything, and writes as the rule; a patch reads the node, changes it and writes the
+	// whole of it back — so read as the system, what it writes back carries every place inside
+	// the node, somebody else's included, and the write is refused for reaching into them: no
+	// rule patches a row that holds another party's place. Read as the rule, the node comes
+	// back without what the rule may not read, and what is written is the rule's.
+	if c, ok := s.(causal); ok && entity.PolicyOf(c.Store) != nil {
+		s = readsAs{Store: c, reader: entity.As(c.Store, c.principal)}
+	}
 	return entity.Modify(ctx, s, ref, fn)
 }
+
+// readsAs is a store whose Get is made through another view of it: the firing's store, reading
+// as the rule it writes as.
+type readsAs struct {
+	entity.Store
+	reader entity.Store
+}
+
+func (r readsAs) Get(ref entity.Ref) (entity.Entity, bool, error) { return r.reader.Get(ref) }
 
 // write applies a value at a path. A failed write is LOGGED, at Warn: the engine is
 // reacting, not being called, so there is nobody to return an error to — and a reaction
@@ -1958,6 +1971,12 @@ func (e *Engine) patchEntity(chain string, parent int64, subj, ref entity.Ref, p
 	// convention each action keeps.
 	if err := e.mayWrite(ref); err != nil {
 		e.logger.Warn("a charter write was refused: it is outside what this charter may write",
+			"chain", chain, "ref", ref.String(), "err", err)
+		return err
+	}
+	// AND VERSE'S OWN HALF, for the same reason at the same moment (reservedWrite).
+	if err := e.reservedWrite(chain, ref); err != nil {
+		e.logger.Warn("a charter write was refused: verse's half is not a rule's to write",
 			"chain", chain, "ref", ref.String(), "err", err)
 		return err
 	}

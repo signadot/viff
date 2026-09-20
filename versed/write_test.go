@@ -25,7 +25,7 @@ func post(t *testing.T, ts *httptest.Server, body api.PutEntity) (int, map[strin
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	resp, err := http.Post(ts.URL+"/entity", "application/tony", strings.NewReader(string(buf)))
+	resp, err := httpPost(ts.URL+"/entity", "application/tony", strings.NewReader(string(buf)))
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 		"verse.task.instance.run-1",
 		`verse.gate.question."run-1~d1"`,
 		"verse.motion.channel.abcd",
-		"verse.resolvers.security.mine",
+		"verse.resolvers.mine",
 	} {
 		resp := postTony(t, ts.URL+"/entity", api.PutEntity{At: ref, Payload: entity.Obj{"x": 1}.Payload()})
 		body, _ := io.ReadAll(resp.Body)

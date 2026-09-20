@@ -57,7 +57,7 @@ func TestARunsFirstQuestionIsOwnedBeforeItsRecordLands(t *testing.T) {
 	spawned := make(chan string, 1)
 	go func() {
 		b, _ := codec.Marshal(map[string]any{"id": "run-1", "prompt": "true", "subject": `change.pr."1"`}, codec.Tony)
-		resp, err := http.Post(ts.URL+"/tasks", "application/tony", strings.NewReader(string(b)))
+		resp, err := httpPost(ts.URL+"/tasks", "application/tony", strings.NewReader(string(b)))
 		if err != nil {
 			spawned <- err.Error()
 			return
@@ -77,13 +77,13 @@ func TestARunsFirstQuestionIsOwnedBeforeItsRecordLands(t *testing.T) {
 	}
 	// Read once, with no waiting: inside the window there is nothing more to wait for.
 	q := question(t, srv, qid)
-	if q["subject"] != `change.pr."1"` || q["resolver"] != "verse.resolvers.security.payments-review" {
+	if q["subject"] != `change.pr."1"` || q["resolver"] != "verse.resolvers.payments-review" {
 		t.Fatalf("a question posed before its run's record carries no layer: %+v", q)
 	}
 	if _, ok, err := srv.Store.Get(resolver.InstanceRef("payments-review", "run-1")); err != nil || !ok {
 		t.Fatalf("the binding that owns the question has no instance to answer it through (ok=%v, err=%v)", ok, err)
 	}
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a person answering an exclusive binding's question without override = %s, want 403", resp.Status)

@@ -24,7 +24,7 @@ func mustInstall(t *testing.T, base, doc string) {
 }
 
 func exclusiveBinding(name, area string) string {
-	return `{name: ` + name + `, kind: security, exclusive: true, deadline: {within: "1h"},` +
+	return `{name: ` + name + `, exclusive: true, deadline: {within: "1h"},` +
 		` condition: {subject: {path: "change.pr.*", value: {area: ` + area + `}}},` +
 		` method: {driver: url, url: "https://x"}}`
 }
@@ -52,7 +52,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatal("an exclusive binding hid its question from the docket")
 	}
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:" + tester})
 	raw, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	body := string(raw)
@@ -60,7 +60,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("a person answered an exclusive question: %s %s", resp.Status, body)
 	}
 	// Named, so the refusal says who to go and ask rather than only that this was not allowed.
-	if !strings.Contains(body, "verse.resolvers.security.payments-review") {
+	if !strings.Contains(body, "verse.resolvers.payments-review") {
 		t.Fatalf("the refusal does not name the owner: %s", body)
 	}
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
@@ -76,7 +76,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		t.Fatalf("the owner could not answer its own question: %s", ok.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "via:verse.resolvers.security.payments-review" || q["overrode"] != nil {
+	if q["by"] != "via:verse.resolvers.payments-review" || q["overrode"] != nil {
 		t.Fatalf("the owner's own answer was recorded as an override: %+v", q)
 	}
 }
@@ -93,13 +93,13 @@ func TestOverrideNamesBothParties(t *testing.T) {
 	qid := waitQuestion(t, srv, "run-1")
 
 	resp := postTony(t, ts.URL+"/gate/resolve",
-		api.Resolve{ID: qid, Choice: "proceed", By: "human:scott", Override: true})
+		api.Resolve{ID: qid, Choice: "proceed", By: "user:" + tester, Override: true})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the override was refused: %s", resp.Status)
 	}
 	q := settledQuestion(t, srv, qid)
-	if q["by"] != "human:scott" || q["overrode"] != "verse.resolvers.security.payments-review" {
+	if q["by"] != "user:"+tester || q["overrode"] != "verse.resolvers.payments-review" {
 		t.Fatalf("the record does not name both parties: %+v", q)
 	}
 	if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" {
@@ -117,13 +117,13 @@ func TestAdvisoryTakesTheFirstAnswer(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:" + tester})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("a person could not answer an advisory question: %s", resp.Status)
 	}
 	q := question(t, srv, qid)
-	if q["by"] != "human:scott" || q["overrode"] != nil {
+	if q["by"] != "user:"+tester || q["overrode"] != nil {
 		t.Fatalf("an advisory answer was treated as an override: %+v", q)
 	}
 }

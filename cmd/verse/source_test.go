@@ -55,11 +55,11 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	store := serve(t)
 	face := sourceFace(t, "verse")
 
-	out, err := runCLI(t, "source", "add", "git.laptop", face.URL)
+	out, err := runCLI(t, "source", "add", "--root", "git", "laptop", face.URL)
 	if err != nil {
 		t.Fatalf("source add: %v", err)
 	}
-	if !strings.Contains(out, "verse.sources.git.laptop") {
+	if !strings.Contains(out, "verse.sources.laptop") {
 		t.Fatalf("add printed %q, want the ref it installed", out)
 	}
 	// The probe ran and said what it found — the half of `add` that only happens on the way
@@ -67,37 +67,37 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	if !strings.Contains(out, "a source") {
 		t.Fatalf("add printed %q, want the probe's verdict", out)
 	}
-	if payloadOf(t, store, source.Ref("git", "laptop")) == nil {
+	if payloadOf(t, store, source.Ref("laptop")) == nil {
 		t.Fatal("nothing was installed")
 	}
 
 	// It is listed, shown, and checked by the same address the operator typed.
-	if out, err := runCLI(t, "sources"); err != nil || !strings.Contains(out, "verse.sources.git.laptop") {
+	if out, err := runCLI(t, "sources"); err != nil || !strings.Contains(out, "verse.sources.laptop") {
 		t.Fatalf("sources = %q (%v)", out, err)
 	}
-	if out, err := runCLI(t, "source", "show", "git.laptop"); err != nil ||
+	if out, err := runCLI(t, "source", "show", "laptop"); err != nil ||
 		!strings.Contains(out, face.URL) {
 		t.Fatalf("source show = %q (%v)", out, err)
 	}
 	// check asks it NOW, and reports what it says beside what was recorded.
-	if out, err := runCLI(t, "source", "check", "verse.sources.git.laptop"); err != nil ||
+	if out, err := runCLI(t, "source", "check", "verse.sources.laptop"); err != nil ||
 		!strings.Contains(out, "a source") {
 		t.Fatalf("source check = %q (%v)", out, err)
 	}
 	// A bare remove is REFUSED once it has reflected something, and the flags reach the route
 	// the way a person types them — the half of a command that is silently unreachable when the
 	// client builds its request wrongly.
-	waitForCLI(t, store, entity.RefAt(source.GitSystem, "verse", "head"))
-	if _, err := runCLI(t, "source", "remove", "git.laptop"); err == nil {
+	waitForCLI(t, store, entity.RefAt(source.GitRoot, "verse", "head"))
+	if _, err := runCLI(t, "source", "remove", "laptop"); err == nil {
 		t.Fatal("a bare remove with a reflected slice should be refused")
 	}
-	if _, err := runCLI(t, "source", "remove", "--keep", "git.laptop"); err != nil {
+	if _, err := runCLI(t, "source", "remove", "--keep", "laptop"); err != nil {
 		t.Fatalf("source remove --keep: %v", err)
 	}
-	if payloadOf(t, store, source.Ref("git", "verse")) != nil {
+	if payloadOf(t, store, source.Ref("verse")) != nil {
 		t.Fatal("--keep should leave the reflected slice standing")
 	}
-	if payloadOf(t, store, source.Ref("git", "laptop")) != nil {
+	if payloadOf(t, store, source.Ref("laptop")) != nil {
 		t.Fatal("remove left the registration standing")
 	}
 }
@@ -113,7 +113,7 @@ func TestSourceAddFlagsThroughTheClient(t *testing.T) {
 	// --no-probe installs something that is not a source, because nothing asked.
 	dead := httptest.NewServer(http.NotFoundHandler())
 	defer dead.Close()
-	if _, err := runCLI(t, "source", "add", "--no-probe", "git.blind", dead.URL); err != nil {
+	if _, err := runCLI(t, "source", "add", "--no-probe", "--root", "git", "blind", dead.URL); err != nil {
 		t.Fatalf("--no-probe should install without asking: %v", err)
 	}
 	// Without it, the same url is refused.
@@ -142,7 +142,7 @@ func TestSourceAddDirThroughTheClient(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	out, err := runCLI(t, "source", "add", "--dir", dir, "git.local")
+	out, err := runCLI(t, "source", "add", "--dir", dir, "local")
 	if err != nil {
 		t.Fatalf("--dir: %v", err)
 	}
@@ -162,19 +162,19 @@ func TestSourceAddFromAFile(t *testing.T) {
 	face := sourceFace(t, "verse")
 
 	path := filepath.Join(t.TempDir(), "source.tony")
-	doc := "name: laptop\nsystem: git\nurl: \"" + face.URL + "\"\n" +
+	doc := "name: laptop\nroot: git\nurl: \"" + face.URL + "\"\n" +
 		"owns:\n- {at: \"git.verse\"}\n"
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := runCLI(t, "source", "add", "--file", path); err != nil ||
-		!strings.Contains(out, "verse.sources.git.laptop") {
+		!strings.Contains(out, "verse.sources.laptop") {
 		t.Fatalf("source add --file = %q (%v)", out, err)
 	}
 
 	// And the typo the document form makes possible, named rather than dropped.
 	bad := filepath.Join(t.TempDir(), "bad.tony")
-	if err := os.WriteFile(bad, []byte("name: b\nsystem: git\nulr: \"http://x:1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(bad, []byte("name: b\nroot: git\nulr: \"http://x:1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, err := runCLI(t, "source", "add", "--file", bad)

@@ -54,10 +54,10 @@ func TestStateAnswersALitingAsAddresses(t *testing.T) {
 		t.Fatalf("the reply is not a listing: %v (%s)", err, listed)
 	}
 
-	// --depth bounds it in steps, so the records are named and their fields are not.
-	bounded := body(ts.URL + "/state?at=change.pr&paths=1&depth=3")
+	// --depth bounds it BENEATH the address, so the records are named and their fields are not.
+	bounded := body(ts.URL + "/state?at=change.pr&paths=1&depth=1")
 	if !strings.Contains(bounded, `change.pr."1"`) || strings.Contains(bounded, `change.pr."1".area`) {
-		t.Errorf("--depth 3 answered %s", bounded)
+		t.Errorf("--depth 1 answered %s", bounded)
 	}
 
 	// A path nothing stands at is not an empty listing.
@@ -67,10 +67,32 @@ func TestStateAnswersALitingAsAddresses(t *testing.T) {
 		t.Errorf("a listing of nothing answered %s, want 404", resp.Status)
 	}
 
-	// A read that still needs the document answers one: `--if` picks per node the path reached,
-	// so it is asked of the nodes a wildcard reaches and the walk over the answer is the listing.
-	doc := body(ts.URL + `/state?at=change.pr.*&paths=1&if=%7Barea%3A%20payments%7D`)
-	if !strings.Contains(doc, "payments") {
-		t.Errorf("a filtered listing did not answer the document it filters: %s", doc)
+	// A FILTERED LISTING IS THE STORE'S TOO. `--if` is asked of each node the path REACHED — the
+	// store matches its pattern against each member of a set — and the listing is what it kept
+	// and what is beneath that, as addresses: the document is not read to find out.
+	kept := body(ts.URL + `/state?at=change.pr.*&paths=1&if=%7Barea%3A%20payments%7D`)
+	if !strings.Contains(kept, `change.pr."1"`) || !strings.Contains(kept, `change.pr."1".area`) {
+		t.Errorf("the filtered listing does not name what the filter kept, and what is beneath it: %s", kept)
+	}
+	if strings.Contains(kept, `change.pr."2"`) {
+		t.Errorf("the filtered listing names a node the filter did not keep: %s", kept)
+	}
+	if strings.Contains(kept, "payments") {
+		t.Errorf("a listing answered values, so it read the document: %s", kept)
+	}
+	// A filter that keeps nothing is an answer about the filter, and a path that reaches nothing
+	// is a wrong address: the first is an empty listing and the second is a 404.
+	if none := body(ts.URL + `/state?at=change.pr.*&paths=1&if=%7Barea%3A%20nowhere%7D`); strings.Contains(none, "change.pr") {
+		t.Errorf("a filter that keeps nothing listed %s", none)
+	}
+	resp = getAs(t, "", ts.URL+`/state?at=nosuch.*&paths=1&if=%7Barea%3A%20payments%7D`)
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("a filtered listing over a path that reaches nothing answered %s, want 404", resp.Status)
+	}
+	// And the depth is the store's, counted from what the path reached: 0 is those nodes alone.
+	alone := body(ts.URL + `/state?at=change.pr.*&paths=1&depth=0`)
+	if !strings.Contains(alone, `change.pr."2"`) || strings.Contains(alone, `change.pr."2".area`) {
+		t.Errorf("depth 0 over a wildcard is not the reached nodes alone: %s", alone)
 	}
 }

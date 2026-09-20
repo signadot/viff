@@ -1272,7 +1272,12 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 
 // PathsAt is every address beneath at, deepest last within each branch — the listing
 // `verse data --paths` prints — answered BY THE STORE rather than by walking a document it
-// sent. max bounds the total number of steps an address may have; 0 means no bound.
+// sent. depth bounds how far beneath `at` the walk goes: 0 is `at` alone, so the listing is
+// empty, 1 is its children, and Unbounded is everything.
+//
+// THE NUMBER IS THE STORE'S OWN. A depth counted from the address is what logd's descent takes
+// (api.MatchRequest.Depth), so the reader's number is the one on the wire and nothing here
+// converts between a ceiling and a bound.
 //
 // The store knows the names: a descent (`<at>..`) with `return: path` answers every node
 // beneath, each once and in document order, reading no node at all to do it -- one table per
@@ -1289,7 +1294,10 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 // The addresses beneath an element are the same ones the document walk spells, since below an
 // element a name extends the ACCESS rather than the address (entity.Path). A mounted place is
 // the one exception to the descent, walked a level at a time (walkPathsAt).
-func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
+func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
+	if depth == 0 {
+		return nil, nil // the node alone, and a listing is what stands BENEATH it
+	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	path := s.rootForAt(at)
@@ -1303,6 +1311,12 @@ func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
 		if err != nil || kind == "" {
 			return nil, err
 		}
+		// The level walk prunes by how long an address is, so the bound is turned into the
+		// ceiling it counts against here — the one place left that adds the two.
+		max := 0
+		if depth > 0 {
+			max = len(at) + depth
+		}
 		var out []Path
 		if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
 			return nil, err
@@ -1315,12 +1329,9 @@ func (s *LogdStore) PathsAt(at []string, max int) ([]Path, error) {
 	// what is past the bound is neither walked nor shipped. The entity root is a node of its
 	// own beside the mount root, so a descent under it never reaches a mount.
 	q := libctl.SetQuery{Path: path + "..", Return: logdapi.ReturnPath}
-	if max > 0 {
-		depth := max - len(at)
-		if depth <= 0 {
-			return nil, nil // nothing beneath is within the bound
-		}
-		q.Depth = &depth
+	if depth > 0 {
+		d := depth
+		q.Depth = &d
 	}
 	var out []Path
 	_, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error {
@@ -1365,6 +1376,19 @@ func (s *LogdStore) pathOfMember(p string) (Path, error) {
 	return Path{Ref: RefAt(names...), Access: x.String()}, nil
 }
 
+// StandsAt reports whether a node stands at a path, asked of the store's own index: a match that
+// returns the node's kind and nothing of what it holds.
+func (s *LogdStore) StandsAt(at []string) (bool, error) {
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	path := s.rootForAt(at)
+	for _, sg := range at {
+		path += "." + seg(sg)
+	}
+	kind, err := s.iterTypeAt(ctx, path)
+	return kind != "", err
+}
+
 // iterTypeAt is what kind of node stands at path — the kind that says what is under it and which
 // wildcard reaches it — or "" when nothing stands there. Nothing is an answer, not a failure:
 // listing a slice before anything is written to it is what an engine and an install both do.
@@ -1383,6 +1407,152 @@ func (s *LogdStore) iterTypeAt(ctx context.Context, path string) (string, error)
 		return "", fmt.Errorf("list %s: %w", path, err)
 	}
 	return kind, nil
+}
+
+// PathsMatching answers a listing over a PATH — `demo.pr.*`, `demo..stage` — as one descent on
+// the wire, which is what the store's own depth exists for: the path, a `..` after it where it
+// does not end in one already, and the depth exactly as the reader gave it. Nothing here counts.
+// A depth is one budget for the whole path, counted from the node the path names, and what that
+// means for a path with more than one `..` is logd's to say and is said once, there.
+//
+// A PREDICATE IS ASKED OF WHAT THE PATH REACHED, not of everything beneath it: the store's
+// pattern is matched against each member of a set, so the path is read first with the pattern —
+// which nodes it keeps — and the descent is kept to those. Both come back in document order, a
+// node before what is under it, so one pass pairs them.
+//
+// THE PATTERN IS MATCHED BY THE STORE, AGAINST WHAT THE STORE HOLDS, which for a reader who may
+// not read all of a node is more than they may ask about: a row kept because of a field withheld
+// from them says what the field holds to anybody willing to guess. So a view narrows the answer
+// (Narrow): each row the pattern kept is asked again as its reader reads it, and whether the
+// path reached anything is asked of what they may see.
+//
+// A mounted place is not descended into (PathsAt walks those), so a caller with a path rooted
+// in one reads the node instead.
+func (s *LogdStore) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, as *Narrow) ([]Path, bool, error) {
+	prefix, rest := LiteralPrefix(at)
+	if IsMountOwned(prefix...) {
+		return nil, false, fmt.Errorf("list %s: a mounted place is walked a level at a time, not descended", JoinSegs(prefix))
+	}
+	ctx, cancel := s.reqCtx()
+	defer cancel()
+	asked := s.rootForAt(prefix)
+	if spelled := at.String(); spelled != "" {
+		if !strings.HasPrefix(spelled, ".") && !strings.HasPrefix(spelled, "[") &&
+			!strings.HasPrefix(spelled, "{") && !strings.HasPrefix(spelled, "(") {
+			asked += "."
+		}
+		asked += spelled
+	}
+	descends := hasDescend(rest)
+	bound := func(q libctl.SetQuery, has bool) libctl.SetQuery {
+		// A depth on a path with no `..` is refused by the store, and means nothing: what the
+		// path reaches is then fixed by its length.
+		if depth >= 0 && has {
+			d := depth
+			q.Depth = &d
+		}
+		return q
+	}
+	read := func(q libctl.SetQuery, fn func(string) error) error {
+		_, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error { return fn(m.Path) })
+		if isNotFound(err) {
+			err = nil // nothing stands there, which is an answer
+		}
+		s.noteRead(err)
+		if err != nil {
+			return fmt.Errorf("list %s: %w", at, err)
+		}
+		return nil
+	}
+	var kept map[string]bool
+	if pattern != nil {
+		kept = map[string]bool{}
+		q := bound(libctl.SetQuery{Path: asked, Pattern: pattern, Return: logdapi.ReturnPath}, descends)
+		if err := read(q, func(member string) error {
+			if as != nil && as.Keeps != nil {
+				p, err := s.pathOfMember(member)
+				if err != nil {
+					return err
+				}
+				if ok, err := as.Keeps(p); err != nil || !ok {
+					return err
+				}
+			}
+			kept[member] = true
+			return nil
+		}); err != nil {
+			return nil, false, err
+		}
+		if len(kept) == 0 {
+			// The filter kept nothing: whether the PATH reached anything is a second question,
+			// and the one that tells a wrong address from an honest empty answer — asked of what
+			// the reader may see, since a node they may not is one they may not learn stands.
+			reached := false
+			q := bound(libctl.SetQuery{Path: asked, Return: logdapi.ReturnPath}, descends)
+			err := read(q, func(member string) error {
+				if reached || as == nil || as.Sees == nil {
+					reached = true
+					return nil
+				}
+				p, err := s.pathOfMember(member)
+				if err != nil {
+					return err
+				}
+				reached, err = as.Sees(p)
+				return err
+			})
+			return nil, reached, err
+		}
+	}
+	listed := asked
+	if !strings.HasSuffix(listed, "..") {
+		listed += ".."
+	}
+	var out []Path
+	// The kept nodes this member stands under, innermost last: a kept node may stand beneath
+	// another, and leaving the inner one is not leaving the outer.
+	var under []string
+	reached := false
+	err := read(bound(libctl.SetQuery{Path: listed, Return: logdapi.ReturnPath}, true), func(member string) error {
+		reached = true
+		if kept != nil {
+			for len(under) > 0 && !beneath(member, under[len(under)-1]) {
+				under = under[:len(under)-1]
+			}
+			if kept[member] {
+				under = append(under, member)
+			}
+			if len(under) == 0 {
+				return nil // not a node the filter kept, nor anything under one
+			}
+		}
+		p, err := s.pathOfMember(member)
+		if err != nil {
+			return err
+		}
+		if rest == nil && p.Access == "" && slices.Equal(p.Ref.Segs(), prefix) {
+			return nil // a path naming one node does not list that node
+		}
+		out = append(out, p)
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return out, reached, nil
+}
+
+// beneath reports whether a store path stands under another: the longer one carries on with a
+// separator, so `a.bc` is not beneath `a.b`.
+func beneath(member, under string) bool {
+	if !strings.HasPrefix(member, under) || len(member) == len(under) {
+		return false
+	}
+	switch member[len(under)] {
+	case '.', '[', '{', '(':
+		return true
+	}
+	return false
 }
 
 // walkPathsAt appends every address beneath the node of kind standing at path, which is the

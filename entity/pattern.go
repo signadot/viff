@@ -373,6 +373,21 @@ func fieldAt(payload Payload, field []string) Payload {
 // answer a question the reader did not ask.
 func (p Pattern) MatchesPayload(n Payload) bool { return p.matchPayload(n) }
 
+// StorePattern is the predicate as a pattern the STORE matches each member of a set against,
+// nil when there is none: the predicate itself, nested under the fields `at` roots it at, since
+// a match of `{labels: P}` against a payload is a match of P against its `labels`. It is what
+// lets a filtered listing be asked of the store rather than read and filtered here.
+func (p Pattern) StorePattern() Payload {
+	if p.Predicate == nil {
+		return nil
+	}
+	out := clone(p.Predicate)
+	for i := len(p.At) - 1; i >= 0; i-- {
+		out = Obj{p.At[i]: out}.Payload()
+	}
+	return out
+}
+
 func (p Pattern) MatchesChange(ev Event) bool {
 	if p.Op != "" && p.Op != ev.Op {
 		return false

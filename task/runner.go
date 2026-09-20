@@ -35,7 +35,7 @@ type Launch struct {
 	// Empty = the driver's own default frame.
 	Frame string
 
-	// Resolver is the binding that answers this task's gates — `resolvers:<kind>:<name>`.
+	// Resolver is the binding that answers this task's gates — `verse.resolvers.<name>`.
 	// Empty means nobody is bound, and its questions go to whoever reads the docket.
 	Resolver string
 

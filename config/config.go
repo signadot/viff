@@ -88,10 +88,20 @@ type Config struct {
 //
 //tony:schemagen=verse-perms-config,notag
 type PermsConfig struct {
-	// Default is what a node created with no default above it holds out — grantees by level,
+	// ChildGrants is what a node created with no default above it holds out — grantees by level,
 	// `{read: ["*"]}` — the open verse's when left unset, and `{}` for a verse where what
 	// anybody creates is theirs and their grantees' alone.
-	Default map[string][]string `tony:"field=default,omitzero"`
+	ChildGrants map[string][]string `tony:"field=child-grants,omitzero"`
+	// Admins are who may take a top-level place: grantees (`scott@example.com`, `agent:ops`),
+	// seeded into the `admin` group and held `owner` beneath the root. Unset is the open verse
+	// — anybody takes one — which is what a dogfood deployment runs as. Env:
+	// VERSE_PERMS_ADMINS, comma-separated, which is how a cluster with no verse.tony in the pod
+	// says it (and how it is changed live, with `kubectl set env`).
+	//
+	// It is a SETTING rather than a record because it is the one policy that has to exist
+	// before anybody can be refused: a verse whose top is administered cannot be administered
+	// into existence from inside itself.
+	Admins []string `tony:"field=admins,omitzero"`
 }
 
 // TripPace resolves TripDuration: the duration, whether it was SET at all, and any parse error.
@@ -369,6 +379,17 @@ func (c *Config) applyEnv() error {
 	c.User = envOr("VERSE_USER", c.User)
 	c.Agent = envOr("VERSE_AGENT", c.Agent)
 	c.SystemCharter = envOr("VERSE_SYSTEM_CHARTER", c.SystemCharter)
+	// Comma-separated, because an env var is one string and a deployment sets this one without
+	// a config file: `kubectl set env deploy/versed VERSE_PERMS_ADMINS=…` is how a cluster says
+	// who may take a top-level place, and there is no verse.tony in the pod to say it in.
+	if v := os.Getenv("VERSE_PERMS_ADMINS"); v != "" {
+		c.Perms.Admins = nil
+		for _, a := range strings.Split(v, ",") {
+			if a = strings.TrimSpace(a); a != "" {
+				c.Perms.Admins = append(c.Perms.Admins, a)
+			}
+		}
+	}
 	c.LLM.BaseURL = envOr("PORTKEY_BASE_URL", c.LLM.BaseURL)
 	c.LLM.APIKey = envOr("PORTKEY_API_KEY", c.LLM.APIKey)
 	c.LLM.VirtualKey = envOr("PORTKEY_VIRTUAL_KEY", c.LLM.VirtualKey)

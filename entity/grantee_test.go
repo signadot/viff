@@ -28,10 +28,10 @@ func TestGranteeSpellings(t *testing.T) {
 		{"group:release", "group:release", entity.GroupKind, "release"},
 		{"via:verse.trigger.rule.x", "via:verse.trigger.rule.x", entity.ViaKind, ""},
 		{"via:verse.trigger.rule.drift:head-moved", "via:verse.trigger.rule.drift:head-moved", entity.ViaKind, ""},
-		{"via:verse.sources.git.cluster", "via:verse.sources.git.cluster", entity.ViaKind, ""},
+		{"via:verse.sources.cluster", "via:verse.sources.cluster", entity.ViaKind, ""},
 		{"via:verse.sources.*", "via:verse.sources.*", entity.ViaKind, ""},
-		{"via:verse.resolvers.security.gate", "via:verse.resolvers.security.gate", entity.ViaKind, ""},
-		{`via:verse.sources.git."a.b"`, `via:verse.sources.git."a.b"`, entity.ViaKind, ""},
+		{"via:verse.resolvers.gate", "via:verse.resolvers.gate", entity.ViaKind, ""},
+		{`via:verse.sources."a.b"`, `via:verse.sources."a.b"`, entity.ViaKind, ""},
 	} {
 		g, err := entity.ParseGrantee(tc.in)
 		if err != nil {
@@ -58,18 +58,18 @@ func TestGranteeRefusals(t *testing.T) {
 		"agent", // a kind word, which a principal could once be named
 		"verse.principal.group.release",
 		"user", "coderunner", "system", "",
-		"wizard:x",                              // no such kind
-		"group:*",                               // a group is named, not listed under
-		"user:",                                 // an empty id
-		"user:a*b",                              // a * that is not the whole id
-		"user:a b",                              // an id with a space
-		"via:",                                  // an empty address
-		"via:demo.pr.1",                         // the world's half acts as nobody
-		"via:verse.*.x",                         // a * that is not trailing
-		"via:verse.*",                           // no system, so nothing that acts
-		"via:verse.runners.pool.coderunner",     // a runner acts as runner:<identity>
-		"via:verse.trigger.package.x",           // a package is not a rule
-		"verse.resolvers.instance.review@run-1", // an instance's address is no person
+		"wizard:x",                     // no such kind
+		"group:*",                      // a group is named, not listed under
+		"user:",                        // an empty id
+		"user:a*b",                     // a * that is not the whole id
+		"user:a b",                     // an id with a space
+		"via:",                         // an empty address
+		"via:demo.pr.1",                // the world's half acts as nobody
+		"via:verse.*.x",                // a * that is not trailing
+		"via:verse.*",                  // no system, so nothing that acts
+		"via:verse.runners.coderunner", // a runner acts as runner:<identity>
+		"via:verse.trigger.package.x",  // a package is not a rule
+		"verse.watch.review@run-1",     // an instance's address is no person
 	} {
 		_, err := entity.ParseGrantee(in)
 		if err == nil {
@@ -94,7 +94,7 @@ func TestGranteeRefusals(t *testing.T) {
 
 // Every part of the system owns the root: the parts say which act wrote, and none is narrower.
 func TestEverySystemPartHoldsTheRoot(t *testing.T) {
-	system := entity.As(entitytest.Store(t), entity.SystemDefault)
+	system := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
 	for _, part := range []string{entity.SystemDefault, entity.SystemDocket, entity.SystemMirror,
 		entity.SystemPerms, entity.SystemSeed, entity.SystemCharter} {
 		for _, ref := range []entity.Ref{entity.RefAt("demo", "pr", "1"), entity.VerseRef("trigger", "rule", "x"), entity.PermsRef(entity.RefAt("demo"))} {
@@ -114,8 +114,8 @@ func TestTheMatchReadsTheGrammar(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	system := entity.As(entitytest.Store(t), entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil)
+	system := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
+	entity.PolicyOf(system).SetRootChildGrants(nil)
 	grant := func(name string, to ...string) entity.Ref {
 		t.Helper()
 		ref := entity.RefAt("demo", "pr", name)
@@ -146,13 +146,13 @@ func TestTheMatchReadsTheGrammar(t *testing.T) {
 	}
 	// Each place is somebody's, so what it holds is what the grant holds out and not the
 	// system's: a place with no owner on record acts as the system, which holds everything.
-	for _, place := range []entity.Ref{entity.VerseRef("sources", "git", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("sources")} {
+	for _, place := range []entity.Ref{entity.VerseRef("sources", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("sources")} {
 		if err := entity.Establish(system, place, "user:installer@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	sources := grant("sources", "via:verse.sources.*")
-	if !reads("via:verse.sources.git.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
+	if !reads("via:verse.sources.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
 		reads("via:verse.sources", sources) {
 		t.Error("via:verse.sources.* admits what acts beneath it, and nothing else")
 	}

@@ -18,8 +18,8 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// GitIssueSystem is the entity slice a git-issue Source owns and is the single writer of.
-const GitIssueSystem = "git-issue"
+// GitIssueRoot is the entity slice a git-issue Source owns and is the single writer of.
+const GitIssueRoot = "git-issue"
 
 // GitIssue reflects the issues `git issue` keeps INSIDE a git repository into the
 // git-issue.* slice — `git-issue.<repo>.issue.<id>` per issue and `git-issue.<repo>.repo` for
@@ -49,29 +49,29 @@ type GitIssue struct {
 	// bodies reflects description.md's body under the title. Off makes the slice an index of
 	// issue STATE — which is what a rule matches on — rather than a copy of their prose.
 	bodies bool
-	// system is the slice this source writes, GitIssueSystem unless an operator said
+	// root is the slice this source writes, GitIssueRoot unless an operator said
 	// otherwise. Set once before serving and read without a lock thereafter.
-	system string
+	root string
 }
 
 // NewGitIssue returns an empty git-issue Source; register repositories with AddRepo or
 // AddMirror.
 func NewGitIssue() *GitIssue {
-	return &GitIssue{repos: newRepoSet(), bodies: true, system: GitIssueSystem}
+	return &GitIssue{repos: newRepoSet(), bodies: true, root: GitIssueRoot}
 }
 
-// SetSystem points this source at a slice other than `git-issue.*`. Call it before serving.
-// The system is a segment of the address and of the route that serves the registration, so
-// neither punctuation survives.
-func (g *GitIssue) SetSystem(system string) error {
-	if system == "" {
+// SetRoot points this source at a slice other than `git-issue.*`. Call it before serving.
+// The root is the first segment of every address this source writes, so no punctuation of an
+// address survives.
+func (g *GitIssue) SetRoot(root string) error {
+	if root == "" {
 		return nil
 	}
-	if strings.ContainsAny(system, ":/") {
-		return fmt.Errorf("git-issue: system %q may not contain : or / — it is a segment of the "+
-			"address (verse.sources.<system>.<name>) and of the route that serves it", system)
+	if strings.ContainsAny(root, ":/.") {
+		return fmt.Errorf("git-issue: root %q may not contain : / or . — it is the first segment "+
+			"of every address this source writes", root)
 	}
-	g.system = system
+	g.root = root
 	return nil
 }
 
@@ -96,8 +96,8 @@ func (g *GitIssue) AddMirror(ctx context.Context, id, remote, dir string) (strin
 	return id, nil
 }
 
-// System is the owned slice.
-func (g *GitIssue) System() string { return g.system }
+// Root is the owned slice.
+func (g *GitIssue) Root() string { return g.root }
 
 // Owns is the ownership claim an install checks against the other installed sources: one place
 // per repository, `git-issue.<repo>`, for the reason git's Owns spells out.
@@ -105,7 +105,7 @@ func (g *GitIssue) Owns() []Own {
 	ids := g.repos.ids()
 	out := make([]Own, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, Own{At: entity.RefAt(g.system, id).String()})
+		out = append(out, Own{At: entity.RefAt(g.root, id).String()})
 	}
 	return out
 }
@@ -121,7 +121,7 @@ func (g *GitIssue) Owns() []Own {
 // adds a line to their OWN hook posting to the hint route with this ref. docs/reference/
 // sourced.md carries the line.
 func (g *GitIssue) RepoRef(id string) entity.Ref {
-	return entity.RefAt(g.system, id)
+	return entity.RefAt(g.root, id)
 }
 
 var _ Source = (*GitIssue)(nil)
@@ -152,7 +152,7 @@ func (g *GitIssue) Reflect(ctx context.Context, ref entity.Ref) (Reflection, err
 // none, else the single repository whose place the ref is at or under.
 func (g *GitIssue) targets(ref entity.Ref) map[string]repo {
 	segs := ref.Segs()
-	if len(segs) < 2 || segs[0] != g.system {
+	if len(segs) < 2 || segs[0] != g.root {
 		return g.repos.all()
 	}
 	id := segs[1]
@@ -187,8 +187,8 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 	// must still cover `git-issue.<repo>.issue.*`, or the ones it no longer has would stand
 	// forever.
 	rn := Reflection{Covers: []entity.Pattern{
-		Cover(g.system, id, "repo"),
-		Cover(g.system, id, "issue", "*"),
+		Cover(g.root, id, "repo"),
+		Cover(g.root, id, "issue", "*"),
 	}}
 
 	refs, err := gitIssueRefs(ctx, dir)
@@ -319,10 +319,10 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 			}
 			p["discussion"] = discussion
 		}
-		rn.Add(entity.RefAt(g.system, id, "issue", xidr), p)
+		rn.Add(entity.RefAt(g.root, id, "issue", xidr), p)
 	}
 
-	rn.Add(entity.RefAt(g.system, id, "repo"), entity.Obj{
+	rn.Add(entity.RefAt(g.root, id, "repo"), entity.Obj{
 		"repo": id, "open": open, "closed": closed, "issues": open + closed,
 	})
 	return rn, nil

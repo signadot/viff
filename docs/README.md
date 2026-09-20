@@ -36,8 +36,8 @@ the nine seams that can be a network, and which side opens each.
 
 - [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain
   costs.
-- [Permissions](perms.md) — one owner per node, grants on the records, and the check on every
-  write and read.
+- [Permissions](perms.md) — one owner per node, and grants for everybody else: the model, top
+  down. The detail is [reference/perms.md](reference/perms.md).
 
 **Charters and triggers** — a charter is a list of rules: when this changes and the gates
 resolve, do this.

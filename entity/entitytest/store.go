@@ -98,3 +98,52 @@ func Remove(t testing.TB, s entity.Store, ref entity.Ref) {
 		t.Fatalf("remove %s: %v", ref, err)
 	}
 }
+
+// OpenStore is Store with the record a deployment's seed writes for an OPEN verse: everyone
+// holds `owner` beneath the root, so a test writes where it likes and what it creates is its
+// writer's, and everyone reads the root itself.
+//
+// IT IS WRITTEN RATHER THAN ASSUMED, because openness is a deployment's policy and not the
+// check's: a store nobody seeded admits nobody but the system, which is what makes a verse whose
+// seed failed refuse rather than stand wide open. A test that is ABOUT the policy takes Store
+// and writes the record it means (versed's seed writes this one, plus verse's half and the
+// deployment's admins).
+func OpenStore(t testing.TB) *entity.LogdStore {
+	t.Helper()
+	s := Store(t)
+	OpenRoot(t, s)
+	return s
+}
+
+// OpenRoot writes the open verse's root record into a store that has none.
+func OpenRoot(t testing.TB, s entity.Store) {
+	t.Helper()
+	rec := entity.Obj{
+		entity.OwnerField: entity.SystemDefault,
+		entity.GrantsField: entity.GrantsPayload(nil, []entity.Grant{
+			{Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}}},
+			{To: map[entity.Level][]string{entity.Read: {entity.Everyone}}},
+		}),
+	}
+	seed := entity.As(s, entity.SystemSeed)
+	if _, _, err := seed.Write(entity.Write{
+		At: entity.PermsRef(entity.RefAt()).At(), Value: rec.Payload(), Principal: entity.SystemSeed,
+	}); err != nil {
+		t.Fatalf("opening the root: %v", err)
+	}
+	// AND VERSE'S HALF IS FENCED, as the deployment's seed fences it: a grant does not reach
+	// through a node carrying an owner record, and without this one the root's `owner` beneath
+	// it would hand every reader verse's own half and the perms mirror with it. `grants: []`
+	// out loud, since a record with an owner and no grants field reads as holding out the
+	// root's default.
+	if _, _, err := seed.Write(entity.Write{
+		At: entity.PermsRef(entity.RefAt(entity.VerseRoot)).At(),
+		Value: entity.Obj{
+			entity.OwnerField:  entity.SystemDefault,
+			entity.GrantsField: entity.GrantsPayload(nil, nil),
+		}.Payload(),
+		Principal: entity.SystemSeed,
+	}); err != nil {
+		t.Fatalf("fencing verse's half: %v", err)
+	}
+}

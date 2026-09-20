@@ -34,7 +34,7 @@ func slackMain(args []string) error {
 
 	ctx := context.Background()
 	src, err := slack.New(ctx, slack.Config{
-		System:    c.system,
+		Root:      c.root,
 		Token:     secret("SLACK_BOT_TOKEN"),
 		Workspace: *workspace,
 		Depth:     *depth,
@@ -59,5 +59,5 @@ func slackMain(args []string) error {
 	routes := map[string]http.Handler{
 		"POST /slack/events": src.Events(signing, c.hinter()),
 	}
-	return c.serve(src.System(), src, routes)
+	return c.serve(src.Root(), src, routes)
 }

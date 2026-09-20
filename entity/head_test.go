@@ -16,7 +16,7 @@ import (
 // syncs, and its sync opens a watch on the root that logd grants one of per call: a readiness
 // probe calling it accumulated 158 idle watchers in 26 minutes on staging.
 func TestHeadFollowsWritesWithoutASync(t *testing.T) {
-	s := entitytest.Store(t)
+	s := entitytest.OpenStore(t)
 	var last int64
 	for i := 0; i < 5; i++ {
 		ref := entity.RefAt("demo", "pr", fmt.Sprintf("%d", i))

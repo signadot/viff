@@ -62,10 +62,10 @@ func gitMain(args []string) error {
 	// No delivery routes: git's hint is a git hook (source.Git.InstallHook), which posts to
 	// verse directly. There is nothing for this program to receive — which is the shape every
 	// source would have if every external system let you install a four-line shell script.
-	if err := git.SetSystem(c.system); err != nil {
+	if err := git.SetRoot(c.root); err != nil {
 		return err
 	}
-	return c.serve(git.System(), git, nil)
+	return c.serve(git.Root(), git, nil)
 }
 
 // split reads an optional `<id>=` prefix off a spec, leaving the rest whole — a url has its own

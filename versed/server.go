@@ -15,7 +15,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,6 +47,10 @@ import (
 // Server is the monolith's in-process assembly: one store, one engine, one gate
 // registry, and the task runtime, behind one HTTP surface.
 type Server struct {
+	// seedErr is what the permission seed refused with: a server holding one has no policy and
+	// must not serve (SeedError).
+	seedErr error
+
 	// SystemCharter is the path of the charter file installed at start as the system, when the
 	// deployment names one (config.Config.SystemCharter).
 	SystemCharter string
@@ -58,7 +61,10 @@ type Server struct {
 	// clocks is the schedule timers this process holds (schedule.go).
 	clocks clocks
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
-	users  sync.Map
+	users sync.Map
+	// slides is, by task id, the last slide the control route relayed — who for, and to which
+	// mode (mirror.Meta.SlidBy).
+	slides sync.Map
 	Reg    *task.Registry
 	Eng    *trigger.Engine
 	Taskd  *taskd.Daemon
@@ -158,6 +164,8 @@ type Server struct {
 	// routes is the published route table, filled in by Handler as it registers each
 	// route — never maintained separately. See routes.go.
 	routes []api.Route
+	// unattributed is the patterns a request may write through naming nobody (router.handleUnattributed).
+	unattributed map[string]bool
 
 	// susp is baseline's suspension table, which baseline's engine and every package's ask; a
 	// scope's is beside its engine. suspMu is the one writer's lock: a suspension's record and
@@ -199,11 +207,27 @@ type scopeEngine struct {
 	susp *trigger.Suspensions
 }
 
+// Option is a deployment's say in how the server is assembled. Variadic because what a
+// deployment sets is what its config named and nothing else: a test that says none gets the
+// verse the check describes on its own.
+type Option func(*options)
+
+type options struct{ perms Perms }
+
+// WithPerms carries the permission policy a deployment set — the root's default and its admins.
+// It is read BEFORE the seed runs, since the seed writes the records it describes; a verse
+// assembled without it is the open one.
+func WithPerms(p Perms) Option { return func(o *options) { o.perms = p } }
+
 // NewWithStore assembles the server with the given task driver builder (scripted,
 // LLM, …) over a store. The engine resolves trigger gates through the shared registry,
 // so a human answers them out-of-band via POST /gate/resolve; a trigger's spawn action
 // goes through the task runtime (hosted, mirrored into the verse).
-func NewWithStore(build taskd.Builder, store entity.Store) *Server {
+func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Server {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	// THE STORE ACTS AS THE SYSTEM unless a request or a firing says otherwise. A mirror's
 	// projection, a question posed, the charter restored at start: none of these was asked for
 	// by anybody outside verse, and a write that names nobody would leave what it creates
@@ -218,11 +242,28 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		}
 		return ""
 	}
+	// The root's default, BEFORE the seed: the records the seed writes hold out what it says,
+	// and setting it afterwards left a deployment's own default reaching nothing the seed
+	// wrote — which is the order this fixes rather than documents.
+	// NIL IS UNSET AND EMPTY IS A SETTING: `perms: {child-grants: {}}` is a verse where what anybody
+	// creates is theirs alone, and reading it as "not set" made a verse configured private
+	// create everything readable by everyone, with nothing said.
+	if o.perms.ChildGrants != nil {
+		entity.PolicyOf(store).SetRootChildGrants(o.perms.ChildGrants)
+	}
 	// And what the system holds out, written before anything is asked of the store on
 	// anybody's behalf: a request that arrived before the seed would be checked against a
 	// policy admitting nobody.
-	if err := seedPerms(store); err != nil {
-		slog.Warn("perms: " + err.Error())
+	// A FAILED SEED IS FATAL, and it is kept here for StartServing to refuse on. The seed IS the
+	// policy — the root's record is what admits anybody at all — so a verse that serves without
+	// it refuses every request from every person, which looks like a verse that has lost its
+	// data.
+	// THE MIGRATION FIRST, since the seed and every check after it read the mirror in the new
+	// spelling alone: a record still in the old one holds out nothing, so a store left half way
+	// is a verse where nobody can spawn a task. It is fatal for the reason the seed is.
+	seedErr := migratePerms(store)
+	if seedErr == nil {
+		seedErr = seedPerms(store, o.perms)
 	}
 	reg := task.NewRegistry()
 	eng := trigger.New(store, reg)
@@ -234,6 +275,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 	eng.SetSuspensions(susp)
 	taskd := taskd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp,
+		seedErr:   seedErr,
 		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
@@ -262,7 +304,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 			return
 		}
 		if res, ok := resolver.Owner(st, ref); ok {
-			q.BoundTo = resolver.Ref(res.Kind, res.Name).String()
+			q.BoundTo = resolver.Ref(res.Name).String()
 		}
 	}
 	standingOwner := func(subject string) string {
@@ -271,7 +313,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 			return ""
 		}
 		if res, ok := resolver.Owner(store, ref); ok {
-			return resolver.Ref(res.Kind, res.Name).String()
+			return resolver.Ref(res.Name).String()
 		}
 		return ""
 	}
@@ -317,6 +359,7 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		_, _, _ = st.Write(entity.Write{
 			At:    mirror.QuestionRef(q.ID).At(),
 			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
+			When:  []entity.Require{entity.Updated()},
 		})
 	}
 	reg.OnPost(func(p task.Pending) {
@@ -330,8 +373,9 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		store := s.storeForScope(p.Question.Scope)
 		owner(store, &p.Question)
 		watch(store, p.Question, "")
-		mirror.PostQuestion(store, p, "")
-		arm(store, p.Question)
+		if mirror.PostQuestion(store, p, "") {
+			arm(store, p.Question)
+		}
 	})
 	// And the counterpart. A question whose last waiter stopped waiting leaves the registry
 	// silently; without this the record it published stays `pending` on the docket, offering
@@ -377,8 +421,9 @@ func NewWithStore(build taskd.Builder, store entity.Store) *Server {
 		}
 		owner(store, &p.Question)
 		watch(store, p.Question, l.ID)
-		mirror.PostQuestion(store, p, l.ID)
-		arm(store, p.Question)
+		if mirror.PostQuestion(store, p, l.ID) {
+			arm(store, p.Question)
+		}
 	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
@@ -509,6 +554,19 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		// the runner is told the same name as the caller it is working for.
 		by := eng.Principal(spec.Chain)
 		st := entity.As(st, by)
+		// NOT UNDER SOMEBODY ELSE'S ID. A rule's task id is a function of what fired, so anybody
+		// can run a task under it first; the record this spawn writes would go over theirs, and
+		// the task — its gate with it, through the link under it — would be theirs. Refused
+		// before anything starts, and NOT mirrored: the record at that id is not this spawn's
+		// to write a failure onto.
+		if owner, other, err := entity.OwnedByOther(st, mirror.Ref(id), by); err != nil || other {
+			why := fmt.Sprintf("spawn %s: the id stands as %s's, and an id names one party's work", id, owner)
+			if err != nil {
+				why = fmt.Sprintf("spawn %s: whose the id is could not be read: %v", id, err)
+			}
+			fmt.Fprintf(os.Stderr, "verse: %s\n", why)
+			return task.FailedHandle(why)
+		}
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
 		place, placeName, err := s.runnerFor(st, spec.Runner)
@@ -903,7 +961,7 @@ type storeContentReader struct {
 }
 
 func (c storeContentReader) ReadContent(path string) (string, bool, error) {
-	e, ok, err := c.store.Get(entity.RefAt(source.FederationSystem, c.kind, path))
+	e, ok, err := c.store.Get(entity.RefAt(source.FederationRoot, c.kind, path))
 	if err != nil {
 		return "", false, err
 	}
@@ -1020,10 +1078,10 @@ func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
 	}
 }
 
-// Start begins the engine's reactive loop (observing the store). It returns
-// immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
-// task:instance entities a previous run left running — since this is the monolith
-// (the task runtime restarts with the engine, so those tasks are gone).
+// SeedError is what the permission seed refused with, nil when it landed. A server holding one
+// has no policy and must not serve; `verse up` says so and stops.
+func (s *Server) SeedError() error { return s.seedErr }
+
 // StartServing is Start for a server that is about to serve: it takes the lifetime context
 // synchronously — scoped engines need it, and a request may arrive immediately — and runs the
 // restore behind it.
@@ -1038,6 +1096,10 @@ func (s *Server) StartServing(ctx context.Context) {
 	go s.Start(ctx)
 }
 
+// Start begins the engine's reactive loop (observing the store). It returns
+// immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
+// task:instance entities a previous run left running — since this is the monolith
+// (the task runtime restarts with the engine, so those tasks are gone).
 func (s *Server) Start(ctx context.Context) {
 	s.ctx = ctx // scoped engines (created later, per federation) start under this
 	// Nothing is suspended that the records do not say, and nothing runs until they have been
@@ -1140,6 +1202,7 @@ func (s *Server) Start(ctx context.Context) {
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
 	phase(phaseSources, s.restoreSources)
+	s.reportActingAsNobody()
 }
 
 // Handler returns the HTTP surface. Observation (read plane) and control are
@@ -1191,8 +1254,8 @@ func (s *Server) Handler() http.Handler {
 	// than by whoever wrote the work.
 	rt.handle("GET /resolvers", s.listResolvers, "", nothing)
 	rt.handle("POST /resolvers", s.addResolver, "", nothing)
-	rt.handle("GET /resolvers/{kind}/{name}", s.getResolver, "", nothing)
-	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
+	rt.handle("GET /resolvers/{name}", s.getResolver, "", nothing)
+	rt.handle("DELETE /resolvers/{name}", s.removeResolver, "", nothing)
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
 	// about.
@@ -1201,22 +1264,22 @@ func (s *Server) Handler() http.Handler {
 	// writes `git:*`. See docs/sources.md.
 	rt.handle("GET /sources", s.listSources, "", nothing)
 	rt.handle("POST /sources", s.addSource, "", nothing)
-	rt.handle("GET /sources/{system}/{name}", s.getSource, "", nothing)
-	rt.handle("GET /sources/{system}/{name}/check", s.checkSource, "", nothing)
-	rt.handle("DELETE /sources/{system}/{name}", s.removeSource, "", nothing)
+	rt.handle("GET /sources/{name}", s.getSource, "", nothing)
+	rt.handle("GET /sources/{name}/check", s.checkSource, "", nothing)
+	rt.handle("DELETE /sources/{name}", s.removeSource, "", nothing)
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
-	rt.handle("POST /sources/{system}/{name}/hint", s.hintSource, "", nothing)
+	rt.handleUnattributed("POST /sources/{name}/hint", s.hintSource, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
-	rt.handle("GET /runners/{kind}/{name}", s.getRunner, "", nothing)
-	rt.handle("GET /runners/{kind}/{name}/check", s.checkRunner, "", nothing)
-	rt.handle("DELETE /runners/{kind}/{name}", s.removeRunner, "", nothing)
+	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
+	rt.handle("GET /runners/{name}/check", s.checkRunner, "", nothing)
+	rt.handle("DELETE /runners/{name}", s.removeRunner, "", nothing)
 	// The two streams a resolver lives on. Addressed by INSTANCE — the binding watching one
 	// run — so neither route needs a second parameter to say which run it is about.
 	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))
-	rt.handle("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
-	rt.handle("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
+	rt.handleUnattributed("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
+	rt.handleUnattributed("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
 
 	// A package's own declaration: what it reads outside its address. It carries `?at=` like
 	// the two above, and it is posted BEFORE them, because a rule is checked against it.
@@ -1279,9 +1342,10 @@ func (s *Server) Handler() http.Handler {
 	rt.mount("/tasks", ph)
 	rt.mount("/tasks/", ph)
 	s.routes = rt.routes
+	s.unattributed = rt.unattributed
 	// Every answer says which verse gave it, and a client that cannot be talking to this one
 	// is turned away before any of the above runs. See versioned.
-	return versioned(s.principals(rt.mux))
+	return versioned(s.principals(rt.mux, rt.unattributed))
 }
 
 // principals notes every principal that presents itself, once: `verse.principal.<kind>.<id>`
@@ -1300,9 +1364,28 @@ func (s *Server) Handler() http.Handler {
 // refused and is a way to hold what it names once something is. What installs a system-owned
 // charter is versed itself, from the file its deployment names (Server.SystemCharter). `group:`
 // does not parse as a principal, since nobody acts as a group.
-func (s *Server) principals(h http.Handler) http.Handler {
+//
+// AND A REQUEST THAT IS NOT A READ PRESENTS ONE. A write naming nobody is not a write by nobody:
+// somewhere behind the route it reaches a part of verse whose own store is the system's, and an
+// empty name there means "mine" — a charter installed with no header is persisted by the engine,
+// as the engine, and its rules fire as the system. Refusing `system:` in the header is worth
+// nothing while leaving the header off says the same thing. So it is refused HERE, before any
+// route runs and by default: every method but GET and HEAD, on every pattern the mux holds,
+// mounted ones included, except the routes registered as acting for a party the route itself
+// names (router.handleUnattributed). A route added tomorrow refuses until somebody decides
+// otherwise.
+func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) http.Handler {
+	var h http.Handler = mux
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := principalOf(r)
+		if p == "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if _, pattern := mux.Handler(r); !unattributed[pattern] {
+				http.Error(w, fmt.Sprintf("%s is required: a request that writes names who makes it — "+
+					"user:, agent: or runner: (the CLI sends its config's `user:` or `agent:`, and "+
+					"`-as` names somebody else)", api.PrincipalHeader), http.StatusBadRequest)
+				return
+			}
+		}
 		if p != "" {
 			g, err := entity.ParsePrincipal(p)
 			if err != nil {
@@ -1535,6 +1618,28 @@ func bindingPrincipal(binding string) string {
 	return entity.Via(ref)
 }
 
+// actor is who an act that records a `by` is BY: the principal the request is made as, which is
+// the one the check admitted. A body may say `by` too — the CLI sends both — and then it names
+// the same principal or the request is refused: checked as one party and recorded as another,
+// one permitted answerer cast every ballot a threshold needed under three names, the last of
+// them `system:docket`, and the record said the system decided.
+func actor(w http.ResponseWriter, store entity.Store, by string) (string, bool) {
+	who := entity.PrincipalOf(store)
+	if who == "" {
+		http.Error(w, api.PrincipalHeader+" is required: an act names who made it", http.StatusBadRequest)
+		return "", false
+	}
+	if by == "" || by == who {
+		return who, true
+	}
+	if g, err := entity.ParsePrincipal(by); err == nil && g.String() == who {
+		return who, true
+	}
+	http.Error(w, fmt.Sprintf("by names %s and the request is made as %s: what an act records is who "+
+		"made it, so the two are one name (`-as` sets both)", by, who), http.StatusBadRequest)
+	return "", false
+}
+
 // principalOf is who a request says it is made by (api.PrincipalHeader), and "" for a request
 // that did not say. Self-asserted, and read as such: it is recorded, never verified.
 func principalOf(r *http.Request) string { return r.Header.Get(api.PrincipalHeader) }
@@ -1556,16 +1661,28 @@ func queryPattern(q url.Values) (entity.Pattern, error) {
 }
 
 // queryPaths reads the listing half of a read's query: whether the caller wants ADDRESSES rather
-// than the document, and how far to walk. depth bounds the total number of steps an address may
-// have, and 0 means no bound — the units the rest of the model counts in.
+// than the document, and how far to walk. depth is counted FROM THE ADDRESS the path names — 0
+// is that address alone, 1 its children — and absent is everything beneath it, so the same
+// number means the same thing at every level.
+//
+// A DEPTH WITHOUT A LISTING IS REFUSED rather than ignored: it bounds a walk, a document read
+// does not walk, and a parameter that quietly does nothing is how a caller comes to believe it
+// asked for something it did not.
 func queryPaths(q url.Values) (listing bool, depth int, err error) {
+	d := q.Get("depth")
 	if q.Get("paths") == "" {
-		return false, 0, nil
+		if d != "" {
+			return false, 0, fmt.Errorf("?depth=%s without ?paths: a depth bounds a listing, "+
+				"and this read answers a document", d)
+		}
+		return false, entity.Unbounded, nil
 	}
-	if d := q.Get("depth"); d != "" {
+	depth = entity.Unbounded
+	if d != "" {
 		n, err := strconv.Atoi(d)
 		if err != nil || n < 0 {
-			return false, 0, fmt.Errorf("?depth=%s: a bound is a number of steps, and 0 is no bound", d)
+			return false, 0, fmt.Errorf("?depth=%s: a depth is how far BENEATH the address to "+
+				"walk — 0 is the address alone — and it is never negative", d)
 		}
 		depth = n
 	}
@@ -1856,8 +1973,10 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	// A LISTING IS ANSWERED BY THE STORE, which knows the names without reading the nodes: it
 	// walks its own levels and answers addresses, so listing a wide container costs the walk
 	// rather than the container — and answers one no read could return at all, being past the
-	// read budget. A path with a wildcard or a descent is still answered over the node, since
-	// the addresses it reaches are what the reach decides (paths).
+	// read budget. That is every listing: a place, a path with a wildcard or a descent, and one
+	// with a predicate, each handed over with the depth as it was given. The depth is the
+	// store's own, so nothing here counts segments, and a path with more than one `..` means
+	// what logd says it means.
 	if listing, depth, err := queryPaths(r.URL.Query()); err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
@@ -1866,7 +1985,8 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		if unreadable(w, r, err) {
 			return
 		}
-		if _, ok, err := store.ReadAt(prefix); unreadable(w, r, err) {
+		// Asked without reading it: the place listed is as often as not a container.
+		if ok, err := store.StandsAt(prefix); unreadable(w, r, err) {
 			return
 		} else if !ok {
 			// A listing of a path nothing stands at is not an empty listing: `--paths | wc -l`
@@ -1876,7 +1996,22 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		}
 		writeOut(w, r, http.StatusOK, entity.PathsDoc(out))
 		return
+	} else if listing && !entity.IsMountOwned(prefix...) {
+		out, reached, err := store.PathsMatching(sel.at, depth, sel.pat.StorePattern(), nil)
+		if unreadable(w, r, err) {
+			return
+		}
+		// A PATH THAT REACHES NOTHING NAMES NOTHING, and one that reached nodes `--if` kept none
+		// of is an answer about the filter: the empty listing.
+		if !reached {
+			notFoundAt(w, r, sel.at)
+			return
+		}
+		writeOut(w, r, http.StatusOK, entity.PathsDoc(out))
+		return
 	}
+	// What is left reads the node: a read that wants the document, and a listing over a path
+	// rooted in a MOUNTED place, which the store walks a level at a time and does not descend.
 	node, ok, err := store.ReadAt(prefix)
 	if unreadable(w, r, err) {
 		return
@@ -2141,7 +2276,7 @@ func (s *Server) removeGroup(w http.ResponseWriter, r *http.Request) {
 // can read, and what it holds out, is yours to know, the way a file you can read shows its
 // mode. Nobody reads the mirror as a whole; setting a record is its owner's (putPerms).
 func (s *Server) getPerms(w http.ResponseWriter, r *http.Request) {
-	ref, err := addressAt(r.URL.Query().Get("at"))
+	ref, err := addressOrRoot(r.URL.Query().Get("at"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2167,7 +2302,14 @@ func (s *Server) listPerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store, who := s.scopedStore(r), principalOf(r)
-	out := make([]api.PermsRecord, 0, len(ents))
+	out := make([]api.PermsRecord, 0, len(ents)+1)
+	// THE ROOT'S FIRST, since it is what every other record hangs from — and it stands beside
+	// the mirror rather than in it, so the listing above cannot carry it.
+	if e, ok, err := entity.As(store, entity.SystemPerms).Get(entity.PermsRef(entity.RefAt())); err == nil && ok {
+		if entity.Check(store, who, entity.Read, entity.RefAt(), "reading its record") == nil {
+			out = append(out, permsRecordOf(entity.RefAt(), e.Payload))
+		}
+	}
 	for _, e := range ents {
 		ref, err := entity.ParseAddr(e.Ref.Name())
 		if err != nil {
@@ -2191,7 +2333,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ref, err := addressAt(body.At)
+	ref, err := addressOrRoot(body.At)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -2202,7 +2344,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := s.scopedStore(r)
-	if refused(w, entity.Check(store, who, entity.OwnerLevel, ref, "setting its record")) {
+	if refused(w, entity.CheckTake(store, who, ref, "setting its record")) {
 		return
 	}
 	if err := entity.Claim(store, ref, who); refused(w, err) {
@@ -2214,11 +2356,11 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 	// Taking the place may have found a record standing that is somebody else's; the check
 	// above passed on co-ownership, so they are a co-owner of it and may edit it. Owner
 	// records never move: what the edit touches is what the node holds out.
-	if body.Default != nil {
+	if body.ChildGrants != nil {
 		var levels entity.Levels
-		if ir.Uncomment(body.Default).Type != ir.NullType {
+		if ir.Uncomment(body.ChildGrants).Type != ir.NullType {
 			var perr error
-			if levels, _, perr = entity.ParseLevels(entity.Obj{entity.DefaultField: body.Default}.Payload(), entity.DefaultField); perr != nil {
+			if levels, _, perr = entity.ParseLevels(entity.Obj{entity.ChildGrantsField: body.ChildGrants}.Payload(), entity.ChildGrantsField); perr != nil {
 				http.Error(w, perr.Error(), http.StatusBadRequest)
 				return
 			}
@@ -2226,13 +2368,13 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 				levels = entity.Levels{}
 			}
 		}
-		if err := entity.SetDefault(store, ref, levels); err != nil {
+		if err := entity.SetChildGrants(store, ref, levels); err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 	}
 	if body.Grants != nil {
-		gs, err := entity.ParseGrants(ref.Segs(), entity.Obj{entity.GrantsField: body.Grants}.Payload())
+		gs, err := entity.ParseGrants(entity.SegsOf(ref), entity.Obj{entity.GrantsField: body.Grants}.Payload())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -2249,12 +2391,14 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(levels) == 0 {
-			http.Error(w, "a grant holds out a level: read, read-write, owner or control", http.StatusBadRequest)
+			http.Error(w, "a grant holds out a level: read, read-write, "+entity.ChildOwnerKey+" or control", http.StatusBadRequest)
 			return
 		}
-		if err := entity.AddGrant(store, ref, entity.Grant{At: ref.Segs(), Below: body.Below, To: map[entity.Level][]string(levels)}); err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
+		for _, g := range entity.GrantsOf(ref.Segs(), body.Below, levels) {
+			if err := entity.AddGrant(store, ref, g); err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
 		}
 	}
 	if body.Revoke != nil {
@@ -2277,8 +2421,12 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 
 // answerPerms writes a node's record back, read as the system since the mirror is not the
 // requester's to read; the caller has established that the requester owns the node.
+//
+// THROUGH THE SCOPE THE EDIT WENT THROUGH. A scope's mirror is its own, layered as the store is,
+// so a record written in a scope stands in the overlay — and reading it back from baseline
+// answered 404 for a record that had just been written, or worse, baseline's older one.
 func (s *Server) answerPerms(w http.ResponseWriter, r *http.Request, ref entity.Ref) {
-	rec, ok, err := s.Store.Get(entity.PermsRef(ref))
+	rec, ok, err := entity.As(s.scopedStore(r), entity.SystemPerms).Get(entity.PermsRef(ref))
 	if unreadable(w, r, err) {
 		return
 	}
@@ -2297,12 +2445,12 @@ func (s *Server) answerPerms(w http.ResponseWriter, r *http.Request, ref entity.
 // thing to see.
 func permsRecordOf(ref entity.Ref, payload entity.Payload) api.PermsRecord {
 	grants := entity.Get(payload, entity.GrantsField)
-	if gs, err := entity.ParseGrants(ref.Segs(), payload); err == nil && grants != nil {
+	if gs, err := entity.ParseGrants(entity.SegsOf(ref), payload); err == nil && grants != nil {
 		grants = entity.GrantsPayload(ref.Segs(), gs)
 	}
 	return api.PermsRecord{
 		At: ref.String(), Owner: entity.Str(payload, entity.OwnerField),
-		Grants: grants, Default: entity.Get(payload, entity.DefaultField),
+		Grants: grants, ChildGrants: entity.Get(payload, entity.ChildGrantsField),
 	}
 }
 
@@ -2329,6 +2477,17 @@ func refused(w http.ResponseWriter, err error) bool {
 	}
 	http.Error(w, err.Error(), http.StatusForbidden)
 	return true
+}
+
+// addressOrRoot is addressAt where the ROOT is a legal answer: the empty path names it, and the
+// perms routes are where a caller says so — the top's own record is set like any other node's.
+// The entity routes keep addressAt, since a write with no address is a write of the whole
+// document and is a typo far more often than it is a request.
+func addressOrRoot(at string) (entity.Ref, error) {
+	if at == "" {
+		return entity.RefAt(), nil
+	}
+	return addressAt(at)
 }
 
 // addressAt reads an address off the wire: one kinded path, at whatever depth, as the segments
@@ -2530,8 +2689,12 @@ func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" || body.By == "" {
-		http.Error(w, "id and by are required: an escalation names the question and who handed it on", http.StatusBadRequest)
+	if body.ID == "" {
+		http.Error(w, "id is required: an escalation names the question it hands on", http.StatusBadRequest)
+		return
+	}
+	var ok bool
+	if body.By, ok = actor(w, s.scopedStore(r), body.By); !ok {
 		return
 	}
 	// The scope's own, first, as an answer is (answerQuestion): a handover written from a scope
@@ -2573,6 +2736,53 @@ func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// posed reads a question, and says whether it is POSED: its own perms record stands, which says
+// who may answer it, and so does the question, which says what may be chosen and how many it
+// takes. Until both do, an answer is checked against the docket's row — every person — and
+// tallied with the default two options at one apiece, so a stranger's single ballot settles a
+// gate that named five people and needed three of them. The record is written first
+// (mirror.PostQuestion), so this asks the record and then the question, and waits a moment for a
+// question somebody is known to have raised: the gap is two writes wide, and whoever answers
+// inside it is better served by a wait than by a refusal to retry.
+//
+// WHAT THE RECORD SAYS, not what a registry says about it. Who raised a question and how — the
+// engine's registry, a hosted task's own, a worker's frame — decides nothing here: every one of
+// them poses through the mirror, and a question none of them has finished posing is not
+// answerable, whatever it would have restricted.
+//
+// raised is whether anybody is known to be asking it, so that an id nobody raised is told so at
+// once rather than after the wait.
+func (s *Server) posed(store entity.Store, id string, raised func() bool) (q entity.Entity, posed bool, err error) {
+	ref := mirror.QuestionRef(id)
+	// AND IT STANDS PENDING, where somebody is waiting on it. An id is a function of what asked,
+	// so a gate fired again poses the id it had, and the record and the question both stand
+	// from the asking before — settled, with that asking's options. Answered against those, one
+	// ballot releases a waiter this asking says needs three. A settled question nobody is
+	// waiting on is simply answered already, and is told so below.
+	read := func() (entity.Entity, bool, error) {
+		if ok, err := entity.Recorded(store, ref); err != nil || !ok {
+			return entity.Entity{}, false, err
+		}
+		q, ok, err := store.Get(ref)
+		if err != nil || !ok {
+			return q, false, err
+		}
+		if entity.Str(q.Payload, "status") != mirror.QuestionPending && raised() {
+			return q, false, nil
+		}
+		return q, true, nil
+	}
+	if q, posed, err = read(); err != nil || posed || !raised() {
+		return q, posed, err
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !posed && err == nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		q, posed, err = read()
+	}
+	return q, posed, err
+}
+
 // answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
 // finds the owner from the id, and `/tasks/{id}/resolve`, which is told it — because the
 // two differ in how the question is addressed and in nothing else. Having had two
@@ -2596,8 +2806,11 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// Attribution is required, not defaulted: a default is a name on the record that belongs to
 	// nobody, and an answer is a durable entry on the question, so an unattributable one is a
 	// permanent unattributable one. A decision is an act; acts have actors.
-	if body.By == "" {
-		http.Error(w, "by is required: a decision names who made it", http.StatusBadRequest)
+	//
+	// AND THE ACTOR IS WHOEVER THE REQUEST IS MADE AS — the person, or the binding a verdict
+	// came through — which is who the check below admits (actor).
+	var ok bool
+	if body.By, ok = actor(w, store, body.By); !ok {
 		return
 	}
 	if body.Choice == "" {
@@ -2616,21 +2829,41 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	if !s.ownHere(w, r, "question "+body.ID, holder, found, err) {
 		return
 	}
+	// NOT UNTIL IT IS POSED (posed): a question is answered against its own record and its own
+	// options, and one that has neither yet is not answered against the docket's row and the
+	// default two.
+	// Whether anybody is WAITING on this id now: the engine's registry, or a task holding it as
+	// a pending gate. Not whether the id looks like a task's — every id on the task route does,
+	// and a question nobody raised would be waited for and then called "still being posed".
+	raised := func() bool {
+		for _, p := range s.Reg.Pending() {
+			if p.Question.ID == body.ID {
+				return true
+			}
+		}
+		return s.taskHoldingGate(body.ID) != ""
+	}
+	q, found, err := s.posed(store, body.ID, raised)
+	if unreadable(w, r, err) {
+		return
+	}
+	if !found {
+		if !raised() {
+			http.Error(w, "no such question", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "question "+body.ID+" is still being posed: it was raised a moment ago, and "+
+			"who may answer it and how many it takes are not written down yet — ask again",
+			http.StatusServiceUnavailable)
+		return
+	}
 	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID), "answering it")) {
 		return
 	}
 	// The options are the RECORD's, and a choice that is not one of them is refused before
 	// anything is delivered or recorded: a ballot for an option nobody offered is not dissent,
-	// it is a typo, and the refusal lists what could have been chosen. A question with no
-	// record yet (the registry posted it a moment ago) has the default two.
-	q, found, err := store.Get(mirror.QuestionRef(body.ID))
-	if unreadable(w, r, err) {
-		return
-	}
-	opts := task.DefaultOptions()
-	if found {
-		opts = mirror.OptionsOf(q.Payload)
-	}
+	// it is a typo, and the refusal lists what could have been chosen.
+	opts := mirror.OptionsOf(q.Payload)
 	need, isOption := task.Need(opts, body.Choice)
 	if !isOption {
 		http.Error(w, fmt.Sprintf("%q is not an option here; the options are %s",
@@ -2666,7 +2899,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// shows a threshold reached without saying so. Counted forward from the read for the
 	// common case, then read back after the write for the race two ballots landing at once
 	// would otherwise lose (see mirror.CastBallot).
-	if need > 1 && found && entity.Str(q.Payload, "status") == mirror.QuestionPending {
+	if need > 1 && entity.Str(q.Payload, "status") == mirror.QuestionPending {
 		count := mirror.Tally(q.Payload)[body.Choice]
 		if entity.Str(entity.Get(entity.Get(q.Payload, "ballots"), body.By), "choice") != body.Choice {
 			count++ // this ballot is new, or changes its answerer's mind
@@ -2866,7 +3099,7 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 // answers 404 on false, so an unreadable store told a resolver its own instance is gone — and a
 // resolver's whole read plane hangs off that address (git-issue nkptp9b3h12ksx3kg9n0).
 func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool, err error) {
-	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
+	ref := entity.VerseRef(resolver.InstanceSystem, r.PathValue("id"))
 	e, found, err := s.scopedStore(r).Get(ref)
 	if err != nil {
 		return "", entity.Ref{}, false, err
@@ -3283,7 +3516,7 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	if p.Notes != "" {
 		rec["notes"] = p.Notes
 	}
-	ref := entity.VerseRef(resolver.System, resolver.InstanceKind, r.PathValue("id"))
+	ref := entity.VerseRef(resolver.InstanceSystem, r.PathValue("id"))
 	if _, _, err := s.asBinding(r, binding).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -3302,6 +3535,11 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
 	m.Owner = s.standingOwner
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
+	m.SlidBy = func() (by, mode string) {
+		v, _ := s.slides.Load(id)
+		slide, _ := v.([2]string)
+		return slide[0], slide[1]
+	}
 	// Who the runner acts as, when it is one reached by url: a spawn and a resume both name
 	// the runner entity, and the entity names the principal.
 	if m.As == "" {
@@ -3310,16 +3548,13 @@ func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.
 	mirror.Reflect(store, id, h, m)
 }
 
-// resolverName is the name half of a binding's address — the last segment of
-// `verse.resolvers.<kind>.<name>`. An instance is addressed by name and origin rather than by
-// the whole address, because the kind is the operator's filing and the name is the identity:
-// two resolvers cannot share a name, so carrying the kind into every instance address would be
-// spelling out a fact that is already implied.
+// resolverName is a binding's name — the last segment of `verse.resolvers.<name>` — which is
+// what an instance's address is built from, with the origin it watches.
 //
 // THE LAST SEGMENT, asked of the address rather than cut at the last delimiter. Cutting at the
 // last ':' was the same answer while an address was colons, and is no answer at all now — it
 // returned the whole string, so every instance was minted at
-// `verse.resolvers.security.reviewer@<origin>` and nothing that looked one up by name found it.
+// `verse.resolvers.reviewer@<origin>` and nothing that looked one up by name found it.
 func resolverName(ref string) string {
 	r, err := entity.ParseAddr(ref)
 	if err != nil {
@@ -3334,7 +3569,7 @@ func resolverName(ref string) string {
 
 // ── resolvers: who answers ───────────────────────────────────────────────────
 
-// addResolver installs a binding at `resolvers:<kind>:<name>`.
+// addResolver installs a binding at `verse.resolvers.<name>`.
 //
 // A VERB rather than a raw write, and the reason survives this increment having nothing to
 // check across bindings yet: installing one is where the check that two standing conditions
@@ -3362,9 +3597,9 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	ref := resolver.Ref(res.Kind, res.Name)
+	ref := resolver.Ref(res.Name)
 	body := entity.Obj{
-		"name": res.Name, "kind": res.Kind, "byRef": res.ByRef,
+		"name": res.Name, "byRef": res.ByRef,
 		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL, "who": res.Method.Who, "group": res.Method.Group},
 	}
 	if res.Condition != nil {
@@ -3402,8 +3637,25 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 			meth["grant"] = m.Grant
 		}
 	}
-	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: body.Payload()}); err != nil {
+	store := s.scopedStore(r)
+	before, err := entity.ActsAs(store, ref)
+	if unreadable(w, r, err) {
+		return
+	}
+	_, stood, err := store.Get(ref)
+	if unreadable(w, r, err) {
+		return
+	}
+	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: body.Payload()}); refused(w, err) {
+		return
+	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// A binding answers as whoever its record says (actsAsInstaller).
+	if err := actsAsInstaller(store, ref, principalOf(r), before); err != nil {
+		s.takeBackOut(r, ref, stood)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	// What it may find itself ordered against, reported and not refused. Overlap is decided
@@ -3418,12 +3670,9 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	resolvers, readErr := entity.BelowErr(s.scopedStore(r), func(ref entity.Ref) bool {
-		// Bindings only. An instance shares the system deliberately — one `--system
-		// resolvers` shows both — but `verse resolver` is asking what is INSTALLED, and a
-		// record of who is watching is a different question.
-		return ref.Under(entity.VerseRoot, resolver.System) && !ref.Under(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}, 2, entity.VerseRoot, resolver.System)
+	// Bindings: what is INSTALLED. Who is watching what is a different question, and stands
+	// in a place of its own (resolver.InstanceSystem).
+	resolvers, readErr := entity.BelowErr(s.scopedStore(r), resolver.IsBinding, 1, entity.VerseRoot, resolver.System)
 	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -3443,7 +3692,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
-	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	ref := resolver.Ref(r.PathValue("name"))
 	e, ok, err := s.scopedStore(r).Get(ref)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3457,7 +3706,7 @@ func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
-	ref := resolver.Ref(r.PathValue("kind"), r.PathValue("name"))
+	ref := resolver.Ref(r.PathValue("name"))
 	if _, ok, err := s.scopedStore(r).Get(ref); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -3466,6 +3715,9 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		if refused(w, err) {
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -3505,7 +3757,7 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	if subject != "" {
 		if ref, err := entity.ParseAddr(subject); err == nil {
 			if next, ok := resolver.Next(store, ref, from); ok {
-				binding = resolver.Ref(next.Kind, next.Name).String()
+				binding = resolver.Ref(next.Name).String()
 				rec["resolver"] = binding
 				// The new owner's clock, not the old one's. Without re-arming, a question
 				// would stay overdue against a deadline nobody set and move again on every
@@ -3530,7 +3782,10 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	}
 	// And the grant goes with the record: the question is held out to the binding that now
 	// answers it and to no other, the old binding's grant going with the old binding.
-	mirror.Bind(store, at.Name(), binding)
+	if err := mirror.Bind(store, at.Name(), binding); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: question %s is recorded as %s's and still held out to who "+
+			"had it: %v\n", at.Name(), binding, err)
+	}
 	// The new owner gets an instance for what it now watches, because re-owning IS an
 	// ownership decision and that is where instances are minted. Without it a layer could own
 	// a question with no record through which to act on it — and no way to read the fine grain
@@ -3574,9 +3829,7 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 	// machinery for a reader that no longer exists; what they were evidence of is in the
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
-	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
-		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}, 1, entity.VerseRoot, resolver.System, resolver.InstanceKind) {
+	for _, ent := range entity.Below(store, resolver.IsInstance, 1, entity.VerseRoot, resolver.InstanceSystem) {
 		if entity.Str(ent.Payload, "binding") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
@@ -3950,7 +4203,7 @@ func runnerRefs(store entity.Store) []string {
 	es := runner.List(store)
 	out := make([]string, 0, len(es))
 	for _, e := range es {
-		out = append(out, runner.Ref(e.Kind, e.Name).String())
+		out = append(out, runner.Ref(e.Name).String())
 	}
 	return out
 }
@@ -3964,7 +4217,7 @@ func sourceRefs(store entity.Store) []string {
 	es := source.List(store)
 	out := make([]string, 0, len(es))
 	for _, e := range es {
-		out = append(out, source.Ref(e.System, e.Name).String())
+		out = append(out, source.Ref(e.Name).String())
 	}
 	return out
 }
@@ -4094,6 +4347,14 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// WHO IS ANSWERABLE FOR THE RUN is whoever the request is made as (actor). The name travels
+	// — to a remote runner, and onto the commits a coderunner delivers, as their
+	// `Verse-Principal:` trailer — so a body naming somebody else is a run signed by a party
+	// who never asked for it.
+	var ok bool
+	if body.Principal, ok = actor(w, s.scopedStore(r), body.Principal); !ok {
+		return
+	}
 	// One or the other says what the work IS. A call list is the work, so a spawn carrying one
 	// needs no prompt — and a spawn with neither has not said anything to do.
 	if body.Prompt == "" && len(body.Calls) == 0 {
@@ -4115,6 +4376,15 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	id, err := spawnID(body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// NOT UNDER SOMEBODY ELSE'S ID: an id names one party's work, and a run under one that
+	// stands writes over the record the last run left.
+	if owner, other, err := entity.OwnedByOther(s.scopedStore(r), mirror.Ref(id), body.Principal); unreadable(w, r, err) {
+		return
+	} else if other {
+		http.Error(w, fmt.Sprintf("task id %q stands as %s's: an id names one party's work, so run "+
+			"this under another id (or a `name`, and the id is derived from it)", id, owner), http.StatusConflict)
 		return
 	}
 	// Honor --scope: mirror the task:instance into that scope's copy-on-write view, not
@@ -4707,7 +4977,11 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	if _, ok := s.controlledTask(w, r, id); !ok {
 		return
 	}
-	if _, ok := s.Taskd.SnapshotOf(id); ok {
+	// SAY AND VECTOR GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own included:
+	// both record who did them, and that is whoever the request is made as (actor). The
+	// runtime's own handler takes the request as it stands and records the body's `by`, so the
+	// party checked for control would not be the party written down.
+	if _, ok := s.Taskd.SnapshotOf(id); ok && op != "say" && op != "vector" {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
@@ -4731,8 +5005,15 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		h.Cancel("")
 	case "say":
 		var body api.Say
-		_ = codec.Read(r, &body)
-		h.Steer(body.Instruction, body.By)
+		if err := codec.Read(r, &body); err != nil || body.Instruction == "" {
+			http.Error(w, "instruction required", http.StatusBadRequest)
+			return
+		}
+		by, ok := actor(w, s.scopedStore(r), body.By)
+		if !ok {
+			return
+		}
+		h.Steer(body.Instruction, by)
 	case "vector":
 		// slide autonomy on a running (brokered/remote) task: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
@@ -4749,7 +5030,15 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		h.SetVector(body.Vector, body.By)
+		by, ok := actor(w, s.scopedStore(r), body.By)
+		if !ok {
+			return
+		}
+		// Who slid it is handed to the projection HERE, where it was checked, and not read back
+		// off the worker's echo of the slide, which says whatever the worker wrote
+		// (mirror.Meta.SlidBy). Keyed by the task's id, which is what both ends have.
+		s.slides.Store(id, [2]string{by, body.Vector.Default.String()})
+		h.SetVector(body.Vector, by)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

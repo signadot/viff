@@ -28,7 +28,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 
 	install := func(as, name, dir string) (int, string) {
 		t.Helper()
-		body, err := codec.Marshal(map[string]any{"system": "git", "name": name, "dir": dir}, codec.Tony)
+		body, err := codec.Marshal(map[string]any{"root": "git", "name": name, "dir": dir}, codec.Tony)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,7 +42,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	if code, msg := install("alice@example.com", "first", first); code != http.StatusCreated {
 		t.Fatalf("alice's install = %d: %s", code, msg)
 	}
-	e, _ := source.Find(srv.Store, entity.JoinSegs([]string{"git", "first"}))
+	e, _ := source.Find(srv.Store, entity.JoinSegs([]string{"first"}))
 	claims, err := source.ParseOwns(e.Owns)
 	if err != nil || len(claims) == 0 {
 		t.Fatalf("the registration claims nothing: %+v %v", e.Owns, err)
@@ -57,7 +57,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		}
 	}
 
-	head := entity.RefAt(source.GitSystem, baseOf(first), "head")
+	head := entity.RefAt(source.GitRoot, baseOf(first), "head")
 	waitForRef(t, raw, head)
 	if _, ok := ownerOfRecord(t, raw, head); ok {
 		t.Fatalf("a reflected entity has an owner record of its own")
@@ -73,7 +73,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 			continue
 		}
 		reflected++
-		if c.Author != entity.Via(source.Ref("git", "first")) {
+		if c.Author != entity.Via(source.Ref("first")) {
 			t.Fatalf("a reflection of %s was written by %q, want via the source", head, c.Author)
 		}
 	}
@@ -100,7 +100,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	if code, msg := install("bob@example.com", "bobs", other); code != http.StatusCreated {
 		t.Fatalf("bob's install of another repository = %d: %s", code, msg)
 	}
-	if o, ok := ownerOfRecord(t, raw, entity.RefAt(source.GitSystem, baseOf(other))); !ok || o != "user:bob@example.com" {
+	if o, ok := ownerOfRecord(t, raw, entity.RefAt(source.GitRoot, baseOf(other))); !ok || o != "user:bob@example.com" {
 		t.Fatalf("bob's repository is owned by %q (record %v)", o, ok)
 	}
 }

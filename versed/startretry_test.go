@@ -30,7 +30,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 		t.Fatalf("install the rule = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-		"system": "git", "name": "far", "url": "http://127.0.0.1:1",
+		"root": "git", "name": "far", "url": "http://127.0.0.1:1",
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the source = %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -86,7 +86,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	}
 	// And the rule is really running, not merely listed.
 	ref := entity.RefAt("demo", "pr", "1")
-	entitytest.Set(t, raw, ref, entity.Obj{"stage": "open"}.Payload())
+	entitytest.Set(t, asTester(second), ref, entity.Obj{"stage": "open"}.Payload()) // the rule's installer's, so the rule may advance it
 	deadline = time.After(3 * time.Second)
 	for {
 		if e, ok, _ := raw.Get(ref); ok && entity.ToObj(e.Payload)["stage"] == "reviewed" {

@@ -35,7 +35,7 @@ func (r *reads) Write(w entity.Write) (bool, int64, error) {
 // it again nor reads for it: the record written again would be refused by its own absence
 // precondition, and a refused write is explained by reading everything it descended through.
 func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
-	raw := entitytest.Store(t)
+	raw := entitytest.OpenStore(t)
 	inner := &reads{Store: raw}
 	pr := entity.RefAt("demo", "pr", "1")
 	first := entity.As(entity.As(inner, entity.SystemDefault), "user:alice@example.com")
@@ -73,7 +73,7 @@ func TestARecordInTheLoadedMirrorIsNotWrittenAgain(t *testing.T) {
 // absent, a present one is in hand, what this process writes is read back the moment it is
 // written, and what another process writes arrives on the watch.
 func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
-	raw := entitytest.Store(t)
+	raw := entitytest.OpenStore(t)
 	inner := &reads{Store: raw}
 	system := entity.As(inner, entity.SystemDefault)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
@@ -90,11 +90,16 @@ func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
 
 	before := inner.mirror.Load()
 	// A fresh address beneath a fresh system: every prefix is a miss, and none is read.
-	if ok, err := entity.Holds(bob, "user:bob@example.com", entity.OwnerLevel, entity.RefAt("spaces", "bob", "x")); err != nil || !ok {
-		t.Fatalf("bob holds owner at a fresh world address: %v %v", ok, err)
+	if ok, err := entity.MayCreate(bob, "user:bob@example.com", entity.RefAt("spaces", "bob", "x")); err != nil || !ok {
+		t.Fatalf("bob may create at a fresh world address: %v %v", ok, err)
 	}
 	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); ok {
 		t.Fatal("bob writes alice's pr")
+	}
+	// `spaces` as the system's, so each person's space beneath it is their own: a creation takes
+	// the place it made, and the first writer would otherwise hold the lot.
+	if _, _, err := system.Write(entity.Write{At: entity.RefAt("spaces").At(), Value: entity.Obj{}.Payload()}); err != nil {
+		t.Fatal(err)
 	}
 	if _, _, err := bob.Write(entity.Write{At: entity.RefAt("spaces", "bob", "x").At(), Value: entity.Obj{"n": 1}.Payload()}); err != nil {
 		t.Fatal(err)
@@ -127,8 +132,9 @@ func TestATrackedMirrorCostsNoReadPerCheck(t *testing.T) {
 	if ok, _ := entity.Holds(bob, "user:bob@example.com", entity.ReadWrite, pr); ok {
 		t.Fatal("a grant another process withdrew is still honoured")
 	}
-	// And a record another process establishes on a node this view had never seen.
-	notes := entity.RefAt("spaces", "carol", "notes")
+	// And a record another process establishes on a node this view had never seen — in a place
+	// of carol's, since a creation takes the place it made and bob holds the one above.
+	notes := entity.RefAt("carols", "notes")
 	carol := entity.As(other, "user:carol@example.com")
 	if _, _, err := carol.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
 		t.Fatal(err)

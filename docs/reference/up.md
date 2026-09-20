@@ -185,10 +185,19 @@ operator agent instead — a harness driving verse through the api, which is a p
 own kind rather than the person whose terminal it runs in; when set, every request is
 `agent:<name>` and `-as` still names somebody else. Env: `VERSE_AGENT`. `systemCharter` is
 server-side: the path of a charter file `verse up` installs at start as `system:charter`, the rules
-the deployment itself stands behind, since a request cannot be made as the system. Env: `VERSE_SYSTEM_CHARTER`. `perms: {default: {…}}` is server-side too:
-the root's default, what a node created with no default above it holds out — `{read: ["*"]}`
-when unset, and `{}` for a verse where what anybody creates is theirs alone. See
-[perms.md](../perms.md). The `llm`
+the deployment itself stands behind, since a request cannot be made as the system. Env: `VERSE_SYSTEM_CHARTER`. `perms: {child-grants: {…}}` is server-side too:
+the root's `child-grants`, what a node created with none above it holds out — `{read: ["*"]}`
+when unset, and `{}` for a verse where what anybody creates is theirs alone. `perms: {admins:
+[…]}` beside it is who may take a TOP-LEVEL place: grantees (a bare email reads as `user:`),
+seeded into the `admin` group, which the root names in its `child-owner` line. Unset is the open verse
+— anybody takes one. Both are written into the root's record at start, under an absence
+precondition, so an operator's later edit of that record is what stands — and so is the
+config's FIRST value: the record is what a check reads, so a `child-grants` or an `admins` changed
+afterwards changes nothing, and every start that finds the record differing from the config
+says so in the log (`perms: the root's record is not what this config would write`).
+`--reseed-perms` (or `VERSE_RESEED_PERMS`) is the one start that writes them over it. `--unmigrate-perms`
+rewrites the perms mirror in the spelling a binary from before `child-owner` reads and exits
+without serving — the step before rolling an image back past it. See [perms.md](../perms.md). The `llm`
 block, however, is read by the server (`verse up`) — it hosts the task runtime, so
 that is whose config and environment the agent driver reads for its model + creds; setting it for
 a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,

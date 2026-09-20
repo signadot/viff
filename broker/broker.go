@@ -17,6 +17,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
 )
 
@@ -769,6 +770,15 @@ func (b *Broker) claim(w http.ResponseWriter, r *http.Request) {
 		Identity string `tony:"field=identity"`
 	}
 	_ = codec.Read(r, &body)
+	// NOT A NAME VERSED MAKES. Whoever claims is who the task's record is written as from then
+	// on (the mirror's projection), and `system:` or `via:` there is the system's pen, or a
+	// rule's, in the hand of whoever dialled in — the same two names the api's door refuses.
+	switch entity.KindOf(body.Identity) {
+	case entity.SystemKind, entity.ViaKind:
+		http.Error(w, fmt.Sprintf("identity %q is a name verse makes, not one a worker claims as: "+
+			"a worker is runner:, agent: or user:", body.Identity), http.StatusBadRequest)
+		return
+	}
 	// A claim nobody has renewed within the lease is released here, at the moment somebody
 	// asks for the work — which is the only moment it matters. No sweeper, no timer, and no
 	// clock read except this one, taken against the broker's own earlier reading.
@@ -935,7 +945,17 @@ func (b *Broker) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	latched, applied := false, 0
+	ps.mu.Lock()
+	claimant := ps.claimBy
+	ps.mu.Unlock()
 	for _, e := range body.Events {
+		// WHO A STATUS IS BY IS THE CLAIMANT OF RECORD, not what the frame says. Whoever a
+		// running status names is who the task's record is written as from then on, so a frame
+		// naming its own `by` is the claim's check done over again by the party it is about: a
+		// claim made with no identity, reported `by: system:default`, is the system's pen.
+		if e.Kind == task.EvStatus {
+			e.By = claimant
+		}
 		if e.Kind == task.EvStatus && task.Status(e.Text).Terminal() {
 			latched = true
 			if ps.latchTerminal(task.Status(e.Text), body.Result) { // worker-authoritative done/fail

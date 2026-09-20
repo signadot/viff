@@ -25,7 +25,7 @@ func mustParse(t *testing.T, src string) entity.Payload {
 // readable is refused where it is written.
 func TestParseGrants(t *testing.T) {
 	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
-	  {at: [verse, task, instance, "*"], owner: ["*"]},
+	  {at: [verse, task, instance], child-owner: ["*"]},
 	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, "user:*"]},
 	  {at: verse.task.instance.t1, read-write: [runner:bot], control: [runner:bot]},
 	]}`))
@@ -57,7 +57,7 @@ func TestParseGrants(t *testing.T) {
 	node := []string{"verse", "task", "instance", "t1"}
 	own, err := entity.ParseGrants(node, mustParse(t, `{grants: [
 	  {read-write: [runner:bot], control: [runner:bot]},
-	  {below: true, owner: ["*"]},
+	  {below: true, read: [user:ana@example.com]},
 	  {at: [verse, task, instance, t1], read: ["*"]},
 	]}`))
 	if err != nil {
@@ -78,17 +78,49 @@ func TestParseGrants(t *testing.T) {
 	if at := entity.Get(entity.GrantsPayload(nil, own).Values[0], "at"); at == nil {
 		t.Error("spelled for no node, a line does not say where it is")
 	}
-	if _, err := entity.ParseGrants(nil, mustParse(t, `{grants: [{below: true, owner: ["*"]}]}`)); err == nil {
+	if _, err := entity.ParseGrants(nil, mustParse(t, `{grants: [{below: true, read: ["*"]}]}`)); err == nil {
 		t.Error("a line with no at and no node parsed")
 	}
 
+	// `owner` IS HELD OUT AS `child-owner`, and no other way. It reaches what is BENEATH its
+	// path and never the path, so it says no `below` and is spelled back without one; beside a
+	// level that is about the node itself it is two grants, since the two reach differently.
+	kids, err := entity.ParseGrants(node, mustParse(t, `{grants: [
+	  {child-owner: ["*"]},
+	  {child-owner: [group:makers], read: ["*"]},
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kids) != 3 || !kids[0].Below || !kids[1].Below || kids[2].Below ||
+		kids[1].To[entity.OwnerLevel][0] != "group:makers" || kids[2].To[entity.Read][0] != "*" {
+		t.Fatalf("child-owner lines: %+v", kids)
+	}
+	line := entity.GrantsPayload(node, kids).Values[0]
+	if entity.Get(line, "below") != nil || entity.Get(line, entity.ChildOwnerKey) == nil || entity.Get(line, "owner") != nil {
+		t.Errorf("a child-owner line is spelled back as %v", line)
+	}
+	for _, held := range []string{
+		`{grants: [{at: [demo], owner: ["*"]}]}`,
+		`{grants: [{at: [demo, "*"], owner: ["*"]}]}`,
+		`{grants: [{at: [demo], below: true, owner: ["*"]}]}`,
+	} {
+		if _, err := entity.ParseGrants(nil, mustParse(t, held)); err == nil || !strings.Contains(err.Error(), entity.ChildOwnerKey) {
+			t.Errorf("%s: %v, want a refusal that names %s", held, err, entity.ChildOwnerKey)
+		}
+	}
+	if _, _, err := entity.ParseLevels(mustParse(t, `{child-grants: {owner: ["*"]}}`), "child-grants"); err == nil ||
+		!strings.Contains(err.Error(), entity.ChildOwnerKey) {
+		t.Errorf("a default holding out owner: %v, want a refusal that names %s", err, entity.ChildOwnerKey)
+	}
+
 	for _, bad := range []string{
-		`{grants: [{at: [verse, "*", instance], owner: ["*"]}]}`, // a star not at the end
-		`{grants: [{at: "verse.ta*", owner: ["*"]}]}`,            // a glob, not a whole segment
-		`{grants: [{owner: ["*"]}]}`,                             // no path
-		`{grants: [{at: [demo]}]}`,                               // no level
-		`{grants: [{at: [demo], owner: "*"}]}`,                   // grantees are a list
-		`{grants: {at: [demo], owner: ["*"]}}`,                   // grants are a list
+		`{grants: [{at: [verse, "*", instance], read: ["*"]}]}`, // a star not at the end
+		`{grants: [{at: "verse.ta*", read: ["*"]}]}`,            // a glob, not a whole segment
+		`{grants: [{read: ["*"]}]}`,                             // no path
+		`{grants: [{at: [demo]}]}`,                              // no level
+		`{grants: [{at: [demo], read: "*"}]}`,                   // grantees are a list
+		`{grants: {at: [demo], read: ["*"]}}`,                   // grants are a list
 	} {
 		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil {
 			t.Errorf("%s: parsed, want a refusal", bad)
@@ -105,13 +137,24 @@ func TestParseGrants(t *testing.T) {
 			t.Errorf("%s: %v, want a refusal quoting the grammar", bad, err)
 		}
 	}
-	if _, _, err := entity.ParseLevels(mustParse(t, `{default: {read-write: [agent]}}`), "default"); err == nil ||
+	if _, _, err := entity.ParseLevels(mustParse(t, `{child-grants: {read-write: [agent]}}`), "child-grants"); err == nil ||
 		!strings.Contains(err.Error(), entity.Grammar()) {
 		t.Errorf("a default naming a bare kind: %v, want a refusal quoting the grammar", err)
 	}
 	if gs, err := entity.ParseGrants(nil, mustParse(t, `{owner: alice}`)); err != nil || gs != nil {
 		t.Fatalf("a record with no grants: %v %v", gs, err)
 	}
+}
+
+// mayCreate is whether who may bring ref into being, which a `child-owner` line holds out and
+// holding `owner` at a node that stands does not say.
+func mayCreate(t *testing.T, s entity.Store, who string, ref entity.Ref) bool {
+	t.Helper()
+	ok, err := entity.MayCreate(s, who, ref)
+	if err != nil {
+		t.Fatalf("MayCreate(%s, %s): %v", who, ref, err)
+	}
+	return ok
 }
 
 func holds(t *testing.T, s entity.Store, who string, level entity.Level, ref entity.Ref) bool {
@@ -126,9 +169,9 @@ func holds(t *testing.T, s entity.Store, who string, level entity.Level, ref ent
 // The model's own examples, as a table: who holds what where, once the records say what the
 // seed will say.
 func TestWhoHoldsWhatWhere(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil) // the granted model: nothing is held out by default
+	entity.PolicyOf(system).SetRootChildGrants(nil) // the granted model: nothing is held out by default
 	alice, bob, bot := "user:alice@example.com", "user:bob@example.com", "runner:bot"
 	rw := func(to ...string) map[entity.Level][]string { return map[entity.Level][]string{entity.ReadWrite: to} }
 
@@ -142,11 +185,11 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 
 	t1 := entity.VerseRef("task", "instance", "t1")
 	// A creation grant reaches beneath the path and not the path itself.
-	if !holds(t, system, alice, entity.OwnerLevel, t1) || holds(t, system, alice, entity.ReadWrite, tasks) {
+	if !mayCreate(t, system, alice, t1) || holds(t, system, alice, entity.ReadWrite, tasks) {
 		t.Fatal("the `verse.task.instance.*` grant is about creating beneath it")
 	}
 	// The unattributed request is everyone too.
-	if !holds(t, system, "", entity.OwnerLevel, t1) {
+	if !mayCreate(t, system, "", t1) {
 		t.Fatal("`*` names the unattributed request")
 	}
 
@@ -170,7 +213,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 		At: t1.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {bot}, entity.Control: {bot}},
 	})
 	if !holds(t, system, bot, entity.ReadWrite, t1) || !holds(t, system, bot, entity.Control, t1) ||
-		holds(t, system, bot, entity.OwnerLevel, t1) {
+		mayCreate(t, system, bot, t1) {
 		t.Fatal("the runner holds read-write and control on its task, and not owner")
 	}
 	if !holds(t, system, bot, entity.ReadWrite, entity.RefAt(append(t1.Segs(), "report")...)) {
@@ -209,7 +252,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 
 	// The world's half is open until a record says otherwise.
 	pr := entity.RefAt("demo", "pr", "1")
-	if !holds(t, system, bob, entity.OwnerLevel, pr) || !holds(t, system, "", entity.OwnerLevel, pr) {
+	if !mayCreate(t, system, bob, pr) || !mayCreate(t, system, "", pr) {
 		t.Fatal("the world half is not open")
 	}
 	if _, _, err := entity.As(system, alice).Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
@@ -228,7 +271,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 
 // A refusal refuses and writes nothing, says who wanted what and what decided, and is counted.
 func TestARefusalRefusesAndIsCounted(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	system := entity.As(inner, entity.SystemDefault)
 	alice := entity.As(system, "user:alice@example.com")
 	bob := entity.As(system, "user:bob@example.com")
@@ -245,8 +288,11 @@ func TestARefusalRefusesAndIsCounted(t *testing.T) {
 	if inner.last.At.String() != before || entity.Str(inner.last.Value, "") == "merged" {
 		t.Fatalf("a refused write reached the store: %s", inner.last.At)
 	}
+	// The record that decided stands at the place alice created, which is where her ownership
+	// of the row begins — the refusal names it rather than the row, because that is what a
+	// reader has to go and look at.
 	if !strings.Contains(err.Error(), "bob@example.com holds read at "+pr.String()) ||
-		!strings.Contains(err.Error(), "alice@example.com at "+pr.String()) {
+		!strings.Contains(err.Error(), "alice@example.com at demo") {
 		t.Fatalf("the refusal does not say who, where, or what decided: %v", err)
 	}
 	byLevel, unreadable := entity.PolicyOf(system).Refusals()
@@ -269,7 +315,7 @@ func TestARefusalRefusesAndIsCounted(t *testing.T) {
 // A grant written to the mirror is honoured on the next check, and one withdrawn is not: the
 // view learns of every write this process makes to the mirror.
 func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	alice := entity.As(system, "user:alice@example.com")
 	bob := entity.As(system, "user:bob@example.com")
@@ -294,14 +340,16 @@ func TestAGrantWithdrawnIsNotHonoured(t *testing.T) {
 	if _, _, err := bob.Write(entity.Write{At: notes.At("n"), Value: entity.Val(3)}); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("after the grant was withdrawn: %v", err)
 	}
-	// And the owner may delete, which forgets the record, so what bob then creates is bob's.
-	if _, _, err := alice.Write(entity.Write{At: notes.At()}); err != nil {
+	// And the owner may delete THE PLACE she made, which forgets its record and every record
+	// beneath it, so what bob then creates is bob's — the place included.
+	space := entity.RefAt(notes.Segs()[0])
+	if _, _, err := alice.Write(entity.Write{At: space.At()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := bob.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 4}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, notes); o != "user:bob@example.com" {
-		t.Fatalf("re-created by bob, owner = %q", o)
+	if o, _ := ownerOf(t, inner, space); o != "user:bob@example.com" {
+		t.Fatalf("re-created by bob, owner of %s = %q", space, o)
 	}
 }

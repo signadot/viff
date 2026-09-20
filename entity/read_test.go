@@ -22,7 +22,7 @@ func refs(ents []entity.Entity) map[string]bool {
 // default, `read: ["*"]`, is copied onto the record at creation — and the mirror is the
 // system's alone.
 func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
@@ -35,7 +35,9 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	if _, _, err := bob.Get(entity.PermsRef(pr)); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("bob reads the mirror: %v", err)
 	}
-	if _, ok, err := system.Get(entity.PermsRef(pr)); err != nil || !ok {
+	// The record for what alice created stands at the place she made, `demo`, since her write
+	// brought that into being too.
+	if _, ok, err := system.Get(entity.PermsRef(entity.RefAt("demo"))); err != nil || !ok {
 		t.Fatalf("the system reads the mirror: ok=%v err=%v", ok, err)
 	}
 	// And a listing across verse's half leaves the mirror out for bob.
@@ -49,11 +51,17 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 // nothing else — and the same principal sees the same set whichever way they ask: a Get, a
 // listing, a replay, a live watch and a snapshot.
 func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil)
+	entity.PolicyOf(system).SetRootChildGrants(nil)
 	alice, bob, carol := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com"), entity.As(system, "user:carol@example.com")
 
+	// THE PLACE FIRST, as the system, so the three of them write rows into one that is nobody's
+	// rather than one the first writer made: a creation takes the place it brought into being
+	// with it, and `demo.pr` standing already is what leaves each row its writer's alone.
+	if _, _, err := system.Write(entity.Write{At: entity.RefAt("demo", "pr").At(), Value: entity.Obj{}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
 	mine := entity.RefAt("demo", "pr", "1")
 	from := system.Head()
 	if _, _, err := alice.Write(entity.Write{At: mine.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
@@ -160,7 +168,7 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 // payload that stands under a record the reader may not read is left out of it — by a Get of the
 // row, a listing, a replay, a live watch and a snapshot alike — and its owner still sees it.
 func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	scott, ana := entity.As(system, "user:walter@example.com"), entity.As(system, "user:ana@example.com")
 
@@ -272,11 +280,16 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 // neither theirs nor held out is not there, and neither is verse's own half, which nothing here
 // holds out.
 func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil)
+	entity.PolicyOf(system).SetRootChildGrants(nil)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 
+	// The place first, as the system, so each row beneath it is its own writer's (a creation
+	// takes the place it made with it).
+	if _, _, err := system.Write(entity.Write{At: entity.RefAt("demo", "pr").At(), Value: entity.Obj{}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{
 		"stage": "open", "shared": entity.Obj{"note": "hi"},
@@ -324,9 +337,9 @@ func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 // the two spellings needed different levels, and a removal of one of them ran the eviction the
 // other did not.
 func TestAWriteIsCheckedAtThePathHoweverItIsSpelled(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil)
+	entity.PolicyOf(system).SetRootChildGrants(nil)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 
 	pr := entity.RefAt("demo", "pr", "1")
@@ -365,7 +378,7 @@ func TestAWriteIsCheckedAtThePathHoweverItIsSpelled(t *testing.T) {
 // set on a place is inherited beneath it until another says otherwise, and a record written
 // before defaults existed reads as holding out the root's.
 func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 
@@ -377,7 +390,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	if o, ok := ownerOf(t, inner, space); !ok || o != "user:alice@example.com" {
 		t.Fatalf("the claimed place is owned by %q (%v)", o, ok)
 	}
-	if err := entity.SetDefault(alice, space, entity.Levels{}); err != nil {
+	if err := entity.SetChildGrants(alice, space, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
 	// A place already somebody's is not bob's to claim.
@@ -415,8 +428,11 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	if _, ok, err := bob.Get(pub); err != nil || !ok {
 		t.Fatalf("a creation under the root's default is not readable: ok=%v err=%v", ok, err)
 	}
-	rec, _, _ := inner.Get(entity.PermsRef(pub))
-	if gs, _ := entity.ParseGrants(pub.Segs(), rec.Payload); len(gs) != 1 || gs[0].To[entity.Read][0] != entity.Everyone {
+	// The default is copied onto the record that was written, which stands at the place the
+	// creation made — `demo` — and covers what is beneath it.
+	place := entity.RefAt("demo")
+	rec, _, _ := inner.Get(entity.PermsRef(place))
+	if gs, _ := entity.ParseGrants(entity.SegsOf(place), rec.Payload); len(gs) != 1 || gs[0].To[entity.Read][0] != entity.Everyone {
 		t.Fatalf("the record does not carry the root's default as its grant: %v", rec.Payload)
 	}
 
@@ -426,7 +442,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 	if err := entity.Claim(bob, bobs, "user:bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.SetDefault(bob, bobs, entity.Levels{}); err != nil {
+	if err := entity.SetChildGrants(bob, bobs, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.AddGrant(bob, bobs, entity.Grant{At: bobs.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {"user:carol@example.com"}}}); err != nil {
@@ -444,7 +460,7 @@ func TestADefaultDecidesWhatACreationHoldsOut(t *testing.T) {
 		t.Fatalf("carol's creation under bob's default of nothing is readable by alice: %v", err)
 	}
 	// Removing the default makes bob's space inherit the root's again.
-	if err := entity.SetDefault(bob, bobs, nil); err != nil {
+	if err := entity.SetChildGrants(bob, bobs, nil); err != nil {
 		t.Fatal(err)
 	}
 	later := entity.RefAt("spaces", "bob", "later")
@@ -479,7 +495,7 @@ func seedRecordRaw(t *testing.T, store entity.Store, ref entity.Ref, rec entity.
 // that had a record of its own leaves no ghost owning an address nothing stands at, and the
 // next creator there owns what they create.
 func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
 	space := entity.RefAt("spaces", "alice")
@@ -505,12 +521,13 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 			t.Fatalf("the record of %s outlived the delete, owned by %q", ref, o)
 		}
 	}
-	// bob takes the address: his, and alice's grant to bob is not what admits him.
+	// bob takes the address: the place he re-creates is his, and alice's grant to bob is not
+	// what admits him. The record stands where his creation began, which is the space itself.
 	if _, _, err := bob.Write(entity.Write{At: notes.At(), Value: entity.Obj{"n": 2}.Payload()}); err != nil {
 		t.Fatalf("bob cannot create where alice's place was: %v", err)
 	}
-	if o, _ := ownerOf(t, inner, notes); o != "user:bob@example.com" {
-		t.Fatalf("re-created by bob, owner = %q", o)
+	if o, _ := ownerOf(t, inner, space); o != "user:bob@example.com" {
+		t.Fatalf("re-created by bob, owner of %s = %q", space, o)
 	}
 }
 
@@ -518,9 +535,9 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 // of groups is walked exactly — five deep admits the leaf — and a cycle admits nobody because
 // the walk ends.
 func TestAGroupAdmitsItsMembers(t *testing.T) {
-	inner := entitytest.Store(t)
+	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	entity.PolicyOf(system).SetRootDefault(nil)
+	entity.PolicyOf(system).SetRootChildGrants(nil)
 	alice := entity.As(system, "user:alice@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 	if _, _, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {

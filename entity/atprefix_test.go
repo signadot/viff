@@ -52,7 +52,7 @@ func TestLiteralPrefix(t *testing.T) {
 // made `verse data <a system nothing has written>` report the verse as unavailable, which
 // only became reachable once reads went to their path instead of to the root.
 func TestReadAtAnAbsentPathIsNotAnOutage(t *testing.T) {
-	s := entitytest.Store(t)
+	s := entitytest.OpenStore(t)
 	entitytest.Set(t, s, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
 
 	if got := s.ListAt([]string{"other"}, 3, nil); len(got) != 0 {

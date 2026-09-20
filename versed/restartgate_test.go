@@ -126,7 +126,7 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	// docket. The answer has to reach the worker that is actually blocked.
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering after a restart = %s, want 204", resp.Status)
@@ -151,7 +151,7 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	if delivered == nil {
 		t.Fatalf("the answer never reached the worker: %+v", inbox)
 	}
-	if !delivered.Proceed || delivered.By != "human:scott" {
+	if !delivered.Proceed || delivered.By != "user:scott@example.com" {
 		t.Fatalf("the answer reached the worker garbled: %+v", delivered)
 	}
 }
@@ -267,7 +267,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: posed, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: posed, Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the re-posed question = %s, want 204 — it is listed but nothing is waiting", resp.Status)
@@ -348,7 +348,7 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 func TestAResumedTaskKeepsItsResolver(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	const binding = "verse.resolvers.security.security-review"
+	const binding = "verse.resolvers.security-review"
 	entitytest.Set(t, first.Store, mirror.Ref("p"), entity.Obj{
 		"status": string(task.Running), "runner": "http://elsewhere.invalid",
 		"flow": `change.pr."1"`, "resolver": binding,

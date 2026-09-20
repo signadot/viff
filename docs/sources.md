@@ -12,8 +12,8 @@ Linear, GitHub — see [reference/sourced.md](reference/sourced.md). To build on
 with the tree.
 
 ```sh
-verse source add git.laptop http://build-host:9801
-verse source add slack.workspace http://slack-source:9801
+verse source add laptop http://build-host:9801 -root git
+verse source add workspace http://slack-source:9801 -root slack
 verse source
 ```
 
@@ -66,7 +66,7 @@ rule rather than the measurement.
 // A Source is NOT handed a store. It reads external truth and answers with it; converging
 // the store with that answer is the Reflector's job.
 type Source interface {
-    System() string
+    Root() string
     Reflect(ctx context.Context, ref entity.Ref) (Reflection, error)
 }
 
@@ -147,7 +147,7 @@ before its pod is the ordinary state of a source deployed alongside the entity t
 Two checks have no runner analogue, and both are what an external source loses that an in-process
 one has by construction:
 
-- **The descriptor's system must be the one the operator named.** A `github` registration
+- **The descriptor's root must be the one the operator named.** A `github` registration
   pointed at a git source is unrecoverable later: every reflection would be written into the
   wrong place by a source that thinks it is right.
 - **Ownership must be provably disjoint from every standing registration in the same scope**, or
@@ -157,12 +157,12 @@ one has by construction:
   is what is left for two that genuinely write the same place, with the cost stated rather than
   discovered: two writers on one place, each tombstoning what the other reflected.
 
-**And the system itself is the operator's**, which is a coarser separation than a claim and exists
+**And the root itself is the operator's**, which is a coarser separation than a claim and exists
 for a different reason. A source is deployed, and more than one will be. The partition between them
 is drawn by whoever runs them — by credential, by budget, by which places are busy — and that has
 no reason to line up with how the external system is organised. Two deployments sharing `github.*`
 need only disjoint claims, computed from each source's own configuration rather than written by
-hand. One that wants no coordination at all takes `-system` and owes nobody a proof, since two
+hand. One that wants no coordination at all takes `-root` and owes nobody a proof, since two
 paths that differ in their first segment are disjoint. It is also how a second *instance* of a
 product gets a place that is not confused with the first.
 

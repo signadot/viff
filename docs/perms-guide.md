@@ -26,10 +26,10 @@ user: "walter@example.com"
 `VERSE_USER` in the environment overrides the file for a shell, and `-as` overrides both on
 the commands that take one, which is how you act as somebody else for one command to see what
 they see. `VERSE_CONFIG=<file>` replaces both file layers outright, so a second verse gets a
-second file rather than a second identity in one. With no `user` anywhere a request is
-unattributed: it holds what `*` holds, it may still create where the world is open, and what
-it creates is not its own — with no name to record, the node belongs to whoever owns the place
-above it, the system at the top.
+second file rather than a second identity in one. With no `user` anywhere a request names
+nobody: it reads what `*` may read, and it writes nothing — every request that is not a read is
+refused `400 Verse-Principal is required`, since a write by nobody would be recorded as the
+system's.
 
 ```sh
 verse data spaces scott notes -put '{todo: [buy milk]}'
@@ -51,7 +51,7 @@ Three things to know before the first step, because each is a reasonable guess t
 - **A group is not a principal.** `group:<name>` is a grantee — on a grant line, in a gate's
   `answerers`, behind a binding — and it admits the group's members, each acting as themselves.
   Nothing ever acts *as* a group, no request can present one, and a group owns nothing.
-- **The `agent` principal exists and nothing motivates it yet.** A harness driving verse from
+- **The `agent` principal exists and nothing uses it yet.** A harness driving verse from
   outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
   own kind, and today it is granted exactly what a person is. It is a name that grants can
   narrow against later; until they do, read `[user:*, agent:*]` as "people".
@@ -79,7 +79,7 @@ owner: user:walter@example.com
 
 Two rules made that record. Outside `verse`, the tree is open to *create* until a record says
 otherwise, so a write where nothing stood makes the writer the owner: `spaces.scott.notes` is
-scott's because scott wrote it first. And a new node holds out what the nearest `default:` above
+scott's because scott wrote it first. And a new node holds out what the nearest `child-grants:` above
 it says, which at the root is `read: ["*"]` — readable by everyone, writable by its owner
 alone. Another user is refused the write and told why:
 
@@ -94,16 +94,22 @@ holds there, what the act needed, and which record decided. When something is re
 expected to pass, that last part is where to look.
 
 **Take a place.** `verse perms` on a node you may create under gives it a record of its own,
-and what you set there governs what is made beneath it:
+and what you set there governs what is made beneath it — in the world's half, where a place is
+taken AHEAD of what goes in it. A node that already stands has an owner, the nearest record
+above it, and is not taken from them by arriving: holding `child-owner` somewhere is the right
+to create there, and says nothing about what stands. Under `verse` a place is taken only where
+something stands, and only by its owner:
+what stands there is made by the verb that owns it (`charter -a`, `source add`, `task run`),
+and is its maker's.
 
 ```sh
-verse perms spaces scott -default '{}' -grants '[]'     # nothing held out beneath, nothing on it
+verse perms spaces scott -child-grants '{}' -grants '[]'  # nothing held out beneath, nothing on it
 verse data spaces scott private -put '{…}'              # scott's alone: no read for anyone
 verse perms spaces scott -grant '{read: [ana@example.com]}'
 verse perms spaces scott -revoke '{read: [ana@example.com]}'
 ```
 
-`-default` is what a node created *beneath* holds out, copied onto each new record at
+`-child-grants` is what a node created *beneath* starts out holding out, copied onto each new record at
 creation; `-grants` replaces what the node itself holds out; `-grant` adds a line and
 `-revoke` takes one off. A grant withdrawn stops future acts and touches nothing that exists.
 Ownership changes only by create and delete: there is no transfer, and the way to hand
@@ -206,7 +212,7 @@ the person who installed the charter. Everything follows from that one resolutio
   address, and the check follows that link for ownership. The installer answers what their own
   charter asked without being named on any line.
 
-Installing is open in the seed — `verse.trigger.rule.*` holds `owner` out to everyone — so
+Installing is open in the seed — `verse.trigger.rule` says `child-owner: ["*"]` — so
 anybody may install, and a rule's record holds out `read: ["*"]` by the root's default, so
 anybody may read what is installed. **A package takes its address.** Installing at
 `verse-dev.triage` writes an owner record there for the installer, so every row the package's
@@ -287,9 +293,10 @@ verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
   -grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
 ```
 
-**To close the docket for a whole verse,** narrow the default on `verse.gate.question` — it is
-the one default in the seed, and a private verse sets it to `{read: ["*"]}` or less, after
-which only co-owners, named answerers and bindings answer anything.
+**To close the docket for a whole verse,** narrow the `child-grants` on `verse.gate.question`,
+which each question's record is given when it is posed: a private verse sets it to
+`{read: ["*"]}` or less, after which only co-owners, named answerers and bindings answer
+anything.
 
 **Handing it on.** `verse gate escalate <id> -as <who> [-say <why>]` is open to whoever may
 answer, and it takes no `-to`: the question goes to the next rung of the ladder covering its
@@ -333,8 +340,8 @@ own `deadline`, from the gate, is a different clock: it *settles* the question o
 Both are on the record, and the earlier fires first.
 
 **What a service holds.** A `url` binding is answered through an instance,
-`verse.resolvers.instance.<name>@<origin>`, and the instance acts as the binding: its verdict,
-its escalation and its position are written as `via:verse.resolvers.<kind>.<name>`, and that
+`verse.watch.<name>@<origin>`, and the instance acts as the binding: its verdict,
+its escalation and its position are written as `via:verse.resolvers.<name>`, and that
 name is what the question's line holds. The service says what it decided and never who it is —
 `by` on the decision frame is the binding's name, stamped by verse. An instance's own address is
 no principal: as a grantee it is refused, and never read as a person's email. `exclusive` on a binding decides

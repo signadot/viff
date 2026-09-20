@@ -146,7 +146,7 @@ type Spec struct {
 	Resolver    string      `tony:"field=resolver,omitzero"`
 	Grant       string      `tony:"field=grant,omitzero"`
 	Environment string      `tony:"field=environment,omitzero"`
-	// Runner is WHERE this launch runs: `runners:<kind>:<name>`, an entity installed with
+	// Runner is WHERE this launch runs: `verse.runners.<name>`, an entity installed with
 	// `verse runner add`. Empty means the verse's own default runner.
 	//
 	// A name rather than a url, and that indirection is the point: a url on the spawn would

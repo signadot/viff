@@ -28,10 +28,9 @@ const (
 	FromField  = "from"
 	NextField  = "next"
 	TickField  = "tick"
-	// AtField is the package address a schedule was declared in, "" for baseline; ByField its
-	// installer. The same names a rule's record carries.
+	// AtField is the package address a schedule was declared in, "" for baseline: the name a
+	// rule's record carries for the same thing. Whose a schedule is, is its owner record's.
 	AtField = "at"
-	ByField = "by"
 )
 
 // Calendar is the names reserved under verse.schedule for the calendar the base charter derives

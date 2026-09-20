@@ -283,12 +283,19 @@ func TestAnotherScopesRuleAboutTheSameSubjectFires(t *testing.T) {
 // A holder's suspension covers work only while the holder may suspend it, asked when it would
 // apply: bob's `demo.pr.*` holds the PR nobody owns, and stops holding the one alice does.
 func TestAWildcardStopsCoveringWhatSomebodyOwns(t *testing.T) {
-	raw := entitytest.Store(t)
+	// An OPEN verse, since the whole case is about a place nobody owns: what an untaken place
+	// permits is the root record's to say, and a store with none admits nobody at all.
+	raw := entitytest.OpenStore(t)
 	store := entity.As(raw, entity.SystemDefault)
 	eng, _ := suspending(t, store, "user:bob@example.com", [3]string{"*", "", "demo.pr.*"})
-	// Carol's rule, not the system's: a rule the system installed is the system's alone to
-	// suspend. Not written down, since this store holds no seed to admit carol's record.
-	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, "user:carol@example.com"); err != nil {
+	// Alice's rule, not the system's: a rule the system installed is the system's alone to
+	// suspend, and a rule acts as whoever owns it, so it is hers to patch her own PR with. Not
+	// written down, since this store holds none of versed's seed rows to admit her record — so
+	// the record is put there, a rule nobody owns acting as nobody.
+	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, "user:alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.Establish(store, CharterRefAt("", "review"), "user:alice@example.com", entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -658,5 +665,56 @@ func TestALiftActsOnTheWorldAsItStands(t *testing.T) {
 	stays(t, store, job, "stage", "waiting")
 	if n := eng.Fired(); n != 1 {
 		t.Fatalf("the lift acted %d times, want once — for the PR still open", n)
+	}
+}
+
+// A RULE PATCHES A ROW THAT HOLDS SOMEBODY ELSE'S PLACE. A patch reads the node, changes it and
+// writes the whole of it back; read as the engine — the system, which sees everything — what it
+// wrote back carried carol's closed place, and a write that reaches into a place its writer may
+// not write is refused. So the read is the rule's, and the place is left as it stands.
+func TestARulePatchesARowThatHoldsSomebodyElsesPlace(t *testing.T) {
+	raw := entitytest.OpenStore(t)
+	store := entity.As(raw, entity.SystemDefault)
+	eng := New(store, task.NewRegistry())
+	alice, carol := "user:alice@example.com", "user:carol@example.com"
+	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, alice); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.Establish(store, CharterRefAt("", "review"), alice, entity.Ref{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	// The row is BOB's, and alice's rule holds read-write on it by his grant — not ownership,
+	// which would descend into every place in it. Carol keeps something in the row, closed to
+	// everyone: bob co-owns it, alice and her rule hold nothing there.
+	bob := "user:bob@example.com"
+	pr, inner := entity.RefAt("demo", "pr", "1"), entity.RefAt("demo", "pr", "1", "c")
+	if _, _, err := entity.As(raw, bob).Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "draft"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetGrants(store, entity.RefAt("demo"), []entity.Grant{
+		{At: []string{"demo"}, Below: true, To: map[entity.Level][]string{entity.Read: {entity.Everyone}, entity.ReadWrite: {alice}}},
+		{At: pr.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {carol}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := entity.As(raw, carol).Write(entity.Write{At: inner.At(), Value: entity.Obj{"secret": "hers"}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SetGrants(store, inner, nil); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := entity.Holds(store, alice, entity.Read, inner); ok {
+		t.Fatal("the fixture is wrong: alice reads carol's place")
+	}
+	if _, _, err := entity.As(raw, bob).Write(entity.Write{At: pr.At("stage"), Value: entity.Val("open")}); err != nil {
+		t.Fatal(err)
+	}
+	waitStage(t, store, pr, "reviewed")
+	if e, _, _ := store.Get(inner); entity.Str(e.Payload, "secret") != "hers" {
+		t.Errorf("carol's place did not survive the patch: %v", e.Payload)
 	}
 }

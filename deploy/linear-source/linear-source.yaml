@@ -11,7 +11,7 @@
 #
 # Install it once the pods are up (the name must match `linearSourceName`, because the hint url
 # below carries it):
-#   verse source add linear.teams http://linear-source:9801
+#   verse source add teams http://linear-source:9801 -root linear
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -60,7 +60,7 @@ spec:
           containerPort: 9802
         env:
         - name: VERSE_HINT_URL
-          value: http://verse:9797/sources/linear/teams/hint
+          value: http://verse:9797/sources/teams/hint
         envFrom:
         - secretRef:
             name: verse-linear

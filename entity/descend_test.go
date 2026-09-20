@@ -33,7 +33,7 @@ func rendered(t *testing.T, p entity.Payload) string {
 // for: `votes bo --put '"yes"'` used to replace the whole array with `{bo: yes}`,
 // exit 0, with the two ballots gone and nothing in the answer saying so.
 func TestAWriteDescendsOnlyThroughAValueThatStands(t *testing.T) {
-	st := entitytest.Store(t)
+	st := entitytest.OpenStore(t)
 	for _, tc := range []struct {
 		name, before string
 		lands        bool
@@ -84,7 +84,7 @@ func TestAWriteDescendsOnlyThroughAValueThatStands(t *testing.T) {
 // own guard and the wrong one here: the defect this closes was a transcript that did not say
 // what happened to the data.
 func TestTheRefusalNamesWhatStandsThere(t *testing.T) {
-	st := entitytest.Store(t)
+	st := entitytest.OpenStore(t)
 	for _, tc := range []struct{ name, before, want string }{
 		{"array", `{votes: [{by: ana}]}`, "holds an array"},
 		{"scalar", `{votes: hello}`, "holds a scalar"},
@@ -106,7 +106,7 @@ func TestTheRefusalNamesWhatStandsThere(t *testing.T) {
 // `--create` is the SPELLING THAT SOUNDS SAFEST and used to be the one that clobbered: the
 // precondition asks about the leaf, which genuinely is absent, and the loss is at the parent.
 func TestCreateNoLongerClobbersTheContainer(t *testing.T) {
-	st := entitytest.Store(t)
+	st := entitytest.OpenStore(t)
 	ref := entity.RefAt("demo", "pr", "1")
 	before := doc(t, `{votes: [{by: ana}, {by: bo}]}`)
 	entitytest.Set(t, st, ref, before)
@@ -128,7 +128,7 @@ func TestCreateNoLongerClobbersTheContainer(t *testing.T) {
 // means, and only descending PAST one asks the question. The first entity of a kind, on a verse
 // where neither the system nor the kind stands, is the case that would break if it did.
 func TestAWriteAtAnAddressStillCreates(t *testing.T) {
-	st := entitytest.Store(t)
+	st := entitytest.OpenStore(t)
 	ref := entity.RefAt("brandnew", "kind", "1")
 	if _, _, err := st.Write(entity.Write{At: ref.At(), Value: doc(t, `{stage: open}`)}); err != nil {
 		t.Fatalf("creating the first entity of a kind: %v", err)
@@ -150,7 +150,7 @@ func TestAWriteAtAnAddressStillCreates(t *testing.T) {
 // no Field at all (versed.addressAt), where the steps arrive as a Ref plus Field — so the
 // question is asked on the address, which is what both of them are.
 func TestTheAtSpellingIsGuardedToo(t *testing.T) {
-	st := entitytest.Store(t)
+	st := entitytest.OpenStore(t)
 	ref := entity.RefAt("demo", "pr", "9")
 	before := doc(t, `{votes: [{by: ana}]}`)
 	entitytest.Set(t, st, ref, before)

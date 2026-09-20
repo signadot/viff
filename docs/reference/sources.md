@@ -4,12 +4,12 @@ The surface. For what a source *is* and why it is shaped this way, see
 [../sources.md](../sources.md). To build one, copy
 [examples/source](examples/source/main.go).
 
-A source is an entity at `verse.sources.<system>.<name>`:
+A source is an entity at `verse.sources.<name>`:
 
 | | |
 |---|---|
-| `system` | the place this source reflects and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
-| `name` | its name within that system. Required |
+| `name` | its name, and the whole of its address under `verse.sources`. Required |
+| `root` | the root of the tree this source reflects and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task — no network |
 | `dial-in` | the source dials verse. Designed, refused at install until it is built |
@@ -22,10 +22,11 @@ A source is an entity at `verse.sources.<system>.<name>`:
 `Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
 field present says which it is.
 
-The system is what the address is keyed on (`verse.sources.<system>.<name>`, under the
-reserved root like everything verse keeps about its own running) because it is a question verse
-already asks: who writes `git.*`. Neither it nor `name` may contain `/`, and `system` may not
-contain `:` — both are segments of the address and of the route that serves them.
+The address is the name and nothing else (`verse.sources.<name>`, under the reserved root like
+everything verse keeps about its own running), so two sources of one connector are told apart by
+what an operator called them. `root` answers the question verse asks of a registration — who
+writes `git.*` — and is one segment of an address, so it may not contain `:`, `/` or `.`; a
+name may not contain `/`, since it is a segment of the route that serves it.
 
 A source reflects what the world is about and never what verse keeps under `verse`: a reflection
 naming an address under `verse.` is refused, a claim that names it is refused at install, and no
@@ -90,8 +91,8 @@ proved apart from nothing, so it is refused beside anything else in its system.
 ```
 verse source                                what is installed, with lastReflect/lastError
         [-probe]                             …and what each one says right now (not recorded)
-verse source add <system>.<name> <url>       install one, probing the url first
-       add -dir <d> <system>.<name>          …or a local git repo, reflected in task
+verse source add <name> <url> -root <root>       install one, probing the url first
+       add -dir <d> <name>                  …or a local git repo, reflected in task
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
            [-allow-overlap]                  install though another source may write the same place
@@ -102,8 +103,8 @@ verse source add <system>.<name> <url>       install one, probing the url first
               [-keep]                        …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.sources.git.laptop` or `git.laptop` — the whole address or the bare pair;
-the middle form (`sources.git.laptop`) is not accepted.
+A `<ref>` is `verse.sources.laptop` or `laptop` — the whole address or the bare name; the
+middle form (`sources.laptop`) is not accepted.
 
 `verse status` names the installed sources — refs only, health left to `verse source`. It is
 there because it is the one line of a status that says anything is *arriving*: every counter
@@ -119,10 +120,10 @@ in the scope it reflects into.
 |---|---|
 | `GET /sources` | list; `?probe=true` adds a live `reach` per source |
 | `POST /sources` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{ref, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
-| `GET /sources/{system}/{name}` | the entity |
-| `GET /sources/{system}/{name}/check` | `{ref, reach}`, plus `says: {system, owns}` when it answered |
-| `DELETE /sources/{system}/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
-| `POST /sources/{system}/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
+| `GET /sources/{name}` | the entity |
+| `GET /sources/{name}/check` | `{ref, reach}`, plus `says: {root, owns}` when it answered |
+| `DELETE /sources/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
+| `POST /sources/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
 
 `reach` is one of `a source`, `not a source`, `unreachable`, and nothing about it is written to
 the store. A `500` from a source is *unreachable* rather than *not a source*: something is
@@ -145,7 +146,7 @@ Two routes, no state, no write face:
 
 | | |
 |---|---|
-| `GET /source` | `{system, owns}` — what this program is. Has no effect, which is what makes it the probe |
+| `GET /source` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
 | `GET /reflect` | `?at=<address>` (absent = everything it owns) → a `Reflection` |
 
 ```tony
@@ -165,7 +166,7 @@ is how git keeps history, since it covers `ref` and `head` and not `commit`.
 
 A cover's `path` is a pattern, one segment per level with `*` any one segment, and it is also
 what converge **reads**: the refs under `git.verse.ref` and the node `git.verse.head`, rather than
-all of `git`. Its first segment is a literal, and it is this source's `system` — a cover that
+all of `git`. Its first segment is a literal, and it is this source's `root` — a cover that
 begins with `*` would claim every place it is compared against, and is refused. A cover may add `value`, a payload predicate, where a place alone cannot say what
 the answer is complete for — GitHub covers a repository's open issues and its recent closed
 ones as two halves of `github.<org>.<name>.issue.*`.

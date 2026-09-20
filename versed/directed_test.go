@@ -82,7 +82,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("davido could not answer the question held out to him: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "oscar@example.com" {
+	if q := settledQuestion(t, srv, qid); q["by"] != "user:oscar@example.com" {
 		t.Fatalf("settled by %v", q["by"])
 	}
 
@@ -135,9 +135,9 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 		{`{name: g, mode: ask, need: 2, answerers: [oscar@example.com]}`, "nobody can settle"},
 		{`{name: g, mode: ask, answerers: [nobody]}`, "a bare word names nothing"},
 		{`{name: g, mode: ask, answerers: [verse.principal.group.payments]}`, "is no person"},
-		{`{name: g, mode: ask, answerers: [verse.resolvers.instance.review@run-1]}`, "is no person"},
+		{`{name: g, mode: ask, answerers: [verse.watch.review@run-1]}`, "is no person"},
 		{`{name: g, mode: ask, answerers: [group:payments]}`, "nothing stands at verse.principal.group.payments"},
-		{`{name: g, mode: ask, answerers: [via:verse.resolvers.security.ghost]}`, "nothing stands at verse.resolvers.security.ghost"},
+		{`{name: g, mode: ask, answerers: [via:verse.resolvers.ghost]}`, "nothing stands at verse.resolvers.ghost"},
 		{`{name: g, mode: ask, need: 3, options: [{id: yes, need: 3}], answerers: [a@x, b@x]}`, "nobody can settle"},
 	} {
 		resp := installAs(t, "alice@example.com", ts.URL, fmt.Sprintf(`{
@@ -162,5 +162,64 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("a threshold over a kind was refused: %s", resp.Status)
+	}
+}
+
+// A QUESTION IS NOT ANSWERABLE UNTIL IT IS POSED. The registry has one the moment the engine
+// raises it and the store a moment later, in two writes; an answer that arrived in between was
+// checked against the docket's row — every person — and tallied with the default options at one
+// apiece. So a stranger's single ballot could settle a gate that named its answerers and needed
+// two of them. This answers at the first instant the registry has the question, which is that
+// window, and it has to be refused and counted exactly as it would be a minute later.
+func TestAQuestionIsNotAnswerableBeforeItIsPosed(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := installAs(t, "alice@example.com", ts.URL, `{
+		name: window-ask,
+		condition: {subject: {path: "demo.window.*", value: {stage: open}}},
+		gates: [{name: approval, mode: ask, need: 2, answerers: [oscar@example.com, ana@example.com]}],
+		action: {patch: {stage: reviewing}},
+	}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install: %s", resp.Status)
+	}
+	// The registry alone, with no wait for the store: the earliest an answer can be sent.
+	raised := func(subject string) string {
+		deadline := time.After(3 * time.Second)
+		for {
+			for _, p := range srv.Reg.Pending() {
+				if p.Question.Origin == "window-ask" && p.Question.Subject == subject {
+					return p.Question.ID
+				}
+			}
+			select {
+			case <-deadline:
+				t.Fatalf("window-ask never asked about %s", subject)
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
+	for i := 0; i < 8; i++ { // the window is narrow, so it is tried more than once
+		subject := entity.RefAt("demo", "window", fmt.Sprint(i))
+		entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
+		qid := raised(subject.String())
+
+		resp := answerAs(t, "mallory@example.com", ts.URL, qid)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("round %d: a stranger answered a question held out to two named people: %s", i, resp.Status)
+		}
+		resp = answerAs(t, "oscar@example.com", ts.URL, qid)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted {
+			t.Fatalf("round %d: the first of two ballots: %s, want 202 recorded", i, resp.Status)
+		}
+		if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+			t.Fatalf("round %d: one ballot of two settled the question: %+v", i, q)
+		}
 	}
 }

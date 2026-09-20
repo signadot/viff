@@ -37,7 +37,7 @@ func TestAnInterruptedHostedTaskWithdrawsItsQuestionAtOnce(t *testing.T) {
 
 	// An intervention — a `say` redirects the run, and the machine withdraws whatever gate was
 	// outstanding (state.interrupt → effDropGate).
-	say := postTony(t, ops.URL+"/tasks/held-1/say", api.Say{Instruction: "do the other thing", By: "human:scott"})
+	say := postTony(t, ops.URL+"/tasks/held-1/say", api.Say{Instruction: "do the other thing", By: "user:" + tester})
 	say.Body.Close()
 	if say.StatusCode >= 300 {
 		t.Fatalf("say = %s", say.Status)

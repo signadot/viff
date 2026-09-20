@@ -368,6 +368,17 @@ func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
 	return ent.Payload, true, nil
 }
 
+// removeDecl removes a package's declaration where one stands. A package need not have one, and
+// removing a node is its owner's act: asked of a node nothing stands at, it is refused for
+// whoever owns nothing there, which is everybody — so nothing is asked where nothing stands.
+func (s *Server) removeDecl(store entity.Store, ref entity.Ref) error {
+	if _, stands, err := s.Store.Get(ref); err != nil || !stands {
+		return err
+	}
+	_, _, err := store.Write(entity.Write{At: entity.Path{Ref: ref}})
+	return err
+}
+
 // putPackageDecl writes a declaration back as it was — or removes it, when there was none.
 //
 // REMOVED AND WRITTEN rather than written over, because a store write MERGES at its path: putting
@@ -380,7 +391,7 @@ func (s *Server) putPackageDecl(store entity.Store, at string, was entity.Payloa
 		return err
 	}
 	ref := trigger.PackageRef(confine.Stamp())
-	if _, _, err := store.Write(entity.Write{At: entity.Path{Ref: ref}}); err != nil {
+	if err := s.removeDecl(store, ref); err != nil {
 		return fmt.Errorf("removing the declaration at %s: %w", at, err)
 	}
 	if !had {
@@ -546,6 +557,41 @@ func (s *Server) uninstallOne(store entity.Store, at string) error {
 	if err != nil {
 		return err
 	}
+	// EVERY PART OF IT IS ASKED ABOUT BEFORE ANY PART GOES. The rules and levels are removed by
+	// the engine, through the system's store, and the declaration after them through the
+	// requester's — so asked only there, a stranger's uninstall would take every rule down and
+	// then be refused.
+	who := entity.PrincipalOf(store)
+	if decl := trigger.PackageRef(confine.Stamp()); who != "" && !entity.IsSystem(who) {
+		if _, stands, err := s.Store.Get(decl); err != nil {
+			return err
+		} else if stands {
+			if err := entity.Check(store, who, entity.OwnerLevel, decl, "uninstalling it"); err != nil {
+				return err
+			}
+		}
+	}
+	for _, t := range eng.Triggers() {
+		if err := eng.MayRemoveTrigger(who, t.Name); err != nil {
+			return err
+		}
+	}
+	for _, st := range eng.Strata() {
+		if err := eng.MayRemoveStratum(who, st.Name); err != nil {
+			return err
+		}
+	}
+	if who != "" && !entity.IsSystem(who) {
+		scheds, err := s.packageSchedules(at)
+		if err != nil {
+			return err
+		}
+		for _, ref := range scheds {
+			if err := entity.Check(store, who, entity.OwnerLevel, ref, "removing it"); err != nil {
+				return err
+			}
+		}
+	}
 	for _, t := range eng.Triggers() {
 		eng.RemoveTrigger(t.Name)
 	}
@@ -557,9 +603,7 @@ func (s *Server) uninstallOne(store entity.Store, at string) error {
 	if err := s.removePackageSchedules(store, at); err != nil {
 		return fmt.Errorf("%s: %w", at, err)
 	}
-	if _, _, err := store.Write(entity.Write{
-		At: entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
-	}); err != nil {
+	if err := s.removeDecl(store, trigger.PackageRef(confine.Stamp())); err != nil {
 		return fmt.Errorf("%s: removing the declaration: %w", at, err)
 	}
 	// AND WHATEVER ELSE IS IN THE STORE AT THIS ADDRESS, which is not always what the engine

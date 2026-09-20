@@ -2,6 +2,7 @@ package versed
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -17,6 +18,9 @@ import (
 type router struct {
 	mux    *http.ServeMux
 	routes []api.Route
+	// unattributed is the patterns a request may WRITE through without saying who makes it
+	// (handleUnattributed). Everything else that is not a read is refused at the door.
+	unattributed map[string]bool
 }
 
 // returns is what a route answers with: the signature of ONE document, and how many of them
@@ -53,6 +57,19 @@ func (rt *router) handle(pattern string, h http.HandlerFunc, req string, ret ret
 		Method: method, Path: path, Request: req, Response: ret.sig, Returns: ret.returns,
 	})
 	rt.mux.HandleFunc(pattern, h)
+}
+
+// handleUnattributed is handle for a route whose caller is no principal and acts as none: what
+// it does is done as a party the ROUTE names — the binding an instance belongs to, the source a
+// hint is for — and never as whoever sent it. It is said here, per route, because the default is
+// the other way: a request that is not a read names who makes it (Server.principals), and a
+// route added without thinking about it is one that refuses.
+func (rt *router) handleUnattributed(pattern string, h http.HandlerFunc, req string, ret returns) {
+	if rt.unattributed == nil {
+		rt.unattributed = map[string]bool{}
+	}
+	rt.unattributed[pattern] = true
+	rt.handle(pattern, h, req, ret)
 }
 
 // mount installs a sub-handler at a prefix. It records nothing: the routes underneath belong
@@ -95,4 +112,14 @@ func (s *Server) serveDefinition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, ir.FromMap(map[string]*ir.Node{name: def}))
+}
+
+// unattributedRoutes is the patterns registered as writable by a request that names nobody.
+func (s *Server) unattributedRoutes() []string {
+	out := make([]string, 0, len(s.unattributed))
+	for p := range s.unattributed {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }

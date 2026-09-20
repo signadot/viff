@@ -64,7 +64,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 		t.Fatalf("proceed is not at the gate's threshold: %+v", q["options"])
 	}
 
-	one := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "human:a"})
+	one := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "user:a@example.com"})
 	one.Body.Close()
 	if one.StatusCode != http.StatusAccepted {
 		t.Fatalf("the first ballot = %s, want 202 — one of two is not a settle", one.Status)
@@ -74,7 +74,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 	}
 	noTerminalWithin(t, srv, "voted", 100*time.Millisecond)
 
-	two := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "human:b"})
+	two := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "user:b@example.com"})
 	two.Body.Close()
 	if two.StatusCode != http.StatusNoContent {
 		t.Fatalf("the second ballot = %s, want 204", two.Status)
@@ -152,7 +152,7 @@ func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
 	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Prompt: "sleep 5", Vector: "auto"})
 	ok.Body.Close()
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/vector",
-		strings.NewReader(`{vector: {default: auto, gates: [{name: shell, mode: auto, need: 2}]}, by: "human:scott"}`))
+		strings.NewReader(`{vector: {default: auto, gates: [{name: shell, mode: auto, need: 2}]}, by: "user:scott@example.com"}`))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.PrincipalHeader, tester)
 	slid, err := http.DefaultClient.Do(req)

@@ -26,7 +26,7 @@ func TestKPathsIsTheListingAsOneToken(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	out, err := runCLI(t, "data", "--kpaths", "--depth", "3", "demo", "pr")
+	out, err := runCLI(t, "data", "--kpaths", "--depth", "1", "demo", "pr")
 	if err != nil {
 		t.Fatalf("data --kpaths: %v", err)
 	}
@@ -54,11 +54,11 @@ func TestPathsAndKPathsListTheSameThings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	steps, err := runCLI(t, "data", "--paths", "--depth", "3", "demo", "pr")
+	steps, err := runCLI(t, "data", "--paths", "--depth", "1", "demo", "pr")
 	if err != nil {
 		t.Fatal(err)
 	}
-	kp, err := runCLI(t, "data", "--kpaths", "--depth", "3", "demo", "pr")
+	kp, err := runCLI(t, "data", "--kpaths", "--depth", "1", "demo", "pr")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,6 +26,11 @@ func writeSchedule(t *testing.T, store entity.Store, id, every string, next time
 	if _, _, err := store.Write(entity.Write{At: schedule.Ref(id).At(), Value: rec.Payload()}); err != nil {
 		t.Fatalf("writing the schedule: %v", err)
 	}
+	// As an install leaves it: taken for whoever installed it, since a schedule ticks as its
+	// owner and one nobody owns ticks as nobody.
+	if err := entity.Claim(store, schedule.Ref(id), entity.SystemCharter); err != nil {
+		t.Fatalf("taking the schedule: %v", err)
+	}
 }
 
 // standingTicks waits until the record holds exactly the ticks named, and answers the record.

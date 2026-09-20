@@ -21,7 +21,7 @@ that have one — the delivery endpoint it owns. Install one exactly like any ot
 
 ```sh
 sourced slack -addr :9801
-verse source add slack.workspace http://localhost:9801
+verse source add workspace http://localhost:9801 -root slack
 verse source
 ```
 
@@ -31,15 +31,15 @@ verse source
 |---|---|
 | `-addr` | what to listen on (`SOURCED_ADDR`, default `:9801`) |
 | `-min-interval` | answer from the last reflection when asked again inside this window. The source's own rate limit — verse's resync interval is a constant and an API budget is not. Default off |
-| `-hint-url` | verse's hint route for **this registration** (`VERSE_HINT_URL`): `http://verse:9797/sources/<system>/<name>/hint`. Without it, deliveries are verified and dropped, and only the resync converges |
-| `-system` | the place this source writes under — the first segment of its addresses — defaulting to the connector's own name |
+| `-hint-url` | verse's hint route for **this registration** (`VERSE_HINT_URL`): `http://verse:9797/sources/<name>/hint`. Without it, deliveries are verified and dropped, and only the resync converges |
+| `-root` | the root this source writes under — the first segment of its addresses — defaulting to the connector's own name |
 
-**`-system` is the operator's, and it is a coarser separation than `owns`.** More than one source
+**`-root` is the operator's, and it is a coarser separation than `owns`.** More than one source
 gets deployed and the partition between them is drawn by whoever runs them — by credential, by
 budget, by which repositories are busy — which has no reason to line up with how the external
-system is organised. Two deployments sharing a system is the ordinary case and needs only
+system is organised. Two deployments sharing a root is the ordinary case and needs only
 disjoint claims, which are computed from each source's own configuration rather than written by
-hand. One that wants no coordination at all takes a system of its own: two systems are disjoint
+hand. One that wants no coordination at all takes a root of its own: two roots are disjoint
 on the first segment, so neither owes the other a proof. It is also how a second *instance* of a
 product — a GitHub Enterprise Server beside github.com — gets a place that is not confused with
 the first, since `org/repo` #42 is unique within a host and not across two.

@@ -370,6 +370,12 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 	return out
 }
 
+// Unbounded is the depth a listing has when nobody gave one: everything beneath the address,
+// into payloads and arrays. It is not a number a reader types — 0 is the address alone and a
+// negative depth is refused where it arrives — it is what a caller holds when none was given,
+// which is the distinction go-tony's own depth draws (ir/kpath.Unbounded).
+const Unbounded = -1
+
 // Paths is every address in the answer to a read at `at`, in order, deepest last within each
 // branch — the walk `verse data --paths` prints: each node the path reached where it reached
 // several, and everything beneath each.
@@ -379,15 +385,40 @@ func (d Doc) Reached(at *kpath.KPath) []Entity {
 //
 // EVERY node beneath, not the ones at some depth: nothing in a document says where an entity
 // ends, so asking for one depth answers with the addresses that happen to live there and
-// silently omits everything deeper. `max` bounds how far the walk goes, as the total number of
-// segments an address may have; 0 means no bound. A path naming one node does not print that
-// node, which is the address the reader typed.
-func (d Doc) Paths(at *kpath.KPath, max int) []Path {
-	_, rest := LiteralPrefix(at)
-	wild := answerPath(rest) != nil || hasDescend(rest)
+// silently omits everything deeper. `depth` bounds how far the walk goes BENEATH the node the
+// path names — 0 is that node alone, 1 its children, and Unbounded is everything, which is the
+// default. A path naming one node does not print that node, which is the address the reader
+// typed.
+//
+// COUNTED FROM THE ADDRESS, not from the root, so the same number reads the same way at every
+// level: `demo.pr` at 1 and `demo.pr."1"` at 1 are each one level down, and walking deeper is a
+// step rather than a step and a bigger number.
+//
+// THIS IS NOT HOW A LISTING IS ANSWERED. The store answers one — a place, a path with a
+// wildcard or a descent, a predicate — with the depth handed to it as given (Store.PathsAt,
+// PathsMatching), and what a depth means over a path with a `..` in it is logd's to say. This
+// walk is what is left for a document somebody already holds, which for a listing is a path
+// rooted in a MOUNTED place: the store does not descend into one. Its count is an approximation
+// of the store's there — every segment past the literal prefix, where the store counts only
+// what a descent took — and is not to be grown into a second implementation of that rule.
+func (d Doc) Paths(at *kpath.KPath, depth int) []Path {
+	prefix, rest := LiteralPrefix(at)
+	descend := hasDescend(rest)
+	wild := answerPath(rest) != nil || descend
 	var out []Path
 	seen := map[string]bool{}
 	for _, e := range d.Reached(at) {
+		// WHICH NODE THE PATH NAMES: the one an answer stands at, and for a descent the literal
+		// prefix it strayed from — what the descent took is itself what the bound is about, so
+		// counting from each node it reached would bound nothing.
+		base := len(e.Ref.Segs())
+		if descend {
+			base = len(prefix)
+		}
+		max := 0
+		if depth >= 0 {
+			max = base + depth
+		}
 		// A path naming one node does not print that node, which is the address the reader
 		// typed; a wildcard or a descent prints each node it reached.
 		if wild {
@@ -405,14 +436,20 @@ func (d Doc) Paths(at *kpath.KPath, max int) []Path {
 // It is what the store's listing uses where it has read a node rather than walked it
 // (LogdStore.PathsAt at an array), so the two answer the same addresses by construction rather
 // than by two sets of rules kept in step.
-func PathsUnder(n *ir.Node, segs []string, access string, max int) []Path {
+func PathsUnder(n *ir.Node, segs []string, access string, depth int) []Path {
+	max := 0
+	if depth >= 0 {
+		max = len(segs) + accessDepth(access) + depth
+	}
 	var out []Path
 	walkPaths(n, segs, access, max, map[string]bool{}, &out)
 	return out
 }
 
 // walkPaths emits every address beneath n, which stands at segs (+access). It does not emit that
-// address itself.
+// address itself. `max` is the ceiling its entry point computed from the depth it was asked for
+// — the number of steps an address may have — and 0 is no bound; the relative number the reader
+// gave is turned into this one in Doc.Paths and PathsUnder, which are the two ways in.
 func walkPaths(n *ir.Node, segs []string, access string, max int, seen map[string]bool, out *[]Path) {
 	n = ir.Uncomment(n)
 	if n == nil {
@@ -604,7 +641,7 @@ func AtDepth(at *kpath.KPath) int {
 
 // Below lists the nodes exactly `levels` segments beneath the place at — the records of a registry
 // whose layout the system decides (`verse.gate.question.<id>` is one level below
-// `verse.gate.question`; `verse.resolvers.<kind>.<name>` two below `verse.resolvers`). The
+// `verse.gate.question`; `verse.resolvers.<name>` two below `verse.resolvers`). The
 // registry says how far below its place its records stand; nothing supplies a default.
 func Below(r Reader, pred func(Ref) bool, levels int, at ...string) []Entity {
 	return r.ListAt(at, len(at)+levels, pred)

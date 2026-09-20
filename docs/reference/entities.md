@@ -265,8 +265,8 @@ verse.trigger.rule.review
 
 Under `verse` are `task.instance.*` (the mirror of every running task), `task.run.*` (the
 record of a run that happened) and `task.claim.*` (a sequence's run claim); `gate.question.*`
-(every gate awaiting an answer); `resolvers.*` (who answers them, and `resolvers.instance.*`
-for who is watching one run — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
+(every gate awaiting an answer); `resolvers.*` (who answers them) and `watch.*` (who is watching what, one record per binding
+and origin — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
 installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
 `trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
 `runners.*` (where work can run) and `sources.*` (what reflects an external system in);
@@ -313,6 +313,13 @@ condition:
 A path that does not start with `verse` does not reach under it, so a rule about `demo.pr.*`
 cannot quietly select the task records of the runs reviewing them.
 
+A rule READS verse's half and does not write it. A `patch` of a subject under `verse`, or a
+`derive` into it, is the generic write the api refuses, arriving by another door, and is refused
+the same way: at install where the rule names the address (403), and at the write whatever
+address it arrived at. Spawning about such a subject is fine — the task record is verse's own
+write. The system's charter is the exception, being how the system writes there: the base
+charter derives the calendar under `verse.schedule`.
+
 `local.*` (a federated working tree) is a third thing again: it is mount-owned and served by a
 controller with no history — see below.
 
@@ -337,6 +344,41 @@ verse data demo pr '*' -if '{urgent: true}' -if-at labels   # …rooted inside t
 
 The globbed line has a steps spelling too: `verse data demo pr '*' stage` is the same read, and
 `'"*"'` is the name that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
+
+### `--depth`: how far beneath the address
+
+A listing walks everything beneath what it was given, into payloads and arrays, because nothing
+in an answer says where an entity ends — ask for one level and you get whatever happens to live
+there and lose what is deeper. `--depth` bounds that walk, **counted from the address the path
+names**, so the same number reads the same way wherever you are standing:
+
+```sh
+verse data demo --paths --depth 1        # demo's children
+verse data demo pr --paths --depth 1     # …one level down, and the SAME number
+verse data demo pr --paths --depth 0     # the address alone: nothing beneath it
+verse data demo pr --paths               # everything beneath, into payloads
+```
+
+Walking deeper is a step, never a step and a bigger number. An access is a step like any other,
+so `--depth 2` under `merge proposal X` reaches `votes[0]` and not the fields inside it. A
+negative depth, and a `--depth` with no listing to bound, are each refused rather than ignored.
+
+**The number is the store's**, handed over as you gave it, whatever the path: a place, a `*`, a
+`..`, and with `--if` beside it. The store answers a listing without reading what it lists, and
+the predicate is asked of each node the path REACHED — the listing is what it kept, and what is
+beneath that.
+
+```sh
+verse data demo pr '*' --paths --depth 0                # the nodes the path reached, alone
+verse data demo pr '*' --paths --if '{stage: open}'     # …the open ones, and what is in them
+verse data demo '..' stage --paths --depth 1            # demo.stage and demo.<x>.stage
+```
+
+With a `..` in the path the depth is **one budget for the whole path**, counted from the node it
+names, and only what a descent TAKES spends it: `demo '..' stage` at 1 reaches `demo a stage`,
+the descent having taken `a` and the literal `stage` costing nothing — and having spent its
+budget, lists nothing beneath it. That is [logd's rule](https://signadot.github.io/tony-format/),
+said once, there.
 
 ### `..`: every depth beneath
 

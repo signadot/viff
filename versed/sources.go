@@ -18,10 +18,10 @@ import (
 
 // ── sources: what reflects an external system into the verse ─────────────────
 //
-// A source is installed at `sources:<system>:<name>` carrying one way in, and it is the single
-// writer of its system's slice. Where a runner's kind is the operator's own category, a
-// source's system is already a question verse asks — who writes `git:*` — so it goes in the
-// address, and an overlap is visible in a listing. See docs/sources.md.
+// A source is installed at `verse.sources.<name>` carrying one way in, and it is the single
+// writer of the tree under its `root`. The root is a question verse asks of every registration
+// — who writes `git.*` — so it is on the record, and an overlap is visible in a listing. See
+// docs/sources.md.
 
 // sourceFor builds the Source a registration names. The three ways in differ only in where the
 // net.Conn comes from; Reflect is the same call down all three.
@@ -31,11 +31,11 @@ import (
 func (s *Server) sourceFor(e source.Entity) (source.Source, error) {
 	switch {
 	case e.URL != "":
-		return source.HTTP(e.System, e.URL, nil), nil
+		return source.HTTP(e.Root, e.URL, nil), nil
 	case e.Dir != "":
-		if e.System != source.GitSystem {
+		if e.Root != source.GitRoot {
 			return nil, fmt.Errorf("source %q: `dir` is the in-process git source, so its "+
-				"system must be %q, not %q", e.Name, source.GitSystem, e.System)
+				"root must be %q, not %q", e.Name, source.GitRoot, e.Root)
 		}
 		g := source.NewGit()
 		g.AddRepo("", e.Dir) // the dir's base name is the repo id
@@ -66,7 +66,7 @@ func (s *Server) describe(r *http.Request, e source.Entity) (source.Reach, sourc
 // addSource installs one, after asking it what it is.
 //
 // It is addRunner with two checks added, and both are what an external source loses that an
-// in-process one had by construction: that it is the system somebody named, and that nobody
+// in-process one had by construction: that it reflects the root somebody named, and that nobody
 // else already writes the slice it claims.
 func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	// Read as a DOCUMENT first, so a field the decoder would drop can be named. It matters more
@@ -104,7 +104,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	}
 	e.Scope = scope
 	store := s.scopedStore(r)
-	out := map[string]any{"at": source.Ref(e.System, e.Name).String()}
+	out := map[string]any{"at": source.Ref(e.Name).String()}
 
 	if r.URL.Query().Get("probe") != "false" {
 		reach, d, why := s.describe(r, e)
@@ -125,10 +125,10 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 			// source is the mistake this catches at the moment somebody is present — and it is
 			// unrecoverable later, because every reflection would be written into the wrong
 			// slice by a source that thinks it is right.
-			if d.System != e.System {
-				http.Error(w, fmt.Sprintf("source %q: you named system %q, but it says it is "+
-					"%q — one of the two is wrong, and installing would write %s:* from a "+
-					"source that reflects %s:*", e.Name, e.System, d.System, e.System, d.System),
+			if d.Root != e.Root {
+				http.Error(w, fmt.Sprintf("source %q: you named root %q, but it says it is "+
+					"%q — one of the two is wrong, and installing would write %s.* from a "+
+					"source that reflects %s.*", e.Name, e.Root, d.Root, e.Root, d.Root),
 					http.StatusBadRequest)
 				return
 			}
@@ -162,6 +162,10 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	}
 	nodes := source.Nodes(claims)
 	installer := entity.PrincipalOf(store)
+	if installer == "" { // the door refuses this already (Server.principals); a source acts as its installer
+		http.Error(w, "a source names who installs it: it reflects as its installer", http.StatusBadRequest)
+		return
+	}
 	for _, node := range nodes {
 		if code, err := checkPlace(store, installer, node, "installing a source that owns it"); err != nil {
 			http.Error(w, err.Error(), code)
@@ -169,7 +173,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body := entity.Obj{"name": e.Name, "system": e.System}
+	body := entity.Obj{"name": e.Name, "root": e.Root}
 	for k, v := range map[string]string{
 		"url": e.URL, "dir": e.Dir, "scope": e.Scope,
 	} {
@@ -180,15 +184,30 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	if len(e.Owns) > 0 {
 		body["owns"] = e.Owns
 	}
-	if _, _, err := store.Write(entity.Write{
-		At: source.Ref(e.System, e.Name).At(), Value: body.Payload(),
-	}); err != nil {
+	ref := source.Ref(e.Name)
+	before, err := entity.ActsAs(store, ref)
+	if unreadable(w, r, err) {
+		return
+	}
+	_, stood, err := store.Get(ref)
+	if unreadable(w, r, err) {
+		return
+	}
+	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: body.Payload()}); refused(w, err) {
+		return
+	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// A source reflects as whoever its registration's record says (actsAsInstaller).
+	if err := actsAsInstaller(store, ref, installer, before); err != nil {
+		s.takeBackOut(r, ref, stood)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	// Taken before the reflector starts, so its first pass writes beneath places already owned.
 	for _, node := range nodes {
-		takePlace(store, installer, node, "source "+source.Ref(e.System, e.Name).String())
+		takePlace(store, installer, node, "source "+source.Ref(e.Name).String())
 	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
@@ -211,7 +230,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 // collision, and the store this reads is already the scope's.
 func overlaps(r entity.Reader, e source.Entity) string {
 	for _, other := range source.List(r) {
-		if other.System == e.System && other.Name == e.Name {
+		if other.Name == e.Name {
 			continue // a re-install of the same registration replaces it
 		}
 		// IN THE SAME SCOPE, which is load-bearing rather than a detail. A scoped store reads
@@ -258,8 +277,8 @@ func refusal(e, other source.Entity) string {
 		"`linear.project.*.owners.ENG` and `…owners.OPS` are two places, and two places are "+
 		"proved apart\n"+
 		"--allow-overlap installs it anyway, with the cost above",
-		source.Ref(e.System, e.Name), source.Ref(other.System, other.Name),
-		claims(e.Owns), source.Ref(other.System, other.Name), claims(other.Owns))
+		source.Ref(e.Name), source.Ref(other.Name),
+		claims(e.Owns), source.Ref(other.Name), claims(other.Owns))
 }
 
 // claims renders an ownership list for a message, saying so when there is none — a source that
@@ -282,7 +301,7 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 	ents, readErr := source.ListErr(store)
 	for _, e := range ents {
 		rec := map[string]any{
-			"at": source.Ref(e.System, e.Name).String(), "name": e.Name, "system": e.System,
+			"at": source.Ref(e.Name).String(), "name": e.Name, "root": e.Root,
 		}
 		for k, v := range map[string]string{
 			"url": e.URL, "dir": e.Dir, "scope": e.Scope, "lastReflect": e.LastReflect,
@@ -304,7 +323,7 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 		// lastReflect cursor cannot: on a quiet repo a healthy source and a wedged one carry the
 		// same cursor. Read here and never written, because it is an opinion about now.
 		s.srcMu.Lock()
-		run := s.srcRuns[source.Ref(e.System, e.Name).String()]
+		run := s.srcRuns[source.Ref(e.Name).String()]
 		s.srcMu.Unlock()
 		if run != nil {
 			if pass := run.lastPassAt(); pass != "" {
@@ -337,7 +356,7 @@ func (s *Server) listSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSource(w http.ResponseWriter, r *http.Request) {
-	ref := source.Ref(r.PathValue("system"), r.PathValue("name"))
+	ref := source.Ref(r.PathValue("name"))
 	e, ok, err := s.scopedStore(r).Get(ref)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -353,15 +372,15 @@ func (s *Server) getSource(w http.ResponseWriter, r *http.Request) {
 // checkSource asks one what it is, right now — including what it claims to own, which is what
 // an operator reads before deciding whether `--allow-overlap` is honest.
 func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) {
-	system, name := r.PathValue("system"), r.PathValue("name")
-	e, ok := source.Find(s.scopedStore(r), entity.JoinSegs([]string{system, name}))
+	name := r.PathValue("name")
+	e, ok := source.Find(s.scopedStore(r), entity.JoinSegs([]string{name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	reach, d, why := s.describe(r, e)
 	out := map[string]any{
-		"at": source.Ref(system, name).String(), "reach": reach.String(),
+		"at": source.Ref(name).String(), "reach": reach.String(),
 	}
 	if e.URL != "" {
 		out["url"] = e.URL
@@ -372,7 +391,7 @@ func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) {
 	// What it says NOW, beside what was recorded at install. Neither is merged into the other:
 	// a claim that has drifted is a fact an operator should see as two values, not as one.
 	if reach == source.IsSource {
-		out["says"] = map[string]any{"system": d.System, "owns": d.Owns}
+		out["says"] = map[string]any{"root": d.Root, "owns": d.Owns}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -394,9 +413,9 @@ func (s *Server) checkSource(w http.ResponseWriter, r *http.Request) {
 // way to satisfy it would be a trap.
 func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	system, name := r.PathValue("system"), r.PathValue("name")
-	ref := source.Ref(system, name)
-	e, ok := source.Find(store, entity.JoinSegs([]string{system, name}))
+	name := r.PathValue("name")
+	ref := source.Ref(name)
+	e, ok := source.Find(store, entity.JoinSegs([]string{name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -419,8 +438,15 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 				"now frozen and quietly ageing", ref, len(reflected)), http.StatusConflict)
 		return
 	}
-	// Stopped BEFORE anything else, so nothing is left writing a slice no registration claims —
-	// and so a pass in flight cannot re-reflect what --forget is about to tombstone.
+	// ASKED BEFORE ANYTHING STOPS. Removing the registration is its owner's act, and the write
+	// that removes it is the last thing here: checked only there, a stranger's removal is
+	// refused with the reflector already stopped — the source installed, not running, and its
+	// hints answered 503.
+	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.OwnerLevel, ref, "removing it")) {
+		return
+	}
+	// Stopped BEFORE anything is written, so nothing is left writing a slice no registration
+	// claims — and so a pass in flight cannot re-reflect what --forget is about to tombstone.
 	s.stopSource(ref)
 
 	out := map[string]any{"removed": ref.String()}
@@ -440,6 +466,9 @@ func (s *Server) removeSource(w http.ResponseWriter, r *http.Request) {
 		out["kept"] = len(reflected)
 	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		if refused(w, err) {
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -585,7 +614,7 @@ func (s *Server) startSource(e source.Entity) error {
 	if err != nil {
 		return err
 	}
-	ref := source.Ref(e.System, e.Name)
+	ref := source.Ref(e.Name)
 	store := s.Store
 	if e.Scope != "" {
 		// A scoped source writes through the scope's overlay, so its reflections fire that
@@ -849,7 +878,7 @@ func (s *Server) restoreSources() error {
 		if err := s.startSource(e); err != nil {
 			// Reported and skipped, so one bad registration does not cost the rest — the same
 			// rule LoadCharter follows for a rule that will not restore.
-			fmt.Fprintf(os.Stderr, "verse: source %s: %v\n", source.Ref(e.System, e.Name), err)
+			fmt.Fprintf(os.Stderr, "verse: source %s: %v\n", source.Ref(e.Name), err)
 		}
 	}
 	return nil
@@ -869,9 +898,12 @@ func (s *Server) restoreSources() error {
 // what deployed the git hook or holds the webhook secret; a second implementation of
 // "map a delivery to refs" per source is how the law comes to be broken in one of two places.
 func (s *Server) hintSource(w http.ResponseWriter, r *http.Request) {
-	system, name := r.PathValue("system"), r.PathValue("name")
-	ref := source.Ref(system, name)
-	if _, ok := source.Find(s.scopedStore(r), entity.JoinSegs([]string{system, name})); !ok {
+	name := r.PathValue("name")
+	ref := source.Ref(name)
+	// Looked up as the system, in the request's scope. A hint names nobody — it is a hook's
+	// nudge, and what is reflected is reflected as the source — so looked up as its sender, a
+	// registration in a verse that holds out no read was not found by the hook it installed.
+	if _, ok := source.Find(entity.As(s.scopedStore(r), entity.SystemDefault), entity.JoinSegs([]string{name})); !ok {
 		http.NotFound(w, r)
 		return
 	}

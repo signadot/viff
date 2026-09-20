@@ -59,7 +59,7 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rn.Check(slack.System); err != nil {
+	if err := rn.Check(slack.Root); err != nil {
 		t.Fatalf("the reflection is not safe to converge: %v", err)
 	}
 
@@ -97,12 +97,12 @@ func TestSlackFullPassReflectsWhatAFlowReactsTo(t *testing.T) {
 	// has to be tombstonable, which is what the workspace-wide cover is for.
 	kinds := map[string]bool{}
 	reach := map[string]entity.Ref{
-		"channel": entity.RefAt(slack.System, "Acme", "channel", "C9"),
-		"message": entity.RefAt(slack.System, "Acme", "message", "C9", "1700000009.000100"),
-		"user":    entity.RefAt(slack.System, "Acme", "user", "U9"),
+		"channel": entity.RefAt(slack.Root, "Acme", "channel", "C9"),
+		"message": entity.RefAt(slack.Root, "Acme", "message", "C9", "1700000009.000100"),
+		"user":    entity.RefAt(slack.Root, "Acme", "user", "U9"),
 	}
 	for _, c := range rn.Covers {
-		if top, ok := entity.PathLiteral(c.Path[0]); !ok || top != slack.System {
+		if top, ok := entity.PathLiteral(c.Path[0]); !ok || top != slack.Root {
 			t.Fatalf("a cover over %v", c.Path)
 		}
 		// UNDER THE WORKSPACE, which is a level of the address rather than a field every
@@ -209,7 +209,7 @@ func TestSlackKeepsTheChannelsWhenThePeopleCannotBeRead(t *testing.T) {
 		t.Fatal("the channels went with the people")
 	}
 	for _, c := range rn.Covers {
-		if c.MatchRef(entity.RefAt(slack.System, "Acme", "user", "U1")) {
+		if c.MatchRef(entity.RefAt(slack.Root, "Acme", "user", "U1")) {
 			t.Fatal("a user cover survived a users read that failed — whatever stands under it " +
 				"would be tombstoned by an answer that could not read it")
 		}
@@ -237,7 +237,7 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := func(ts string) bool {
-		_, ok, _ := store.Get(entity.RefAt(slack.System, "Acme", "message", "C1", ts))
+		_, ok, _ := store.Get(entity.RefAt(slack.Root, "Acme", "message", "C1", ts))
 		return ok
 	}
 	if !held("1700000001.000100") || !held("1700000002.000100") {

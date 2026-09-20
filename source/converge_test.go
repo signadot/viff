@@ -18,11 +18,11 @@ import (
 // promises is not about git: a source that is not content-addressed, or that covers something
 // it did not carry, has to be expressible without a repo behind it.
 type fakeSource struct {
-	system string
+	root   string
 	answer func() source.Reflection
 }
 
-func (f *fakeSource) System() string { return f.system }
+func (f *fakeSource) Root() string { return f.root }
 
 func (f *fakeSource) Reflect(context.Context, entity.Ref) (source.Reflection, error) {
 	return f.answer(), nil
@@ -109,7 +109,7 @@ func TestReflectorQuietRepoIsSilent(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(source.GitSystem, "A", "ref", "shiny")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt(source.GitRoot, "A", "ref", "shiny")); !ok {
 		t.Fatal("first reconcile should have reflected A/shiny")
 	}
 	if !quiet(t, store, func() {
@@ -130,7 +130,7 @@ func TestConvergeTombstonesOnlyWhatItCovers(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
 	entitytest.Set(t, store, entity.RefAt("x", "b", "1"), entity.Obj{"n": 1}.Payload())
 
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		return source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 	}}
 	if err := source.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
@@ -152,7 +152,7 @@ func TestConvergeKeepsWhatNoCoverClaims(t *testing.T) {
 	store := newStore(t)
 
 	carry := true
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 		if carry {
 			rn.Add(entity.RefAt("x", "b", "1"), entity.Obj{"n": 1})
@@ -184,7 +184,7 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 	store := newStore(t)
 
 	payload := entity.Obj{"p": 1, "q": 2}
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{source.Cover("x", "a", "*")}}
 		rn.Add(entity.RefAt("x", "a", "1"), payload)
 		return rn
@@ -223,7 +223,7 @@ func TestConvergeRefusesACoverWithNoPath(t *testing.T) {
 	store := newStore(t)
 	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
 
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		return source.Reflection{Covers: []entity.Pattern{{Predicate: entity.Obj{"n": 1}.Payload()}}}
 	}}
 	if err := source.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err == nil {
@@ -289,7 +289,7 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	counting := newStore(t)
 
 	var answer source.Reflection
-	src := &fakeSource{system: "demo", answer: func() source.Reflection { return answer }}
+	src := &fakeSource{root: "demo", answer: func() source.Reflection { return answer }}
 	mine := entity.Obj{"repo": "r"}.Payload()
 	build := func(stage string, n int) source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
@@ -357,7 +357,7 @@ func TestTwoSourcesShareAThingWithoutRewritingEachOther(t *testing.T) {
 	// Each source answers with the node it owns INSIDE the project, and a cover over that node
 	// at every project. Neither has heard of the other, and neither names the project itself.
 	owner := func(team, name string) *source.Reflector {
-		src := &fakeSource{system: "x", answer: func() source.Reflection {
+		src := &fakeSource{root: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
 				source.Cover("x", "project", "*", "owners", team),
 			}}
@@ -415,7 +415,7 @@ func TestTheLastOwnerOutTakesTheSharedNode(t *testing.T) {
 	// A source that reflects its own node only while `has` says so; when it stops, its cover
 	// still claims that node, which is what makes the absence a tombstone rather than a silence.
 	owner := func(team string, has *bool) *source.Reflector {
-		src := &fakeSource{system: "x", answer: func() source.Reflection {
+		src := &fakeSource{root: "x", answer: func() source.Reflection {
 			rn := source.Reflection{Covers: []entity.Pattern{
 				source.Cover("x", "project", "*", "owners", team),
 			}}
@@ -482,7 +482,7 @@ func TestAnOwnersNodeIsReplacedNotMerged(t *testing.T) {
 	}}.Payload())
 
 	fields := map[string]any{"name": "Migration", "lead": "ana"}
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
 			source.Cover("x", "project", "*", "owners", "ENG"),
 		}}
@@ -544,7 +544,7 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 		entitytest.Set(t, store.Store, entity.RefAt("x", "B", "commit", fmt.Sprint(i)), entity.Obj{"sha": i}.Payload())
 	}
 	refs := []string{"main", "dev"}
-	src := &fakeSource{system: "x", answer: func() source.Reflection {
+	src := &fakeSource{root: "x", answer: func() source.Reflection {
 		rn := source.Reflection{Covers: []entity.Pattern{
 			source.Cover("x", "A", "ref", "*"),
 			source.Cover("x", "A", "head"),

@@ -10,7 +10,7 @@ import (
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
 // address in verse is — one pattern per level, at whatever depth — with `*` allowed at any of
-// them and a trailing one making a prefix: `git.*.verse/*`, or just `git` for the whole system.
+// them and a trailing one making a prefix: `git.*.verse/*`, or just `git` for the whole root.
 //
 // It is NOT an entity.Pattern, which is what a Reflection's Covers is and what a charter's
 // `when` becomes, and the difference is where the two questions are asked rather than a
@@ -117,7 +117,7 @@ func ParseOwns(owns []Own) ([]Claim, error) {
 // rule once, at every level, and a claim as short as `git` owns the whole subtree under it.
 type Claim struct {
 	// Segs is the address pattern, one per level. A claim SHORTER than an address covers
-	// everything under it, which is what makes `git` a claim on the whole system.
+	// everything under it, which is what makes `git` a claim on the whole root.
 	Segs []Seg
 }
 
@@ -155,7 +155,7 @@ func (s Seg) String() string {
 
 // Head is the claim's first level as an EXACT name, and whether it is one — what a caller
 // narrowing a store read may use as a prefix. A glob or a `*` there answers false, and the
-// caller must read wider: a claim that does not say which system it is in cannot narrow one.
+// caller must read wider: a claim that does not say which root it is in cannot narrow one.
 func (c Claim) Head() (string, bool) {
 	if len(c.Segs) == 0 || c.Segs[0].Prefix {
 		return "", false

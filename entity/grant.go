@@ -52,23 +52,51 @@ func (l Level) Admits(need Level) bool {
 	return l.rank() >= need.rank()
 }
 
+// ChildOwnerKey is how `owner` is HELD OUT: `child-owner: […]`, who may create beneath a node
+// and own what they create. It is the one way ownership is ever granted, because a node has one
+// owner and it is fixed when the node is created — by whoever created it, and never by somebody
+// naming them. So there is no grant of `owner` at a node: nobody can be made the owner of
+// anything except by their own write, which is what keeps a thing that acts (a rule, a source, a
+// binding) acting as whoever made it and as nobody its maker would rather it acted as.
+//
+// It always reaches what is BENEATH its path and never the path itself, so it takes no `below`.
+// The level it confers is still OwnerLevel — what an owner holds — which is why a refusal says
+// "needs owner"; this is only how that level is spelled where it is held out.
+const ChildOwnerKey = "child-owner"
+
+// levelKey is the key a level is written under in a grant line and a default.
+func levelKey(l Level) string {
+	if l == OwnerLevel {
+		return ChildOwnerKey
+	}
+	return string(l)
+}
+
+// errOwnerHeldOut is what a line or a default naming `owner` is told.
+func errOwnerHeldOut(where string) error {
+	return fmt.Errorf("%s: `owner` is not something held out — a node has one owner, fixed when "+
+		"it is created, by whoever created it. `%s: […]` is who may create beneath a node and "+
+		"own what they create", where, ChildOwnerKey)
+}
+
 // GrantsField is the field of a perms record listing what its node's owner holds out.
 const GrantsField = "grants"
 
-// DefaultField is the field of a perms record saying what a node CREATED BENEATH it holds out —
-// the levels and grantees copied onto the new node's own record at creation, as a grant at
-// the node. It is consulted where a record is written, which is where ownership changes and
+// ChildGrantsField is the field of a perms record saying what a node CREATED BENEATH it holds
+// out — the levels and grantees copied onto the new node's own record at creation, as a grant
+// at the node. It is consulted where a record is written, which is where ownership changes and
 // so where what a node holds out has to be decided; below an owner the owner's own grants
-// cover everything. A directory's default ACL rather than a process's umask, since a place is
-// what verse addresses.
+// cover everything. NAMED FOR WHAT IT IS, beside `child-owner`: that says who may own what is
+// made beneath, this what each of those starts out holding out. It is copied once and is no
+// fallback: changing it changes what is created afterwards and nothing that exists.
 //
-//	default: {read: ["*"]}      # what is created beneath is readable by everyone
-//	default: {}                 # what is created beneath is held out to nobody
+//	child-grants: {read: ["*"]}      # what is created beneath is readable by everyone
+//	child-grants: {}                 # what is created beneath is held out to nobody
 //
-// Absent means inherit: the nearest default up the tree, and the root's at the top.
-const DefaultField = "default"
+// Absent means inherit: the nearest `child-grants` up the tree, and the root's at the top.
+const ChildGrantsField = "child-grants"
 
-// Levels is what a default holds: grantees by level, the levels of a grant with no `at`.
+// Levels is what `child-grants` holds: grantees by level, the levels of a grant with no `at`.
 type Levels map[Level][]string
 
 // ParseLevels reads grantees by level out of an object: `{read: ["*"], control: [runner:bot]}`.
@@ -113,10 +141,14 @@ func parseLevels(rec Payload, field string, read func(string, []string) ([]strin
 	levels = Levels{}
 	for name := range Fields(f) {
 		l := Level(name)
-		switch l {
-		case Read, ReadWrite, OwnerLevel, Control:
+		switch {
+		case name == ChildOwnerKey:
+			l = OwnerLevel
+		case l == OwnerLevel:
+			return nil, true, errOwnerHeldOut(field)
+		case l == Read, l == ReadWrite, l == Control:
 		default:
-			return nil, true, fmt.Errorf("%s: %q is not a level (read, read-write, owner, control)", field, name)
+			return nil, true, fmt.Errorf("%s: %q is not a level (read, read-write, %s, control)", field, name, ChildOwnerKey)
 		}
 		to := ir.Uncomment(Get(f, name))
 		if to == nil || to.Type != ir.ArrayType {
@@ -137,7 +169,7 @@ func parseLevels(rec Payload, field string, read func(string, []string) ([]strin
 func (l Levels) Payload() Payload {
 	o := Obj{}
 	for level, names := range l {
-		o[string(level)] = strList(names)
+		o[levelKey(level)] = strList(names)
 	}
 	return o.Payload()
 }
@@ -172,8 +204,8 @@ func (g Grant) Covers(segs []string) bool {
 	return Under(g.At, segs, Literal)
 }
 
-// ParseGrants reads a record's grants field, for the record at node: a line with no `at` is
-// about that node. A record with none has nil grants and no error; a line that cannot be read
+// ParseGrants reads a record's grants field, for the record at node — which a caller that has
+// one passes non-nil, the root included (`SegsOf`), since a line with no `at` is about it. A record with none has nil grants and no error; a line that cannot be read
 // is an error naming it, so a policy edit that would silently grant nothing is refused where
 // it is written rather than discovered where it is checked — a grantee the grammar does not read
 // included. With no node — a caller holding a grants field that belongs nowhere yet — every line
@@ -198,58 +230,86 @@ func parseGrants(node []string, rec Payload, read func(string, []string) ([]stri
 	}
 	var out []Grant
 	for i, v := range f.Values {
-		g, err := parseGrant(node, v, read)
+		gs, err := parseGrant(node, v, read)
 		if err != nil {
 			return nil, fmt.Errorf("%s[%d]: %w", GrantsField, i, err)
 		}
-		out = append(out, g)
+		out = append(out, gs...)
 	}
 	return out, nil
 }
 
-func parseGrant(node []string, v Payload, read func(string, []string) ([]string, error)) (Grant, error) {
+// parseGrant reads one line, which is two grants where it holds out `child-owner` beside a level
+// that is about the node itself: the first reaches what is beneath and the second does not.
+func parseGrant(node []string, v Payload, read func(string, []string) ([]string, error)) ([]Grant, error) {
+	g, owners, err := parseLine(node, v, read)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case owners == nil:
+		return []Grant{g}, nil
+	case len(g.To) == 0 || g.Below:
+		if g.To == nil {
+			g.To = map[Level][]string{}
+		}
+		g.To[OwnerLevel], g.Below = owners, true
+		return []Grant{g}, nil
+	}
+	return []Grant{{At: g.At, Below: true, To: map[Level][]string{OwnerLevel: owners}}, g}, nil
+}
+
+// parseLine is a line's path, its levels other than `child-owner`, and who holds that one.
+func parseLine(node []string, v Payload, read func(string, []string) ([]string, error)) (Grant, []string, error) {
 	v = ir.Uncomment(v)
 	if v == nil || v.Type != ir.ObjectType {
-		return Grant{}, fmt.Errorf("a grant is an object holding out a level, with `at` when it is not about this node")
+		return Grant{}, nil, fmt.Errorf("a grant is an object holding out a level, with `at` when it is not about this node")
 	}
 	var g Grant
 	at := ir.Uncomment(Get(v, "at"))
 	var segs []string
 	switch {
-	case at == nil && len(node) == 0:
-		return Grant{}, fmt.Errorf("a grant names the path it covers in `at`")
+	// NO NODE is a caller holding a grants field that belongs nowhere yet — nil, not empty. A
+	// record ON the root has a node, and it is the empty path: `Segs` of the root is no
+	// segments, which is why the two are told apart by nil and not by length.
+	case at == nil && node == nil:
+		return Grant{}, nil, fmt.Errorf("a grant names the path it covers in `at`")
 	case at == nil:
 		// This node. `below` is the only other thing such a line says about where.
 		g.At = append([]string{}, node...)
 		if b := ir.Uncomment(Get(v, "below")); b != nil {
 			if b.Type != ir.BoolType {
-				return Grant{}, fmt.Errorf("below: true or false")
+				return Grant{}, nil, fmt.Errorf("below: true or false")
 			}
 			g.Below = b.Bool
 		}
 	case at.Type == ir.StringType:
 		var err error
 		if segs, err = ExprSegs(at.String); err != nil {
-			return Grant{}, fmt.Errorf("at: %w", err)
+			return Grant{}, nil, fmt.Errorf("at: %w", err)
 		}
 	case at.Type == ir.ArrayType:
 		segs = Strs(v, "at")
 		if len(segs) != len(at.Values) {
-			return Grant{}, fmt.Errorf("at: every segment is a name")
+			return Grant{}, nil, fmt.Errorf("at: every segment is a name")
 		}
 	default:
-		return Grant{}, fmt.Errorf("at: a path, spelled as a list or a kinded path")
+		return Grant{}, nil, fmt.Errorf("at: a path, spelled as a list or a kinded path")
 	}
-	if at != nil && len(segs) == 0 {
-		return Grant{}, fmt.Errorf("at: a path, spelled as a list or a kinded path")
+	// An `at` that spells NO segments is the root, because the empty path is the root — which
+	// is the one node a record's own address cannot say for it (`at: []`, the list with nothing
+	// in it). A missing `at` is the case above and means this node; a malformed one was refused
+	// already.
+	if at != nil && at.Type != ir.ArrayType && len(segs) == 0 {
+		return Grant{}, nil, fmt.Errorf("at: a path, spelled as a list or a kinded path")
 	}
 	for i, s := range segs {
 		if s == "" {
-			return Grant{}, fmt.Errorf("at: a segment is a name, and none may be empty")
+			return Grant{}, nil, fmt.Errorf("at: a segment is a name, and none may be empty")
 		}
 		if strings.Contains(s, "*") {
 			if s != "*" || i != len(segs)-1 {
-				return Grant{}, fmt.Errorf("at: a `*` is a whole TRAILING segment, covering what is " +
+				return Grant{}, nil, fmt.Errorf("at: a `*` is a whole TRAILING segment, covering what is " +
 					"beneath the path — a `*` anywhere else is refused rather than approximated")
 			}
 			g.Below = true
@@ -259,52 +319,73 @@ func parseGrant(node []string, v Payload, read func(string, []string) ([]string,
 	if at != nil {
 		g.At = segs
 	}
+	if Get(v, string(OwnerLevel)) != nil {
+		return Grant{}, nil, errOwnerHeldOut("a grant")
+	}
+	var owners []string
 	for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control} {
-		to := ir.Uncomment(Get(v, string(l)))
+		key := levelKey(l)
+		to := ir.Uncomment(Get(v, key))
 		if to == nil {
 			continue
 		}
 		if to.Type != ir.ArrayType {
-			return Grant{}, fmt.Errorf("%s: a list of grantees — %s", l, Grammar())
+			return Grant{}, nil, fmt.Errorf("%s: a list of grantees — %s", key, Grammar())
 		}
-		names := Strs(v, string(l))
+		names := Strs(v, key)
 		if len(names) != len(to.Values) {
-			return Grant{}, fmt.Errorf("%s: every grantee is a string", l)
+			return Grant{}, nil, fmt.Errorf("%s: every grantee is a string", key)
 		}
-		kept, err := read(string(l), names)
+		kept, err := read(key, names)
 		if err != nil {
-			return Grant{}, err
+			return Grant{}, nil, err
+		}
+		if l == OwnerLevel {
+			owners = kept
+			continue
 		}
 		if g.To == nil {
 			g.To = map[Level][]string{}
 		}
 		g.To[l] = kept
 	}
-	if len(g.To) == 0 {
-		return Grant{}, fmt.Errorf("a grant holds out a level: read, read-write, owner or control")
+	if len(g.To) == 0 && owners == nil {
+		return Grant{}, nil, fmt.Errorf("a grant holds out a level: read, read-write, %s or control", ChildOwnerKey)
 	}
-	return g, nil
+	return g, owners, nil
 }
 
 // Payload spells the grant back as a line of the record at node, the inverse of parseGrant: a
 // grant about that node says no `at`, and `below: true` when it is about what is beneath it.
 func (g Grant) Payload(node []string) Payload {
 	o := Obj{}
+	// `child-owner` says beneath by itself, so a line holding out nothing else says no `below`.
+	_, owns := g.To[OwnerLevel]
+	below := g.Below && !(owns && len(g.To) == 1)
 	if len(node) > 0 && slices.Equal(g.At, node) {
-		if g.Below {
+		if below {
 			o["below"] = ir.FromBool(true)
 		}
 	} else {
 		at := append([]string{}, g.At...)
-		if g.Below {
+		if below {
 			at = append(at, "*")
 		}
 		o["at"] = strList(at)
 	}
 	for l, names := range g.To {
-		o[string(l)] = strList(names)
+		o[levelKey(l)] = strList(names)
 	}
 	return o.Payload()
+}
+
+// check refuses a grant the model has no meaning for: `owner` held out AT a node. It is what a
+// caller building grants in code is told, where a parsed line was told already.
+func (g Grant) check() error {
+	if _, owns := g.To[OwnerLevel]; owns && !g.Below {
+		return errOwnerHeldOut("a grant at " + JoinSegs(g.At))
+	}
+	return nil
 }
 
 // GrantsPayload spells a list of grants as the field's value on the record at node.
@@ -316,6 +397,33 @@ func GrantsPayload(node []string, gs []Grant) Payload {
 	return arr
 }
 
+// GrantsOver spells a list of grants so that writing it REPLACES the list standing in cur, in
+// one write. A write of an array merges it by position and truncates: line i of the new list is
+// merged onto line i of the old, so a line that lost a level, or a line that moved up because
+// the one above it went, keeps whatever stood at that position — a revoke that reported success
+// and revoked nothing, and a grant that migrated onto another line's path. Each line therefore
+// says what to REMOVE from the line it lands on, which is every field that line had and this
+// one does not.
+//
+// One write rather than a removal and then a write, for two reasons that are the same reason: a
+// record with an owner and no grants field at all reads as one from before defaults existed and
+// holds out the root's default, so the moment between the two would be a private place readable
+// by everyone — for good, if the second write never landed. And a caller guarding its
+// write with Exactly(cur) cannot make a change before it.
+func GrantsOver(node []string, next []Grant, cur Payload) Payload {
+	arr := GrantsPayload(node, next)
+	old := ir.Uncomment(Get(cur, GrantsField))
+	if old == nil || old.Type != ir.ArrayType {
+		return arr
+	}
+	for i := range arr.Values {
+		if i < len(old.Values) {
+			arr.Values[i] = withRemovals(arr.Values[i], ir.Uncomment(old.Values[i]))
+		}
+	}
+	return arr
+}
+
 func strList(ss []string) Payload {
 	arr := &ir.Node{Type: ir.ArrayType}
 	for _, s := range ss {
@@ -323,3 +431,7 @@ func strList(ss []string) Payload {
 	}
 	return arr
 }
+
+// SegsOf is a node's segments as a grants parse wants them: never nil, so the ROOT — whose
+// address is the empty path — is told from a caller that has no node at all.
+func SegsOf(ref Ref) []string { return append([]string{}, ref.Segs()...) }

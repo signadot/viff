@@ -150,14 +150,14 @@ if $clean; then
 	# own segments — so they are removed by the address the engine chose, not by one this script
 	# invented.
 	# `--paths` answers in steps, one address per LINE — read a line at a time, and handed over
-	# UNQUOTED so the shell splits it into the steps it is. `--depth 8` because that is where a
-	# trace stands (two for the target, one for the rule, five for the pull request); without a
-	# bound the walk goes on into every field of every one.
+	# UNQUOTED so the shell splits it into the steps it is. `--depth 7` is how far BENEATH the
+	# system a trace stands (one for the target's second segment, one for the rule, five for the
+	# pull request); without a bound the walk goes on into every field of every one.
 	for sys in lineage lintag; do
 		while IFS= read -r e; do
 			# shellcheck disable=SC2086
 			[ -n "$e" ] && v data $e --rm >/dev/null 2>&1 || true
-		done < <(v data --paths --depth 8 "$sys" 2>/dev/null)
+		done < <(v data --paths --depth 7 "$sys" 2>/dev/null)
 	done
 	# Unquoted: each entry IS the steps of one address, split back by the shell.
 	# shellcheck disable=SC2086
@@ -345,7 +345,7 @@ for _ in $(seq 1 100); do
 			tref=$t
 			break 2
 		fi
-	done < <(v data --paths --depth 8 lineage 2>/dev/null)
+	done < <(v data --paths --depth 7 lineage 2>/dev/null)
 	sleep 0.2
 done
 [ -n "$tref" ] ||

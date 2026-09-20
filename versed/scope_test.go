@@ -29,7 +29,7 @@ func TestScopeOverHTTP(t *testing.T) {
 		if scope != "" {
 			u += "?scope=" + scope
 		}
-		resp, err := http.Post(u, "application/json", strings.NewReader(string(body)))
+		resp, err := httpPost(u, "application/json", strings.NewReader(string(body)))
 		if err != nil {
 			t.Fatalf("put: %v", err)
 		}
@@ -72,7 +72,7 @@ func TestScopeOverHTTP(t *testing.T) {
 	}
 
 	// Teardown drops the overlay.
-	resp, err := http.Post(ts.URL+"/scope/delete?scope=me", "application/json", nil)
+	resp, err := httpPost(ts.URL+"/scope/delete?scope=me", "application/json", nil)
 	if err != nil {
 		t.Fatalf("scope delete: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	baseline := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "baseline", baseline)
 
-	resp, err := http.Post(ts.URL+"/scope/delete?scope=me", "application/json", nil)
+	resp, err := httpPost(ts.URL+"/scope/delete?scope=me", "application/json", nil)
 	if err != nil {
 		t.Fatalf("scope delete: %v", err)
 	}

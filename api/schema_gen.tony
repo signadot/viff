@@ -146,7 +146,7 @@ context:
 define:
   at: .[string]
   below: .[bool]
-  default: .[tony-base:ir]
+  child-grants: .[tony-base:ir]
   grant: .[tony-base:ir]
   grants: .[tony-base:ir]
   revoke: .[tony-base:ir]
@@ -158,7 +158,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   at: .[string]
-  default: .[tony-base:ir]
+  child-grants: .[tony-base:ir]
   grants: .[tony-base:ir]
   owner: .[string]
 signature:

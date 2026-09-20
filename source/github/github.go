@@ -31,8 +31,8 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// DefaultSystem is the slice a GitHub source owns unless the operator says otherwise.
-const DefaultSystem = "github"
+// DefaultRoot is the slice a GitHub source owns unless the operator says otherwise.
+const DefaultRoot = "github"
 
 // Defaults for one repository's read.
 const (
@@ -49,16 +49,16 @@ type Config struct {
 	Token string
 	// Repos are the repositories to reflect, as `<org>/<name>`.
 	Repos []string
-	// System is the slice this source writes, empty meaning DefaultSystem.
+	// Root is the slice this source writes, empty meaning DefaultRoot.
 	//
 	// THE OPERATOR'S TO CHOOSE, because more than one of these gets deployed — different
 	// credentials, different budgets, different networks — and the partition between them is
 	// drawn by whoever runs them rather than by how GitHub organises itself. Two deployments
 	// sharing `github` is the ordinary case and needs only disjoint claims; one that wants no
-	// coordination at all takes a system of its own, and two systems are disjoint on the first
+	// coordination at all takes a root of its own, and two roots are disjoint on the first
 	// segment. It is also the answer to a second GitHub instance, where `org/repo` #42 is unique
 	// within a host and not across two. See docs/reference/sourced.md under `github`.
-	System string
+	Root string
 	// Settled is how many recently-closed issues and pull requests each repository keeps
 	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this
 	// (0 → DefaultMaxOpen) rather than answering partially for a slice it covers completely.
@@ -94,7 +94,7 @@ type Config struct {
 // GitHub is the Source.
 type GitHub struct {
 	api      *api
-	system   string
+	root     string
 	repos    []string // `<org>/<name>`, sorted, so two passes answer in one order
 	settled  int
 	maxOpen  int
@@ -122,7 +122,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 	}
 	g := &GitHub{
 		api:      newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
-		system:   cfg.System,
+		root:     cfg.Root,
 		settled:  cfg.Settled,
 		maxOpen:  cfg.MaxOpen,
 		runs:     cfg.Runs,
@@ -130,15 +130,15 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		noDiscus: cfg.SkipDiscussions,
 		log:      cfg.Log,
 	}
-	if g.system == "" {
-		g.system = DefaultSystem
+	if g.root == "" {
+		g.root = DefaultRoot
 	}
-	// The system is a segment of the address and of the route that serves the registration, so
-	// neither punctuation survives — the same check source.Entity.Check makes, made here so a
-	// bad `-system` fails the program rather than the install.
-	if strings.ContainsAny(g.system, ":/") {
-		return nil, fmt.Errorf("github: system %q may not contain : or / — it is a segment of "+
-			"the address (verse.sources.<system>.<name>) and of the route that serves it", g.system)
+	// The root is the first segment of every address this source writes, so no punctuation of
+	// an address survives — the same check source.Entity.Check makes, made here so a bad
+	// `-root` fails the program rather than the install.
+	if strings.ContainsAny(g.root, ":/.") {
+		return nil, fmt.Errorf("github: root %q may not contain : / or . — it is the first "+
+			"segment of every address this source writes", g.root)
 	}
 	if g.settled <= 0 {
 		g.settled = DefaultSettled
@@ -173,8 +173,8 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 	return g, nil
 }
 
-// System is the owned slice.
-func (g *GitHub) System() string { return g.system }
+// Root is the owned slice.
+func (g *GitHub) Root() string { return g.root }
 
 // Repos is the set of repositories this source reflects.
 func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
@@ -198,7 +198,7 @@ func (g *GitHub) Owns() []source.Own {
 // place is the address segments a repository's entities stand under, followed by more.
 func (g *GitHub) place(repo string, more ...string) []string {
 	org, name, _ := strings.Cut(repo, "/")
-	return append([]string{g.system, org, name}, more...)
+	return append([]string{g.root, org, name}, more...)
 }
 
 // cover is a cover under one repository's place.
@@ -241,7 +241,7 @@ func (g *GitHub) ItemRef(kind, repo string, number int) entity.Ref {
 // segments below its place. ok is false for a ref that is not under one it reflects.
 func (g *GitHub) under(ref entity.Ref) (repo string, rest []string, ok bool) {
 	segs := ref.Segs()
-	if len(segs) < 3 || segs[0] != g.system {
+	if len(segs) < 3 || segs[0] != g.root {
 		return "", nil, false
 	}
 	repo = segs[1] + "/" + segs[2]
@@ -251,11 +251,11 @@ func (g *GitHub) under(ref entity.Ref) (repo string, rest []string, ok bool) {
 	return repo, segs[3:], true
 }
 
-// Reflect reads what `<system>.*` should hold. A zero ref reads every repository; a ref at a
+// Reflect reads what `<root>.*` should hold. A zero ref reads every repository; a ref at a
 // repository's place reads that repository whole; an issue or pull-request ref reads just that
 // item.
 func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection, error) {
-	if segs := ref.Segs(); len(segs) > 0 && segs[0] != g.system {
+	if segs := ref.Segs(); len(segs) > 0 && segs[0] != g.root {
 		// Another source's slice. No targets means an empty reflection with NO covers, which
 		// claims nothing and so tombstones nothing.
 		return source.Reflection{}, nil
@@ -282,7 +282,7 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection
 }
 
 // targetRepos reads a ref as "which repositories": all of them for a ref naming no place under
-// the system, those of one organisation for a ref at an organisation, else the one repository
+// the root, those of one organisation for a ref at an organisation, else the one repository
 // the ref is under — and none at all for a place this source does not reflect.
 func (g *GitHub) targetRepos(ref entity.Ref) []string {
 	segs := ref.Segs()
@@ -611,7 +611,7 @@ func repoPayload(repo string, r repository, defaultBranchSha string) entity.Obj 
 		"defaultBranch": r.DefaultBranch, "defaultBranchSha": defaultBranchSha,
 		// The remote a git mirror is cloned FROM, which is the one field that identifies this
 		// repository across the `git:*` slice as well: a git source's repo id is the operator's,
-		// so nothing else lines the two up, and a source inventing a cross-system key is what
+		// so nothing else lines the two up, and a source inventing a cross-root key is what
 		// this design forbids. A charter that wants them paired joins on this and writes a
 		// derived entity, as scripts/lineage.sh does.
 		"cloneUrl": r.CloneURL, "sshUrl": r.SSHURL,

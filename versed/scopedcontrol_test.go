@@ -150,7 +150,7 @@ func TestCharterRemovalActsOnItsOwnScope(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := sendAsTester(req)
 		if err != nil {
 			t.Fatalf("remove %s: %v", path, err)
 		}

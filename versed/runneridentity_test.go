@@ -21,7 +21,7 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	resp := postAs(t, "ops@example.com", ts.URL+"/runners", "application/tony",
-		fmt.Sprintf(`{name: gpu, kind: pool, url: %q, identity: gpu-bot}`, face.URL))
+		fmt.Sprintf(`{name: gpu, url: %q, identity: gpu-bot}`, face.URL))
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner add: %s", resp.Status)
@@ -29,7 +29,7 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 
 	from := srv.Store.Head()
 	resp = postAs(t, "alice@example.com", ts.URL+"/tasks", "application/tony",
-		`{prompt: "go", driver: scripted, runner: verse.runners.pool.gpu}`)
+		`{prompt: "go", driver: scripted, runner: verse.runners.gpu}`)
 	var sp struct {
 		ID string `tony:"field=id"`
 	}
@@ -53,7 +53,7 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	if !granted {
 		t.Fatal("gpu-bot was not granted control of the task it runs")
 	}
-	if ok, _ := entity.Holds(srv.Store, "runner:gpu-bot", entity.OwnerLevel, taskRef); ok {
+	if ok, _ := entity.MayCreate(srv.Store, "runner:gpu-bot", taskRef); ok {
 		t.Fatal("gpu-bot owns the task")
 	}
 	if _, ok, _ := srv.Store.Get(entity.PrincipalRef(entity.RunnerKind, "gpu-bot")); !ok {
@@ -172,5 +172,117 @@ func TestAWorkerRaisedGateIsHeldOutToWhomItNames(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("davido could not answer: %s", resp.Status)
+	}
+}
+
+// A TASK'S GATE IS NOT ANSWERABLE BEFORE IT IS POSED EITHER. A worker's pending frame reaches the
+// broker at once and the docket a moment later, through the task's mirror, and an answer sent in
+// between is addressed to a question with no record of who may answer it. No registry knows a
+// task's gates, so nothing but the record can say this one is davido's: a stranger is refused at
+// the first instant as they would be a minute later.
+func TestATasksGateIsNotAnswerableBeforeItIsPosed(t *testing.T) {
+	srv := testServer(t)
+	b := srv.UseBroker("http://verse.test:9090")
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	worker := httptest.NewServer(b.WorkerHandler())
+	defer worker.Close()
+
+	for i := 0; i < 5; i++ { // the window is narrow, so it is tried more than once
+		resp := postAs(t, "alice@example.com", ts.URL+"/tasks", "application/tony", `{prompt: "release", driver: human,
+			runner: broker, gates: [{name: push, mode: ask, answerers: [oscar@example.com]}]}`)
+		var sp struct {
+			ID string `tony:"field=id"`
+		}
+		decodeResp(t, resp, &sp)
+		resp.Body.Close()
+		resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json", strings.NewReader(`{"identity":"runner:bot"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var claim struct {
+			Epoch int64 `tony:"field=epoch"`
+		}
+		decodeResp(t, resp, &claim)
+		resp.Body.Close()
+		qid := sp.ID + "~d1"
+		resp, err = worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/report", "application/tony",
+			strings.NewReader(fmt.Sprintf(`{epoch: %d, events: [{kind: pending, id: %q, gate: push, text: prod}]}`, claim.Epoch, qid)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+
+		// With no wait for the docket: the earliest an answer can be sent.
+		resp = answerAs(t, "mallory@example.com", ts.URL, qid)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("round %d: a stranger answered a task's gate held out to davido: %s", i, resp.Status)
+		}
+		resp = answerAs(t, "oscar@example.com", ts.URL, qid)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Fatalf("round %d: davido could not answer: %s", i, resp.Status)
+		}
+	}
+}
+
+// WHO A TASK IS WORKED BY IS WHO CLAIMED IT. A running status names who the task's record is
+// written as from then on, so taken from the frame, a claim made with no identity and reported
+// `by: system:default` would put the system's name on alice's task, with read-write and control.
+func TestAReportedStatusDoesNotNameItsOwnClaimant(t *testing.T) {
+	srv := testServer(t)
+	b := srv.UseBroker("http://verse.test:9090")
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	worker := httptest.NewServer(b.WorkerHandler())
+	defer worker.Close()
+
+	resp := postAs(t, "alice@example.com", ts.URL+"/tasks", "application/tony", `{prompt: "deploy", driver: human, runner: broker}`)
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
+	resp.Body.Close()
+	resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/tony", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claim struct {
+		Epoch int64 `tony:"field=epoch"`
+	}
+	decodeResp(t, resp, &claim)
+	resp.Body.Close()
+	for _, by := range []string{"system:default", "via:verse.trigger.rule.calendar"} {
+		resp, err = worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/report", "application/tony",
+			strings.NewReader(fmt.Sprintf(`{epoch: %d, events: [{kind: status, text: running, by: %q}, {kind: exec, tool: sh, text: hi}]}`, claim.Epoch, by)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	// Once the exec frame has been projected, the status before it has been too.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if e, ok, _ := srv.Store.Get(mirror.Ref(sp.ID)); ok && entity.Str(e.Payload, "lastAction") == "sh" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, who := range []string{"system:default", "via:verse.trigger.rule.calendar"} {
+		rec, ok, _ := srv.Store.Get(entity.PermsRef(mirror.Ref(sp.ID)))
+		if !ok {
+			t.Fatal("the task has no record")
+		}
+		gs, _ := entity.ParseGrants(mirror.Ref(sp.ID).Segs(), rec.Payload)
+		for _, g := range gs {
+			for l, names := range g.To {
+				for _, n := range names {
+					if n == who {
+						t.Errorf("the task's record holds %s out to %s, which a frame named", l, who)
+					}
+				}
+			}
+		}
 	}
 }

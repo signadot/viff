@@ -40,13 +40,13 @@ type Hinter func(ctx context.Context, refs ...entity.Ref)
 // The registration's NAME is in it, which is what makes a hint addressable at all: a source
 // program does not know what an operator called it, so the url is configuration handed to the
 // source (a flag, an env var, a line in a git hook) rather than something it can derive.
-func HintPath(system, name string) string {
-	return "/sources/" + system + "/" + name + "/hint"
+func HintPath(name string) string {
+	return "/sources/" + name + "/hint"
 }
 
-// HintURL joins a verse base url to that route: HintURL("http://verse:9797", "slack", "acme").
-func HintURL(base, system, name string) string {
-	return strings.TrimRight(base, "/") + HintPath(system, name)
+// HintURL joins a verse base url to that route: HintURL("http://verse:9797", "acme").
+func HintURL(base, name string) string {
+	return strings.TrimRight(base, "/") + HintPath(name)
 }
 
 // Hints posts to hintURL and logs what it could not deliver — the Hinter every deployed source

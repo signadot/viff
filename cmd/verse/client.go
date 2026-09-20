@@ -1077,7 +1077,17 @@ type stateConfig struct {
 	// `--paths` asking for one depth answered with whatever happened to live there and omitted
 	// everything deeper, which is how a place holding four-segment records listed as the place
 	// itself and nothing else. The walk omits nothing; this says how far it goes.
-	Depth int `cli:"name=depth desc='with --paths/--kpaths: bound the walk to addresses of at most N segments (default: no bound)'"`
+	//
+	// COUNTED FROM THE ADDRESS the path names, so the number is the same one at every level:
+	// `verse data a --paths --depth 1` and `verse data a b --paths --depth 1` are each one level
+	// down, and walking deeper is a step rather than a step and a bigger number. Counted from
+	// the ROOT it would be two edits, and a script that bounds a walk would carry the sum of an
+	// address written three lines above it.
+	//
+	// A STRING because absent is not a number: 0 is the address alone and an empty flag is
+	// everything beneath it, which an int whose zero value is also a legal depth cannot tell
+	// apart. go-tony's own `o list -depth` is a string for the same reason.
+	Depth string `cli:"name=depth desc='with --paths/--kpaths: walk at most N levels beneath the address (0 is the address alone; absent is everything)'"`
 
 	// WHAT TO DO IS A FLAG, and the positional is a path in every case — the same reason
 	// `verse c` says it that way. `get`, `put` and `rm` were verbs, and a path's first segment
@@ -1206,14 +1216,18 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
 	// passed beside --paths.
 	listing := cfg.Paths || cfg.KPaths
+	depth, err := cfg.depth(listing)
+	if err != nil {
+		return err
+	}
 	if listing {
 		// ASKED OF THE SERVER, which asks the store: the addresses come back without the
 		// nodes, so a listing of a wide container ships names rather than everything they
 		// stand for. A read with a predicate still answers the document and is walked here,
 		// since `--if` picks per node the path reached.
 		q.Set("paths", "1")
-		if cfg.Depth > 0 {
-			q.Set("depth", strconv.Itoa(cfg.Depth))
+		if depth != entity.Unbounded {
+			q.Set("depth", strconv.Itoa(depth))
 		}
 	}
 	resp, err := httpGet("/state", q)
@@ -1221,9 +1235,28 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("data: %w", err)
 	}
 	if listing {
-		return printPaths(cc, resp, kp, cfg.Depth, cfg.KPaths)
+		return printPaths(cc, resp, kp, depth, cfg.KPaths)
 	}
 	return printDoc(cc, resp, kp)
+}
+
+// depth reads --depth: how far beneath the address the listing walks, entity.Unbounded when the
+// flag was not given. Refused where it means nothing — with no listing to bound, or negative —
+// rather than dropped, since a flag that quietly does nothing is worse than one that says no.
+func (cfg *stateConfig) depth(listing bool) (int, error) {
+	if cfg.Depth == "" {
+		return entity.Unbounded, nil
+	}
+	if !listing {
+		return 0, fmt.Errorf("%w: --depth bounds a listing; ask for one with --paths or --kpaths",
+			cli.ErrUsage)
+	}
+	n, err := strconv.Atoi(cfg.Depth)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%w: --depth %s: how far BENEATH the address to walk — 0 is the "+
+			"address alone — and never negative", cli.ErrUsage, cfg.Depth)
+	}
+	return n, nil
 }
 
 // put writes a payload at the path.
@@ -1515,37 +1548,31 @@ func addressWire(args []string, at string) (string, error) {
 	return entity.KPathOf(segs)
 }
 
-// pairPath turns the address an operator types for one of verse's own registries into the two
-// segments its route takes: the whole address as it is stored and listed
-// (`verse.runners.pool.gpu`), or the bare pair below it (`pool.gpu`). An operator reading
-// `verse data` and one typing `verse runner show` should not have to know two spellings.
-//
-// ONE READER for the three registries, and one grammar for both depths. A splitter per registry
-// is three copies of an address grammar that is not the address grammar, and a copy drifts: the
-// command ends up asking for a spelling the verse itself does not print.
-func pairPath(route, system, ref string) (string, error) {
-	pair, ok := pairSegs(system, ref)
+// namePath turns what an operator types for one of verse's own registries — runners, resolvers,
+// sources, each of whose things stands one name beneath it — into its route: the whole address as it is stored and listed (`verse.runners.gpu`), or the
+// name alone (`gpu`).
+func namePath(route, system, ref string) (string, error) {
+	name, ok := nameSeg(system, ref)
 	if !ok {
-		return "", fmt.Errorf("%w: want an address like %s.%s.<kind>.<name> (or <kind>.<name>), got %q",
+		return "", fmt.Errorf("%w: want an address like %s.%s.<name> (or <name>), got %q",
 			cli.ErrUsage, entity.VerseRoot, system, ref)
 	}
-	return "/" + route + "/" + pair[0] + "/" + pair[1], nil
+	return "/" + route + "/" + name, nil
 }
 
-// pairSegs is pairPath's reading, for the `add` verbs that want the two segments themselves
-// rather than a route built from them.
-func pairSegs(system, ref string) ([2]string, bool) {
+// nameSeg is namePath's reading, for the `add` verbs that want the name itself.
+func nameSeg(system, ref string) (string, bool) {
 	segs, err := entity.PathSegs(ref)
 	if err != nil {
-		return [2]string{}, false
+		return "", false
 	}
-	if len(segs) == entity.Depth+1 && segs[0] == entity.VerseRoot && segs[1] == system {
-		segs = segs[2:]
+	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, system) {
+		return at.Name(), at.Name() != ""
 	}
-	if len(segs) != 2 || segs[0] == "" || segs[1] == "" {
-		return [2]string{}, false
+	if len(segs) != 1 || segs[0] == "" {
+		return "", false
 	}
-	return [2]string{segs[0], segs[1]}, true
+	return segs[0], true
 }
 
 // onlyOne refuses an address given in more than one spelling.

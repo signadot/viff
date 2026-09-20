@@ -55,7 +55,7 @@ func TestAListingAnswersAContainerAReadCannot(t *testing.T) {
 	}
 
 	// The listing answers it, whole.
-	out, err := s.PathsAt([]string{"demo", "pr"}, 0)
+	out, err := s.PathsAt([]string{"demo", "pr"}, Unbounded)
 	if err != nil {
 		t.Fatalf("PathsAt over a container past the read budget: %v", err)
 	}

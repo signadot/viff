@@ -38,7 +38,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 	defer ts.Close()
 
 	postTony(t, ts.URL+"/runners", map[string]any{
-		"name": "code", "kind": "pool", "url": face.URL,
+		"name": "code", "url": face.URL,
 	}).Body.Close()
 
 	// Stopped from the far side whatever happens here. A foreverDriver task outlives a
@@ -54,7 +54,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 	})
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse.runners.pool.code", "name": "onrunner",
+		"prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)

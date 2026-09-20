@@ -10,7 +10,7 @@ import (
 func userRules(eng *trigger.Engine) []trigger.Trigger {
 	var out []trigger.Trigger
 	for _, t := range eng.Triggers() {
-		if eng.InstalledBy(t.Name) == entity.SystemCharter {
+		if eng.OwnerOf(t.Name) == entity.SystemCharter {
 			continue
 		}
 		out = append(out, t)

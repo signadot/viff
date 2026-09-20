@@ -90,7 +90,7 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 	if err := entity.Claim(scott, space, "user:walter@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.SetDefault(scott, space, entity.Levels{}); err != nil {
+	if err := entity.SetChildGrants(scott, space, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(scott, space, nil); err != nil {
@@ -118,24 +118,32 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 		return out
 	}
 	mine := listed("walter@example.com")
-	for _, at := range []string{space.String(), notes.String()} {
+	// Two records, where ownership changed: `spaces`, which his first put brought into being —
+	// a creation takes the place it made with it — and `spaces.scott`, which he took to close.
+	top := entity.RefAt("spaces")
+	for _, at := range []string{top.String(), space.String()} {
 		if _, ok := mine[at]; !ok {
 			t.Errorf("scott's listing lacks %s: %v", at, mine)
 		}
 	}
-	// The private node has no record of its own: its owner is the owner above it, and a
-	// record is written only where ownership changes. It is not listed because it is not there.
-	if _, ok := mine[private.String()]; ok {
-		t.Errorf("a node owned through the place above it has a record: %v", mine[private.String()])
+	// Neither node beneath has a record of its own: each is owned through the place above it,
+	// and a record is written only where ownership changes. Not listed because not there.
+	for _, at := range []string{notes.String(), private.String()} {
+		if _, ok := mine[at]; ok {
+			t.Errorf("a node owned through the place above it has a record: %v", mine[at])
+		}
 	}
 	if mine[space.String()].Owner != "user:walter@example.com" {
 		t.Errorf("the place's record reads %+v", mine[space.String()])
 	}
+	// Ana reads the top, which was created under the open default, and nothing of the space
+	// scott closed — the notes inside it included, since they are his through the space and
+	// closing it closed them.
 	theirs := listed("ana@example.com")
-	if _, ok := theirs[notes.String()]; !ok {
-		t.Errorf("ana's listing lacks the notes she may read: %v", theirs)
+	if _, ok := theirs[top.String()]; !ok {
+		t.Errorf("ana's listing lacks the place created under the open default: %v", theirs)
 	}
-	for _, at := range []string{space.String(), private.String()} {
+	for _, at := range []string{space.String(), notes.String(), private.String()} {
 		if _, ok := theirs[at]; ok {
 			t.Errorf("ana's listing carries %s, which she may not read", at)
 		}

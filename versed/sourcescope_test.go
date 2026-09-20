@@ -20,7 +20,7 @@ func installScoped(t *testing.T, ts *httptest.Server, scope, name, dir string) *
 	if scope != "" {
 		u += "?scope=" + scope
 	}
-	return postTony(t, u, map[string]any{"system": "git", "name": name, "dir": dir})
+	return postTony(t, u, map[string]any{"root": "git", "name": name, "dir": dir})
 }
 
 // A scoped source writes into its scope and NEVER into baseline.
@@ -38,7 +38,7 @@ func TestAScopedSourceWritesIntoItsScopeAndNotBaseline(t *testing.T) {
 	if resp := installScoped(t, ts, "sandbox", "mine", dir); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("scoped install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	head := entity.RefAt(source.GitSystem, baseOf(dir), "head")
+	head := entity.RefAt(source.GitRoot, baseOf(dir), "head")
 	waitForRef(t, srv.Store.Scope("sandbox"), head)
 
 	// Baseline read DIRECTLY, since a scoped read would find its own overlay and say nothing
@@ -47,10 +47,10 @@ func TestAScopedSourceWritesIntoItsScopeAndNotBaseline(t *testing.T) {
 		t.Fatal("a scoped reflection landed in baseline, where everybody reads it")
 	}
 	// …and so did the registration, which is what makes its lifetime free.
-	if _, ok := source.Find(srv.Store, "git.mine"); ok {
+	if _, ok := source.Find(srv.Store, "mine"); ok {
 		t.Fatal("the registration landed in baseline rather than in the scope it reflects into")
 	}
-	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git.mine"); !ok {
+	if _, ok := source.Find(srv.Store.Scope("sandbox"), "mine"); !ok {
 		t.Fatal("the registration should live in the scope it reflects into")
 	}
 }
@@ -94,7 +94,7 @@ func TestAScopedRegistrationNamesItsScopeOnce(t *testing.T) {
 	defer ts.Close()
 
 	resp := postTony(t, ts.URL+"/sources?scope=a", map[string]any{
-		"system": "git", "name": "x", "dir": repoWithCommit(t), "scope": "b",
+		"root": "git", "name": "x", "dir": repoWithCommit(t), "scope": "b",
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a registration naming two scopes = %s, want 400", resp.Status)
@@ -114,7 +114,7 @@ func TestDeletingAScopeTakesItsSources(t *testing.T) {
 	if resp := installScoped(t, ts, "sandbox", "mine", dir); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	head := entity.RefAt(source.GitSystem, baseOf(dir), "head")
+	head := entity.RefAt(source.GitRoot, baseOf(dir), "head")
 	waitForRef(t, srv.Store.Scope("sandbox"), head)
 
 	resp := postTony(t, ts.URL+"/scope/delete?scope=sandbox", map[string]any{})
@@ -132,7 +132,7 @@ func TestDeletingAScopeTakesItsSources(t *testing.T) {
 	}
 	// Give a pass that was already in flight a moment to be wrong, if it is going to be.
 	time.Sleep(200 * time.Millisecond)
-	if _, ok := source.Find(srv.Store.Scope("sandbox"), "git.mine"); ok {
+	if _, ok := source.Find(srv.Store.Scope("sandbox"), "mine"); ok {
 		t.Fatal("the registration survived its scope")
 	}
 	if _, ok, _ := srv.Store.Get(head); ok {
@@ -161,8 +161,10 @@ func TestAScopedReflectionHidesAnInheritedEntity(t *testing.T) {
 	repo := baseOf(dir)
 	// A branch baseline believes in and the repo does not have. It is under the cover a git
 	// reflection claims (`git.<repo>.ref.*`), so a pass that sees it must decide about it.
-	ghost := entity.RefAt(source.GitSystem, repo, "ref", "ghost")
-	entitytest.Set(t, srv.Store, ghost, entity.Obj{
+	ghost := entity.RefAt(source.GitRoot, repo, "ref", "ghost")
+	// The installer's own, as an earlier reflection of theirs would have left it: a source is
+	// installed over a place its installer holds, and one that stands is whoever made it's.
+	entitytest.Set(t, asTester(srv), ghost, entity.Obj{
 		"repo": repo, "name": "ghost", "sha": "deadbeef", "type": "commit",
 	}.Payload())
 
@@ -170,7 +172,7 @@ func TestAScopedReflectionHidesAnInheritedEntity(t *testing.T) {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	scoped := srv.Store.Scope("sandbox")
-	waitForRef(t, scoped, entity.RefAt(source.GitSystem, repo, "head"))
+	waitForRef(t, scoped, entity.RefAt(source.GitRoot, repo, "head"))
 
 	// In the scope, the branch is gone: this checkout does not have it, and that is what the
 	// scope's triggers should see.
@@ -206,7 +208,7 @@ func TestTwoOwnersOfOneThingInstallAlongsideEachOther(t *testing.T) {
 
 	owner := func(name, team string) *http.Response {
 		return postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-			"system": "linear", "name": name, "url": "http://x:1",
+			"root": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{"at": "linear.project.*.owners." + team}},
 		})
 	}
@@ -244,7 +246,7 @@ func TestAScopedSourceMayShadowABaselineSlot(t *testing.T) {
 			u += "&scope=" + scope
 		}
 		return postTony(t, u, map[string]any{
-			"system": "linear", "name": name, "url": "http://x:1",
+			"root": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{
 				"at": "linear.project.*", "path": []any{"owners", "ENG"},
 			}},
@@ -272,13 +274,13 @@ func TestASourceThatClaimsNothingIsStillRefusedBesideASlotSource(t *testing.T) {
 	defer ts.Close()
 
 	if resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-		"system": "linear", "name": "eng", "url": "http://x:1",
+		"root": "linear", "name": "eng", "url": "http://x:1",
 		"owns": []any{map[string]any{"at": "linear.project.*", "path": []any{"owners", "ENG"}}},
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("slot install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
-		"system": "linear", "name": "quiet", "url": "http://x:1",
+		"root": "linear", "name": "quiet", "url": "http://x:1",
 	})
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("a source claiming nothing = %s, want 409", resp.Status)

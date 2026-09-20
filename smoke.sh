@@ -84,6 +84,9 @@ if [ -n "${PORT:-}" ]; then
 else
 	ADDR="127.0.0.1:$(free_port)" || die "could not reserve an ephemeral port"
 fi
+# Somebody, and the smoke's own: a request that writes names who makes it, and whoever runs this
+# may have no `user:` configured. A step that is about another party says so with --as.
+export VERSE_USER="${VERSE_USER:-user:smoke}"
 v() { "$BIN" --addr "$ADDR" "$@"; }
 
 # ── start the monolith on its own logd+docd ──────────────────────────────────
@@ -118,30 +121,30 @@ has "$(v data demo pr)" '"1":' || die "data demo pr did not key by id"
 # is applied only where a segment would otherwise be split or expanded.
 #
 # `--paths` WALKS, so it names `demo pr 1 stage` beside the entity — every address, which is
-# what makes the listing one that cannot be wrong about depth. `--depth 3` is what asks for the
-# records alone, and it is the bound this assertion needs rather than an assumption about where
-# the walk stops.
-[ "$(v data --paths --depth 3 demo pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
+# what makes the listing one that cannot be wrong about depth. `--depth 1` is what asks for the
+# records alone — one level BENEATH the address, whatever level that address stands at — and it
+# is the bound this assertion needs rather than an assumption about where the walk stops.
+[ "$(v data --paths --depth 1 demo pr)" = 'demo pr 1' ] || die "--paths did not name the entity"
 has "$(v data --paths demo pr)" 'demo pr 1 stage' || die "--paths did not walk into the payload"
 # …and the same listing as ONE TOKEN per line, which is what survives a shell variable: a line
 # of steps only reaches a read if something splits it, and `"$ref"` does not.
-[ "$(v data --kpaths --depth 3 demo pr)" = 'demo.pr."1"' ] || die "--kpaths did not name the entity"
-kref=$(v data --kpaths --depth 3 demo pr | head -1)
+[ "$(v data --kpaths --depth 1 demo pr)" = 'demo.pr."1"' ] || die "--kpaths did not name the entity"
+kref=$(v data --kpaths --depth 1 demo pr | head -1)
 haskv "$(v data --at "$kref")" stage open || die "--kpaths did not round-trip through --at"
 # The round trip is the one steps are for: the shell splits the line into arguments, which is
 # what `xargs -L1` does with it.
-v data --paths --depth 3 demo pr | while read -r p; do
+v data --paths --depth 1 demo pr | while read -r p; do
 	# shellcheck disable=SC2086
 	haskv "$(v data $p)" stage open || die "--paths did not round-trip back into a read"
 done
-v data --paths --depth 3 demo pr | xargs -L1 "$BIN" --addr "$ADDR" data >/dev/null ||
+v data --paths --depth 1 demo pr | xargs -L1 "$BIN" --addr "$ADDR" data >/dev/null ||
 	die "--paths did not pipe through xargs"
 # An address may be typed as steps, which is what a shell makes easy: no quoting for an id with
 # a dot, since each step arrives as its own word.
 v data demo pr a.b --put '{stage: open}' >/dev/null || die "data as steps --put failed"
 haskv "$(v data demo pr a.b)" stage open || die "data as steps did not roundtrip"
 # …and the printed form is the same steps, with the dot still needing no quoting.
-[ "$(v data --paths --depth 3 demo pr | grep 'a.b')" = 'demo pr a.b' ] || die "--paths did not name the dotted id as a step"
+[ "$(v data --paths --depth 1 demo pr | grep 'a.b')" = 'demo pr a.b' ] || die "--paths did not name the dotted id as a step"
 v data demo pr a.b --rm >/dev/null || die "data --rm of the dotted id failed"
 ok "steps on the way in, the same steps on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
@@ -579,15 +582,19 @@ for _ in $(seq 1 60); do
 	fi
 	sleep 0.5
 done
-[ -n "$val" ] || { v --scope "$SCOPE" data verse task >&2; die "the per-file validator never validated a.txt"; }
+[ -n "$val" ] || { v --scope "$SCOPE" data verse task instance >&2; die "the per-file validator never validated a.txt"; }
 ok "the validator ran and latched: a.txt is marked validated"
 # And it LATCHES: a validated file is not selected again, which is the whole reason the
 # subject says what is outstanding rather than what exists.
 # Counted with --paths, one address per line, rather than by grepping `ref:` out of a
 # rendering: the answer is a document now, and an id is a key in it.
-before=$(v --scope "$SCOPE" data --paths verse task | grep -c . || true)
+# At `verse task instance`, which is where tasks are held out to be read: `verse task` above it
+# is the system's and holds out nothing, so a listing there is refused — and a refusal counted
+# is 0 before and 0 after, which passes whatever the validator did.
+before=$(v --scope "$SCOPE" data --paths --depth 1 verse task instance | grep -c . || true)
 sleep 3
-after=$(v --scope "$SCOPE" data --paths verse task | grep -c . || true)
+after=$(v --scope "$SCOPE" data --paths --depth 1 verse task instance | grep -c . || true)
+[ "$before" -gt 0 ] || die "no task is listed at verse task instance: the count says nothing"
 [ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
 ok "a validated file is not validated again ($after tasks)"
 
@@ -672,7 +679,7 @@ ok "a rule at level 0 wrote an entity at level 10"
 # BOTH WAYS, because `--paths` answers in steps and a script may hand the line over whole or let
 # the shell split it. A whole line quoted as one token is the same address as the same line split
 # into arguments, and a script that captured a path and quoted it used to read nothing.
-dref=$(v data --paths --depth 6 smokesd feature | tail -1)
+dref=$(v data --paths --depth 4 smokesd feature | tail -1)
 # shellcheck disable=SC2086
 haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086

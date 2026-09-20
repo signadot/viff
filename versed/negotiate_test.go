@@ -29,7 +29,7 @@ func TestWireNegotiation(t *testing.T) {
 		if accept != "" {
 			req.Header.Set("Accept", accept)
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := sendAsTester(req)
 		if err != nil {
 			t.Fatalf("get: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestRequestBodyNegotiation(t *testing.T) {
 	body := "at: demo.pr.1\npayload:\n  stage: open\n"
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/entity", strings.NewReader(body))
 	req.Header.Set("Content-Type", codec.MediaTony)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := sendAsTester(req)
 	if err != nil {
 		t.Fatalf("post: %v", err)
 	}

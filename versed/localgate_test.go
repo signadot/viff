@@ -3,6 +3,7 @@ package versed
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,7 +123,7 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 	qid := waitQuestion(t, srv, "local-1")
 
 	resp := postTony(t, ops.URL+"/tasks/local-1/resolve",
-		api.Resolve{ID: qid, Choice: "proceed", By: "human:scott"})
+		api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolving a LOCAL task gate = %s, want 204 — the body did not reach the decision", resp.Status)
@@ -164,4 +165,66 @@ func TestAScriptedRunAsksAtAGateOverItsVerb(t *testing.T) {
 	if gate := entity.ToObj(e.Payload)["gate"]; gate != "shell" {
 		t.Fatalf("the question is gate %v, want shell: %+v", gate, entity.ToObj(e.Payload))
 	}
+}
+
+// A HOSTED TASK'S SAY AND VECTOR ARE BY WHOEVER THE REQUEST IS MADE AS, as a relayed task's are.
+// Handed to the runtime's own handler as the request stands, the body's `by` is what the task
+// records: asked for control as one party and written down as another, `system:docket` included.
+// And a spawn is answerable to whoever asked for it, since that name travels onto the commits a
+// runner delivers.
+func TestAHostedTasksControlIsRecordedAsItsRequester(t *testing.T) {
+	srv := askingServer(t)
+	ops := httptest.NewServer(srv.Handler())
+	defer ops.Close()
+
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "local-2", Prompt: "true"})
+	spawn.Body.Close()
+	if spawn.StatusCode >= 300 {
+		t.Fatalf("spawn = %s", spawn.Status)
+	}
+	waitQuestion(t, srv, "local-2") // held at its gate, so it is hosted and live
+	send := func(method, path, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, ops.URL+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/tony")
+		resp, err := sendAsTester(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for name, resp := range map[string]*http.Response{
+		"vector": send(http.MethodPut, "/tasks/local-2/vector", `{vector: {default: ask}, by: "system:docket"}`),
+		"say":    send(http.MethodPost, "/tasks/local-2/say", `{instruction: "hello", by: "user:ceo@example.com"}`),
+		"spawn":  send(http.MethodPost, "/tasks", `{id: local-3, prompt: "true", principal: "system:charter"}`),
+	} {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s by somebody else: %s, want 400", name, resp.Status)
+		}
+	}
+	// As itself, named or not, each is done — and the vector says who slid it.
+	for name, resp := range map[string]*http.Response{
+		"vector": send(http.MethodPut, "/tasks/local-2/vector", `{vector: {default: ask}}`),
+		"say":    send(http.MethodPost, "/tasks/local-2/say", `{instruction: "hello", by: "`+tester+`"}`),
+	} {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("%s as the requester: %s, want 204", name, resp.Status)
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if e, ok, _ := srv.Store.Get(mirror.Ref("local-2")); ok && entity.Str(e.Payload, "vectorBy") != "" {
+			if got := entity.Str(e.Payload, "vectorBy"); got != "user:"+tester {
+				t.Errorf("vectorBy = %q, want the requester", got)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("the vector's slide never reached the task's record")
 }

@@ -96,7 +96,7 @@ func TestABlockedInstallAnswers503(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "text/tony")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := sendAsTester(req)
 	if err != nil {
 		t.Fatalf("no answer from a blocked install: %v", err)
 	}

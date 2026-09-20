@@ -22,23 +22,22 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// System is where both bindings and instances live: `resolvers:<kind>:<name>` for a binding,
-// `resolvers:instance:<name>@<origin>` for one that is live.
+// System is where both bindings and instances live: `verse.resolvers.<name>` for a binding,
+// `verse.watch.<name>@<origin>` for one that is live.
 //
-// One system, so a single `--system resolvers` shows what is installed and who is watching
-// what. And a reserved KIND rather than a second system, for the reason task:claim gives:
-// the pair would differ by one letter, which is a thing to mistype rather than a thing to
-// read.
+// Bindings stand one name beneath it, `verse.resolvers.<name>`, and nothing else does.
 const System = "resolvers"
 
-// InstanceKind is reserved: a binding may not be installed under it, because an instance's
-// address is derived and a binding's is chosen, and one overwriting the other would be a
-// resolver silently becoming a record of itself.
-const InstanceKind = "instance"
+// InstanceSystem is where the record of a LIVE binding stands — one binding watching one origin,
+// `verse.watch.<name>@<origin>`. A place of its own, beside the bindings rather than among them:
+// an instance's address is derived and a binding's is chosen, so under one roof a binding could
+// be given a name that was an instance's, and one would overwrite the other. Only the system
+// makes one (mirror.Watch), so nobody is held out the making of anything here.
+const InstanceSystem = "watch"
 
-// Ref addresses a binding.
-func Ref(kind, name string) entity.Ref {
-	return entity.VerseRef(System, kind, name)
+// Ref addresses a binding: its name, which is the whole of its address.
+func Ref(name string) entity.Ref {
+	return entity.VerseRef(System, name)
 }
 
 // InstanceRef addresses one binding watching one origin — a run, for now.
@@ -53,16 +52,19 @@ func Ref(kind, name string) entity.Ref {
 // `resolvers:instance:security-review@guard@demo:pr:1`. Splitting on the first is the same
 // rule a question id follows for `~`, and a name may not contain `@` for that reason.
 func InstanceRef(name, origin string) entity.Ref {
-	return entity.VerseRef(System, InstanceKind, name+"@"+origin)
+	return entity.VerseRef(InstanceSystem, name+"@"+origin)
 }
+
+// IsBinding reports whether an address is a binding's, and IsInstance whether it is the record of
+// a live one.
+func IsBinding(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
+
+func IsInstance(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, InstanceSystem) }
 
 // Resolver is a binding: what it supervises, how it answers, and under what envelope.
 type Resolver struct {
-	// Name and Kind together are its address. Kind is the operator's own category — what this
-	// resolver is FOR — the way a provider's capability is (`provider:treat:fixer`), so
-	// `verse entity --system resolvers --kind security` is a question worth asking.
+	// Name is its address: `verse.resolvers.<name>`.
 	Name string `tony:"field=name"`
-	Kind string `tony:"field=kind"`
 	// Condition makes it STANDING: nobody names it, and it supervises the work about the
 	// entities it selects. Nil means it attaches only by being named.
 	//
@@ -177,21 +179,12 @@ type Method struct {
 // operator learns what to wait for rather than that they were wrong.
 func (r Resolver) Check() error {
 	if r.Name == "" {
-		return fmt.Errorf("resolver: name is required — it is half of the address")
-	}
-	if r.Kind == "" {
-		return fmt.Errorf("resolver %q: kind is required — it is the other half of the address, "+
-			"and it is what this resolver is FOR (security, cost), the way a provider's "+
-			"capability is", r.Name)
+		return fmt.Errorf("resolver: name is required — it is the address")
 	}
 	if strings.Contains(r.Name, "@") {
 		return fmt.Errorf("resolver %q: a name may not contain @ — it is the separator in an "+
-			"instance's address (resolvers:instance:<name>@<origin>), and an origin often "+
-			"contains one of its own", r.Name)
-	}
-	if r.Kind == InstanceKind {
-		return fmt.Errorf("resolver %q: kind %q is reserved for the record of a live one "+
-			"(resolvers:%s:<name>@<origin>)", r.Name, InstanceKind, InstanceKind)
+			"instance's address (verse.%s.<name>@<origin>), and an origin often contains one "+
+			"of its own", r.Name, InstanceSystem)
 	}
 	// Two doors, and one of them must be open. A binding that may not be named and covers
 	// nothing applies to nothing, which is a supervisor that reports installed and
@@ -283,7 +276,7 @@ func (r Resolver) Answerer() string {
 		}
 		return name // refused at install (Check); one that got past names nobody
 	}
-	return entity.Via(Ref(r.Kind, r.Name))
+	return entity.Via(Ref(r.Name))
 }
 
 // Dials reports whether the binding's resolver reads through an instance: a service does, a
@@ -298,7 +291,7 @@ func (r Resolver) Dials() bool { return r.Method.Driver == DriverURL }
 // each says what will read it.
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "resolver", map[string]string{
-		"name": "", "kind": "", "byRef": "", "method": "", "condition": "",
+		"name": "", "byRef": "", "method": "", "condition": "",
 		"deadline": "", "exclusive": "",
 		"escalatesAfter": "spelled `deadline: {within: \"4h\", then: escalate}` — `within` is what " +
 			"a selection and a motion already call a duration, and `then` says which outcome " +
@@ -377,9 +370,7 @@ func unwrap(n *ir.Node) *ir.Node {
 // who asks.
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
-	for _, ent := range entity.Below(r, func(ref entity.Ref) bool {
-		return !ref.Under(entity.VerseRoot, System, InstanceKind)
-	}, 2, entity.VerseRoot, System) {
+	for _, ent := range entity.Below(r, IsBinding, 1, entity.VerseRoot, System) {
 		var res Resolver
 		if err := codec.FromNode(ent.Payload, &res); err != nil {
 			// A binding this build cannot read is one it cannot honour either — and it SAYS so,
@@ -442,7 +433,7 @@ func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 		if !res.Condition.Covers(r, subject) {
 			continue
 		}
-		if Ref(res.Kind, res.Name).String() == from {
+		if Ref(res.Name).String() == from {
 			passed = true
 			continue
 		}
@@ -504,7 +495,7 @@ func Overlaps(r entity.Reader, res Resolver) []string {
 			continue
 		}
 		if other.Condition.Subject.Overlaps(res.Condition.Subject) {
-			out = append(out, Ref(other.Kind, other.Name).String())
+			out = append(out, Ref(other.Name).String())
 		}
 	}
 	return out

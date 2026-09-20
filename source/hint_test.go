@@ -25,8 +25,8 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	url := source.HintURL(srv.URL, "git", "laptop")
-	if !strings.HasSuffix(url, "/sources/git/laptop/hint") {
+	url := source.HintURL(srv.URL, "laptop")
+	if !strings.HasSuffix(url, "/sources/laptop/hint") {
 		t.Fatalf("hint url %q", url)
 	}
 	err := source.PostHint(context.Background(), url,

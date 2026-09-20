@@ -10,7 +10,7 @@
 # It is not a source and not the engine — it is a place work RUNS, reached by url, and verse
 # learns about it the same way it learns about any runner:
 #
-#   verse runner add pool.coderunner http://coderunner:9802 --identity coderunner
+#   verse runner add coderunner http://coderunner:9802 --identity coderunner
 #
 # That install probes it, so a `reach: "a runner"` is the deployment's own acceptance test.
 apiVersion: v1

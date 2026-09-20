@@ -13,7 +13,7 @@
 #
 # Install it once the pods are up (the name must match `slackSourceName`, because the hint url
 # below carries it):
-#   verse source add slack.workspace http://slack-source:9801
+#   verse source add workspace http://slack-source:9801 -root slack
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -63,7 +63,7 @@ spec:
         # Where a verified delivery becomes a hint. The registration name in this path is what
         # ties the two together: verse 404s a hint for a name it has no registration under.
         - name: VERSE_HINT_URL
-          value: http://verse:9797/sources/slack/workspace/hint
+          value: http://verse:9797/sources/workspace/hint
         envFrom:
         - secretRef:
             name: verse-slack

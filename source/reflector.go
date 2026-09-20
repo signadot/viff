@@ -13,7 +13,7 @@ import (
 )
 
 // Source reads external truth for a slice of the entity-verse and hands it back. It owns one
-// system (`git:*`, `github:*`, …) and is the single writer of it, which is what lets that
+// root (`git`, `github`, …) and is the single writer of it, which is what lets that
 // slice go without CAS. See docs/sources.md.
 //
 // IT IS NOT HANDED A STORE, and that is the whole shape of this interface. Reflect answers
@@ -27,8 +27,8 @@ import (
 // The other half of that: an external source cannot be handed a store anyway, which is why
 // the seam is here and not somewhere more convenient.
 type Source interface {
-	// System is the slice this source owns and is the single writer of.
-	System() string
+	// Root is the slice this source owns and is the single writer of.
+	Root() string
 	// Reflect reads external truth for the slice `ref` names — a zero ref is everything this
 	// source owns — and returns it. It does not write, and it is not handed anything that
 	// could.
@@ -74,7 +74,7 @@ func (r *Reflection) Add(ref entity.Ref, p entity.Obj) {
 	r.Entities = append(r.Entities, entity.Entity{Ref: ref, Payload: p.Payload()})
 }
 
-// Check reports what would make a reflection unsafe to converge, given the system its source
+// Check reports what would make a reflection unsafe to converge, given the root its source
 // owns. It is called before anything is written, because every fault here is one that costs
 // entities rather than returning an error.
 //
@@ -82,23 +82,23 @@ func (r *Reflection) Add(ref entity.Ref, p entity.Obj) {
 // to miss: an empty path is the root, which every address is under (entity.Pattern.MatchRef), so
 // a cover that lost its path does not claim nothing — it claims everything the pass looked at,
 // and tombstones whatever the answer did not carry.
-func (r Reflection) Check(system string) error {
+func (r Reflection) Check(root string) error {
 	for _, p := range r.Covers {
 		if len(p.Path) == 0 {
 			return fmt.Errorf("reflection: a cover with no path claims EVERYTHING it is compared "+
-				"against, since the empty path is the root — begin it with %q", system)
+				"against, since the empty path is the root — begin it with %q", root)
 		}
 		// A COVER NAMES ITS SOURCE'S PLACE IN ITS FIRST SEGMENT, and it must be a literal: a `*`
 		// or an operator there claims every place it is compared against.
 		top, ok := entity.PathLiteral(p.Path[0])
 		if !ok {
 			return fmt.Errorf("reflection: a cover whose path does not begin with a literal "+
-				"place claims every place it is compared against — begin it with %q", system)
+				"place claims every place it is compared against — begin it with %q", root)
 		}
-		if top != system {
-			return fmt.Errorf("reflection: cover over system %q, but this source owns %q — a "+
+		if top != root {
+			return fmt.Errorf("reflection: cover over root %q, but this source owns %q — a "+
 				"source is the single writer of one slice and may not tombstone another's",
-				top, system)
+				top, root)
 		}
 		// Op filters a CHANGE, and converge compares against what stands in the store, which
 		// has no op. Carrying one here would read as a narrowing that is silently not applied.
@@ -108,7 +108,7 @@ func (r Reflection) Check(system string) error {
 		}
 	}
 	for _, e := range r.Entities {
-		// The reserved half FIRST, because `System()` does not say which half a ref is in: a
+		// The reserved half FIRST, because `Root()` does not say which half a ref is in: a
 		// source registered as `task` answering `verse:task:instance:x` passes the check below,
 		// and converge writes to the store directly — under the refusal that guards `POST
 		// /entity`. A source reflects the world; what verse keeps about its own running is
@@ -117,9 +117,9 @@ func (r Reflection) Check(system string) error {
 			return fmt.Errorf("reflection: entity %s is in verse's own half, which no source "+
 				"reflects — a source writes what the world is about, beside it", e.Ref)
 		}
-		if !e.Ref.Under(system) {
+		if !e.Ref.Under(root) {
 			return fmt.Errorf("reflection: entity %s is outside %q, the place this source owns",
-				e.Ref, system)
+				e.Ref, root)
 		}
 		if len(e.Ref.Segs()) < 2 {
 			return fmt.Errorf("reflection: entity %s is the source's whole place, which a "+
@@ -184,7 +184,7 @@ func (rf *Reflector) Reconcile(ctx context.Context, ref entity.Ref) error {
 	p := Pass{Ref: ref}
 	rn, err := rf.src.Reflect(ctx, ref)
 	if err != nil {
-		p.Err = fmt.Errorf("reflect %s: %w", rf.src.System(), err)
+		p.Err = fmt.Errorf("reflect %s: %w", rf.src.Root(), err)
 	} else {
 		p.Wrote, p.Err = rf.converge(ctx, rn)
 	}
@@ -213,7 +213,7 @@ func (rf *Reflector) Reconcile(ctx context.Context, ref entity.Ref) error {
 // what the source said — the entity would then differ on every pass forever, firing its
 // triggers each time. The read Modify costs is paid only by an entity that actually changed.
 func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
-	if err := rn.Check(rf.src.System()); err != nil {
+	if err := rn.Check(rf.src.Root()); err != nil {
 		return 0, err
 	}
 	wrote := 0
@@ -395,8 +395,8 @@ func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) []s
 // see it: a git commit is written once and never tombstoned, and one that was not re-read would
 // be re-written on every pass.
 //
-// It does not read the whole system, and on a store carrying several repositories under one
-// system that is the difference between a pass reading its own repository and reading every
+// It does not read the whole root, and on a store carrying several repositories under one
+// root that is the difference between a pass reading its own repository and reading every
 // repository's history. This runs on every pass.
 func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 	var at []place
@@ -418,7 +418,7 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 	}
 	out := map[entity.Ref]entity.Payload{}
 	for _, p := range distinctPlaces(at) {
-		// Not verse's own half, for the reason Claimed says at length: a system name is not a
+		// Not verse's own half, for the reason Claimed says at length: a root name is not a
 		// half, and this map is what `covered` decides tombstones from.
 		//
 		// EXACTLY AT THE PLACE'S DEPTH, because a listing also reports a value standing above
@@ -522,7 +522,7 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) []s
 // tells verse which refs went stale; a second implementation of "map a delivery to refs" per
 // source is exactly how the law comes to be broken in one of two places, and across a network
 // a divergence is least recoverable. The route that reaches this is
-// POST /sources/<system>/<name>/hint?at=…
+// POST /sources/<name>/hint?at=…
 //
 // A full queue drops the hint rather than blocking; the periodic net catches it.
 func (rf *Reflector) Hint(refs ...entity.Ref) {

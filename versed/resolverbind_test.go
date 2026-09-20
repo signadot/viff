@@ -25,11 +25,10 @@ func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef s
 	// binding, so they install the one they name.
 	if resolverRef != "" {
 		ref, err := entity.ParseAddr(resolverRef)
-		segs := ref.Segs()
-		if err != nil || len(segs) != 4 || segs[0] != entity.VerseRoot || segs[1] != "resolvers" {
-			t.Fatalf("askingRun: %q is not verse.resolvers.<kind>.<name>: %v", resolverRef, err)
+		if err != nil || !resolver.IsBinding(ref) {
+			t.Fatalf("askingRun: %q is not verse.resolvers.<name>: %v", resolverRef, err)
 		}
-		installResolver(t, ts.URL, `{name: `+segs[3]+`, kind: `+segs[2]+
+		installResolver(t, ts.URL, `{name: `+ref.Name()+
 			`, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
 	}
 	spawn := postTony(t, ts.URL+"/tasks", api.Spawn{ID: id, Prompt: "true", Resolver: resolverRef})
@@ -49,7 +48,7 @@ func TestASpawnBindsItsResolver(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const ref = "verse.resolvers.security.security-review"
+	const ref = "verse.resolvers.security-review"
 
 	askingRun(t, srv, ts, "watched", ref)
 	qid := waitQuestion(t, srv, "watched")
@@ -95,9 +94,7 @@ func TestASpawnWithNoResolverBindsNothing(t *testing.T) {
 	if q := question(t, srv, qid); q["resolver"] != nil {
 		t.Fatalf("an unbound question carries %v as its owner: %+v", q["resolver"], q)
 	}
-	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-		return ref.ChildOf(entity.VerseRoot, resolver.System, resolver.InstanceKind)
-	}) {
+	for _, ent := range entity.Below(srv.Store, resolver.IsInstance, 1, entity.VerseRoot, resolver.InstanceSystem) {
 		t.Fatalf("an unbound spawn minted %s", ent.Ref)
 	}
 }
@@ -108,7 +105,7 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const ref = "verse.resolvers.security.security-review"
+	const ref = "verse.resolvers.security-review"
 
 	askingRun(t, srv, ts, "watched", ref)
 	askingRun(t, srv, ts, "unwatched", "")
@@ -142,7 +139,7 @@ func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
 	pr(t, srv, "1", "payments")
 
 	resp := postTony(t, ts.URL+"/tasks", api.Spawn{
-		ID: "run-1", Prompt: "true", Subject: `change.pr."1"`, Resolver: "verse.resolvers.security.ghost",
+		ID: "run-1", Prompt: "true", Subject: `change.pr."1"`, Resolver: "verse.resolvers.ghost",
 	})
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
@@ -154,7 +151,7 @@ func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
 	}
 	// And the standing layer still owns what it covers, for a spawn that names nobody.
 	spawnFor(t, ts, "run-2", `change.pr."1"`, "")
-	if got := waitOwned(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "verse.resolvers.security.payments-review" {
+	if got := waitOwned(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "verse.resolvers.payments-review" {
 		t.Fatalf("the standing layer does not own an unnamed run: %v", got)
 	}
 }

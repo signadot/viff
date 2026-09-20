@@ -32,8 +32,8 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// System is the entity slice a Slack source owns and is the single writer of.
-const System = "slack"
+// Root is the entity slice a Slack source owns and is the single writer of.
+const Root = "slack"
 
 // Defaults for what a pass reads. Depth is small on purpose: the window is what a charter
 // reacts to, and every message in it is re-read on every pass.
@@ -62,11 +62,11 @@ type Config struct {
 	Users bool
 	// Channels narrows to these channel names or ids; empty is every channel the bot is in.
 	Channels []string
-	// System is the slice this source writes, empty meaning System. The operator's to choose,
+	// Root is the slice this source writes, empty meaning the package's Root. The operator's to choose,
 	// because more than one source gets deployed and the partition between them is drawn by
-	// whoever runs them; two systems are disjoint on the first segment, so a deployment that
+	// whoever runs them; two roots are disjoint on the first segment, so a deployment that
 	// wants no coordination owes nobody a disjointness proof.
-	System string
+	Root string
 
 	// Base overrides the Web API root (a test server). HTTPClient overrides the transport.
 	Base       string
@@ -78,7 +78,7 @@ type Config struct {
 // Slack is the Source.
 type Slack struct {
 	api       *api
-	system    string
+	root      string
 	workspace string
 	url       string // the workspace's Slack url, for message permalinks
 	depth     int
@@ -105,7 +105,7 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	}
 	s := &Slack{
 		api:       newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
-		system:    cfg.System,
+		root:      cfg.Root,
 		workspace: cfg.Workspace,
 		depth:     cfg.Depth,
 		threads:   cfg.Threads,
@@ -113,12 +113,12 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 		users:     cfg.Users,
 		log:       cfg.Log,
 	}
-	if s.system == "" {
-		s.system = System
+	if s.root == "" {
+		s.root = Root
 	}
-	if strings.ContainsAny(s.system, ":/") {
-		return nil, fmt.Errorf("slack: system %q may not contain : or / — it is a segment of "+
-			"the address (verse.sources.<system>.<name>) and of the route that serves it", s.system)
+	if strings.ContainsAny(s.root, ":/.") {
+		return nil, fmt.Errorf("slack: root %q may not contain : / or . — it is the first "+
+			"segment of every address this source writes", s.root)
 	}
 	if s.depth <= 0 {
 		s.depth = DefaultDepth
@@ -151,8 +151,8 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	return s, nil
 }
 
-// System is the owned slice.
-func (s *Slack) System() string { return s.system }
+// Root is the owned slice.
+func (s *Slack) Root() string { return s.root }
 
 // Owns is the ownership claim an install proves disjointness with.
 //
@@ -166,7 +166,7 @@ func (s *Slack) Owns() []source.Own {
 
 // place is the address segments this workspace's entities stand under, followed by more.
 func (s *Slack) place(more ...string) []string {
-	return append([]string{s.system, s.workspace}, more...)
+	return append([]string{s.root, s.workspace}, more...)
 }
 
 // WorkspaceRef is the place this source's entities stand under: a reconcile of it reconciles
@@ -176,10 +176,10 @@ func (s *Slack) WorkspaceRef() entity.Ref { return entity.RefAt(s.place()...) }
 // ChannelRef is the ref that targets one channel — what a hint names, and what a targeted
 // reconcile narrows to.
 func ChannelRef(workspace, channel string) entity.Ref {
-	return entity.RefAt(System, workspace, "channel", channel)
+	return entity.RefAt(Root, workspace, "channel", channel)
 }
 
-// ChannelRef is the same ref in THIS source's system, which is what a delivery endpoint must
+// ChannelRef is the same ref in THIS source's root, which is what a delivery endpoint must
 // hint: a hint at `slack.x.channel.y` reaches nothing when the source writes `chat.x.channel.y`.
 func (s *Slack) ChannelRef(channel string) entity.Ref {
 	return entity.RefAt(s.place("channel", channel)...)
@@ -227,7 +227,7 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (source.Reflection,
 // cut apart and every reader had to know the punctuation.
 func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
 	segs := ref.Segs()
-	if len(segs) < 2 || segs[0] != s.system {
+	if len(segs) < 2 || segs[0] != s.root {
 		return "", true // no place of this source's: a full pass is never a wrong answer
 	}
 	if segs[1] != s.workspace {

@@ -38,7 +38,10 @@ func (s *Server) scheduleRows(store entity.Store, keep func(api.ScheduleRow) boo
 			From:  entity.Str(ent.Payload, schedule.FromField),
 			Next:  entity.Str(ent.Payload, schedule.NextField),
 			At:    entity.Str(ent.Payload, schedule.AtField),
-			By:    entity.Str(ent.Payload, schedule.ByField),
+		}
+		// Whose it is, and so who its ticks are written as: its record's to say.
+		if who, err := entity.ActsAs(s.Store, ent.Ref); err == nil {
+			row.By = who
 		}
 		// The standing tick is the latest; a backfill beside it is older by construction.
 		keys := schedule.Standing(ent.Payload)

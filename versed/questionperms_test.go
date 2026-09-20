@@ -21,7 +21,7 @@ import (
 func withoutTheDocketDefault(t *testing.T, srv *Server) {
 	t.Helper()
 	questions := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
-	if err := entity.SetDefault(srv.Store, questions, entity.Levels{entity.Read: {entity.Everyone}}); err != nil {
+	if err := entity.SetChildGrants(srv.Store, questions, entity.Levels{entity.Read: {entity.Everyone}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(srv.Store, questions, nil); err != nil {
@@ -82,7 +82,7 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the task's owner could not answer: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "alice@example.com" {
+	if q := settledQuestion(t, srv, qid); q["by"] != "user:alice@example.com" {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }
@@ -100,7 +100,7 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	binding := "verse.resolvers.security.payments-review"
+	binding := "verse.resolvers.payments-review"
 
 	// The record is posed with the default's `read`, and the binding's `read-write` lands on
 	// the same line a moment later.
@@ -188,7 +188,7 @@ func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the task's owner could not answer: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "alice@example.com" {
+	if q := settledQuestion(t, srv, qid); q["by"] != "user:alice@example.com" {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }
@@ -247,7 +247,7 @@ func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the charter's owner could not answer: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "alice@example.com" || q["status"] != mirror.QuestionAnswered {
+	if q := settledQuestion(t, srv, qid); q["by"] != "user:alice@example.com" || q["status"] != mirror.QuestionAnswered {
 		t.Fatalf("settled: %+v", q)
 	}
 }

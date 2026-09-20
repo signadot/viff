@@ -93,6 +93,15 @@ func (c causal) Write(w entity.Write) (bool, int64, error) {
 	if committed && rev != 0 {
 		c.e.recordCause(rev, c.chain, c.parent)
 	}
+	// WHAT THE SYSTEM'S RULE MAKES IN VERSE'S HALF CARRIES THE SYSTEM'S RECORD: the calendar the
+	// base charter derives stands beneath a row that holds `child-owner` out to everyone at any
+	// depth, and with no record of its own that line reaches inside it
+	// (entity.OwnedForSystem).
+	if committed && err == nil && w.Value != nil && w.At.Access == "" && w.At.Ref.Reserved() {
+		if oerr := entity.OwnedForSystem(c.Store, w.At.Ref, w.Principal); oerr != nil {
+			c.e.logger.Warn("what the system's rule made has no record of its own", "at", w.At.Ref.String(), "err", oerr)
+		}
+	}
 	return committed, rev, err
 }
 

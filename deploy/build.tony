@@ -120,6 +120,10 @@ build:
     linearSecretKey: ""
     githubSecretKey: ""
     coderunnerSecretKey: ""
+    # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
+    # "" is the open verse. See the patch below for how it reaches versed, and what changing it
+    # on a running verse takes.
+    permsAdmins: ""
     # The model id, when the driver's default (gpt-4o) is not what the credential routes to.
     # A Portkey virtual key resolves to ONE provider, so the model has to be one that provider
     # serves — an Anthropic-backed key asked for gpt-4o fails on every call, and the credential
@@ -130,7 +134,7 @@ build:
 
     # The coderunner: a place code work RUNS (its own image, bubblewrap containment, a
     # workspace and a process per task). Off by default and independent of everything above —
-    # deploying it does not install it, which is `verse runner add pool:coderunner
+    # deploying it does not install it, which is `verse runner add coderunner
     # http://coderunner:9802` and is somebody's verb for the reason a source's is.
     #
     # Its own image because the two are sized by different things: the runtime image is thin
@@ -380,6 +384,31 @@ build:
     patch:
       imagePullSecrets:
       - name: $[imagePullSecret]
+
+  # WHO MAY TAKE A TOP-LEVEL PLACE, as an env because a pod has no verse.tony: comma-separated
+  # grantees, seeded into the `admin` group and held `owner` out to beneath the root. Empty is
+  # the open verse — anybody takes one — which is what a dogfood deployment runs as.
+  #
+  # IT SEEDS the admin group, once. After that membership is changed live, by
+  # `user:admin@verse` with `verse group add admin …`, as any group's is — so editing this on a
+  # running verse changes nothing, by design, and versed does not call a list that differs from
+  # the group drift. What it does say at every start is when the FORM of its top (open, or held
+  # out to the admin group) is not what this says. `--reseed-perms`, or VERSE_RESEED_PERMS=true
+  # for one roll and unset after, rewrites the top from here — live membership edits included.
+  - if: '.[ permsAdmins != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              env: !key(name)
+              - name: VERSE_PERMS_ADMINS
+                value: $[permsAdmins]
 
   - if: '.[ llmModel != "" ]'
     match:
@@ -698,7 +727,7 @@ build:
               # Serve the dial-in broker, so `--runner broker` puts a task in front of a person
               # — a laptop agent, or somebody answering through `verse task do`. It is a NAME a
               # spawn may use and not where unnamed work goes: this verse goes on running its
-              # own spawns, and `verse.runners.pool.coderunner` goes on running the charters'.
+              # own spawns, and `verse.runners.coderunner` goes on running the charters'.
               - --broker
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
@@ -839,7 +868,7 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/slack/$[slackSourceName]/hint"
+                value: "http://verse:9797/sources/$[slackSourceName]/hint"
 
   # The workspace label, when the operator would rather name it than take the team's own name.
   - if: '.[ slackSource && slackWorkspace != "" ]'
@@ -877,7 +906,7 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/linear/$[linearSourceName]/hint"
+                value: "http://verse:9797/sources/$[linearSourceName]/hint"
 
   - if: '.[githubSource]'
     match:
@@ -893,7 +922,7 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/github/$[githubSourceName]/hint"
+                value: "http://verse:9797/sources/$[githubSourceName]/hint"
 
   # The command is restated whole rather than appended to, as the Linear and Slack ones are: a
   # patch that inserted would have to know what it was inserting into, and two of them would

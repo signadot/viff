@@ -12,18 +12,14 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed sources live: `verse.sources.<system>.<name>`.
-//
-// The first segment after the system is the SLICE REFLECTED, unlike a runner's kind, which is
-// the operator's own category (pool, host, broker). The difference is not cosmetic: a runner's
-// kind means nothing to verse, while a source's system is already answering a question verse
-// asks — who writes `git:*` — so putting it in the address makes the collision visible in a
-// listing rather than only inside the payload.
+// System is where installed sources live: `verse.sources.<name>`. A source's name is the whole
+// of its address. WHAT it reflects is on the registration, not in it: `root`, the root segment
+// of the tree the source writes (`git`, `github`), and `owns`, the places it claims there.
 const System = "sources"
 
 // Ref addresses an installed source.
-func Ref(system, name string) entity.Ref {
-	return entity.VerseRef(System, system, name)
+func Ref(name string) entity.Ref {
+	return entity.VerseRef(System, name)
 }
 
 // Entity is one installed source: an address, somewhere to reach it, and what it claims.
@@ -40,9 +36,13 @@ func Ref(system, name string) entity.Ref {
 // field PRESENT says which it is, and refusing `dir` would delete a working, zero-deployment
 // path to buy a symmetry nobody reads.
 type Entity struct {
-	// Name and System together are the address.
-	Name   string `tony:"field=name"`
-	System string `tony:"field=system"`
+	// Name is the address: `verse.sources.<name>`.
+	Name string `tony:"field=name"`
+	// Root is the root segment of the tree this source writes — `git`, `github`, `linear` —
+	// which is also which connector it is: an install checks it against what the source says
+	// of itself, so a `github` registration pointed at a git source is refused while somebody
+	// is present to hear it.
+	Root string `tony:"field=root"`
 
 	// Exactly one of these three. See the type doc.
 	URL    string `tony:"field=url,omitzero"`
@@ -143,18 +143,17 @@ func (f *Failure) FromTonyIR(node *ir.Node) error {
 // one that can change on its own.
 func (e Entity) Check() error {
 	if e.Name == "" {
-		return fmt.Errorf("source: name is required — it is half the address")
+		return fmt.Errorf("source: name is required — it is the address")
 	}
-	if e.System == "" {
-		return fmt.Errorf("source %q: system is required — it is the other half of the address, "+
-			"and it is the SLICE this source reflects and is the single writer of", e.Name)
+	if e.Root == "" {
+		return fmt.Errorf("source %q: root is required — it is the root of the tree this source "+
+			"writes and is the single writer of (git, github, linear), and which connector it "+
+			"is", e.Name)
 	}
-	// The system is the kind segment of `verse.sources.<system>.<name>` and a segment of the route
-	// that serves it, so neither punctuation survives. The name is the id, which may carry a
-	// colon (ParseRef splits three ways and the rest is the id) but not a slash.
-	if strings.ContainsAny(e.System, ":/") {
-		return fmt.Errorf("source %q: system %q may not contain : or / — it is a segment of the "+
-			"address (verse.sources.<system>.<name>) and of the route that serves it", e.Name, e.System)
+	// A root is one segment of an address, so neither punctuation survives.
+	if strings.ContainsAny(e.Root, ":/.") {
+		return fmt.Errorf("source %q: root %q may not contain : / or . — it is one segment of "+
+			"an address", e.Name, e.Root)
 	}
 	if strings.Contains(e.Name, "/") {
 		return fmt.Errorf("source %q: a name may not contain / — it is a path segment on the "+
@@ -165,7 +164,7 @@ func (e Entity) Check() error {
 	}
 	// Every claim parses, HERE, where the operator is present. A claim that failed to parse at
 	// install would leave a registration whose ownership verse cannot read — so it could be
-	// proved disjoint from nothing, and every later install in its system would be refused for
+	// proved disjoint from nothing, and every later install in its root would be refused for
 	// a reason belonging to this one.
 	if _, err := ParseOwns(e.Owns); err != nil {
 		return fmt.Errorf("source %q: %w", e.Name, err)
@@ -228,7 +227,7 @@ func (e Entity) checkReach() error {
 // and a dropped `scope` silently reflects into baseline, where everybody sees it.
 func CheckFields(node *ir.Node) error {
 	known := []string{
-		"name", "system", "url", "dial-in", "dir", "owns", "scope",
+		"name", "root", "url", "dial-in", "dir", "owns", "scope",
 		"lastReflect", "lastError",
 	}
 	node = codec.Unwrap(node)
@@ -279,20 +278,15 @@ func ownsAreDocuments(node *ir.Node) error {
 	return nil
 }
 
-// Find reads one installed source by the address a CLI argument names, accepting it as it is
-// stored (`verse.sources.<system>.<name>`) or as the bare pair below it (`git.laptop`) — an
-// operator reading `verse data` and one typing `verse source show` should not have to know two
-// spellings of one thing. The middle form is refused; trimAddress says why.
-//
-// ONE GRAMMAR, TWO DEPTHS. The string is read as the kinded path it is, and its depth says
-// which of the two spellings arrived. Trimming a prefix by hand and splitting what is left
-// would be a second address grammar living beside the real one.
+// Find reads one installed source by what a CLI argument names: its address as it is stored and
+// listed (`verse.sources.laptop`), or its name (`laptop`) — an operator reading `verse data` and
+// one typing `verse source show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
-	parts, ok := trimAddress(ref)
+	name, ok := NameOf(ref)
 	if !ok {
 		return Entity{}, false
 	}
-	e, ok, err := r.Get(Ref(parts[0], parts[1]))
+	e, ok, err := r.Get(Ref(name))
 	if err != nil || !ok {
 		return Entity{}, false
 	}
@@ -315,7 +309,8 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 	// At the subtree — see runner.List for why a List(pred) is the wrong read here: it is a
 	// Match on the root, so listing the sources read the whole verse, sources' own output
 	// included.
-	ents, err := entity.ListAtErr(r, []string{entity.VerseRoot, System}, entity.Depth+1, IsRegistration)
+	registry := []string{entity.VerseRoot, System}
+	ents, err := entity.ListAtErr(r, registry, len(registry)+1, IsRegistration)
 	if err != nil {
 		return nil, err
 	}
@@ -327,35 +322,27 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].System != out[j].System {
-			return out[i].System < out[j].System
-		}
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
 }
 
 // IsRegistration reports whether an address is an installed source's — the namespace's own
-// question, since the reserved root rather than the system is what makes it verse's.
+// question, since the reserved root rather than the registry's name is what makes it verse's.
 func IsRegistration(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
 
-// trimAddress takes the two segments that name one of these, from either spelling an operator
-// has in front of them: the whole address as it is listed and stored
-// (`verse.sources.<system>.<name>`), or the bare pair typed on a command line (`git.laptop`).
-//
-// The middle form — the address without its reserved root — is deliberately NOT accepted. It
-// was the whole spelling before verse's own half of the tree had a name, and keeping it would
-// leave two ways to say one address, which is the mush the reserved root exists to end.
-func trimAddress(ref string) ([2]string, bool) {
+// NameOf is the source's name from either spelling: the whole address as it is listed and
+// stored, or the name alone. Anything else names no source.
+func NameOf(ref string) (string, bool) {
 	segs, err := entity.PathSegs(ref)
 	if err != nil {
-		return [2]string{}, false
+		return "", false
 	}
-	if len(segs) == entity.Depth+1 && segs[0] == entity.VerseRoot && segs[1] == System {
-		segs = segs[2:]
+	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, System) {
+		return at.Name(), at.Name() != ""
 	}
-	if len(segs) != 2 || segs[0] == "" || segs[1] == "" {
-		return [2]string{}, false
+	if len(segs) != 1 || segs[0] == "" {
+		return "", false
 	}
-	return [2]string{segs[0], segs[1]}, true
+	return segs[0], true
 }

@@ -216,7 +216,7 @@ func TestPathsWalkTheAnswerByThePath(t *testing.T) {
 		{"demo.*", []string{`demo.pr`, `demo.pr."1"`, `demo.pr."1".stage`, `demo.pr."2"`, `demo.pr."2".stage`, `demo.pr."a.b"`, `demo.pr."a.b".stage`}},
 	} {
 		var got []string
-		for _, addr := range read(t, fixture(), tc.path).Paths(at(t, tc.path), 0) {
+		for _, addr := range read(t, fixture(), tc.path).Paths(at(t, tc.path), Unbounded) {
 			got = append(got, addr.KPath())
 		}
 		sort.Strings(got)
@@ -258,7 +258,7 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 	}
 	// And every address in the answer comes back, once each.
 	var got []string
-	for _, addr := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), 0) {
+	for _, addr := range read(t, fixture(), "demo.pr..").Paths(at(t, "demo.pr.."), Unbounded) {
 		got = append(got, addr.KPath())
 	}
 	sort.Strings(got)
@@ -312,7 +312,7 @@ func TestPathsReachIntoArrays(t *testing.T) {
 	}}
 
 	var got []string
-	for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), 0) {
+	for _, addr := range read(t, ents, "merge.proposal.X").Paths(at(t, "merge.proposal.X"), Unbounded) {
 		got = append(got, addr.KPath())
 	}
 	sort.Strings(got)
@@ -340,13 +340,13 @@ func TestPathsReachIntoArrays(t *testing.T) {
 	}
 
 	// AN ACCESS IS A STEP, so --depth counts it as one and reads in the units a reader types:
-	// `merge proposal X votes` is four steps, `merge proposal X votes '(scott)'` is five.
+	// one level beneath `merge proposal X` is its fields, two is their elements.
 	for _, tc := range []struct {
 		depth int
 		want  []string
 	}{
-		{4, []string{`merge.proposal.X.tags`, `merge.proposal.X.votes`}},
-		{5, []string{
+		{1, []string{`merge.proposal.X.tags`, `merge.proposal.X.votes`}},
+		{2, []string{
 			`merge.proposal.X.tags`,
 			`merge.proposal.X.tags[0]`,
 			`merge.proposal.X.tags[1]`,

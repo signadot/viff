@@ -13,7 +13,7 @@
 #
 # Install it once the pods are up (the name must match `githubSourceName`, because the hint url
 # below carries it):
-#   verse source add github.repos http://github-source:9801
+#   verse source add repos http://github-source:9801 -root github
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,9 +24,9 @@ metadata:
     source: github
 spec:
   replicas: 1
-  # Recreate: one writer of github:*, for the reason the git source is one. Two of these may
-  # stand side by side, but only over disjoint repositories — or in systems of their own, which
-  # is what `-system` is for.
+  # Recreate: one writer of github.*, for the reason the git source is one. Two of these may
+  # stand side by side, but only over disjoint repositories — or under roots of their own, which
+  # is what `-root` is for.
   strategy:
     type: Recreate
   selector:
@@ -65,7 +65,7 @@ spec:
           containerPort: 9802
         env:
         - name: VERSE_HINT_URL
-          value: http://verse:9797/sources/github/repos/hint
+          value: http://verse:9797/sources/repos/hint
         envFrom:
         - secretRef:
             name: verse-github

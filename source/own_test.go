@@ -337,12 +337,12 @@ func mustRef(t *testing.T, s string) entity.Ref {
 // way it breaks is one of them forgetting.
 func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 	g := source.NewGit()
-	if err := g.SetSystem("mirror"); err != nil {
+	if err := g.SetRoot("mirror"); err != nil {
 		t.Fatal(err)
 	}
 	g.AddRepo("verse", t.TempDir())
-	if g.System() != "mirror" {
-		t.Fatalf("git System() = %q", g.System())
+	if g.Root() != "mirror" {
+		t.Fatalf("git System() = %q", g.Root())
 	}
 	for _, o := range g.Owns() {
 		if !strings.HasPrefix(o.At, "mirror.") {
@@ -362,7 +362,7 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 	}
 	// The punctuation the address is built from is refused, as it is at install.
 	for _, bad := range []string{"a:b", "a/b"} {
-		if err := source.NewGit().SetSystem(bad); err == nil {
+		if err := source.NewGit().SetRoot(bad); err == nil {
 			t.Fatalf("system %q should be refused", bad)
 		}
 	}

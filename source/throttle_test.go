@@ -19,7 +19,7 @@ type counted struct {
 	owns  []source.Own
 }
 
-func (c *counted) System() string { return "demo" }
+func (c *counted) Root() string { return "demo" }
 
 func (c *counted) Owns() []source.Own { return c.owns }
 
@@ -128,8 +128,8 @@ func TestThrottleKeepsTheOwnershipClaim(t *testing.T) {
 	src := &counted{owns: []source.Own{{At: "demo.*.acme/*"}}}
 	th := source.Throttle(src, time.Minute)
 	d := source.Describe(th)
-	if d.System != "demo" {
-		t.Fatalf("system %q, want demo", d.System)
+	if d.Root != "demo" {
+		t.Fatalf("system %q, want demo", d.Root)
 	}
 	if len(d.Owns) != 1 || d.Owns[0].At != "demo.*.acme/*" {
 		t.Fatalf("owns %v, want the wrapped source's claim", d.Owns)

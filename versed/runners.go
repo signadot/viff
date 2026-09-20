@@ -15,7 +15,7 @@ import (
 
 // ── runners: where work runs ─────────────────────────────────────────────────
 //
-// A runner is installed at `runners:<kind>:<name>` carrying a url, and a spawn names one. It
+// A runner is installed at `verse.runners.<name>` carrying a url, and a spawn names one. It
 // is not a provider: a provider picks the DOER — which driver, under which frame, with which
 // grant — and a runner is WHERE the work runs. The two are orthogonal, so folding runners into
 // provider selection would make one selection answer two questions and force a doer entity per
@@ -47,7 +47,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out := map[string]any{"at": runner.Ref(e.Kind, e.Name).String()}
+	out := map[string]any{"at": runner.Ref(e.Name).String()}
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW — a broker's
 	// worker leg is the case worth catching — while a url nothing answers is the ordinary
@@ -71,12 +71,12 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			out["reach"] = reach.String()
 		}
 	}
-	body := entity.Obj{"name": e.Name, "kind": e.Kind, "url": e.URL}
+	body := entity.Obj{"name": e.Name, "url": e.URL}
 	if e.Identity != "" {
 		body["identity"] = e.Identity
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
-		At: runner.Ref(e.Kind, e.Name).At(), Value: body.Payload(),
+		At: runner.Ref(e.Name).At(), Value: body.Payload(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -94,9 +94,9 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	// over the same rows.
 	instances := taskRows(store)
 	for _, e := range ents {
-		ref := runner.Ref(e.Kind, e.Name)
+		ref := runner.Ref(e.Name)
 		rec := map[string]any{
-			"at": ref.String(), "name": e.Name, "kind": e.Kind, "url": e.URL,
+			"at": ref.String(), "name": e.Name, "url": e.URL,
 		}
 		for k, v := range runnerCounts(instances, ref, e.URL) {
 			rec[k] = v
@@ -125,7 +125,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
-	ref := runner.Ref(r.PathValue("kind"), r.PathValue("name"))
+	ref := runner.Ref(r.PathValue("name"))
 	e, ok, err := s.scopedStore(r).Get(ref)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -142,15 +142,15 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 // --cancel and --leave, because the case removal has to be honest about is the runner that is
 // already gone — and this says so beforehand rather than in the report afterwards.
 func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	e, ok := runner.Find(s.scopedStore(r), entity.JoinSegs([]string{kind, name}))
+	name := r.PathValue("name")
+	e, ok := runner.Find(s.scopedStore(r), entity.JoinSegs([]string{name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 	reach, why := runner.Probe(e.URL)
 	out := map[string]any{
-		"at": runner.Ref(kind, name).String(), "url": e.URL, "reach": reach.String(),
+		"at": runner.Ref(name).String(), "url": e.URL, "reach": reach.String(),
 	}
 	if why != nil {
 		out["why"] = why.Error()
@@ -173,9 +173,9 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 // drain, and a refusal with no way to satisfy it would be a trap.
 func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	ref := runner.Ref(kind, name)
-	e, ok := runner.Find(store, entity.JoinSegs([]string{kind, name}))
+	name := r.PathValue("name")
+	ref := runner.Ref(name)
+	e, ok := runner.Find(store, entity.JoinSegs([]string{name}))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -195,6 +195,11 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 				"stamped on them", len(live), ref), http.StatusConflict)
 		return
 	}
+	// Asked before anything is cancelled, as a source's removal is asked before it stops: the
+	// delete below is the owner's act and is the LAST write here.
+	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.OwnerLevel, ref, "removing it")) {
+		return
+	}
 	out := map[string]any{"removed": ref.String()}
 	if cancelling && len(live) > 0 {
 		cancelled, unreachable := cancelOn(e.URL, live, why)
@@ -209,6 +214,9 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
+		if refused(w, err) {
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -346,7 +354,7 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 		installed := runner.List(store)
 		names := make([]string, 0, len(installed))
 		for _, i := range installed {
-			names = append(names, runner.Ref(i.Kind, i.Name).String())
+			names = append(names, runner.Ref(i.Name).String())
 		}
 		if s.broker != nil {
 			names = append(names, brokerName)
@@ -358,5 +366,5 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 		return nil, "", fmt.Errorf("no runner %q (%s) — a spawn naming a runner that is not "+
 			"installed is refused rather than run somewhere else", name, have)
 	}
-	return runner.HTTP(e.URL), runner.Ref(e.Kind, e.Name).String(), nil
+	return runner.HTTP(e.URL), runner.Ref(e.Name).String(), nil
 }

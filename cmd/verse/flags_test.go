@@ -415,7 +415,7 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 		{"flow", "resume", "demo", "seq", "1"},
 		{"trigger", "show", "a", "b"},
 		{"stratum", "remove", "a", "b"},
-		{"runner", "show", "pool", "code"},
+		{"runner", "show", "code"},
 		{"source", "show", "git", "verse"},
 		{"task", "get", "run-1", "extra"},
 	} {

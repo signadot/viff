@@ -20,6 +20,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -113,7 +114,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	// Start it and WAIT until it is serving before the trigger/metadata below, so a
 	// validator that fires the instant a file lands can actually read it, rather than
 	// racing an unmounted controller and reporting "file not found".
-	contentMount := entity.MountKPath(source.FederationSystem, contentKind)
+	contentMount := entity.MountKPath(source.FederationRoot, contentKind)
 	go func() {
 		err := libctl.RunController(ctx, &libctl.ControllerConfig{
 			DocdAddr:   mountAddr,
@@ -129,6 +130,14 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("connect: content controller: %w", err)
 	}
 
+	// THE TREE'S PLACE IS TAKEN BEFORE ANYTHING IS WRITTEN IN IT. The metadata goes to docd
+	// directly, beneath verse's check, so nothing records whose it is — and a node with no
+	// record is its nearest owner's, not this session's validator's to mark. Taken ahead, in
+	// the scope, the place is this session's principal's, and the trigger below acts as them.
+	if err := takeStatusPlace(statusKind); err != nil {
+		return err
+	}
+
 	// Now install the scoped trigger (its engine starts observing) and reflect
 	// metadata below; a validator fires per file and can read content immediately.
 	if err := cfg.installTrigger(scope, statusKind); err != nil {
@@ -136,7 +145,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	fmt.Fprintf(cc.Out, "connect %s → verse, scope %q: %s:%s:* (metadata) + %s:%s:* (content on demand), validator per file. ctrl-c to stop.\n",
-		root, scope, source.FederationSystem, statusKind, source.FederationSystem, contentKind)
+		root, scope, source.FederationRoot, statusKind, source.FederationRoot, contentKind)
 
 	// A generated (nonce) scope is ephemeral to this session: drop it on exit so its
 	// overlay + engine don't leak. A user-named scope is left for reuse.
@@ -168,7 +177,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 	}
 	// Baseline /entity (no ?scope) → versed's baseline store → the content mount.
 	u := "http://" + g.Addr + "/entity?" + url.Values{
-		"at": {entity.JoinSegs([]string{source.FederationSystem, contentKind, probe})},
+		"at": {entity.JoinSegs([]string{source.FederationRoot, contentKind, probe})},
 	}.Encode()
 	deadline := time.After(30 * time.Second)
 	for {
@@ -205,7 +214,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 				} else {
 					created++
 				}
-				ref := entity.RefAt(source.FederationSystem, statusKind, rel)
+				ref := entity.RefAt(source.FederationRoot, statusKind, rel)
 				if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
 					fmt.Fprintf(cc.Err, "connect: publishing %s: %v\n", ref, err)
 				}
@@ -215,7 +224,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 		for rel := range prev {
 			if _, ok := cur[rel]; !ok {
 				removed++
-				ref := entity.RefAt(source.FederationSystem, statusKind, rel)
+				ref := entity.RefAt(source.FederationRoot, statusKind, rel)
 				if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
 					fmt.Fprintf(cc.Err, "connect: removing %s: %v\n", ref, err)
 				}
@@ -262,7 +271,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			// than on the state. A match is asked only of state now, so the outstanding-ness
 			// has to be written down, which is what `validated` is.
 			Subject: trigger.Match{
-				"path": []*ir.Node{ir.FromString(source.FederationSystem), ir.FromString(statusKind), ir.FromString("*")},
+				"path": []*ir.Node{ir.FromString(source.FederationRoot), ir.FromString(statusKind), ir.FromString("*")},
 				// ABSENCE, built as a node rather than as a Go map, and both halves of
 				// that are load-bearing.
 				//
@@ -323,6 +332,23 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 	if resp.StatusCode != http.StatusCreated {
 		msg, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("connect: install trigger: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	return nil
+}
+
+// takeStatusPlace takes the place the tree's metadata is federated into for whoever is
+// connecting, in the session's scope. A place is taken where nothing stands, so this comes
+// before the first file is published; a named scope connected again finds the place its own.
+func takeStatusPlace(statusKind string) error {
+	at := entity.RefAt(source.FederationRoot, statusKind)
+	resp, err := httpPut("/perms", api.PermsEdit{At: at.String()}) // urlFor folds ?scope=<scope>
+	if err != nil {
+		return fmt.Errorf("connect: taking %s: %w", at, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("connect: taking %s: %s: %s", at, resp.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }
@@ -405,7 +431,7 @@ func disconnectCmd() *cli.Command {
 
 // removeLocalEntities deletes every local:* entity in the current (scope) view.
 func removeLocalEntities(cc *cli.Context) error {
-	ents, err := stateAt(source.FederationSystem + ".*.*")
+	ents, err := stateAt(source.FederationRoot + ".*.*")
 	if err != nil {
 		return fmt.Errorf("disconnect: %w", err)
 	}

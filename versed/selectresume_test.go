@@ -95,7 +95,7 @@ func TestARestartResumesASelection(t *testing.T) {
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()
 	// The pick, cast from the docket exactly as `verse gate <id> --answer claude --as scott` does.
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "claude", By: "scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "claude", By: tester})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the resumed selection = %s, want 204", resp.Status)
@@ -149,7 +149,7 @@ func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	installResolver(t, ts.URL, `{name: strict, kind: security, byRef: true, exclusive: true,`+
+	installResolver(t, ts.URL, `{name: strict, byRef: true, exclusive: true,`+
 		` deadline: {within: "4h"}, method: {driver: url, url: "https://x"}}`).Body.Close()
 
 	rule := func(sel string, need int) string {
@@ -160,7 +160,7 @@ func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
     spawn:
       prompt: "review $subject"
       grant: read-only
-      resolver: verse.resolvers.security.strict
+      resolver: verse.resolvers.strict
       provider: {eligible: [gpt, claude], select: ` + sel + `, need: ` + itoa(int64(need)) + `}
 `
 	}

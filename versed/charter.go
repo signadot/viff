@@ -377,7 +377,14 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 		s.charterNotHere(w, r, name, func() { http.NotFound(w, r) })
 		return
 	}
-	if eng.RemoveTrigger(name) {
+	// AS WHOEVER ASKED. The engine removes through its own store, which is the system's, so it is
+	// told who is asking and refuses for them (trigger.Engine.MayRemoveTrigger): a removal
+	// nobody checked is the system deleting somebody's rule, its owner record with it, and
+	// leaving the name free for the stranger who asked.
+	who := entity.PrincipalOf(s.scopedStore(r))
+	if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+		return
+	} else if removed {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -398,9 +405,11 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	switch err := eng.RemoveStratum(name); {
+	switch err := eng.RemoveStratumAs(who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, entity.ErrForbidden):
+		http.Error(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, trigger.ErrNoStratum):
 		// Not in this scope's charter. A scope owns what it creates (owns.go): an inherited
 		// rule is baseline's to remove, and is said to be, rather than "not found" over a rule
@@ -516,6 +525,13 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 	}
 	tx := &charterTx{s: s, store: store, scope: scope}
 	installer := entity.PrincipalOf(store)
+	// AN INSTALL NAMES ITS INSTALLER. The engine persists a rule through its own store, which
+	// is the system's, and an empty name there means the engine's: a charter installed by
+	// nobody would be installed by the system, and fire as it. The door refuses the request
+	// (Server.principals); this refuses the call, whoever comes to make it.
+	if installer == "" {
+		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
+	}
 	for _, g := range groups {
 		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
 		// package writes beneath its address, and what it writes is owned through the address
@@ -795,12 +811,20 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Stratum(st.Name)
+	// WHOSE it stood as, kept beside what stood: see rule.
+	whose, err := entity.SnapshotRecord(tx.store, eng.StratumRef(st.Name))
+	if err != nil {
+		return http.StatusServiceUnavailable, err
+	}
 	if err := eng.InstallStratumAs(tx.as(), st); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
 		if had {
-			return eng.InstallStratum(old)
+			if err := eng.RestoreStratum(old); err != nil {
+				return err
+			}
+			return entity.RestoreRecord(tx.store, whose)
 		}
 		return eng.RemoveStratum(st.Name)
 	})
@@ -825,19 +849,36 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	old, had := eng.Rule(t.Name)
-	// And WHO stood behind it: putting a rule back as the system store would hand its record,
-	// and every firing of it, to the system rather than to whoever installed it.
-	oldBy := eng.InstalledBy(t.Name)
+	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
+	// may move that — the system takes a name it installs at — so an undo that puts back content
+	// alone leaves a person's rule standing under the system's record, firing as the system.
+	// The record is kept beside the content and both go back.
+	whose, err := entity.SnapshotRecord(tx.store, eng.RuleRef(t.Name))
+	if err != nil {
+		return http.StatusServiceUnavailable, err
+	}
+	before, err := entity.ActsAs(tx.store, eng.RuleRef(t.Name))
+	if err != nil {
+		return http.StatusServiceUnavailable, err
+	}
 	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
-		eng.RemoveTrigger(t.Name)
 		if had {
-			return eng.InstallTriggerAs(oldBy, old)
+			if err := eng.RestoreTrigger(old); err != nil {
+				return err
+			}
+			return entity.RestoreRecord(tx.store, whose)
 		}
+		eng.RemoveTrigger(t.Name)
 		return nil
 	})
+	// A rule fires as whoever its record says, so one that stands without its installer's is
+	// refused here, with the undo above already in place to take it back out.
+	if err := actsAsInstaller(tx.store, eng.RuleRef(t.Name), tx.as(), before); err != nil {
+		return charterCode(err), err
+	}
 	return http.StatusCreated, nil
 }
 
@@ -934,6 +975,9 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.removePackage(s.scopedStore(r), at, r.URL.Query().Get("recurse") == "true"); err != nil {
+		if refused(w, err) {
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -999,17 +1043,22 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		notHere() // a scope nobody has opened holds nothing — and the name may be baseline's
 		return
 	}
+	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
 	if kind == "rules" {
-		if eng.RemoveTrigger(name) {
+		if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+			return
+		} else if removed {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		notHere()
 		return
 	}
-	switch err := eng.RemoveStratum(name); {
+	switch err := eng.RemoveStratumAs(who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, entity.ErrForbidden):
+		http.Error(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, trigger.ErrNoStratum):
 		notHere()
 	default:
@@ -1084,6 +1133,14 @@ func charterKind(node *ir.Node) string {
 // the store being unwell (503) and the second is the charter being wrong (400), and reporting
 // either as the other sends somebody to debug the wrong thing.
 func charterCode(err error) int {
+	// A refusal is a refusal, whichever layer made it: the engine refusing a replacement, or the
+	// store refusing the write that records it (which arrives wrapped as ErrCharter).
+	if errors.Is(err, entity.ErrForbidden) {
+		return http.StatusForbidden
+	}
+	if errors.Is(err, errActsAsNobody) {
+		return http.StatusConflict
+	}
 	if errors.Is(err, trigger.ErrCharter) {
 		return http.StatusServiceUnavailable
 	}

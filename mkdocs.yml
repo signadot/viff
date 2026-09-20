@@ -58,6 +58,7 @@ nav:
   - reference/tasks.md
   - reference/runners.md
   - reference/resolvers.md
+  - reference/perms.md
   - reference/sources.md
   - reference/sourced.md
   - reference/connect.md

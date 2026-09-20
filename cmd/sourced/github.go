@@ -49,7 +49,7 @@ func githubMain(args []string) error {
 	src, err := github.New(ctx, github.Config{
 		Token:           secret("GITHUB_TOKEN"),
 		Repos:           repos,
-		System:          c.system,
+		Root:            c.root,
 		Settled:         *settled,
 		Runs:            *runs,
 		Comments:        *comments,
@@ -62,7 +62,7 @@ func githubMain(args []string) error {
 		return err
 	}
 	log.Printf("reflecting GitHub repositories %s into %s:*",
-		strings.Join(src.Repos(), ", "), src.System())
+		strings.Join(src.Repos(), ", "), src.Root())
 
 	// The webhook is the source's own, because the signing secret is. Configure it under the
 	// repository's Settings → Webhooks, pointed at <this source>/github/webhook, with the
@@ -75,5 +75,5 @@ func githubMain(args []string) error {
 	routes := map[string]http.Handler{
 		"POST /github/webhook": src.Webhook(signing, c.hinter()),
 	}
-	return c.serve(src.System(), src, routes)
+	return c.serve(src.Root(), src, routes)
 }

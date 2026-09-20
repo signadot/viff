@@ -22,14 +22,14 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 	for _, ref := range []entity.Ref{
 		trigger.CharterRef("x"),
 		trigger.CharterRefAt("drift", "head-moved"),
-		source.Ref("git", "cluster"),
-		resolver.Ref("security", "gate"),
+		source.Ref("cluster"),
+		resolver.Ref("gate"),
 	} {
 		if _, err := entity.ParsePrincipal(entity.Via(ref)); err != nil {
 			t.Errorf("%s acts, and its principal does not parse: %v", ref, err)
 		}
 	}
-	if _, err := entity.ParseGrantee(entity.Via(runner.Ref("pool", "coderunner"))); err == nil {
+	if _, err := entity.ParseGrantee(entity.Via(runner.Ref("coderunner"))); err == nil {
 		t.Errorf("a runner's address parsed as a place that acts")
 	}
 }
@@ -95,10 +95,10 @@ func TestTheEdgesRefuseWhatTheGrammarDoesNotRead(t *testing.T) {
 	}
 
 	for _, doc := range []string{
-		`{name: p, kind: approvals, byRef: true, method: {driver: person, who: davido}}`,
-		`{name: p, kind: approvals, byRef: true, method: {driver: person, who: "group:qa"}}`,
-		`{name: g, kind: approvals, byRef: true, method: {driver: group, group: verse.principal.group.qa}}`,
-		`{name: g, kind: approvals, byRef: true, method: {driver: group, group: user:ana@example.com}}`,
+		`{name: p, byRef: true, method: {driver: person, who: davido}}`,
+		`{name: p, byRef: true, method: {driver: person, who: "group:qa"}}`,
+		`{name: g, byRef: true, method: {driver: group, group: verse.principal.group.qa}}`,
+		`{name: g, byRef: true, method: {driver: group, group: user:ana@example.com}}`,
 	} {
 		resp := installResolver(t, ts.URL, doc)
 		body := readBody(t, resp)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -40,6 +41,30 @@ func (u *unreadable) ReadAt(at []string) (*ir.Node, bool, error) {
 		return nil, false, errors.New("context deadline exceeded")
 	}
 	return u.Store.ReadAt(at)
+}
+
+// Every way a listing asks the store fails with the rest: a store that does not answer does not
+// answer whether a node stands, either, and a double that let those through would say a listing
+// succeeded on a store that was down.
+func (u *unreadable) StandsAt(at []string) (bool, error) {
+	if u.on {
+		return false, errors.New("context deadline exceeded")
+	}
+	return u.Store.StandsAt(at)
+}
+
+func (u *unreadable) PathsAt(at []string, depth int) ([]entity.Path, error) {
+	if u.on {
+		return nil, errors.New("context deadline exceeded")
+	}
+	return u.Store.PathsAt(at, depth)
+}
+
+func (u *unreadable) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, as *entity.Narrow) ([]entity.Path, bool, error) {
+	if u.on {
+		return nil, false, errors.New("context deadline exceeded")
+	}
+	return u.Store.PathsMatching(at, depth, pattern, as)
 }
 
 func (u *unreadable) ReadError() error {

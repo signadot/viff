@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
@@ -34,7 +35,27 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	return postAs(t, tester, url, "application/tony", string(b))
+	// AS WHOEVER THE BODY SAYS IT IS BY, where it says: an act is recorded as whoever the request
+	// is made as, so the CLI sends one name in both places and a test does too.
+	as := tester
+	switch body := v.(type) {
+	case api.Resolve:
+		as = orTester(body.By)
+	case api.Escalate:
+		as = orTester(body.By)
+	case api.Say:
+		as = orTester(body.By)
+	case api.SetVector:
+		as = orTester(body.By)
+	}
+	return postAs(t, as, url, "application/tony", string(b))
+}
+
+func orTester(by string) string {
+	if by == "" {
+		return tester
+	}
+	return by
 }
 
 // tester is who a test acts as.
@@ -59,7 +80,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:scott", Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:scott@example.com", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)
@@ -75,6 +96,16 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("gate never resolved: the posted body did not decode into api.Resolve")
+	}
+}
+
+// posedByTheMirror poses a worker's gate as the task's mirror does on its pending frame. These
+// tests spawn straight into a broker, which no mirror follows, and a question is answerable
+// once it is posed and not before.
+func posedByTheMirror(t *testing.T, srv *Server, ev task.Frame, taskID string) {
+	t.Helper()
+	if !mirror.PostFrameQuestion(entity.As(srv.Store, entity.SystemDocket), ev, taskID, "", "", nil) {
+		t.Fatalf("question %s was not posed", ev.ID)
 	}
 }
 
@@ -112,9 +143,10 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 		"events": []task.Frame{{Kind: task.EvPending, ID: decision, Gate: "write"}},
 	})
 	rep.Body.Close()
+	posedByTheMirror(t, srv, task.Frame{Kind: task.EvPending, ID: decision, Gate: "write"}, "p1")
 
 	// Now answer it the way `verse task resolve` does.
-	resp := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("task resolve = %s, want 204 — api.Resolve did not reach the decision (the routes have drifted apart again)", resp.Status)
@@ -123,7 +155,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 	// And it is gone: a second answer finds nothing open, which is what proves the first
 	// one landed on the named decision rather than on an empty id. It is a CONFLICT, not a
 	// 404 — the question exists and somebody else settled it.
-	again := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:alice"})
+	again := postTony(t, ops.URL+"/tasks/p1/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:alice@example.com"})
 	defer again.Body.Close()
 	if again.StatusCode != http.StatusConflict {
 		t.Errorf("re-resolve = %s, want 409 (already answered)", again.Status)
@@ -167,10 +199,11 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 		"events": []task.Frame{{Kind: task.EvPending, ID: decision, Gate: "deploy-approval"}},
 	})
 	rep.Body.Close()
+	posedByTheMirror(t, srv, task.Frame{Kind: task.EvPending, ID: decision, Gate: "deploy-approval"}, "p1")
 
 	// Answer it the way an operator reading `verse gate` does — by id alone, with no
 	// task id to help, through the same route `verse gate approve` posts to.
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "human:alice"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:alice@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve = %s, want 204 — an ownerless task gate must still route", resp.Status)
@@ -190,8 +223,8 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	if got == nil || !got.Proceed {
 		t.Fatalf("worker inbox missing the approved resolve: %+v", inbox)
 	}
-	if got.By != "human:alice" {
-		t.Errorf("resolve By = %q, want human:alice", got.By)
+	if got.By != "user:alice@example.com" {
+		t.Errorf("resolve By = %q, want user:alice@example.com", got.By)
 	}
 }
 

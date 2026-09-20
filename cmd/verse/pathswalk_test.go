@@ -47,8 +47,8 @@ func TestPathsWalksEverythingUnderTheAddress(t *testing.T) {
 	}
 }
 
-// --depth BOUNDS the walk. It is a ceiling on the number of segments, so it reads in the same
-// units as the rest of the model counts in.
+// --depth BOUNDS the walk, counted from the address the path names: 1 is the children of what
+// was asked for, at whatever level that address stands.
 func TestDepthBoundsTheWalk(t *testing.T) {
 	store := serve(t)
 	if _, _, err := store.Write(entity.Write{
@@ -57,15 +57,15 @@ func TestDepthBoundsTheWalk(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runState(t, "demo", "drift", "range", "--paths", "--depth", "4")
+	out, err := runState(t, "demo", "drift", "range", "--paths", "--depth", "1")
 	if err != nil {
-		t.Fatalf("data --paths --depth 4: %v", err)
+		t.Fatalf("data --paths --depth 1: %v", err)
 	}
 	if !has(lines(out), "demo drift range abc") {
-		t.Errorf("--depth 4 lost the record: %q", out)
+		t.Errorf("--depth 1 lost the record: %q", out)
 	}
 	if has(lines(out), "demo drift range abc to") {
-		t.Errorf("--depth 4 walked into the payload: %q", out)
+		t.Errorf("--depth 1 walked into the payload: %q", out)
 	}
 }
 

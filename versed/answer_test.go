@@ -85,13 +85,13 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := answerable(t, srv, id)
 
-	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "human:scott"})
+	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:scott@example.com"})
 	win.Body.Close()
 	if win.StatusCode != http.StatusNoContent {
 		t.Fatalf("first answer = %s, want 204", win.Status)
 	}
 	lose := postTony(t, ts.URL+"/gate/resolve", api.Resolve{
-		ID: id, Choice: "deny", By: "human:alice", Say: []string{"not this week"},
+		ID: id, Choice: "deny", By: "user:alice@example.com", Say: []string{"not this week"},
 	})
 	lose.Body.Close()
 	if lose.StatusCode != http.StatusConflict {
@@ -103,7 +103,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	// second decision through after the first had already released the work.
 	select {
 	case res := <-answered:
-		if !res.Proceed || res.By != "human:scott" {
+		if !res.Proceed || res.By != "user:scott@example.com" {
 			t.Fatalf("the waiter got %+v, want the first answer", res)
 		}
 	case <-time.After(2 * time.Second):
@@ -111,11 +111,11 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	}
 
 	q := question(t, srv, id)
-	if q["status"] != mirror.QuestionAnswered || q["by"] != "human:scott" || q["verdict"] != "proceed" {
+	if q["status"] != mirror.QuestionAnswered || q["by"] != "user:scott@example.com" || q["verdict"] != "proceed" {
 		t.Fatalf("the record does not name the winner: %+v", q)
 	}
 	stale, _ := q["stale"].(map[string]any)
-	late, ok := stale["human:alice"].(map[string]any)
+	late, ok := stale["user:alice@example.com"].(map[string]any)
 	if !ok {
 		t.Fatalf("the loser left no trace: %+v", q)
 	}
@@ -135,7 +135,7 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("answering an unknown id = %s, want 404", resp.Status)
@@ -147,9 +147,9 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	}
 }
 
-// Attribution is required rather than defaulted: a default puts a name on the record belonging
-// to nobody, and the record is durable, so an unattributable answer is a permanent one.
-func TestAnAnswerMustNameItsAnswerer(t *testing.T) {
+// An answer is BY whoever the request is made as, whether or not its body says so: a name is on
+// every request that writes, so there is no answer by nobody to refuse, and none to default.
+func TestAnAnswerIsByWhoeverTheRequestIsMadeAs(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -159,13 +159,11 @@ func TestAnAnswerMustNameItsAnswerer(t *testing.T) {
 
 	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed"})
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("an unattributed answer = %s, want 400", resp.Status)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("an answer whose body names nobody = %s, want 204 as the request's principal", resp.Status)
 	}
-	// And it did not land. Refusing at the edge is only worth anything if the refusal is
-	// also a refusal to act.
-	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
-		t.Fatalf("a refused answer settled the question anyway: %+v", q)
+	if q := question(t, srv, id); q["by"] != "user:"+tester {
+		t.Fatalf("settled by %v, want the principal the request was made as", q["by"])
 	}
 }
 
@@ -177,7 +175,7 @@ func TestAnAnswerMustNameItsQuestion(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an answer naming no question = %s, want 400", resp.Status)
@@ -204,7 +202,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("answering an open question on an unreachable runner = %s, want 502", resp.Status)
@@ -335,7 +333,7 @@ func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "human:scott"})
+	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "user:scott@example.com"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolve = %s", resp.Status)

@@ -2,6 +2,7 @@ package entity_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -76,10 +77,11 @@ func ownerOf(t *testing.T, store entity.Store, ref entity.Ref) (string, bool) {
 	return entity.Str(rec.Payload, entity.OwnerField), true
 }
 
-// A write through an attributed store carries the principal, and the entity it creates is
-// owned by them: the record stands in the perms mirror, keyed by the entity's address.
+// A write through an attributed store carries the principal, and what it creates is owned by
+// them: the record stands in the perms mirror, keyed by the topmost node the write brought into
+// being — `demo` here, since the write made that too, and everything under it is its owner's.
 func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	alice := entity.As(inner, "user:alice@example.com")
 	pr := entity.RefAt("demo", "pr", "1")
 
@@ -88,11 +90,11 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 	}
 	// The owner record is the LAST write the substrate saw: it follows the entity write, as
 	// the system, under an absence precondition.
-	if inner.last.Principal != entity.SystemPerms || inner.last.At.Ref != entity.PermsRef(pr) {
-		t.Fatalf("the write after an entity's creation should be its owner record, as the system; got %s as %q",
+	if inner.last.Principal != entity.SystemPerms || inner.last.At.Ref != entity.PermsRef(entity.RefAt("demo")) {
+		t.Fatalf("the write after a creation should be the owner record of what it created, as the system; got %s as %q",
 			inner.last.At, inner.last.Principal)
 	}
-	if o, ok := ownerOf(t, inner, pr); !ok || o != "user:alice@example.com" {
+	if o, ok := ownerOf(t, inner, entity.RefAt("demo")); !ok || o != "user:alice@example.com" {
 		t.Fatalf("owner of %s = %q, %v; want alice", pr, o, ok)
 	}
 
@@ -123,17 +125,28 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 		t.Fatalf("Modify's write reached the store as %q", got)
 	}
 
-	// Deleting the whole entity forgets its owner, so whoever creates it next owns it.
+	// Deleting a row inside the place does NOT give the place away: alice made `demo`, and a
+	// row leaving it changes nothing about who it belongs to.
 	if _, _, err := alice.Write(entity.Write{At: pr.At()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := ownerOf(t, inner, pr); ok {
-		t.Fatal("the owner record outlived the entity")
+	if _, _, err := bob.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
+		t.Logf("bob is refused inside alice's place, as he should be: %v", err)
+	} else {
+		t.Fatal("bob wrote inside a place alice created")
+	}
+	// Deleting the PLACE forgets its record, and whoever creates it next owns it.
+	demo := entity.RefAt("demo")
+	if _, _, err := alice.Write(entity.Write{At: demo.At()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ownerOf(t, inner, demo); ok {
+		t.Fatal("the owner record outlived the place")
 	}
 	if _, _, err := bob.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, pr); o != "user:bob@example.com" {
+	if o, _ := ownerOf(t, inner, demo); o != "user:bob@example.com" {
 		t.Fatalf("re-created by bob, owner = %q", o)
 	}
 }
@@ -142,7 +155,7 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 // into being belongs to whoever installed the rule, while the write itself still says the rule
 // acted.
 func TestAPlaceActingResolvesToItsOwner(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	rule := entity.VerseRef("trigger", "rule", "review")
 	scott := entity.As(inner, "user:scott@example.com")
 	grantInstalls(t, scott)
@@ -158,15 +171,17 @@ func TestAPlaceActingResolvesToItsOwner(t *testing.T) {
 	if _, _, err := firing.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, pr); o != "user:scott@example.com" {
-		t.Fatalf("an entity the rule created is owned by %q, want the rule's owner", o)
+	// Owned THROUGH what the firing created: the record stands at the topmost new node, and
+	// ownership descends from it.
+	if ok, err := entity.Holds(scott, "user:scott@example.com", entity.OwnerLevel, pr); err != nil || !ok {
+		t.Fatalf("an entity the rule created is not the rule's owner's: %v %v", ok, err)
 	}
 }
 
 // An unattributed view stamps nothing and records nothing: the node reads as its parent's.
 // And a store attributed twice is one view over one memory, not a stamp over a stamp.
 func TestAnEmptyPrincipalRecordsNoOwner(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	nobody := entity.As(entity.As(inner, entity.SystemDefault), "")
 	pr := entity.RefAt("demo", "pr", "3")
 	if _, _, err := nobody.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
@@ -188,7 +203,7 @@ func TestAnEmptyPrincipalRecordsNoOwner(t *testing.T) {
 // So the attributed store must have all of them, and this is what says so when one is added.
 func TestAttributedPassesEveryOptionalMethodThrough(t *testing.T) {
 	logd := reflect.TypeOf((*entity.LogdStore)(nil))
-	wrapped := reflect.TypeOf(entity.As(entitytest.Store(t), "x"))
+	wrapped := reflect.TypeOf(entity.As(entitytest.OpenStore(t), "x"))
 	iface := reflect.TypeOf((*entity.Store)(nil)).Elem()
 	for i := 0; i < logd.NumMethod(); i++ {
 		m := logd.Method(i)
@@ -204,7 +219,7 @@ func TestAttributedPassesEveryOptionalMethodThrough(t *testing.T) {
 // The writer reaches the log and comes back on the commit: a replay of what alice wrote says
 // alice wrote it, and a write that named nobody says so by saying nothing.
 func TestTheAuthorRidesTheCommit(t *testing.T) {
-	store := entitytest.Store(t)
+	store := entitytest.OpenStore(t)
 	alice := entity.As(store, "user:alice@example.com")
 	pr := entity.RefAt("demo", "pr", "9")
 	_, rev, err := alice.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()})
@@ -235,7 +250,7 @@ func TestTheAuthorRidesTheCommit(t *testing.T) {
 // system creates under it records nothing; a record standing above a node covers every node
 // beneath it with the same owner, and only a different owner below it earns one of its own.
 func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	system := entity.As(inner, entity.SystemDefault)
 	ref := entity.RefAt("git", "ref", "main")
 	if _, _, err := system.Write(entity.Write{At: ref.At(), Value: entity.Obj{"sha": "abc"}.Payload()}); err != nil {
@@ -288,21 +303,20 @@ func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
 	}
 }
 
-// A rule that has no owner on record acts as the nearest owner above it, the system, and starts
-// acting as its owner the moment the record is written — a miss is not remembered, and an
-// address is never an owner.
+// A rule that has no owner on record acts as NOBODY — not as the system above it, which is what
+// having no record would otherwise be worth, and not as its own address, which is no party — and
+// starts acting as its owner the moment the record is written: a miss is not remembered.
 func TestAResolutionMissIsNotRemembered(t *testing.T) {
-	inner := &stamped{Store: entitytest.Store(t)}
+	inner := &stamped{Store: entitytest.OpenStore(t)}
 	rule := entity.VerseRef("trigger", "rule", "late")
 	system := entity.As(inner, entity.SystemDefault)
 	firing := entity.As(system, entity.Via(rule))
 	first := entity.RefAt("demo", "pr", "1")
-	if _, _, err := firing.Write(entity.Write{At: first.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
-		t.Fatal(err)
+	if _, _, err := firing.Write(entity.Write{At: first.At(), Value: entity.Obj{"stage": "open"}.Payload()}); !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("a rule nobody owns wrote in an open verse: %v", err)
 	}
-	if o, ok := ownerOf(t, inner, first); ok {
-		t.Fatalf("before the rule has an owner it acts as the system, and a system node under the "+
-			"system's root records nothing; got a record owned by %q", o)
+	if ok, _ := entity.Holds(system, entity.Via(rule), entity.Read, entity.PermsRef(entity.RefAt())); ok {
+		t.Fatal("a rule nobody owns reads the root's perms record, which only the system may")
 	}
 	grantInstalls(t, system)
 	scott := entity.As(system, "user:scott@example.com")
@@ -313,7 +327,8 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 	if _, _, err := firing.Write(entity.Write{At: second.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, second); o != "user:scott@example.com" {
+	// The record stands at the top of what the write made, which is `demo`.
+	if o, _ := ownerOf(t, inner, entity.RefAt("demo")); o != "user:scott@example.com" {
 		t.Fatalf("after the rule has an owner, its creation is owned by %q, want the installer", o)
 	}
 }
@@ -323,7 +338,7 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 // read is then the scope's mirror, layered as the store is, and never baseline's cache
 // (docs/perms.md#scopes).
 func TestAScopeHasAnAttributionOfItsOwn(t *testing.T) {
-	base := entity.As(entitytest.Store(t), "user:a")
+	base := entity.As(entitytest.OpenStore(t), "user:a")
 	me := base.Scope("me")
 	if entity.PolicyOf(me) == entity.PolicyOf(base) {
 		t.Fatal("a scoped view shares baseline's attribution")

@@ -230,11 +230,11 @@ Verse dials the source to **read**. Two routes are the whole contract: one quest
 program is, one about what it sees.
 
 ```
-GET {url}/source              → Descriptor  { system, owns }
+GET {url}/source              → Descriptor  { root, owns }
 GET {url}/reflect[?ref=<ref>] → Reflection  { covers, entities }
 ```
 
-The source dials verse to **hint** — `POST /sources/{system}/{name}/hint` — and a hint carries
+The source dials verse to **hint** — `POST /sources/{name}/hint` — and a hint carries
 which place went stale and nothing else.
 
 ```mermaid
@@ -251,7 +251,7 @@ sequenceDiagram
 
   Note over X,V: the low-latency half — the source says "look now"
   X->>Src: a push, a webhook
-  Src->>V: POST /sources/{system}/{name}/hint?ref=…
+  Src->>V: POST /sources/{name}/hint?ref=…
   V->>Src: GET /reflect?ref=…
   Src-->>V: Reflection (that place)
   V->>V: converge
@@ -264,7 +264,7 @@ this seam be unreliable without being wrong.
 
 The direction split matters in deployment: in the Kubernetes build, verse reaches the source at
 `http://<source>:9801/reflect`, and the source is configured with
-`http://verse:9797/sources/<system>/<name>/hint` to call back. Neither is simply the other's
+`http://verse:9797/sources/<name>/hint` to call back. Neither is simply the other's
 client.
 
 Two variants avoid the network entirely or do not exist yet. `-dir` reflects a local git

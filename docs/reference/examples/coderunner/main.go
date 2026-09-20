@@ -3,8 +3,8 @@
 // (a coding agent binary such as Claude Code, or a script).
 //
 //	go run ./docs/reference/examples/coderunner -config coderunner.tony -addr :9802
-//	verse runner add pool.code http://localhost:9802
-//	verse task run -runner verse.runners.pool.code -environment verse-main -as walter@example.com "fix the flaky test"
+//	verse runner add code http://localhost:9802
+//	verse task run -runner verse.runners.code -environment verse-main -as walter@example.com "fix the flaky test"
 //
 // It is the second example on purpose. [examples/runner] is the smallest thing that serves the
 // [task-control] contract, with the two functions you change marked; this is what a real coding
@@ -162,7 +162,7 @@ func main() {
 	// repository to notice. Only `pending` is swept — `held` was never authorized to leave.
 	r.reflectAll(context.Background())
 
-	log.Printf("coderunner listening on %s, state under %s — install it with: verse runner add <kind>.<name> http://<host>%s",
+	log.Printf("coderunner listening on %s, state under %s — install it with: verse runner add <name> http://<host>%s",
 		*addr, root, *addr)
 	// Said once, loudly, at the top: a missing model credential is otherwise invisible until a
 	// task fails with a vendor error about an invalid key.

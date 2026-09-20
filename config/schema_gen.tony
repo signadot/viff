@@ -22,7 +22,8 @@ signature:
 context:
 - tony-format/context
 define:
-  default: .[object(array(string))]
+  admins: .[array(string)]
+  child-grants: .[object(array(string))]
 signature:
   name: verse-perms-config
 ---

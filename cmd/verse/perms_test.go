@@ -13,7 +13,7 @@ func TestARecordBeneathAReadIsLeftOutOfIt(t *testing.T) {
 	if _, err := runCLI(t, "data", "demo", "pr", "1", "--put", `{open: yes, secret: {x: 1}}`); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	if _, err := runCLI(t, "perms", "demo", "pr", "1", "secret", "--grants", "[]", "--default", "{}"); err != nil {
+	if _, err := runCLI(t, "perms", "demo", "pr", "1", "secret", "--grants", "[]", "--child-grants", "{}"); err != nil {
 		t.Fatalf("perms: %v", err)
 	}
 	if out, err := runCLI(t, "data", "demo", "pr", "1"); err != nil || !strings.Contains(out, "x: 1") {
@@ -47,7 +47,7 @@ func TestPermsReadsItsPathAsSteps(t *testing.T) {
 	if _, err := runCLI(t, "data", "spaces", "scott", "notes", "--put", `{todo: [buy milk]}`); err != nil {
 		t.Fatalf("put notes: %v", err)
 	}
-	if _, err := runCLI(t, "perms", "spaces", "scott", "--default", "{}"); err != nil {
+	if _, err := runCLI(t, "perms", "spaces", "scott", "--child-grants", "{}"); err != nil {
 		t.Fatalf("perms: %v", err)
 	}
 	plain, err := runCLI(t, "perms", "spaces", "scott")
@@ -66,16 +66,18 @@ func TestPermsReadsItsPathAsSteps(t *testing.T) {
 	}
 }
 
-// A person takes a place of their own and holds nothing out beneath it: what they create
-// there is theirs alone, refused to anybody else on a read as on a write, while what they
-// created before, under the open default, stays readable.
+// A person takes a place of their own and holds nothing out beneath it: what is in it is
+// theirs alone, refused to anybody else on a read as on a write — what they had written there
+// BEFORE closing it included, since it is theirs through the place and closing the place closed
+// it. A row carries no copy of the default it was created under; the place its creation made
+// does, which here is `spaces`, and that stays readable.
 func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	serve(t)
 	t.Setenv("VERSE_USER", "walter@example.com")
 	if _, err := runCLI(t, "data", "spaces", "scott", "notes", "--put", `{todo: [buy milk]}`); err != nil {
 		t.Fatalf("put notes: %v", err)
 	}
-	out, err := runCLI(t, "perms", "spaces", "scott", "--default", "{}", "--grants", "[]")
+	out, err := runCLI(t, "perms", "spaces", "scott", "--child-grants", "{}", "--grants", "[]")
 	if err != nil {
 		t.Fatalf("perms: %v", err)
 	}
@@ -85,7 +87,7 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	if _, err := runCLI(t, "data", "spaces", "scott", "private", "--put", `{todo: [nothing]}`); err != nil {
 		t.Fatalf("put private: %v", err)
 	}
-	if out, err := runCLI(t, "perms", "spaces", "scott"); err != nil || !strings.Contains(out, "default: {}") {
+	if out, err := runCLI(t, "perms", "spaces", "scott"); err != nil || !strings.Contains(out, "child-grants: {}") {
 		t.Fatalf("perms does not read the record back: %v\n%s", err, out)
 	}
 
@@ -98,16 +100,15 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	if _, err := runCLI(t, "data", "spaces", "scott", "private", "--put", `{todo: [mine]}`); err == nil {
 		t.Fatal("ana wrote scott's private node")
 	}
-	out, err = runCLI(t, "data", "spaces", "scott", "notes")
-	if err != nil || !strings.Contains(out, "milk") {
-		t.Fatalf("what scott created under the open default is no longer readable: %v\n%s", err, out)
+	if out, err := runCLI(t, "data", "spaces", "scott", "notes"); err == nil {
+		t.Fatalf("ana read a row inside the place scott closed:\n%s", out)
 	}
 	// Nor is scott's place ana's to list: what she may read beneath it she reads by name.
 	if out, err := runCLI(t, "data", "spaces", "scott"); err == nil {
 		t.Fatalf("ana listed scott's space:\n%s", out)
 	}
 	// And the place is not ana's to reshape.
-	if _, err := runCLI(t, "perms", "spaces", "scott", "--default", `{read: ["*"]}`); err == nil {
+	if _, err := runCLI(t, "perms", "spaces", "scott", "--child-grants", `{read: ["*"]}`); err == nil {
 		t.Fatal("ana set the default on scott's place")
 	}
 	if _, err := runCLI(t, "perms", "spaces", "scott"); err == nil {
@@ -116,7 +117,7 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	// A grantee the grammar does not read is refused where it is typed, whichever flag it rides.
 	t.Setenv("VERSE_USER", "walter@example.com")
 	for _, flag := range [][]string{{"--grant", `{read: [user]}`}, {"--revoke", `{read: [agent]}`},
-		{"--default", `{read: [coderunner]}`}, {"--grants", `[{read: [verse.principal.group.release]}]`}} {
+		{"--child-grants", `{read: [coderunner]}`}, {"--grants", `[{read: [verse.principal.group.release]}]`}} {
 		if _, err := runCLI(t, append([]string{"perms", "spaces", "scott", "notes"}, flag...)...); err == nil ||
 			!strings.Contains(err.Error(), "a bare word names nothing") && !strings.Contains(err.Error(), "is no person") {
 			t.Errorf("perms %s: %v, want the grammar's refusal", flag, err)
@@ -135,26 +136,16 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 		t.Fatal("ana set the record of a node she may only read")
 	}
 
-	// Taking ana's read back leaves bob's standing: a revoke is one line's worth. `notes` was
-	// created before the place was closed, so its record also holds out `read` to everyone,
-	// and ana reads as everyone until that grantee is taken back too — `*` is a grantee like
-	// any other.
+	// Taking ana's read back leaves bob's standing: a revoke is one line's worth. The record
+	// of `notes` was taken inside the space scott closed, so it holds out exactly what he
+	// granted on it and nothing to everyone — there is no `*` for ana to go on reading as.
 	t.Setenv("VERSE_USER", "walter@example.com")
 	if _, err := runCLI(t, "perms", "spaces", "scott", "notes", "--grant", `{read: [bob@example.com]}`); err != nil {
 		t.Fatal(err)
 	}
 	out, err = runCLI(t, "perms", "spaces", "scott", "notes", "--revoke", `{read: [ana@example.com]}`)
-	if err != nil || strings.Contains(out, "ana@example.com") || !strings.Contains(out, "bob@example.com") || !strings.Contains(out, "- *") {
+	if err != nil || strings.Contains(out, "ana@example.com") || !strings.Contains(out, "bob@example.com") || strings.Contains(out, "- *") {
 		t.Fatalf("revoke: %v\n%s", err, out)
-	}
-	t.Setenv("VERSE_USER", "ana@example.com")
-	if _, err := runCLI(t, "data", "spaces", "scott", "notes"); err != nil {
-		t.Fatalf("ana no longer reads as everyone: %v", err)
-	}
-	t.Setenv("VERSE_USER", "walter@example.com")
-	out, err = runCLI(t, "perms", "spaces", "scott", "notes", "--revoke", `{read: ["*"]}`)
-	if err != nil || strings.Contains(out, "- *") || !strings.Contains(out, "bob@example.com") {
-		t.Fatalf("revoke everyone: %v\n%s", err, out)
 	}
 	t.Setenv("VERSE_USER", "ana@example.com")
 	if out, err := runCLI(t, "data", "spaces", "scott", "notes"); err == nil {
@@ -174,7 +165,7 @@ func TestBarePermsListsWhatOneMayRead(t *testing.T) {
 	if _, err := runCLI(t, "data", "spaces", "scott", "notes", "--put", `{todo: [buy milk]}`); err != nil {
 		t.Fatalf("put notes: %v", err)
 	}
-	if _, err := runCLI(t, "perms", "spaces", "scott", "--default", "{}", "--grants", "[]"); err != nil {
+	if _, err := runCLI(t, "perms", "spaces", "scott", "--child-grants", "{}", "--grants", "[]"); err != nil {
 		t.Fatalf("perms: %v", err)
 	}
 	if _, err := runCLI(t, "data", "spaces", "scott", "private", "--put", `{todo: [nothing]}`); err != nil {
@@ -184,15 +175,18 @@ func TestBarePermsListsWhatOneMayRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bare perms: %v", err)
 	}
-	// The place and the notes have records; the private node has none, being owned through
-	// the place above it, so it is not listed — there is nothing to list.
-	for _, at := range []string{"at: spaces.scott\n", "at: spaces.scott.notes"} {
+	// Two records, where ownership changed: `spaces`, which his first put brought into being,
+	// and `spaces.scott`, which he took to close. The rows beneath have none, being owned
+	// through the place above them, so they are not listed — there is nothing to list.
+	for _, at := range []string{"at: spaces\n", "at: spaces.scott\n"} {
 		if !strings.Contains(out, at) {
 			t.Errorf("scott's listing lacks %q:\n%s", strings.TrimSpace(at), out)
 		}
 	}
-	if strings.Contains(out, "spaces.scott.private") {
-		t.Errorf("a node with no record of its own is listed:\n%s", out)
+	for _, row := range []string{"spaces.scott.notes", "spaces.scott.private"} {
+		if strings.Contains(out, row) {
+			t.Errorf("a node with no record of its own is listed (%s):\n%s", row, out)
+		}
 	}
 	if _, err := runCLI(t, "perms", "list"); err == nil || !strings.Contains(err.Error(), "bare `verse perms` is the listing") {
 		t.Errorf("`perms list` is not told what the listing is: %v", err)
@@ -206,10 +200,10 @@ func TestBarePermsListsWhatOneMayRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bare perms as ana: %v", err)
 	}
-	if !strings.Contains(out, "at: spaces.scott.notes") {
-		t.Errorf("ana's listing lacks the notes she may read:\n%s", out)
+	if !strings.Contains(out, "at: spaces\n") {
+		t.Errorf("ana's listing lacks the place created under the open default:\n%s", out)
 	}
-	if strings.Contains(out, "spaces.scott.private") || strings.Contains(out, "at: spaces.scott\n") {
+	if strings.Contains(out, "spaces.scott") {
 		t.Errorf("ana's listing carries what she may not read:\n%s", out)
 	}
 }

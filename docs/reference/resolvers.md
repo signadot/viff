@@ -7,11 +7,10 @@ verbs an operator types. Why it is shaped this way is
 
 ## The binding
 
-Installed as `verse.resolvers.<kind>.<name>`.
+Installed as `verse.resolvers.<name>`.
 
 ```tony
 name:      security-review
-kind:      security
 condition:                                       # the STANDING door
   subject: {path: "change.pr.*", value: { area: payments }}
 byRef:     true                                  # the NAMED door
@@ -25,7 +24,6 @@ exclusive: true
 | field | | |
 |---|---|---|
 | `name` | required | may not contain `@` — it is the separator in an instance's address |
-| `kind` | required | the segment before the name in the ref; groups bindings by what they are for |
 | `condition.subject` | optional | a path and a payload predicate, the same vocabulary a trigger's `subject` uses; the path begins with a literal, since a binding whose subject selects from the top would claim every question in the verse |
 | `byRef` | optional | may be named by a spawn's `resolver:` or a rule's `gating.resolver` |
 | `method.driver` | required | who answers: `url`, a service; `person`, one principal, from the docket; `group`, a group's members, each as themselves |
@@ -53,12 +51,13 @@ first binding *by name* owns the questions they both cover.
 
 | ref | what it is |
 |---|---|
-| `verse.resolvers.<kind>.<name>` | the binding — what is installed |
-| `verse.resolvers.instance.<name>@<origin>` | who is *reading*, one per (binding, origin) |
+| `verse.resolvers.<name>` | the binding — what is installed |
+| `verse.watch.<name>@<origin>` | who is *reading*, one per (binding, origin) |
 
-One `verse data verse resolvers` shows both, which is why instances stand at
-`verse.resolvers.instance`, beside the bindings, rather than in a second place with a
-singular/plural pair to mistype.
+They stand apart because an instance's address is derived and a binding's is chosen: under
+one roof a binding could be given a name that was an instance's. Nobody but verse makes an
+instance, and each carries a record of its own UNDER its binding, so whoever owns the binding
+co-owns it and nobody else writes its position.
 
 The origin is the **run** for a run's gates (`payments-review@review-8f30…`) and the **subject**
 for a firing's (`payments-review@change.pr.1`), because a firing has no event stream of its own.
@@ -74,7 +73,8 @@ or reads from there:
 | `resolver` | the binding that owns it. **Absent means ⊤** — the docket a person reads |
 | `escalatesAt` | when its owner's deadline expires. Absolute (RFC3339 with fraction), stamped at post |
 | `reownedFrom` `reownedWhy` `reownedAt` | the handover. `why` is `escalated`, `overdue` or `removed` |
-| `by` | who answered. A resolver's verdict stamps the **binding**, not the instance |
+| `by` | who answered: the principal the request was made as, never a name the body chose — a body's `by` that names anybody else is refused 400. A resolver's verdict stamps the **binding**, not the instance |
+| `answerers` | whom the gate itself named, when it named anybody. What a bound question goes back to when its binding lets go — to the docket's default only where this is absent |
 | `overrode` | whom an answer was taken over, when `-override` was used |
 | `askedAgain` | this id was posed again after settling; the prior answer is at the commit that made it |
 
@@ -111,8 +111,8 @@ Managing bindings:
 ```
 GET    /resolvers                    list
 POST   /resolvers                    install (tony, json or yaml)
-GET    /resolvers/{kind}/{name}      show one
-DELETE /resolvers/{kind}/{name}      remove one, handing on what it held
+GET    /resolvers/{name}             show one
+DELETE /resolvers/{name}             remove one, handing on what it held
 ```
 
 ## What an observer sees
@@ -122,7 +122,7 @@ a hidden answerer — `verse task attach <run>` shows the whole exchange in orde
 
 ```tony
 {kind: pending,  id: "review-bff7…~d1", mode: ASK, tool: run_bash}
-{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.security.reviewer, proceed: true}
+{kind: decision, id: "review-bff7…~d1", by: verse.resolvers.reviewer, proceed: true}
 {kind: exec,     tool: run_bash, text: reviewing}
 {kind: status,   text: done}
 ```
@@ -143,17 +143,18 @@ moment.
 ```sh
 verse resolver                                  # list the bindings
 verse resolver add <file>                       # install one (- = stdin)
-verse resolver show   verse.resolvers.security.review # or security.review
-verse resolver remove verse.resolvers.security.review
+verse resolver show   verse.resolvers.review   # or review
+verse resolver remove verse.resolvers.review
 
-verse data verse resolvers instance            # who is watching what
+verse data verse watch                          # who is watching what
 verse gate                                      # the docket, resolver-owned questions included
 verse gate approve <id> -as <who> [-override] # answer, or answer over an exclusive owner
 ```
 
-A resolver ref is typed the way it is stored — `verse.resolvers.security.review` — because an
+A resolver ref is typed the way it is stored — `verse.resolvers.review` — because an
 operator reading `verse data` and one typing `verse resolver show` should not have to know two
-spellings of one thing. The leading `verse.resolvers.` may be dropped, leaving `<kind>.<name>`.
+spellings of one thing. The leading `verse.resolvers.` may be dropped, leaving the name — which
+is the whole of a binding's address, so names are unique on their own.
 
 ## Binding one to work
 
@@ -161,7 +162,7 @@ spellings of one thing. The leading `verse.resolvers.` may be dropped, leaving `
 verse task run 'check the migration' \
   -subject change.pr.1 \
   -vector ask \
-  -resolver verse.resolvers.security.review
+  -resolver verse.resolvers.review
 ```
 
 `-vector ask` is what makes the run stop and ask; without it the run is `auto` and a bound
@@ -172,11 +173,11 @@ In a charter, the same two doors:
 
 ```tony
 gating:
-  resolver: verse.resolvers.security.review    # answers this rule's own gates
+  resolver: verse.resolvers.review    # answers this rule's own gates
   gates: [{ name: ship, mode: ask }]
 action:
   spawn:
-    resolver: verse.resolvers.security.review  # answers this run's gates
+    resolver: verse.resolvers.review  # answers this run's gates
 ```
 
 ## Not built
