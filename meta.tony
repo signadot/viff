@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-09-20T23:40:02.187374+02:00"
+duplicates: []
+id: b737wbpbh12kscjjp1n0
+labels:
+- perms
+- residual
+related_issues:
+- zf1ep7wrh12kr786p1n0
+status: open
+updated: "2026-09-20T23:40:02.389121+02:00"
