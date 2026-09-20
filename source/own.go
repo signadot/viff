@@ -263,7 +263,7 @@ func (c Claim) String() string {
 // how two owners of one thing are told apart — `linear.project.*.owners.ENG` parts company with
 // `…owners.OPS` at the last level, which is a comparison the levels above never reach.
 func (c Claim) Disjoint(o Claim) bool {
-	return !entity.Overlap(c.Segs, o.Segs, Seg.Disjoint)
+	return !entity.Overlap(c.Segs, o.Segs, Seg.Disjoint, entity.NoDescent)
 }
 
 // Disjoint reports whether every claim of a is provably disjoint from every claim of b — the

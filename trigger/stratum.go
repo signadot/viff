@@ -259,7 +259,7 @@ func (m Match) Overlaps(o Match) bool { return matchOverlap(m, o) }
 
 // matchOverlap reports whether some address could satisfy both paths.
 func matchOverlap(a, b Match) bool {
-	return entity.Overlap(a.SegNodes(), b.SegNodes(), segDisjoint)
+	return entity.Overlap(a.SegNodes(), b.SegNodes(), segDisjoint, entity.PathIsDescend)
 }
 
 // segDisjoint reports whether two segments admit no common name. It PROVES, and answers false

@@ -210,7 +210,8 @@ func (s Subtree) Overlaps(o Subtree) bool {
 	if err != nil {
 		return false
 	}
-	return entity.Overlap(entity.KPathSegments(mine), entity.KPathSegments(theirs), entity.KPathDisjoint)
+	return entity.Overlap(entity.KPathSegments(mine), entity.KPathSegments(theirs), entity.KPathDisjoint,
+		func(kp *kpath.KPath) bool { return kp.Descend })
 }
 
 // PackageKind is where a package's own declaration lives: `verse:trigger:package:<address>`,
