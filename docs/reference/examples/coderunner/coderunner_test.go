@@ -553,7 +553,7 @@ func TestTheDeployedConfigLoads(t *testing.T) {
 	train, ok := pr.Repos[0].Dest("train")
 	switch {
 	case !ok:
-		t.Error("signadot-pr declares no `train` destination, so docs/working/signadot/pr.tony cannot push")
+		t.Error("signadot-pr declares no `train` destination, so deploy/charters/example/repo/app/pr.tony cannot push")
 	case train.Pull == nil:
 		t.Error("signadot-pr's `train` opens no pull request, and master takes nothing else")
 	}

@@ -42,6 +42,20 @@ verse up -data ~/.verse/data                        # a durable dir rather than 
 verse up -docd-addr host:port -docd-mount-addr host:port     # attach to an already-running docd
 ```
 
+**A store call is bounded, and the two kinds are bounded differently.** A read runs beside
+logd's request loop and spends its own patience; a write is dispatched on that loop and waits
+behind every other write on the session, so it gets its own number. Both are constants in
+`entity/logdstore.go`, and the session re-establishes itself rather than failing the caller
+when the wire goes quiet.
+
+**Readiness answers from this process alone.** `/healthz` reports `ok`, whether the engine is
+restored, and the head this process has — reading nothing, because the load that makes you ask
+is the load that would keep a store-reading answer from arriving. It is `503` until the engine
+is restored, which is not the same as wedged: versed serves before restore finishes, and
+staging has spent 93 seconds in it. So the probe that says "no traffic yet" also says which of
+the two it is, where a refused connection said neither. `/status` is the one that reads the
+store, and it is not a probe.
+
 ### When a client cannot reach docd where verse does
 
 `up` publishes both docd addresses on `GET /status`, because a controller is its own process

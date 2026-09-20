@@ -42,16 +42,46 @@ In-process, enforcement is interception. The loop cannot `Execute` an action unt
 verse is trusted by construction.
 
 Out-of-task, enforcement becomes authorize, checkpoint, attest and CAS-invariants. Verse cannot
-intercept a remote or human worker's every action, so it authorizes the claim, gates the
-checkpoints the worker reports under the same vector applied to *reported* effects, records those
-effects as audited attestations, and CAS-enforces the structural invariants on the entity:
-terminal-once, claim-holder-only writes, gate-before-the-effect.
+intercept a remote or human worker's every action, so it authorizes the claim, records what the
+worker reports as audited attestations, and CAS-enforces the structural invariants on the entity:
+terminal-once, claim-holder-only writes, gate-before-the-effect. A vector slide is relayed to the
+worker's inbox and the worker honours it or does not — nothing out here derives an effect or
+evaluates a vector, and the broker deliberately records no envelope it cannot check.
 
-So it is one control contract with three enforcement modes: the local supervisor by interception,
-a spawned worker on k8s, lambda or a host by attestation, and a human by surfaced attestation. Same
-vector, gates, resolver, boundaries and terminal; only the mechanism differs. Takeover falls out for
-free: `cancel` the agent, a human re-claims by CAS claim transfer plus identity, reads the journal,
-and continues on the same subject under the same runner.
+So it is one control contract with three enforcement modes, and what they guarantee differs along
+with the mechanism:
+
+| | who performs the step | what holds |
+|---|---|---|
+| the local supervisor | verse's own executor | **enforced** — the action cannot run until the vector clears it |
+| a spawned worker on k8s, lambda or a host | the worker | **attested** — verse holds the worker's account of what it did |
+| a human, by surfaced attestation | a person | **attested**, and the person is answerable for the account |
+
+Gates, resolver, boundaries and terminal are the same throughout; the vector is the part that does
+not travel. Takeover falls out for free: `cancel` the agent, a human re-claims by CAS claim
+transfer plus identity, reads the journal, and continues on the same subject under the same runner.
+
+## The loop is a state machine
+
+In-process the loop is a pure transition — `step(state, input) → (state, []effect)`
+(`task/machine.go`) — with the shell doing the I/O around it. Two things about it are worth
+knowing without reading it.
+
+**The contract is five properties** (`task/contract.go`): a task reaches a terminal at most once
+and nothing is emitted after it; it does not terminate while a child is outstanding; every child
+that starts ends exactly once, with an outcome; the closing action is proposed at most once per
+quiescence and never while the input is open; and every wait names its discharge. The first four
+are safety and are checked by enumerating interleavings of the transition; the fifth is liveness
+and is an argument instead, because no enumeration establishes that an event arrives.
+
+**Inputs have a precedence, and it is a policy rather than a taxonomy.** An *intervention* —
+cancel, pause, resume, say — is an operator redirecting this run, and it preempts, including a
+pending gate. A *policy change* — sliding the vector — is prospective and does not preempt:
+sliding a running task to `auto` says "stop asking me about actions like this", not "approve the
+one already in front of me", and dissolving the pending question would turn a policy change into
+approval of a specific action nobody looked at. *Work the task produced for itself* — a child's
+result — folds at the hinge and never overtakes an action already proposed. Preemption is for
+people.
 
 A task-control backend is a reconciler over the `verse.task.instance` resource rather than a gated
 task itself, which stops the regress: governing a task must not require another governed task. It

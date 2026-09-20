@@ -322,7 +322,7 @@ func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 // ONE PLACE, HOWEVER IT IS SPELLED. A write at `demo.pr.1.stage` and a rule patching `stage` of
 // `demo.pr.1` name one node, so they are checked at one node and recorded at one node — where
 // the two spellings needed different levels, and a removal of one of them ran the eviction the
-// other did not (docs/working/paths-and-nodes.md, row 12).
+// other did not.
 func TestAWriteIsCheckedAtThePathHoweverItIsSpelled(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemDefault)

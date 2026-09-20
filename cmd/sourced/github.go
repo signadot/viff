@@ -18,7 +18,7 @@ import (
 // issued from Settings → Developer settings, it carries its owner's visibility, and it needs no
 // app registration or private key. A GitHub App is what an org-scale install needs, for the
 // higher ceiling and for not being tied to a person, and the measurement in
-// docs/working/gh-source-residual.md says when: a personal token covers about forty repositories
+// git-issue 3eskdzrq says when: a personal token covers about forty repositories
 // with discussions on, and effectively unbounded with `-discussions=false`.
 func githubMain(args []string) error {
 	fs := flag.NewFlagSet("github", flag.ExitOnError)

@@ -19,7 +19,7 @@ import (
 // is not a provider: a provider picks the DOER — which driver, under which frame, with which
 // grant — and a runner is WHERE the work runs. The two are orthogonal, so folding runners into
 // provider selection would make one selection answer two questions and force a doer entity per
-// (doer, place) pair. See docs/working/per-task-runners.md.
+// (doer, place) pair.
 
 // addRunner installs one, after asking the url what it is.
 //

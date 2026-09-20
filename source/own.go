@@ -29,14 +29,14 @@ import (
 // `linear.project.<id>.owners.ENG` and `…owners.OPS` — which are two addresses, proved apart by
 // the same level-by-level comparison as any other pair. Sharing is not an exception to
 // single-writership; it is single-writership at a deeper address, and the depth is free because
-// an address has no fixed arity (docs/working/shared-ownership.md).
+// an address has no fixed arity (docs/sources.md, sharing).
 //
-// The cost is stated in docs/working/sources-residual.md and worth knowing: this works when a
+// The cost is stated in git-issue 1yke34rr and worth knowing: this works when a
 // source's addresses encode ownership positionally, which they do whenever the thing an owner
 // owns is a level of the address — a repository for git, a team for linear. What is still not
 // spellable here is ownership that is a VALUE rather than a place: an owner in the payload and
 // a uuid in the ref. That wants a predicate, and predicates do not compare statically; the
-// shape one would have to take is in shared-ownership.md.
+// shape one would have to take was worked out in the shared-ownership note, now in the history.
 
 // Own is one ownership claim as a source DECLARES it, and as a registration stores and serves
 // it: an address, as a glob.

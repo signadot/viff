@@ -637,8 +637,8 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 
 // A CHARTER PATH IS STEPS, read as `verse data` reads them: the quoted clause is the name inside
 // it, and an access or a `*` is refused, since a charter path names one place. (What a dotted
-// word reaches is the server's dotted-string charter tree, and is step 7 of the paths-and-nodes
-// plan rather than anything this reading decides.)
+// word reaches is the server's dotted-string charter tree rather than anything this reading
+// decides.)
 func TestACharterPathReadsItsStepsAsDataDoes(t *testing.T) {
 	serve(t)
 	if err := installPackageRuleAt(t, "notes"); err != nil {

@@ -1,7 +1,7 @@
 package entity
 
 // REACH AND OVERLAP are the two questions asked of a pattern, and each is asked here and nowhere
-// else (docs/working/paths-and-nodes.md).
+// else.
 //
 // A pattern is a sequence of segments, and a segment ADMITS a name: a literal admits itself, `*`
 // admits any, a charter's operator admits what it matches, a claim's prefix what begins with it.

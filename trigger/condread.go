@@ -28,7 +28,7 @@ import (
 //
 // — every open proposal cut from a commit that is no longer the tip of main, which is exactly
 // "which of these branches are stale" with no git, no ancestry walk and no task
-// (docs/working/merge-gate-residual.md).
+// (git-issue 8wt1ta8r).
 //
 // `!let` is tony's, `!get-path` is verse's, and neither is new. What is new is that the read is
 // answered before the predicate is matched, so the binding holds a value from the store rather

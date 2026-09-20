@@ -314,7 +314,7 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 // the node "is every key here mine, or a tombstone", and a refusal means somebody else is still
 // there. The tombstone arm is not optional, because logd keeps a removed key as a null leaf, so
 // a departed sibling is still a key; without it the condition is false forever and a shared
-// thing is never collected (docs/working/shared-ownership.md has the transcript).
+// thing is never collected (the shared-ownership note has the transcript, in the history).
 //
 // A refused delete is not an error: it is the ordinary case, and the reason the write is
 // conditional at all. It ends the climb, since a node that is still standing has not emptied the

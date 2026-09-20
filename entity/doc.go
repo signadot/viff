@@ -1,6 +1,6 @@
 package entity
 
-// The verse as ONE DOCUMENT, addressed by one kinded path (docs/working/paths-and-nodes.md).
+// The verse as ONE DOCUMENT, addressed by one kinded path.
 //
 // The store holds a tree. A read names a path into it — `demo`, `demo.pr.1`,
 // `demo.pr.*.stage`, the empty path for the root — and answers the node standing there, with

@@ -17,7 +17,7 @@ import (
 // way on staging, and `base` — the commit a branch was cut from — tracked main's current tip
 // instead of staying put, which is the left side of the staleness test converging on the right.
 //
-// The shape this pins is the fix (docs/working/merge-gate-residual.md): the derive owns facts,
+// The shape this pins is the fix (git-issue 8wt1ta8r): the derive owns facts,
 // a latching patch pins what is time-dependent ONCE, and the absence of a field is what
 // "nobody has decided" means — so there is no literal for a derive to restate.
 func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {

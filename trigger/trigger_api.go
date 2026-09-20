@@ -50,7 +50,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 // It is also what an OWNING record needs, should one return — a rule carried inside another
 // entity's definition and reinstalled with it. Writing it out again would give one rule two
 // owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
-// Goals were the case that motivated the flag; see docs/working/goals-residual.md.
+// Goals were the case that motivated the flag; see git-issue 9by2kc0n.
 func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 	if err := validTriggerName(t.Name); err != nil {
 		return err

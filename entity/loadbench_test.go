@@ -17,8 +17,7 @@ import (
 // watches, which is minutes of wall clock.
 //
 // The question it answers is not "how fast can this go" but "what does a steady background hum
-// cost". The cycle throttle paces a tripped chain at a fixed interval (docs/working/
-// cycle-throttle.md), and that interval wants sanity-checking against a real write rate: too
+// cost". The cycle throttle paces a tripped chain at a fixed interval (docs/cycle-throttle.md// ), and that interval wants sanity-checking against a real write rate: too
 // short and a paced runaway is indistinguishable from load, too long and a control loop someone
 // meant to write crawls.
 //

@@ -58,7 +58,7 @@ type Store interface {
 	// Since.
 	//
 	// Each commit's Changes are answered AT THE PATTERNS GIVEN: every node one of them reaches,
-	// before the commit or after it, whose node differs (docs/working/paths-and-nodes.md). With
+	// before the commit or after it, whose node differs. With
 	// none, a commit carries no Changes, and Commit.Touches is how to ask about a path.
 	Observe(at ...*kpath.KPath) (<-chan Commit, func())
 	// Since returns retained commits with Rev > from, in order, with Changes answered at the
@@ -130,7 +130,7 @@ type Store interface {
 	//
 	// DEPTH IS THE CALLER'S, and it is the whole address's depth rather than the depth below
 	// the prefix — the same number `ListAt` takes, for the same reason. A document does not say
-	// where its entities end (docs/working/paths-and-nodes.md), so a watch cannot know. Reporting at
+	// where its entities end, so a watch cannot know. Reporting at
 	// a fixed arity delivers a change to something deeper as a change to its three-segment
 	// ancestor, and every consumer comparing the reported ref to an address it already holds —
 	// the causal chain above all — is then comparing an ancestor with a descendant and

@@ -91,7 +91,7 @@ func (s Subtree) confined() bool { return s != Subtree{} }
 //
 // It writes the address into the dimensions a Match has today — root, then system, then kind —
 // which is what containment compares. A subtree deeper than that has no dimension left to hold
-// its tail, and that is the next step of docs/working/paths-and-nodes.md rather than a silent
+// its tail, and that is the next step of the path model rather than a silent
 // truncation: it is refused where it is parsed (ParseAt), so nothing reaches here that this
 // cannot say.
 func (s Subtree) match() Match {
@@ -195,8 +195,8 @@ func (s Subtree) stamp() string {
 //
 // A PLACE OF ANY DEPTH: `demo`, `demo.pr`, `verse-dev.drift.head`. It used to be one or two
 // segments, because a charter writes where it is installed and an address was three deep — so a
-// third segment named an entity rather than a place. An address is as deep as the tree now
-// (docs/working/paths-and-nodes.md), and so is a charter's.
+// third segment named an entity rather than a place. An address is as deep as the tree now, and
+// so is a charter's.
 //
 // `verse` is still refused as the first segment: verse's own half is not somebody's to install a
 // charter into.

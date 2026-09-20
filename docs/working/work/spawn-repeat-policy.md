@@ -37,7 +37,7 @@ sequence (the shape hash) frees it. So a `seq` runs at most once per (rule, subj
 the life of that charter. Applied to every spawning rule, the tutorial's own `shape-latch` —
 open → reviewing → reviewed — would review a PR once and never again, however many times it
 returns to `open`. That is the "once, ever" semantics
-[change-events](../change-events.md#what-dropping-create-vs-update-costs-and-the-idiom-that-recovers-it)
+[change-events](../../change-events.md#what-dropping-create-vs-update-costs-and-the-idiom-that-recovers-it)
 says the model deliberately gives up in exchange for state-driven flows — inverted for every
 charter at once, silently.
 
@@ -64,28 +64,21 @@ state — and much tighter than today's "every commit touching what the rule rea
 (`verse.charter.<rule>`, as `seqDone` does) it needs no new entity, but it pollutes the author's
 document, shows up in `verse get`, and is a commit that wakes the rule that wrote it — the
 record must then be excluded from the version it records, or it invalidates itself. In its OWN
-entity (as the run claim is, `task:claim:<chain>@<subject>`) the subject stays clean, but
+entity (as the run claim is, `verse.task.claim.<chain>@<subject>`) the subject stays clean, but
 nothing reaps it: one entity per (rule, subject) that ever fired, durable by design. A fan-out
 over ten thousand subjects is ten thousand records either way.
 
-**4. The release story has a hole today, and it is load-bearing.** Measured: a sequence element
-that ends in a status other than `done` takes the hook path in `Engine.applyHook`, and nothing
-on that path releases the run claim.
+**4. A failed element ends its run, and a spawn has no equivalent.** This note first measured a
+hole here and it has since been closed: an element reaching any terminal status but `done` takes
+the off-ramp in `Engine.applyHook`, and `stopSeq` publishes `verse.charter.<rule>.ended` with that
+status and then gives the run claim back (`trigger/seq.go`). Fail-stop is a recorded decision
+rather than a leak waiting for `Server.reconcileClaims` at the next restart.
 
-```
-after a failed element: claim task:claim:review@demo:pr:1 held = true
-spawns before stir = 1, after = 1
-```
-
-The sequence does not run again — not because `done` was set (it was not) but because the claim
-was never given back. `Server.reconcileClaims` clears it at the next restart, so the repeat
-policy for a failed sequence is *not again until verse restarts*. Fail-stop is implemented by a
-leak. `releaseRun`'s own comment says "every exit path releases", and this exit path does not.
-
-That matters here beyond being a defect worth fixing on its own: extending this mechanism to
-every spawn extends that behaviour to every failed spawn, which is worse than today. A failed
-spawn re-fires on the next commit now, and `onFailed` exists because that is sometimes what you
-want.
+What survives for this proposal is the difference it makes to a bare spawn. A failed sequence
+does not run again; a failed spawn re-fires on the next commit, and `onFailed` exists because
+that is sometimes what you want. So extending the record to every spawn is still a change of
+repeat policy for failures — the policy is just one somebody chose now, rather than one an
+unreleased claim imposed.
 
 **5. Two mechanisms for one question.** With both a latch and a record, "will this run again?"
 has two answers that can disagree, and an author has to hold both. Today there is one answer —
@@ -102,8 +95,8 @@ verdicts that would want to soften first.
 
 ## Where this leaves the singleton seq
 
-The rewrite as posed is the wrong route. It inherits `done`-as-forever (1) and the unreleased
-claim (4), and it would fold two questions the seq machinery deliberately keeps apart —
+The rewrite as posed is the wrong route. It inherits `done`-as-forever (1), and it would fold two
+questions the seq machinery deliberately keeps apart —
 `startSeq`'s own comment: the claim is a MECHANISM for exclusion, `done` is a POLICY about
 repeating, and "fusing them is what forced the policy to be maximally strict back when the
 mechanism could not be trusted."
@@ -116,8 +109,8 @@ a repeat policy nobody chose for it.
 Three things want settling before any of that is worth writing:
 
 - **Reaping.** A durable per-(rule, subject) record with no story for its own removal is a
-  retention floor. The claim has one (release at every exit) and it is already leaking; a record
-  that is *supposed* to outlive its run has a harder version of the same problem.
+  retention floor. The claim has one — release at every exit, including the off-ramp — and a
+  record that is *supposed* to outlive its run has a harder version of the same problem.
 - **What counts as a change.** Hashing the payload minus the reserved root is the obvious
   answer, and it re-fires on writes the rule does not care about. Hashing only the paths the
   predicate reads is tighter and is the same walk `readPaths` already does — but then re-entry to

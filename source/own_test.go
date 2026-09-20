@@ -77,7 +77,7 @@ func TestClaimDisjoint(t *testing.T) {
 
 // Two sources may share a THING by owning two nodes inside it, which is two single writers
 // rather than two writers of anything. The table is the one in
-// docs/working/shared-ownership.md — and every row of it is the same comparison the table above
+// the shared-ownership note, now in the history — and every row of it is the same comparison the table above
 // makes, because a place inside a shared node is an address like any other.
 func TestSharingIsSingleWritershipAtADeeperAddress(t *testing.T) {
 	for _, tc := range []struct {

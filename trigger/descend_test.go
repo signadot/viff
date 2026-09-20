@@ -13,8 +13,7 @@ import (
 
 // A SUBJECT MAY DESCEND. `verse-dev..finding` selects every finding beneath verse-dev, at
 // whatever depth the rule that derived it put one — which is the question a reader of derived
-// entities has and could not ask while a subject selected at one depth
-// (docs/working/paths-and-nodes.md).
+// entities has and could not ask while a subject selected at one depth.
 func TestASubjectThatDescendsSelectsEveryDepth(t *testing.T) {
 	store := entitytest.Store(t)
 	for _, c := range []struct {

@@ -8,7 +8,7 @@
 # at least five times and come back each time: through a helper that counts to three, a shorthand
 # kept for old charters, a sentence in a doc. On 2026-09-15 it was a permission leak, a reap watch
 # on the wrong subtree and a loop throttle that could not see verse's own half.
-# docs/working/paths-and-nodes.md is the model and its plan is the order of removal.
+# The model is docs/reference/entities.md; what is left to remove is tracked as a residual.
 #
 # A RATCHET rather than a ban, because the removal takes several steps and the tree has to stay
 # green between them. scripts/check-paths.baseline holds, per file, how many lines still use the
@@ -94,7 +94,7 @@ if [ -n "$grew" ]; then
   echo "system:kind:id vocabulary grew:" >&2
   echo "$grew" >&2
   echo >&2
-  echo "An address is a kinded path (docs/working/paths-and-nodes.md). Remove the use — ask the" >&2
+  echo "An address is a kinded path (docs/reference/entities.md). Remove the use — ask the" >&2
   echo "question's own kpath instead of a position or a depth. The baseline is never raised." >&2
   exit 1
 fi

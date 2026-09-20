@@ -167,7 +167,7 @@ outside cannot interfere with anybody, and it is what makes the graph total, bec
 written down.
 
 One file may hold several packages. A `---` document carrying `at:` opens one, and everything after
-it belongs to that package until the next declaration. `docs/working/comment-drift.tony` is two, a
+it belongs to that package until the next declaration. `deploy/charters/verse/repo/verse/comment-drift.tony` is two, a
 `drift` package that reviews and a `merge` package that gates what the review delivers, installed
 by one `verse c -a -file`, all of them or none. Each package goes in **as one step**: its
 declaration, its levels and its rules install together or not at all, so a refusal anywhere puts

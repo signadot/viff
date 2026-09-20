@@ -201,7 +201,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 // than the fire budget was TRUNCATED to the cap, acting on 4 of 10. The budget is gone (see
 // countFire), so truncation is gone with it, and what is left is the property worth pinning.
 // This is also the design note's burst case at its exact shape — one chain of length 1 fanning
-// out to n firings (docs/working/cycle-throttle.md) — and the per-subject chain rule is what
+// out to n firings (docs/cycle-throttle.md) — and the per-subject chain rule is what
 // keeps the ninth member from reading as the ninth hop of a runaway.
 func TestFanOutActsOnEveryMemberWithoutTripping(t *testing.T) {
 	store := entitytest.Store(t)

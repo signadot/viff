@@ -19,7 +19,7 @@ import (
 // "proxied network, private filesystem" are genuinely incomparable, and a design that ordered
 // them anyway would let a delegation weaken the floor while appearing to tighten it.
 //
-// See docs/working/runner-descriptor.md. This is a SKETCH: the vocabulary is here and real,
+// This is a SKETCH: the vocabulary is here and real,
 // and only the weakest rung of each chain is implemented (below).
 var chains = map[string][]string{
 	"network.ingress":     {"full", "restricted", "none"},
@@ -257,7 +257,7 @@ func (b bwrapConfiner) Provides(p Point) error {
 // listener and the lifeline. They ride on cmd.ExtraFiles rather than in the argv, so they survive
 // this untouched, and bwrap is expected to pass them through to the program it execs. That last
 // clause is the one assumption here nobody has run: if bwrap closes them, the child fails saying
-// fd 3 is not a listener and the parent reports it. See docs/working/coding-runner-residual.md.
+// fd 3 is not a listener and the parent reports it. See git-issue km5mzagq.
 //
 // The program itself must also EXIST inside the sandbox — it is the same binary as this runner,
 // so /usr/local/bin/coderunner is covered by the /usr bind below, and a runner installed
@@ -352,7 +352,7 @@ const ptraceScopePath = "/proc/sys/kernel/yama/ptrace_scope"
 // ptraceScope reads it and says what it means, for a log line at startup.
 //
 // This is the cheap half of a residual, taken on its own and deliberately not made into a
-// refusal (docs/working/coding-runner-residual.md). `principal: runner` — the strongest
+// refusal (git-issue km5mzagq). `principal: runner` — the strongest
 // rung any confiner here reaches — means the task process and the AGENT'S SHELL are the same
 // principal: `--unshare-user` maps the caller to itself, so nothing about uids or namespaces
 // separates a credential in `coderunner -task` from a shell the model drives.

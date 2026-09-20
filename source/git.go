@@ -421,7 +421,7 @@ func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
 
 // parseTrailers extracts a commit's trailer block — the `Key: value` lines git's own
 // `interpret-trailers` reads, which is where `Tier:`, `Co-Authored-By:` and this tree's own
-// `Breaks:` live (docs/working/contributing.md).
+// `Breaks:` live.
 //
 // It is a deliberate SUBSET of git's heuristic, and stricter in one way: git accepts a final
 // paragraph in which only some lines parse, and this requires all of them. That trades a few

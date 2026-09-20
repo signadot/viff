@@ -5,7 +5,7 @@ import "testing"
 // A PATH REACHES THE NODES AT ITS OWN LENGTH and no others: not an ancestor, which is a
 // different node, and not a descendant, which a read of the path answers inside the node it
 // reaches. This is what a change stream is filtered by, now that a change is reported at the
-// depth its observer asked about (step 5 of docs/working/paths-and-nodes-plan.md).
+// depth its observer asked about.
 func TestAPathReachesItsOwnLength(t *testing.T) {
 	at, err := ParseAt(`demo.pr."1".stage`)
 	if err != nil {

@@ -74,8 +74,7 @@ func TestACharterPathReachesIntoTheNodeAtIt(t *testing.T) {
 // ONE STEP IS ONE SEGMENT, so a name that holds a dot reaches no package spelled with two.
 // `verse c verse-dev.drift` typed as one word asks about a place called `verse-dev.drift`, and
 // the charter installed at `verse-dev` `drift` is somewhere else entirely — which is what the
-// segment-wise split says and what a dotted-string comparison could not
-// (docs/working/paths-and-nodes.md).
+// segment-wise split says and what a dotted-string comparison could not.
 func TestOneSegmentReachesNoTwoSegmentPackage(t *testing.T) {
 	srv, url := pathFixture(t)
 	if at, rest := srv.splitCharterPath([]string{"verse-dev.drift"}); at != "" || len(rest) != 1 {

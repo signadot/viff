@@ -8,7 +8,7 @@ import (
 
 // `!let` binds a value into a pattern, which is how a charter says "this field differs from that
 // value" — the sweep's staleness test, where the value is main's tip and the field is the base a
-// proposal was cut from (docs/working/merge-gate-residual.md).
+// proposal was cut from (git-issue 8wt1ta8r).
 //
 // The NEGATED case is pinned here because it was silently wrong: `!not` was dropped when `.[tip]`
 // was substituted, so "differs" answered "equals" — no error, the opposite verdict, in a rule

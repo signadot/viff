@@ -4,6 +4,15 @@ Design thinking that is worth keeping in the repo but has not been reconciled wi
 else: ideas, half-designs, an argument still finding its shape. These are durable so they
 survive being picked up again, not because they are settled.
 
+The notes are in [`work/`](work/). Beside it stand the two ledgers that say where the work
+stands, which is why they are not in it:
+
+| | |
+|---|---|
+| [contributing.md](contributing.md) | how a contribution takes shape in this repository |
+| [done.md](done.md) | what landed, and where it is described now |
+| [residuals.md](residuals.md) | what a landing did not build, and where each gap is tracked |
+
 Nothing here owes coherence — not to another working note, and not to the
 [roadmap](../roadmap/README.md). Two notes may reach opposite conclusions and both stay,
 which is the point: the disagreement is the state of the thinking, and flattening it early
@@ -24,58 +33,26 @@ Two things follow, both worth stating because the temptation runs the other way:
 - **Do not tidy by deleting.** A note that was wrong is more useful than no note, provided
   it says so. Mark it, keep the reasoning, and link what replaced it.
 
+## Done
+
+When the work lands the note leaves, its headline and commits going to [done.md](done.md) — so
+this directory holds what is coming and what is stalled, never what is finished. A note can also
+be finished by being overtaken, which is a row there with no commits and a line saying what
+serves the need instead.
+
 ## Residuals
 
-`$X-residual.md` is the one genre here that *does* owe something. A landing deletes the note and
-the plan it came from and rewrites `docs/` to say what is true
-([contributing.md](contributing.md#from-a-note-to-a-plan-to-a-doc)); the residual is what those two named and the
-landing did not build, kept so a known gap does not become an unknown one. So a residual is read
-against something that runs, and three rules follow from that:
+A residual is what a landing named and did not build. It is an issue now rather than a file here,
+and [residuals.md](residuals.md) is the index: what each gap is missing from, and where it is
+tracked. The rule that produces one is unchanged — a landing deletes the note and the plan it came
+from and rewrites `docs/` to say what is true
+([contributing.md](contributing.md#from-a-note-to-a-plan-to-a-doc)) — and what it skipped goes on
+that list rather than becoming an unknown gap.
 
-- **It names where the built thing is documented**, in its first line, because everything it says
-  is "what is missing from *that*".
-- **It is edited when the tree moves, not appended to.** A correction folded into the argument is
-  worth more than a strike-through under it — the exception being a wrong turn whose reasoning
-  still teaches, which is kept as prose rather than as a scar.
+Two things hold wherever the gap is written down:
+
+- **It names what it is missing from**, because everything it says is "what is missing from
+  *that*".
 - **A looseness inside something that runs is recorded where it runs.** A residual carries what
-  was *not built*; a corner of what was built belongs in the doc that describes it, and appears
-  here only when the fix is a design rather than a patch.
-
-The thirteen, and what each is a residual of:
-
-| | of | what is in it |
-|---|---|---|
-| [firing-residual.md](firing-residual.md) | [trigger-model.md](../trigger-model.md), [convergence.md](../convergence.md) | time as a cause, the read per commit, what `verse entity rm` should mean |
-| [schedule-residual.md](schedule-residual.md) | [trigger-model.md §schedules](../trigger-model.md#schedules-time-as-a-cause) | minute resolution, per-period backfill, a cron field, and what the building found |
-| [attached-resolvers-residual.md](attached-resolvers-residual.md) | [attached-resolvers.md](../attached-resolvers.md) | the two unbuilt drivers, a `by` nobody verifies |
-| [gate-unify-residual.md](gate-unify-residual.md) | [trigger-model.md §gates](../trigger-model.md#gates--whether-it-proceeds), [reference/tasks.md](../reference/tasks.md) | the runtime vector gate, where the record lives, two clocks on one record, what an exclusive binding does not refuse |
-| [runners-residual.md](runners-residual.md) | [runners.md](../runners.md) | how control is applied is convention, and whether `local` should be nameable |
-| [sources-residual.md](sources-residual.md) | [sources.md](../sources.md) | dial-in, and the levers a resync has not spent |
-| [gh-source-residual.md](gh-source-residual.md) | [reference/sourced.md §github](../reference/sourced.md#github) | the kinds no repository can own, and what the budget measured |
-| [goals-residual.md](goals-residual.md) | — (removed) | the definition no use case earned, and why goals were taken back out |
-| [derive-residual.md](derive-residual.md) | [strata.md](../strata.md) | the fan-out landed; the sweep, the two neighbours, and what `!each` deliberately does not reach |
-| [coding-runner-residual.md](coding-runner-residual.md) | [reference/examples/README.md](../reference/examples/README.md#running-the-coderunner) | what `principal: runner` actually contains and the refusal nothing makes, staged work never swept |
-| [merge-gate-residual.md](merge-gate-residual.md) | [reference/examples/README.md §push](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations) | the sweep's discovery: a condition that reads another entity's value, which `!let` is the shape for |
-| [grants-residual.md](grants-residual.md) | [perms.md](../perms.md) | policy edits as gated changes, a claim as an owner record, what is not attributed yet, and where a question stands |
-| [suspend-residual.md](suspend-residual.md) | [control.md](../control.md), [trigger-model.md §suspending](../trigger-model.md#suspending) | automatic suspension, a scope deleted with its suspensions, a parked launch and an operator's hold across a restart, a lapsed holder, the system charter, stored names, a run's hold with no reason |
-
-[provider-selection-improvements.md](provider-selection-improvements.md) is the same genre under
-an older name: it reads against [provider selection](../provider-selection.md) and carries what
-that landing left, which is why [contributing.md](contributing.md) cites it as one.
-
-Nothing above owes coherence to the *others* — a residual is a relation between one note and one
-landed thing, not a shared document.
-
-## The file that used to be missing
-
-`verse-dev-comment-drift.md` — the drive's numbered findings — lived only on `use/verse-dev`,
-so four notes ([absence-plan](absence-plan.md), [derive-each-plan](derive-each-plan.md),
-[derive-residual](derive-residual.md), [occurrence-plan](occurrence-plan.md)) cited "finding 10"
-and "finding 19" and linked to nothing. It has been copied across, which is the move this section
-used to say was right and belonged to a deliberate sync rather than to whoever next noticed a
-broken link.
-
-It is a COPY, and the branch keeps its own. That is the honest arrangement for a drive's
-scratch: the drive goes on writing there, and what is here is what the notes citing it were
-written against. When it drifts far enough to matter, copy it again — the alternative is a
-pointer that resolves differently depending on which checkout a reader has.
+  was *not built*; a corner of what was built belongs in the doc that describes it, and is a
+  residual only when the fix is a design rather than a patch.

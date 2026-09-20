@@ -530,7 +530,7 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 //
 // AT ANY LENGTH, which is the whole of what the split cost: `merge proposal X votes [0]` and
 // `merge proposal [0]` are the same grammar, and the second was refused because the names before
-// an access had to reach an entity's own depth first (docs/working/paths-and-nodes.md, row 13).
+// an access had to reach an entity's own depth first.
 func TestAWriteReachesAnArrayElement(t *testing.T) {
 	for _, c := range []struct {
 		segs   []string

@@ -579,12 +579,12 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 // is the point: verse holds the vocabulary for an envelope because it can enforce one, and
 // holds none for a workspace because only the runner can build one. So it travels as a name,
 // the way `driver:` does, and a runner handed one it does not have refuses the launch. That
-// is the first consumer the field has had (docs/working/coding-runner-residual.md).
+// is the first consumer the field has had (git-issue km5mzagq).
 //
 // Provenance travels for a different reason: not so the runner can decide anything, but so
 // it can record why it was asked. Subject and Chain are what a firing knows about its own
 // cause, and verse has always kept them on its side of the wire — which left a remote runner
-// unable to attribute its own effects (docs/working/attribution.md).
+// unable to attribute its own effects.
 // callsOf carries a charter's call list across to the runtime form and CHECKS it, which is the
 // point: `fatal: sideways` is the charter's error, reported when the trigger fires, rather than
 // a stop condition nothing will ever match on a machine its author does not have.
@@ -1195,7 +1195,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("DELETE /resolvers/{kind}/{name}", s.removeResolver, "", nothing)
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
-	// about. See docs/working/per-task-runners.md.
+	// about.
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
 	// writes `git:*`. See docs/sources.md.
@@ -1830,7 +1830,7 @@ func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 }
 
 // state answers the verse AT A PATH: the node the path reaches in the store, with everything
-// beneath it (docs/working/paths-and-nodes.md). It is narrowed by the same selector /watch
+// beneath it. It is narrowed by the same selector /watch
 // streams, so a read and a stream never disagree about what a filter names.
 //
 // `--if` is asked of each node the path reached — `demo.pr` reaches one, `demo.pr.*` each pr —

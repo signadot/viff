@@ -565,7 +565,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	}
 	// The launch this side keeps is what delivery writes into the commit trailers: the only
 	// externally checkable link back into the verse from a push made under a shared credential.
-	// See docs/working/attribution.md.
+	//
 	prov := ir.Get(&body, "provenance")
 	l := task.Launch{
 		ID: id, Prompt: field(&body, "prompt"), Driver: driver, Environment: env.Name,

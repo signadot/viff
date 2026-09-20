@@ -63,7 +63,7 @@ Two ideas rather than designs.
 - [A charter authored per change](dynamic-charter.md) — a prompt and a diff spawn an agent
   that writes the rules for *that* change, which the engine installs and runs. The substrate
   is mostly there — a charter is data, and a scope isolates a bundle of rules. What owns and
-  reaps such a bundle is open (see [goals: what is left](../working/goals-residual.md)). What is not there is any account of governing an agent that writes
+  reaps such a bundle is open (see [goals: what is left](../working/residuals.md) (`9by2kc0n`)). What is not there is any account of governing an agent that writes
   the rules the system will then run on itself.
 
 ## Rough order

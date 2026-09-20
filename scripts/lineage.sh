@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # lineage.sh — how one piece of work keeps its identity across three systems: a commit
-# becomes a PR becomes a release. It answers a question from docs/working/questions.md —
+# becomes a PR becomes a release. It answers an open question —
 # "how do all these IDs live in a flow?" — by running it rather than arguing it.
 #
 # The short answer verse gives: no fourth id is ever minted. A correlation is a DERIVED
@@ -23,7 +23,7 @@
 #   2. the cross-system join is a LIST read, not an identity one — git keeps a commit under
 #      its own id for the repository and a pull request carries a bare `headSha`, and
 #      `!get-path` refuses a predicate, so there is no identity read that reaches it
-#   3. the manifest COPIES, it does not track (docs/working/derived-views.md)
+#   3. the manifest COPIES, it does not track
 #
 # A fourth is real and NOT demonstrable here, because seeding hides it: a rule does not
 # backfill. Entities written before a charter was installed never fire it, and there is no
@@ -370,13 +370,13 @@ step "the release: three ids reassembled without a fourth"
 # EACH RUN CUTS A NEW RELEASE, and that is semantics rather than scripting convenience: a
 # task's id is f(rule, subject) exactly like the derived entity above, so re-cutting one
 # release addresses the task that already ran and the engine returns it instead of starting a
-# second (docs/working/spawn-repeat-policy.md). A new release is a new subject, so it is a new
+# second. A new release is a new subject, so it is a new
 # task and a new flow — which is also what releases do in life.
 # THE VERSION IS THE STORE REVISION, and that is the whole fix for a race this script had.
 #
 # A release must be a subject THE ENGINE HAS NEVER HAD A TASK FOR. Re-cutting one it has
 # addresses the task that already ran, and the engine returns that task rather than starting a
-# second (docs/working/spawn-repeat-policy.md) — so if it has since finished there is no
+# second — so if it has since finished there is no
 # in-flight work, and the flow this script waits for at the end never appears. Everything
 # before that step is correct, which is what makes it a confusing failure rather than an
 # obvious one.
@@ -456,7 +456,7 @@ cat <<'EDGES'
      That is by design (trigger/path.go), and it is also what makes the predicate safe
      to have: it is evaluated against the one snapshot the whole firing reads, not
      against whatever the store reaches later. The proposed `!view.*` spelling for the
-     tracking half is in docs/working/derived-views.md.
+     tracking half is not built.
 EDGES
 
 step "poke at it"

@@ -19,7 +19,7 @@ func TestTheTriageDriveInstalls(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	src, err := os.ReadFile("../docs/working/issue-triage.tony")
+	src, err := os.ReadFile("../deploy/charters/verse/repo/verse/issue-triage.tony")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -99,7 +99,7 @@ data:
     # leave it on a branch somebody can diff.
     #
     # It is the same repository as verse-docs and differs in two ways, both of which are the
-    # charter that uses it (docs/working/verse-dev/comment-drift.tony) asking for something the
+    # charter that uses it (deploy/charters/verse/repo/verse/comment-drift.tony) asking for something the
     # docs environment does not need.
     #
     # It PUSHES, which is the whole shape of the deliverable: a stale comment is cheap to read
@@ -249,7 +249,7 @@ data:
     # master is PROTECTED — a review, status checks and a merge queue, and nobody pushes to it.
     # So the consequential destination here is not `main` but a pull request (pull.go): the
     # push proposes, the forge asks, and the merge is the queue's. The charters are
-    # docs/working/signadot/{comment-drift,pr}.tony.
+    # deploy/charters/example/repo/app/{comment-drift,pr}.tony.
     #
     # The token this runner holds (-token-env) pushes to this repository too, so it needs
     # contents: write AND pull_requests: write on example/app — the second is what opening
@@ -263,7 +263,7 @@ data:
       - name: signadot
         repo: "https://github.com/example/app"
         # THE BRANCH, and the charters read the same one. Change it here, in signadot-pr
-        # below (base and pull.base), and in docs/working/signadot/*.tony together — the way
+        # below (base and pull.base), and in deploy/charters/example/repo/app/*.tony together — the way
         # it was driven on `verse/drive` before master.
         base: master
         destinations:

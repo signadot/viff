@@ -8,8 +8,7 @@ import (
 )
 
 // A WATCH REPORTS AT THE DEPTH ITS CALLER NAMED, because nothing else can know it: a document
-// does not say where its entities end, so "which entity changed" is a question with a parameter
-// (docs/working/paths-and-nodes.md).
+// does not say where its entities end, so "which entity changed" is a question with a parameter.
 //
 // A FIXED ARITY IS NOT A ROUNDING ERROR HERE. A derived entity stands at its target, the rule
 // that derived it, and the subject's own segments — six segments where a rule keeps two levels —

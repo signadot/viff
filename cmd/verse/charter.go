@@ -199,7 +199,7 @@ func printCharter(cc *cli.Context, steps []string) error {
 // NOT YET WHAT THE SERVER DOES WITH IT. The charter tree keeps package addresses as dotted strings
 // and matches segments by joining them with dots (versed/charterpath.go), so the one segment
 // `verse-dev.drift` still reaches the package at `verse-dev.drift`. A charter address as a kpath
-// from the file to the route is step 7 of docs/working/paths-and-nodes-plan.md.
+// from the file to the route.
 func charterPath(steps []string) (string, error) {
 	names, err := entity.StepNames(steps)
 	if err != nil {

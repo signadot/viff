@@ -79,3 +79,30 @@ the flow. It is never quietly run somewhere else.
 Both, deliberately: the url is what a restart can act on with nothing else present, so removing
 a runner entity cannot strand running work; the name is what a person reads and what
 `verse ps -runner` selects on, which keeps answering after the entity is gone.
+
+## What a caller can tell about a control call
+
+A control call that fails says which failure it was, because a caller that cannot tell them
+apart either retries what was already applied or abandons what never arrived (`task/runner.go`):
+
+| | |
+|---|---|
+| `ErrUnreachable` | the far side did not answer, and nothing is known about whether it acted |
+| `ErrNoSuchTask` / `ErrNoSuchDecision` | it answered, and has never heard of this — look for the typo |
+| `ErrAlreadyAnswered` | somebody beat you to it |
+| `ErrTaskEnded` | the gate was real, the task is over, and nobody answered it |
+| `ErrFenced` | a stale claim: the caller's generation was displaced |
+| `ErrUnsupported` | this runner has no such face at all |
+
+## What a reader gets after a gap
+
+A stream reader resumes with `since=<cursor>` rather than from the top, and the resume replays
+the questions still open, so a reader that missed a gate does not have to learn about it from
+the store.
+
+Two things keep a dial-in worker honest without a clock on its side. Its inbox poll **is** its
+acknowledgement — asking for what came after `N` is only possible having taken what came before
+— so the broker knows how far it has read without being told. And a claim carries a lease
+(`broker.ClaimLease`, two minutes), renewed by any poll or report, so a worker that closed its
+laptop stops holding a task and its gate forever. The lease is one clock comparing two readings
+of itself, never a timestamp written on another machine.

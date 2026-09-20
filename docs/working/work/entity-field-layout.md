@@ -1,6 +1,7 @@
 # A field layout for entity payloads
 
-Status: **proposal**, nothing built. It comes out of two defects that are live today, and a
+Status: **proposal**. The envelope and the virtual fields are unbuilt; the comments section this
+note used to carry landed and is gone. It comes out of two defects that are live today, and a
 survey of what 202 real entities on staging actually hold.
 
 The change in one line: **an entity's payload gets an envelope — what a writer said, what verse
@@ -25,7 +26,7 @@ a scalar replaces the scalar. Every reaper, every `derivedFrom` linkage and ever
 progress write does this to any entity whose payload is not a record.
 
 **Authored and derived are already mixed flat, and the workarounds are already in the tree.**
-`sources:git:verse` holds `{name, owns, system, url}` — typed by whoever ran `verse source add`
+`verse.sources.git.verse` holds `{name, owns, system, url}` — typed by whoever ran `verse source add`
 — beside `lastReflect`, which verse rewrites every pass. One namespace, two writers, no way to
 say which is which. `versed`'s `stillInstalled` exists because of it: it asks whether `name` is
 present rather than whether the entity is, because a status write must not resurrect a
@@ -37,10 +38,10 @@ Four provenances, from the staging survey (`GET /state`, 202 entities, 11 system
 
 | | example | payload |
 |---|---|---|
-| **reflected** — a source mirrors external truth | `git:commit:*` (66), `git-issue:issue:*` (29) | `author, msg, sha, repo` |
-| **authored** — a person or a charter wrote it | `trigger:rule:*` (8), `sources:*` (3) | `spec` / `name, owns, url` |
-| **derived** — verse computed it | `task:run:*` (8), `motion:channel:*` | `chain, status, started, cursor` |
-| **mixed** — content plus verse's own | `drift:finding:*` | `at, says, symbol` + `verse.meta.derivedFrom` |
+| **reflected** — a source mirrors external truth | `git.<repo>.commit.*` (66), `git-issue.<repo>.issue.*` (29) | `author, msg, sha, repo` |
+| **authored** — a person or a charter wrote it | `verse.trigger.rule.*` (8), `verse.sources.*` (3) | `spec` / `name, owns, url` |
+| **derived** — verse computed it | `verse.task.run.*` (8), `verse.motion.channel.*` | `chain, status, started, cursor` |
+| **mixed** — content plus verse's own | `verse-dev.drift.finding.*` | `at, says, symbol` + `verse.meta.derivedFrom` |
 
 Two of those already split cleanly and were built that way on purpose: a rule is `{spec: !raw
 <doc>}` (`charter.go`), and a derived entity carries `verse.meta.derivedFrom` beside the content
@@ -57,7 +58,7 @@ outside the document and the document is the value.
 **No `apiVersion`.** One schema, served by the verse itself (`/schema`), versioned by the
 binary rather than by each record.
 
-**A spec may be a scalar.** k8s specs are always objects. `count:n:hits = 42` is a counter, and
+**A spec may be a scalar.** k8s specs are always objects. `count.n.hits = 42` is a counter, and
 the whole point of the payload widening was that it is expressible.
 
 **Status has no schema.** k8s status is a declared type per kind. Here it is open, which is what
@@ -77,7 +78,7 @@ source:       # the registration that owns this slice
 ```
 
 **`value`, not `spec`, and the reason is the grammar we already have.** A charter's subject
-predicate is spelled `value:` today — `subject: {system: demo, kind: pr, value: {stage: open}}`
+predicate is spelled `value:` today — `subject: {path: "demo.pr.*", value: {stage: open}}`
 — so naming the authored half `value` makes the predicate and the storage agree, and every
 charter ever written keeps meaning what it meant. `spec` is also wrong for most of this data:
 two thirds of staging is reflected fact, and a commit's sha is not a desired state anybody
@@ -106,7 +107,7 @@ document was at the root. The envelope removes the reason for the prefix; the ru
 the reason for `meta`.
 
 **Nothing collides, because the top level is verse's.** A writer never addresses it: `verse
-data demo:pr:1 '{stage: open}' ` means the VALUE, and the write surface envelopes it. That --put is
+data demo.pr.1 '{stage: open}' ` means the VALUE, and the write surface envelopes it. That --put is
 what makes a new reserved sibling a cheap addition later rather than a break — there is nothing
 of the author's up there to collide with.
 
@@ -139,9 +140,9 @@ be worth a level on every address is the trade, and I do not think it does.
 
 ## Virtual fields
 
-`git-issue:repo:verse` holds `{issues: 29, open: 10, closed: 19}` — three numbers the source
+`git-issue.verse.repo` holds `{issues: 29, open: 10, closed: 19}` — three numbers the source
 recomputes and rewrites every pass, each rewrite a commit, each commit a change event every
-watcher of that slice pays for. `motion:channel:*` stores a `tally` the engine rewrites per
+watcher of that slice pays for. `verse.motion.channel.*` stores a `tally` the engine rewrites per
 ballot. Nothing else in the verse would disagree if either were computed when somebody asked.
 
 **They are computed by Go here, not by a tony operation, and the vocabulary is the proof.** The
@@ -153,9 +154,9 @@ selection itself:
 
 | wanted | needs |
 |---|---|
-| `git-issue:repo.status.open` | counting a selection |
-| `git-issue:repo.status.issues` | counting another |
-| `motion:channel.status.tally` | the quorum/select discipline, which is engine logic |
+| `git-issue.<repo>.repo.status.open` | counting a selection |
+| `git-issue.<repo>.repo.status.issues` | counting another |
+| `verse.motion.channel.status.tally` | the quorum/select discipline, which is engine logic |
 
 All three happen to be pure functions of the store at a revision — but that is a fact about
 those three, not about virtual fields, and the difference is the whole of what has to be
@@ -190,70 +191,7 @@ answers the whole verse — so if every kind carries one, a bare read becomes N 
 the answer is (evaluate only under the path asked for, cache by revision, refuse one above some
 depth), it has to be decided before this is offered rather than after.
 
-## Comments on a declaration — done, and what it took
-
-A rule keeps the comments its author wrote now, and the fork this section used to describe is
-closed: `persist` still writes the NORMALIZED record (`t.ToTonyIR()`), and the comments ride
-along in it. Storing the document as authored was the other route and is not needed.
-
-`//tony:schemagen=verse-trigger,notag,comment=Doc,lineComment=Note` is the whole of the
-declaration; go-tony v0.0.142 built the encode half of those annotations and v0.0.143 finished
-the codec. Two things in verse had to move with it, and both were the same shape — code that
-asked a node what it was without stepping past a comment first:
-
-- `codec.Unwrap` in `charterDefs` was applied to the value being INSTALLED, not just to the one
-  being inspected, so the CLI threw the rule's comment away before it ever reached the wire. It
-  was invisible for as long as nothing parsed comments and lossy the moment something did.
-- `entity.Get` unwrapped its ANSWER as well as its receiver, so `ruleOf` — reading `spec` back
-  to rebuild a rule at startup — got the value with the wrapper already gone. The rule now is
-  that navigation sees through a comment and the value it arrives at keeps its own.
-
-WHERE A COMMENT LANDS is positional, and worth knowing before writing a charter, because one of
-the three spellings does not do what it looks like:
-
-| written | belongs to |
-|---|---|
-| anything before a container's first item | the CONTAINER — and blank lines do not separate, so a file header and a comment meant for the first rule merge into one |
-| a comment between items | the item that FOLLOWS it — so every item but the first can take one |
-| `- # …` then the fields | that item |
-
-So in a charter file the first rule cannot take a head comment the ordinary way — there is no
-position between "the list starts" and "the first rule" except inside the item, and that
-spelling works. Every later rule takes one normally (go-tony v0.0.144). A rule written as its
-own `---` document takes one too.
-
-Nested comments are a separate matter, and nothing about them is broken — every position
-decodes, and a head-commented patch still fires and applies, because `tony.Patch` sees through
-the wrapper. They are only LOST, and the rule for which is simple: **a comment attaches to a
-value, and it survives iff whatever that value decodes into can carry it.**
-
-```
-# 1 above the rule          survives — Trigger declares comment=Doc
-action:
-  patch:
-    # 4 above the patch     survives — Action.Patch is a raw node, so the wrapper rides inside it
-    stage: x
-condition:
-  subject: demo:pr          2, above the subject, is dropped
-name: r                     3, above the action, is dropped
-```
-
-The per-FIELD annotation (go-tony v0.0.145, guarded in v0.0.146) turned out to shrink this a
-lot: it names the field's VALUE, which exists whatever the value is, so a parent carries a
-comment for a field whose own type cannot — a list, a scalar, or a struct with a hand-written
-codec. `condition:` and `gates:` are kept that way, and neither Condition nor Match had to
-change.
-
-Nothing is left: the last position — a comment above a field OF a hand-written codec, such as
-`subject:` inside `condition:` — is carried by that codec, by hand. Condition does it in five
-lines, and the other four custom-codec types can do the same if a charter ever wants it there. A comment above one of the custom-codec types is
-carried by whichever field holds it, and a comment above a field OF one is carried by that
-codec — Condition does it for `subject:`, `on:` and `when:`. `Match`, `Formula`, `Requirement`
-and `Stratum` could do the same and have not needed to; for `Match` it would probably never pay,
-since its commonest spelling is the one-line string `demo:pr:*`, which has nowhere to hang a
-head comment.
-
-## What breaks## What breaks
+## What breaks
 
 Everything reads one level deeper — but exactly one, which is the point of collapsing `meta`.
 `verse data demo.pr.1` answers `{value: …, status: …}` rather than the payload;

@@ -13,7 +13,7 @@ import "testing"
 // which is worse than reporting nothing.
 //
 // See Store.Write. The engine's cycle throttle keys a causal chain on exactly this equality
-// (docs/working/cycle-throttle.md): a firing recognizes the commits it caused by the revisions
+// (docs/cycle-throttle.md): a firing recognizes the commits it caused by the revisions
 // its writes reported.
 func TestWriteReportsTheRevisionTheStreamCarries(t *testing.T) {
 	s := openStore(t)

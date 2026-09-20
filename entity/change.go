@@ -7,7 +7,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// ONE CHANGE (docs/working/paths-and-nodes.md): a change a commit made under a pattern is every
+// ONE CHANGE: a change a commit made under a pattern is every
 // path the pattern reaches, before the commit or after it, whose node differs. The question
 // carries the depth — the pattern's own — and nothing here picks one for it.
 //

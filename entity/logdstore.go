@@ -1799,7 +1799,7 @@ func stateOf(ev *logdapi.WatchEvent) *ir.Node {
 
 // nodesAt calls fn for every node exactly depth object levels below node — whatever stands there:
 // an object, a list, a scalar, a null, an empty object — and for nothing shallower. It is what a
-// LISTING answers (docs/working/paths-and-nodes.md): the nodes a pattern of that depth reaches. A
+// LISTING answers: the nodes a pattern of that depth reaches. A
 // value met above the depth is not at it; a read of its own path answers it.
 func nodesAt(node *ir.Node, depth int, fn func(segs []string, v *ir.Node)) {
 	var rec func(n *ir.Node, segs []string)
@@ -2166,7 +2166,7 @@ func (s *LogdStore) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	// see, on a store that only grows (scratchpad probe on git-issue sfwhh9sv).
 	//
 	// What makes a read cheaper still is not asking for one — see the roll-forward note in
-	// docs/working/firing-residual.md.
+	// git-issue x2wzvn8q.
 	verse := map[string]*ir.Node{}
 	for _, st := range within {
 		if len(st) == 0 {
@@ -2540,7 +2540,7 @@ func commentOperand(n *ir.Node) (*ir.Node, bool) {
 
 // walkEntityDoc reads List's entities out of a MATERIALIZED verse subtree: the nodes three levels
 // down in the world's half and four in verse's own. It is the one fixed depth left, and it goes
-// with List and Depth (docs/working/paths-and-nodes-plan.md); a caller that knows its depth asks
+// with List and Depth; a caller that knows its depth asks
 // ListAt.
 func walkEntityDoc(node *ir.Node) []Entity {
 	var out []Entity

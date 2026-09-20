@@ -36,8 +36,8 @@ import (
 //
 // THE ADDRESS IS ONE KINDED PATH, at whatever depth, and it is the whole place written:
 // `demo.pr.1` is an entity, `demo.pr.1.labels.urgent` is a field of one, and nothing on the
-// wire says which — entity-hood is a LENS rather than a stored fact
-// (docs/working/paths-and-nodes.md), so a write that had to declare where the entity ended was
+// wire says which — entity-hood is a LENS rather than a stored fact, so a write that had to
+// declare where the entity ended was
 // answering a question the store does not ask. It carried three spellings to avoid it: a
 // three-segment `ref`, a `path` vector for anything deeper, and a `field` list for the place
 // inside. They are one path, so that is what this takes — the same grammar the READ takes
@@ -210,7 +210,7 @@ type Spawn struct {
 	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
 	// has everywhere else, and for the same reason: verifying a caller is authority's
 	// subject, not this field's. It is carried so a runner whose effects LEAVE the verse can
-	// write an externally checkable link back (docs/working/attribution.md).
+	// write an externally checkable link back.
 	//
 	// A charter firing has no equivalent yet, and deliberately no default here: an empty
 	// principal means nobody said, which is a fact worth recording as itself.

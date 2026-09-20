@@ -25,7 +25,7 @@ import (
 // predicate `value`. The path is a list of segments, each a name, a bare `*` (any one segment),
 // or a tony operator over one segment (`!glob "hotfix-*"`, `!or [open, merged]`). There are no
 // positions with names of their own — an address is a path from the top of the tree, `verse` a
-// segment like any other (docs/working/paths-and-nodes.md, CLAUDE.md).
+// segment like any other (CLAUDE.md).
 //
 // `value` IS A TONY MATCH TOO, evaluated at the payload ROOT. A payload is an ir.Node
 // (entity.Payload), so tony.Match(payload, predicate) needs no conversion — the same collapse

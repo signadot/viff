@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Seed the triage drive past the backlog: one row per open verse issue saying it was judged as
 # it now stands, so only an issue that moves from here on is judged
-# (docs/working/issue-triage.tony, "Seeding"). Run BEFORE installing the charter.
+# (deploy/charters/verse/repo/verse/issue-triage.tony, "Seeding"). Run BEFORE installing the charter.
 #
 # Idempotent: a row that already carries a judgement is left alone, so re-running this after
 # the drive has been judging does not wipe what it said.

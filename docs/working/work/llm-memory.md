@@ -12,9 +12,9 @@ keyed to the doer's own identity rather than to which LLM vendor happened to ans
 ## The gap, precisely
 
 Nothing today persists a conversation. `mirror.go` reflects a task's status (`doer`,
-`grant`, `tools`, lifecycle) into `task:instance:<id>` — durable, but index-only and
+`grant`, `tools`, lifecycle) into `verse.task.instance.<id>` — durable, but index-only and
 one-way, built for "observe another task," not "recall what a task learned"
-([change events](../change-events.md) is why an event is a level, not a transcript). There is
+([change events](../../change-events.md) is why an event is a level, not a transcript). There is
 no embeddings/vector-search path anywhere in verse to build on: the one `Vector` type in the
 codebase is the gate/autonomy dial (`task/vector.go`), unrelated. So this note is scoped
 deliberately small — a doer keeping a handful of notes about itself, not similarity search over
@@ -27,14 +27,14 @@ different (and much bigger) feature than the one proposed here.
 itself has no provider abstraction at all — it speaks one OpenAI-shaped Chat Completions dialect
 through Portkey, and swapping vendors is an environment variable
 (`PORTKEY_BASE_URL`/`OPENAI_MODEL`), not a code path. "Provider" in verse means the who-axis:
-a governed selection among `provider:<capability>:<id>` entities
-([provider selection](../provider-selection.md)). That is the identity this note keys memory
+a governed selection among `provider.<capability>.<id>` entities
+([provider selection](../../provider-selection.md)). That is the identity this note keys memory
 to, because it is already the identity that answers "which doer is this, across runs" — the
 LLM-vendor sense answers a different and less useful question (every doer sharing a vendor
 would share a memory).
 
 The hook already exists, one layer short of the loop. `launch.Fragment.ID` is documented as
-"the doer's own identity... an entity ref (`provider:treat:fixer`) for a registry doer, the
+"the doer's own identity... an entity ref (`provider.treat.fixer`) for a registry doer, the
 bare name for an inline `eligible` list." It survives `Spec.Overlay` into `Spec.Doer`
 (`launch/launch.go`), resolved in `trigger.go` before a task is ever built. Today its only
 consumer is `mirror.go`, which stamps it onto the task entity as a status field — pure
@@ -84,15 +84,13 @@ affordable once memory is leveled per key rather than shared across one entity.
 
 Leveled, not flat: a doer's memory is a namespace of top-level keys — `pitfalls`,
 `style_notes`, whatever the doer decides is worth naming — each its **own entity**, not a field
-inside one shared payload. Concretely: `Ref{System: "memory", Kind: "note", ID: "<doer>:<key>"}`
-(a `Ref`'s `ID` may itself contain colons, so `provider:review:claude:pitfalls` round-trips
-through `ParseRef` without ambiguity — `System`/`Kind` stay fixed, everything after is the id).
+inside one shared payload.
 
 ```tony
-memory:note:provider:review:claude:pitfalls
+memory.note.provider.review.claude.pitfalls
   "flagging `err != nil` after a stub return has cost two false positives; check callers"
 
-memory:note:provider:review:claude:style_notes
+memory.note.provider.review.claude.style_notes
   "this repo's reviews read terse; skip restating what the diff already says"
 ```
 
@@ -178,12 +176,12 @@ memory". Gate vectors *can* express exactly that (`ResourcePred{Kind, Pattern}`)
 kind exists; the named grants simply don't use resource predicates today. Whether the grant
 vocabulary should grow a name that separates them is a real question and out of scope here — it
 runs into the same structured-grant frontier
-[provider selection improvements](provider-selection-improvements.md) parks at.
+[provider selection improvements](../residuals.md) (`5ny7rn0r`) parks at.
 
 ## Corners
 
 - **Scope — settled: use whatever store the task was handed.** A task running under a
-  dev/sandbox `Store.Scope` ([scope lifecycle](../roadmap/scope-lifecycle.md)) reads and writes
+  dev/sandbox `Store.Scope` ([scope lifecycle](../../roadmap/scope-lifecycle.md)) reads and writes
   memory through that scope, and this needs no special-casing because copy-on-write already has
   the wanted semantics: reads see the baseline layered with the scope, writes land in the scope
   (`entity/store.go`). A sandboxed run therefore consults production memory and cannot
@@ -191,9 +189,9 @@ runs into the same structured-grant frontier
   Passing the scoped store is the whole implementation.
 - **Inline `eligible` doers get no memory in the first slice.** Per the corner above, an inline
   name has no entity behind it and two unrelated charters writing `eligible: [fixer]` would
-  collide in one memory namespace. Registry doers (`provider:<cap>:<id>`) have unambiguous refs;
+  collide in one memory namespace. Registry doers (`provider.<cap>.<id>`) have unambiguous refs;
   inline names don't, and an inline name "contributes nothing else" anyway
-  ([provider selection](../provider-selection.md)). Withholding memory from them costs nothing
+  ([provider selection](../../provider-selection.md)). Withholding memory from them costs nothing
   now and avoids inventing a namespacing rule nobody needs yet.
 - **Growth and curation is a narrower worry than it first looks.** "An index, not a warehouse"
   (`entity/entity.go`) is a statement about entities that index an *external* system — a PR, a
@@ -201,7 +199,7 @@ runs into the same structured-grant frontier
   Memory has no external referent: the entity **is** the record, so that constraint doesn't bind
   it, and the store is free to hold whatever internal-native shape a doer's memory needs. The
   real cost is a different, more mechanical one: events are levels, not deltas (`entity.go`'s
-  `Event.To` carries the whole payload as of each commit, see [change events](../change-events.md)),
+  `Event.To` carries the whole payload as of each commit, see [change events](../../change-events.md)),
   so a key whose value keeps growing makes every touch of it replay the whole growing blob to
   anything watching. That's a reason to keep any one key's value bounded — cap it, or have the
   doer rewrite rather than endlessly append — but it's an observability cost to manage, not a

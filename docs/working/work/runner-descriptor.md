@@ -1,13 +1,10 @@
 # A runner descriptor — sketch
 
-Status: **sketch**, and none of it is argued to the end. Treat every section as a placeholder with
-a decision in it, not as a design.
+Status: **sketch** on verse's side, and none of that is argued to the end. Treat every section as a
+placeholder with a decision in it, not as a design.
 
-Since it was written, the [coding runner](coding-runner-residual.md) landed and built the half that
-lives on a runner: it serves `GET /runner` with its drivers, its environments, the containment it
-can build **per leaf**, and what work it is holding undelivered. The isolation vocabulary below —
-leaves, ordered chains, componentwise comparison, refuse rather than degrade — is implemented there
-and has been exercised.
+Landed: the half that lives on a runner — `GET /runner`, the leaf vocabulary, the per-leaf ceiling —
+is built and exercised in the [coding runner](../residuals.md) (`km5mzagq`).
 
 What is still sketch is everything on **verse's** side. Nothing consumes the descriptor: `verse
 runner add` still probes with `GET /tasks`, verse holds no isolation vocabulary of its own, and an
@@ -27,7 +24,7 @@ collapses most of what an earlier draft spent its length on.
 
 Two questions want the same call, and one of them is already recorded as owed.
 
-**How control is applied.** [runners-residual.md](runners-residual.md) has it: an answer accepted
+**How control is applied.** [the runners residual](../residuals.md) (`f6bmet8r`) has it: an answer accepted
 for a brokered task is *queued*, an answer accepted over a url is assumed *applied*, and verse
 learns which by a Go type assertion (`broker.handle` implements `RelaysControl()`,
 `runner.HTTP`'s handle does not) — so the distinction exists in the process and not on the wire.
@@ -145,7 +142,7 @@ within one runner only, and policy that wants portability stays off them.
   incomparable rather than flattening them.
 - **Delegation is non-increasing at every leaf.** A `call_agent` child may not name a point below
   its parent's resolved point, anywhere in the tree. That answers the floor-inheritance question
-  [expose.md](../roadmap/expose.md) carries as open, with the shape `Grant.Subset` already uses,
+  [expose.md](../../roadmap/expose.md) carries as open, with the shape `Grant.Subset` already uses,
   and it runs inside the runner at the boundary where `Grant.Subset` already runs.
 - **An unstated coordinate reads as the leaf's default**, for comparison *and* execution — one
   reading, because a coordinate is a specification the runner builds from rather than a
@@ -160,7 +157,7 @@ within one runner only, and policy that wants portability stays off them.
 
 ### What it deliberately does not do
 
-**No selection.** [runners.md](../runners.md): *"No selection beyond a name. No `match`, no
+**No selection.** [runners.md](../../runners.md): *"No selection beyond a name. No `match`, no
 `capability`."* This guard is now **harder to hold**, and that is a real cost of verse-defined
 classes: portable coordinates are matchable across runners in a way a runner-local `sealed` never
 was, so "find me a runner with `network: none`" becomes a coherent thing to want. The spawn names
@@ -173,20 +170,8 @@ the words were per-runner.
 
 ## The near-term piece: the calling principal on the launch
 
-Everything above is a sketch. **This part is what the coding runner actually needs next**, and it
-is small.
-
-The launch carries the **calling principal** — the argument half of
-[attribution.md](attribution.md)'s parameter-at-install / argument-at-launch — through
-`launch.Spec` → `task.Launch` → the spawn wire → `taskd` → the Builder, so a runner has what it
-needs to keep its work auditable. For the coding runner that is concretely: the branch name and
-the commit trailers carry the charter, the firing and the task, so a push made under a shared bot
-credential still has an externally checkable link back into the verse.
-
-The **parameter** half — an identity recorded on the installed declaration — waits for the
-install-side work, and until then a chain roots at whatever the launch supplied. Threading the
-argument first is the right order: it is the half the runner consumes, and it is useful before
-anything verifies it.
+Landed: the launch carries the calling principal to the runner, which is what puts a checkable
+link back into a branch name and a commit trailer.
 
 ## Open
 
@@ -214,6 +199,6 @@ anything verifies it.
 vocabulary and the componentwise check (`task/`), the profile and principal fields on the spawn
 wire (`task.Launch`, `runner.HTTP.Spawn`, `taskd`'s decode, `versed.launchOf`), and what `verse
 runner`, `--probe` and `verse runner show` print. On landing it closes the first half of
-[runners-residual.md](runners-residual.md).
+[the runners residual](../residuals.md) (`f6bmet8r`).
 
 `contract`: the descriptor is required, so existing runners stop installing.

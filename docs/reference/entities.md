@@ -5,6 +5,11 @@ task — addressed by a path (`demo.pr.1`, `verse-dev.drift.head.abc`) and carry
 [Tutorial §2](../tutorial.md#2-entities) drives all of this; here is the surface flat, with
 the corners that section leaves out.
 
+**An entity is not a kind of node.** It is the word for a node a question is about: the subject a
+rule selects, one row of a listing, one event of a watch. Every one of those questions carries a
+path, so every one carries what depth it means — there is no entity depth, no `system`, `kind`
+and `id`, and no second length beside a path's own.
+
 ## Addressing
 
 An address is a path in a tree.
@@ -104,6 +109,36 @@ verse data -at 'demo.pr.*.stage'    …wildcards and all
 ```
 
 An address is given once: as steps, or as `-at`, never both.
+
+### What stands at a path
+
+A **node** is whatever stands at a path: an object, an array, a scalar, a null, an empty object.
+All of them count the same. A **path stands** when the store holds a node there, and the store
+saying not-found or path-conflict is the only definition of absence.
+
+So a listing is every node its pattern reaches — empty objects, nulls and scalars included — and
+nothing it does not. A scalar two segments deep is not in a three-segment pattern's listing; it
+is a node, and a read of its own path, or of a pattern carrying `..`, answers it.
+
+### The two questions asked of a pattern
+
+Two, and each is asked one way, which is what keeps containment from being asked seven ways:
+
+| | |
+|---|---|
+| **reach** — does this pattern reach that path; is this write under that confinement | kpath's, `Matches` and `MatchesPrefix` |
+| **overlap** — can two patterns reach a common path: two strata, two sources' claims | one walk to the shorter length, asking at each position whether the two segments can meet |
+
+A charter's subject may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`),
+and a source's claim may put a literal prefix there (`ws/*`). Either stays a match on the field
+name at that position; the structure around it — its length, its wildcards, its `..` — is kpath's.
+
+> **Pending.** Descent is the corner where the tree has not caught up with this. A match compares
+> a segment as a name, so `verse-dev..finding` and `verse-dev.drift.finding` do not meet, and
+> kpath answers false for any pattern holding `..`, so containment cannot use it yet. A fixed
+> `Depth` also survives in the store's walk. Tracked as `jabt2frr` here and
+> `17hj5ygkh12ks7j7n5n0` upstream; until they close, this section says what will be true of a
+> descent rather than what is.
 
 ### `*`: three layers, three rules
 

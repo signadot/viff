@@ -12,8 +12,8 @@
 // to be both. Both compile with the tree, for the same reason: a stub in a fenced block goes
 // stale the first time a signature moves and nobody finds out.
 //
-// The design and its open corners are in docs/working/coding-runner-residual.md; the containment
-// vocabulary is docs/working/runner-descriptor.md, and it is a SKETCH — the chains here are
+// The design and its open corners are in git-issue km5mzagq; the containment
+// vocabulary is a sketch, and it is a SKETCH — the chains here are
 // real and only their weakest rungs are implemented (confine.go).
 //
 // # What it does that the small example does not
@@ -171,7 +171,7 @@ func main() {
 	}
 	// And what the containment of every secret in a task process actually rests on, read rather
 	// than assumed. Not a refusal — see ptraceScope for why that wants a leaf an environment can
-	// ask for, and docs/working/coding-runner-residual.md for the rest.
+	// ask for, and git-issue km5mzagq for the rest.
 	log.Printf("coderunner: %s", ptraceScope())
 	for _, e := range cfg.Environments {
 		log.Printf("  environment %s (driver %s):", e.Name, orDefault(e.Driver, "llm"))
@@ -262,7 +262,7 @@ func (r *Runner) Descriptor(w http.ResponseWriter, req *http.Request) {
 	// Control is applied SYNCHRONOUSLY: a cancel that returns has been applied, which is what
 	// verse assumes of anything it reaches over a url. A runner that instead queued control
 	// would have to say `relayed` here — that field is the whole reason the descriptor is
-	// owed (docs/working/runners-residual.md).
+	// owed (git-issue f6bmet8r).
 	body := map[string]any{
 		"runner":  "coderunner",
 		"control": "synchronous",

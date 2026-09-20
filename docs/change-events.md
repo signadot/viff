@@ -236,7 +236,7 @@ instead — the same commit, a different question. A consumer with no pattern as
 There is no depth the stream picks for everybody, and there cannot be: a stream that picked one
 would deliver a change to a deeper node as a change to some ancestor, and a consumer comparing
 that with an address it already holds is comparing an ancestor with a descendant. The question
-carries the depth, here as everywhere (docs/working/paths-and-nodes.md).
+carries the depth, here as everywhere ([reference/entities.md](reference/entities.md)).
 
 This is what makes a trigger's subject well-defined. A firing is driven by one event, which carries
 one `Ref`, so `$subject`, and hence the flow keyed on it, is always exactly one entity. Not because

@@ -1,12 +1,12 @@
 # Nothing bounds a run, and an operator's word is advice
 
-Status: a finding with a proposed shape, nothing built. Found driving
-[verse-dev](verse-dev.md) on staging: a review that had reached its conclusion kept working
+Status: a finding with a proposed shape; no budget of any kind exists yet. Found driving
+[verse-dev](../residuals.md) (`rd9c5f8r`) on staging: a review that had reached its conclusion kept working
 for twenty minutes, was told to stop by an operator, and did not.
 
 ## What happened
 
-A `comment-drift` review, spawned by a trigger against the tip of main, on the llm driver with
+A development version of a `comment-drift` review, spawned by a trigger against the tip of main, on the llm driver with
 `vector: auto`. In twenty minutes it reached **43 boundaries** and:
 
 - **delegated nothing.** Its prompt says *"For EACH of those files, call_agent once — one agent
@@ -97,13 +97,8 @@ told.
   is the part of this that reads worst, and a budget does not address it: it bounds the run, it
   does not make the run listen.
 
-  **One thing was plainly wrong and is fixed.** The loop knew who was speaking — a convMsg
-  carries `by` and a kind — and handed the driver bare text, so a person's decision arrived in
-  the conversation looking like a tool result or the model's own earlier reasoning. It now
-  arrives named, and saying the one thing the model could not work out for itself: that the
-  speaker can see the run from outside, so this is a decision about what to do next rather than
-  input to weigh. Deliberately silent about authority — an operator outranks the plan, and does
-  not widen the grant or answer a gate.
+  Landed: an operator's `say` now reaches the driver named and framed as a decision taken from
+  outside the run.
 
   Whether that is enough is unknown, and it is a claim about a model rather than about the loop.
   If a framed steer is still ignored, the answer is not more words: it is that the only lever

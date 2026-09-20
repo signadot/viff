@@ -21,5 +21,7 @@ verse uses paths, not a fixed structure near the root. Deal with it and do not d
 
 This has been decided in at least five separate sessions and drifted back each time. If a design
 seems to need a fixed position or depth, stop and ask the owner; do not add one. The model is
-`docs/working/paths-and-nodes.md`; `scripts/check-paths.sh` in `make check` is a ratchet on the
-old vocabulary — make it pass by removing uses, never by raising its baseline.
+`docs/reference/entities.md`, whose Addressing section says what a node is and which two
+questions a pattern answers, and names the descent the tree has not caught up with yet;
+`scripts/check-paths.sh` in `make check` is a ratchet on the old vocabulary — make it pass by
+removing uses, never by raising its baseline.

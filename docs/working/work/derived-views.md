@@ -1,13 +1,18 @@
 # Derived views: a path read that tracks
 
-Status: proposal, nothing here runs. It answers [Ani's question](questions.md) about derived
+Status: proposal, nothing here runs. It answers a question about derived
 facts going stale, and proposes one spelling — `!view.get-path` / `!view.list-paths` — for the
 tracking half of a read. The claim it rests on is that a view is a *dependency declaration*
 rather than a recompute engine, and that the machinery to honour it is already built.
 
+Its Go sketch is written against types that have since moved: a `pathSpec` is `At []*ir.Node`, a
+kinded path at any depth, and `reads()` answers subtrees with a depth rather than a system and a
+kind. The argument survives the spelling; the sketch wants re-expressing before anyone builds
+from it.
+
 ## The question
 
-`derive` writes computed entities and [strata](../strata.md) prevent cycles, but a derive only
+`derive` writes computed entities and [strata](../../strata.md) prevent cycles, but a derive only
 fires when its rule fires. If an input changes some other way the derived value goes stale.
 Do we need view semantics, where a derived fact recomputes whenever its inputs change, or is
 event-driven good enough?
@@ -36,6 +41,10 @@ func (t Trigger) reads() [][2]string {
 }
 ```
 
+Since this was written `reads()` has gained one more entry — what the subject's own PREDICATE
+reads (`trigger/edge.go`) — which narrows the gap without closing it: the action's reads, and so
+every path read, are still not in the list.
+
 That one list is load-bearing twice over — it is both what a scoped engine opens a
 `WatchSubtree` on (`trigger/engine.go`) and what the commit skip is asked about
 (`Trigger.touches`). Its own comment says why they must be the same list: *"a trigger's verdict
@@ -50,14 +59,14 @@ spelled today does not.
 ```tony
 - name: pr-branch
   condition:
-    when: { system: change, kind: pr }
+    when: {path: "change.pr.*"}
   action:
     derive:
-      fact:branch:$subject.id:
+      fact.branch.$subject.name:
         # copies once, at the firing that caused it
-        head:   !get-path      { system: git, kind: repo, id: $subject.value.head, path: sha }
-        # tracks: this rule now wakes when git:repo does
-        branch: !view.get-path { system: git, kind: repo, id: $subject.value.head, path: branch }
+        head:   !get-path      {at: [git, repo, $subject.value.head], path: sha}
+        # tracks: this rule now wakes when git.repo does
+        branch: !view.get-path {at: [git, repo, $subject.value.head], path: branch}
 ```
 
 The prefix is orthogonal to the cardinality suffix on purpose. `path.go` argues that telling
@@ -137,15 +146,15 @@ reactive one — it is the reactive one, told about a read it was not being told
 Two properties fall out rather than being built:
 
 - **A recompute to the same bytes is free.** Writing an unchanged value produces no commit
-  ([change-events.md](../change-events.md)), so an input that changes in a way the view does not
+  ([change-events.md](../../change-events.md)), so an input that changes in a way the view does not
   observe costs one evaluation and stops. No dirty-tracking is needed to avoid churn.
 - **Runaway is already bounded.** A view that does churn is a rule firing repeatedly, which is
-  what [the cycle throttle](../cycle-throttle.md) catches at runtime.
+  what [the cycle throttle](../../cycle-throttle.md) catches at runtime.
 
 ## What is not settled
 
 1. **Fan-out is the real cost, and this design does not price it.** Because the id may be
-   `$subject.value.head`, a commit on `git:repo` does not say *which* subjects read it — so the
+   `$subject.value.head`, a commit on `git.repo` does not say *which* subjects read it — so the
    rule re-evaluates over its whole selection. That is what per-commit evaluation already does,
    but a view makes rules wake on subtrees they merely read, and the number of (rule, commit)
    evaluations grows with the fan-in. Whether subtree watches suffice or a view needs per-entity
@@ -166,7 +175,7 @@ Two properties fall out rather than being built:
 
 ## See also
 
-- [`!get-path` and `!list-paths`](../trigger-model.md#get-path-and-list-paths--reaching-another-entity)
+- [`!get-path` and `!list-paths`](../../trigger-model.md#get-path-and-list-paths--reaching-another-entity)
   — the grammar this extends
-- [Strata](../strata.md) — the level rule a derive's reads answer to
-- [Convergence](../convergence.md) — why a firing that rewrites the same bytes ends
+- [Strata](../../strata.md) — the level rule a derive's reads answer to
+- [Convergence](../../convergence.md) — why a firing that rewrites the same bytes ends

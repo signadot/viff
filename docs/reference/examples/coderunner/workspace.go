@@ -647,7 +647,7 @@ func shortSha(sha string) string {
 // The trailers are the attribution channel. A push made under a shared bot credential says nothing
 // at the far end about who it was for, so the only externally checkable link back into the verse is
 // what this writes down — and it is checkable, by anyone who can read both the repository and the
-// verse. See docs/working/attribution.md.
+// verse.
 func (t *Tree) commitWork(l task.Launch, result string) (bool, error) {
 	// What counts as work is "the branch moved OR the tree is dirty", not "the tree is dirty".
 	//

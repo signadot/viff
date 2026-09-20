@@ -215,7 +215,6 @@ func (d *callsDriver) Next(_ context.Context, prev StepResult) (ToolUse, bool, e
 // prompt, and the difference is what a reader gets: the engine can check it at fire time, a
 // charter can be shown it, and a value with a quote in it is a value rather than something that
 // has to survive being spliced into text and parsed back out. See
-// docs/working/calls-driver-plan.md step 3.5.
 //
 // It is the shared builder both runtimes call, and the refusal below is why it exists as a
 // constructor rather than as a driver anyone can wire up: AN ANSWER CONTRACT FAILS THE SPAWN.

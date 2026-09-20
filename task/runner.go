@@ -145,7 +145,7 @@ type Launch struct {
 	// It crosses the wire because a runner's effects can leave the verse — a coding runner
 	// pushes a branch under a credential verse does not hold — and the only externally
 	// checkable link back is what the runner itself writes down (a commit trailer, a branch
-	// name). A runner that was never told cannot record it. See docs/working/attribution.md.
+	// name). A runner that was never told cannot record it.
 	Provenance Provenance
 }
 
@@ -159,7 +159,7 @@ type Launch struct {
 // may be done is Grant, and nothing here widens it.
 type Provenance struct {
 	// Principal is who is answerable for this launch — the argument half of the
-	// parameter-at-install / argument-at-launch split in docs/working/attribution.md.
+	// parameter-at-install / argument-at-launch split.
 	//
 	// Self-asserted, and known to be: verifying that a caller is who it says is
 	// authority's whole subject, and nothing local could do better than a lock with the key

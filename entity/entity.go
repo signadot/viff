@@ -159,8 +159,7 @@ func (r *Ref) UnmarshalText(b []byte) error {
 //
 // It is the ONE reader. A colon is an ordinary character in a name, so `system:kind:id` is an
 // address ONE segment deep whose name holds colons — which is what makes `git.ref."x@git:ref:y"`
-// readable, and what a store seeded under another spelling would have to be re-seeded for
-// (docs/working/paths-and-nodes.md).
+// readable, and what a store seeded under another spelling would have to be re-seeded for.
 //
 // A wildcard is refused, and an empty segment with it: this answers "which one place", and
 // neither names one. `PathSegs` is where both refusals live, so the read routes that DO take a
@@ -179,8 +178,7 @@ func ParseAddr(s string) (Ref, error) {
 }
 
 // Segs is a ref's path: its segments, in order, `verse` first for an address in verse's own
-// half. Its length is the address's length — there is no second count that leaves the root out
-// (docs/working/paths-and-nodes.md).
+// half. Its length is the address's length — there is no second count that leaves the root out.
 func (r Ref) Segs() []string {
 	var out []string
 	if r.root != "" {

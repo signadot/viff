@@ -86,7 +86,7 @@ const HeldByOperator = "operator"
 //
 // Nothing in the tree runs two peers on one baseline today. This is the constraint that breaks
 // if something starts to, and the causal-depth throttle designed in
-// docs/working/cycle-throttle.md inherits it exactly: a chain that runs between two peer engines
+// docs/cycle-throttle.md inherits it exactly: a chain that runs between two peer engines
 // is throttled by neither, because each sees only its own half of it.
 type Engine struct {
 	store    entity.Store
@@ -926,7 +926,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			//
 			// Not hypothetical: a merge proposal was swept to `state: stale` while its gate
 			// stood open, the ballot already cast carried, and a branch the sweep had retired
-			// was merged (docs/working/merge-gate-residual.md).
+			// was merged (git-issue 8wt1ta8r).
 			wctx, stop := e.untilMoot(ctx, t, subj)
 			defer stop()
 			res, err := e.ask(wctx, fl, t, subj, d)

@@ -15,7 +15,7 @@ import (
 
 // proposalCharter is the sweep, as a charter would write it: a proposal is stale exactly when the
 // commit its branch was cut from is no longer the tip of main. See
-// docs/working/merge-gate-residual.md — the predicate is `base != <main's tip>`, and everything
+// git-issue 8wt1ta8r — the predicate is `base != <main's tip>`, and everything
 // about it was sayable except the comparison.
 const proposalCharter = `
 - name: proposal-stale

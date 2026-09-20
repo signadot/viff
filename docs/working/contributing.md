@@ -77,12 +77,12 @@ So the tag asserts the ground is usable: these checks passed here, and the drive
 carrying this code. It does not assert that this commit was reviewed, deployed first, or
 reached quiescence — none of which a self-referential drive can ever quite reach.
 
-**`verse-dev` stands on `main`, deliberately, and it is the exception this rule is worth
-stating against.** `make ship` deploys the checkout's HEAD, so staging runs main's tip rather
-than any tag — read literally, the drive is doing the one thing the paragraph above says nobody
+**`verse-dev` stood on `main`, deliberately, and it is the exception this rule is worth
+stating against.** `make ship` deploys the checkout's HEAD, so staging ran main's tip rather
+than any tag — read literally, the drive was doing the one thing the paragraph above says nobody
 dogfooding does.
 
-It is right anyway, and the reason names what the rule is FOR: a tag protects a drive from
+It was right anyway, and the reason names what the rule is FOR: a tag protects a drive from
 OTHER PEOPLE's churn, from `main` moving breakingly under a flow somebody is halfway through.
 `verse-dev`'s churn is entirely its own — one hand, and the changes are the drive — so pinning
 would only mean waiting for a tag to see your own fix, which is the loop above in a different
@@ -116,12 +116,13 @@ driving turned up).
 
 Force-push your own `use/` branch freely. Never force-push `main`.
 
-### The first drive
+### The first drive, and what came after it
 
-[`verse-dev`](verse-dev.md) — verse coordinating verse. Contributing to verse *is* an SDLC
-flow, which is the shape verse claims to run, so it is the fastest honest feedback available:
-the tree as entities, and commits landing as facts. Either may hit a wall, which is the point.
-Its own note has the detail.
+[`verse-dev`](residuals.md) (`rd9c5f8r`) — verse coordinating verse — is done. Contributing to verse
+*is* an SDLC flow, which is the shape verse claims to run, so it was the fastest honest feedback
+available: the tree as entities, and commits landing as facts. Both walked into walls, which was
+the point, and what it bootstrapped is now carried by targeted efforts instead — the comment
+drift charters that run, and the gaps it left, which are tracked as issues.
 
 ## From a note, to a plan, to a doc
 
@@ -133,7 +134,7 @@ practice; just unwritten.
 expensive to discover in week three.
 
 **2. `docs/working/$X-plan.md` — the plan.** The order of work, and per step *what it proves*
-([llm-memory-plan.md](llm-memory-plan.md) is the reference). Each step leaves the tree green.
+([llm-memory-plan.md](work/llm-memory-plan.md) is the reference). Each step leaves the tree green.
 Writing the plan forces decisions back into the note — `181b179` is that commit — which is a
 feature. The plan is also what a second person claims a step of.
 
@@ -153,11 +154,10 @@ the landing commit:
   command block, root `README.md` if the top-level story moved (`b78459f`);
 - **the neighbours** — a doc describing the old behaviour, or calling this gap a looseness, is
   now wrong (`319843c`);
-- **the residual** — what the plan named and the landing skipped goes back into `working/` as
-  `$X-residual.md` ([firing-residual.md](firing-residual.md),
-  [provider-selection-improvements.md](provider-selection-improvements.md); the genre and the
-  whole list are in [README.md](README.md#residuals)). Dropping a plan without its residual turns
-  a known gap into an unknown one.
+- **the residual** — what the plan named and the landing skipped becomes an issue, and a row in
+  [residuals.md](residuals.md) saying what it is missing from (`git issue create`, labelled
+  `residual`; the genre is in [README.md](README.md#residuals)). Dropping a plan without its
+  residual turns a known gap into an unknown one.
 
 Design proposals go straight to `main` in `docs/working/`: a working note owes coherence to
 nothing, so a branch protects nothing. `lifting-flows-design-proposal` on `origin` predates

@@ -189,7 +189,7 @@ func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
 // those are proved apart by the same comparison one segment further down, converge writes,
 // compares and tombstones there, and the last owner out empties `owners` and takes the project
 // with a conditional delete. Sharing is not an exception to single-writership; it is
-// single-writership at a deeper address (docs/working/shared-ownership.md).
+// single-writership at a deeper address (docs/sources.md, sharing).
 //
 // WHAT IT COSTS is a project with no top. Every field Linear has about a project — its name, its
 // state — is GLOBAL, and a global field has no owner among the teams, so each owner's path

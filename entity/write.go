@@ -199,7 +199,7 @@ func KPathOf(segs []string) (string, error) {
 //
 // AN ADDRESS IS AS DEEP AS IT IS, and there is no split in it. `demo pr 1` and `demo pr 1 stage`
 // are one grammar asked at two lengths; which of them a reader would call an entity is a lens
-// over one document and not a boundary a write records (docs/working/paths-and-nodes.md). So
+// over one document and not a boundary a write records. So
 // permission, ownership and confinement all key on the path written, however it was spelled.
 //
 // No step may be a wildcard, since a write names one place; and a name may not follow an access

@@ -38,7 +38,7 @@ import (
 //   - what the TASK needs — the model key for the `llm` driver — does cross, on stdin below,
 //     because a real coding agent needs secrets plumbed to it and pretending otherwise just
 //     moves the problem. What bounds a secret once it is inside is `network.egress: restricted`,
-//     which no confiner here builds yet: see docs/working/coding-runner-residual.md.
+//     which no confiner here builds yet: see git-issue km5mzagq.
 //   - a PUSH CREDENTIAL crosses it too, and only ever after a gate said yes. It used to be that
 //     delivery stayed in the parent and this file said the token never came here, which was true
 //     and was buying less than it looked: the parent then had to implement every git operation

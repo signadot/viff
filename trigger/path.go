@@ -40,7 +40,7 @@ package trigger
 // order is Match.Select's, "it matched three" is what a list IS, and `id: "*"` already walks a
 // whole kind — so what was left was the refusal without its argument. Narrowing a walk of the
 // kind is the CHEAPER read, not the more expensive one. (Truncation is the fourth and is still
-// unpaid, for globs and predicates alike; see docs/working/path-read-predicates.md.)
+// unpaid, for globs and predicates alike.)
 //
 // It does not reintroduce a read that slides, because a firing's reads do not slide: every path
 // read is answered from ONE snapshot taken at the causing commit (occasion.snapshot), so a

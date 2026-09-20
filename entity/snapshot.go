@@ -23,13 +23,13 @@ type Reader interface {
 	//
 	// The depth is the caller's because nothing else knows it: a document holding `{a: {b: {c:
 	// {stage: open}}}}` has an entity at `a.b.c` or at `a.b`, and which one is a property of
-	// the question rather than of the store (docs/working/paths-and-nodes.md). `at` is the literal
+	// the question rather than of the store. `at` is the literal
 	// prefix to read under and `depth` counts segments from the root, so `ListAt([verse-dev,
 	// drift, head], 4, …)` answers the entities one level below that path.
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// ReadAt is THE READ: the node standing at a path — an object with everything beneath it, an
-	// array, a scalar, a null — with no opinion about where anything in it ends
-	// (docs/working/paths-and-nodes.md). The empty path is the root. ok is false when nothing
+	// array, a scalar, a null — with no opinion about where anything in it ends.
+	// The empty path is the root. ok is false when nothing
 	// stands there, and err says the read could not be performed, which is not the same answer.
 	ReadAt(at []string) (node *ir.Node, ok bool, err error)
 }

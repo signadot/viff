@@ -3,7 +3,7 @@
 //
 // A resolver answers gate questions. It is INSTALLED rather than declared in a charter,
 // because a binding outlives any one rule and is managed by whoever supervises rather than by
-// whoever wrote the work. See docs/working/attached-resolvers.md.
+// whoever wrote the work.
 package resolver
 
 import (

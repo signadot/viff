@@ -912,7 +912,7 @@ func (d deriveTarget) segs() []string { return d.Path }
 // SEGMENTS RATHER THAN AN ID, so a derived entity is as deep as what it is about — the target,
 // the rule, and the subject's own address. What that costs is stated where it is paid: a reader
 // of derived entities says how deep they are, and how deep they are follows from the depth of
-// the subjects the producing rule selects (docs/working/paths-and-nodes.md).
+// the subjects the producing rule selects.
 func (d deriveTarget) refFor(segs ...string) entity.Ref {
 	return entity.RefAt(append(append([]string{}, d.segs()...), segs...)...)
 }
@@ -936,8 +936,7 @@ func (d deriveTarget) addr() string { return entity.JoinSegs(d.segs()) }
 // eachSpec is `!each {over, key, value}` — the fan-out form of a derive.
 //
 // It exists because one firing derives exactly one entity, and a task that answers with twelve
-// findings has eleven of them left as prose (docs/working/derive-residual.md, and now
-// docs/working/derive-each-plan.md). The invariant it must not break is the one the level
+// findings has eleven of them left as prose (git-issue e95q3frq, and now). The invariant it must not break is the one the level
 // ordering rests on: a derive's content is fixed by its address, so a re-fire writes the same
 // bytes to the same place and dies as a no-op. A fan-out keeps that in the generalised form —
 // **content may carry state exactly when the address is a function of that same state** — which

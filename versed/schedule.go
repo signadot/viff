@@ -21,7 +21,7 @@ import (
 // `next` is still what the timer was armed against. Two timers — a restart's re-arm beside one
 // that fired just before it, a second replica — then write one tick, and the loser re-reads and
 // re-arms. Nothing else ever writes under a schedule's `tick`, so a rule reading there fires
-// once per tick, whatever else it does (docs/working/schedule-plan.md).
+// once per tick, whatever else it does.
 
 // clocks is the timers standing for this process, by schedule id: what a re-arm stops and an
 // uninstall drops.

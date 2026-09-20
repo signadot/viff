@@ -16,7 +16,7 @@
 // The surface — flags, credentials, the kinds and what each carries — is docs/reference/sourced.md
 // under `github`, and the argument for the cover shapes is in docs/sources.md. What was designed
 // and not built, and the trigger that would revive each piece, is
-// docs/working/gh-source-residual.md.
+// git-issue 3eskdzrq.
 package github
 
 import (

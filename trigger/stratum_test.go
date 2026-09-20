@@ -903,7 +903,7 @@ func TestSubjectPartsResolveInAPatch(t *testing.T) {
 // so a late answer could act from that snapshot. It does not: a gate asks its question of a
 // world, and the answer applies to that world. A subject that the rule would no longer select
 // is one the charter has moved on from, and acting on the old snapshot anyway is how a merge
-// landed on a branch a sweep had retired (docs/working/merge-gate-residual.md). The question
+// landed on a branch a sweep had retired (git-issue 8wt1ta8r). The question
 // leaves the docket with the reason (see gatemoot_test.go), nothing is decided, and the
 // patch never lands.
 func TestAFiringWithdrawsWhenItsSubjectMovesOnUnderTheGate(t *testing.T) {

@@ -17,7 +17,7 @@ import (
 // A runner is an ENTITY rather than a startup flag, because the ask this answers is
 // "deploying arbitrary runners in the verse namespace" — adding one is a deployment act, a
 // write, not an edit to how verse itself is started. A drive adds a runner the way it adds a
-// doer or a resolver. See docs/working/per-task-runners.md.
+// doer or a resolver.
 const System = "runners"
 
 // Ref addresses an installed runner.

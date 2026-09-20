@@ -6,7 +6,6 @@
 // replaces the standing tick with the one now due, under a precondition on `next` so two timers
 // write one tick. A rule takes the tick as its subject and fires once per tick, because only a
 // replacement ever touches the place. The design is git issue 9e9nnjbeh12ksgqan1n0; the plan is
-// docs/working/schedule-plan.md.
 package schedule
 
 import (

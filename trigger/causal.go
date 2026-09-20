@@ -17,7 +17,7 @@ import (
 // budget stops it. The answer here does not look for the cycle. If a write carries the depth of
 // the chain that produced it, a runaway is a chain that keeps growing, and no analysis of what a
 // patch might compute or what a predicate might come to satisfy is needed to see it. Nothing has
-// to be detected; the counter IS the detection. See docs/working/cycle-throttle.md.
+// to be detected; the counter IS the detection. See docs/cycle-throttle.md.
 //
 // This file records the chain, checks it, paces what trips, and reports it. A trip holds the
 // firing for D (SetTripPace) and then lets it through, so a runaway settles into a dull steady

@@ -218,7 +218,7 @@ spawn:
 
 Nothing downstream can tell which driver proposed the push: it derives the same effect, meets the
 same gate, and is narrated the same way. That is what makes it cheap — see
-[tasks.md](../tasks.md#the-drivers) for the driver itself, and `docs/working/comment-drift.tony` for
+[tasks.md](../tasks.md#the-drivers) for the driver itself, and `deploy/charters/verse/repo/verse/comment-drift.tony` for
 the charter this example is taken from, where it replaced an agent that spent five minutes
 searching the filesystem when its branch was deleted underneath it.
 

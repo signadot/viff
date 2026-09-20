@@ -17,13 +17,13 @@ import (
 // judged as it stands is not, however often the store is touched. The action is swapped for a
 // patch so the selection is what is under test, not the coderunner.
 func TestTheTriageDriveMarksWhatMovedAndOnlyThat(t *testing.T) {
-	src, err := os.ReadFile("../docs/working/issue-triage.tony")
+	src, err := os.ReadFile("../deploy/charters/verse/repo/verse/issue-triage.tony")
 	if err != nil {
 		t.Fatal(err)
 	}
 	trigs, _, _, _, ok := parseBlock(string(src))
 	if !ok {
-		t.Fatal("docs/working/issue-triage.tony did not parse as a charter")
+		t.Fatal("deploy/charters/verse/repo/verse/issue-triage.tony did not parse as a charter")
 	}
 	var mark Trigger
 	for _, tr := range trigs {
@@ -87,7 +87,7 @@ func TestTheTriageDriveMarksWhatMovedAndOnlyThat(t *testing.T) {
 // little is not one the drive trips over; and when the issue moves after a judgement landed,
 // the re-derive reopens the row by taking `stage` off it while the judgement stays readable.
 func TestTheTriageDriveMarksAnIssueThatSaysLittleAndReopensARow(t *testing.T) {
-	src, err := os.ReadFile("../docs/working/issue-triage.tony")
+	src, err := os.ReadFile("../deploy/charters/verse/repo/verse/issue-triage.tony")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestTheTriageDriveMarksAnIssueThatSaysLittleAndReopensARow(t *testing.T) {
 // lands with the spawn, so a hook that never lands cannot leave the row selectable. A seeded row
 // carries a stage and is never taken; a judged one neither.
 func TestTheTriageDriveLatchesARowAsItTakesIt(t *testing.T) {
-	src, err := os.ReadFile("../docs/working/issue-triage.tony")
+	src, err := os.ReadFile("../deploy/charters/verse/repo/verse/issue-triage.tony")
 	if err != nil {
 		t.Fatal(err)
 	}
