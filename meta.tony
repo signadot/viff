@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits:
+- 236d1f44113092b9b291256215a41fc5ddf0c144
+- 602d68c09b76f7f75c72eba94ccfc6f280c2641b
+created: "2026-09-20T12:00:57.918042+02:00"
+duplicates: []
+id: jabt2frrh12kspdenxn0
+labels:
+- residual
+related_issues: []
+status: open
+updated: "2026-09-22T08:45:31.024934+02:00"
