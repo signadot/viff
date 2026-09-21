@@ -22,14 +22,22 @@ explicit that nothing in the runner knows what a coding agent is; a shell script
 would work identically.
 
 > **The trade you are choosing.** With `driver: llm`, every file read, every write, every shell
-> command is an action the vector sees, gates and narrates. With `driver: claude`, verse gates *the
-> invocation* and nothing inside it. [`taskproc.go`](taskproc.go) says it where the default vector
-> is built:
+> command is an action the vector sees, gates and narrates. With `driver: claude` as it is
+> configured below, verse gates *the invocation* and nothing inside it. [`taskproc.go`](taskproc.go)
+> says it where the default vector is built:
 >
 > > One action per turn, and that action hands the work to another program. ASK is the honest
 > > default for it — verse cannot see inside a subprocess, so the invocation is the only thing
 > > there is to decide about, which is the whole difference from the `llm` driver and the reason
 > > both exist.
+>
+> That is a property of this runner and the argv below, not of foreign agents. Claude Code stops
+> to decide before each tool runs — its permission rules, a `PreToolUse` hook, and in a headless
+> run `--permission-prompt-tool`, which hands the decision to an MCP tool — and that is where a
+> vector would be asked for verse to gate inside the run. This runner starts a subprocess and
+> reads what it printed, and the argv passes `--permission-mode bypassPermissions`, which switches
+> that decision point off. So here the invocation is all there is to decide about; nothing asks
+> the vector from inside.
 >
 > Pick `claude` when you want the agent's own quality and are content with containment doing the
 > supervising. It is why the `verse-dev` drive itself moved to `llm`, and why
@@ -118,7 +126,9 @@ environments:
 ```
 
 `bypassPermissions` is not a shrug: inside the sandbox the confinement is what says no, and asking
-the CLI to also prompt would park the run on a question nobody is watching for. `resume:` is what
+the CLI to also prompt would park the run on a question nobody is watching for. It is also the
+choice that leaves verse nothing inside the run to gate, since the CLI's own stop-and-decide point
+is what it bypasses. `resume:` is what
 makes a second turn possible at all — without it the program gets exactly one turn, so a steer has
 nowhere to go and an answer that misses its contract cannot be repaired.
 
@@ -205,9 +215,9 @@ It parks immediately. That is the design: with no `vector:` on the spawn the run
 `--vector auto` on the spawn skips the asking entirely. Watch the first few instead.
 
 Worth seeing once: the `llm` driver's default vector ([`harness.Vector()`](https://github.com/signadot/verse/blob/main/task/harness/build.go))
-has *three* ask gates — write, shell and delegate. For a foreign agent only `delegate` can ever
-fire, because the writes and the shell commands happen inside a subprocess verse never sees. That
-difference is the whole argument for the two drivers, in two vectors.
+has *three* ask gates — write, shell and delegate. For a foreign agent run this way only `delegate`
+can fire, because the writes and the shell commands happen inside a subprocess that reports none
+of them to verse. That difference is the whole argument for the two drivers, in two vectors.
 
 ### 9. Read what it produced
 
@@ -391,7 +401,7 @@ that are fixed are noted as such; the two that are not are tracked as issues.
 | `Not logged in · Please run /login` | The passthrough list is missing `USER`. The agent looks its credential up by OS user, so `PATH` and `HOME` are not enough. Found by bisecting the allowlist. | put `USER` on `env:` |
 | The read plane is blank for the whole run | `--output-format json` returns one document when the turn ends, so there is nothing to emit until it is over. A ten-minute task looks dead. Since verse gates only the invocation, narration is the entire compensating mechanism — and `stream-json` is not wired. | **open**, `1qdmzhac` |
 | A finished run's record cannot say what it was held to | `task:instance` has no field for the answer contract, and the ad-hoc path records no envelope at all — not vector, not grant, not tools. So "was this run governed, and by what?" is unanswerable afterwards. | **open**, `e3b4qmac` |
-| Task parks the instant it starts | Designed. The runner's default vector asks on `call_agent`, because verse cannot see inside a subprocess. | working as intended |
+| Task parks the instant it starts | Designed. The runner's default vector asks on `call_agent`, because this runner sees nothing inside the subprocess it starts. | working as intended |
 | A finished run left no branch at all | Cleanup ran unconditionally, and `deliver` tested for a dirty tree rather than for work — so an agent that committed its own edits read as nothing to deliver. | fixed; both now check the branch moved |
 | Prompts that say "look in `docs/`" go wrong | The workspace layout is the runner's convention and holds one directory per repository. `Workspace.Brief` tells the agent what is there; write prompts against that, not against a single-repo tree. | write to the brief |
 | `open pool:code: no such file or directory` from `runner add` | A pasted command with a trailing `#` comment: interactive zsh does not strip those, so the extra words arrive as arguments and `args[0]` was read as a filename. | fixed; the error now names the arguments and says `zsh` |
