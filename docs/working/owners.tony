@@ -39,5 +39,8 @@
 - work:  tracking-unclaimed
   item:  "what is in work and what is free, derived here rather than kept by hand"
 
-- work:  vocabulary-measurement
+- work:  vocabulary-measurement-review
   item:  "read the submission and say what the team does about it"
+
+- work: permissions-review
+  item: "review permissions in ENG-1256"
