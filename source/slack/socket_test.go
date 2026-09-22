@@ -296,6 +296,23 @@ func TestAReplyThatIsNotAnAnswerIsLeftAlone(t *testing.T) {
 	}
 }
 
+// Addressed to the bot and not an answer: it says so, to the person who said it, naming what the
+// question takes. A reply to the thread at large stays unanswered, which is the test above.
+func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.event(t, "e1", map[string]any{"type": "app_mention", "channel": "C999", "user": "U7",
+		"text": "<@U0BOT> ship it maybe", "ts": "1790000099.000100", "thread_ts": r.ts})
+	said := r.heard(t, "U7")
+	if !strings.Contains(said, "did not get that") || !strings.Contains(said, "proceed") {
+		t.Errorf("said %q, want it to say so and name what the question takes", said)
+	}
+	if q := r.question(t); q["status"] != mirror.QuestionPending {
+		t.Errorf("question %v, want it still pending", q)
+	}
+}
+
 // A reply under a message this program did not post answers nothing.
 func TestAReplyInAnotherThreadIsNotAnAnswer(t *testing.T) {
 	r := newSocketRig(t)

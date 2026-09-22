@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -216,7 +217,15 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		return
 	}
 	if id == "" {
-		return // somebody talking
+		// Somebody talking, which is not this program's business — unless they were talking to
+		// it. A message addressed to the bot is owed an answer, and "I did not understand you"
+		// is one; a reply to the thread at large is not, and answering it would make every
+		// conversation under a question a conversation with a program.
+		if e.Type == "app_mention" {
+			k.aside(ctx, e.Channel, e.ThreadTS, e.User, "Sorry — I did not get that. "+
+				"To answer, say one of "+code(optionsOf(asked))+".")
+		}
+		return
 	}
 	said, answered, public := k.answer(ctx, e.User, id, option)
 	if answered && k.Answered != nil {
@@ -259,6 +268,19 @@ func choose(text string, asked []Asked) (id, option string, err error) {
 			word, strings.Join(could, " or "))
 	}
 	return id, option, nil
+}
+
+// optionsOf is every word the thread's questions take, said once each.
+func optionsOf(asked []Asked) []string {
+	var out []string
+	for _, a := range asked {
+		for _, opt := range a.Options {
+			if !slices.Contains(out, opt) {
+				out = append(out, opt)
+			}
+		}
+	}
+	return out
 }
 
 // alias is the short word for an option: the two a gate has unless it says otherwise.
