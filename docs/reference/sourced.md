@@ -213,6 +213,10 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
               -depth <n>           messages per channel in the window (default 20)
               -threads             also reflect replies of threaded messages in the window (default true)
               -users               reflect the people (default true; needs users:read)
+              -out                 also say in Slack what is written under slack.<ws>.out (see below)
+              -verse-addr <addr>   the verse the out half reads and writes (VERSE_ADDR; default: -hint-url's host)
+              -as <principal>      who the out half reads and writes as (default agent:slack-io)
+              -out-every <d>       how often the out half reads what is asked (default 5s)
 ```
 
 | environment | |
@@ -252,6 +256,55 @@ reflected when its parent ages out.
 **The people are a separable claim.** A `users.list` that fails drops the user cover *and* the
 user entities, so a missing scope leaves them standing instead of deleting them; the channels
 are not treated that way, because a pass that lost them has nothing true left to say.
+
+### The out half: `-out`
+
+With `-out` the same program also says things in Slack. Somebody — a person, a charter — writes an
+**input** under the workspace's `out` place, and the program answers with its **status** beside it:
+
+| | where | written by | holds |
+|---|---|---|---|
+| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text` |
+| status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted`, and `error` while one stands |
+
+```sh
+verse data slack acme out U0123 hello -put '{text: "the review is waiting on you"}'   # a DM
+verse data slack acme out C0456 release -put '{text: "staging.3 is out"}'             # a channel
+verse data slack acme out U0123 'hello~status'
+```
+
+`<target>` is a Slack id: `U…` is a person, whose DM is opened; `C…` and `G…` are channels, said in
+as they are, so the bot must be in them. `<name>` is the writer's. It needs `chat:write` and
+`im:write` beyond the reflection's scopes.
+
+**A pass is level-triggered**, every `-out-every`: it compares what is asked with what the status
+says was done and does the difference. A new input is posted; a changed input — its `posted`
+fingerprint no longer matches — is a `chat.update` of the same message, not a second one; an input
+already said is left alone, so a restart resumes from the statuses rather than repeating them. A
+failure is written as `error`, once, in Slack's words, and the next pass tries again.
+
+**The status is a sibling, not a child**, so an input can grow structure without colliding with it.
+A name ending in `~status` is never read as an input. Removing an input leaves its status, and the
+message as it is.
+
+**The status is the program's alone, by the permissions model.** It reads and writes the verse as
+its own principal (`-as`, `agent:slack-io` by default), and the out place's owner grants it once:
+
+```sh
+verse perms slack acme out --grant '{read-write: [<who may ask>]}' --below
+verse perms slack acme out --grant '{read: [agent:slack-io]}' --below
+verse perms slack acme out --grant '{child-owner: [agent:slack-io]}'
+verse perms slack acme out --child-grants '{read: ["*"]}'
+```
+
+Holding `child-owner`, it owns each status it creates, and that owner record stops the askers'
+grant from above: they can read a status and cannot write it. The askers' line is `--below` rather
+than a child grant, since a child grant would be copied onto the status records too. Nothing stops
+an asker creating a status name first (a grant says who may create beneath a node, never which name
+is whose); the program's write is then refused, and it logs that.
+
+The out place stands outside the reflection's covers (`channel`, `message`, `user`), so a reflection
+pass never tombstones it.
 
 ## linear
 

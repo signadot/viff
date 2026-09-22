@@ -407,8 +407,12 @@ second kind, and stays a verse-level interface with nothing underneath it.
 
 ## What a Source does not do
 
-**No write-back.** A source reflects; acting on the external system stays the outbound executor
-path.
+**No write-back.** A source reflects; acting on the external system is an outbound path. One
+connector runs one beside its reflection: `sourced slack -out` ([the out half](reference/sourced.md#slack))
+reads what is asked under `slack.<ws>.out`, says it in Slack, and writes each status back as a
+principal of its own, dialling the verse where the reflection is dialled by it. That place stands
+under the source's claim but outside its covers, so the reflection is still the single writer of
+everything it reflects, and never tombstones what the out half and its askers write.
 
 **No paging.** One reflect answer is one payload in memory. A source of ten thousand issues
 narrows its `Covers` and reflects a place at a time, which is the same level-triggered pass at a
