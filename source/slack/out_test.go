@@ -222,6 +222,33 @@ func TestOutSaysWhatTheQuestionIsAbout(t *testing.T) {
 	}
 }
 
+// A question the clock will settle says so while it can still be answered: silence decides it,
+// and somebody reading it needs to know that before the silence does.
+func TestOutSaysWhenTheClockDecides(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending, "pose": "Ship it?",
+		"deadline": map[string]any{"within": "2m", "default": "deny",
+			"at": "2026-09-22T23:15:26.936740Z"}})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "`deny` at <!date^1790118926^{time}|23:15Z> unless answered") {
+		t.Errorf("said %q, want when the clock settles it and what it settles on", said)
+	}
+}
+
+// A deadline with no default settles on nothing — a refusal nobody made — and the message says
+// that rather than naming an option that does not exist.
+func TestOutSaysWhenADeadlineDecidesNothing(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending, "pose": "Ship it?",
+		"deadline": map[string]any{"within": "2m", "at": "2026-09-22T23:15:26.936740Z"}})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "closes at <!date^1790118926^{time}|23:15Z>, decided by nobody") {
+		t.Errorf("said %q, want it to say nobody decides it", said)
+	}
+}
+
 // An option may say what choosing it means, and the footer says it: three ids in a row is a
 // question answered by guessing.
 func TestOutSaysWhatEachOptionMeans(t *testing.T) {

@@ -339,6 +339,8 @@ type question struct {
 	why      string
 	say      []string
 	waiting  []string
+	due      time.Time // when the clock settles it, and what it settles on
+	settles  string
 	opts     []task.Option // what it takes to answer, in the order the gate wrote them
 	ballots  []string      // "<who> <choice>", in name order
 }
@@ -355,6 +357,10 @@ func (o *Out) question(id string) (question, error) {
 	}
 	q.standing = true
 	q.pose, q.about = entity.Str(doc, "pose"), entity.Str(doc, "about")
+	if _, dflt, at := mirror.DeadlineOf(doc); at != "" {
+		q.due, _ = time.Parse(time.RFC3339Nano, at)
+		q.settles = dflt
+	}
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
@@ -394,6 +400,17 @@ func (q question) line() string {
 		}
 		if len(q.ballots) > 0 {
 			line += " · so far: " + strings.Join(q.ballots, ", ")
+		}
+		if !q.due.IsZero() {
+			// Silence decides this one, so the message says so while it can still be answered.
+			// The instant is Slack's own date token, which every reader sees in their own
+			// timezone; the fallback is what a client that cannot render it shows.
+			when := fmt.Sprintf("<!date^%d^{time}|%s>", q.due.Unix(), q.due.UTC().Format("15:04Z"))
+			if q.settles == "" {
+				line += " · closes at " + when + ", decided by nobody"
+			} else {
+				line += " · `" + q.settles + "` at " + when + " unless answered"
+			}
 		}
 		return line
 	case q.verdict != "":
