@@ -58,7 +58,7 @@ flowchart LR
   end
 
   remote["remote runner<br/>another verse / taskd"]
-  src["sourced<br/>:9801"]
+  src["iod<br/>:9801"]
   ctl["content controller<br/>verse connect"]
   llm["model provider"]
 
@@ -81,14 +81,14 @@ flowchart LR
   class remote,llm,docd dialsOut
 ```
 
-Blue dials *into* verse. Green is dialled *by* verse. `sourced` is both, and that is the point
+Blue dials *into* verse. Green is dialled *by* verse. `iod` is both, and that is the point
 of [seam 6](#6-sources--read-one-way-hint-the-other).
 
 The two paths into a hint are not a choice between routes. They are different systems, and which
 one a source takes is decided by what its external system will let you install. Slack and Linear
-will only *call* you, so `sourced` has to be there to receive the delivery, verify its signature,
+will only *call* you, so `iod` has to be there to receive the delivery, verify its signature,
 and turn it into a hint. Git will run a script for you, so `Git.InstallHook` writes a four-line
-`reference-transaction` hook that curls the hint route itself, and `sourced git` serves **no
+`reference-transaction` hook that curls the hint route itself, and `iod git` serves **no
 delivery routes at all** and is not in that path. That is the shape every source would have if
 every external system let you install a four-line shell script.
 
@@ -234,13 +234,13 @@ GET {url}/source              → Descriptor  { root, owns }
 GET {url}/reflect[?ref=<ref>] → Reflection  { covers, entities }
 ```
 
-The source dials verse to **hint** — `POST /sources/{name}/hint` — and a hint carries
+The source dials verse to **hint** — `POST /io/{name}/hint` — and a hint carries
 which place went stale and nothing else.
 
 ```mermaid
 sequenceDiagram
   participant X as external truth<br/>(a repo, a workspace)
-  participant Src as sourced
+  participant Src as iod
   participant V as versed
 
   Note over V,Src: the periodic net — verse asks, on its own clock
@@ -251,7 +251,7 @@ sequenceDiagram
 
   Note over X,V: the low-latency half — the source says "look now"
   X->>Src: a push, a webhook
-  Src->>V: POST /sources/{name}/hint?ref=…
+  Src->>V: POST /io/{name}/hint?ref=…
   V->>Src: GET /reflect?ref=…
   Src-->>V: Reflection (that place)
   V->>V: converge
@@ -264,12 +264,12 @@ this seam be unreliable without being wrong.
 
 The direction split matters in deployment: in the Kubernetes build, verse reaches the source at
 `http://<source>:9801/reflect`, and the source is configured with
-`http://verse:9797/sources/<name>/hint` to call back. Neither is simply the other's
+`http://verse:9797/io/<name>/hint` to call back. Neither is simply the other's
 client.
 
 Two variants avoid the network entirely or do not exist yet. `-dir` reflects a local git
-repository **in task** — no `sourced`, no port. And `dial-in`, for a source verse must not
-dial, is designed and **refused at install** until it is built ([sources](reference/sources.md)).
+repository **in task** — no `iod`, no port. And `dial-in`, for a source verse must not
+dial, is designed and **refused at install** until it is built ([sources](reference/io.md)).
 
 ## 7. Webhooks: the only seam facing the internet
 

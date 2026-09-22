@@ -16,7 +16,7 @@ func testServer(t *testing.T) *Server {
 	// A source installed in a test runs a reflector under the server's context, which for a
 	// server nobody started is Background — so without this it outlives the store it writes to
 	// and goes on polling into a closed session, in whichever test runs next.
-	t.Cleanup(s.stopAllSources)
+	t.Cleanup(s.stopAllIOs)
 	return s
 }
 

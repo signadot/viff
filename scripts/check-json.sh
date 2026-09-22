@@ -15,9 +15,9 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # that is not verse's to re-render, at the edge of the process that speaks it.
 #   task/harness/llm.go   — the OpenAI chat-completions schema.
 #   codec/codec.go           — json.Number, in AsInt64. codec is where formats live.
-#   source/slack/*.go        — Slack's Web API and its signed event envelopes.
-#   source/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
-#   source/github/*.go       — GitHub's REST responses.
+#   io/slack/*.go        — Slack's Web API and its signed event envelopes.
+#   io/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
+#   io/github/*.go       — GitHub's REST responses.
 #   docs/reference/examples/coderunner/command.go
 #                            — whatever an external program prints when its config says
 #                              `output: json`. Same exception as the connectors and the same
@@ -32,7 +32,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='task/harness/llm.go|codec/codec.go|source/slack/[a-z]+\.go|source/linear/[a-z]+\.go|source/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go'
+allow='task/harness/llm.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

@@ -23,8 +23,8 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -86,8 +86,8 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 		g.Scope = scope
 		generated = true
 	}
-	statusKind := source.StatusPrefix + scope
-	contentKind := source.ContentPrefix + scope
+	statusKind := verseio.StatusPrefix + scope
+	contentKind := verseio.ContentPrefix + scope
 
 	// docd's faces (published by the running verse on /status): the client face for
 	// scoped metadata writes, the mount face for the content controller.
@@ -114,13 +114,13 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	// Start it and WAIT until it is serving before the trigger/metadata below, so a
 	// validator that fires the instant a file lands can actually read it, rather than
 	// racing an unmounted controller and reporting "file not found".
-	contentMount := entity.MountKPath(source.FederationRoot, contentKind)
+	contentMount := entity.MountKPath(verseio.FederationRoot, contentKind)
 	go func() {
 		err := libctl.RunController(ctx, &libctl.ControllerConfig{
 			DocdAddr:   mountAddr,
 			Controller: "content-" + scope,
 			Path:       contentMount,
-			Handler:    source.NewContent(root, contentMount),
+			Handler:    verseio.NewContent(root, contentMount),
 		})
 		if err != nil && ctx.Err() == nil {
 			fmt.Fprintf(cc.Err, "connect: content controller: %v\n", err)
@@ -145,7 +145,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	fmt.Fprintf(cc.Out, "connect %s → verse, scope %q: %s:%s:* (metadata) + %s:%s:* (content on demand), validator per file. ctrl-c to stop.\n",
-		root, scope, source.FederationRoot, statusKind, source.FederationRoot, contentKind)
+		root, scope, verseio.FederationRoot, statusKind, verseio.FederationRoot, contentKind)
 
 	// A generated (nonce) scope is ephemeral to this session: drop it on exit so its
 	// overlay + engine don't leak. A user-named scope is left for reuse.
@@ -166,7 +166,7 @@ func (cfg *connectConfig) run(cc *cli.Context, args []string) error {
 // reports "file not found".
 func waitContentReady(ctx context.Context, contentKind, root string) error {
 	var probe string
-	for rel, meta := range source.WalkStatus(root) {
+	for rel, meta := range verseio.WalkStatus(root) {
 		if meta["type"] == "regular" {
 			probe = rel
 			break
@@ -177,7 +177,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 	}
 	// Baseline /entity (no ?scope) → versed's baseline store → the content mount.
 	u := "http://" + g.Addr + "/entity?" + url.Values{
-		"at": {entity.JoinSegs([]string{source.FederationRoot, contentKind, probe})},
+		"at": {entity.JoinSegs([]string{verseio.FederationRoot, contentKind, probe})},
 	}.Encode()
 	deadline := time.After(30 * time.Second)
 	for {
@@ -204,7 +204,7 @@ func waitContentReady(ctx context.Context, contentKind, root string) error {
 func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *entity.LogdStore, root, statusKind string, interval time.Duration) {
 	prev := map[string]string{} // relpath → size:mtime signature
 	tick := func() {
-		cur := source.WalkStatus(root)
+		cur := verseio.WalkStatus(root)
 		var created, changed, removed int
 		for rel, meta := range cur {
 			sig := fmt.Sprintf("%v:%v", meta["size"], meta["mtime"])
@@ -214,7 +214,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 				} else {
 					created++
 				}
-				ref := entity.RefAt(source.FederationRoot, statusKind, rel)
+				ref := entity.RefAt(verseio.FederationRoot, statusKind, rel)
 				if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj(meta).Payload()}); err != nil {
 					fmt.Fprintf(cc.Err, "connect: publishing %s: %v\n", ref, err)
 				}
@@ -224,7 +224,7 @@ func (cfg *connectConfig) pollLoop(ctx context.Context, cc *cli.Context, store *
 		for rel := range prev {
 			if _, ok := cur[rel]; !ok {
 				removed++
-				ref := entity.RefAt(source.FederationRoot, statusKind, rel)
+				ref := entity.RefAt(verseio.FederationRoot, statusKind, rel)
 				if _, _, err := store.Write(entity.Write{At: ref.At()}); err != nil { // nil value removes it
 					fmt.Fprintf(cc.Err, "connect: removing %s: %v\n", ref, err)
 				}
@@ -271,7 +271,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 			// than on the state. A match is asked only of state now, so the outstanding-ness
 			// has to be written down, which is what `validated` is.
 			Subject: trigger.Match{
-				"path": []*ir.Node{ir.FromString(source.FederationRoot), ir.FromString(statusKind), ir.FromString("*")},
+				"path": []*ir.Node{ir.FromString(verseio.FederationRoot), ir.FromString(statusKind), ir.FromString("*")},
 				// ABSENCE, built as a node rather than as a Go map, and both halves of
 				// that are load-bearing.
 				//
@@ -340,7 +340,7 @@ func (cfg *connectConfig) installTrigger(scope, statusKind string) error {
 // connecting, in the session's scope. A place is taken where nothing stands, so this comes
 // before the first file is published; a named scope connected again finds the place its own.
 func takeStatusPlace(statusKind string) error {
-	at := entity.RefAt(source.FederationRoot, statusKind)
+	at := entity.RefAt(verseio.FederationRoot, statusKind)
 	resp, err := httpPut("/perms", api.PermsEdit{At: at.String()}) // urlFor folds ?scope=<scope>
 	if err != nil {
 		return fmt.Errorf("connect: taking %s: %w", at, err)
@@ -431,7 +431,7 @@ func disconnectCmd() *cli.Command {
 
 // removeLocalEntities deletes every local:* entity in the current (scope) view.
 func removeLocalEntities(cc *cli.Context) error {
-	ents, err := stateAt(source.FederationRoot + ".*.*")
+	ents, err := stateAt(verseio.FederationRoot + ".*.*")
 	if err != nil {
 		return fmt.Errorf("disconnect: %w", err)
 	}

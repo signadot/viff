@@ -316,7 +316,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	defer ts.Close()
 	bob := "bob@example.com"
 
-	for _, at := range []string{"verse.schedule.date", "verse.sources.cluster", "verse.resolvers.instance", `verse.task.instance."some-rule@demo.pr.1"`} {
+	for _, at := range []string{"verse.schedule.date", "verse.io.cluster", "verse.resolvers.instance", `verse.task.instance."some-rule@demo.pr.1"`} {
 		resp := putBody(t, bob, ts.URL+"/perms", fmt.Sprintf(`{at: %q, grants: []}`, at))
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {

@@ -6,11 +6,11 @@ import (
 	"slices"
 
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -64,8 +64,8 @@ var seed = []struct {
 	{entity.VerseRef(resolver.InstanceSystem), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(source.System), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(source.System), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(verseio.System), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(verseio.System), entity.Read, []string{entity.Everyone}},
 	// A schedule is declared in a charter and is its installer's, as a rule is; its ticks are
 	// written as the schedule, so they carry the installer's grant and are everybody's to read
 	// unless the installer says otherwise.

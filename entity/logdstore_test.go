@@ -290,7 +290,7 @@ func TestLogdStore_ScopeHidesAnInheritedNodeBeneathAnEntity(t *testing.T) {
 // external truth has and tombstones what it does not, and inside a scope most of what it
 // finds standing is inherited; if a scoped delete could only remove scope-local entities,
 // a scoped source could not say "that branch does not exist in this sandbox" and every
-// scope would be stuck with baseline's set as a floor. See docs/sources.md.
+// scope would be stuck with baseline's set as a floor. See docs/io.md.
 func TestLogdStore_ScopeHidesAnInheritedEntity(t *testing.T) {
 	base := openStore(t)
 	ref := RefAt("demo", "pr", "inherited")

@@ -266,7 +266,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	}
 	ts.Close()
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
@@ -704,7 +704,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	}
 	firstHTTP.Close()
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	store := entitytest.StoreAt(t, addr)
 	second := NewWithStore(ScriptedBuilder, store)

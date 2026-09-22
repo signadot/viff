@@ -536,7 +536,7 @@ type Status struct {
 	//
 	// Runners are the refs a spawn may name (`verse.runners.code`), which is a different question
 	// from `runner` below — that one is how THIS verse runs a task when a spawn names nobody.
-	// Sources are the refs of what WRITES into this verse (`verse.sources.main`) — the one line
+	// Sources are the refs of what WRITES into this verse (`verse.io.main`) — the one line
 	// here that says anything is arriving at all, since a verse whose sources are gone goes on
 	// reporting a fine store rev and an idle charter.
 	//

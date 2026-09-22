@@ -10,9 +10,9 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/source"
 )
 
 // askingRun spawns a task that blocks on its first action, so there is a real question to
@@ -113,7 +113,7 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	waitQuestion(t, srv, "unwatched")
 	time.Sleep(50 * time.Millisecond) // let both records land
 
-	pat := source.Cover(entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind, "*")
+	pat := verseio.Cover(entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind, "*")
 	pat.Predicate = entity.Obj{"resolver": ref}.Payload()
 	got := pat.Select(srv.Store)
 	if len(got) != 1 {

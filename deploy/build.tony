@@ -149,14 +149,14 @@ build:
     # Each is off by default and independent of the others, because each costs something
     # different to turn on: the git one costs a clone, the other two cost a credential in the
     # cluster. Turning one on deploys the connector; INSTALLING it is still a verb somebody
-    # runs (`verse source add …`), since a registration carries an ownership claim verse checks
+    # runs (`verse io add …`), since a registration carries an ownership claim verse checks
     # against what is already standing, and a manifest is not where that conversation happens.
     #
-    # The `<x>SourceName` knobs are the registration name each will be added under. They are
+    # The `<x>IOName` knobs are the registration name each will be added under. They are
     # here because the hint url a source posts deliveries to contains it, so the name has to be
     # decided before the pod starts — and verse 404s a hint for a name it has no registration
     # under, which is how a mismatch announces itself.
-    gitSource: false
+    gitIO: false
     gitMirror: "https://github.com/signadot/verse.git"
 
     # The issues `git issue` keeps inside a repository, reflected as `git-issue:*`.
@@ -170,9 +170,9 @@ build:
     #
     # Empty means "whatever gitMirror says", which is what it always did, so a deployment that
     # names no set is unchanged by the split.
-    gitIssueSource: false
+    gitIssueIO: false
     gitIssueMirror: ""
-    # Whether to reflect each issue's DESCRIPTION BODY. On is `sourced`'s own default and the
+    # Whether to reflect each issue's DESCRIPTION BODY. On is `iod`'s own default and the
     # shape a charter reacting to an issue's text needs; off keeps the tracker's structure —
     # id, title, status, labels, links — without its prose.
     #
@@ -181,8 +181,8 @@ build:
     # today, so a slice nobody reads still shows up in the latency of everything that does.
     gitIssueBodies: true
 
-    slackSource: false
-    slackSourceName: "workspace"
+    slackIO: false
+    slackIOName: "workspace"
     # "" takes the team name the bot token belongs to — the id prefix every slack:* entity
     # carries and the ownership claim is spelled with.
     slackWorkspace: ""
@@ -190,20 +190,20 @@ build:
     # on the periodic resync instead of on delivery.
     slackWebhookHost: ""
 
-    linearSource: false
-    linearSourceName: "teams"
+    linearIO: false
+    linearIOName: "teams"
     # Comma-separated team keys (ENG,OPS); "" is every team the credential can see.
     linearTeams: ""
     linearWebhookHost: ""
 
-    githubSource: false
-    githubSourceName: "repos"
+    githubIO: false
+    githubIOName: "repos"
     # Comma-separated repositories (org/name,org/other). Required: a GitHub source with none
     # reflects nothing, claims nothing and never writes, so it refuses to start.
     githubRepos: ""
     # Discussions are GraphQL and carry no ETag, so they are the whole of what a quiet
     # repository costs against the rate limit — and they are opt-in per repository on GitHub's
-    # side, so most repositories have none. Off by default; see docs/reference/sourced.md.
+    # side, so most repositories have none. Off by default; see docs/reference/iod.md.
     githubDiscussions: false
     githubWebhookHost: ""
 
@@ -232,16 +232,16 @@ build:
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
-  - if: '.[gitSource]'
-    dir: git-source
-  - if: '.[gitIssueSource]'
-    dir: git-issue-source
-  - if: '.[slackSource]'
-    dir: slack-source
-  - if: '.[linearSource]'
-    dir: linear-source
-  - if: '.[githubSource]'
-    dir: github-source
+  - if: '.[gitIO]'
+    dir: git-io
+  - if: '.[gitIssueIO]'
+    dir: git-issue-io
+  - if: '.[slackIO]'
+    dir: slack-io
+  - if: '.[linearIO]'
+    dir: linear-io
+  - if: '.[githubIO]'
+    dir: github-io
   - if: '.[coderunner]'
     dir: coderunner
 
@@ -769,23 +769,23 @@ build:
             - name: coderunner
               imagePullPolicy: $[imagePullPolicy]
 
-  # The source connectors. One image, three roles: these run `sourced`, versed runs `verse`,
+  # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
   # does — and a source's command IS its configuration, so there is nothing to merge into.
-  - if: '.[gitSource]'
+  - if: '.[gitIO]'
     match:
       kind: Deployment
       metadata:
-        name: git-source
+        name: git-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-source
+            - name: git-io
               image: $[image]
               command:
-              - sourced
+              - iod
               - git
               - -addr
               - ":9801"
@@ -804,20 +804,20 @@ build:
   # TWO BLOCKS, one knob: a set of its own when gitIssueMirror names one, and gitMirror's when
   # it does not. A command is a list, so there is nothing to merge into and no way to write a
   # default that a later patch overrides — the same reason llmSecretKey is spelled as a pair.
-  - if: '.[ gitIssueSource && gitIssueMirror != "" ]'
+  - if: '.[ gitIssueIO && gitIssueMirror != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: git-issue-source
+        name: git-issue-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-issue-source
+            - name: git-issue-io
               image: $[image]
               command:
-              - sourced
+              - iod
               - git-issue
               - -addr
               - ":9801"
@@ -829,20 +829,20 @@ build:
               - -mirror
               - $[gitIssueMirror]
 
-  - if: '.[ gitIssueSource && gitIssueMirror == "" ]'
+  - if: '.[ gitIssueIO && gitIssueMirror == "" ]'
     match:
       kind: Deployment
       metadata:
-        name: git-issue-source
+        name: git-issue-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-issue-source
+            - name: git-issue-io
               image: $[image]
               command:
-              - sourced
+              - iod
               - git-issue
               - -addr
               - ":9801"
@@ -854,36 +854,36 @@ build:
               - -mirror
               - $[gitMirror]
 
-  - if: '.[slackSource]'
+  - if: '.[slackIO]'
     match:
       kind: Deployment
       metadata:
-        name: slack-source
+        name: slack-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-source
+            - name: slack-io
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/$[slackSourceName]/hint"
+                value: "http://verse:9797/io/$[slackIOName]/hint"
 
   # The workspace label, when the operator would rather name it than take the team's own name.
-  - if: '.[ slackSource && slackWorkspace != "" ]'
+  - if: '.[ slackIO && slackWorkspace != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: slack-source
+        name: slack-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-source
+            - name: slack-io
               command:
-              - sourced
+              - iod
               - slack
               - -addr
               - ":9801"
@@ -892,37 +892,37 @@ build:
               - -workspace
               - $[slackWorkspace]
 
-  - if: '.[linearSource]'
+  - if: '.[linearIO]'
     match:
       kind: Deployment
       metadata:
-        name: linear-source
+        name: linear-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-source
+            - name: linear-io
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/$[linearSourceName]/hint"
+                value: "http://verse:9797/io/$[linearIOName]/hint"
 
-  - if: '.[githubSource]'
+  - if: '.[githubIO]'
     match:
       kind: Deployment
       metadata:
-        name: github-source
+        name: github-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: github-source
+            - name: github-io
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/sources/$[githubSourceName]/hint"
+                value: "http://verse:9797/io/$[githubIOName]/hint"
 
   # The command is restated whole rather than appended to, as the Linear and Slack ones are: a
   # patch that inserted would have to know what it was inserting into, and two of them would
@@ -931,19 +931,19 @@ build:
   # `-discussions` is spelled `=value` so one patch carries both knobs. A source with no
   # repositories refuses to start, which is why this is conditional on there being some rather
   # than defaulting to a list nobody meant.
-  - if: '.[ githubSource && githubRepos != "" ]'
+  - if: '.[ githubIO && githubRepos != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: github-source
+        name: github-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: github-source
+            - name: github-io
               command:
-              - sourced
+              - iod
               - github
               - -addr
               - ":9801"
@@ -953,19 +953,19 @@ build:
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
 
-  - if: '.[ linearSource && linearTeams != "" ]'
+  - if: '.[ linearIO && linearTeams != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: linear-source
+        name: linear-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-source
+            - name: linear-io
               command:
-              - sourced
+              - iod
               - linear
               - -addr
               - ":9801"
@@ -981,37 +981,37 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: git-source
+        name: git-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-source
+            - name: git-io
               imagePullPolicy: $[imagePullPolicy]
   - if: '.[ imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: slack-source
+        name: slack-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-source
+            - name: slack-io
               imagePullPolicy: $[imagePullPolicy]
   - if: '.[ imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: linear-source
+        name: linear-io
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-source
+            - name: linear-io
               imagePullPolicy: $[imagePullPolicy]
 
   # The two webhook Ingresses. A source that cannot be reached from the internet still
@@ -1021,7 +1021,7 @@ build:
     match:
       kind: Ingress
       metadata:
-        name: slack-source
+        name: slack-io
     patch:
       spec:
         rules:
@@ -1032,14 +1032,14 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: slack-source
+                  name: slack-io
                   port:
                     number: 9801
   - if: '.[ slackWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: slack-source
+        name: slack-io
     # `!delete null`, not a bare `!delete`: a dangling `:` is not in tony's grammar (an
     # omitted value is the bracketed key-set form, `{a b c}`), and it is accepted only as the
     # LAST pair of a document — so a bare one parses until somebody adds a patch below it.
@@ -1050,7 +1050,7 @@ build:
     match:
       kind: Ingress
       metadata:
-        name: linear-source
+        name: linear-io
     patch:
       spec:
         rules:
@@ -1061,25 +1061,25 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: linear-source
+                  name: linear-io
                   port:
                     number: 9801
   - if: '.[ linearWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: linear-source
+        name: linear-io
     patch: !delete null
 
   # The GitHub one, which had neither half until a staging deploy emitted its Ingress with the
   # base manifest's placeholder host — so `githubWebhookHost` was inert, and the cluster was
-  # asked to route `github-source.example.com` to a Service. A knob that does nothing is worse
+  # asked to route `github-io.example.com` to a Service. A knob that does nothing is worse
   # than an absent one: the deployment says a thing it is not doing.
   - if: '.[ githubWebhookHost != "" ]'
     match:
       kind: Ingress
       metadata:
-        name: github-source
+        name: github-io
     patch:
       spec:
         rules:
@@ -1090,14 +1090,14 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: github-source
+                  name: github-io
                   port:
                     number: 9801
   - if: '.[ githubWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: github-source
+        name: github-io
     patch: !delete null
 
   - if: '.[ ingressClassName != "" ]'

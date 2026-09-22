@@ -113,7 +113,7 @@ func TestAScopedGrantGovernsTheScopeAlone(t *testing.T) {
 	// A RESTART. The scope's records are in the overlay, which a mirror loaded from baseline
 	// never held: alice was refused her own entity, and bob his grant. (Before: 403 on both.)
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	secondHTTP := httptest.NewServer(second.Handler())

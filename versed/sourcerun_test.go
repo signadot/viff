@@ -17,7 +17,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/source"
+	verseio "github.com/signadot/verse/io"
 )
 
 func gitIn(t *testing.T, dir string, args ...string) {
@@ -59,12 +59,12 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	defer ts.Close()
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitRoot, baseOf(dir), "head"))
+	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "head"))
 
 	// …and removing it STOPS the reflector. A reflector outliving its registration is a writer
 	// on a slice nothing claims — the second writer the install check exists to prevent,
@@ -72,7 +72,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	// --forget, because by now it HAS reflected something and a bare remove is refused until
 	// told which (the fork is TestRemovingASourceForksOnWhatItReflected); what is being
 	// asserted here is that either answer stops the reflector.
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/local?forget=true", nil)
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/io/local?forget=true", nil)
 	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := sendAsTester(req)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 		t.Fatalf("remove = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	srv.srcMu.Lock()
-	n := len(srv.srcRuns)
+	n := len(srv.ioRuns)
 	srv.srcMu.Unlock()
 	if n != 0 {
 		t.Fatalf("%d reflector(s) still running after the registration went away", n)
@@ -98,15 +98,15 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 
 	first := NewWithStore(ScriptedBuilder, store)
 	ts := httptest.NewServer(first.Handler())
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	head := entity.RefAt(source.GitRoot, baseOf(dir), "head")
+	head := entity.RefAt(verseio.GitRoot, baseOf(dir), "head")
 	waitForRef(t, store, head)
 	ts.Close()
-	first.stopSource(source.Ref("local"))
+	first.stopSource(verseio.Ref("local"))
 
 	// The world moves while verse is down, which is the case a restart has to survive: a
 	// level-triggered pass reads what IS, so a branch made in the gap is not a missed event.
@@ -118,17 +118,17 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	defer cancel()
 	second.ctx = ctx
 	second.restoreSources()
-	t.Cleanup(second.stopAllSources)
+	t.Cleanup(second.stopAllIOs)
 
 	second.srcMu.Lock()
-	n := len(second.srcRuns)
+	n := len(second.ioRuns)
 	second.srcMu.Unlock()
 	if n != 1 {
 		t.Fatalf("%d reflectors after restart, want 1", n)
 	}
 	// And it is really reflecting rather than merely running: the restored reflector's own
 	// first pass picks up what happened while it was gone.
-	waitForRef(t, store, entity.RefAt(source.GitRoot, baseOf(dir), "ref", "while-down"))
+	waitForRef(t, store, entity.RefAt(verseio.GitRoot, baseOf(dir), "ref", "while-down"))
 }
 
 // What a pass writes about ITSELF, and what it deliberately does not.
@@ -141,8 +141,8 @@ func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
 	requireGit(t)
 	srv := testServer(t)
 	dir := repoWithCommit(t)
-	ref := source.Ref("local")
-	e := source.Entity{Name: "local", Root: "git", Dir: dir}
+	ref := verseio.Ref("local")
+	e := verseio.Entity{Name: "local", Root: "git", Dir: dir}
 
 	// As an install leaves it: written as its installer, so the registration is theirs — a
 	// source reflects as whoever owns its registration, and one nobody owns reflects as nobody.
@@ -155,7 +155,7 @@ func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
 	defer srv.stopSource(ref)
 
 	// The first pass wrote the repo, so it stamps the cursor.
-	waitForRef(t, srv.Store, entity.RefAt(source.GitRoot, baseOf(dir), "head"))
+	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "head"))
 	deadline := time.Now().Add(5 * time.Second)
 	var stamped string
 	for time.Now().Before(deadline) && stamped == "" {
@@ -187,15 +187,15 @@ func TestAPassRecordsItselfWithoutChurn(t *testing.T) {
 // failing every minute writes once rather than every minute.
 func TestLastErrorIsWrittenOnTransition(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("gone")
+	ref := verseio.Ref("gone")
 	// A url nothing answers: every pass fails the same way.
-	e := source.Entity{Name: "gone", Root: "git", URL: "http://127.0.0.1:1"}
+	e := verseio.Entity{Name: "gone", Root: "git", URL: "http://127.0.0.1:1"}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "gone", "root": "git", "url": e.URL,
 	}.Payload())
 
 	run := &sourceRun{}
-	fail := source.Pass{Err: errFor("unreachable")}
+	fail := verseio.Pass{Err: errFor("unreachable")}
 	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	reg, _, _ := srv.Store.Get(ref)
 	if failureText(reg.Payload) == "" {
@@ -211,7 +211,7 @@ func TestLastErrorIsWrittenOnTransition(t *testing.T) {
 
 	// And the recovery CLEARS it, which is the half an error-only hook could never do: the
 	// registration stops carrying an error rather than carrying an empty one.
-	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{})
+	srv.recordPass(t.Context(), srv.Store, ref, run, verseio.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
 	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
 		t.Fatalf("a recovery should remove lastError, got %v", entity.ToObj(reg.Payload))
@@ -226,16 +226,16 @@ func errFor(s string) error { return errors.New(s) }
 
 // reconcileOnce drives one pass through the same path Run does, so a test asserting what a pass
 // writes is asserting about the real one.
-func (s *Server) reconcileOnce(t *testing.T, e source.Entity) error {
+func (s *Server) reconcileOnce(t *testing.T, e verseio.Entity) error {
 	t.Helper()
 	src, err := s.sourceFor(e)
 	if err != nil {
 		return err
 	}
-	ref := source.Ref(e.Name)
+	ref := verseio.Ref(e.Name)
 	run := &sourceRun{}
-	rf := source.NewReflector(src, s.Store, 0)
-	rf.OnPass(func(p source.Pass) { s.recordPass(t.Context(), s.Store, ref, run, p) })
+	rf := verseio.NewReflector(src, s.Store, 0)
+	rf.OnPass(func(p verseio.Pass) { s.recordPass(t.Context(), s.Store, ref, run, p) })
 	return rf.Reconcile(context.Background(), entity.Ref{})
 }
 
@@ -252,20 +252,20 @@ func (s *Server) reconcileOnce(t *testing.T, e source.Entity) error {
 // own path, so a presence test on the ref is satisfied by the very tombstone it should notice.
 func TestAPassAfterRemovalDoesNotResurrectTheRegistration(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("gone")
+	ref := verseio.Ref("gone")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "gone", "root": "git", "url": "http://127.0.0.1:1",
 	}.Payload())
 
-	// Removed, exactly as removeSource does it.
+	// Removed, exactly as removeIO does it.
 	if _, _, err := srv.Store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
 	// …and now a pass that was already in flight reports itself, both ways.
 	run := &sourceRun{}
-	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
-	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Wrote: 3})
+	srv.recordPass(t.Context(), srv.Store, ref, run, verseio.Pass{Err: errFor("unreachable")})
+	srv.recordPass(t.Context(), srv.Store, ref, run, verseio.Pass{Wrote: 3})
 
 	if e, ok, _ := srv.Store.Get(ref); ok {
 		t.Fatalf("a pass after removal resurrected the registration as %v", entity.ToObj(e.Payload))
@@ -286,7 +286,7 @@ func TestAPassAfterRemovalDoesNotResurrectTheRegistration(t *testing.T) {
 // that knows, and once it is done this run has no business writing anywhere.
 func TestAPassReportedAfterTheStopWritesNothing(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("stopped")
+	ref := verseio.Ref("stopped")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "stopped", "root": "git", "url": "http://127.0.0.1:1",
 	}.Payload())
@@ -296,8 +296,8 @@ func TestAPassReportedAfterTheStopWritesNothing(t *testing.T) {
 
 	rev := srv.Store.Rev()
 	run := &sourceRun{}
-	srv.recordPass(ctx, srv.Store, ref, run, source.Pass{Wrote: 3})
-	srv.recordPass(ctx, srv.Store, ref, run, source.Pass{Err: errFor("unreachable")})
+	srv.recordPass(ctx, srv.Store, ref, run, verseio.Pass{Wrote: 3})
+	srv.recordPass(ctx, srv.Store, ref, run, verseio.Pass{Err: errFor("unreachable")})
 
 	if srv.Store.Rev() != rev {
 		reg, _, _ := srv.Store.Get(ref)
@@ -317,16 +317,16 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	defer ts.Close()
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitRoot, baseOf(dir), "head"))
+	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "head"))
 
 	gitIn(t, dir, "branch", "hinted")
-	hint := ts.URL + "/sources/local/hint?ref=" +
-		url.QueryEscape(source.RepoRef(baseOf(dir)).String())
+	hint := ts.URL + "/io/local/hint?ref=" +
+		url.QueryEscape(verseio.RepoRef(baseOf(dir)).String())
 	resp, err := ts.Client().Post(hint, "", nil)
 	if err != nil {
 		t.Fatalf("hint: %v", err)
@@ -334,16 +334,16 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("hint = %s, want 204", resp.Status)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitRoot, baseOf(dir), "ref", "hinted"))
+	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "ref", "hinted"))
 
 	// A hint naming nothing is a full resync, which is what a delivery that could not say which
 	// slice asks for.
 	gitIn(t, dir, "branch", "resynced")
-	if resp, err := ts.Client().Post(ts.URL+"/sources/local/hint", "", nil); err != nil ||
+	if resp, err := ts.Client().Post(ts.URL+"/io/local/hint", "", nil); err != nil ||
 		resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bare hint = %v (%v)", resp.Status, err)
 	}
-	waitForRef(t, srv.Store, entity.RefAt(source.GitRoot, baseOf(dir), "ref", "resynced"))
+	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "ref", "resynced"))
 }
 
 // What a hint may NOT do, and what it must not do silently.
@@ -355,20 +355,20 @@ func TestHintRefusals(t *testing.T) {
 
 	// A hint for a registration nobody installed is a 404, not a quiet 204. A sender told
 	// nothing goes on believing its changes are landing.
-	resp, err := ts.Client().Post(ts.URL+"/sources/nope/hint", "", nil)
+	resp, err := ts.Client().Post(ts.URL+"/io/nope/hint", "", nil)
 	if err != nil || resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("hint at an unknown source = %v (%v), want 404", resp.Status, err)
 	}
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
 	// A ref that is not one is a 400 rather than a resync: a delivery that meant something
 	// specific must not silently become "reflect everything".
-	bad := ts.URL + "/sources/local/hint?at=" + url.QueryEscape("a..b")
+	bad := ts.URL + "/io/local/hint?at=" + url.QueryEscape("a..b")
 	if resp, err := ts.Client().Post(bad, "", nil); err != nil ||
 		resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("hint with a malformed ref = %v (%v), want 400", resp.Status, err)
@@ -376,14 +376,14 @@ func TestHintRefusals(t *testing.T) {
 
 	// Installed but not running: said out loud, because a swallowed hint looks exactly like one
 	// that worked.
-	srv.stopSource(source.Ref("local"))
-	if resp, err := ts.Client().Post(ts.URL+"/sources/local/hint", "", nil); err != nil ||
+	srv.stopSource(verseio.Ref("local"))
+	if resp, err := ts.Client().Post(ts.URL+"/io/local/hint", "", nil); err != nil ||
 		resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("hint at a stopped source = %v (%v), want 503", resp.Status, err)
 	}
 }
 
-// removeSource answers the question a delete cannot: what happens to what it reflected.
+// removeIO answers the question a delete cannot: what happens to what it reflected.
 //
 // Tombstoning always is right about the common case and wrong about the one that will happen —
 // moving a repo to another host is a remove and an add of the same physical truth, and
@@ -398,7 +398,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	dir := repoWithCommit(t)
 	install := func(name string) {
 		t.Helper()
-		if resp := postTony(t, ts.URL+"/sources", map[string]any{
+		if resp := postTony(t, ts.URL+"/io", map[string]any{
 			"root": "git", "name": name, "dir": dir,
 		}); resp.StatusCode != http.StatusCreated {
 			t.Fatalf("install %s = %s: %s", name, resp.Status, bodyOf(t, resp))
@@ -406,7 +406,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	}
 	remove := func(name, flag string) *http.Response {
 		t.Helper()
-		u := ts.URL + "/sources/" + name
+		u := ts.URL + "/io/" + name
 		if flag != "" {
 			u += "?" + flag + "=true"
 		}
@@ -420,7 +420,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	}
 
 	install("local")
-	head := entity.RefAt(source.GitRoot, baseOf(dir), "head")
+	head := entity.RefAt(verseio.GitRoot, baseOf(dir), "head")
 	waitForRef(t, srv.Store, head)
 
 	// Bare: refused, and the message names both flags, because neither default survives
@@ -464,12 +464,12 @@ func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
 	// Unreachable, so it installs (with a warning) and reflects nothing.
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "never", "url": dead.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/sources/never", nil)
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/io/never", nil)
 	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := sendAsTester(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -482,9 +482,9 @@ func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
 // undone at the last moment.
 func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("a")
-	e := source.Entity{Name: "a", Root: "git", URL: "http://x:1",
-		Owns: []source.Own{{At: "git.A"}}}
+	ref := verseio.Ref("a")
+	e := verseio.Entity{Name: "a", Root: "git", URL: "http://x:1",
+		Owns: []verseio.Own{{At: "git.A"}}}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "a", "root": "git", "url": e.URL, "owns": e.Owns,
 	}.Payload())
@@ -511,9 +511,9 @@ func TestForgetTombstonesOnlyWhatThisSourceClaimed(t *testing.T) {
 // project.
 func TestForgetTakesTheOwnedPlaceAndLeavesTheSharedNode(t *testing.T) {
 	srv := testServer(t)
-	e := source.Entity{Name: "eng", Root: "linear", URL: "http://x:1",
-		Owns: []source.Own{{At: "linear.project.*.owners.ENG"}}}
-	entitytest.Set(t, srv.Store, source.Ref("eng"), entity.Obj{
+	e := verseio.Entity{Name: "eng", Root: "linear", URL: "http://x:1",
+		Owns: []verseio.Own{{At: "linear.project.*.owners.ENG"}}}
+	entitytest.Set(t, srv.Store, verseio.Ref("eng"), entity.Obj{
 		"name": "eng", "root": "linear", "url": e.URL, "owns": e.Owns,
 	}.Payload())
 
@@ -559,13 +559,13 @@ func TestForgetTakesTheOwnedPlaceAndLeavesTheSharedNode(t *testing.T) {
 // broken sources that are all fine.
 func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("local")
+	ref := verseio.Ref("local")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "local", "root": "git", "url": "http://x:1",
 	}.Payload())
 
 	run := &sourceRun{}
-	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{
+	srv.recordPass(t.Context(), srv.Store, ref, run, verseio.Pass{
 		Err: fmt.Errorf("reflect git: %w", context.Canceled),
 	})
 	reg, _, _ := srv.Store.Get(ref)
@@ -601,7 +601,7 @@ func (f *failWritesTo) Write(w entity.Write) (bool, int64, error) {
 // on present and correct.
 func TestAFailedClearingWriteIsRetried(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("flaky")
+	ref := verseio.Ref("flaky")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "flaky", "root": "git", "url": "http://127.0.0.1:1",
 	}.Payload())
@@ -610,7 +610,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 	run := &sourceRun{}
 
 	// A failure, recorded.
-	srv.recordPass(t.Context(), fs, ref, run, source.Pass{Err: errFor("unreachable")})
+	srv.recordPass(t.Context(), fs, ref, run, verseio.Pass{Err: errFor("unreachable")})
 	reg, _, _ := srv.Store.Get(ref)
 	if failureText(reg.Payload) == "" {
 		t.Fatal("a failing pass should record why")
@@ -618,7 +618,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 
 	// The recovery — but the clearing write fails.
 	fs.fail = true
-	srv.recordPass(t.Context(), fs, ref, run, source.Pass{})
+	srv.recordPass(t.Context(), fs, ref, run, verseio.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
 	if failureText(reg.Payload) == "" {
 		t.Fatal("the clearing write was supposed to fail; the fixture is not testing anything")
@@ -626,7 +626,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 
 	// The store recovers, and the NEXT pass must try again rather than believe it already did.
 	fs.fail = false
-	srv.recordPass(t.Context(), fs, ref, run, source.Pass{})
+	srv.recordPass(t.Context(), fs, ref, run, verseio.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
 	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
 		t.Fatalf("lastError stuck after the store recovered: %v — a source reporting an error "+
@@ -635,7 +635,7 @@ func TestAFailedClearingWriteIsRetried(t *testing.T) {
 }
 
 // failureText reads the message out of the lastError RECORD — {error, when} since it became a
-// source.Failure, so that the timestamp can say when the failure began and a reader can tell an
+// verseio.Failure, so that the timestamp can say when the failure began and a reader can tell an
 // error that is happening from one the source recovered from long ago.
 func failureText(p entity.Payload) string {
 	n, ok := entity.Fields(p)["lastError"]
@@ -660,12 +660,12 @@ func failureWhen(p entity.Payload) string {
 // the reading that let a hours-old error pass for a live one.
 func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("onset")
+	ref := verseio.Ref("onset")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "onset", "root": "git", "url": "http://127.0.0.1:1",
 	}.Payload())
 	run := &sourceRun{}
-	fail := source.Pass{Err: errFor("unreachable")}
+	fail := verseio.Pass{Err: errFor("unreachable")}
 
 	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	reg, _, _ := srv.Store.Get(ref)
@@ -683,7 +683,7 @@ func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
 	}
 
 	// A DIFFERENT failure is a new failure, and takes a new onset.
-	srv.recordPass(t.Context(), srv.Store, ref, run, source.Pass{Err: errFor("refused")})
+	srv.recordPass(t.Context(), srv.Store, ref, run, verseio.Pass{Err: errFor("refused")})
 	reg, _, _ = srv.Store.Get(ref)
 	if got := failureWhen(reg.Payload); got == first {
 		t.Fatalf("a different error kept the old onset %s — it is a new failure", first)
@@ -699,20 +699,20 @@ func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
 // Staging reported a context-deadline error for hours that way about a source that was fine.
 func TestARestartClearsAnErrorTheSourceHasRecoveredFrom(t *testing.T) {
 	srv := testServer(t)
-	ref := source.Ref("restarted")
+	ref := verseio.Ref("restarted")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "restarted", "root": "git", "url": "http://127.0.0.1:1",
 	}.Payload())
 
 	// It failed before the restart, and the registration still says so.
-	srv.recordPass(t.Context(), srv.Store, ref, &sourceRun{}, source.Pass{Err: errFor("unreachable")})
+	srv.recordPass(t.Context(), srv.Store, ref, &sourceRun{}, verseio.Pass{Err: errFor("unreachable")})
 	reg, _, _ := srv.Store.Get(ref)
 	if failureText(reg.Payload) == "" {
 		t.Fatal("the fixture needs a stored error to strand")
 	}
 
 	// The restart: a fresh run, seeded from the registration the way startSource seeds it.
-	var e source.Entity
+	var e verseio.Entity
 	if err := codec.FromNode(reg.Payload, &e); err != nil {
 		t.Fatalf("decode registration: %v", err)
 	}
@@ -726,7 +726,7 @@ func TestARestartClearsAnErrorTheSourceHasRecoveredFrom(t *testing.T) {
 	fresh := &sourceRun{lastErr: seeded}
 
 	// A healthy pass now clears it, because memory and store agree about what stands.
-	srv.recordPass(t.Context(), srv.Store, ref, fresh, source.Pass{})
+	srv.recordPass(t.Context(), srv.Store, ref, fresh, verseio.Pass{})
 	reg, _, _ = srv.Store.Get(ref)
 	if _, ok := entity.Fields(reg.Payload)["lastError"]; ok {
 		t.Fatalf("a recovered source came back still carrying its old error: %v", entity.ToObj(reg.Payload))
@@ -735,7 +735,7 @@ func TestARestartClearsAnErrorTheSourceHasRecoveredFrom(t *testing.T) {
 
 // A REGISTRATION WRITTEN BEFORE THE RECORD STILL DECODES, and keeps its message. It carries
 // lastError as a bare STRING, which gomap will not coerce into a record — it fails the whole
-// entity ("expected object, got String"), and source.ListErr SKIPS what it cannot decode, so
+// entity ("expected object, got String"), and verseio.ListErr SKIPS what it cannot decode, so
 // every source carrying an error at the moment of an upgrade would have dropped out of the
 // listing and not been restored. Failure.FromTonyIR reads both spellings, which is what makes
 // the field name reusable and the migration unnecessary.
@@ -744,7 +744,7 @@ func TestALegacyStringLastErrorDecodesWithNoWhen(t *testing.T) {
 		"name": "old", "root": "git", "url": "http://x",
 		"lastError": "unreachable",
 	}.Payload()
-	var e source.Entity
+	var e verseio.Entity
 	if err := codec.FromNode(p, &e); err != nil {
 		t.Fatalf("a registration written by an older verse no longer decodes: %v", err)
 	}

@@ -205,7 +205,7 @@ func rootCmd() *cli.Command {
 			runnerCmd(),
 			permsCmd(),
 			groupCmd(),
-			sourceCmd(),
+			ioCmd(),
 			providerCmd(),
 			connectCmd(),
 			disconnectCmd(),

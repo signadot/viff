@@ -64,7 +64,7 @@ resolve, do this.
 
 **Federation** — external state reflected into the place in the verse that owns it.
 
-- [Sources](sources.md) — reflecting git, Slack and Linear: hint as hint, reconcile as truth.
+- [Ios](io.md) — connectors: reflecting git, Slack and Linear in, and acting back out.
 - [Content federation](content-federation.md) — how `connect` federates a tree, and what a
   task reads through.
 - [Writing a controller](controllers.md) — the `Handler` contract and its invariants.
@@ -77,9 +77,9 @@ resolve, do this.
 - [Starting a verse](reference/up.md) · [entities](reference/entities.md) ·
   [the store](reference/store.md) · [tasks](reference/tasks.md) ·
   [runners](reference/runners.md) · [resolvers](reference/resolvers.md) ·
-  [sources](reference/sources.md) · [the sources verse ships](reference/sourced.md) ·
+  [ios](reference/io.md) · [the ios verse ships](reference/iod.md) ·
   [connect and scopes](reference/connect.md) · [representation](reference/representation.md)
-- [Examples](reference/examples/README.md) — a runner, a coding runner, and a source to copy
+- [Examples](reference/examples/README.md) — a runner, a coding runner, and an io to copy
   and change.
 
 ## Elsewhere

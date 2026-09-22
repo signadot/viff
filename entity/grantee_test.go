@@ -28,10 +28,10 @@ func TestGranteeSpellings(t *testing.T) {
 		{"group:release", "group:release", entity.GroupKind, "release"},
 		{"via:verse.trigger.rule.x", "via:verse.trigger.rule.x", entity.ViaKind, ""},
 		{"via:verse.trigger.rule.drift:head-moved", "via:verse.trigger.rule.drift:head-moved", entity.ViaKind, ""},
-		{"via:verse.sources.cluster", "via:verse.sources.cluster", entity.ViaKind, ""},
-		{"via:verse.sources.*", "via:verse.sources.*", entity.ViaKind, ""},
+		{"via:verse.io.cluster", "via:verse.io.cluster", entity.ViaKind, ""},
+		{"via:verse.io.*", "via:verse.io.*", entity.ViaKind, ""},
 		{"via:verse.resolvers.gate", "via:verse.resolvers.gate", entity.ViaKind, ""},
-		{`via:verse.sources."a.b"`, `via:verse.sources."a.b"`, entity.ViaKind, ""},
+		{`via:verse.io."a.b"`, `via:verse.io."a.b"`, entity.ViaKind, ""},
 	} {
 		g, err := entity.ParseGrantee(tc.in)
 		if err != nil {
@@ -80,7 +80,7 @@ func TestGranteeRefusals(t *testing.T) {
 			t.Errorf("%q: the refusal does not quote the grammar: %v", in, err)
 		}
 	}
-	for _, in := range []string{"*", "user:*", "group:x", "via:verse.sources.*"} {
+	for _, in := range []string{"*", "user:*", "group:x", "via:verse.io.*"} {
 		if _, err := entity.ParsePrincipal(in); err == nil {
 			t.Errorf("ParsePrincipal(%q) parsed a set as one principal", in)
 		}
@@ -146,15 +146,15 @@ func TestTheMatchReadsTheGrammar(t *testing.T) {
 	}
 	// Each place is somebody's, so what it holds is what the grant holds out and not the
 	// system's: a place with no owner on record acts as the system, which holds everything.
-	for _, place := range []entity.Ref{entity.VerseRef("sources", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("sources")} {
+	for _, place := range []entity.Ref{entity.VerseRef("io", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("io")} {
 		if err := entity.Establish(system, place, "user:installer@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	sources := grant("sources", "via:verse.sources.*")
-	if !reads("via:verse.sources.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
+	sources := grant("sources", "via:verse.io.*")
+	if !reads("via:verse.io.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
 		reads("via:verse.sources", sources) {
-		t.Error("via:verse.sources.* admits what acts beneath it, and nothing else")
+		t.Error("via:verse.io.* admits what acts beneath it, and nothing else")
 	}
 
 	stale := grant("stale", "verse.principal.group.release")

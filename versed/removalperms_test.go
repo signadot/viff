@@ -110,22 +110,22 @@ func TestAStrangersRemovalLeavesASourceRunning(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/sources", map[string]any{
+	if resp := postTony(t, ts.URL+"/io", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	t.Cleanup(srv.stopAllSources)
+	t.Cleanup(srv.stopAllIOs)
 	running := func() bool {
 		srv.srcMu.Lock()
 		defer srv.srcMu.Unlock()
-		return len(srv.srcRuns) == 1
+		return len(srv.ioRuns) == 1
 	}
 	if !running() {
 		t.Fatal("the fixture is wrong: the source is not running")
 	}
 	for _, q := range []string{"?keep=true", "?forget=true"} {
-		resp := deleteAs(t, "mallory@example.com", ts.URL+"/sources/local"+q)
+		resp := deleteAs(t, "mallory@example.com", ts.URL+"/io/local"+q)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("mallory's DELETE%s: %s, want 403", q, resp.Status)

@@ -35,7 +35,7 @@ docd — one per face, because a face is the unit anything grants or reaches:
 > ```
 
 Optionally a third tier: **source connectors**, one `Deployment` + `Service` each, running
-`sourced` (git, Slack, Linear). Each is a singleton for the reason versed is — a source is the
+`iod` (git, Slack, Linear). Each is a singleton for the reason versed is — a source is the
 single writer of its slice — and each is off by default. See [Sources](#sources-optional).
 
 ## Build the image
@@ -52,7 +52,7 @@ make docker IMAGE_ARCH=amd64      # target amd64 nodes (default: your host arch)
 
 `make deploy PROFILE=minikube HOSTPATH=/Users/<you>/.verse/minikube-default` renders and
 applies in one step (`make help` lists all targets). The image bundles `verse`, the pinned
-`o` (which docd's pod runs), `sourced` (the source connectors), and `git` — one image, several
+`o` (which docd's pod runs), `iod` (the source connectors), and `git` — one image, several
 roles, so there is one ref to pin and one build to cache.
 
 ## Render + apply
@@ -257,25 +257,25 @@ handing it to somebody outside the cluster a different act from handing them the
 
 ## Sources (optional)
 
-What reflects an external system into the verse ([docs/sources.md](../docs/sources.md)). Three
+What reflects an external system into the verse ([docs/io.md](../docs/io.md)). Three
 are shipped, each its own Deployment + Service, each **off by default** and turned on
 independently — the git one costs a clone, the other two cost a credential in the cluster.
 
 ```sh
-make deploy E='-e gitSource=true'
-o build deploy -O yaml -e slackSource=true -e linearSource=true | kubectl apply -f -
+make deploy E='-e gitIO=true'
+o build deploy -O yaml -e slackIO=true -e linearIO=true | kubectl apply -f -
 ```
 
-They run `sourced`, the connector binary in the same image
-([docs/reference/sourced.md](../docs/reference/sourced.md) is its surface). Deploying one does
+They run `iod`, the connector binary in the same image
+([docs/reference/iod.md](../docs/reference/iod.md) is its surface). Deploying one does
 **not** install it: an install carries an ownership claim verse proves against what is already
 standing, so it stays a verb somebody runs.
 
 ```sh
-verse source add cluster   http://git-source:9801   -root git
-verse source add workspace http://slack-source:9801 -root slack
-verse source add teams     http://linear-source:9801 -root linear
-verse source
+verse io add cluster   http://git-io:9801   -root git
+verse io add workspace http://slack-io:9801 -root slack
+verse io add teams     http://linear-io:9801 -root linear
+verse io
 ```
 
 Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and none wanted: it
@@ -285,8 +285,8 @@ that dials it: the CLI only posts `{kind, name, url}`, and the probe happens ser
 (`versed/sources.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
 so the address has to be reachable from where the client is.
 
-⚠️ **The name has to match `<x>SourceName`.** The hint url is baked into the pod
-(`http://verse:9797/sources/<name>/hint`), so a registration under a different name means
+⚠️ **The name has to match `<x>IOName`.** The hint url is baked into the pod
+(`http://verse:9797/io/<name>/hint`), so a registration under a different name means
 verse 404s every delivery — loud, but only if you look.
 
 ⚠️ **Widening what a source reflects is two steps, and the deploy is only the first.** A
@@ -294,11 +294,11 @@ registration stores the ownership claim as it stood when it was installed, so ad
 repository to `gitMirror`, `gitIssueMirror` or `githubRepos` and rolling the pod leaves verse
 holding the old claim — and it FENCES the new slice out rather than letting the source write
 outside what was proved. The symptom is a source that looks healthy and reflects nothing new.
-Re-run the same `verse source add` afterwards; it updates the claim in place.
+Re-run the same `verse io add` afterwards; it updates the claim in place.
 
 ```sh
-verse source check issues   # `owns` is what verse holds, `says` is what it claims now
-verse source add issues http://git-issue-source:9801 -root git-issue   # reconcile them
+verse io check issues   # `owns` is what verse holds, `says` is what it claims now
+verse io add issues http://git-issue-io:9801 -root git-issue   # reconcile them
 ```
 
 Driven, on a source moved from one repository to two: only the first repository's entities were
@@ -332,7 +332,7 @@ leave it empty and there is none, and the source converges on the periodic resyn
 instead of on delivery.
 
 ```sh
-o build deploy -O yaml -e slackSource=true -e slackWebhookHost=slack.verse.example.com \
+o build deploy -O yaml -e slackIO=true -e slackWebhookHost=slack.verse.example.com \
                -e ingressClassName=nginx | kubectl apply -f -
 ```
 
@@ -366,9 +366,9 @@ A pod has none, so `-mirror` makes one: it clones the remote at startup and fetc
 pass. That is the read — nothing is ever pushed. The mirror lives on an `emptyDir`, so a restart
 re-clones; swap in a PVC if that gets expensive. For a repository that already exists somewhere,
 run the same binary next to it with `-repo`, or skip the deployment entirely and use
-`verse source add -dir`.
+`verse io add -dir`.
 
-`gitIssueSource` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
+`gitIssueIO` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential
 and no route the git connector does not already have. It is a second pod rather than a flag on
 the first because the two answer different questions about one directory and write disjoint
@@ -376,7 +376,7 @@ slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like t
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
-verse source add issues http://git-issue-source:9801 -root git-issue
+verse io add issues http://git-issue-io:9801 -root git-issue
 ```
 
 It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say
@@ -386,16 +386,16 @@ cloning one it can reflect nothing from.
 
 | knob | default | meaning |
 |---|---|---|
-| `gitSource` | `false` | deploy the git connector |
+| `gitIO` | `false` | deploy the git connector |
 | `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
-| `gitIssueSource` | `false` | deploy the git-issue connector |
+| `gitIssueIO` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
-| `slackSource` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
-| `slackSourceName` | `workspace` | the registration name — must match `verse source add <name> -root slack` |
+| `slackIO` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
+| `slackIOName` | `workspace` | the registration name — must match `verse io add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
 | `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
-| `linearSource` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
-| `linearSourceName` | `teams` | the registration name |
+| `linearIO` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
+| `linearIOName` | `teams` | the registration name |
 | `linearTeams` | `""` | comma-separated team keys; `""` is every team the credential sees. Quote it: `-e 'linearTeams="ENG,OPS"'` |
 | `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
 | `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
@@ -482,7 +482,7 @@ printf '{"GITHUB_TOKEN":"%s"}' "$tok" > /tmp/e.json
 aws secretsmanager put-secret-value --region us-west-2 \
   --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
 kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
-kubectl -n verse rollout restart deploy/github-source
+kubectl -n verse rollout restart deploy/github-io
 ```
 
 The last two lines are why a rotation is three commands and not one: `refreshInterval` is an
@@ -646,7 +646,7 @@ profile that is not staging.
 
 ## When something stops answering (the admin face)
 
-Every daemon here — versed, each `sourced`, the coderunner — serves `net/http/pprof`, full
+Every daemon here — versed, each `iod`, the coderunner — serves `net/http/pprof`, full
 goroutine stacks, and a short index of what it is and where it listens, on a port **one up from
 the one it serves on**: versed's API is 9797, its admin face 9798; a source's 9801/9802; the
 coderunner's 9802/9803.
@@ -666,4 +666,4 @@ disables it, and the address is on `verse status` under `listen.admin`.
 ## Not here yet
 
 RBAC (a ServiceAccount + Role) lands when the k8s Jobs policy and k8s Source do — they're
-what need cluster API access. See `docs/sources.md` and `docs/task-control.md`.
+what need cluster API access. See `docs/io.md` and `docs/task-control.md`.

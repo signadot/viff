@@ -2,9 +2,9 @@
 2 entity/addr_test.go
 2 entity/entity.go
 2 entity/snapshot.go
-1 source/converge_test.go
-1 source/own_test.go
-1 source/own.go
+1 io/converge_test.go
+1 io/own_test.go
+1 io/own.go
 2 trigger/advise.go
 1 trigger/deref.go
 2 trigger/match_test.go

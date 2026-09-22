@@ -74,9 +74,9 @@ entities, tasks, and the charters that relate them.
   own position. Its resolver is a service, a person or a group; a binding that goes silent
   past its deadline hands the question to the next binding covering the subject, and the last
   hop is always the docket a person reads.
-- `source/` and `cmd/sourced/` — reflecting external state *in*: a Source is a program you
-  deploy and install (`verse source add`), reflecting an owned place like `git` that triggers
-  react to. Four ship (`sourced git|slack|linear|github`); anything else is the sample program
+- `source/` and `cmd/iod/` — reflecting external state *in*: a Source is a program you
+  deploy and install (`verse io add`), reflecting an owned place like `git` that triggers
+  react to. Four ship (`iod git|slack|linear|github`); anything else is the sample program
   plus one function. `verse connect` federates your working tree the same way, into a scope.
 - `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
   `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
@@ -108,7 +108,7 @@ shape. Start with:
   per-topic deep end: [starting a verse](docs/reference/up.md),
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
-  [sources](docs/reference/sources.md) and [the three that ship](docs/reference/sourced.md),
+  [sources](docs/reference/io.md) and [the three that ship](docs/reference/iod.md),
   [connect and scopes](docs/reference/connect.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a

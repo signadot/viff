@@ -8,9 +8,9 @@ import (
 	"os"
 
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -117,7 +117,7 @@ func actingAsNobody(store entity.Store) ([]entity.Ref, error) {
 	}{
 		{[]string{entity.VerseRoot, trigger.CharterSystem, trigger.CharterKind}, nil},
 		{[]string{entity.VerseRoot, schedule.System}, schedule.IsRecord},
-		{[]string{entity.VerseRoot, source.System}, source.IsRegistration},
+		{[]string{entity.VerseRoot, verseio.System}, verseio.IsRegistration},
 		{[]string{entity.VerseRoot, resolver.System}, resolver.IsBinding},
 	} {
 		ents, err := entity.BelowErr(store, reg.pred, 1, reg.at...)

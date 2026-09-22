@@ -786,9 +786,9 @@ not share a filesystem with you. *Left to do: file reads are still truncated.*
 [task control](task-control.md), [external tasks](external-tasks.md),
 [reference/tasks.md](reference/tasks.md). *Left to do: the inbox long-poll.*
 
-**Reflecting external systems** — [sources](sources.md). Git, GitHub, Linear into an owned
+**Reflecting external systems** — [sources](io.md). Git, GitHub, Linear into an owned
 place in the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
-and install, the way a runner is: `verse source add laptop <url>`. -root git
+and install, the way a runner is: `verse io add laptop <url>`. -root git
 
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
 only climb, and the two install checks that follow — plus a plain statement of what it does not

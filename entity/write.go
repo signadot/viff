@@ -583,7 +583,7 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 // It is for the single writer, and it is the operation the ownership rule was supposed to buy:
 // a slice with one writer has no concurrent writer to lose an update to, so the
 // compare-and-swap every other write here carries is protecting against something that cannot
-// happen. Reflected slices are exactly that case (docs/sources.md, "Ownership = single writer =
+// happen. Reflected slices are exactly that case (docs/io.md, "Ownership = single writer =
 // no CAS"), and until this existed they paid for CAS anyway, because Modify was the only way to
 // get replace semantics.
 //

@@ -39,7 +39,7 @@ mount back where watches can see it, and re-create what `MountRoot` prevents: a 
 watch that silently drops `FromCommit` and returns a successful-looking empty replay, plus a
 mount that stalls ~5s on the overlapping watch and then force-ends it.
 
-A [Source](sources.md) is not a controller, for the same reason. A Source exists so that triggers
+A [Source](io.md) is not a controller, for the same reason. A Source exists so that triggers
 fire on external change, so its reflected entities are writes.
 
 ## The Handler contract
@@ -148,7 +148,7 @@ The content controller sidesteps all of it by holding nothing: every `Match` sta
 file, so there is no staleness to reconcile.
 
 If what you are serving is a system whose changes something must *react* to, stop. That is a
-[Source](sources.md), not a controller, and the first section says why.
+[Source](io.md), not a controller, and the first section says why.
 
 ## Scope-awareness
 

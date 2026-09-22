@@ -42,7 +42,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 		action: {patch: {stage: reviewed}},
 	}`)
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	// Restart: a second server over the same substrate, and a scope engine created fresh.
 	store := entitytest.StoreAt(t, addr)
@@ -184,7 +184,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 		action: {patch: {stage: mine}},
 	}`)
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	store := entitytest.StoreAt(t, addr)
 	second := NewWithStore(ScriptedBuilder, store)

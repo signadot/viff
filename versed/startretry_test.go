@@ -29,20 +29,20 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the rule = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	if resp := postTony(t, ts.URL+"/sources?probe=false", map[string]any{
+	if resp := postTony(t, ts.URL+"/io?probe=false", map[string]any{
 		"root": "git", "name": "far", "url": "http://127.0.0.1:1",
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the source = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	ts.Close()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	// Back up over a store that does not answer.
 	fs := &failReads{Store: raw, on: true}
 	second := NewWithStore(ScriptedBuilder, fs)
 	second.retryWait = 10 * time.Millisecond
 	second.Start(t.Context())
-	t.Cleanup(second.stopAllSources)
+	t.Cleanup(second.stopAllIOs)
 	ts = httptest.NewServer(second.Handler())
 	defer ts.Close()
 
@@ -56,7 +56,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 		t.Fatalf("%d rules restored from a store that did not answer", n)
 	}
 	second.srcMu.Lock()
-	n := len(second.srcRuns)
+	n := len(second.ioRuns)
 	second.srcMu.Unlock()
 	if n != 0 {
 		t.Fatalf("%d sources restored from a store that did not answer", n)
@@ -76,7 +76,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 		t.Fatalf("charter after the store answered = %v", got)
 	}
 	second.srcMu.Lock()
-	n = len(second.srcRuns)
+	n = len(second.ioRuns)
 	second.srcMu.Unlock()
 	if n != 1 {
 		t.Fatalf("%d reflectors after the store answered, want 1", n)

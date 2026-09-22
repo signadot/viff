@@ -8,7 +8,7 @@ example in a fenced block goes stale the first time a signature moves and nobody
 | [runner/](runner/main.go) | a verse runner: the smallest thing that serves the task-control contract, with the two functions a drive changes marked |
 | [coderunner/](coderunner/main.go) | a runner that codes: a workspace of git checkouts per task, a contained process per task, and a push as a gated capability the runner hands a credential for |
 | [worker/](worker/main.go) | a dial-in worker: claims work from a broker and does it with a local `claude`, so nothing has to be able to reach it |
-| [source/](source/main.go) | a verse source: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
+| [io/](io/main.go) | a verse io: the smallest thing that serves the reflection contract, with the one function a drive changes marked |
 
 The two runners are a ladder rather than one program trying to be both: `runner/` is the
 contract at its smallest, `coderunner/` is what a real one does with it.
@@ -268,10 +268,10 @@ rather than running the task with a proxy it is free to ignore.
 
 `GET /runner` reports the containment **this deployment** can build, per leaf.
 
-## Running the source
+## Running the io
 
 ```sh
-go run ./docs/reference/examples/source -addr :9801 -repo verse=/path/to/a/repo
+go run ./docs/reference/examples/io -addr :9801 -repo verse=/path/to/a/repo
 ```
 
 It serves two routes and nothing else — `GET /source` says what it is, `GET /reflect` says

@@ -34,11 +34,11 @@ import (
 	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/taskd"
 	"github.com/signadot/verse/trigger"
@@ -144,8 +144,8 @@ type Server struct {
 	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
 	// is the only handle on a goroutine that WRITES a slice — so a remove that forgets to stop
 	// one leaks a second writer past the disjointness check the install just made.
-	srcMu   sync.Mutex
-	srcRuns map[string]*sourceRun
+	srcMu  sync.Mutex
+	ioRuns map[string]*sourceRun
 
 	// standingOwner answers "which standing binding covers this subject", for the paths that
 	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
@@ -276,7 +276,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	taskd := taskd.New(build)
 	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp,
 		seedErr:   seedErr,
-		scopeEngs: map[string]*scopeEngine{}, srcRuns: map[string]*sourceRun{},
+		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
 		// check at every use: a source installed on a server nobody started still needs a
@@ -961,7 +961,7 @@ type storeContentReader struct {
 }
 
 func (c storeContentReader) ReadContent(path string) (string, bool, error) {
-	e, ok, err := c.store.Get(entity.RefAt(source.FederationRoot, c.kind, path))
+	e, ok, err := c.store.Get(entity.RefAt(verseio.FederationRoot, c.kind, path))
 	if err != nil {
 		return "", false, err
 	}
@@ -1028,7 +1028,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		}
 		// Scoped agents read file content through the verse (the connect content
 		// controller), so a validator isn't tied to the machine holding the files.
-		content := storeContentReader{store: s.Store, kind: source.ContentPrefix + scope}
+		content := storeContentReader{store: s.Store, kind: verseio.ContentPrefix + scope}
 		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng))
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
@@ -1261,15 +1261,15 @@ func (s *Server) Handler() http.Handler {
 	// about.
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
-	// writes `git:*`. See docs/sources.md.
-	rt.handle("GET /sources", s.listSources, "", nothing)
-	rt.handle("POST /sources", s.addSource, "", nothing)
-	rt.handle("GET /sources/{name}", s.getSource, "", nothing)
-	rt.handle("GET /sources/{name}/check", s.checkSource, "", nothing)
-	rt.handle("DELETE /sources/{name}", s.removeSource, "", nothing)
+	// writes `git:*`. See docs/io.md.
+	rt.handle("GET /io", s.listIOs, "", nothing)
+	rt.handle("POST /io", s.addIO, "", nothing)
+	rt.handle("GET /io/{name}", s.getIO, "", nothing)
+	rt.handle("GET /io/{name}/check", s.checkIO, "", nothing)
+	rt.handle("DELETE /io/{name}", s.removeIO, "", nothing)
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
-	rt.handleUnattributed("POST /sources/{name}/hint", s.hintSource, "", nothing)
+	rt.handleUnattributed("POST /io/{name}/hint", s.hintIO, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
 	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
@@ -4253,10 +4253,10 @@ func runnerRefs(store entity.Store) []string {
 // is arriving". A verse whose only source was dropped reports a steady store rev and an idle
 // charter, which is what a healthy quiet one reports too. `verse sources` carries the health.
 func sourceRefs(store entity.Store) []string {
-	es := source.List(store)
+	es := verseio.List(store)
 	out := make([]string, 0, len(es))
 	for _, e := range es {
-		out = append(out, source.Ref(e.Name).String())
+		out = append(out, verseio.Ref(e.Name).String())
 	}
 	return out
 }

@@ -267,7 +267,7 @@ func TestNullPresenceAbsenceIdioms(t *testing.T) {
 }
 
 // A Pattern goes on the wire — it is what an external source declares as the slice its
-// answer is complete for (docs/sources.md), and what a source registration carries
+// answer is complete for (docs/io.md), and what a source registration carries
 // as `owns`. So every dimension has to survive a round trip, the payload predicate included:
 // a cover that arrived with its predicate dropped would claim a whole place rather than the
 // one repo it meant. The path's segments are nodes, and an operator among them has to arrive as

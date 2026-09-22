@@ -45,7 +45,7 @@ binding's `who` and `group`.
 |---|---|
 | `<kind>:<id>` | the principal named exactly that, and anything installed that acts as them |
 | `<kind>:*` | any principal of the kind, and anything installed that acts as one |
-| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.sources.*`). Only a rule, a source or a binding is named this way; a runner acts as `runner:<identity>` |
+| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, a source or a binding is named this way; a runner acts as `runner:<identity>` |
 | `group:<name>` | the group's members, each matched as above. A member may be another group, which is followed; a group already met on the walk is not entered again, so groups that name each other end the walk instead of looping, and admit exactly the members found along it |
 | `*` | everyone |
 
@@ -256,7 +256,7 @@ operator's edit included.
 |---|---|---|
 | `verse.task.instance.*`, `verse.task.run.*`, `verse.task.claim.*` | child-owner, read | everyone |
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | child-owner, read | everyone |
-| `verse.sources.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
+| `verse.io.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
 | `verse.principal.group.*` | child-owner, read | everyone |
 | `verse.principal.*`, `verse.watch.*`, `verse.trigger.suspension.*` | read | everyone |
 | `verse.gate.question.*` | read | everyone |

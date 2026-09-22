@@ -11,9 +11,9 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -46,7 +46,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 	defer ts.Close()
 	lessThanOwner(t, srv,
 		entity.VerseRef(trigger.CharterSystem, trigger.CharterKind),
-		entity.VerseRef(schedule.System), entity.VerseRef(source.System), entity.VerseRef(resolver.System))
+		entity.VerseRef(schedule.System), entity.VerseRef(verseio.System), entity.VerseRef(resolver.System))
 	carol := "carol@example.com"
 	dir := repoWithCommit(t)
 
@@ -64,8 +64,8 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 			schedule.Ref(schedule.RecordID("", "carols-hour"))},
 		{"a binding", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
 			`{name: carols-review, byRef: true, method: {driver: url, url: "https://x"}}`), resolver.Ref("carols-review")},
-		{"a source", postAs(t, carol, ts.URL+"/sources", "application/tony",
-			fmt.Sprintf(`{name: carols-repo, root: git, dir: %q}`, dir)), source.Ref("carols-repo")},
+		{"a source", postAs(t, carol, ts.URL+"/io", "application/tony",
+			fmt.Sprintf(`{name: carols-repo, root: git, dir: %q}`, dir)), verseio.Ref("carols-repo")},
 	} {
 		body := bodyOf(t, c.resp)
 		if c.resp.StatusCode != http.StatusConflict || !strings.Contains(body, "act as nobody") {
@@ -80,7 +80,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 		t.Error("the refused rule is in the engine")
 	}
 	srv.srcMu.Lock()
-	n := len(srv.srcRuns)
+	n := len(srv.ioRuns)
 	srv.srcMu.Unlock()
 	if n != 0 {
 		t.Errorf("%d reflectors running for a source that was refused", n)
@@ -107,7 +107,7 @@ func (d deafMirror) Scope(name string) entity.Store { return deafMirror{d.Store.
 func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 	lose := &atomic.Bool{}
 	srv := NewWithStore(ScriptedBuilder, deafMirror{entitytest.Store(t), lose})
-	t.Cleanup(srv.stopAllSources)
+	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

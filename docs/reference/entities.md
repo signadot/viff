@@ -299,7 +299,7 @@ by whoever runs the verse.
 What is under `verse` is read like anything else and written only through the verbs that own it.
 `verse data verse trigger rule review` reads a rule; `verse data -put` at any address under
 `verse` is refused, and says which verb to use instead (`verse c -a`,
-`verse resolver add`, `verse runner add`, `verse source add`, `verse gate approve`). Each verb
+`verse resolver add`, `verse runner add`, `verse io add`, `verse gate approve`). Each verb
 is where its checks live — what a rule may read, what a runner is, whether a source's claim
 overlaps — and beneath every one of them the store itself checks the write against what its
 place permits ([perms.md](../perms.md)), so nothing reaching the store may install a rule, stamp

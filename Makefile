@@ -29,27 +29,27 @@ O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 # Three binaries, one image:
 #   verse    the engine + CLI
 #   o        the tony daemons verse spawns for logd+docd (pinned, built alongside verse)
-#   sourced  the shipped Sources (git, slack, linear) — a SEPARATE process by design, so the
+#   iod  the shipped Sources (git, slack, linear) — a SEPARATE process by design, so the
 #            engine binary carries no connector's wire format or credential handling. Riding
-#            in the same image is free; riding in the same process is not (cmd/sourced).
+#            in the same image is free; riding in the same process is not (cmd/iod).
 define go_build
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
-	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/sourced ./cmd/sourced
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/iod ./cmd/iod
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o + sourced for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build verse + o + iod for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
-.PHONY: sourced
-sourced: ## build just the source connectors (git, slack, linear) for the host
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/sourced ./cmd/sourced
+.PHONY: iod
+iod: ## build just the source connectors (git, slack, linear) for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/iod ./cmd/iod
 
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o + sourced for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile verse + o + iod for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker
@@ -162,7 +162,7 @@ ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FI
 ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
 	$(SHIP_DEPLOY) SELECT=tier=versed
 ship-sources: ship-push ## ship the source connectors alone, and wait for them
-	$(SHIP_DEPLOY) SELECT=tier=source
+	$(SHIP_DEPLOY) SELECT=tier=io
 ship-coderunner: ship-push-coderunner ## ship the coderunner alone (its own image), and wait for it
 	$(SHIP_DEPLOY) SELECT=tier=runner
 
@@ -170,7 +170,7 @@ ship-coderunner: ship-push-coderunner ## ship the coderunner alone (its own imag
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
 # make deploy PROFILE=staging                      # the profile's own registry ref
 # make deploy PROFILE=staging IMAGE=example/verse-staging:v3    # …a particular build of it
-# make deploy E='-e gitSource=true -e slackSource=true'          # …plus source connectors
+# make deploy E='-e gitIO=true -e slackIO=true'          # …plus source connectors
 #
 # `-O yaml` is not decoration. The default output is TONY, which for block-style input happens
 # to also be valid YAML — every manifest here was, so this went unnoticed until one used flow

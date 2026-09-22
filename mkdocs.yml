@@ -46,7 +46,7 @@ nav:
   - runners.md
   - external-tasks.md
   - deployment-and-steering.md
-  - sources.md
+  - io.md
   - content-federation.md
   - controllers.md
 - Reference:
@@ -59,8 +59,8 @@ nav:
   - reference/runners.md
   - reference/resolvers.md
   - reference/perms.md
-  - reference/sources.md
-  - reference/sourced.md
+  - reference/io.md
+  - reference/iod.md
   - reference/connect.md
   - reference/representation.md
   - reference/examples/README.md

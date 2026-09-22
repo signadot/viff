@@ -85,10 +85,10 @@ people.
 
 A task-control backend is a reconciler over the `verse.task.instance` resource rather than a gated
 task itself, which stops the regress: governing a task must not require another governed task. It
-is the dual of a [Source](sources.md). A Source reflects external state *into* the verse; a
+is the dual of a [Source](io.md). A Source reflects external state *into* the verse; a
 task-control backend runs and governs *work* on a substrate. Both reconcile a resource and both
 must be idempotent, but only one of them is a controller, and this is the one
-(see [sources.md](sources.md#a-source-is-not-a-controller-and-cannot-be)). k8s sits on both sides:
+(see [sources.md](io.md#a-source-is-not-a-controller-and-cannot-be)). k8s sits on both sides:
 `k8s.*` as a Source reflecting the cluster in, and k8s as a task-control backend running tasks as
 Jobs out.
 

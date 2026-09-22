@@ -60,7 +60,7 @@ func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 	}
 	firstHTTP.Close()
 	down()
-	first.stopAllSources()
+	first.stopAllIOs()
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())

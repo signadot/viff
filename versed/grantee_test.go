@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/source"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -22,7 +22,7 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 	for _, ref := range []entity.Ref{
 		trigger.CharterRef("x"),
 		trigger.CharterRefAt("drift", "head-moved"),
-		source.Ref("cluster"),
+		verseio.Ref("cluster"),
 		resolver.Ref("gate"),
 	} {
 		if _, err := entity.ParsePrincipal(entity.Via(ref)); err != nil {
