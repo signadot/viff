@@ -298,7 +298,7 @@ message as it is.
 its own principal (`-as`, `agent:slack-io` by default), and the out place's owner grants it once:
 
 ```sh
-verse perms slack acme out --grant '{read-write: [<who may ask>]}' --below
+verse perms slack acme out --grant '{read-write: [<askers>]}' --below
 verse perms slack acme out --grant '{read: [agent:slack-io]}' --below
 verse perms slack acme out --grant '{child-owner: [agent:slack-io]}'
 verse perms slack acme out --child-grants '{read: ["*"]}'
@@ -332,7 +332,7 @@ now, read each pass from `verse.gate.question.<id>` (which everyone may read):
 
 | the question | its buttons | the line |
 |---|---|---|
-| pending | shown | `Answers <id>`, then `waiting on …` when the record names its answerers, and `so far: …` once a ballot is cast |
+| pending | shown | `Answers <id>`, then `waiting on …` from the question's `waitingOn` (a wildcard reads as "the docket"), and `so far: …` once a ballot is cast |
 | answered | gone | `<id> answered <verdict> by <who>`, and what they said with it |
 | withdrawn | gone | `<id> was withdrawn unanswered`, and why |
 | not posed | gone | `No question <id> stands`; the buttons appear once it does |
