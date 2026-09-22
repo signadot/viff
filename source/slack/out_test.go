@@ -213,7 +213,7 @@ func shown(t *testing.T, m map[string]any) (buttons map[string]map[string]any, l
 func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
 	r := newOutRig(t)
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
-		mirror.AnswerersField: []any{"user:scott@example.com", "group:reviewers"}})
+		mirror.WaitingOnField: []any{"user:scott@example.com", "user:ana@example.com"}})
 	r.askButtons(t, "q~1")
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
@@ -224,7 +224,7 @@ func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
 	if btn["value"] != `{"question":"q~1","option":"proceed"}` || !strings.HasPrefix(btn["action_id"].(string), slack.AnswerAction) {
 		t.Errorf("button %v, want it to answer q~1 with proceed", btn)
 	}
-	if want := "Answers `q~1` · waiting on scott@example.com, group:reviewers"; lines != want {
+	if want := "Answers `q~1` · waiting on scott@example.com, ana@example.com"; lines != want {
 		t.Errorf("said %q, want %q", lines, want)
 	}
 	if r.fake.posted[0]["text"] != "the review is waiting" {

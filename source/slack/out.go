@@ -269,15 +269,15 @@ func (o *Out) layout(text string, input *ir.Node) ([]any, error) {
 
 // question is what a message says of a question its buttons answer, as its record says it.
 type question struct {
-	id        string
-	standing  bool // a record stands at the question's place
-	status    string
-	verdict   string
-	by        string
-	why       string
-	say       []string
-	answerers []string
-	ballots   []string // "<who> <choice>", in name order
+	id       string
+	standing bool // a record stands at the question's place
+	status   string
+	verdict  string
+	by       string
+	why      string
+	say      []string
+	waiting  []string
+	ballots  []string // "<who> <choice>", in name order
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
@@ -294,7 +294,7 @@ func (o *Out) question(id string) (question, error) {
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
-	q.answerers = strs(entity.Get(doc, mirror.AnswerersField))
+	q.waiting = strs(entity.Get(doc, mirror.WaitingOnField))
 	ballots := entity.Get(doc, "ballots")
 	for _, who := range fieldNames(ballots) {
 		q.ballots = append(q.ballots, person(who)+" "+entity.Str(entity.Get(ballots, who), "choice"))
@@ -317,8 +317,8 @@ func (q question) line() string {
 		return "No question " + id + " stands"
 	case q.pending():
 		line := "Answers " + id
-		if len(q.answerers) > 0 {
-			line += " · waiting on " + people(q.answerers)
+		if len(q.waiting) > 0 {
+			line += " · waiting on " + people(q.waiting)
 		}
 		if len(q.ballots) > 0 {
 			line += " · so far: " + strings.Join(q.ballots, ", ")
@@ -343,14 +343,22 @@ func (q question) line() string {
 	return id + " is " + q.status
 }
 
-// person is a principal as a reader in Slack would name it: a person by their email, anyone else
-// as verse names them.
-func person(p string) string { return strings.TrimPrefix(p, "user:") }
+// person is a principal as a reader in Slack would name it: a person by their email, a wildcard as
+// the docket it stands for — there is no list of every person to name — and anyone else as verse
+// names them.
+func person(p string) string {
+	if strings.HasSuffix(p, "*") {
+		return "the docket"
+	}
+	return strings.TrimPrefix(p, "user:")
+}
 
 func people(ps []string) string {
-	out := make([]string, len(ps))
-	for i, p := range ps {
-		out[i] = person(p)
+	var out []string
+	for _, p := range ps {
+		if said := person(p); !slices.Contains(out, said) {
+			out = append(out, said) // `user:*` and `agent:*` are one docket, said once
+		}
 	}
 	return strings.Join(out, ", ")
 }

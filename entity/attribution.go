@@ -2923,6 +2923,61 @@ func Recorded(s Store, ref Ref) (bool, error) {
 	return rec != nil && rec.owner != "", err
 }
 
+// LevelAt is who holds level on ref's own lines — the grants at the node itself, not the ones
+// above it that reach it. Nobody, and no error, where ref has no record of its own or its record
+// says nothing about level: the answer is what the NODE says, and what a node says nothing about
+// is the default above it (DefaultFor), which is the caller's to ask for.
+func LevelAt(s Store, ref Ref, level Level) ([]string, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil, nil
+	}
+	cur, exists, err := a.Store.Get(PermsRef(ref))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s at %s: %w", level, ref, err)
+	}
+	if !exists {
+		return nil, nil
+	}
+	grants, err := readGrants(SegsOf(ref), cur.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s at %s: %w", level, ref, err)
+	}
+	for _, g := range grants {
+		if !g.Below && strings.Join(g.At, "\x00") == strings.Join(ref.Segs(), "\x00") {
+			if names := g.To[level]; len(names) > 0 {
+				return names, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+// Members is a group's members, each of whom acts as themselves, with a group named among them
+// expanded in turn. A group that names itself, directly or around a cycle, is walked once.
+func Members(s Store, group string, seen map[string]bool) []string {
+	if seen == nil {
+		seen = map[string]bool{}
+	}
+	if seen[group] {
+		return nil
+	}
+	seen[group] = true
+	e, ok, err := s.Get(GroupRef(group))
+	if err != nil || !ok {
+		return nil
+	}
+	var out []string
+	for _, m := range Strs(e.Payload, MembersField) {
+		if g, err := ParseGrantee(m); err == nil && g.Kind == GroupKind {
+			out = append(out, Members(s, g.ID, seen)...)
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
 // SetLevel replaces who holds level on ref's own lines — the grants at the node itself, not
 // beneath it: every such line loses the level, and the first of them (or a new one) gets it
 // back with names. Empty names remove the level. A binding's grant on a question is written

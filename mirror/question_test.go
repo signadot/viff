@@ -237,3 +237,99 @@ func TestAWithdrawalDoesNotOverwriteAnAnswer(t *testing.T) {
 		t.Errorf("by = %v — the decision lost its author", got["by"])
 	}
 }
+
+// poseTo publishes one question the gate named answerers for.
+func poseTo(t *testing.T, store entity.Store, id string, answerers ...string) {
+	t.Helper()
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: id, Origin: "run-a", Gate: "write-guard",
+			Subject: `demo.pr."1"`, Answerers: answerers},
+		Tool: "write",
+	}, "run-a")
+}
+
+// docket is a store that keeps records of who may answer, which is where waitingOn is read from:
+// a store with no attribution has no such records, and nothing to say.
+func docket(t *testing.T) entity.Store {
+	t.Helper()
+	return entity.As(entitytest.Store(t), entity.SystemDocket)
+}
+
+func waitsOn(t *testing.T, store entity.Store, id string) []string {
+	t.Helper()
+	e, ok, err := store.Get(QuestionRef(id))
+	if err != nil || !ok {
+		t.Fatalf("reading question %s: ok %v, %v", id, ok, err)
+	}
+	return entity.Strs(e.Payload, WaitingOnField)
+}
+
+func same(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("waits on %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("waits on %v, want %v", got, want)
+		}
+	}
+}
+
+// Who a question waits on is on the question, because nobody outside the system can work it out:
+// a gate that named answerers holds it out to them, one that named nobody to whatever the docket
+// holds out, and a group stands for the people who act as themselves.
+func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
+	store := docket(t)
+	entitytest.Set(t, store, entity.GroupRef("payments"),
+		entity.Obj{entity.MembersField: []any{"user:ana@example.com", "group:leads"}}.Payload())
+	entitytest.Set(t, store, entity.GroupRef("leads"),
+		entity.Obj{entity.MembersField: []any{"user:bo@example.com"}}.Payload())
+
+	poseTo(t, store, "run-a~d1", "user:scott@example.com", "group:payments")
+	same(t, waitsOn(t, store, "run-a~d1"),
+		[]string{"user:scott@example.com", "user:ana@example.com", "user:bo@example.com"})
+
+	// Named nobody: whoever the docket holds questions out to, as it is written. There is no list
+	// of every person to write down, and a reader can see that this is not a person.
+	if err := entity.SetChildGrants(store, entity.VerseRef(QuestionSystem, QuestionKind),
+		entity.Levels{entity.ReadWrite: {"user:*"}, entity.Read: {entity.Everyone}}); err != nil {
+		t.Fatal(err)
+	}
+	poseTo(t, store, "run-a~d2")
+	same(t, waitsOn(t, store, "run-a~d2"), []string{"user:*"})
+}
+
+// A binding takes the question, and the field says so: an escalation and a hand-back come through
+// the same grant, so the answer to "who now?" is never the gate's first answer.
+func TestBindingAQuestionMovesWhoItWaitsOn(t *testing.T) {
+	store := docket(t)
+	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+
+	if err := Bind(store, "run-a~d1", "verse.resolver.binding.oncall"); err != nil {
+		t.Fatalf("binding: %v", err)
+	}
+	if got := waitsOn(t, store, "run-a~d1"); len(got) != 1 || !strings.Contains(got[0], "oncall") {
+		t.Errorf("waits on %v, want the binding that now answers it", got)
+	}
+	if err := Bind(store, "run-a~d1", ""); err != nil {
+		t.Fatalf("unbinding: %v", err)
+	}
+	same(t, waitsOn(t, store, "run-a~d1"), []string{"user:scott@example.com"})
+}
+
+// It is present tense: a settled question waits on nobody, and what was asked of whom stays on
+// `answerers`, who decided on `by`.
+func TestASettledQuestionWaitsOnNobody(t *testing.T) {
+	store := docket(t)
+	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+	AnswerQuestion(store, "run-a~d1", task.Choose("proceed", "user:scott@example.com"))
+
+	if got := waitsOn(t, store, "run-a~d1"); len(got) != 0 {
+		t.Errorf("a settled question waits on %v", got)
+	}
+	e, _, _ := store.Get(QuestionRef("run-a~d1"))
+	if got := entity.Strs(e.Payload, AnswerersField); len(got) != 1 {
+		t.Errorf("answerers %v, want the gate's own kept", got)
+	}
+}

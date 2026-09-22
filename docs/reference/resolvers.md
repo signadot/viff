@@ -75,6 +75,7 @@ or reads from there:
 | `reownedFrom` `reownedWhy` `reownedAt` | the handover. `why` is `escalated`, `overdue` or `removed` |
 | `by` | who answered: the principal the request was made as, never a name the body chose — a body's `by` that names anybody else is refused 400. A resolver's verdict stamps the **binding**, not the instance |
 | `answerers` | whom the gate itself named, when it named anybody. What a bound question goes back to when its binding lets go — to the docket's default only where this is absent |
+| `waitingOn` | whom it waits on **now**: its own `read-write` line, groups expanded to the people who act as themselves, wildcards (`user:*`, the docket's default) left as they are written. Written at posing and moved by every hand-over, since the same grant carries both; gone once it settles. A change to the default above a docket of pending questions does not move it — nothing writes those questions — so each says the set it was posed with until it is asked again |
 | `overrode` | whom an answer was taken over, when `-override` was used |
 | `askedAgain` | this id was posed again after settling; the prior answer is at the commit that made it |
 

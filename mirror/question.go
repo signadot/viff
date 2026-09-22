@@ -152,12 +152,69 @@ func Bind(store entity.Store, id, binding string) error {
 			names = levels[entity.ReadWrite]
 		}
 	}
-	return entity.SetLevel(store, ref, entity.ReadWrite, names)
+	if err := entity.SetLevel(store, ref, entity.ReadWrite, names); err != nil {
+		return err
+	}
+	// The grant and the field say one thing, so a hand-over says who has it now. A reown
+	// (versed's escalate) comes through here too, which is why it is written here and not there.
+	writeAt(store, ref, entity.Obj{WaitingOnField: waitingOn(store, ref)})
+	return nil
 }
 
 // AnswerersField is who the gate itself named to answer, on the question: what unbinding gives
 // the question back to. Absent where the gate named nobody.
 const AnswerersField = "answerers"
+
+// WaitingOnField is who the question waits on NOW, on the question: every principal who may
+// answer it as it stands.
+//
+// A READER CANNOT WORK THIS OUT. `answerers` is there only where the gate named somebody, and the
+// rest of who may answer — the binding a question was handed to, the rung that took it after an
+// escalation, the docket's own default — is on the question's perms record, which only the system
+// may read. So a docket, a charter deriving one message per person, and `verse gate` would each
+// have to guess, and would each guess differently.
+//
+// It is the question's own `read-write` line, which is the same fact the answer route checks, with
+// groups expanded to the people who act as themselves. `user:*` and the other wildcards stay as
+// they are written: a question the docket holds out to every person waits on every person, and
+// there is no list of them to write down.
+//
+// Present tense, so it goes when the question settles: what was asked of whom is `answerers`, and
+// who decided is `by`.
+//
+// It moves when the question does — posed, bound, handed up, handed back — because those are
+// writes to the question. Changing the DEFAULT above a docket of pending questions is not: it is a
+// perms change, nothing writes the questions standing under it, and they go on saying the answer
+// set they were posed with until each is asked again.
+const WaitingOnField = "waitingOn"
+
+// waitingOn is who may answer the question at ref as its record now holds it out, as the field
+// carries it. A read that fails answers nil, which leaves whatever the record says standing: a
+// question said to wait on nobody is one every reader would drop.
+func waitingOn(store entity.Store, ref entity.Ref) any {
+	names, err := entity.LevelAt(store, ref, entity.ReadWrite)
+	if err != nil {
+		return nil
+	}
+	if len(names) == 0 {
+		// The record says nothing about who answers, so the default above it does.
+		levels, err := entity.DefaultFor(store, ref)
+		if err != nil {
+			return nil
+		}
+		names = levels[entity.ReadWrite]
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		if g, err := entity.ParseGrantee(n); err == nil && g.Kind == entity.GroupKind {
+			out = append(out, entity.Members(store, g.ID, seen)...)
+			continue
+		}
+		out = append(out, n)
+	}
+	return answerersValue(out)
+}
 
 // boundNames is who a question bound to binding is held out to.
 func boundNames(store entity.Store, binding string) []string {
@@ -295,6 +352,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 			"written, so nobody is asked until it is posed again: %v\n", q.ID, err)
 		return false
 	}
+	// AFTER the record of who may answer, and read back from it: an asking that named nobody is
+	// held out by the default above, and one posed again while it stands pending keeps whatever
+	// binding it has been handed to since.
+	rec[WaitingOnField] = waitingOn(store, QuestionRef(q.ID))
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
 	if q.BoundTo != "" {
@@ -648,6 +709,9 @@ func answerRecord(res task.Resolution) entity.Obj {
 		"status":     QuestionAnswered,
 		"verdict":    res.Chosen(),
 		"answeredAt": time.Now().UTC().Format(time.RFC3339),
+		// Who it waited on is a present-tense fact, and it is settled: `by` says who decided,
+		// `answerers` whom the gate named, `ballots` who voted.
+		WaitingOnField: entity.Removed(),
 	}
 	if res.By != "" {
 		rec["by"] = res.By
@@ -733,6 +797,7 @@ func DropQuestion(store entity.Store, id, why string) {
 // second to land used to overwrite the first with its own account. The precondition is what
 // makes the first settling the one that stands, whichever it is.
 func settlePending(store entity.Store, ref entity.Ref, rec entity.Obj) {
+	rec[WaitingOnField] = entity.Removed() // nobody: it is settled
 	_, _, _ = store.Write(entity.Write{
 		At:    ref.At(),
 		Value: rec.Payload(),
