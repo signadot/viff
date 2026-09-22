@@ -585,7 +585,7 @@ func checkGates(node *ir.Node) error {
 		}
 		if err := checkFields(el, "gate", map[string]bool{
 			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
-			"answerers": true,
+			"answerers": true, "pose": true,
 		}, func(field string, val *ir.Node) error {
 			if field == "onDenied" {
 				return checkAction(val)

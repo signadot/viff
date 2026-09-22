@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 )
@@ -85,5 +86,25 @@ func TestAPoseImpliesAsk(t *testing.T) {
 	m, err := Gate{Name: "approval", Pose: "Approve this?"}.mode()
 	if err != nil || !m.Blocks() {
 		t.Errorf("mode = %v (%v), want ask implied by the words", m, err)
+	}
+}
+
+// And a charter carrying one installs: an unknown field is refused by name, so a grammar the
+// struct knows and the field check does not is a rule that silently does less than it says.
+func TestACharterMayCarryAPose(t *testing.T) {
+	doc, err := codec.ParseNode([]byte(`
+- name: deploy
+  condition: {subject: {path: "demo.deploy.*", value: {stage: open}}}
+  gates:
+  - {name: approval, pose: "Deploy $[subject.value.title]?"}
+  action: {patch: {stage: approved}}
+`), codec.Tony)
+	if err != nil {
+		t.Fatalf("parsing the charter: %v", err)
+	}
+	for _, rule := range doc.Values {
+		if err := CheckFields(rule); err != nil {
+			t.Fatalf("a gate with a pose is refused: %v", err)
+		}
 	}
 }
