@@ -1797,6 +1797,11 @@ func (s *Option) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["need"] = ir.FromInt(int64(s.Need))
 	}
 
+	// Field: Says
+	if s.Says != "" {
+		irMap["says"] = ir.FromString(string(s.Says))
+	}
+
 	// Field: Grant
 	if s.Grant != "" {
 		irMap["grant"] = ir.FromString(string(s.Grant))
@@ -1856,6 +1861,12 @@ func (s *Option) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "need", fieldNodeUnwrapped.Type)
 			}
 			s.Need = int(*fieldNodeUnwrapped.Int64)
+		case "says":
+			// Field: Says
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "says", fieldNodeUnwrapped.Type)
+			}
+			s.Says = string(fieldNodeUnwrapped.String)
 		case "grant":
 			// Field: Grant
 			if fieldNodeUnwrapped.Type != ir.StringType {

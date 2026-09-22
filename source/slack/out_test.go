@@ -209,6 +209,23 @@ func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 	}
 }
 
+// An option may say what choosing it means, and the footer says it: three ids in a row is a
+// question answered by guessing.
+func TestOutSaysWhatEachOptionMeans(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending, "options": []any{
+		map[string]any{"id": "proceed", "says": "deploy it"},
+		map[string]any{"id": "careful", "says": "deploy, but hold the migration"},
+		map[string]any{"id": "deny"},
+	}})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	want := "Answer in this thread: `proceed` — deploy it, `careful` — deploy, but hold the migration, `deny`"
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, want) {
+		t.Errorf("said %q, want it to carry %q", said, want)
+	}
+}
+
 // A question that settles redraws the message, which nobody asked for by writing: the buttons go,
 // and everyone who can see it is told the verdict, who gave it and what they said with it.
 func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {

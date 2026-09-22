@@ -20,6 +20,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
 )
 
 // The out half: what the verse asks to be said in Slack, said, and what became of it written back.
@@ -223,7 +224,7 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 	}
 	said := []string{text}
 	var open []Asked
-	var options []string
+	var options []task.Option
 	for _, id := range asks {
 		q, err := o.question(id)
 		if err != nil {
@@ -233,9 +234,9 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 		if !q.pending() {
 			continue
 		}
-		open = append(open, Asked{ID: id, Options: q.options})
-		for _, opt := range q.options {
-			if !slices.Contains(options, opt) {
+		open = append(open, Asked{ID: id, Options: optionIDs(q.opts)})
+		for _, opt := range q.opts {
+			if !slices.Contains(optionIDs(options), opt.ID) {
 				options = append(options, opt)
 			}
 		}
@@ -244,7 +245,7 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 	// interface: it needs no block to render, and it is what one person would have typed to
 	// another.
 	if len(options) > 0 {
-		said = append(said, "Answer in this thread: "+code(options))
+		said = append(said, "Answer in this thread: "+choices(options))
 	}
 	return strings.Join(said, "\n"), open, nil
 }
@@ -292,6 +293,28 @@ func code(words []string) string {
 	return strings.Join(out, ", ")
 }
 
+// choices is what a question takes, each word with what choosing it means when the gate said:
+// three ids in a row is a question answered by guessing.
+func choices(opts []task.Option) string {
+	out := make([]string, len(opts))
+	for i, o := range opts {
+		out[i] = "`" + o.ID + "`"
+		if o.Says != "" {
+			out[i] += " — " + o.Says
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// optionIDs is what those options are answered with.
+func optionIDs(opts []task.Option) []string {
+	out := make([]string, len(opts))
+	for i, o := range opts {
+		out[i] = o.ID
+	}
+	return out
+}
+
 // question is what a message says of a question it is about, as its record says it.
 type question struct {
 	id       string
@@ -303,8 +326,8 @@ type question struct {
 	why      string
 	say      []string
 	waiting  []string
-	options  []string // what it takes to answer, in the order the gate wrote them
-	ballots  []string // "<who> <choice>", in name order
+	opts     []task.Option // what it takes to answer, in the order the gate wrote them
+	ballots  []string      // "<who> <choice>", in name order
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
@@ -323,12 +346,8 @@ func (o *Out) question(id string) (question, error) {
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
 	q.waiting = strs(entity.Get(doc, mirror.WaitingOnField))
-	if opts := ir.Uncomment(entity.Get(doc, "options")); opts != nil {
-		for _, opt := range opts.Values {
-			if id := entity.Str(opt, "id"); id != "" {
-				q.options = append(q.options, id)
-			}
-		}
+	if ir.Uncomment(entity.Get(doc, "options")) != nil {
+		q.opts = mirror.OptionsOf(doc)
 	}
 	ballots := entity.Get(doc, "ballots")
 	for _, who := range fieldNames(ballots) {

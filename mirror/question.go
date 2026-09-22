@@ -426,6 +426,9 @@ func optionList(opts []task.Option) []any {
 	out := make([]any, 0, len(opts))
 	for _, o := range opts {
 		om := entity.Obj{"id": o.ID, "need": o.Need}
+		if o.Says != "" {
+			om["says"] = o.Says
+		}
 		// Written only when the option says something, so a ballot between interchangeable
 		// doers stays as terse as a yes-or-no one.
 		if o.Grant != "" {
@@ -453,7 +456,7 @@ func OptionsOf(p entity.Payload) []task.Option {
 		if id == "" {
 			continue
 		}
-		out = append(out, task.Option{ID: id, Need: intField(el, "need")})
+		out = append(out, task.Option{ID: id, Need: intField(el, "need"), Says: entity.Str(el, "says")})
 	}
 	if len(out) == 0 {
 		return task.DefaultOptions()

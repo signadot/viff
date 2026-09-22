@@ -22,6 +22,7 @@ define:
   grant: .[string]
   id: .[string]
   need: .[int]
+  says: .[string]
   tools: .[array(string)]
 signature:
   name: verse-option

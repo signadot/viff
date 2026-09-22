@@ -139,6 +139,11 @@ const NoOption = "none"
 type Option struct {
 	ID   string `tony:"field=id"`
 	Need int    `tony:"field=need,omitzero"`
+	// Says is what choosing this option MEANS, in words, for whoever is being asked. An id is
+	// what an answer is spelled with and a name somebody chose for the rule to read; `careful`
+	// beside `proceed` and `deny` says nothing to the person deciding, and a question whose
+	// options are three ids is a question answered by guessing. Empty where the id says it all.
+	Says string `tony:"field=says,omitzero"`
 	// Grant and Tools are the ENVELOPE this option would run under, for a question whose
 	// options are doers. Once options differ in what they may do, choosing between two names
 	// is choosing between two authorities, and a ballot that showed only names would have the

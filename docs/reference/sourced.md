@@ -330,7 +330,7 @@ pass from `verse.gate.question.<id>`, which everyone may read:
 
 | the question | the line, and what follows it |
 |---|---|
-| pending | the question's `pose` when its gate wrote one, else `Answers <id>`; then `waiting on …` from the question's `waitingOn` (a wildcard reads as "the docket"), and `so far: …` once a ballot is cast — then `Answer in this thread:` and the options it takes |
+| pending | the question's `pose` when its gate wrote one, else `Answers <id>`; then `waiting on …` from the question's `waitingOn` (a wildcard reads as "the docket"), and `so far: …` once a ballot is cast — then `Answer in this thread:` and the options it takes, each with its `says` when the gate wrote one |
 | answered | `<id> answered <verdict> by <who>`, and what they said with it |
 | withdrawn | `<id> was withdrawn unanswered`, and why |
 | not posed | `No question <id> stands`; the rest appears once it does |

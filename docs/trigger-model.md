@@ -713,7 +713,10 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
     deadline: {within: "24h", default: deny}   # and the clock decides silence
     answerers: [oscar@example.com, group:payments]   # and whose ballots
   - name: route
-    options: [{id: ship, need: 1}, {id: hold, need: 2}, {id: drop, need: 1}]
+    options:
+    - {id: ship, need: 1, says: "merge it now"}
+    - {id: hold, need: 2, says: "wait for the release call"}
+    - {id: drop, need: 1}
 ```
 
 `pose` is the question in WORDS, and the only thing on a gate written for a person rather than for
@@ -731,7 +734,10 @@ is asked because its prose broke is worse than a bare one.
 
 Every gate poses the same record: the options it can settle on, each with the number of ballots
 that settles it, and a deadline with the option it falls to. A gate that says nothing poses
-`proceed` and `deny` at one each, which is the question a gate has always asked. `need` is the
+`proceed` and `deny` at one each, which is the question a gate has always asked. An option's
+`says` is what choosing it MEANS, for whoever is being asked: an id is what an answer is spelled
+with and a name the rule reads, and a question whose options are three ids is one answered by
+guessing. `need` is the
 short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and the two are not
 written together. `options` are ordered: the first to reach its threshold settles the question.
 A gate that carries any of these, or a `pose`, and no `mode` is `ask`; with `mode: auto` it is
