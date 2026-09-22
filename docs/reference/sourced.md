@@ -142,7 +142,7 @@ ordinary case: they write disjoint places, so nothing coordinates.
 
 | entity | payload |
 |---|---|
-| `git-issue.<repo>.issue.<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError`; `comments` (how many) and, with any, `lastCommentAt`; under `-bodies` the `discussion` itself as `[{at, text}]`. The lists and `comments` are always present, empty when there is nothing, so a charter may reference them |
+| `git-issue.<repo>.issue.<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, keys, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError, multiValued`; `comments` (how many) and, with any, `lastCommentAt`; under `-bodies` the `discussion` itself as `[{at, text}]`. The lists, `keys` and `comments` are always present, empty when there is nothing, so a charter may reference them |
 | `git-issue.<repo>.repo` | `repo, open, closed, issues` |
 
 Owns `git-issue.<repo>` per repo, a place, for the reason git's claim is one.
@@ -151,6 +151,21 @@ Owns `git-issue.<repo>` per repo, a place, for the reason git's claim is one.
 which is what preserves its history — and it leaves a `status` field behind in the tree that a
 hand-edited or half-migrated issue can disagree with. The namespace is the one that cannot be
 wrong. Match on `status`, which is that answer.
+
+**A `key=value` label is reflected as a key and a value.** git-issue splits a label at its first
+`=`, and a key holds one value, so `git-issue-phase=planned` is `keys: {git-issue-phase: planned}`
+and a rule matches a phase directly:
+
+```tony
+condition:
+  subject: {path: "git-issue.verse.issue.*", value: {keys: {git-issue-phase: planned}}}
+```
+
+`labels` is the plain labels alone, so a keyed one is said in one place. A key holding two values
+is what a merge by git-issue before v0.0.233 can leave, since those merged labels as a union: it is
+read as git-issue reads it, the last value, and every value it held is kept under `multiValued`
+(present only then), so a charter can see the race rather than trust whichever value survived.
+The `git-issue-` prefix is reserved for conventions a program driving the tracker defines.
 
 **A title lives in the first line of `description.md`**, not in `meta.tony` — `Issue.Title` is
 `tony:"-"` upstream — so `# ` is stripped and what remains is the title. `-bodies=false` drops

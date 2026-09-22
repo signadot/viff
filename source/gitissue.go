@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -284,7 +285,12 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 		}
 		addTime(p, "createdAt", issue.Created)
 		addTime(p, "updatedAt", issue.Updated)
-		addStrings(p, "labels", issue.Labels)
+		plain, keys, multi := splitLabels(issue.Labels)
+		addStrings(p, "labels", plain)
+		p["keys"] = keys // `keys: {}` when there are none, for addStrings' reason
+		if multi != nil {
+			p["multiValued"] = multi
+		}
 		addStrings(p, "commits", issue.Commits)
 		addStrings(p, "branches", issue.Branches)
 		addStrings(p, "related", issue.RelatedIssues)
@@ -391,6 +397,53 @@ func addTime(p entity.Obj, key string, t time.Time) {
 	if !t.IsZero() {
 		p[key] = t.UTC().Format(time.RFC3339)
 	}
+}
+
+// splitLabels divides an issue's labels the way git-issue reads them (issuelib's labels.go): a
+// label with "=" is a key and a value, split at the first "=", and a key holds one value; the
+// rest are plain, and plain labels are a set. So `git-issue-phase=planned` is reflected as
+// `keys: {git-issue-phase: planned}`, which a rule matches directly.
+//
+// ONE FACT, ONE PLACE. A keyed label goes to keys and not also to labels, so no second
+// spelling of a phase can disagree with the first.
+//
+// A key with more than one value is a shape only a merge by a git-issue before v0.0.233 leaves,
+// since those merged labels as a union. It is read as git-issue reads it — the last of the values
+// in the order the list first gives them — and every value it held is kept under multiValued.
+// For a key driving a phase that is a race nobody was stopped on, and a charter should be able
+// to see it rather than trust whichever value happened to come last.
+//
+// A label that is only "=value" has no key to address, so it stays plain.
+func splitLabels(labels []string) (plain []string, keys, multi entity.Obj) {
+	keys = entity.Obj{}
+	held := map[string][]string{}
+	var order []string
+	for _, l := range labels {
+		k, v, keyed := issuelib.SplitLabel(l)
+		if !keyed || k == "" {
+			if !slices.Contains(plain, l) {
+				plain = append(plain, l)
+			}
+			continue
+		}
+		if _, seen := held[k]; !seen {
+			order = append(order, k)
+		}
+		if !slices.Contains(held[k], v) {
+			held[k] = append(held[k], v)
+		}
+	}
+	for _, k := range order {
+		vs := held[k]
+		keys[k] = vs[len(vs)-1]
+		if len(vs) > 1 {
+			if multi == nil {
+				multi = entity.Obj{}
+			}
+			multi[k] = vs
+		}
+	}
+	return plain, keys, multi
 }
 
 // addStrings writes a list field, EMPTY INCLUDED. A charter copies an issue's facts onto a row

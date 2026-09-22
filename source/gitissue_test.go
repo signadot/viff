@@ -2,6 +2,7 @@ package source_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -334,6 +335,81 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 	}
 	if sm := got[entity.RefAt(source.GitIssueRoot, "A", "repo")]; sm["issues"] != int64(2) {
 		t.Errorf("summary = %+v, want both issues counted", sm)
+	}
+}
+
+// A keyed label is a key and a value (issuelib's labels.go), and it is reflected as one:
+// `git-issue-phase=planned` under keys, where a rule matches it directly, and not also in labels,
+// which stays the plain set. A key an older git-issue's union merge left holding two values is
+// read as git-issue reads it, the last value, with both kept under multiValued, so a charter
+// can see the race rather than trust whichever value survived.
+func TestGitIssueKeyedLabels(t *testing.T) {
+	needGit(t)
+	dir := t.TempDir()
+	initRepo(t, dir)
+	clean := fileIssue(t, dir, "a planned design", "", func(i *issuelib.Issue) {
+		i.SetLabel("residual")
+		i.SetLabel("git-issue-phase=proposal")
+		i.SetLabel("git-issue-phase=planned") // replaces proposal: a key holds one value
+		i.SetLabel("git-issue-owner=trent@example.com")
+	})
+	raced := fileIssue(t, dir, "a raced design", "", nil)
+
+	// What a union merge by a git-issue before v0.0.233 can leave: one key, two values, and the
+	// first of them repeated after the second.
+	t.Chdir(dir)
+	s := issuelib.NewGitStoreWithOutput(testLog{t})
+	meta := "id: " + raced + "\nstatus: open\n" +
+		"labels: [perms, git-issue-phase=planned, git-issue-phase=landed, git-issue-phase=planned]\n" +
+		"commits: []\nbranches: []\n" +
+		"created: \"2026-09-22T08:00:00+02:00\"\nupdated: \"2026-09-22T08:00:00+02:00\"\n"
+	if err := s.ReplaceTree(issuelib.RefForXIDR(raced), "a union merge", map[string][]byte{
+		"meta.tony":      []byte(meta),
+		"description.md": []byte("# a raced design\n"),
+	}); err != nil {
+		t.Fatalf("ReplaceTree: %v", err)
+	}
+
+	gi := source.NewGitIssue()
+	gi.AddRepo("A", dir)
+	got, _ := reflectIssues(t, gi, entity.Ref{})
+
+	c := got[entity.RefAt(source.GitIssueRoot, "A", "issue", clean)]
+	if c == nil {
+		t.Fatal("the clean issue was not reflected")
+	}
+	if s := fmt.Sprint(c["labels"]); s != "[residual]" {
+		t.Errorf("labels = %s, want only the plain label: a keyed one belongs to keys alone", s)
+	}
+	keys, _ := c["keys"].(map[string]any)
+	if keys["git-issue-phase"] != "planned" || keys["git-issue-owner"] != "trent@example.com" || len(keys) != 2 {
+		t.Errorf("keys = %v, want the phase and the owner, one value each", c["keys"])
+	}
+	if c["multiValued"] != nil {
+		t.Errorf("multiValued = %v on an issue whose keys each hold one value", c["multiValued"])
+	}
+
+	r := got[entity.RefAt(source.GitIssueRoot, "A", "issue", raced)]
+	if r == nil {
+		t.Fatal("the raced issue was not reflected")
+	}
+	rkeys, _ := r["keys"].(map[string]any)
+	if rkeys["git-issue-phase"] != "landed" {
+		t.Errorf("phase = %v, want landed: the last of the values in the order the list first gives them, as git-issue reads it", rkeys["git-issue-phase"])
+	}
+	multi, _ := r["multiValued"].(map[string]any)
+	if s := fmt.Sprint(multi["git-issue-phase"]); s != "[planned landed]" {
+		t.Errorf("multiValued phase = %s, want both values in list order", s)
+	}
+	if s := fmt.Sprint(r["labels"]); s != "[perms]" {
+		t.Errorf("labels = %s, want the plain label alone", s)
+	}
+
+	// An issue with no labels still answers the question: keys is there, and empty.
+	bare := fileIssue(t, dir, "a bare design", "", nil)
+	got, _ = reflectIssues(t, gi, entity.Ref{})
+	if b := got[entity.RefAt(source.GitIssueRoot, "A", "issue", bare)]; b["keys"] == nil {
+		t.Errorf("keys absent on an issue with no labels; a rule referencing it would fail the firing")
 	}
 }
 
