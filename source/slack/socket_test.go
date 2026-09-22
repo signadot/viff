@@ -381,6 +381,27 @@ func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
 	}
 }
 
+// A thread outlives its decision: what is said in it afterwards goes on the question, and somebody
+// who addresses the bot is told what became of the thing they were answering.
+func TestAThreadGoesOnAfterItsQuestionSettles(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.reply(t, "e1", "U7", "proceed")
+	r.heard(t, "thread")
+	<-r.kicked
+	r.pass(t) // the message is redrawn, and the question is settled in the index
+
+	r.event(t, "e2", map[string]any{"type": "app_mention", "channel": "C999", "user": "U8",
+		"text": "<@U0BOT> approve", "ts": "1790000099.000200", "thread_ts": r.ts})
+	if said := r.heard(t, "U8"); !strings.Contains(said, "settled") {
+		t.Errorf("said %q, want it to say the question is settled", said)
+	}
+	if got := r.waitForSay(t, "approve"); got["by"] != "user:ani@example.com" {
+		t.Errorf("said by %v, want the person who typed it", got["by"])
+	}
+}
+
 // A reply under a message this program did not post answers nothing.
 func TestAReplyInAnotherThreadIsNotAnAnswer(t *testing.T) {
 	r := newSocketRig(t)

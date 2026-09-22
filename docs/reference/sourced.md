@@ -368,6 +368,11 @@ whoever reads it later, rather than only in the window it was typed in. It decid
 is replied to for talking — except somebody who addressed the bot by name and said something it
 could not read as an answer, who is told so, and told that their words were kept.
 
+**A thread outlives its decision.** Once its question has settled the thread still hears what is
+said in it, and those words still go on the question: why it went that way, and what it cost, are
+worth as much as what was said before. Somebody who addresses the bot there is told what became of
+it rather than nothing at all.
+
 **It answers as the person who typed it.** `users.info` turns their Slack id into `user:<email>`
 (`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's permissions
 decide whether they may answer. What was decided is said in the thread, where everyone reading it

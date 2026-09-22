@@ -210,7 +210,23 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	}
 	asked := k.Asking(e.Channel, e.ThreadTS)
 	if len(asked) == 0 {
-		return // not one of this program's questions, or it has settled since
+		return // not one of this program's questions
+	}
+	// A thread whose questions have all settled still hears what is said in it — the words go on
+	// the questions, where whoever asks why later will look — and tells somebody who addressed
+	// the bot what became of the thing they were answering.
+	if open := pending(asked); len(open) == 0 {
+		noted := k.say(ctx, e.User, asked, e.Text)
+		if e.Type == "app_mention" {
+			say := "That is settled: " + asked[0].Line + " Nothing left to answer."
+			if noted {
+				say += " I have noted what you said on the question."
+			}
+			k.aside(ctx, e.Channel, e.ThreadTS, e.User, say)
+		}
+		return
+	} else {
+		asked = open
 	}
 	id, option, err := choose(e.Text, asked, e.Type == "app_mention")
 	if err != nil {
@@ -253,6 +269,17 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	// What went wrong is about the person who typed it rather than about the question, so the
 	// thread does not need it.
 	k.aside(ctx, e.Channel, e.ThreadTS, e.User, said)
+}
+
+// pending is the questions in a thread that still take an answer.
+func pending(asked []Asked) []Asked {
+	var out []Asked
+	for _, a := range asked {
+		if !a.Settled {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // choose reads a reply as one of the options the thread's questions take: the question and the

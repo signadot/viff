@@ -223,7 +223,7 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 		return text, nil, nil
 	}
 	said := []string{text}
-	var open []Asked
+	var asked []Asked
 	var options []task.Option
 	for _, id := range asks {
 		q, err := o.question(id)
@@ -234,10 +234,14 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 		if q.about != "" {
 			said = append(said, "> _"+q.about+"_")
 		}
+		// Settled ones stay in what this message is asking, with no options on them: a thread
+		// outlives its decision, and what people say there afterwards — why it went that way,
+		// what it cost — is worth keeping on the question rather than dropping on the floor.
+		asked = append(asked, Asked{ID: id, Options: optionIDs(q.opts), Settled: !q.pending(),
+			Line: q.line()})
 		if !q.pending() {
 			continue
 		}
-		open = append(open, Asked{ID: id, Options: optionIDs(q.opts)})
 		for _, opt := range q.opts {
 			if !slices.Contains(optionIDs(options), opt.ID) {
 				options = append(options, opt)
@@ -250,7 +254,7 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 	if len(options) > 0 {
 		said = append(said, "Answer in this thread: "+choices(options))
 	}
-	return strings.Join(said, "\n"), open, nil
+	return strings.Join(said, "\n"), asked, nil
 }
 
 // Asked is one question a posted message is about, and what it takes to answer it: what the out
@@ -259,11 +263,16 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 type Asked struct {
 	ID      string
 	Options []string
+	// Settled says the question takes no more answers. It stays in the index anyway, because a
+	// thread goes on after its decision and what is said there belongs on the question.
+	Settled bool
+	// Line is what the message says of it, for telling somebody who answers too late what
+	// became of it.
+	Line string
 }
 
-// Asked is the questions the message at (channel, ts) is asking, pending ones only, as the last
-// pass read them. Nothing, for a message this program did not post or one whose questions have
-// settled — a reply to that is somebody talking, not somebody answering.
+// Asked is the questions the message at (channel, ts) is about, as the last pass read them, each
+// saying whether it still takes an answer. Nothing, for a message this program did not post.
 func (o *Out) Asked(channel, ts string) []Asked {
 	o.mu.Lock()
 	defer o.mu.Unlock()
