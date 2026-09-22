@@ -719,6 +719,12 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
     - {id: drop, need: 1}
 ```
 
+Beside it on the record stands `about`: the one line the SUBJECT says about itself, which verse
+copies onto the question when it poses it — a convention an entity opts into by carrying a `says`
+([the docket has shown it since `06476112`](reference/resolvers.md#the-question-record)). Between
+them, a question says what is being asked and what it is about without a reader holding any grant
+on the subject at all.
+
 `pose` is the question in WORDS, and the only thing on a gate written for a person rather than for
 the engine: everything else says who asked and how it settles, and a rule name beside an address is
 not what somebody deciding needs to read. It is expanded at the firing, against the subject that

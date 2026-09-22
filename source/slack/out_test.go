@@ -209,6 +209,19 @@ func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 	}
 }
 
+// What the question is about — its subject's own line, copied onto the question at posing — is
+// said beneath what it asks.
+func TestOutSaysWhatTheQuestionIsAbout(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
+		"pose": "Merge this?", "about": "bump go-tony to v0.0.234"})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "> Merge this?\n> _bump go-tony to v0.0.234_") {
+		t.Errorf("said %q, want what it asks and what it is about", said)
+	}
+}
+
 // An option may say what choosing it means, and the footer says it: three ids in a row is a
 // question answered by guessing.
 func TestOutSaysWhatEachOptionMeans(t *testing.T) {

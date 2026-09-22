@@ -352,3 +352,30 @@ func TestAQuestionCarriesTheWordsItWasAskedIn(t *testing.T) {
 		t.Errorf("pose %q, want the words the gate wrote", got)
 	}
 }
+
+// A question carries the one line its subject says about itself, so a reader who may not read the
+// subject can still say what is being decided.
+func TestAQuestionCarriesWhatItsSubjectSaysOfItself(t *testing.T) {
+	store := docket(t)
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"),
+		entity.Obj{"says": "bump go-tony to v0.0.234\nand fix the two call sites"}.Payload())
+	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+
+	e, _, _ := store.Get(QuestionRef("run-a~d1"))
+	if got := entity.Str(e.Payload, "about"); got != "bump go-tony to v0.0.234" {
+		t.Errorf("about %q, want the subject's first line", got)
+	}
+}
+
+// A subject that says nothing about itself leaves the question bare rather than refusing it: it
+// is a convention an entity opts into, not a schema.
+func TestASubjectThatSaysNothingLeavesTheQuestionBare(t *testing.T) {
+	store := docket(t)
+	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
+	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+
+	e, _, _ := store.Get(QuestionRef("run-a~d1"))
+	if got := entity.Str(e.Payload, "about"); got != "" {
+		t.Errorf("about %q, want nothing", got)
+	}
+}

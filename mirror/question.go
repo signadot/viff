@@ -226,6 +226,42 @@ func boundNames(store entity.Store, binding string) []string {
 	return []string{viaBinding(binding)}
 }
 
+// about is the one line the question's subject offers about ITSELF, copied onto the question so
+// that a reader who cannot read the subject can still say what is being decided.
+//
+// A CONVENTION rather than a schema (`06476112`): an entity that wants to be decidable carries a
+// `says`, and one that carries none is read bare rather than refused. Copied HERE, where the
+// question is posed, because a presenter — a docket, Slack, a resolver — may hold no grant on the
+// subject while the system posing the question does, and because one read at posing serves every
+// reader afterwards.
+//
+// A line, not a paragraph: a docket line and a chat message each show one, and a `says` that runs
+// long is cut rather than allowed to bury what it is attached to.
+func about(store entity.Store, subject string) any {
+	if subject == "" {
+		return entity.Removed()
+	}
+	ref, err := entity.ParseAddr(subject)
+	if err != nil {
+		return entity.Removed()
+	}
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		return entity.Removed()
+	}
+	said, _, _ := strings.Cut(strings.TrimSpace(entity.Str(e.Payload, "says")), "\n")
+	if said == "" {
+		return entity.Removed()
+	}
+	if r := []rune(said); len(r) > aboutMax {
+		said = strings.TrimSpace(string(r[:aboutMax])) + "…"
+	}
+	return said
+}
+
+// aboutMax is how much of a subject's `says` a question carries: enough for a sentence.
+const aboutMax = 140
+
 // answerersValue is the gate's named answerers as the question carries them, REMOVED where it
 // named nobody so that an asking that names none does not inherit the last one's.
 func answerersValue(names []string) any {
@@ -328,6 +364,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		rec["effects"] = eff
 	}
 	rec[AnswerersField] = answerersValue(q.Answerers)
+	rec["about"] = about(store, q.Subject)
 	// Always written, default included, so the record says what can be chosen without a
 	// reader having to know what a question with no options means. The tally reads it back.
 	rec["options"] = optionList(q.OptionsOrDefault())

@@ -231,6 +231,9 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 			return "", nil, err
 		}
 		said = append(said, "> "+q.line())
+		if q.about != "" {
+			said = append(said, "> _"+q.about+"_")
+		}
 		if !q.pending() {
 			continue
 		}
@@ -319,6 +322,7 @@ func optionIDs(opts []task.Option) []string {
 type question struct {
 	id       string
 	pose     string // what it asks, in the words the gate wrote
+	about    string // what its subject says about itself
 	standing bool   // a record stands at the question's place
 	status   string
 	verdict  string
@@ -341,7 +345,7 @@ func (o *Out) question(id string) (question, error) {
 		return q, nil
 	}
 	q.standing = true
-	q.pose = entity.Str(doc, "pose")
+	q.pose, q.about = entity.Str(doc, "pose"), entity.Str(doc, "about")
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
