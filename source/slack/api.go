@@ -262,10 +262,14 @@ type postResp struct {
 }
 
 // postMessage says text in channel (`chat:write`) and answers where it landed: the channel Slack
-// names and the message's ts, which is what an update needs.
-func (a *api) postMessage(ctx context.Context, channel, text string) (string, string, error) {
+// names and the message's ts, which is what an update needs. blocks, when there are any, are the
+// message's layout, and text is then what a notification and a screen reader show.
+func (a *api) postMessage(ctx context.Context, channel, text string, blocks []any) (string, string, error) {
 	var r postResp
 	args := map[string]any{"channel": channel, "text": text}
+	if len(blocks) > 0 {
+		args["blocks"] = blocks
+	}
 	if err := a.post(ctx, "chat.postMessage", args, &r); err != nil {
 		return "", "", err
 	}
@@ -278,10 +282,15 @@ func (a *api) postMessage(ctx context.Context, channel, text string) (string, st
 	return r.Channel, r.TS, nil
 }
 
-// updateMessage replaces the text of the message at ts in channel (`chat:write`).
-func (a *api) updateMessage(ctx context.Context, channel, ts, text string) error {
+// updateMessage replaces the text, and the blocks, of the message at ts in channel (`chat:write`).
+// No blocks clears the ones it had, so an input that drops its buttons drops them from Slack too.
+func (a *api) updateMessage(ctx context.Context, channel, ts, text string, blocks []any) error {
 	var r envelope
-	return a.post(ctx, "chat.update", map[string]any{"channel": channel, "ts": ts, "text": text}, &r)
+	if blocks == nil {
+		blocks = []any{}
+	}
+	args := map[string]any{"channel": channel, "ts": ts, "text": text, "blocks": blocks}
+	return a.post(ctx, "chat.update", args, &r)
 }
 
 type permalinkResp struct {
@@ -379,6 +388,69 @@ func (a *api) users(ctx context.Context) ([]user, error) {
 		r.Members = nil
 	})
 	return out, err
+}
+
+// ── the click's three: who clicked, the socket to hear it on, and the reply ───
+
+type userInfoResp struct {
+	envelope
+	User user `json:"user"`
+}
+
+// userEmail is the email of the person with id userID (`users:read.email`): how a click in Slack
+// becomes a principal in the verse.
+func (a *api) userEmail(ctx context.Context, userID string) (string, error) {
+	var r userInfoResp
+	if err := a.call(ctx, "users.info", url.Values{"user": {userID}}, &r); err != nil {
+		return "", err
+	}
+	if r.User.Profile.Email == "" {
+		return "", fmt.Errorf("slack users.info: %s has no email this app may read", userID)
+	}
+	return r.User.Profile.Email, nil
+}
+
+type connectionsResp struct {
+	envelope
+	URL string `json:"url"`
+}
+
+// connectionsOpen asks for a Socket Mode url. It is called on an api holding the APP-level token
+// (`xapp-…`, `connections:write`), not the bot's.
+func (a *api) connectionsOpen(ctx context.Context) (string, error) {
+	var r connectionsResp
+	if err := a.post(ctx, "apps.connections.open", map[string]any{}, &r); err != nil {
+		return "", err
+	}
+	if r.URL == "" {
+		return "", fmt.Errorf("slack apps.connections.open: answered no url")
+	}
+	return r.URL, nil
+}
+
+// respond replies to a click, visibly to the person who clicked and nobody else, through the url
+// Slack sent with it. That url is its own authority, so it carries no token.
+func (a *api) respond(ctx context.Context, responseURL, text string) error {
+	b, err := json.Marshal(map[string]any{
+		"response_type": "ephemeral", "replace_original": false, "text": text,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, responseURL, strings.NewReader(string(b)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	resp, err := a.cl.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("slack response_url: %s", resp.Status)
+	}
+	return nil
 }
 
 // newAPI builds the client. Its own http.Client, never http.DefaultClient, so the timeout

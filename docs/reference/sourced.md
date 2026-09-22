@@ -213,7 +213,8 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
               -depth <n>           messages per channel in the window (default 20)
               -threads             also reflect replies of threaded messages in the window (default true)
               -users               reflect the people (default true; needs users:read)
-              -out                 also say in Slack what is written under slack.<ws>.out (see below)
+              -out                 also say in Slack what is written under slack.<ws>.out, and answer
+                                   the questions its buttons name (see below)
               -verse-addr <addr>   the verse the out half reads and writes (VERSE_ADDR; default: -hint-url's host)
               -as <principal>      who the out half reads and writes as (default agent:slack-io)
               -out-every <d>       how often the out half reads what is asked (default 5s)
@@ -223,6 +224,7 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
 |---|---|
 | `SLACK_BOT_TOKEN` | the bot token (`xoxb-…`). Required |
 | `SLACK_SIGNING_SECRET` | the app's signing secret. Without it `POST /slack/events` refuses every delivery |
+| `SLACK_APP_TOKEN` | the app-level token (`xapp-…`, `connections:write`), with `-out`: a press of a button answers its question. Without it the buttons are said and nothing hears them |
 
 The venue is a Slack app's **bot user**: `channels:read` + `groups:read` to list what it is in,
 `channels:history` + `groups:history` for the window, `users:read` for the people. **The bot's
@@ -264,7 +266,7 @@ With `-out` the same program also says things in Slack. Somebody — a person, a
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text` |
+| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text`, and `buttons` |
 | status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted`, and `error` while one stands |
 
 ```sh
@@ -305,6 +307,37 @@ is whose); the program's write is then refused, and it logs that.
 
 The out place stands outside the reflection's covers (`channel`, `message`, `user`), so a reflection
 pass never tombstones it.
+
+#### Buttons answer questions
+
+An input may carry buttons, and **a button can only answer a question**: it names the question's id
+and one of its options.
+
+```sh
+verse data slack acme out U0123 review -put '{
+  text: "slack-try asks: approve demo.slack.1?",
+  buttons: [
+    {label: Approve, answer: {question: "verse.trigger.slack-try.approval~efcf56b5", option: proceed}},
+    {label: Deny,    answer: {question: "verse.trigger.slack-try.approval~efcf56b5", option: deny}}]}'
+```
+
+Under the buttons the message carries a line of the program's own, `Answers <question>`, since a
+label is the writer's words and could say anything. A button without a label, a question and an
+option is refused on the status, and nothing is said.
+
+**A press is heard over Socket Mode**, with `SLACK_APP_TOKEN` set: the program dials out to Slack
+and presses arrive down that connection, so the app needs no public url and the verse no Ingress.
+The app has Socket Mode and Interactivity switched on, and no Request URL.
+
+**A press answers as the person who pressed.** `users.info` turns their Slack id into
+`user:<email>` (`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's
+permissions decide whether they may answer. What became of it is said back to them alone: answered,
+the tally so far on a question that takes more than one voice, or verse's refusal in verse's words
+(not an answerer; answered already, and by whom). It never answers as `-as`: an answer recorded as
+`agent:slack-io` would be one nobody gave.
+
+That person is asserted to verse the way the CLI asserts its own user, and verse trusts it as it
+trusts the CLI's. The Slack id is Slack's word, on a connection the app token opened.
 
 ## linear
 

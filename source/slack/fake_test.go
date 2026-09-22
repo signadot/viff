@@ -29,9 +29,16 @@ type fakeSlack struct {
 	updates []map[string]any // chat.update, in order: channel, ts, text
 	opened  map[string]int   // conversations.open, by user
 
+	// The click's side: the Socket Mode url apps.connections.open answers with, which takes the
+	// app-level token and no other.
+	socketURL string
+
 	fail  map[string]string // method → slack error string
 	calls map[string]int
 }
+
+// appToken is the fake's app-level token, the one apps.connections.open takes.
+const appToken = "test-app-token"
 
 func newFake() *fakeSlack {
 	return &fakeSlack{
@@ -62,8 +69,18 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	method := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 	f.calls[method]++
-	if r.Header.Get("Authorization") != "Bearer test-token" {
-		write(w, map[string]any{"ok": false, "error": "invalid_auth"})
+	// Slack takes each token for its own methods only: the app-level token opens a socket and does
+	// nothing else, and the bot token cannot open one.
+	want := "Bearer test-token"
+	if method == "apps.connections.open" {
+		want = "Bearer " + appToken
+	}
+	if auth := r.Header.Get("Authorization"); auth != want {
+		refusal := "invalid_auth"
+		if auth == "Bearer test-token" || auth == "Bearer "+appToken {
+			refusal = "not_allowed_token_type"
+		}
+		write(w, map[string]any{"ok": false, "error": refusal})
 		return
 	}
 	if msg, bad := f.fail[method]; bad {
@@ -100,12 +117,23 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 			"messages": f.replies[q.Get("channel")+"/"+q.Get("ts")]})
 	case "users.list":
 		write(w, map[string]any{"ok": true, "members": f.users})
+	case "users.info":
+		for _, u := range f.users {
+			if u["id"] == q.Get("user") {
+				write(w, map[string]any{"ok": true, "user": u})
+				return
+			}
+		}
+		write(w, map[string]any{"ok": false, "error": "user_not_found"})
+	case "apps.connections.open":
+		write(w, map[string]any{"ok": true, "url": f.socketURL})
 	case "conversations.open":
 		f.opened[str("users")]++
 		write(w, map[string]any{"ok": true, "channel": map[string]any{"id": "D" + str("users")}})
 	case "chat.postMessage":
 		ts := fmt.Sprintf("1790000000.%06d", len(f.posted)+1)
-		f.posted = append(f.posted, map[string]any{"channel": str("channel"), "ts": ts, "text": str("text")})
+		f.posted = append(f.posted, map[string]any{"channel": str("channel"), "ts": ts, "text": str("text"),
+			"blocks": args["blocks"]})
 		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": ts})
 	case "chat.update":
 		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text")})

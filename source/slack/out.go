@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -24,6 +25,9 @@ import (
 // Somebody (a person, a charter) writes an INPUT at `slack.<ws>.out.<target>.<name>`:
 //
 //	text: "the review of demo.pr.1 is waiting on you"
+//	buttons:                  # optional; a button can only answer a question (see socket.go)
+//	- {label: Approve, answer: {question: "review@demo.pr.1~d3", option: proceed}}
+//	- {label: Deny, answer: {question: "review@demo.pr.1~d3", option: deny}}
 //
 // and this answers with its STATUS at the sibling `slack.<ws>.out.<target>.<name>~status`:
 //
@@ -137,6 +141,11 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 		o.fail(target, name, status, fmt.Errorf("an input carries {text}, and this one has none"))
 		return
 	}
+	blocks, err := blocksFor(text, input)
+	if err != nil {
+		o.fail(target, name, status, err)
+		return
+	}
 	fp := fingerprint(input)
 	channel, ts := entity.Str(status, "channel"), entity.Str(status, "ts")
 	if ts != "" && entity.Str(status, "posted") == fp {
@@ -145,7 +154,7 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 	now := o.now().UTC().Format(time.RFC3339)
 
 	if ts != "" {
-		if err := o.s.api.updateMessage(ctx, channel, ts, text); err != nil {
+		if err := o.s.api.updateMessage(ctx, channel, ts, text, blocks); err != nil {
 			o.fail(target, name, status, err)
 			return
 		}
@@ -160,7 +169,7 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 			return
 		}
 	}
-	landed, ts, err := o.s.api.postMessage(ctx, channel, text)
+	landed, ts, err := o.s.api.postMessage(ctx, channel, text, blocks)
 	if err != nil {
 		o.fail(target, name, status, err)
 		return
@@ -175,6 +184,52 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 		st["permalink"] = link
 	}
 	o.write(target, name, st)
+}
+
+// blocksFor lays an input out for Slack: its text and, when it has buttons, the buttons and a line
+// of this program's own saying which question they answer. That line is not the writer's to word:
+// a label is, and a label is exactly what could misstate what a click does. No buttons is no
+// blocks, and the message is its text.
+func blocksFor(text string, input *ir.Node) ([]any, error) {
+	btns := ir.Uncomment(entity.Get(input, "buttons"))
+	if btns == nil {
+		return nil, nil
+	}
+	if btns.Type != ir.ArrayType || len(btns.Values) == 0 {
+		return nil, fmt.Errorf("buttons is a list of {label, answer: {question, option}}")
+	}
+	var elements []any
+	var questions []string
+	for i, b := range btns.Values {
+		label := entity.Str(b, "label")
+		ans := entity.Get(b, "answer")
+		q, opt := entity.Str(ans, "question"), entity.Str(ans, "option")
+		if label == "" || q == "" || opt == "" {
+			return nil, fmt.Errorf("button %d needs a label and answer: {question, option}", i+1)
+		}
+		value, err := answerValue(q, opt)
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, map[string]any{
+			"type": "button", "action_id": fmt.Sprintf("%s%d", AnswerAction, i), "value": value,
+			"text": map[string]any{"type": "plain_text", "text": label},
+		})
+		if !slices.Contains(questions, q) {
+			questions = append(questions, q)
+		}
+	}
+	said := make([]string, len(questions))
+	for i, q := range questions {
+		said[i] = "`" + q + "`"
+	}
+	return []any{
+		map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": text}},
+		map[string]any{"type": "actions", "elements": elements},
+		map[string]any{"type": "context", "elements": []any{
+			map[string]any{"type": "mrkdwn", "text": "Answers " + strings.Join(said, ", ")},
+		}},
+	}, nil
 }
 
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.

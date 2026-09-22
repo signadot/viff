@@ -34,7 +34,8 @@ func slackMain(args []string) error {
 	threads := fs.Bool("threads", true, "also reflect the replies of threaded messages in the window")
 	users := fs.Bool("users", true, "reflect the workspace's people as slack:user:* (needs users:read)")
 	out := fs.Bool("out", false, "also run the out half: say in Slack what is written under "+
-		"slack.<ws>.out, and write each one's <name>~status (needs chat:write, im:write)")
+		"slack.<ws>.out, and write each one's <name>~status (needs chat:write, im:write); with "+
+		"SLACK_APP_TOKEN, a press of a button answers its question (needs users:read.email)")
 	verseAddr := fs.String("verse-addr", os.Getenv("VERSE_ADDR"),
 		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
 	as := fs.String("as", "agent:slack-io", "the principal the out half reads and writes as")
@@ -87,6 +88,16 @@ func slackMain(args []string) error {
 		go src.Out(client.New(addr, *as)).Run(ctx, *every)
 		log.Printf("slack out: saying what is written under %s, as %s, reading %s every %s",
 			src.OutRef(), *as, addr, *every)
+
+		// A button is pressed in Slack and heard here over Socket Mode, which this dials out to,
+		// so no Ingress is needed. Without the app-level token the buttons are said and nothing
+		// hears them.
+		if app := secret("SLACK_APP_TOKEN"); app != "" {
+			go src.Socket(app, addr).Run(ctx)
+			log.Printf("slack socket: answering button presses at %s, as whoever pressed them", addr)
+		} else {
+			log.Printf("no SLACK_APP_TOKEN: buttons are said, and a press of one answers nothing")
+		}
 	}
 	return c.serve(src.Root(), src, routes)
 }

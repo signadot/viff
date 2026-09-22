@@ -2,6 +2,7 @@ package slack_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -163,5 +164,49 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	}
 	if st := r.status(t, "X1", "nowhere"); !strings.Contains(st["error"].(string), "not a Slack id") {
 		t.Errorf("status %v, want the target refused", st)
+	}
+}
+
+// Buttons are laid out as answers: each carries the question and option it answers, and a line
+// the writer does not word says which questions they are.
+func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
+	r := newOutRig(t)
+	r.ask(t, "U123", "review", entity.Obj{
+		"text": "the review is waiting on you",
+		"buttons": []any{
+			map[string]any{"label": "Approve", "answer": map[string]any{"question": "q~1", "option": "proceed"}},
+		},
+	})
+	r.pass(t)
+	if len(r.fake.posted) != 1 {
+		t.Fatalf("posted %v, want one message", r.fake.posted)
+	}
+	blocks := r.fake.posted[0]["blocks"].([]any)
+	btn := actionsOf(t, blocks)[0]
+	if btn["value"] != `{"question":"q~1","option":"proceed"}` || !strings.HasPrefix(btn["action_id"].(string), slack.AnswerAction) {
+		t.Errorf("button %v, want it to answer q~1 with proceed", btn)
+	}
+	said, _ := json.Marshal(blocks)
+	if !strings.Contains(string(said), "Answers `q~1`") {
+		t.Errorf("blocks %s, want the question named", said)
+	}
+	if r.fake.posted[0]["text"] != "the review is waiting on you" {
+		t.Errorf("text %v, want the text kept for notifications", r.fake.posted[0]["text"])
+	}
+}
+
+// A button that answers nothing is not said, and the status says why.
+func TestOutRefusesAButtonThatAnswersNothing(t *testing.T) {
+	r := newOutRig(t)
+	r.ask(t, "U123", "review", entity.Obj{
+		"text":    "hi",
+		"buttons": []any{map[string]any{"label": "Do it", "url": "https://example.com"}},
+	})
+	r.pass(t)
+	if len(r.fake.posted) != 0 {
+		t.Errorf("said %v, want nothing said", r.fake.posted)
+	}
+	if st := r.status(t, "U123", "review"); !strings.Contains(st["error"].(string), "answer") {
+		t.Errorf("status %v, want the button refused", st)
 	}
 }
