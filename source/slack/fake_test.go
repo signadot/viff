@@ -25,8 +25,8 @@ type fakeSlack struct {
 	users    []map[string]any
 
 	// The out half's side: what was said, and where.
-	posted  []map[string]any // chat.postMessage, in order: channel, ts, text
-	updates []map[string]any // chat.update, in order: channel, ts, text
+	posted  []map[string]any // chat.postMessage, in order: channel, ts, text, blocks
+	updates []map[string]any // chat.update, in order: channel, ts, text, blocks
 	opened  map[string]int   // conversations.open, by user
 
 	// The click's side: the Socket Mode url apps.connections.open answers with, which takes the
@@ -136,7 +136,8 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 			"blocks": args["blocks"]})
 		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": ts})
 	case "chat.update":
-		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text")})
+		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text"),
+			"blocks": args["blocks"]})
 		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": str("ts")})
 	case "chat.getPermalink":
 		write(w, map[string]any{"ok": true,

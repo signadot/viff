@@ -2,7 +2,6 @@ package slack_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -10,6 +9,7 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/source/slack"
 	"github.com/signadot/verse/versed"
 )
@@ -167,31 +167,152 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	}
 }
 
-// Buttons are laid out as answers: each carries the question and option it answers, and a line
-// the writer does not word says which questions they are.
-func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
-	r := newOutRig(t)
-	r.ask(t, "U123", "review", entity.Obj{
-		"text": "the review is waiting on you",
+// pose stands a question's record where the mirror keeps it, saying what a test needs it to.
+func (r *outRig) pose(t *testing.T, id string, record entity.Obj) {
+	t.Helper()
+	entitytest.Set(t, r.store, mirror.QuestionRef(id), record.Payload())
+}
+
+// askButtons writes an input whose buttons answer q with proceed or deny.
+func (r *outRig) askButtons(t *testing.T, q string) {
+	t.Helper()
+	r.ask(t, "C999", "review", entity.Obj{
+		"text": "the review is waiting",
 		"buttons": []any{
-			map[string]any{"label": "Approve", "answer": map[string]any{"question": "q~1", "option": "proceed"}},
+			map[string]any{"label": "Approve", "answer": map[string]any{"question": q, "option": "proceed"}},
+			map[string]any{"label": "Deny", "answer": map[string]any{"question": q, "option": "deny"}},
 		},
 	})
+}
+
+// shown is a message's buttons, by label, and the program's lines beneath them.
+func shown(t *testing.T, m map[string]any) (buttons map[string]map[string]any, lines string) {
+	t.Helper()
+	buttons = map[string]map[string]any{}
+	blocks, _ := m["blocks"].([]any)
+	var said []string
+	for _, b := range blocks {
+		bm := b.(map[string]any)
+		switch bm["type"] {
+		case "actions":
+			for _, e := range bm["elements"].([]any) {
+				em := e.(map[string]any)
+				buttons[em["text"].(map[string]any)["text"].(string)] = em
+			}
+		case "context":
+			for _, e := range bm["elements"].([]any) {
+				said = append(said, e.(map[string]any)["text"].(string))
+			}
+		}
+	}
+	return buttons, strings.Join(said, "\n")
+}
+
+// Buttons are laid out as answers: each carries the question and option it answers, and a line
+// the writer does not word says which question it is and who it waits on.
+func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
+		mirror.AnswerersField: []any{"user:scott@example.com", "group:reviewers"}})
+	r.askButtons(t, "q~1")
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
 		t.Fatalf("posted %v, want one message", r.fake.posted)
 	}
-	blocks := r.fake.posted[0]["blocks"].([]any)
-	btn := actionsOf(t, blocks)[0]
+	buttons, lines := shown(t, r.fake.posted[0])
+	btn := buttons["Approve"]
 	if btn["value"] != `{"question":"q~1","option":"proceed"}` || !strings.HasPrefix(btn["action_id"].(string), slack.AnswerAction) {
 		t.Errorf("button %v, want it to answer q~1 with proceed", btn)
 	}
-	said, _ := json.Marshal(blocks)
-	if !strings.Contains(string(said), "Answers `q~1`") {
-		t.Errorf("blocks %s, want the question named", said)
+	if want := "Answers `q~1` · waiting on scott@example.com, group:reviewers"; lines != want {
+		t.Errorf("said %q, want %q", lines, want)
 	}
-	if r.fake.posted[0]["text"] != "the review is waiting on you" {
+	if r.fake.posted[0]["text"] != "the review is waiting" {
 		t.Errorf("text %v, want the text kept for notifications", r.fake.posted[0]["text"])
+	}
+}
+
+// A question that settles redraws the message, which nobody asked for by writing: the buttons go,
+// and everyone who can see it is told the verdict, who gave it and what they said with it.
+func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending})
+	r.askButtons(t, "q~1")
+	r.pass(t)
+
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "deny",
+		"by": "user:ani@example.com", "say": []any{"not on friday"}})
+	r.pass(t)
+	if len(r.fake.posted) != 1 || len(r.fake.updates) != 1 {
+		t.Fatalf("posted %d, updated %d: want the one message redrawn", len(r.fake.posted), len(r.fake.updates))
+	}
+	buttons, lines := shown(t, r.fake.updates[0])
+	if len(buttons) != 0 {
+		t.Errorf("buttons %v on a settled question", buttons)
+	}
+	if want := "`q~1` answered *deny* by ani@example.com: not on friday"; lines != want {
+		t.Errorf("said %q, want %q", lines, want)
+	}
+	r.pass(t)
+	if len(r.fake.updates) != 1 {
+		t.Errorf("updated %d times: a settled message was redrawn again", len(r.fake.updates))
+	}
+}
+
+// What a message says of its question, in each state its record can be in. A verdict is written
+// only by the settle, so a record carrying one is answered even while a pending status that
+// reached it after says otherwise.
+func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		record  entity.Obj // nil: no record stands
+		buttons bool
+		says    string
+	}{
+		{"not asked", nil, false, "No question `q~1` stands"},
+		{"a ballot so far", entity.Obj{"status": mirror.QuestionPending,
+			"ballots": map[string]any{"user:ani@example.com": map[string]any{"choice": "proceed"}}},
+			true, "Answers `q~1` · so far: ani@example.com proceed"},
+		{"answered", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
+			"by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by scott@example.com"},
+		{"a verdict under a pending status", entity.Obj{"status": mirror.QuestionPending,
+			"verdict": "proceed", "by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by scott@example.com"},
+		{"withdrawn", entity.Obj{"status": mirror.QuestionOrphaned, "why": "the rule stopped selecting it"},
+			false, "`q~1` was withdrawn unanswered: the rule stopped selecting it"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newOutRig(t)
+			if c.record != nil {
+				r.pose(t, "q~1", c.record)
+			}
+			r.askButtons(t, "q~1")
+			r.pass(t)
+			if len(r.fake.posted) != 1 {
+				t.Fatalf("posted %v, want one message", r.fake.posted)
+			}
+			buttons, lines := shown(t, r.fake.posted[0])
+			if (len(buttons) > 0) != c.buttons {
+				t.Errorf("buttons %v, want buttons: %v", buttons, c.buttons)
+			}
+			if lines != c.says {
+				t.Errorf("said %q, want %q", lines, c.says)
+			}
+		})
+	}
+}
+
+// A message posted before its question stands offers no button, and gains them when it does.
+func TestOutOffersTheButtonsOnceTheQuestionStands(t *testing.T) {
+	r := newOutRig(t)
+	r.askButtons(t, "q~1")
+	r.pass(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending})
+	r.pass(t)
+	if len(r.fake.updates) != 1 {
+		t.Fatalf("updated %d times, want the message redrawn once the question stood", len(r.fake.updates))
+	}
+	if buttons, _ := shown(t, r.fake.updates[0]); len(buttons) != 2 {
+		t.Errorf("buttons %v, want both offered", buttons)
 	}
 }
 

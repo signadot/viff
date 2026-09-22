@@ -13,6 +13,7 @@ import (
 
 	verseapi "github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/source"
 )
 
 // Socket Mode: how a click in Slack reaches this program with no Ingress in front of it.
@@ -24,11 +25,17 @@ import (
 // connection every few hours by saying `disconnect`; the loop dials again, as it does when the
 // socket fails.
 //
+// Once an app is in Socket Mode, Slack sends its Events API deliveries down the socket too, and
+// no longer to the request url. They become the same hints the request url's handler sends
+// (events.go), so the reflection hears a new message in seconds with no public endpoint.
+//
 // A BUTTON CAN ONLY ANSWER A QUESTION. Its value names a question and an option, and a click is
 // that answer, made AS THE PERSON WHO CLICKED: users.info turns their Slack id into
 // `user:<email>`, and the answer goes to versed's resolve route as them, so versed's permissions
-// decide whether they may answer, and a refusal (not an answerer, somebody answered first) comes
-// back to them in versed's words, visible to them alone. It is never made as this program's own
+// decide whether they may answer. What became of it is said to them alone: answered, or a refusal
+// (not an answerer, somebody answered first) in versed's words. What everyone who can see the
+// message learns is the message itself, redrawn from the question's record by the out half
+// (out.go, layout), which Answered asks for at once. It is never made as this program's own
 // principal: an answer recorded as agent:slack-io would be an answer nobody gave. Anything
 // broader than answering is a new kind of button, each with a line saying what it does, because
 // a button that could make any request as whoever pressed it is a request its label could lie
@@ -41,6 +48,14 @@ type Socket struct {
 	s     *Slack
 	app   *api // holding the app-level token, which only apps.connections.open takes
 	verse string
+
+	// Hint, when set, receives the hint each Events API delivery calls for, as the request url's
+	// handler would send it.
+	Hint source.Hinter
+
+	// Answered, when set, is called after a press answers a question or casts a ballot: the out
+	// half's Kick, so the message says so without waiting for its next pass.
+	Answered func()
 }
 
 // AnswerAction begins the action id of every button that answers a question.
@@ -149,6 +164,13 @@ func (k *Socket) session(ctx context.Context) (held bool, err error) {
 			return held, nil
 		case "interactive":
 			go k.interactive(ctx, env.Payload) // off the read loop, so acknowledgements keep flowing
+		case "events_api":
+			var d delivery
+			if err := json.Unmarshal(env.Payload, &d); err != nil {
+				k.s.log("slack socket: an event that does not decode: %v", err)
+				continue
+			}
+			go k.s.hintFor(ctx, d, k.Hint)
 		}
 	}
 }
@@ -178,33 +200,40 @@ func (k *Socket) interactive(ctx context.Context, payload json.RawMessage) {
 			k.reply(ctx, p.ResponseURL, "Not answered: this button does not say which question it answers.")
 			continue
 		}
-		k.reply(ctx, p.ResponseURL, k.answer(ctx, p.User.ID, ans))
+		said, answered := k.answer(ctx, p.User.ID, ans)
+		if answered && k.Answered != nil {
+			k.Answered()
+		}
+		k.reply(ctx, p.ResponseURL, said)
 	}
 }
 
-// answer makes the click's answer as the person who clicked, and says what became of it.
-func (k *Socket) answer(ctx context.Context, userID string, ans buttonAnswer) string {
+// answer makes the click's answer as the person who clicked, and says what became of it, and
+// whether it counted: an answer, or a ballot on a question that takes more than one voice.
+func (k *Socket) answer(ctx context.Context, userID string, ans buttonAnswer) (string, bool) {
+	if k.verse == "" {
+		return "Not answered: this program was not told which verse the question is in", false
+	}
 	email, err := k.s.api.userEmail(ctx, userID)
 	if err != nil {
-		return "Not answered: " + err.Error()
+		return "Not answered: " + err.Error(), false
 	}
 	who := "user:" + email
 	resp, err := client.New(k.verse, who).Post("/gate/resolve", nil,
 		verseapi.Resolve{ID: ans.Question, Choice: ans.Option, By: who})
 	if err != nil {
-		return "Not answered: " + err.Error()
+		return "Not answered: " + err.Error(), false
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNoContent:
-		return fmt.Sprintf("Answered `%s`: %s.", ans.Question, ans.Option)
+		return fmt.Sprintf("Answered `%s`: %s.", ans.Question, ans.Option), true
 	case http.StatusAccepted:
-		// A ballot recorded on a question that takes more than one voice; the server says where
-		// the tally stands.
+		// The server says where the tally stands.
 		said, _ := io.ReadAll(resp.Body)
-		return fmt.Sprintf("`%s`: %s.", ans.Question, strings.TrimSpace(string(said)))
+		return fmt.Sprintf("`%s`: %s.", ans.Question, strings.TrimSpace(string(said))), true
 	}
-	return "Not answered: " + client.StatusError(resp, "`"+ans.Question+"`").Error()
+	return "Not answered: " + client.StatusError(resp, "`"+ans.Question+"`").Error(), false
 }
 
 // reply says text to the person who clicked, and to nobody else.

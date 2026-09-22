@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -77,15 +78,23 @@ func (s *Slack) Events(signingSecret string, hint source.Hinter) http.Handler {
 			fmt.Fprint(w, d.Challenge)
 			return
 		}
-		if hint != nil {
-			if id := d.channel(); id != "" {
-				hint(r.Context(), s.ChannelRef(id))
-			} else {
-				hint(r.Context()) // no channel in it — a full resync
-			}
-		}
+		s.hintFor(r.Context(), d, hint)
 		w.WriteHeader(http.StatusOK)
 	})
+}
+
+// hintFor sends the hint a delivery calls for: the channel it names, or a full resync when it
+// names none. A delivery arrives by the request url, signed, or over Socket Mode, on a connection
+// the app token opened (socket.go), and says the same thing either way.
+func (s *Slack) hintFor(ctx context.Context, d delivery, hint source.Hinter) {
+	if hint == nil {
+		return
+	}
+	if id := d.channel(); id != "" {
+		hint(ctx, s.ChannelRef(id))
+	} else {
+		hint(ctx) // no channel in it — a full resync
+	}
 }
 
 // delivery is the part of an event envelope that says which slice went stale, and nothing

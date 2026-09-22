@@ -63,9 +63,9 @@ func slackMain(args []string) error {
 	// The events endpoint is the source's own, because the signing secret is. What crosses to
 	// verse is which channel went stale and nothing else — the same thing the git hook sends,
 	// and the reason verse never learns to parse a Slack envelope.
-	signing := secret("SLACK_SIGNING_SECRET")
-	if signing == "" {
-		log.Printf("no SLACK_SIGNING_SECRET: the events endpoint will refuse deliveries, and " +
+	signing, app := secret("SLACK_SIGNING_SECRET"), secret("SLACK_APP_TOKEN")
+	if signing == "" && app == "" {
+		log.Printf("no SLACK_SIGNING_SECRET and no SLACK_APP_TOKEN: no delivery reaches this, and " +
 			"only verse's periodic resync will converge")
 	}
 	routes := map[string]http.Handler{
@@ -75,29 +75,38 @@ func slackMain(args []string) error {
 	// The out half dials the verse, where the reflection is dialled BY it: it reads what is asked
 	// and writes what became of it, as a principal of its own. Its address defaults to the one the
 	// hint url already names, so a deployment says where verse is once.
-	if *out {
-		addr := *verseAddr
-		if addr == "" && c.hintURL != "" {
-			if u, err := url.Parse(c.hintURL); err == nil {
-				addr = u.Host
-			}
+	addr := *verseAddr
+	if addr == "" && c.hintURL != "" {
+		if u, err := url.Parse(c.hintURL); err == nil {
+			addr = u.Host
 		}
+	}
+	var o *slack.Out
+	if *out {
 		if addr == "" {
 			return fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
 		}
-		go src.Out(client.New(addr, *as)).Run(ctx, *every)
+		o = src.Out(client.New(addr, *as))
+		go o.Run(ctx, *every)
 		log.Printf("slack out: saying what is written under %s, as %s, reading %s every %s",
 			src.OutRef(), *as, addr, *every)
+	}
 
-		// A button is pressed in Slack and heard here over Socket Mode, which this dials out to,
-		// so no Ingress is needed. Without the app-level token the buttons are said and nothing
-		// hears them.
-		if app := secret("SLACK_APP_TOKEN"); app != "" {
-			go src.Socket(app, addr).Run(ctx)
-			log.Printf("slack socket: answering button presses at %s, as whoever pressed them", addr)
+	// Socket Mode, which this dials out to, so no Ingress is needed: Slack's event deliveries
+	// arrive down it as hints, and with -out so do presses of the buttons it said.
+	switch {
+	case app != "":
+		sock := src.Socket(app, addr)
+		sock.Hint = c.hinter()
+		if o != nil {
+			sock.Answered = o.Kick
+			log.Printf("slack socket: hearing events, and answering button presses at %s as whoever pressed them", addr)
 		} else {
-			log.Printf("no SLACK_APP_TOKEN: buttons are said, and a press of one answers nothing")
+			log.Printf("slack socket: hearing events")
 		}
+		go sock.Run(ctx)
+	case o != nil:
+		log.Printf("no SLACK_APP_TOKEN: buttons are said, and a press of one answers nothing")
 	}
 	return c.serve(src.Root(), src, routes)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 )
 
 // The out half: what the verse asks to be said in Slack, said, and what became of it written back.
@@ -35,7 +37,7 @@ import (
 //	ts: "1790086509.181649"   # the message, which is what an update needs
 //	permalink: https://…
 //	postedAt / updatedAt
-//	posted: 3f2a…             # the fingerprint of the input the message now shows
+//	posted: 3f2a…             # the fingerprint of the message as it now shows
 //	error: …                  # the last failure, retried on the next pass; absent once it works
 //
 // `<target>` is a Slack id: `U…` is a person, whose DM is opened; `C…`, `G…` and `D…` are said in
@@ -50,12 +52,14 @@ import (
 // `child-owner` on the out place, so a status it creates is its own and carries an owner record,
 // and that record stops the requesters' grants from above. Everyone may read it.
 //
-// A PASS IS LEVEL-TRIGGERED, the source's law run backwards: it reads what is asked, compares it
-// with what its status says was done, and does the difference. Nothing is remembered between
-// passes but what the status holds, so a restart resumes rather than repeats: an input whose status
-// says it is posted at this fingerprint is in step, one whose fingerprint moved is an update, and
-// one with no ts yet is a post. This program never writes an input, so its own writes are never
-// new requests.
+// A PASS IS LEVEL-TRIGGERED, the source's law run backwards: it reads what is asked, lays out the
+// message it asks for, compares that with what its status says was posted, and does the
+// difference. Nothing is remembered between passes but what the status holds, so a restart resumes
+// rather than repeats: a message whose fingerprint the status holds is in step, one whose
+// fingerprint moved is an update, and one with no ts yet is a post. The fingerprint is of the
+// message rather than the input, because a message with buttons also says what became of their
+// questions (see layout), and a question settling is an update nobody wrote. This program never
+// writes an input, so its own writes are never new requests.
 //
 // Removing an input leaves its status, so the ts survives for whoever later decides what a
 // removal should do to the message; for now the message stays as it is.
@@ -63,6 +67,7 @@ type Out struct {
 	s     *Slack
 	verse *client.Client
 	now   func() time.Time
+	kick  chan struct{}
 }
 
 // StatusSuffix ends the name of every status, and of no input.
@@ -70,7 +75,16 @@ const StatusSuffix = "~status"
 
 // Out is this workspace's out half, reading and writing the verse through verse.
 func (s *Slack) Out(verse *client.Client) *Out {
-	return &Out{s: s, verse: verse, now: time.Now}
+	return &Out{s: s, verse: verse, now: time.Now, kick: make(chan struct{}, 1)}
+}
+
+// Kick asks for a pass now rather than at the next interval: a press just answered a question,
+// and the message should say so while the person who pressed is looking at it.
+func (o *Out) Kick() {
+	select {
+	case o.kick <- struct{}{}:
+	default: // one is already asked for
+	}
 }
 
 // OutRef is the place inputs are written under.
@@ -89,6 +103,7 @@ func (o *Out) Run(ctx context.Context, every time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		case <-o.kick:
 		}
 	}
 }
@@ -111,9 +126,12 @@ func (o *Out) Pass(ctx context.Context) error {
 	return nil
 }
 
-// read answers the out place as one document, or nil when nothing stands there.
-func (o *Out) read() (*ir.Node, error) {
-	at := o.s.OutRef().KPath()
+// read answers the out place as one document, or nil when nothing stands there. The answer is what
+// stands AT the place: its targets, and under each its inputs and statuses.
+func (o *Out) read() (*ir.Node, error) { return o.get(o.s.OutRef().KPath()) }
+
+// get answers the document standing at a place, or nil when nothing stands there.
+func (o *Out) get(at string) (*ir.Node, error) {
 	resp, err := o.verse.Get("/state", url.Values{"at": {at}})
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", at, err)
@@ -126,7 +144,6 @@ func (o *Out) read() (*ir.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", at, err)
 	}
-	// The answer is what stands AT the place: its targets, and under each its inputs and statuses.
 	doc, err := codec.ParseNode(body, client.ResponseFormat(resp))
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", at, err)
@@ -141,12 +158,12 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 		o.fail(target, name, status, fmt.Errorf("an input carries {text}, and this one has none"))
 		return
 	}
-	blocks, err := blocksFor(text, input)
+	blocks, err := o.layout(text, input)
 	if err != nil {
 		o.fail(target, name, status, err)
 		return
 	}
-	fp := fingerprint(input)
+	fp := fingerprint(text, blocks)
 	channel, ts := entity.Str(status, "channel"), entity.Str(status, "ts")
 	if ts != "" && entity.Str(status, "posted") == fp {
 		return // in step: the message shows this input
@@ -186,11 +203,17 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 	o.write(target, name, st)
 }
 
-// blocksFor lays an input out for Slack: its text and, when it has buttons, the buttons and a line
-// of this program's own saying which question they answer. That line is not the writer's to word:
-// a label is, and a label is exactly what could misstate what a click does. No buttons is no
-// blocks, and the message is its text.
-func blocksFor(text string, input *ir.Node) ([]any, error) {
+// layout lays an input out for Slack: its text and, when it has buttons, the buttons and a line of
+// this program's own for each question they answer. No buttons is no blocks, and the message is
+// its text.
+//
+// That line is not the writer's to word: a label is, and a label is exactly what could misstate
+// what a press does. It says what the question's record says NOW: who it waits on while it is
+// pending, the verdict and who gave it once answered, why it was withdrawn. A button is shown only
+// while its question is pending, so a message never offers an answer that would be refused, and
+// once a question settles the message is redrawn to say how, to everyone who can see it — in a
+// channel, not only to whoever pressed.
+func (o *Out) layout(text string, input *ir.Node) ([]any, error) {
 	btns := ir.Uncomment(entity.Get(input, "buttons"))
 	if btns == nil {
 		return nil, nil
@@ -198,38 +221,156 @@ func blocksFor(text string, input *ir.Node) ([]any, error) {
 	if btns.Type != ir.ArrayType || len(btns.Values) == 0 {
 		return nil, fmt.Errorf("buttons is a list of {label, answer: {question, option}}")
 	}
-	var elements []any
+	type button struct{ label, question, option string }
+	var buttons []button
 	var questions []string
 	for i, b := range btns.Values {
-		label := entity.Str(b, "label")
 		ans := entity.Get(b, "answer")
-		q, opt := entity.Str(ans, "question"), entity.Str(ans, "option")
-		if label == "" || q == "" || opt == "" {
+		bt := button{entity.Str(b, "label"), entity.Str(ans, "question"), entity.Str(ans, "option")}
+		if bt.label == "" || bt.question == "" || bt.option == "" {
 			return nil, fmt.Errorf("button %d needs a label and answer: {question, option}", i+1)
 		}
-		value, err := answerValue(q, opt)
+		buttons = append(buttons, bt)
+		if !slices.Contains(questions, bt.question) {
+			questions = append(questions, bt.question)
+		}
+	}
+
+	asked := map[string]question{}
+	var lines []any
+	for _, id := range questions {
+		q, err := o.question(id)
+		if err != nil {
+			return nil, err
+		}
+		asked[id] = q
+		lines = append(lines, map[string]any{"type": "mrkdwn", "text": q.line()})
+	}
+	var elements []any
+	for i, b := range buttons {
+		if !asked[b.question].pending() {
+			continue
+		}
+		value, err := answerValue(b.question, b.option)
 		if err != nil {
 			return nil, err
 		}
 		elements = append(elements, map[string]any{
 			"type": "button", "action_id": fmt.Sprintf("%s%d", AnswerAction, i), "value": value,
-			"text": map[string]any{"type": "plain_text", "text": label},
+			"text": map[string]any{"type": "plain_text", "text": b.label},
 		})
-		if !slices.Contains(questions, q) {
-			questions = append(questions, q)
+	}
+	blocks := []any{map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": text}}}
+	if len(elements) > 0 {
+		blocks = append(blocks, map[string]any{"type": "actions", "elements": elements})
+	}
+	return append(blocks, map[string]any{"type": "context", "elements": lines}), nil
+}
+
+// question is what a message says of a question its buttons answer, as its record says it.
+type question struct {
+	id        string
+	standing  bool // a record stands at the question's place
+	status    string
+	verdict   string
+	by        string
+	why       string
+	say       []string
+	answerers []string
+	ballots   []string // "<who> <choice>", in name order
+}
+
+// question reads the record of the question with this id, where the mirror keeps it.
+func (o *Out) question(id string) (question, error) {
+	q := question{id: id}
+	doc, err := o.get(mirror.QuestionRef(id).KPath())
+	if err != nil {
+		return q, fmt.Errorf("reading question %s: %w", id, err)
+	}
+	if doc == nil {
+		return q, nil
+	}
+	q.standing = true
+	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
+	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
+	q.say = strs(entity.Get(doc, "say"))
+	q.answerers = strs(entity.Get(doc, mirror.AnswerersField))
+	ballots := entity.Get(doc, "ballots")
+	for _, who := range fieldNames(ballots) {
+		q.ballots = append(q.ballots, person(who)+" "+entity.Str(entity.Get(ballots, who), "choice"))
+	}
+	return q, nil
+}
+
+// pending reports whether the question still takes an answer. A verdict is written only by the
+// settle, in the same write as the answered status, so a record carrying one is answered even
+// when another writer's pending status reached it after.
+func (q question) pending() bool {
+	return q.standing && q.status == mirror.QuestionPending && q.verdict == ""
+}
+
+// line is this program's line about the question, in the message beside its buttons.
+func (q question) line() string {
+	id := "`" + q.id + "`"
+	switch {
+	case !q.standing:
+		return "No question " + id + " stands"
+	case q.pending():
+		line := "Answers " + id
+		if len(q.answerers) > 0 {
+			line += " · waiting on " + people(q.answerers)
+		}
+		if len(q.ballots) > 0 {
+			line += " · so far: " + strings.Join(q.ballots, ", ")
+		}
+		return line
+	case q.verdict != "":
+		line := id + " answered *" + q.verdict + "*"
+		if q.by != "" {
+			line += " by " + person(q.by)
+		}
+		if said := strings.Join(q.say, "; "); said != "" {
+			line += ": " + said
+		}
+		return line
+	case q.status == mirror.QuestionOrphaned:
+		line := id + " was withdrawn unanswered"
+		if q.why != "" {
+			line += ": " + q.why
+		}
+		return line
+	}
+	return id + " is " + q.status
+}
+
+// person is a principal as a reader in Slack would name it: a person by their email, anyone else
+// as verse names them.
+func person(p string) string { return strings.TrimPrefix(p, "user:") }
+
+func people(ps []string) string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = person(p)
+	}
+	return strings.Join(out, ", ")
+}
+
+// strs is a list of strings, or the one string a field holds instead.
+func strs(n *ir.Node) []string {
+	n = ir.Uncomment(n)
+	if n == nil {
+		return nil
+	}
+	if n.Type == ir.StringType {
+		return []string{n.String}
+	}
+	var out []string
+	for _, v := range n.Values {
+		if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
+			out = append(out, v.String)
 		}
 	}
-	said := make([]string, len(questions))
-	for i, q := range questions {
-		said[i] = "`" + q + "`"
-	}
-	return []any{
-		map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": text}},
-		map[string]any{"type": "actions", "elements": elements},
-		map[string]any{"type": "context", "elements": []any{
-			map[string]any{"type": "mrkdwn", "text": "Answers " + strings.Join(said, ", ")},
-		}},
-	}, nil
+	return out
 }
 
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.
@@ -270,9 +411,11 @@ func (o *Out) write(target, name string, fields entity.Obj) {
 	}
 }
 
-// fingerprint is a short, stable digest of an input document, so a changed input is an update.
-func fingerprint(input *ir.Node) string {
-	b, err := codec.NodeBytes(input, codec.Tony)
+// fingerprint is a short, stable digest of a message, so a message that would show differently is
+// an update. JSON rather than tony because the message is Slack's, and encoding/json writes an
+// object's keys sorted, so the same message is the same bytes.
+func fingerprint(text string, blocks []any) string {
+	b, err := json.Marshal(map[string]any{"text": text, "blocks": blocks})
 	if err != nil {
 		return ""
 	}

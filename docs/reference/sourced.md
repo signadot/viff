@@ -224,7 +224,7 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
 |---|---|
 | `SLACK_BOT_TOKEN` | the bot token (`xoxb-…`). Required |
 | `SLACK_SIGNING_SECRET` | the app's signing secret. Without it `POST /slack/events` refuses every delivery |
-| `SLACK_APP_TOKEN` | the app-level token (`xapp-…`, `connections:write`), with `-out`: a press of a button answers its question. Without it the buttons are said and nothing hears them |
+| `SLACK_APP_TOKEN` | the app-level token (`xapp-…`, `connections:write`): the program dials Socket Mode, and event deliveries arrive down it, and with `-out` so do presses of its buttons. Without it, and with `-out`, the buttons are said and nothing hears them |
 
 The venue is a Slack app's **bot user**: `channels:read` + `groups:read` to list what it is in,
 `channels:history` + `groups:history` for the window, `users:read` for the people. **The bot's
@@ -232,7 +232,11 @@ membership is the configuration** — it is invited to what you want reflected, 
 `users.conversations` is what the source lists, rather than every public channel it could name
 but not read.
 
-Point the app's Event Subscriptions request url at `https://<host>/slack/events`.
+Deliveries arrive one of two ways. With the app in Socket Mode and `SLACK_APP_TOKEN` set, they come
+down the connection the program dials, and nothing needs a public url. Otherwise, point the app's
+Event Subscriptions request url at `https://<host>/slack/events`. Either way a delivery is a hint
+naming the channel it is about, or a full resync when it names none; the app subscribes to the bot
+events for what it reflects (`message.channels`, `message.groups`, `channel_rename`, …).
 
 | entity | payload |
 |---|---|
@@ -267,7 +271,7 @@ With `-out` the same program also says things in Slack. Somebody — a person, a
 | | where | written by | holds |
 |---|---|---|---|
 | input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text`, and `buttons` |
-| status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted`, and `error` while one stands |
+| status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted` (the message's fingerprint), and `error` while one stands |
 
 ```sh
 verse data slack acme out U0123 hello -put '{text: "the review is waiting on you"}'   # a DM
@@ -279,11 +283,12 @@ verse data slack acme out U0123 'hello~status'
 as they are, so the bot must be in them. `<name>` is the writer's. It needs `chat:write` and
 `im:write` beyond the reflection's scopes.
 
-**A pass is level-triggered**, every `-out-every`: it compares what is asked with what the status
-says was done and does the difference. A new input is posted; a changed input — its `posted`
-fingerprint no longer matches — is a `chat.update` of the same message, not a second one; an input
-already said is left alone, so a restart resumes from the statuses rather than repeating them. A
-failure is written as `error`, once, in Slack's words, and the next pass tries again.
+**A pass is level-triggered**, every `-out-every`: it lays out the message each input asks for,
+compares it with what the status says was posted, and does the difference. A new input is posted; a
+message that would show differently — its `posted` fingerprint no longer matches — is a
+`chat.update` of the same message, not a second one; a message already showing is left alone, so a
+restart resumes from the statuses rather than repeating them. A failure is written as `error`, once,
+in Slack's words, and the next pass tries again.
 
 **The status is a sibling, not a child**, so an input can grow structure without colliding with it.
 A name ending in `~status` is never read as an input. Removing an input leaves its status, and the
@@ -321,8 +326,19 @@ verse data slack acme out U0123 review -put '{
     {label: Deny,    answer: {question: "verse.trigger.slack-try.approval~efcf56b5", option: deny}}]}'
 ```
 
-Under the buttons the message carries a line of the program's own, `Answers <question>`, since a
-label is the writer's words and could say anything. A button without a label, a question and an
+Under the buttons the message carries a line of the program's own for each question, since a
+label is the writer's words and could say anything. The line says what the question's record says
+now, read each pass from `verse.gate.question.<id>` (which everyone may read):
+
+| the question | its buttons | the line |
+|---|---|---|
+| pending | shown | `Answers <id>`, then `waiting on …` when the record names its answerers, and `so far: …` once a ballot is cast |
+| answered | gone | `<id> answered <verdict> by <who>`, and what they said with it |
+| withdrawn | gone | `<id> was withdrawn unanswered`, and why |
+| not posed | gone | `No question <id> stands`; the buttons appear once it does |
+
+So a question settling redraws its message, which nobody wrote: in a channel, everyone sees the
+verdict and who gave it, not only whoever pressed. A button without a label, a question and an
 option is refused on the status, and nothing is said.
 
 **A press is heard over Socket Mode**, with `SLACK_APP_TOKEN` set: the program dials out to Slack
@@ -333,7 +349,8 @@ The app has Socket Mode and Interactivity switched on, and no Request URL.
 `user:<email>` (`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's
 permissions decide whether they may answer. What became of it is said back to them alone: answered,
 the tally so far on a question that takes more than one voice, or verse's refusal in verse's words
-(not an answerer; answered already, and by whom). It never answers as `-as`: an answer recorded as
+(not an answerer; answered already, and by whom). An answer also asks for a pass at once, so the
+message is redrawn while they are looking at it. It never answers as `-as`: an answer recorded as
 `agent:slack-io` would be one nobody gave.
 
 That person is asserted to verse the way the CLI asserts its own user, and verse trusts it as it

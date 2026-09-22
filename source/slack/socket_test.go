@@ -74,7 +74,9 @@ type socketRig struct {
 	srv     *versed.Server
 	sock    *fakeSocket
 	replies chan map[string]any
-	reply   string // the response_url
+	reply   string        // the response_url
+	kicked  chan struct{} // the socket asking the out half to redraw
+	hints   chan []entity.Ref
 }
 
 const clickedQuestion = "verse.trigger.review.review~1"
@@ -91,7 +93,8 @@ func newSocketRig(t *testing.T) *socketRig {
 	ss := httptest.NewServer(websocket.Handler(sock.handle))
 	t.Cleanup(ss.Close)
 
-	r := &socketRig{srv: srv, sock: sock, replies: make(chan map[string]any, 8)}
+	r := &socketRig{srv: srv, sock: sock, replies: make(chan map[string]any, 8), kicked: make(chan struct{}, 8),
+		hints: make(chan []entity.Ref, 8)}
 	rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(req.Body).Decode(&body)
@@ -112,7 +115,10 @@ func newSocketRig(t *testing.T) *socketRig {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { defer close(done); src.Socket(appToken, addr).Run(ctx) }()
+	s := src.Socket(appToken, addr)
+	s.Answered = func() { r.kicked <- struct{}{} }
+	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
+	go func() { defer close(done); s.Run(ctx) }()
 	t.Cleanup(func() { cancel(); <-done })
 	return r
 }
@@ -232,6 +238,21 @@ func TestAClickAnswersTheQuestionAsTheClicker(t *testing.T) {
 	if q["by"] != "user:scott@example.com" {
 		t.Errorf("answered by %v, want the person who clicked and never agent:slack-io", q["by"])
 	}
+
+	// And the message says so to everyone, redrawn at once rather than at the next interval.
+	select {
+	case <-r.kicked:
+	default:
+		t.Fatal("an answered press did not ask for the message to be redrawn")
+	}
+	r.pass(t)
+	if len(r.fake.updates) != 1 {
+		t.Fatalf("updated %d times, want the message redrawn", len(r.fake.updates))
+	}
+	buttons, lines := shown(t, r.fake.updates[0])
+	if len(buttons) != 0 || !strings.Contains(lines, "answered *proceed* by scott@example.com") {
+		t.Errorf("redrawn with buttons %v, saying %q: want the verdict and no buttons", buttons, lines)
+	}
 }
 
 // The second person to press hears versed's refusal in versed's words, and the first answer stands.
@@ -242,8 +263,14 @@ func TestASecondClickHearsVersedsRefusal(t *testing.T) {
 
 	r.click(t, "e1", "U7", values["Approve"])
 	r.replied(t)
+	<-r.kicked
 	r.click(t, "e2", "U8", values["Deny"])
 	text, _ := r.replied(t)["text"].(string)
+	select {
+	case <-r.kicked:
+		t.Error("a refused press asked for a redraw")
+	default:
+	}
 	if !strings.HasPrefix(text, "Not answered: ") || !strings.Contains(text, "already") {
 		t.Errorf("replied %q, want versed's refusal", text)
 	}
@@ -290,4 +317,32 @@ func TestTheSocketDialsAgainOnDisconnect(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("%d connections, want a second after the disconnect", r.sock.connections())
+}
+
+// An Events API delivery down the socket is the hint the request url would have sent: the channel
+// it names, or a full resync when it names none.
+func TestAnEventDownTheSocketIsAHint(t *testing.T) {
+	r := newSocketRig(t)
+	for _, c := range []struct {
+		event map[string]any
+		want  string // the hinted ref, "" for a full resync
+	}{
+		{map[string]any{"type": "message", "channel": "C123", "ts": "1.1", "text": "hi"}, "C123"},
+		{map[string]any{"type": "user_change", "user": map[string]any{"id": "U7"}}, ""},
+	} {
+		r.sock.send <- map[string]any{"envelope_id": "ev", "type": "events_api",
+			"payload": map[string]any{"type": "event_callback", "event": c.event}}
+		<-r.sock.acks
+		select {
+		case refs := <-r.hints:
+			switch {
+			case c.want == "" && len(refs) != 0:
+				t.Errorf("%v hinted %v, want a full resync", c.event["type"], refs)
+			case c.want != "" && (len(refs) != 1 || !strings.Contains(refs[0].String(), c.want)):
+				t.Errorf("%v hinted %v, want the channel %s", c.event["type"], refs, c.want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%v was never hinted", c.event["type"])
+		}
+	}
 }
