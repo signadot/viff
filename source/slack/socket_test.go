@@ -236,6 +236,49 @@ func TestAMentionInTheThreadAnswersToo(t *testing.T) {
 	}
 }
 
+// Addressed by name, a sentence is read as prose — which is what somebody writing to a program by
+// name means it to be. The answer is still one of the ids on the record.
+func TestAddressedByNameASentenceIsAnAnswer(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.event(t, "e1", map[string]any{"type": "app_mention", "channel": "C999", "user": "U7",
+		"text": "<@U0BOT> approve it pls", "ts": "1790000099.000100", "thread_ts": r.ts})
+	r.heard(t, "thread")
+	if q := r.question(t); q["verdict"] != "proceed" {
+		t.Errorf("answered %v, want proceed", q["verdict"])
+	}
+}
+
+// The same sentence in the thread at large is talk: people discuss under these messages, and no
+// reading of prose should let a conversation answer a gate by accident.
+func TestTheSameSentenceInTheThreadIsTalk(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.reply(t, "e1", "U7", "approve it pls")
+	r.waitForSay(t, "approve it pls")
+	if q := r.question(t); q["status"] != mirror.QuestionPending {
+		t.Errorf("question %v, want it still pending", q)
+	}
+}
+
+// A negation is a sentence this program has no business resolving: "do not ship it" and "ship it"
+// differ by one word, and reading them the same answers gates nobody answered.
+func TestANegationIsNotResolved(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.event(t, "e1", map[string]any{"type": "app_mention", "channel": "C999", "user": "U7",
+		"text": "<@U0BOT> do not approve this yet", "ts": "1790000099.000100", "thread_ts": r.ts})
+	if said := r.heard(t, "U7"); !strings.Contains(said, "yes or a no") {
+		t.Errorf("said %q, want it to say it cannot tell", said)
+	}
+	if q := r.question(t); q["status"] != mirror.QuestionPending {
+		t.Errorf("question %v, want it still pending", q)
+	}
+}
+
 // `y` and `n` are the two options a gate has unless it says otherwise.
 func TestAReplySayingYAnswersProceed(t *testing.T) {
 	r := newSocketRig(t)
@@ -322,7 +365,7 @@ func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
 	r.asking(t)
 
 	r.event(t, "e1", map[string]any{"type": "app_mention", "channel": "C999", "user": "U7",
-		"text": "<@U0BOT> ship it maybe", "ts": "1790000099.000100", "thread_ts": r.ts})
+		"text": "<@U0BOT> what does this involve?", "ts": "1790000099.000100", "thread_ts": r.ts})
 	said := r.heard(t, "U7")
 	if !strings.Contains(said, "did not get that") || !strings.Contains(said, "proceed") {
 		t.Errorf("said %q, want it to say so and name what the question takes", said)
@@ -330,7 +373,7 @@ func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
 	if !strings.Contains(said, "noted") {
 		t.Errorf("said %q, want it to say the words were kept", said)
 	}
-	if got := r.waitForSay(t, "ship it maybe"); got["by"] != "user:scott@example.com" {
+	if got := r.waitForSay(t, "what does this involve?"); got["by"] != "user:scott@example.com" {
 		t.Errorf("said by %v, want the person who typed it", got["by"])
 	}
 	if q := r.question(t); q["status"] != mirror.QuestionPending {

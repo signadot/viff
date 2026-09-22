@@ -350,8 +350,17 @@ Ingress, and the reply arrives as an ordinary message event.
 
 Two halves, kept apart. **Which** question a reply answers is decided without reading the words:
 the thread's parent is a message this program posted, and it remembers what each of its messages
-is asking. **What** the reply says is matched against that question's own options, plus `y` and `n`
-for the two a gate has unless it says otherwise. One word is an answer; a sentence is talk.
+is asking. **What** the reply says is read against that question's own options, and nothing else —
+never an effect of its own.
+
+**How much of the words are read depends on who was addressed.** A reply to the thread at large has
+to SAY an option: one word, the question's own or `y`/`n`. People talk under these messages, and no
+reading of prose should let a conversation answer a gate by accident. Addressed to the bot by name
+— `@verse approve it pls` — a sentence is read too, since it was written to this program and means
+to be acted on. Everyday words stand for the two options every gate has (`approve`, `yes`, `lgtm`,
+`ship`, `go`; `reject`, `no`, `block`, `hold`), while an option of the gate's own is said by its
+id, which is the word its author chose for it. A sentence carrying a negation is not resolved and
+says so: "do not ship it" and "ship it" differ by one word.
 
 **Talk lands on the question.** A reply that answers nothing is said ON the question (`POST
 /gate/say`, as the person who typed it), so the reason something is waiting stands beside it for

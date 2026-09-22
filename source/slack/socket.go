@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/net/websocket"
 
@@ -211,9 +212,16 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	if len(asked) == 0 {
 		return // not one of this program's questions, or it has settled since
 	}
-	id, option, err := choose(e.Text, asked)
+	id, option, err := choose(e.Text, asked, e.Type == "app_mention")
 	if err != nil {
-		k.aside(ctx, e.Channel, e.ThreadTS, e.User, err.Error())
+		// It was meant as an answer and could not be read as one, so the words are kept and the
+		// person is told both things: an answer nobody recorded and nobody mentioned is the one
+		// outcome they cannot act on.
+		say := err.Error() + "."
+		if k.say(ctx, e.User, asked, e.Text) {
+			say += " I have noted what you said on the question."
+		}
+		k.aside(ctx, e.Channel, e.ThreadTS, e.User, say)
 		return
 	}
 	if id == "" {
@@ -249,32 +257,95 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 
 // choose reads a reply as one of the options the thread's questions take: the question and the
 // option, nothing at all for a reply that is not an answer, and an error for one that could be
-// two answers.
+// two.
 //
-// The words are the question's own, plus `y` and `n` for the two options a gate has unless it says
-// otherwise. Nothing here guesses: a reply is an answer when it SAYS one.
-func choose(text string, asked []Asked) (id, option string, err error) {
-	word := strings.ToLower(strings.Trim(strings.TrimSpace(stripMentions(text)), ".!?,;:"))
-	if word == "" || strings.ContainsAny(word, " \t\n") {
-		return "", "", nil // one word is an answer; a sentence is somebody talking
+// TWO READINGS, and which one applies is not a matter of degree. A reply to the thread at large
+// must SAY an option — one word, the question's own or `y`/`n` — because people talk under these
+// messages and no amount of confidence should let a conversation answer a gate by accident.
+// Addressed to the bot BY NAME (`@verse approve it pls`), prose is read as well, because that
+// message was written to this program and means to be acted on.
+//
+// What prose may yield is still one of the ids on the record — never an effect of its own — and
+// when it could be two, or carries a negation this program has no business resolving, it yields
+// nothing and says so. That is the seam a model slots into later: it chooses among the options or
+// says it cannot tell, and it never decides which question was meant (Socket.Asking does that,
+// without reading a word).
+func choose(text string, asked []Asked, addressed bool) (id, option string, err error) {
+	said := strings.ToLower(strings.TrimSpace(stripMentions(text)))
+	if said == "" {
+		return "", "", nil
 	}
+	if word := strings.Trim(said, ".!?,;:"); !strings.ContainsAny(word, " \t\n") {
+		id, option, err = matching(asked, func(opt string) bool {
+			return word == strings.ToLower(opt) || word == alias(opt)
+		})
+		if id != "" || err != nil || !addressed {
+			return id, option, err
+		}
+	} else if !addressed {
+		return "", "", nil // a sentence in the thread is talk, and talk is not an answer
+	}
+
+	// Addressed, and not one bare word: read it as a sentence.
+	words := strings.FieldsFunc(said, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
+	has := func(w string) bool { return slices.Contains(words, w) }
+	for _, no := range []string{"not", "dont", "don", "never", "cannot", "cant", "unless", "until"} {
+		if has(no) {
+			// "do not ship it" and "ship it" differ by one word, and a program that reads them
+			// the same answers gates nobody answered. Whoever wrote it can say the word.
+			return "", "", fmt.Errorf("I am not sure whether that is a yes or a no")
+		}
+	}
+	return matching(asked, func(opt string) bool {
+		if has(strings.ToLower(opt)) {
+			return true
+		}
+		for _, w := range meaning(opt) {
+			if has(w) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// matching is the one option some test picks out of the thread's questions, or an error when it
+// picks more than one — two questions in a thread, each taking `proceed`, is a reply that cannot
+// be placed rather than one to place twice.
+func matching(asked []Asked, picks func(option string) bool) (id, option string, err error) {
 	var could []string
 	for _, a := range asked {
 		for _, opt := range a.Options {
-			if word != strings.ToLower(opt) && word != alias(opt) {
+			if !picks(opt) {
 				continue
 			}
 			if id == "" {
 				id, option = a.ID, opt
+			} else if opt != option || a.ID != id {
+				could = append(could, "`"+opt+"`")
 			}
-			could = append(could, "`"+a.ID+"`")
 		}
 	}
-	if len(could) > 1 {
-		return "", "", fmt.Errorf("%q could answer %s — reply in that question's own thread",
-			word, strings.Join(could, " or "))
+	if len(could) > 0 {
+		return "", "", fmt.Errorf("I read that as %s and `%s` both — say one of them on its own",
+			strings.Join(could, ", "), option)
 	}
 	return id, option, nil
+}
+
+// meaning is the everyday words for an option a gate did not name itself: the two every gate has
+// unless it says otherwise. An option of the gate's own is said by its id, which is the word its
+// author chose for it.
+func meaning(option string) []string {
+	switch option {
+	case "proceed":
+		return []string{"approve", "approved", "approves", "yes", "yep", "yeah", "ok", "okay",
+			"lgtm", "ship", "go", "sure", "please", "agreed", "fine"}
+	case "deny":
+		return []string{"reject", "rejected", "no", "nope", "refuse", "refused", "block",
+			"blocked", "stop", "hold", "veto"}
+	}
+	return nil
 }
 
 // optionsOf is every word the thread's questions take, said once each.
