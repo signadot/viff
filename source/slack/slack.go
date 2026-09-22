@@ -81,6 +81,7 @@ type Slack struct {
 	root      string
 	workspace string
 	url       string // the workspace's Slack url, for message permalinks
+	me        string // this bot's own user id, for reading what is addressed to it
 	depth     int
 	threads   bool
 	threadCap int
@@ -139,7 +140,7 @@ func New(ctx context.Context, cfg Config) (*Slack, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.url = id.URL
+	s.url, s.me = id.URL, id.UserID
 	if s.workspace == "" {
 		s.workspace = id.Team
 	}

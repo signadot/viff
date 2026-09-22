@@ -2,6 +2,7 @@ package slack_test
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -399,6 +400,27 @@ func TestAThreadGoesOnAfterItsQuestionSettles(t *testing.T) {
 	}
 	if got := r.waitForSay(t, "approve"); got["by"] != "user:ani@example.com" {
 		t.Errorf("said by %v, want the person who typed it", got["by"])
+	}
+}
+
+// One message, two events: Slack sends `message` and `app_mention` for the same words. Handling
+// both would record what somebody said twice, or record it as talk while answering it.
+func TestAMentionIsHandledOnceNotTwice(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	for i, kind := range []string{"message", "app_mention"} {
+		r.event(t, fmt.Sprintf("e%d", i), map[string]any{"type": kind, "channel": "C999",
+			"user": "U7", "text": "<@U0> proceed", "ts": "1790000099.000100", "thread_ts": r.ts})
+	}
+	r.heard(t, "thread")
+	if q := r.question(t); q["verdict"] != "proceed" {
+		t.Fatalf("answered %v, want proceed", q["verdict"])
+	}
+	// The plain copy said nothing on the question, since the mention answered with those words.
+	said, _ := r.question(t)[mirror.SaidField].(map[string]any)
+	if len(said) != 0 {
+		t.Errorf("said %v, want the words answered rather than also recorded as talk", said)
 	}
 }
 

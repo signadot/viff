@@ -208,6 +208,13 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		e.User == "" || e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
 		return
 	}
+	// ONE MESSAGE, TWO EVENTS. A message that mentions this bot arrives twice — as `message` and
+	// as `app_mention` — and handling both would record what somebody said twice, or record it
+	// as talk while answering it. The mention is the copy that says it was addressed here, so
+	// the plain one is dropped and the mention does the work.
+	if e.Type == "message" && k.s.me != "" && strings.Contains(e.Text, "<@"+k.s.me+">") {
+		return
+	}
 	asked := k.Asking(e.Channel, e.ThreadTS)
 	if len(asked) == 0 {
 		return // not one of this program's questions
