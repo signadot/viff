@@ -351,8 +351,13 @@ Ingress, and the reply arrives as an ordinary message event.
 Two halves, kept apart. **Which** question a reply answers is decided without reading the words:
 the thread's parent is a message this program posted, and it remembers what each of its messages
 is asking. **What** the reply says is matched against that question's own options, plus `y` and `n`
-for the two a gate has unless it says otherwise. One word is an answer; a sentence is somebody
-talking, and is left alone.
+for the two a gate has unless it says otherwise. One word is an answer; a sentence is talk.
+
+**Talk lands on the question.** A reply that answers nothing is said ON the question (`POST
+/gate/say`, as the person who typed it), so the reason something is waiting stands beside it for
+whoever reads it later, rather than only in the window it was typed in. It decides nothing. Nobody
+is replied to for talking — except somebody who addressed the bot by name and said something it
+could not read as an answer, who is told so, and told that their words were kept.
 
 **It answers as the person who typed it.** `users.info` turns their Slack id into `user:<email>`
 (`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's permissions

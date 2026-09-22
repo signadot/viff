@@ -43,6 +43,8 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 		as = orTester(body.By)
 	case api.Escalate:
 		as = orTester(body.By)
+	case api.GateSay:
+		as = orTester(body.By)
 	case api.Say:
 		as = orTester(body.By)
 	case api.SetVector:

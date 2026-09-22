@@ -1287,6 +1287,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
 	rt.handle("POST /gate/escalate", s.escalateGate, "verse-escalate", nothing)
+	rt.handle("POST /gate/say", s.sayOnGate, "verse-say", nothing)
 	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
 	// (flows.go).
 	rt.handle("POST /flow/suspend", s.flowSuspend, "verse-flow-select", one("verse-flow-row"))
@@ -2676,6 +2677,45 @@ func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.answerQuestion(w, r, body, "", s.scopedStore(r))
+}
+
+// sayOnGate records what somebody said ABOUT a question, answering nothing.
+//
+// Admitted to whoever may READ the question, which is wider than who may answer it on purpose: the
+// person who cannot decide this is often the one who knows why it is waiting, and a docket that
+// took words only from its answerers would lose them. The words are written by versed, as the
+// docket, so a reader who holds no write on the question can still leave a line on it — and cannot
+// write anything else there.
+func (s *Server) sayOnGate(w http.ResponseWriter, r *http.Request) {
+	var body api.GateSay
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" {
+		http.Error(w, "id is required: a say names the question it is about", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Say) == "" {
+		http.Error(w, "say is required: a say with no words is nothing said", http.StatusBadRequest)
+		return
+	}
+	store := s.scopedStore(r)
+	var ok bool
+	if body.By, ok = actor(w, store, body.By); !ok {
+		return
+	}
+	// Read as the sayer, which is the permission check: a question they cannot see is one they
+	// cannot leave a line on, and the refusal is the store's own words.
+	if _, found, err := store.Get(mirror.QuestionRef(body.ID)); err != nil {
+		codec.HTTPError(w, r, http.StatusForbidden, err.Error())
+		return
+	} else if !found {
+		http.Error(w, "no question "+body.ID+" stands", http.StatusNotFound)
+		return
+	}
+	mirror.SayOn(s.asDocket(r), body.ID, body.By, body.Say)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // escalateGate is a person's escalation: the question moves to the next rung covering its

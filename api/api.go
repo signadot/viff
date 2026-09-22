@@ -99,6 +99,20 @@ type Escalate struct {
 	Say string `tony:"field=say,omitzero"`
 }
 
+// GateSay says something ABOUT a question without answering it: "checking with ops", "this is the
+// third time this week", "I would, but not before the release".
+//
+// A separate act from Resolve, and a separate route, because an answer carries a choice and this
+// one carries none — `/gate/resolve` refuses an answer that names no option, and rightly, since a
+// comment that settled a gate by accident would be the worst possible failure of this model. What
+// it leaves is a durable, attributed line on the question, where everyone who reads the question
+// reads it, rather than in whatever chat window it was typed in.
+type GateSay struct {
+	ID  string `tony:"field=id"`
+	By  string `tony:"field=by"`
+	Say string `tony:"field=say"`
+}
+
 // Resolve answers ONE pending gate, by its id, wherever it lives — an engine gate the
 // trigger registry raised, or a task gate raised inside a running agent. The routing
 // is the server's problem (a task gate's id carries its owner ahead of

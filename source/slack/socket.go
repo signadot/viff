@@ -217,13 +217,20 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		return
 	}
 	if id == "" {
-		// Somebody talking, which is not this program's business — unless they were talking to
-		// it. A message addressed to the bot is owed an answer, and "I did not understand you"
-		// is one; a reply to the thread at large is not, and answering it would make every
-		// conversation under a question a conversation with a program.
+		// Not an answer, so it is talk about the question — and talk about a question belongs ON
+		// the question, where whoever reads it later reads it too, rather than only in the
+		// window it was typed in. It decides nothing: a say carries no choice.
+		noted := k.say(ctx, e.User, asked, e.Text)
+		// Silence for the thread at large, since answering people for talking would make every
+		// conversation under a question a conversation with a program. Somebody who addressed
+		// the bot by name is owed a reply, and "I did not understand you, so I wrote it down"
+		// is one.
 		if e.Type == "app_mention" {
-			k.aside(ctx, e.Channel, e.ThreadTS, e.User, "Sorry — I did not get that. "+
-				"To answer, say one of "+code(optionsOf(asked))+".")
+			say := "Sorry — I did not get that. To answer, say one of " + code(optionsOf(asked)) + "."
+			if noted {
+				say += " I have noted what you said on the question."
+			}
+			k.aside(ctx, e.Channel, e.ThreadTS, e.User, say)
 		}
 		return
 	}
@@ -307,6 +314,37 @@ func stripMentions(text string) string {
 		}
 		text = text[:i] + text[i+j+1:]
 	}
+}
+
+// say records what somebody said about the thread's questions, as them, answering nothing. It
+// reports whether anything was written, since what it tells them afterwards depends on it.
+func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text string) bool {
+	text = strings.TrimSpace(stripMentions(text))
+	if text == "" || k.verse == "" {
+		return false
+	}
+	email, err := k.s.api.userEmail(ctx, userID)
+	if err != nil {
+		k.s.log("slack socket: who said %q: %v", text, err)
+		return false
+	}
+	who := "user:" + email
+	verse := client.New(k.verse, who)
+	noted := false
+	for _, a := range asked {
+		resp, err := verse.Post("/gate/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
+		if err != nil {
+			k.s.log("slack socket: saying on %s: %v", a.ID, err)
+			continue
+		}
+		if resp.StatusCode >= http.StatusBadRequest {
+			k.s.log("slack socket: %v", client.StatusError(resp, "saying on "+a.ID))
+		} else {
+			noted = true
+		}
+		resp.Body.Close()
+	}
+	return noted
 }
 
 // answer makes the answer as the person who typed it, and says what became of it: whether it

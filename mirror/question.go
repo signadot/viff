@@ -161,6 +161,29 @@ func Bind(store entity.Store, id, binding string) error {
 	return nil
 }
 
+// SaidField holds what people said ABOUT a question without answering it, each entry under its own
+// key — the instant it was said — so that two people talking at once cannot lose each other, the
+// same reason a stale answer is written under its own key rather than appended to a list.
+//
+// It is not an answer and can never become one: a say carries no choice, and the record's `verdict`
+// is written by one path only. What it is for is the sentence an answerer needs and the question
+// does not have — why this is waiting, what somebody is checking, what they would want instead.
+const SaidField = "said"
+
+// SayOn records what somebody said about a question. The question need not be pending: a decision
+// is talked about afterwards as much as before, and a record that refused the words once it
+// settled would lose exactly the ones explaining it.
+func SayOn(store entity.Store, id, by, said string) {
+	said = strings.TrimSpace(said)
+	if said == "" {
+		return
+	}
+	at := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAt(store, QuestionRef(id), entity.Obj{
+		SaidField: entity.Obj{at: entity.Obj{"by": by, "text": said}},
+	})
+}
+
 // AnswerersField is who the gate itself named to answer, on the question: what unbinding gives
 // the question back to. Absent where the gate named nobody.
 const AnswerersField = "answerers"

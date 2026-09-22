@@ -78,6 +78,7 @@ or reads from there:
 | `pose` | what it asks, in words, as the gate wrote it and the firing expanded it against its subject. Absent for a gate that says nothing and for a question a task raises of its own accord, where `reason` is all there is |
 | `answerers` | whom the gate itself named, when it named anybody. What a bound question goes back to when its binding lets go — to the docket's default only where this is absent |
 | `waitingOn` | whom it waits on **now**: its own `read-write` line, groups expanded to the people who act as themselves, wildcards (`user:*`, the docket's default) left as they are written. Written at posing and moved by every hand-over, since the same grant carries both; gone once it settles. A change to the default above a docket of pending questions does not move it — nothing writes those questions — so each says the set it was posed with until it is asked again |
+| `said` | what people said ABOUT the question without answering it, each entry under the instant it was said: `{by, text}`. Written by `POST /gate/say`, which is admitted to whoever may READ the question — the person who cannot decide this is often the one who knows why it is waiting. It carries no choice and can never settle anything |
 | `overrode` | whom an answer was taken over, when `-override` was used |
 | `askedAgain` | this id was posed again after settling; the prior answer is at the commit that made it |
 
@@ -94,6 +95,7 @@ question's `resolver` is this instance's binding and the question's origin is th
 origin.
 
 ```
+POST /gate/say                                          { id, by, say } — talk about a question
 GET  /resolvers/instance/{id}/events?since=<position>   replay, then live
 POST /resolvers/instance/{id}/verdicts                  { id, verdict, why?, say? }
 POST /resolvers/instance/{id}/position                  { position, notes? }

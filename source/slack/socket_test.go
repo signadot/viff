@@ -280,20 +280,39 @@ func TestAReplyFromSomebodyWithNoEmailAnswersNothing(t *testing.T) {
 	}
 }
 
-// A reply that says none of the options is somebody talking: nothing is answered, and nothing is
-// said back at them for saying something.
-func TestAReplyThatIsNotAnAnswerIsLeftAlone(t *testing.T) {
+// A reply that says none of the options decides nothing and is not ignored either: it is talk
+// about the question, so it lands ON the question, attributed. Nothing is said back at them for
+// talking.
+func TestAReplyThatIsNotAnAnswerIsSaidOnTheQuestion(t *testing.T) {
 	r := newSocketRig(t)
 	r.asking(t)
 
 	r.reply(t, "e1", "U7", "hold on, checking with ops")
-	time.Sleep(100 * time.Millisecond)
+	said := r.waitForSay(t, "hold on, checking with ops")
+	if said["by"] != "user:scott@example.com" {
+		t.Errorf("said by %v, want the person who typed it", said["by"])
+	}
 	if got := r.fake.saidTo("thread", r.ts) + r.fake.saidTo("U7", r.ts); got != "" {
 		t.Errorf("said %q to somebody talking", got)
 	}
 	if q := r.question(t); q["status"] != mirror.QuestionPending {
 		t.Errorf("question %v, want it still pending", q)
 	}
+}
+
+// waitForSay waits for text to land on the question as a say, and answers that entry.
+func (r *socketRig) waitForSay(t *testing.T, text string) entity.Obj {
+	t.Helper()
+	for range 400 {
+		for _, v := range entity.ToObj(entity.Get(r.question(t).Payload(), mirror.SaidField)) {
+			if said, _ := v.(map[string]any); said != nil && said["text"] == text {
+				return entity.Obj(said)
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%q was never said on the question", text)
+	return nil
 }
 
 // Addressed to the bot and not an answer: it says so, to the person who said it, naming what the
@@ -307,6 +326,12 @@ func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
 	said := r.heard(t, "U7")
 	if !strings.Contains(said, "did not get that") || !strings.Contains(said, "proceed") {
 		t.Errorf("said %q, want it to say so and name what the question takes", said)
+	}
+	if !strings.Contains(said, "noted") {
+		t.Errorf("said %q, want it to say the words were kept", said)
+	}
+	if got := r.waitForSay(t, "ship it maybe"); got["by"] != "user:scott@example.com" {
+		t.Errorf("said by %v, want the person who typed it", got["by"])
 	}
 	if q := r.question(t); q["status"] != mirror.QuestionPending {
 		t.Errorf("question %v, want it still pending", q)
