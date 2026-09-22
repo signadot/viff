@@ -342,7 +342,8 @@ type question struct {
 	due      time.Time // when the clock settles it, and what it settles on
 	settles  string
 	opts     []task.Option // what it takes to answer, in the order the gate wrote them
-	ballots  []string      // "<who> <choice>", in name order
+	ballots  []string      // "<who> <choice>", and what they said with it, in name order
+	spoken   bool          // some ballot carried words
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
@@ -370,7 +371,15 @@ func (o *Out) question(id string) (question, error) {
 	}
 	ballots := entity.Get(doc, "ballots")
 	for _, who := range fieldNames(ballots) {
-		q.ballots = append(q.ballots, person(who)+" "+entity.Str(entity.Get(ballots, who), "choice"))
+		b := entity.Get(ballots, who)
+		cast := person(who) + " " + entity.Str(b, "choice")
+		// What somebody said with their ballot is half of what they decided, and a channel that
+		// shows the count and drops the words shows the lesser half.
+		if said := strings.Join(strs(entity.Get(b, "say")), "; "); said != "" {
+			cast += " — " + said
+			q.spoken = true
+		}
+		q.ballots = append(q.ballots, cast)
 	}
 	return q, nil
 }
@@ -420,6 +429,11 @@ func (q question) line() string {
 		}
 		if said := strings.Join(q.say, "; "); said != "" {
 			line += ": " + said
+		}
+		// Who else voted and what they said with it: worth keeping in front of the channel where
+		// more than one voice settled it, and noise where the `by` above says it all.
+		if len(q.ballots) > 1 || q.spoken {
+			line += " · ballots: " + strings.Join(q.ballots, ", ")
 		}
 		return line
 	case q.status == mirror.QuestionOrphaned:

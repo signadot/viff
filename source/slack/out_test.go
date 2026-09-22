@@ -266,6 +266,33 @@ func TestOutSaysWhatEachOptionMeans(t *testing.T) {
 	}
 }
 
+// A ballot's words are half of what somebody decided, so the message carries them: while the
+// question is open, and afterwards where more than one voice settled it.
+func TestOutSaysWhatEachBallotSaid(t *testing.T) {
+	r := newOutRig(t)
+	ballots := map[string]any{
+		"user:ana@example.com":   map[string]any{"choice": "proceed", "say": []any{"fine by me, but not on friday"}},
+		"user:scott@example.com": map[string]any{"choice": "proceed"},
+	}
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending, "pose": "Ship it?",
+		"options": []any{map[string]any{"id": "proceed", "need": 2}}, "ballots": ballots})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	want := "so far: `ana@example.com` proceed — fine by me, but not on friday, `scott@example.com` proceed"
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, want) {
+		t.Errorf("said %q, want it to carry %q", said, want)
+	}
+
+	// And once it settles, the ballots stay in front of the channel, since two voices decided it.
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
+		"by": "user:scott@example.com", "ballots": ballots})
+	r.pass(t)
+	said := shown(t, r.fake.updates[0])
+	if !strings.Contains(said, "answered *proceed* by `scott@example.com` · ballots: `ana@example.com` proceed — fine by me") {
+		t.Errorf("redrawn as %q, want the verdict and who voted how", said)
+	}
+}
+
 // A question that settles redraws the message, which nobody asked for by writing: the buttons go,
 // and everyone who can see it is told the verdict, who gave it and what they said with it.
 func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
