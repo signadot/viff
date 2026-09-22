@@ -222,6 +222,20 @@ func TestAReplyAnswersTheQuestionAsWhoeverTypedIt(t *testing.T) {
 	}
 }
 
+// Answering the bot by name is answering: a mention in the thread arrives as its own event, and
+// the mention itself is not part of what was said.
+func TestAMentionInTheThreadAnswersToo(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.event(t, "e1", map[string]any{"type": "app_mention", "channel": "C999", "user": "U7",
+		"text": "<@U0BOT> proceed", "ts": "1790000099.000100", "thread_ts": r.ts})
+	r.heard(t, "thread")
+	if q := r.question(t); q["verdict"] != "proceed" {
+		t.Errorf("answered %v, want proceed", q["verdict"])
+	}
+}
+
 // `y` and `n` are the two options a gate has unless it says otherwise.
 func TestAReplySayingYAnswersProceed(t *testing.T) {
 	r := newSocketRig(t)

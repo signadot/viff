@@ -30,9 +30,10 @@ import (
 // (events.go), so the reflection hears a new message in seconds with no public endpoint.
 //
 // A QUESTION IS ANSWERED BY REPLYING TO IT. The out half posts a message asking one, and a reply
-// in that message's thread saying one of the question's options is that answer. No button, no
-// dialog, no slash command: a reply renders wherever Slack does, reads the same in a notification
-// as on screen, and is what one person would have typed to another.
+// in that message's thread saying one of the question's options is that answer — typed plainly, or
+// addressed to the bot (`@verse proceed`), which is the same event with a mention in it. No
+// button, no dialog, no slash command: a reply renders wherever Slack does, reads the same in a
+// notification as on screen, and is what one person would have typed to another.
 //
 // Two halves, kept apart, because only one of them is allowed to be clever. WHICH question a reply
 // answers is decided without reading the words at all: the thread's parent is a message this
@@ -196,11 +197,13 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		return
 	}
 	e := p.Event
-	// A person, in a thread, saying something new. Not this program's own messages — its receipts
-	// are in the same threads — not an edit or a join, and not a message at channel level, which
-	// is somebody talking: nothing says which question it would be about.
-	if e.Type != "message" || e.Subtype != "" || e.BotID != "" || e.User == "" ||
-		e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
+	// A person, in a thread, saying something new — said plainly (`message`) or at the bot
+	// (`app_mention`), which are one act and arrive as two events. Not this program's own
+	// messages, since its receipts are in the same threads; not an edit or a join; and not
+	// anything at channel level, which is somebody talking: nothing says which question that
+	// would be about.
+	if (e.Type != "message" && e.Type != "app_mention") || e.Subtype != "" || e.BotID != "" ||
+		e.User == "" || e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
 		return
 	}
 	asked := k.Asking(e.Channel, e.ThreadTS)

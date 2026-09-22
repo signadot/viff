@@ -199,7 +199,7 @@ func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 		t.Fatalf("posted %v, want one message", r.fake.posted)
 	}
 	want := "the review is waiting\n" +
-		"> Answers `q~1` · waiting on scott@example.com, ana@example.com\n" +
+		"> Answers `q~1` · waiting on `scott@example.com`, `ana@example.com`\n" +
 		"Answer in this thread: `proceed`, `deny`"
 	if said := shown(t, r.fake.posted[0]); said != want {
 		t.Errorf("said\n%s\nwant\n%s", said, want)
@@ -227,7 +227,7 @@ func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 	if strings.Contains(said, "Answer in this thread") {
 		t.Errorf("said %q: a settled question still says how to answer it", said)
 	}
-	if want := "> `q~1` answered *deny* by ani@example.com: not on friday"; !strings.Contains(said, want) {
+	if want := "> `q~1` answered *deny* by `ani@example.com`: not on friday"; !strings.Contains(said, want) {
 		t.Errorf("said %q, want it to carry %q", said, want)
 	}
 	r.pass(t)
@@ -250,11 +250,11 @@ func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 		{"a ballot so far", entity.Obj{"status": mirror.QuestionPending,
 			"options": []any{map[string]any{"id": "proceed"}},
 			"ballots": map[string]any{"user:ani@example.com": map[string]any{"choice": "proceed"}}},
-			true, "Answers `q~1` · so far: ani@example.com proceed"},
+			true, "Answers `q~1` · so far: `ani@example.com` proceed"},
 		{"answered", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
-			"by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by scott@example.com"},
+			"by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by `scott@example.com`"},
 		{"a verdict under a pending status", entity.Obj{"status": mirror.QuestionPending,
-			"verdict": "proceed", "by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by scott@example.com"},
+			"verdict": "proceed", "by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by `scott@example.com`"},
 		{"withdrawn", entity.Obj{"status": mirror.QuestionOrphaned, "why": "the rule stopped selecting it"},
 			false, "`q~1` was withdrawn unanswered: the rule stopped selecting it"},
 	} {

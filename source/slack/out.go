@@ -379,11 +379,14 @@ func (q question) line() string {
 // person is a principal as a reader in Slack would name it: a person by their email, a wildcard as
 // the docket it stands for — there is no list of every person to name — and anyone else as verse
 // names them.
+//
+// As code, because Slack turns an email in a message into a mailto link, and a decision that reads
+// `answered by <mailto:ana@acme.test|ana@acme.test>` is a decision nobody can scan.
 func person(p string) string {
 	if strings.HasSuffix(p, "*") {
 		return "the docket"
 	}
-	return strings.TrimPrefix(p, "user:")
+	return "`" + strings.TrimPrefix(p, "user:") + "`"
 }
 
 func people(ps []string) string {
