@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"time"
 
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/source/slack"
 )
 
@@ -28,6 +33,12 @@ func slackMain(args []string) error {
 	depth := fs.Int("depth", slack.DefaultDepth, "how many recent messages per channel to reflect")
 	threads := fs.Bool("threads", true, "also reflect the replies of threaded messages in the window")
 	users := fs.Bool("users", true, "reflect the workspace's people as slack:user:* (needs users:read)")
+	out := fs.Bool("out", false, "also run the out half: say in Slack what is written under "+
+		"slack.<ws>.out, and write each one's <name>~status (needs chat:write, im:write)")
+	verseAddr := fs.String("verse-addr", os.Getenv("VERSE_ADDR"),
+		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
+	as := fs.String("as", "agent:slack-io", "the principal the out half reads and writes as")
+	every := fs.Duration("out-every", 5*time.Second, "how often the out half reads what is asked")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -58,6 +69,24 @@ func slackMain(args []string) error {
 	}
 	routes := map[string]http.Handler{
 		"POST /slack/events": src.Events(signing, c.hinter()),
+	}
+
+	// The out half dials the verse, where the reflection is dialled BY it: it reads what is asked
+	// and writes what became of it, as a principal of its own. Its address defaults to the one the
+	// hint url already names, so a deployment says where verse is once.
+	if *out {
+		addr := *verseAddr
+		if addr == "" && c.hintURL != "" {
+			if u, err := url.Parse(c.hintURL); err == nil {
+				addr = u.Host
+			}
+		}
+		if addr == "" {
+			return fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
+		}
+		go src.Out(client.New(addr, *as)).Run(ctx, *every)
+		log.Printf("slack out: saying what is written under %s, as %s, reading %s every %s",
+			src.OutRef(), *as, addr, *every)
 	}
 	return c.serve(src.Root(), src, routes)
 }

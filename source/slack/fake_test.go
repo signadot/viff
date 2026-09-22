@@ -2,6 +2,7 @@ package slack_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,6 +24,11 @@ type fakeSlack struct {
 	replies  map[string][]map[string]any // conversations.replies, by "<channel>/<ts>"
 	users    []map[string]any
 
+	// The out half's side: what was said, and where.
+	posted  []map[string]any // chat.postMessage, in order: channel, ts, text
+	updates []map[string]any // chat.update, in order: channel, ts, text
+	opened  map[string]int   // conversations.open, by user
+
 	fail  map[string]string // method → slack error string
 	calls map[string]int
 }
@@ -32,6 +38,7 @@ func newFake() *fakeSlack {
 		info:    map[string]map[string]any{},
 		history: map[string][]map[string]any{},
 		replies: map[string][]map[string]any{},
+		opened:  map[string]int{},
 		fail:    map[string]string{},
 		calls:   map[string]int{},
 	}
@@ -65,6 +72,12 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	// The writes carry their arguments as a JSON body.
+	args := map[string]any{}
+	if r.Method == http.MethodPost {
+		_ = json.NewDecoder(r.Body).Decode(&args)
+	}
+	str := func(k string) string { v, _ := args[k].(string); return v }
 	switch method {
 	case "auth.test":
 		write(w, map[string]any{
@@ -87,6 +100,19 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 			"messages": f.replies[q.Get("channel")+"/"+q.Get("ts")]})
 	case "users.list":
 		write(w, map[string]any{"ok": true, "members": f.users})
+	case "conversations.open":
+		f.opened[str("users")]++
+		write(w, map[string]any{"ok": true, "channel": map[string]any{"id": "D" + str("users")}})
+	case "chat.postMessage":
+		ts := fmt.Sprintf("1790000000.%06d", len(f.posted)+1)
+		f.posted = append(f.posted, map[string]any{"channel": str("channel"), "ts": ts, "text": str("text")})
+		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": ts})
+	case "chat.update":
+		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text")})
+		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": str("ts")})
+	case "chat.getPermalink":
+		write(w, map[string]any{"ok": true,
+			"permalink": "https://acme.slack.com/archives/" + q.Get("channel") + "/p" + q.Get("message_ts")})
 	default:
 		write(w, map[string]any{"ok": false, "error": "unknown_method"})
 	}

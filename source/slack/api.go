@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// The Slack Web API, as much of it as a reflection needs.
+// The Slack Web API, as much of it as a reflection and the out half need.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
 // the reason task/harness/llm.go is: this is somebody else's wire format. verse renders in
@@ -19,9 +19,9 @@ import (
 // second place for it to be wrong.
 //
 // Hand-rolled rather than slack-go, which is the same call the tree already made for the
-// OpenAI schema. What is needed is six methods and eight structs; a client library would bring
-// a socket mode, a retry policy, an events framework and a bot toolkit, and the one thing a
-// source must be is small enough to read.
+// OpenAI schema. What is needed is ten methods and a handful of structs; a client library would
+// bring a retry policy, an events framework and a bot toolkit, and the one thing a connector
+// must be is small enough to read.
 
 // APIBase is where the Web API lives. Overridable so a test can point at an httptest server.
 const APIBase = "https://slack.com/api"
@@ -76,6 +76,26 @@ func (a *api) call(ctx context.Context, method string, params url.Values, out an
 	if err != nil {
 		return fmt.Errorf("slack %s: %w", method, err)
 	}
+	return a.do(req, method, out)
+}
+
+// post issues one Web API call whose arguments are a JSON body: the writes, which Slack takes as
+// POST, and whose text should not ride in a URL.
+func (a *api) post(ctx context.Context, method string, args any, out answer) error {
+	b, err := json.Marshal(args)
+	if err != nil {
+		return fmt.Errorf("slack %s: %w", method, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.base+"/"+method, strings.NewReader(string(b)))
+	if err != nil {
+		return fmt.Errorf("slack %s: %w", method, err)
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	return a.do(req, method, out)
+}
+
+// do sends a request and decodes the answer, treating every way it can fail as an error.
+func (a *api) do(req *http.Request, method string, out answer) error {
 	req.Header.Set("Authorization", "Bearer "+a.token)
 	resp, err := a.cl.Do(req)
 	if err != nil {
@@ -186,7 +206,7 @@ type user struct {
 	} `json:"profile"`
 }
 
-// ── the six calls ────────────────────────────────────────────────────────────
+// ── the reflection's six calls ──────────────────────────────────────────────
 
 // Identity is what a token turns out to be — the answer to auth.test.
 type Identity struct {
@@ -211,6 +231,72 @@ func (a *api) authTest(ctx context.Context) (Identity, error) {
 		return Identity{}, err
 	}
 	return r.Identity, nil
+}
+
+// ── the out half's four: open a DM, post, update, and ask for a permalink ──────
+
+type openResp struct {
+	envelope
+	Channel struct {
+		ID string `json:"id"`
+	} `json:"channel"`
+}
+
+// openDM answers the DM channel with one person (`im:write`), opening it if it is not open yet.
+// Opening an open one answers the same channel, so it is safe on every post.
+func (a *api) openDM(ctx context.Context, userID string) (string, error) {
+	var r openResp
+	if err := a.post(ctx, "conversations.open", map[string]any{"users": userID}, &r); err != nil {
+		return "", err
+	}
+	if r.Channel.ID == "" {
+		return "", fmt.Errorf("slack conversations.open: answered no channel for %s", userID)
+	}
+	return r.Channel.ID, nil
+}
+
+type postResp struct {
+	envelope
+	Channel string `json:"channel"`
+	TS      string `json:"ts"`
+}
+
+// postMessage says text in channel (`chat:write`) and answers where it landed: the channel Slack
+// names and the message's ts, which is what an update needs.
+func (a *api) postMessage(ctx context.Context, channel, text string) (string, string, error) {
+	var r postResp
+	args := map[string]any{"channel": channel, "text": text}
+	if err := a.post(ctx, "chat.postMessage", args, &r); err != nil {
+		return "", "", err
+	}
+	if r.TS == "" {
+		return "", "", fmt.Errorf("slack chat.postMessage: answered no ts")
+	}
+	if r.Channel == "" {
+		r.Channel = channel
+	}
+	return r.Channel, r.TS, nil
+}
+
+// updateMessage replaces the text of the message at ts in channel (`chat:write`).
+func (a *api) updateMessage(ctx context.Context, channel, ts, text string) error {
+	var r envelope
+	return a.post(ctx, "chat.update", map[string]any{"channel": channel, "ts": ts, "text": text}, &r)
+}
+
+type permalinkResp struct {
+	envelope
+	Permalink string `json:"permalink"`
+}
+
+// permalink is the message's link, for a reader who wants to go and look.
+func (a *api) permalink(ctx context.Context, channel, ts string) (string, error) {
+	var r permalinkResp
+	q := url.Values{"channel": {channel}, "message_ts": {ts}}
+	if err := a.call(ctx, "chat.getPermalink", q, &r); err != nil {
+		return "", err
+	}
+	return r.Permalink, nil
 }
 
 type conversationsResp struct {
