@@ -16,9 +16,9 @@ import (
 	"github.com/signadot/verse/source"
 )
 
-// Socket Mode: how a click in Slack reaches this program with no Ingress in front of it.
+// Socket Mode: how what somebody says in Slack reaches this program with no Ingress in front of it.
 //
-// Slack can post a click to a public url, and a verse with no Ingress (staging has none, and is
+// Slack can post an event to a public url, and a verse with no Ingress (staging has none, and is
 // not meant to) has none to give it. In Socket Mode this program dials OUT instead: it asks for a
 // url with the app-level token (`xapp-…`, `connections:write`), opens a WebSocket to it, and Slack
 // sends each event down it as an envelope, which is acknowledged by its id. Slack refreshes the
@@ -29,21 +29,31 @@ import (
 // no longer to the request url. They become the same hints the request url's handler sends
 // (events.go), so the reflection hears a new message in seconds with no public endpoint.
 //
-// A BUTTON CAN ONLY ANSWER A QUESTION. Its value names a question and an option, and a click is
-// that answer, made AS THE PERSON WHO CLICKED: users.info turns their Slack id into
-// `user:<email>`, and the answer goes to versed's resolve route as them, so versed's permissions
-// decide whether they may answer. What became of it is said to them alone: answered, or a refusal
-// (not an answerer, somebody answered first) in versed's words. What everyone who can see the
-// message learns is the message itself, redrawn from the question's record by the out half
-// (out.go, layout), which Answered asks for at once. It is never made as this program's own
-// principal: an answer recorded as agent:slack-io would be an answer nobody gave. Anything
-// broader than answering is a new kind of button, each with a line saying what it does, because
-// a button that could make any request as whoever pressed it is a request its label could lie
-// about.
+// A QUESTION IS ANSWERED BY REPLYING TO IT. The out half posts a message asking one, and a reply
+// in that message's thread saying one of the question's options is that answer. No button, no
+// dialog, no slash command: a reply renders wherever Slack does, reads the same in a notification
+// as on screen, and is what one person would have typed to another.
 //
-// The Slack user comes from an envelope on a socket the app token authenticated, and this program
-// then asserts that person to verse as it asserts its own principal; verse trusts it as it trusts
-// the CLI's. A principal verse verifies for itself is the fix for both.
+// Two halves, kept apart, because only one of them is allowed to be clever. WHICH question a reply
+// answers is decided without reading the words at all: the thread's parent is a message this
+// program posted, and it remembers what each of its messages is asking (Out.Asked). WHAT the reply
+// says is matched against that question's own options, plus `y`/`n` for the two a gate has unless
+// it says otherwise. A reply matching none of them is somebody talking, and is left alone. When
+// something interprets prose here one day, it inherits that split: it chooses among the options on
+// the record or says it cannot tell, and it never decides which question is meant.
+//
+// AS THE PERSON WHO TYPED IT: users.info turns their Slack id into `user:<email>`, and the answer
+// goes to versed's resolve route as them, so versed's permissions decide whether they may answer.
+// An answer is said back in the thread, where everyone reading it can see what was decided; a
+// refusal — not an answerer, somebody answered first — is said to them alone, in versed's words,
+// since it is about them rather than about the question. The question's own record is what the
+// message then shows, redrawn by the out half (out.go, body), which Answered asks for at once.
+//
+// It is never made as this program's own principal: an answer recorded as agent:slack-io would be
+// an answer nobody gave. The Slack user comes from an envelope on a socket the app token
+// authenticated, and this program then asserts that person to verse as it asserts its own
+// principal; verse trusts it as it trusts the CLI's. A principal verse verifies for itself is the
+// fix for both.
 type Socket struct {
 	s     *Slack
 	app   *api // holding the app-level token, which only apps.connections.open takes
@@ -53,26 +63,13 @@ type Socket struct {
 	// handler would send it.
 	Hint source.Hinter
 
-	// Answered, when set, is called after a press answers a question or casts a ballot: the out
+	// Asking, when set, answers which questions the message at (channel, ts) is asking: the out
+	// half's index of its own messages. Without it nothing here answers anything.
+	Asking func(channel, ts string) []Asked
+
+	// Answered, when set, is called after a reply answers a question or casts a ballot: the out
 	// half's Kick, so the message says so without waiting for its next pass.
 	Answered func()
-}
-
-// AnswerAction begins the action id of every button that answers a question.
-const AnswerAction = "verse.answer."
-
-// buttonAnswer is what a button's value carries: the question it answers, and with which option.
-type buttonAnswer struct {
-	Question string `json:"question"`
-	Option   string `json:"option"`
-}
-
-func answerValue(question, option string) (string, error) {
-	b, err := json.Marshal(buttonAnswer{Question: question, Option: option})
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // Socket is this workspace's Socket Mode listener, answering clicks at the verse at verseAddr.
@@ -151,7 +148,7 @@ func (k *Socket) session(ctx context.Context) (held bool, err error) {
 			continue
 		}
 		// Acknowledged first, before anything is done about it: an envelope Slack does not see
-		// acknowledged within a few seconds is sent again, and a click would be answered twice.
+		// acknowledged within a few seconds is sent again, and a reply would be answered twice.
 		if env.EnvelopeID != "" {
 			if err := websocket.JSON.Send(ws, map[string]string{"envelope_id": env.EnvelopeID}); err != nil {
 				return held, err
@@ -162,86 +159,172 @@ func (k *Socket) session(ctx context.Context) (held bool, err error) {
 			held = true
 		case "disconnect":
 			return held, nil
-		case "interactive":
-			go k.interactive(ctx, env.Payload) // off the read loop, so acknowledgements keep flowing
 		case "events_api":
 			var d delivery
 			if err := json.Unmarshal(env.Payload, &d); err != nil {
 				k.s.log("slack socket: an event that does not decode: %v", err)
 				continue
 			}
+			// Off the read loop, so acknowledgements keep flowing: the hint the reflection
+			// wants, and the answer somebody may have just typed.
 			go k.s.hintFor(ctx, d, k.Hint)
+			go k.said(ctx, env.Payload)
 		}
 	}
 }
 
-// interactive answers the question each button in a click names.
-func (k *Socket) interactive(ctx context.Context, payload json.RawMessage) {
+// said answers the question a reply in a thread is answering, if it is answering one.
+//
+// A delivery is read TWICE, here and as a hint (events.go), and deliberately so: `delivery` is
+// incapable of carrying a payload into the store, which is the law the reflection lives under,
+// while an answer is a control act and never a write. Two narrow readers of one envelope, neither
+// able to do the other's job.
+func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	var p struct {
-		Type string `json:"type"`
-		User struct {
-			ID string `json:"id"`
-		} `json:"user"`
-		ResponseURL string `json:"response_url"`
-		Actions     []struct {
-			ActionID string `json:"action_id"`
-			Value    string `json:"value"`
-		} `json:"actions"`
+		Event struct {
+			Type     string `json:"type"`
+			Subtype  string `json:"subtype"`
+			Channel  string `json:"channel"`
+			User     string `json:"user"`
+			BotID    string `json:"bot_id"`
+			Text     string `json:"text"`
+			TS       string `json:"ts"`
+			ThreadTS string `json:"thread_ts"`
+		} `json:"event"`
 	}
-	if err := json.Unmarshal(payload, &p); err != nil || p.Type != "block_actions" {
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return
 	}
-	for _, a := range p.Actions {
-		if !strings.HasPrefix(a.ActionID, AnswerAction) {
-			continue
+	e := p.Event
+	// A person, in a thread, saying something new. Not this program's own messages — its receipts
+	// are in the same threads — not an edit or a join, and not a message at channel level, which
+	// is somebody talking: nothing says which question it would be about.
+	if e.Type != "message" || e.Subtype != "" || e.BotID != "" || e.User == "" ||
+		e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
+		return
+	}
+	asked := k.Asking(e.Channel, e.ThreadTS)
+	if len(asked) == 0 {
+		return // not one of this program's questions, or it has settled since
+	}
+	id, option, err := choose(e.Text, asked)
+	if err != nil {
+		k.aside(ctx, e.Channel, e.ThreadTS, e.User, err.Error())
+		return
+	}
+	if id == "" {
+		return // somebody talking
+	}
+	said, answered, public := k.answer(ctx, e.User, id, option)
+	if answered && k.Answered != nil {
+		k.Answered()
+	}
+	if public {
+		k.inThread(ctx, e.Channel, e.ThreadTS, said)
+		return
+	}
+	// What went wrong is about the person who typed it rather than about the question, so the
+	// thread does not need it.
+	k.aside(ctx, e.Channel, e.ThreadTS, e.User, said)
+}
+
+// choose reads a reply as one of the options the thread's questions take: the question and the
+// option, nothing at all for a reply that is not an answer, and an error for one that could be
+// two answers.
+//
+// The words are the question's own, plus `y` and `n` for the two options a gate has unless it says
+// otherwise. Nothing here guesses: a reply is an answer when it SAYS one.
+func choose(text string, asked []Asked) (id, option string, err error) {
+	word := strings.ToLower(strings.Trim(strings.TrimSpace(stripMentions(text)), ".!?,;:"))
+	if word == "" || strings.ContainsAny(word, " \t\n") {
+		return "", "", nil // one word is an answer; a sentence is somebody talking
+	}
+	var could []string
+	for _, a := range asked {
+		for _, opt := range a.Options {
+			if word != strings.ToLower(opt) && word != alias(opt) {
+				continue
+			}
+			if id == "" {
+				id, option = a.ID, opt
+			}
+			could = append(could, "`"+a.ID+"`")
 		}
-		var ans buttonAnswer
-		if err := json.Unmarshal([]byte(a.Value), &ans); err != nil || ans.Question == "" || ans.Option == "" {
-			k.reply(ctx, p.ResponseURL, "Not answered: this button does not say which question it answers.")
-			continue
+	}
+	if len(could) > 1 {
+		return "", "", fmt.Errorf("%q could answer %s — reply in that question's own thread",
+			word, strings.Join(could, " or "))
+	}
+	return id, option, nil
+}
+
+// alias is the short word for an option: the two a gate has unless it says otherwise.
+func alias(option string) string {
+	switch option {
+	case "proceed":
+		return "y"
+	case "deny":
+		return "n"
+	}
+	return ""
+}
+
+// stripMentions drops `<@U123>` and the like, so that answering the bot by name is answering.
+func stripMentions(text string) string {
+	for {
+		i := strings.Index(text, "<")
+		if i < 0 {
+			return text
 		}
-		said, answered := k.answer(ctx, p.User.ID, ans)
-		if answered && k.Answered != nil {
-			k.Answered()
+		j := strings.Index(text[i:], ">")
+		if j < 0 {
+			return text
 		}
-		k.reply(ctx, p.ResponseURL, said)
+		text = text[:i] + text[i+j+1:]
 	}
 }
 
-// answer makes the click's answer as the person who clicked, and says what became of it, and
-// whether it counted: an answer, or a ballot on a question that takes more than one voice.
-func (k *Socket) answer(ctx context.Context, userID string, ans buttonAnswer) (string, bool) {
+// answer makes the answer as the person who typed it, and says what became of it: whether it
+// counted — an answer, or a ballot on a question that takes more than one voice — and whether what
+// there is to say belongs in the thread or to them alone.
+func (k *Socket) answer(ctx context.Context, userID, id, option string) (said string, answered, public bool) {
 	if k.verse == "" {
-		return "Not answered: this program was not told which verse the question is in", false
+		return "Not answered: this program was not told which verse the question is in", false, false
 	}
 	email, err := k.s.api.userEmail(ctx, userID)
 	if err != nil {
-		return "Not answered: " + err.Error(), false
+		return "Not answered: " + err.Error(), false, false
 	}
 	who := "user:" + email
 	resp, err := client.New(k.verse, who).Post("/gate/resolve", nil,
-		verseapi.Resolve{ID: ans.Question, Choice: ans.Option, By: who})
+		verseapi.Resolve{ID: id, Choice: option, By: who})
 	if err != nil {
-		return "Not answered: " + err.Error(), false
+		return "Not answered: " + err.Error(), false, false
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNoContent:
-		return fmt.Sprintf("Answered `%s`: %s.", ans.Question, ans.Option), true
+		return fmt.Sprintf("Answered `%s`: *%s*, by <@%s>.", id, option, userID), true, true
 	case http.StatusAccepted:
-		// The server says where the tally stands.
-		said, _ := io.ReadAll(resp.Body)
-		return fmt.Sprintf("`%s`: %s.", ans.Question, strings.TrimSpace(string(said))), true
+		// The server says where the tally stands, and the thread is where the others it waits
+		// on will look.
+		tally, _ := io.ReadAll(resp.Body)
+		return fmt.Sprintf("`%s`: %s (<@%s> said *%s*).", id,
+			strings.TrimSpace(string(tally)), userID, option), true, true
 	}
-	return "Not answered: " + client.StatusError(resp, "`"+ans.Question+"`").Error(), false
+	return "Not answered: " + client.StatusError(resp, "`"+id+"`").Error(), false, false
 }
 
-// reply says text to the person who clicked, and to nobody else.
-func (k *Socket) reply(ctx context.Context, responseURL, text string) {
-	if responseURL == "" {
-		return
+// inThread says text where the question was asked, so everyone reading it learns what was decided.
+func (k *Socket) inThread(ctx context.Context, channel, thread, text string) {
+	if _, _, err := k.s.api.postMessage(ctx, channel, thread, text); err != nil {
+		k.s.log("slack socket: saying what became of an answer: %v", err)
 	}
-	if err := k.s.api.respond(ctx, responseURL, text); err != nil {
-		k.s.log("slack socket: replying to a click: %v", err)
+}
+
+// aside says text to one person in the thread they typed in, and to nobody else.
+func (k *Socket) aside(ctx context.Context, channel, thread, user, text string) {
+	if err := k.s.api.ephemeral(ctx, channel, thread, user, text); err != nil {
+		k.s.log("slack socket: saying %q to %s: %v", text, user, err)
 	}
 }

@@ -35,7 +35,8 @@ func slackMain(args []string) error {
 	users := fs.Bool("users", true, "reflect the workspace's people as slack:user:* (needs users:read)")
 	out := fs.Bool("out", false, "also run the out half: say in Slack what is written under "+
 		"slack.<ws>.out, and write each one's <name>~status (needs chat:write, im:write); with "+
-		"SLACK_APP_TOKEN, a press of a button answers its question (needs users:read.email)")
+		"SLACK_APP_TOKEN, a reply in a message's thread answers the question it asks "+
+		"(needs users:read.email and the message events)")
 	verseAddr := fs.String("verse-addr", os.Getenv("VERSE_ADDR"),
 		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
 	as := fs.String("as", "agent:slack-io", "the principal the out half reads and writes as")
@@ -99,14 +100,14 @@ func slackMain(args []string) error {
 		sock := src.Socket(app, addr)
 		sock.Hint = c.hinter()
 		if o != nil {
-			sock.Answered = o.Kick
-			log.Printf("slack socket: hearing events, and answering button presses at %s as whoever pressed them", addr)
+			sock.Asking, sock.Answered = o.Asked, o.Kick
+			log.Printf("slack socket: hearing events, and answering questions at %s as whoever replies in the thread", addr)
 		} else {
 			log.Printf("slack socket: hearing events")
 		}
 		go sock.Run(ctx)
 	case o != nil:
-		log.Printf("no SLACK_APP_TOKEN: buttons are said, and a press of one answers nothing")
+		log.Printf("no SLACK_APP_TOKEN: questions are asked in Slack, and nothing there can answer one")
 	}
 	return c.serve(src.Root(), src, routes)
 }

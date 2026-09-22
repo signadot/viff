@@ -214,7 +214,7 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
               -threads             also reflect replies of threaded messages in the window (default true)
               -users               reflect the people (default true; needs users:read)
               -out                 also say in Slack what is written under slack.<ws>.out, and answer
-                                   the questions its buttons name (see below)
+                                   the questions those messages ask (see below)
               -verse-addr <addr>   the verse the out half reads and writes (VERSE_ADDR; default: -hint-url's host)
               -as <principal>      who the out half reads and writes as (default agent:slack-io)
               -out-every <d>       how often the out half reads what is asked (default 5s)
@@ -224,7 +224,7 @@ sourced slack -workspace <name>    the id prefix (default: the team name the tok
 |---|---|
 | `SLACK_BOT_TOKEN` | the bot token (`xoxb-…`). Required |
 | `SLACK_SIGNING_SECRET` | the app's signing secret. Without it `POST /slack/events` refuses every delivery |
-| `SLACK_APP_TOKEN` | the app-level token (`xapp-…`, `connections:write`): the program dials Socket Mode, and event deliveries arrive down it, and with `-out` so do presses of its buttons. Without it, and with `-out`, the buttons are said and nothing hears them |
+| `SLACK_APP_TOKEN` | the app-level token (`xapp-…`, `connections:write`): the program dials Socket Mode, and event deliveries arrive down it, and with `-out` so does a reply answering a question. Without it, nothing in Slack can answer one |
 
 The venue is a Slack app's **bot user**: `channels:read` + `groups:read` to list what it is in,
 `channels:history` + `groups:history` for the window, `users:read` for the people. **The bot's
@@ -236,7 +236,8 @@ Deliveries arrive one of two ways. With the app in Socket Mode and `SLACK_APP_TO
 down the connection the program dials, and nothing needs a public url. Otherwise, point the app's
 Event Subscriptions request url at `https://<host>/slack/events`. Either way a delivery is a hint
 naming the channel it is about, or a full resync when it names none; the app subscribes to the bot
-events for what it reflects (`message.channels`, `message.groups`, `channel_rename`, …).
+events for what it reflects (`message.channels`, `message.groups`, `channel_rename`, …), and
+`message.im` when a question asked in a DM is to be answerable there (`im:history`).
 
 | entity | payload |
 |---|---|
@@ -270,7 +271,7 @@ With `-out` the same program also says things in Slack. Somebody — a person, a
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text`, and `buttons` |
+| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text`, and `asks` |
 | status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted` (the message's fingerprint), and `error` while one stands |
 
 ```sh
@@ -313,45 +314,53 @@ is whose); the program's write is then refused, and it logs that.
 The out place stands outside the reflection's covers (`channel`, `message`, `user`), so a reflection
 pass never tombstones it.
 
-#### Buttons answer questions
+#### A message that asks a question
 
-An input may carry buttons, and **a button can only answer a question**: it names the question's id
-and one of its options.
+An input may name the question(s) it is about, and the message then says what each one says now,
+and how to answer it:
 
 ```sh
 verse data slack acme out U0123 review -put '{
   text: "slack-try asks: approve demo.slack.1?",
-  buttons: [
-    {label: Approve, answer: {question: "verse.trigger.slack-try.approval~efcf56b5", option: proceed}},
-    {label: Deny,    answer: {question: "verse.trigger.slack-try.approval~efcf56b5", option: deny}}]}'
+  asks: "verse.trigger.slack-try.approval~efcf56b5"}'
 ```
 
-Under the buttons the message carries a line of the program's own for each question, since a
-label is the writer's words and could say anything. The line says what the question's record says
-now, read each pass from `verse.gate.question.<id>` (which everyone may read):
+Those lines are the program's own, since the writer's words could say anything. Each is read every
+pass from `verse.gate.question.<id>`, which everyone may read:
 
-| the question | its buttons | the line |
-|---|---|---|
-| pending | shown | `Answers <id>`, then `waiting on …` from the question's `waitingOn` (a wildcard reads as "the docket"), and `so far: …` once a ballot is cast |
-| answered | gone | `<id> answered <verdict> by <who>`, and what they said with it |
-| withdrawn | gone | `<id> was withdrawn unanswered`, and why |
-| not posed | gone | `No question <id> stands`; the buttons appear once it does |
+| the question | the line, and what follows it |
+|---|---|
+| pending | `Answers <id>`, then `waiting on …` from the question's `waitingOn` (a wildcard reads as "the docket"), and `so far: …` once a ballot is cast — then `Answer in this thread:` and the options it takes |
+| answered | `<id> answered <verdict> by <who>`, and what they said with it |
+| withdrawn | `<id> was withdrawn unanswered`, and why |
+| not posed | `No question <id> stands`; the rest appears once it does |
 
 So a question settling redraws its message, which nobody wrote: in a channel, everyone sees the
-verdict and who gave it, not only whoever pressed. A button without a label, a question and an
-option is refused on the status, and nothing is said.
+verdict and who gave it, not only whoever answered.
 
-**A press is heard over Socket Mode**, with `SLACK_APP_TOKEN` set: the program dials out to Slack
-and presses arrive down that connection, so the app needs no public url and the verse no Ingress.
-The app has Socket Mode and Interactivity switched on, and no Request URL.
+**A message is text, not blocks**, and Slack renders mrkdwn in it. A message renders wherever
+Slack does — a phone's notification, a client that draws no blocks, a search result — where a
+block kit layout renders in rather fewer, and a gate with five options is five ids in a row.
 
-**A press answers as the person who pressed.** `users.info` turns their Slack id into
-`user:<email>` (`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's
-permissions decide whether they may answer. What became of it is said back to them alone: answered,
-the tally so far on a question that takes more than one voice, or verse's refusal in verse's words
-(not an answerer; answered already, and by whom). An answer also asks for a pass at once, so the
-message is redrawn while they are looking at it. It never answers as `-as`: an answer recorded as
-`agent:slack-io` would be one nobody gave.
+#### Answering: a reply in the thread
+
+With `SLACK_APP_TOKEN` set, a reply in a message's thread saying one of the question's options is
+that answer. The program dials Socket Mode, so the app needs no public url and the verse no
+Ingress, and the reply arrives as an ordinary message event.
+
+Two halves, kept apart. **Which** question a reply answers is decided without reading the words:
+the thread's parent is a message this program posted, and it remembers what each of its messages
+is asking. **What** the reply says is matched against that question's own options, plus `y` and `n`
+for the two a gate has unless it says otherwise. One word is an answer; a sentence is somebody
+talking, and is left alone.
+
+**It answers as the person who typed it.** `users.info` turns their Slack id into `user:<email>`
+(`users:read.email`), and the answer goes to `POST /gate/resolve` as them, so verse's permissions
+decide whether they may answer. What was decided is said in the thread, where everyone reading it
+can see it; a refusal — not an answerer, somebody answered first — is said to them alone, in
+verse's words, since it is about them rather than about the question. It never answers as `-as`:
+an answer recorded as `agent:slack-io` would be one nobody gave. An answer also asks for a pass at
+once, so the message is redrawn while they are looking at it.
 
 That person is asserted to verse the way the CLI asserts its own user, and verse trusts it as it
 trusts the CLI's. The Slack id is Slack's word, on a connection the app token opened.

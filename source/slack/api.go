@@ -262,13 +262,17 @@ type postResp struct {
 }
 
 // postMessage says text in channel (`chat:write`) and answers where it landed: the channel Slack
-// names and the message's ts, which is what an update needs. blocks, when there are any, are the
-// message's layout, and text is then what a notification and a screen reader show.
-func (a *api) postMessage(ctx context.Context, channel, text string, blocks []any) (string, string, error) {
+// names and the message's ts, which is what an update needs. In a thread when thread names one,
+// which is how an answer's receipt lands beside the question it answered.
+//
+// TEXT, NOT BLOCKS. Slack renders mrkdwn in a message, and a message renders everywhere Slack
+// does — a phone's notification, a client that draws no blocks, a search result — where a block
+// kit layout renders in rather fewer.
+func (a *api) postMessage(ctx context.Context, channel, thread, text string) (string, string, error) {
 	var r postResp
 	args := map[string]any{"channel": channel, "text": text}
-	if len(blocks) > 0 {
-		args["blocks"] = blocks
+	if thread != "" {
+		args["thread_ts"] = thread
 	}
 	if err := a.post(ctx, "chat.postMessage", args, &r); err != nil {
 		return "", "", err
@@ -282,15 +286,10 @@ func (a *api) postMessage(ctx context.Context, channel, text string, blocks []an
 	return r.Channel, r.TS, nil
 }
 
-// updateMessage replaces the text, and the blocks, of the message at ts in channel (`chat:write`).
-// No blocks clears the ones it had, so an input that drops its buttons drops them from Slack too.
-func (a *api) updateMessage(ctx context.Context, channel, ts, text string, blocks []any) error {
+// updateMessage replaces the text of the message at ts in channel (`chat:write`).
+func (a *api) updateMessage(ctx context.Context, channel, ts, text string) error {
 	var r envelope
-	if blocks == nil {
-		blocks = []any{}
-	}
-	args := map[string]any{"channel": channel, "ts": ts, "text": text, "blocks": blocks}
-	return a.post(ctx, "chat.update", args, &r)
+	return a.post(ctx, "chat.update", map[string]any{"channel": channel, "ts": ts, "text": text}, &r)
 }
 
 type permalinkResp struct {
@@ -428,29 +427,16 @@ func (a *api) connectionsOpen(ctx context.Context) (string, error) {
 	return r.URL, nil
 }
 
-// respond replies to a click, visibly to the person who clicked and nobody else, through the url
-// Slack sent with it. That url is its own authority, so it carries no token.
-func (a *api) respond(ctx context.Context, responseURL, text string) error {
-	b, err := json.Marshal(map[string]any{
-		"response_type": "ephemeral", "replace_original": false, "text": text,
-	})
-	if err != nil {
-		return err
+// ephemeral says text in channel to one person and to nobody else (`chat:write`), in a thread when
+// thread names one. What somebody needs to hear about their own message — that it answered
+// nothing, that they may not answer this — rather than what the channel needs to see.
+func (a *api) ephemeral(ctx context.Context, channel, thread, user, text string) error {
+	var r envelope
+	args := map[string]any{"channel": channel, "user": user, "text": text}
+	if thread != "" {
+		args["thread_ts"] = thread
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, responseURL, strings.NewReader(string(b)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	resp, err := a.cl.Do(req)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("slack response_url: %s", resp.Status)
-	}
-	return nil
+	return a.post(ctx, "chat.postEphemeral", args, &r)
 }
 
 // newAPI builds the client. Its own http.Client, never http.DefaultClient, so the timeout

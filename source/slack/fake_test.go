@@ -25,9 +25,11 @@ type fakeSlack struct {
 	users    []map[string]any
 
 	// The out half's side: what was said, and where.
-	posted  []map[string]any // chat.postMessage, in order: channel, ts, text, blocks
-	updates []map[string]any // chat.update, in order: channel, ts, text, blocks
-	opened  map[string]int   // conversations.open, by user
+	posted     []map[string]any // chat.postMessage at channel level, in order: channel, ts, text
+	updates    []map[string]any // chat.update, in order: channel, ts, text
+	inThread   []map[string]any // chat.postMessage in a thread: what a reply was answered with
+	ephemerals []map[string]any // chat.postEphemeral: what one person was told
+	opened     map[string]int   // conversations.open, by user
 
 	// The click's side: the Socket Mode url apps.connections.open answers with, which takes the
 	// app-level token and no other.
@@ -131,10 +133,19 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 		f.opened[str("users")]++
 		write(w, map[string]any{"ok": true, "channel": map[string]any{"id": "D" + str("users")}})
 	case "chat.postMessage":
-		ts := fmt.Sprintf("1790000000.%06d", len(f.posted)+1)
-		f.posted = append(f.posted, map[string]any{"channel": str("channel"), "ts": ts, "text": str("text"),
-			"blocks": args["blocks"]})
+		ts := fmt.Sprintf("1790000000.%06d", len(f.posted)+len(f.inThread)+1)
+		said := map[string]any{"channel": str("channel"), "ts": ts, "text": str("text"),
+			"thread_ts": str("thread_ts"), "blocks": args["blocks"]}
+		if str("thread_ts") != "" {
+			f.inThread = append(f.inThread, said)
+		} else {
+			f.posted = append(f.posted, said)
+		}
 		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": ts})
+	case "chat.postEphemeral":
+		f.ephemerals = append(f.ephemerals, map[string]any{"channel": str("channel"),
+			"user": str("user"), "thread_ts": str("thread_ts"), "text": str("text")})
+		write(w, map[string]any{"ok": true, "message_ts": "1790000000.000999"})
 	case "chat.update":
 		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text"),
 			"blocks": args["blocks"]})
@@ -169,4 +180,25 @@ func (f *fakeSlack) say(channel, ts, user, text string) map[string]any {
 	m := map[string]any{"type": "message", "ts": ts, "user": user, "text": text}
 	f.history[channel] = append(f.history[channel], m)
 	return m
+}
+
+// saidTo is what was said in the thread under ts — to everybody when to is "thread", to one
+// person by their id otherwise — and "" when nothing was.
+func (f *fakeSlack) saidTo(to, thread string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	said := f.inThread
+	if to != "thread" {
+		said = f.ephemerals
+	}
+	for _, m := range said {
+		if m["thread_ts"] != thread {
+			continue
+		}
+		if to != "thread" && m["user"] != to {
+			continue
+		}
+		return m["text"].(string)
+	}
+	return ""
 }

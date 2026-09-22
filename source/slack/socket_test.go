@@ -2,8 +2,6 @@ package slack_test
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -68,18 +66,17 @@ func (s *fakeSocket) connections() int {
 }
 
 // socketRig is a real verse holding a pending question, a fake Slack with its socket, the out half
-// to post the buttons and the socket to hear them pressed, and the response_url the replies go to.
+// to ask it in a channel, and the socket to hear the answer typed in that message's thread.
 type socketRig struct {
 	*outRig
-	srv     *versed.Server
-	sock    *fakeSocket
-	replies chan map[string]any
-	reply   string        // the response_url
-	kicked  chan struct{} // the socket asking the out half to redraw
-	hints   chan []entity.Ref
+	srv    *versed.Server
+	sock   *fakeSocket
+	kicked chan struct{}
+	hints  chan []entity.Ref
+	ts     string // the message asking the question, which a reply threads under
 }
 
-const clickedQuestion = "verse.trigger.review.review~1"
+const askedQuestion = "verse.trigger.review.review~1"
 
 func newSocketRig(t *testing.T) *socketRig {
 	t.Helper()
@@ -93,16 +90,7 @@ func newSocketRig(t *testing.T) *socketRig {
 	ss := httptest.NewServer(websocket.Handler(sock.handle))
 	t.Cleanup(ss.Close)
 
-	r := &socketRig{srv: srv, sock: sock, replies: make(chan map[string]any, 8), kicked: make(chan struct{}, 8),
-		hints: make(chan []entity.Ref, 8)}
-	rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		var body map[string]any
-		_ = json.NewDecoder(req.Body).Decode(&body)
-		r.replies <- body
-	}))
-	t.Cleanup(rs.Close)
-	r.reply = rs.URL
-
+	r := &socketRig{srv: srv, sock: sock, kicked: make(chan struct{}, 8), hints: make(chan []entity.Ref, 8)}
 	f := newFake()
 	f.socketURL = "ws" + strings.TrimPrefix(ss.URL, "http") + "/socket"
 	f.users = []map[string]any{
@@ -111,11 +99,13 @@ func newSocketRig(t *testing.T) *socketRig {
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
-	r.outRig = &outRig{store: store, fake: f, out: src.Out(client.New(addr, "agent:slack-io"))}
+	out := src.Out(client.New(addr, "agent:slack-io"))
+	r.outRig = &outRig{store: store, fake: f, out: out}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s := src.Socket(appToken, addr)
+	s.Asking = out.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
 	go func() { defer close(done); s.Run(ctx) }()
@@ -123,55 +113,53 @@ func newSocketRig(t *testing.T) *socketRig {
 	return r
 }
 
-// pending raises a gate the way a firing does and waits until its question stands.
-func (r *socketRig) pending(t *testing.T) {
+// asking raises a gate the way a firing does, waits until its question stands, and asks it in a
+// channel — so a test replies to the message the out half actually posted.
+func (r *socketRig) asking(t *testing.T) {
 	t.Helper()
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: clickedQuestion, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.GateQuestion{ID: askedQuestion, Origin: "review", Gate: "review", Mode: task.Ask},
 			task.ToolUse{Name: "verse.trigger.review"})
 	}()
+	stood := false
 	for range 400 {
-		if _, ok, _ := r.store.Get(mirror.QuestionRef(clickedQuestion)); ok {
-			return
+		if _, ok, _ := r.store.Get(mirror.QuestionRef(askedQuestion)); ok {
+			stood = true
+			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("question %s never stood", clickedQuestion)
-}
-
-// buttons posts an input with an Approve and a Deny button on the question, and answers the value
-// each posted button carries, so a click below presses what the out half actually said.
-func (r *socketRig) buttons(t *testing.T) map[string]string {
-	t.Helper()
-	r.ask(t, "U7", "review", entity.Obj{
-		"text": "the review is waiting on you",
-		"buttons": []any{
-			map[string]any{"label": "Approve", "answer": map[string]any{"question": clickedQuestion, "option": "proceed"}},
-			map[string]any{"label": "Deny", "answer": map[string]any{"question": clickedQuestion, "option": "deny"}},
-		},
+	if !stood {
+		t.Fatalf("question %s never stood", askedQuestion)
+	}
+	r.ask(t, "C999", "review", entity.Obj{
+		"text": "the review is waiting on you", "asks": askedQuestion,
 	})
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
 		t.Fatalf("posted %v, want the one message", r.fake.posted)
 	}
-	values := map[string]string{}
-	for _, b := range actionsOf(t, r.fake.posted[0]["blocks"]) {
-		values[b["text"].(map[string]any)["text"].(string)] = b["value"].(string)
+	r.ts, _ = r.fake.posted[0]["ts"].(string)
+	if !strings.Contains(shown(t, r.fake.posted[0]), "Answer in this thread") {
+		t.Fatalf("the message does not say how to answer: %q", shown(t, r.fake.posted[0]))
 	}
-	return values
 }
 
-// click sends a block_actions envelope as user pressing a button whose value is value.
-func (r *socketRig) click(t *testing.T, envelope, user, value string) {
+// reply says text in the thread of the message asking the question, as user.
+func (r *socketRig) reply(t *testing.T, envelope, user, text string) {
 	t.Helper()
-	r.sock.send <- map[string]any{
-		"envelope_id": envelope, "type": "interactive",
-		"payload": map[string]any{
-			"type": "block_actions", "user": map[string]any{"id": user}, "response_url": r.reply,
-			"actions": []any{map[string]any{"action_id": slack.AnswerAction + "0", "value": value}},
-		},
-	}
+	r.event(t, envelope, map[string]any{
+		"type": "message", "channel": "C999", "user": user, "text": text,
+		"ts": "1790000099.000100", "thread_ts": r.ts,
+	})
+}
+
+// event sends one Events API envelope and waits for the socket to acknowledge it.
+func (r *socketRig) event(t *testing.T, envelope string, ev map[string]any) {
+	t.Helper()
+	r.sock.send <- map[string]any{"envelope_id": envelope, "type": "events_api",
+		"payload": map[string]any{"type": "event_callback", "event": ev}}
 	select {
 	case got := <-r.sock.acks:
 		if got != envelope {
@@ -182,97 +170,82 @@ func (r *socketRig) click(t *testing.T, envelope, user, value string) {
 	}
 }
 
-func (r *socketRig) replied(t *testing.T) map[string]any {
+// heard waits for what the socket says back: in the thread for everyone, or to one person alone.
+func (r *socketRig) heard(t *testing.T, to string) string {
 	t.Helper()
-	select {
-	case body := <-r.replies:
-		return body
-	case <-time.After(5 * time.Second):
-		t.Fatal("the click was never replied to")
+	for range 400 {
+		if got := r.fake.saidTo(to, r.ts); got != "" {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	return nil
+	t.Fatalf("nothing was said to %q", to)
+	return ""
 }
 
 func (r *socketRig) question(t *testing.T) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(mirror.QuestionRef(clickedQuestion))
+	e, ok, err := r.store.Get(mirror.QuestionRef(askedQuestion))
 	if err != nil || !ok {
 		t.Fatalf("reading the question: ok %v, %v", ok, err)
 	}
 	return entity.ToObj(e.Payload)
 }
 
-// actionsOf is the buttons of a posted message's actions block.
-func actionsOf(t *testing.T, blocks any) []map[string]any {
-	t.Helper()
-	list, _ := blocks.([]any)
-	for _, b := range list {
-		if bm, _ := b.(map[string]any); bm["type"] == "actions" {
-			var out []map[string]any
-			for _, e := range bm["elements"].([]any) {
-				out = append(out, e.(map[string]any))
-			}
-			return out
-		}
-	}
-	t.Fatalf("no actions block in %v", blocks)
-	return nil
-}
-
-// A press of a posted button answers its question AS THE PERSON WHO PRESSED IT, and tells them so,
-// visibly to them alone.
-func TestAClickAnswersTheQuestionAsTheClicker(t *testing.T) {
+// A reply in the thread saying one of the question's options answers it, AS THE PERSON WHO TYPED
+// IT, and the thread is told what was decided.
+func TestAReplyAnswersTheQuestionAsWhoeverTypedIt(t *testing.T) {
 	r := newSocketRig(t)
-	r.pending(t)
-	values := r.buttons(t)
+	r.asking(t)
 
-	r.click(t, "e1", "U7", values["Approve"])
-	reply := r.replied(t)
-	if reply["response_type"] != "ephemeral" || reply["replace_original"] != false {
-		t.Errorf("reply %v, want an ephemeral reply beside the message", reply)
+	r.reply(t, "e1", "U7", "proceed")
+	if said := r.heard(t, "thread"); !strings.Contains(said, "Answered") || !strings.Contains(said, "U7") {
+		t.Errorf("said %q in the thread, want the answer and who gave it", said)
 	}
-	if text, _ := reply["text"].(string); !strings.HasPrefix(text, "Answered") {
-		t.Errorf("replied %q, want it answered", text)
-	}
-	q := r.question(t)
-	if q["by"] != "user:scott@example.com" {
-		t.Errorf("answered by %v, want the person who clicked and never agent:slack-io", q["by"])
+	if q := r.question(t); q["by"] != "user:scott@example.com" || q["verdict"] != "proceed" {
+		t.Errorf("answered %v by %v, want proceed by the person who typed it", q["verdict"], q["by"])
 	}
 
-	// And the message says so to everyone, redrawn at once rather than at the next interval.
+	// And the message itself is redrawn, asked for at once rather than at the next interval.
 	select {
 	case <-r.kicked:
 	default:
-		t.Fatal("an answered press did not ask for the message to be redrawn")
+		t.Fatal("an answered reply did not ask for the message to be redrawn")
 	}
 	r.pass(t)
 	if len(r.fake.updates) != 1 {
 		t.Fatalf("updated %d times, want the message redrawn", len(r.fake.updates))
 	}
-	buttons, lines := shown(t, r.fake.updates[0])
-	if len(buttons) != 0 || !strings.Contains(lines, "answered *proceed* by scott@example.com") {
-		t.Errorf("redrawn with buttons %v, saying %q: want the verdict and no buttons", buttons, lines)
+	redrawn := shown(t, r.fake.updates[0])
+	if strings.Contains(redrawn, "Answer in this thread") || !strings.Contains(redrawn, "answered *proceed*") {
+		t.Errorf("redrawn as %q: want the verdict, and no way left to answer", redrawn)
 	}
 }
 
-// The second person to press hears versed's refusal in versed's words, and the first answer stands.
-func TestASecondClickHearsVersedsRefusal(t *testing.T) {
+// `y` and `n` are the two options a gate has unless it says otherwise.
+func TestAReplySayingYAnswersProceed(t *testing.T) {
 	r := newSocketRig(t)
-	r.pending(t)
-	values := r.buttons(t)
+	r.asking(t)
 
-	r.click(t, "e1", "U7", values["Approve"])
-	r.replied(t)
-	<-r.kicked
-	r.click(t, "e2", "U8", values["Deny"])
-	text, _ := r.replied(t)["text"].(string)
-	select {
-	case <-r.kicked:
-		t.Error("a refused press asked for a redraw")
-	default:
+	r.reply(t, "e1", "U7", "y")
+	r.heard(t, "thread")
+	if q := r.question(t); q["verdict"] != "proceed" {
+		t.Errorf("answered %v, want proceed", q["verdict"])
 	}
-	if !strings.HasPrefix(text, "Not answered: ") || !strings.Contains(text, "already") {
-		t.Errorf("replied %q, want versed's refusal", text)
+}
+
+// The second person to answer hears verse's refusal, and hears it alone: it is about them, not
+// about the question, which the thread already says was decided.
+func TestASecondReplyHearsVersesRefusalAlone(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.reply(t, "e1", "U7", "proceed")
+	r.heard(t, "thread")
+	<-r.kicked
+	r.reply(t, "e2", "U8", "deny")
+	if said := r.heard(t, "U8"); !strings.HasPrefix(said, "Not answered: ") || !strings.Contains(said, "already") {
+		t.Errorf("said %q to the second answerer, want verse's refusal", said)
 	}
 	if q := r.question(t); q["by"] != "user:scott@example.com" {
 		t.Errorf("answered by %v, want the first answer to stand", q["by"])
@@ -280,26 +253,71 @@ func TestASecondClickHearsVersedsRefusal(t *testing.T) {
 }
 
 // A person whose email this app may not read is nobody verse knows, so nothing is answered.
-func TestAClickerWithNoEmailAnswersNothing(t *testing.T) {
+func TestAReplyFromSomebodyWithNoEmailAnswersNothing(t *testing.T) {
 	r := newSocketRig(t)
-	r.pending(t)
-	values := r.buttons(t)
+	r.asking(t)
 
-	r.click(t, "e1", "U9", values["Approve"])
-	if text, _ := r.replied(t)["text"].(string); !strings.Contains(text, "no email") {
-		t.Errorf("replied %q, want the missing email named", text)
+	r.reply(t, "e1", "U9", "proceed")
+	if said := r.heard(t, "U9"); !strings.Contains(said, "no email") {
+		t.Errorf("said %q, want the missing email named", said)
 	}
 	if q := r.question(t); q["status"] != mirror.QuestionPending {
 		t.Errorf("question %v, want it still pending", q)
 	}
 }
 
-// A button that does not say what it answers is refused, whoever presses it.
-func TestAButtonWithNoAnswerIsRefused(t *testing.T) {
+// A reply that says none of the options is somebody talking: nothing is answered, and nothing is
+// said back at them for saying something.
+func TestAReplyThatIsNotAnAnswerIsLeftAlone(t *testing.T) {
 	r := newSocketRig(t)
-	r.click(t, "e1", "U7", "not an answer")
-	if text, _ := r.replied(t)["text"].(string); !strings.Contains(text, "does not say which question") {
-		t.Errorf("replied %q", text)
+	r.asking(t)
+
+	r.reply(t, "e1", "U7", "hold on, checking with ops")
+	time.Sleep(100 * time.Millisecond)
+	if got := r.fake.saidTo("thread", r.ts) + r.fake.saidTo("U7", r.ts); got != "" {
+		t.Errorf("said %q to somebody talking", got)
+	}
+	if q := r.question(t); q["status"] != mirror.QuestionPending {
+		t.Errorf("question %v, want it still pending", q)
+	}
+}
+
+// A reply under a message this program did not post answers nothing.
+func TestAReplyInAnotherThreadIsNotAnAnswer(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+
+	r.event(t, "e1", map[string]any{"type": "message", "channel": "C999", "user": "U7",
+		"text": "proceed", "ts": "1790000099.000100", "thread_ts": "1780000000.000001"})
+	time.Sleep(100 * time.Millisecond)
+	if q := r.question(t); q["status"] != mirror.QuestionPending {
+		t.Errorf("question %v, want it still pending", q)
+	}
+}
+
+// An Events API delivery down the socket is the hint the request url would have sent: the channel
+// it names, or a full resync when it names none.
+func TestAnEventDownTheSocketIsAHint(t *testing.T) {
+	r := newSocketRig(t)
+	for _, c := range []struct {
+		event map[string]any
+		want  string // the hinted ref, "" for a full resync
+	}{
+		{map[string]any{"type": "message", "channel": "C123", "ts": "1.1", "text": "hi"}, "C123"},
+		{map[string]any{"type": "user_change", "user": map[string]any{"id": "U7"}}, ""},
+	} {
+		r.event(t, "ev", c.event)
+		select {
+		case refs := <-r.hints:
+			switch {
+			case c.want == "" && len(refs) != 0:
+				t.Errorf("%v hinted %v, want a full resync", c.event["type"], refs)
+			case c.want != "" && (len(refs) != 1 || !strings.Contains(refs[0].String(), c.want)):
+				t.Errorf("%v hinted %v, want the channel %s", c.event["type"], refs, c.want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%v was never hinted", c.event["type"])
+		}
 	}
 }
 
@@ -317,32 +335,4 @@ func TestTheSocketDialsAgainOnDisconnect(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("%d connections, want a second after the disconnect", r.sock.connections())
-}
-
-// An Events API delivery down the socket is the hint the request url would have sent: the channel
-// it names, or a full resync when it names none.
-func TestAnEventDownTheSocketIsAHint(t *testing.T) {
-	r := newSocketRig(t)
-	for _, c := range []struct {
-		event map[string]any
-		want  string // the hinted ref, "" for a full resync
-	}{
-		{map[string]any{"type": "message", "channel": "C123", "ts": "1.1", "text": "hi"}, "C123"},
-		{map[string]any{"type": "user_change", "user": map[string]any{"id": "U7"}}, ""},
-	} {
-		r.sock.send <- map[string]any{"envelope_id": "ev", "type": "events_api",
-			"payload": map[string]any{"type": "event_callback", "event": c.event}}
-		<-r.sock.acks
-		select {
-		case refs := <-r.hints:
-			switch {
-			case c.want == "" && len(refs) != 0:
-				t.Errorf("%v hinted %v, want a full resync", c.event["type"], refs)
-			case c.want != "" && (len(refs) != 1 || !strings.Contains(refs[0].String(), c.want)):
-				t.Errorf("%v hinted %v, want the channel %s", c.event["type"], refs, c.want)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatalf("%v was never hinted", c.event["type"])
-		}
-	}
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -27,9 +27,7 @@ import (
 // Somebody (a person, a charter) writes an INPUT at `slack.<ws>.out.<target>.<name>`:
 //
 //	text: "the review of demo.pr.1 is waiting on you"
-//	buttons:                  # optional; a button can only answer a question (see socket.go)
-//	- {label: Approve, answer: {question: "review@demo.pr.1~d3", option: proceed}}
-//	- {label: Deny, answer: {question: "review@demo.pr.1~d3", option: deny}}
+//	asks: "review@demo.pr.1~d3"   # optional: the question(s) this message is about
 //
 // and this answers with its STATUS at the sibling `slack.<ws>.out.<target>.<name>~status`:
 //
@@ -68,6 +66,9 @@ type Out struct {
 	verse *client.Client
 	now   func() time.Time
 	kick  chan struct{}
+
+	mu    sync.Mutex
+	asked map[string][]Asked // (channel, ts) → the questions that message is asking
 }
 
 // StatusSuffix ends the name of every status, and of no input.
@@ -158,20 +159,23 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 		o.fail(target, name, status, fmt.Errorf("an input carries {text}, and this one has none"))
 		return
 	}
-	blocks, err := o.layout(text, input)
+	body, asked, err := o.body(text, input)
 	if err != nil {
 		o.fail(target, name, status, err)
 		return
 	}
-	fp := fingerprint(text, blocks)
+	fp := fingerprint(body)
 	channel, ts := entity.Str(status, "channel"), entity.Str(status, "ts")
+	// Every pass, in step or not: what this message is asking is how a reply to it is matched,
+	// and the pass that says nothing to Slack is the ordinary one.
+	o.remember(channel, ts, asked)
 	if ts != "" && entity.Str(status, "posted") == fp {
 		return // in step: the message shows this input
 	}
 	now := o.now().UTC().Format(time.RFC3339)
 
 	if ts != "" {
-		if err := o.s.api.updateMessage(ctx, channel, ts, text, blocks); err != nil {
+		if err := o.s.api.updateMessage(ctx, channel, ts, body); err != nil {
 			o.fail(target, name, status, err)
 			return
 		}
@@ -186,7 +190,7 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 			return
 		}
 	}
-	landed, ts, err := o.s.api.postMessage(ctx, channel, text, blocks)
+	landed, ts, err := o.s.api.postMessage(ctx, channel, "", body)
 	if err != nil {
 		o.fail(target, name, status, err)
 		return
@@ -200,74 +204,95 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 	if link, err := o.s.api.permalink(ctx, landed, ts); err == nil && link != "" {
 		st["permalink"] = link
 	}
+	o.remember(landed, ts, asked)
 	o.write(target, name, st)
 }
 
-// layout lays an input out for Slack: its text and, when it has buttons, the buttons and a line of
-// this program's own for each question they answer. No buttons is no blocks, and the message is
-// its text.
+// body is the message an input asks for: its text, and beneath it a line of this program's own for
+// each question the input is about, and how to answer the ones still pending. It answers the
+// questions still open too, which is what the out half remembers of its own messages (Asked).
 //
-// That line is not the writer's to word: a label is, and a label is exactly what could misstate
-// what a press does. It says what the question's record says NOW: who it waits on while it is
-// pending, the verdict and who gave it once answered, why it was withdrawn. A button is shown only
-// while its question is pending, so a message never offers an answer that would be refused, and
-// once a question settles the message is redrawn to say how, to everyone who can see it — in a
-// channel, not only to whoever pressed.
-func (o *Out) layout(text string, input *ir.Node) ([]any, error) {
-	btns := ir.Uncomment(entity.Get(input, "buttons"))
-	if btns == nil {
-		return nil, nil
+// Those lines are not the writer's to word. They say what each question's record says NOW — who it
+// waits on while it is pending, the verdict and who gave it once answered, why it was withdrawn —
+// so a question settling redraws a message nobody wrote to, and everyone who can see it is told,
+// not only whoever answered. An input that asks about nothing is its text and no more.
+func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
+	asks := strs(entity.Get(input, "asks"))
+	if len(asks) == 0 {
+		return text, nil, nil
 	}
-	if btns.Type != ir.ArrayType || len(btns.Values) == 0 {
-		return nil, fmt.Errorf("buttons is a list of {label, answer: {question, option}}")
-	}
-	type button struct{ label, question, option string }
-	var buttons []button
-	var questions []string
-	for i, b := range btns.Values {
-		ans := entity.Get(b, "answer")
-		bt := button{entity.Str(b, "label"), entity.Str(ans, "question"), entity.Str(ans, "option")}
-		if bt.label == "" || bt.question == "" || bt.option == "" {
-			return nil, fmt.Errorf("button %d needs a label and answer: {question, option}", i+1)
-		}
-		buttons = append(buttons, bt)
-		if !slices.Contains(questions, bt.question) {
-			questions = append(questions, bt.question)
-		}
-	}
-
-	asked := map[string]question{}
-	var lines []any
-	for _, id := range questions {
+	said := []string{text}
+	var open []Asked
+	var options []string
+	for _, id := range asks {
 		q, err := o.question(id)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
-		asked[id] = q
-		lines = append(lines, map[string]any{"type": "mrkdwn", "text": q.line()})
-	}
-	var elements []any
-	for i, b := range buttons {
-		if !asked[b.question].pending() {
+		said = append(said, "> "+q.line())
+		if !q.pending() {
 			continue
 		}
-		value, err := answerValue(b.question, b.option)
-		if err != nil {
-			return nil, err
+		open = append(open, Asked{ID: id, Options: q.options})
+		for _, opt := range q.options {
+			if !slices.Contains(options, opt) {
+				options = append(options, opt)
+			}
 		}
-		elements = append(elements, map[string]any{
-			"type": "button", "action_id": fmt.Sprintf("%s%d", AnswerAction, i), "value": value,
-			"text": map[string]any{"type": "plain_text", "text": b.label},
-		})
 	}
-	blocks := []any{map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": text}}}
-	if len(elements) > 0 {
-		blocks = append(blocks, map[string]any{"type": "actions", "elements": elements})
+	// How to answer, in the words the question itself takes. A reply in this thread is the whole
+	// interface: it needs no block to render, and it is what one person would have typed to
+	// another.
+	if len(options) > 0 {
+		said = append(said, "Answer in this thread: "+code(options))
 	}
-	return append(blocks, map[string]any{"type": "context", "elements": lines}), nil
+	return strings.Join(said, "\n"), open, nil
 }
 
-// question is what a message says of a question its buttons answer, as its record says it.
+// Asked is one question a posted message is about, and what it takes to answer it: what the out
+// half remembers of its own messages, so a reply in a thread can be matched to the question that
+// thread is asking (socket.go).
+type Asked struct {
+	ID      string
+	Options []string
+}
+
+// Asked is the questions the message at (channel, ts) is asking, pending ones only, as the last
+// pass read them. Nothing, for a message this program did not post or one whose questions have
+// settled — a reply to that is somebody talking, not somebody answering.
+func (o *Out) Asked(channel, ts string) []Asked {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.asked[channel+"/"+ts]
+}
+
+// remember indexes one posted message by where it landed, for Asked.
+func (o *Out) remember(channel, ts string, asked []Asked) {
+	if channel == "" || ts == "" {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.asked == nil {
+		o.asked = map[string][]Asked{}
+	}
+	if len(asked) == 0 {
+		delete(o.asked, channel+"/"+ts)
+		return
+	}
+	o.asked[channel+"/"+ts] = asked
+}
+
+// code is a list as Slack renders code: `proceed`, `deny`.
+func code(words []string) string {
+	out := make([]string, len(words))
+	for i, w := range words {
+		out[i] = "`" + w + "`"
+	}
+	return strings.Join(out, ", ")
+}
+
+// question is what a message says of a question it is about, as its record says it.
 type question struct {
 	id       string
 	standing bool // a record stands at the question's place
@@ -277,6 +302,7 @@ type question struct {
 	why      string
 	say      []string
 	waiting  []string
+	options  []string // what it takes to answer, in the order the gate wrote them
 	ballots  []string // "<who> <choice>", in name order
 }
 
@@ -295,6 +321,13 @@ func (o *Out) question(id string) (question, error) {
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
 	q.waiting = strs(entity.Get(doc, mirror.WaitingOnField))
+	if opts := ir.Uncomment(entity.Get(doc, "options")); opts != nil {
+		for _, opt := range opts.Values {
+			if id := entity.Str(opt, "id"); id != "" {
+				q.options = append(q.options, id)
+			}
+		}
+	}
 	ballots := entity.Get(doc, "ballots")
 	for _, who := range fieldNames(ballots) {
 		q.ballots = append(q.ballots, person(who)+" "+entity.Str(entity.Get(ballots, who), "choice"))
@@ -420,14 +453,9 @@ func (o *Out) write(target, name string, fields entity.Obj) {
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is
-// an update. JSON rather than tony because the message is Slack's, and encoding/json writes an
-// object's keys sorted, so the same message is the same bytes.
-func fingerprint(text string, blocks []any) string {
-	b, err := json.Marshal(map[string]any{"text": text, "blocks": blocks})
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(b)
+// an update.
+func fingerprint(body string) string {
+	sum := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(sum[:8])
 }
 

@@ -173,62 +173,39 @@ func (r *outRig) pose(t *testing.T, id string, record entity.Obj) {
 	entitytest.Set(t, r.store, mirror.QuestionRef(id), record.Payload())
 }
 
-// askButtons writes an input whose buttons answer q with proceed or deny.
-func (r *outRig) askButtons(t *testing.T, q string) {
+// askAbout writes an input about the question q.
+func (r *outRig) askAbout(t *testing.T, q string) {
 	t.Helper()
-	r.ask(t, "C999", "review", entity.Obj{
-		"text": "the review is waiting",
-		"buttons": []any{
-			map[string]any{"label": "Approve", "answer": map[string]any{"question": q, "option": "proceed"}},
-			map[string]any{"label": "Deny", "answer": map[string]any{"question": q, "option": "deny"}},
-		},
-	})
+	r.ask(t, "C999", "review", entity.Obj{"text": "the review is waiting", "asks": q})
 }
 
-// shown is a message's buttons, by label, and the program's lines beneath them.
-func shown(t *testing.T, m map[string]any) (buttons map[string]map[string]any, lines string) {
+// shown is what a message says, the writer's line and this program's lines.
+func shown(t *testing.T, m map[string]any) string {
 	t.Helper()
-	buttons = map[string]map[string]any{}
-	blocks, _ := m["blocks"].([]any)
-	var said []string
-	for _, b := range blocks {
-		bm := b.(map[string]any)
-		switch bm["type"] {
-		case "actions":
-			for _, e := range bm["elements"].([]any) {
-				em := e.(map[string]any)
-				buttons[em["text"].(map[string]any)["text"].(string)] = em
-			}
-		case "context":
-			for _, e := range bm["elements"].([]any) {
-				said = append(said, e.(map[string]any)["text"].(string))
-			}
-		}
-	}
-	return buttons, strings.Join(said, "\n")
+	said, _ := m["text"].(string)
+	return said
 }
 
-// Buttons are laid out as answers: each carries the question and option it answers, and a line
-// the writer does not word says which question it is and who it waits on.
-func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
+// An input names the questions it is about, and the message says what each one says now, and how
+// to answer it — in words, in the thread, since a button renders in fewer places than a message.
+func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 	r := newOutRig(t)
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
-		mirror.WaitingOnField: []any{"user:scott@example.com", "user:ana@example.com"}})
-	r.askButtons(t, "q~1")
+		mirror.WaitingOnField: []any{"user:scott@example.com", "user:ana@example.com"},
+		"options":             []any{map[string]any{"id": "proceed"}, map[string]any{"id": "deny"}}})
+	r.askAbout(t, "q~1")
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
 		t.Fatalf("posted %v, want one message", r.fake.posted)
 	}
-	buttons, lines := shown(t, r.fake.posted[0])
-	btn := buttons["Approve"]
-	if btn["value"] != `{"question":"q~1","option":"proceed"}` || !strings.HasPrefix(btn["action_id"].(string), slack.AnswerAction) {
-		t.Errorf("button %v, want it to answer q~1 with proceed", btn)
+	want := "the review is waiting\n" +
+		"> Answers `q~1` · waiting on scott@example.com, ana@example.com\n" +
+		"Answer in this thread: `proceed`, `deny`"
+	if said := shown(t, r.fake.posted[0]); said != want {
+		t.Errorf("said\n%s\nwant\n%s", said, want)
 	}
-	if want := "Answers `q~1` · waiting on scott@example.com, ana@example.com"; lines != want {
-		t.Errorf("said %q, want %q", lines, want)
-	}
-	if r.fake.posted[0]["text"] != "the review is waiting" {
-		t.Errorf("text %v, want the text kept for notifications", r.fake.posted[0]["text"])
+	if r.fake.posted[0]["blocks"] != nil {
+		t.Errorf("blocks %v: a message is text", r.fake.posted[0]["blocks"])
 	}
 }
 
@@ -237,7 +214,7 @@ func TestOutLaysButtonsOutAsAnswers(t *testing.T) {
 func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 	r := newOutRig(t)
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending})
-	r.askButtons(t, "q~1")
+	r.askAbout(t, "q~1")
 	r.pass(t)
 
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "deny",
@@ -246,12 +223,12 @@ func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 	if len(r.fake.posted) != 1 || len(r.fake.updates) != 1 {
 		t.Fatalf("posted %d, updated %d: want the one message redrawn", len(r.fake.posted), len(r.fake.updates))
 	}
-	buttons, lines := shown(t, r.fake.updates[0])
-	if len(buttons) != 0 {
-		t.Errorf("buttons %v on a settled question", buttons)
+	said := shown(t, r.fake.updates[0])
+	if strings.Contains(said, "Answer in this thread") {
+		t.Errorf("said %q: a settled question still says how to answer it", said)
 	}
-	if want := "`q~1` answered *deny* by ani@example.com: not on friday"; lines != want {
-		t.Errorf("said %q, want %q", lines, want)
+	if want := "> `q~1` answered *deny* by ani@example.com: not on friday"; !strings.Contains(said, want) {
+		t.Errorf("said %q, want it to carry %q", said, want)
 	}
 	r.pass(t)
 	if len(r.fake.updates) != 1 {
@@ -264,13 +241,14 @@ func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 // reached it after says otherwise.
 func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 	for _, c := range []struct {
-		name    string
-		record  entity.Obj // nil: no record stands
-		buttons bool
-		says    string
+		name      string
+		record    entity.Obj // nil: no record stands
+		openStill bool
+		says      string
 	}{
 		{"not asked", nil, false, "No question `q~1` stands"},
 		{"a ballot so far", entity.Obj{"status": mirror.QuestionPending,
+			"options": []any{map[string]any{"id": "proceed"}},
 			"ballots": map[string]any{"user:ani@example.com": map[string]any{"choice": "proceed"}}},
 			true, "Answers `q~1` · so far: ani@example.com proceed"},
 		{"answered", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
@@ -285,49 +263,44 @@ func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 			if c.record != nil {
 				r.pose(t, "q~1", c.record)
 			}
-			r.askButtons(t, "q~1")
+			r.askAbout(t, "q~1")
 			r.pass(t)
 			if len(r.fake.posted) != 1 {
 				t.Fatalf("posted %v, want one message", r.fake.posted)
 			}
-			buttons, lines := shown(t, r.fake.posted[0])
-			if (len(buttons) > 0) != c.buttons {
-				t.Errorf("buttons %v, want buttons: %v", buttons, c.buttons)
+			said := shown(t, r.fake.posted[0])
+			if !strings.Contains(said, "> "+c.says) {
+				t.Errorf("said %q, want it to carry %q", said, c.says)
 			}
-			if lines != c.says {
-				t.Errorf("said %q, want %q", lines, c.says)
+			if open := strings.Contains(said, "Answer in this thread"); open != c.openStill {
+				t.Errorf("said %q, want it to say how to answer: %v", said, c.openStill)
 			}
 		})
 	}
 }
 
-// A message posted before its question stands offers no button, and gains them when it does.
-func TestOutOffersTheButtonsOnceTheQuestionStands(t *testing.T) {
+// A message posted before its question stands says so, and says how to answer once it does.
+func TestOutSaysHowToAnswerOnceTheQuestionStands(t *testing.T) {
 	r := newOutRig(t)
-	r.askButtons(t, "q~1")
+	r.askAbout(t, "q~1")
 	r.pass(t)
-	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending})
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
+		"options": []any{map[string]any{"id": "proceed"}, map[string]any{"id": "deny"}}})
 	r.pass(t)
 	if len(r.fake.updates) != 1 {
 		t.Fatalf("updated %d times, want the message redrawn once the question stood", len(r.fake.updates))
 	}
-	if buttons, _ := shown(t, r.fake.updates[0]); len(buttons) != 2 {
-		t.Errorf("buttons %v, want both offered", buttons)
+	if said := shown(t, r.fake.updates[0]); !strings.Contains(said, "Answer in this thread: `proceed`, `deny`") {
+		t.Errorf("said %q, want the options it takes", said)
 	}
 }
 
-// A button that answers nothing is not said, and the status says why.
-func TestOutRefusesAButtonThatAnswersNothing(t *testing.T) {
+// An input that is about no question is its text and no more.
+func TestOutSaysAPlainInputAsItIs(t *testing.T) {
 	r := newOutRig(t)
-	r.ask(t, "U123", "review", entity.Obj{
-		"text":    "hi",
-		"buttons": []any{map[string]any{"label": "Do it", "url": "https://example.com"}},
-	})
+	r.ask(t, "C999", "notice", entity.Obj{"text": "staging.3 is out"})
 	r.pass(t)
-	if len(r.fake.posted) != 0 {
-		t.Errorf("said %v, want nothing said", r.fake.posted)
-	}
-	if st := r.status(t, "U123", "review"); !strings.Contains(st["error"].(string), "answer") {
-		t.Errorf("status %v, want the button refused", st)
+	if said := shown(t, r.fake.posted[0]); said != "staging.3 is out" {
+		t.Errorf("said %q, want the text as written", said)
 	}
 }
