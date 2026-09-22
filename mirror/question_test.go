@@ -333,3 +333,22 @@ func TestASettledQuestionWaitsOnNobody(t *testing.T) {
 		t.Errorf("answerers %v, want the gate's own kept", got)
 	}
 }
+
+// The words a gate wrote ride the question, so a presenter that may not read the subject can
+// still say what is being decided.
+func TestAQuestionCarriesTheWordsItWasAskedIn(t *testing.T) {
+	store := docket(t)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: "run-a~d1", Origin: "run-a", Gate: "write-guard",
+			Subject: `demo.pr."1"`, Pose: "Deploy *the migration* to staging?"},
+		Tool: "write",
+	}, "run-a")
+
+	e, ok, err := store.Get(QuestionRef("run-a~d1"))
+	if err != nil || !ok {
+		t.Fatalf("reading the question: ok %v, %v", ok, err)
+	}
+	if got := entity.Str(e.Payload, "pose"); got != "Deploy *the migration* to staging?" {
+		t.Errorf("pose %q, want the words the gate wrote", got)
+	}
+}

@@ -40,6 +40,11 @@ type GateQuestion struct {
 	Mode   Mode
 	Gate   string // name of the deciding gate, or "" for the default
 	Reason string
+	// Pose is the question in words, as the gate wrote it and the firing expanded it
+	// (trigger.Gate.Pose). Empty for a gate that says nothing, and for every question a task
+	// raises of its own accord — then `Reason` is all there is, which is what it was before
+	// anything could be said in words.
+	Pose string
 	// Subject is the entity the question is ABOUT — the PR, the change, the release.
 	// Origin says who asked and Gate says which rule; neither says what is at stake, and
 	// that is the thing an answerer needs. Empty when the question is not about an entity

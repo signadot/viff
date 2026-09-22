@@ -295,7 +295,8 @@ func code(words []string) string {
 // question is what a message says of a question it is about, as its record says it.
 type question struct {
 	id       string
-	standing bool // a record stands at the question's place
+	pose     string // what it asks, in the words the gate wrote
+	standing bool   // a record stands at the question's place
 	status   string
 	verdict  string
 	by       string
@@ -317,6 +318,7 @@ func (o *Out) question(id string) (question, error) {
 		return q, nil
 	}
 	q.standing = true
+	q.pose = entity.Str(doc, "pose")
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.say = strs(entity.Get(doc, "say"))
@@ -349,7 +351,12 @@ func (q question) line() string {
 	case !q.standing:
 		return "No question " + id + " stands"
 	case q.pending():
+		// What the gate asks, in its own words, and the id only when it wrote none: somebody
+		// answering does not need the address of what they are answering.
 		line := "Answers " + id
+		if q.pose != "" {
+			line = q.pose
+		}
 		if len(q.waiting) > 0 {
 			line += " · waiting on " + people(q.waiting)
 		}

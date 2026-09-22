@@ -300,6 +300,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	// key is visible, an empty one is camouflage. A bare `verse task run` is about nothing,
 	// and a brokered gate legitimately carries neither origin nor mode.
 	for k, v := range map[string]string{
+		// What is being decided, in words, when the gate wrote any (trigger.Gate.Pose) — the
+		// one field on the record written for a person to read rather than for a reader to
+		// match on. `reason` says which rule asked, and stands for a question that has none.
+		"pose":    q.Pose,
 		"subject": q.Subject,
 		"spawns":  q.Spawns,
 		"reason":  q.Reason,

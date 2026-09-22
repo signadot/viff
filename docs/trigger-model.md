@@ -708,6 +708,7 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
 ```tony
   gates:
   - name: approvals
+    pose: "Deploy *$[subject.value.title]* ($[subject.value.changes] changes) to staging?"
     need: 2                                    # proceed takes two ballots; one deny refuses
     deadline: {within: "24h", default: deny}   # and the clock decides silence
     answerers: [oscar@example.com, group:payments]   # and whose ballots
@@ -715,13 +716,26 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
     options: [{id: ship, need: 1}, {id: hold, need: 2}, {id: drop, need: 1}]
 ```
 
+`pose` is the question in WORDS, and the only thing on a gate written for a person rather than for
+the engine: everything else says who asked and how it settles, and a rule name beside an address is
+not what somebody deciding needs to read. It is expanded at the firing, against the subject that
+firing settled on — `$[…]` is [go-tony's expression](https://github.com/signadot/tony-format), with
+`subject.name` and `subject.value` in scope and nothing else — and it rides the question as words.
+
+Expanded there rather than where it is shown, for three reasons in order of weight: a presenter may
+hold no grant on the subject, while the engine is already reading it to fire; the sentence then
+says what the rule SAW, rather than what the subject looks like by the time somebody reads it; and
+it is read once rather than once per presenter. A sentence that will not expand does not stop the
+question — the words are dropped and `reason` is what a reader falls back to, because a gate nobody
+is asked because its prose broke is worse than a bare one.
+
 Every gate poses the same record: the options it can settle on, each with the number of ballots
 that settles it, and a deadline with the option it falls to. A gate that says nothing poses
 `proceed` and `deny` at one each, which is the question a gate has always asked. `need` is the
 short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and the two are not
 written together. `options` are ordered: the first to reach its threshold settles the question.
-A gate that carries any of these and no `mode` is `ask`; with `mode: auto` it is refused, since
-auto asks nobody.
+A gate that carries any of these, or a `pose`, and no `mode` is `ask`; with `mode: auto` it is
+refused, since auto asks nobody.
 
 `answerers` is who the question is held out to: grantees in the
 [grammar](perms.md#principals-and-grantees) a grant names them in — a person (`user:<email>`, or

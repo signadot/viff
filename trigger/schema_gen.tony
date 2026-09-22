@@ -84,6 +84,7 @@ define:
   need: .[int]
   onDenied: .[nullable(verse-action)]
   options: .[array(task:verse-option)]
+  pose: .[string]
 signature:
   name: verse-trigger-gate
 ---

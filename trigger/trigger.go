@@ -332,6 +332,19 @@ type Gate struct {
 	// passes with none at its threshold. An empty default settles on nothing, which the
 	// firing reads as a refusal nobody made.
 	Deadline *task.Deadline `tony:"field=deadline,omitzero"`
+	// Pose is the question in WORDS, and the only thing on a gate that is written for a person
+	// rather than for the engine. Everything else a question carries says who asked and how it
+	// settles; a name and an address are not what somebody deciding needs to read.
+	//
+	// It is expanded against the subject the firing settled on, with go-tony's expressions:
+	//
+	//	pose: "Deploy *$[subject.value.title]* ($[subject.value.changes] changes) to staging?"
+	//
+	// Expanded HERE, at the firing, and carried as words: the presenter that shows it — a
+	// docket, Slack, a resolver — may hold no grant on the subject, and the sentence has to say
+	// what the rule saw rather than what the subject looks like by the time somebody reads it.
+	// Text with no expression in it is text.
+	Pose string `tony:"field=pose,omitzero"`
 	// Answerers is who the question is held out to, when the gate says: grantees, the way a
 	// grant names them — a person, a kind (`user`, `agent`), `*`, a group's or a binding's
 	// address. Written as the question's `read-write` grant when it is posed, in place of the
@@ -361,6 +374,10 @@ type Gate struct {
 func (g Gate) validate() error {
 	if g.Need < 0 {
 		return fmt.Errorf("need %d: a threshold is at least one", g.Need)
+	}
+	if g.Pose != "" && g.Mode == "auto" {
+		return fmt.Errorf("`pose` is the words a question is asked in, and an auto gate asks " +
+			"nobody: leave the mode off, or say `mode: ask`")
 	}
 	if g.Need > 0 && len(g.Options) > 0 {
 		return fmt.Errorf("`need` and `options` are written together; a threshold per " +
@@ -416,10 +433,10 @@ func (g Gate) mode() (task.Mode, error) {
 	return ParseMode(m)
 }
 
-// asks reports whether the gate says anything about how its question settles, which only a
-// posed question can honour.
+// asks reports whether the gate says anything that only a posed question can honour: how it
+// settles, or the words it is asked in.
 func (g Gate) asks() bool {
-	return g.Need > 0 || len(g.Options) > 0 || g.Deadline != nil
+	return g.Need > 0 || len(g.Options) > 0 || g.Deadline != nil || g.Pose != ""
 }
 
 // options is what the gate's question offers: its own options when it names them, the two

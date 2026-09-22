@@ -829,6 +829,11 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["deadline"] = node
 	}
 
+	// Field: Pose
+	if s.Pose != "" {
+		irMap["pose"] = ir.FromString(string(s.Pose))
+	}
+
 	// Field: Answerers
 	if len(s.Answerers) > 0 {
 		slice := make([]*ir.Node, len(s.Answerers))
@@ -946,6 +951,12 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Deadline.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		case "pose":
+			// Field: Pose
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "pose", fieldNodeUnwrapped.Type)
+			}
+			s.Pose = string(fieldNodeUnwrapped.String)
 		case "answerers":
 			// Field: Answerers
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
