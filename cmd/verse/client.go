@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"github.com/signadot/tony-format/go-tony/gomap"
@@ -17,155 +16,76 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
 
 // ── HTTP helpers (all client commands connect to g.Addr) ─────────────────────
 
-// urlFor builds a request URL, folding in the global --scope so every client
-// command operates in the selected scope (baseline by default).
-func urlFor(path string, q url.Values) string {
-	if g.Scope != "" {
-		if q == nil {
-			q = url.Values{}
-		}
-		q.Set("scope", g.Scope)
-	}
-	// THE WIRE IS TONY, said explicitly on every request. The parameter governs how the
-	// server reads a body as well as how it writes a response, so sending the OPERATOR's
-	// output preference here made `-o yaml` an instruction to parse tony as YAML — and the
-	// endpoints do not accept YAML. It cost a silent corruption rather than an error: the
-	// body went out as tony with `formula: !quorum 3` in it, and what landed in the store was
-	// `!quorum "3"`, a quorum whose threshold had become a string. `make smoke-all`'s second
-	// pass sets VERSE_OUTPUT_FORMAT=yaml, which is how it was reachable at all.
-	//
-	// -o is not lost by this, because it was never what the parameter bought: printBody and
-	// the watch renderer both decode the response by its Content-Type and re-render with
-	// outFmt() on this side. So the operator's format is a rendering decision here, and the
-	// exchange with the API stays in one dialect.
-	if q == nil {
-		q = url.Values{}
-	}
-	q.Set(codec.FormatParam, wireFmt().String())
-	// Build the URL rather than concatenating it, so the path gets ESCAPED. Ids reach here
-	// straight from the command line, so they may contain anything a shell will pass along.
-	// A "#" is the one that punishes concatenation: it starts a URL fragment, which silently
-	// truncates the path (`/tasks/run-x#d1/events` requests `/tasks/run-x`) and takes
-	// the query string with it, since the "?" would land inside the fragment. The request
-	// then succeeds against the WRONG route, with no scope and no format. url.URL.String()
-	// escapes it to %23 and the server 404s, which is what a bad id should do.
-	//
-	// Gate ids no longer carry one — they delimit with task.GateSep, which is unreserved
-	// and reaches the route as itself — so this is now a guard against a hostile id rather
-	// than the everyday path. It stays because the everyday path is not the dangerous one.
-	u := url.URL{Scheme: "http", Host: g.Addr, Path: path}
-	if len(q) > 0 {
-		u.RawQuery = q.Encode()
-	}
-	return u.String()
-}
-
-func httpGet(path string, q url.Values) (*http.Response, error) {
-	return verse.Get(urlFor(path, q))
-}
-
-// httpPost sends a document in the wire format (see wireFmt — the input format when verse
-// can render it, else tony) and asks for the output format back.
+// apiClient is the operator API as the flags and the config stand when a request is made: the
+// address, the scope, and the formats. It is built per request because the formats are per
+// command (-i, -o); the transport, and with it the version and the principal, is `verse`'s.
 //
-// Asking matters even though the client re-renders anyway: it is what lets the server send
-// tony once it can, so the round trip stops being lossy — a tagged charter survives as tags
-// rather than being flattened to the JSON key form on the way out and back.
-func httpPost(path string, body any) (*http.Response, error) {
-	return httpPostTo(path, nil, body)
-}
-
-// httpPostTo is httpPost with query parameters. They must come through here rather than being
-// written into the path: urlFor ESCAPES the path, so a "?" concatenated onto it arrives as
-// %3F and the route 404s — a request that looks right and reaches nothing.
-func httpPostTo(path string, q url.Values, body any) (*http.Response, error) {
-	f := wireFmt()
-	b, err := codec.Marshal(body, f)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	setFormatHeaders(req, f)
-	return verse.Do(req)
-}
-
-// httpPostNode posts an already-built document. It exists so a command that has parsed a
-// file does not have to render it back to bytes in some intermediate format on the way out
-// — a tagged charter goes to the server AS tags, rather than being flattened through JSON
-// and rebuilt from the key form at the far end.
-func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
-	return httpPostNodeTo(path, nil, node)
-}
-
-// httpPostNodeTo is httpPostNode with query parameters; see httpPostTo on why they cannot ride
-// in the path.
-func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, error) {
-	f := wireFmt()
-	b, err := codec.NodeBytes(node, f)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	setFormatHeaders(req, f)
-	return verse.Do(req)
-}
-
-// httpPostNodesTo posts SEVERAL documents in one request, `---` separated — the multi-document
-// spelling a charter file is already written in, and what codec.ReadNodes reads back.
+// THE WIRE IS NEVER THE OPERATOR'S OUTPUT PREFERENCE. The format parameter governs how the server
+// reads a body as well as how it writes a response, so sending -o there made `-o yaml` an
+// instruction to parse tony as YAML — and the endpoints do not accept YAML. It cost a silent
+// corruption rather than an error: the body went out as tony with `formula: !quorum 3` in it, and
+// what landed in the store was `!quorum "3"`, a quorum whose threshold had become a string.
+// `make smoke-all`'s second pass sets VERSE_OUTPUT_FORMAT=yaml, which is how it was reachable.
 //
-// NOT AN ARRAY of them, and the difference is not cosmetic: a definition at document top level is
-// the node the file wrote, where making it an element of a list re-renders it one indent in — and
-// a comment beside a flow map does not survive that trip through the parser. A charter carries its
-// author's reasons, so the shape that keeps them is the shape to send.
-func httpPostNodesTo(path string, q url.Values, nodes []*ir.Node) (*http.Response, error) {
-	f := wireFmt()
-	var body bytes.Buffer
-	for i, n := range nodes {
-		if i > 0 {
-			body.WriteString("---\n")
-		}
-		b, err := codec.NodeBytes(n, f)
-		if err != nil {
-			return nil, err
-		}
-		body.Write(b)
-		if !bytes.HasSuffix(b, []byte("\n")) {
-			body.WriteByte('\n') // a separator on the same line as a value would be part of it
-		}
-	}
-	req, err := http.NewRequest(http.MethodPost, urlFor(path, q), bytes.NewReader(body.Bytes()))
-	if err != nil {
-		return nil, err
-	}
-	setFormatHeaders(req, f)
-	return verse.Do(req)
-}
-
-// setFormatHeaders declares what is being sent and what is wanted back. The Accept lists
-// tony as a fallback so a server that cannot produce the preferred format still answers
-// with something this client can read, rather than failing the negotiation.
-//
-// It used to name JSON there. Doing that now would ask for the one rendering verse
-// refuses, and earn a 406 in exactly the situation the fallback exists to survive.
-func setFormatHeaders(req *http.Request, in codec.Format) {
-	req.Header.Set("Content-Type", codec.MediaType(in))
+// -o is not lost by this, because it was never what the parameter bought: printBody and the watch
+// renderer both decode the response by its Content-Type and re-render with outFmt() on this side.
+// So the operator's format is a rendering decision, asked for only as Accept, and the exchange
+// with the API stays in one dialect.
+func apiClient() *client.Client {
 	out, err := outFmt()
 	if err != nil {
 		out = codec.Tony
 	}
-	req.Header.Set("Accept", codec.MediaType(out)+", "+codec.MediaTony+";q=0.5")
+	return &client.Client{Addr: g.Addr, Scope: g.Scope, Wire: wireFmt(), Accept: out, HTTP: verse}
 }
+
+// urlFor builds a request URL, folding in the global --scope so every client command operates in
+// the selected scope (baseline by default). See client.Client.URL for why it is built rather than
+// concatenated.
+func urlFor(path string, q url.Values) string { return apiClient().URL(path, q) }
+
+func httpGet(path string, q url.Values) (*http.Response, error) { return apiClient().Get(path, q) }
+
+// httpPost sends a document in the wire format (see wireFmt) and asks for the output format back.
+// Asking matters even though the client re-renders anyway: it is what lets the server send tony,
+// so a tagged charter survives the round trip as tags rather than flattened to the key form.
+func httpPost(path string, body any) (*http.Response, error) {
+	return apiClient().Post(path, nil, body)
+}
+
+// httpPostTo is httpPost with query parameters, which must come through here rather than being
+// written into the path: the path is ESCAPED, so a "?" in it arrives as %3F and reaches nothing.
+func httpPostTo(path string, q url.Values, body any) (*http.Response, error) {
+	return apiClient().Post(path, q, body)
+}
+
+// httpPostNode posts an already-built document, so a command that parsed a file sends it AS
+// itself; see client.Client.PostNode.
+func httpPostNode(path string, node *ir.Node) (*http.Response, error) {
+	return apiClient().PostNode(path, nil, node)
+}
+
+func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, error) {
+	return apiClient().PostNode(path, q, node)
+}
+
+// httpPostNodesTo posts several documents in one request, `---` separated, the spelling a charter
+// file is written in; see client.Client.PostNodes.
+func httpPostNodesTo(path string, q url.Values, nodes []*ir.Node) (*http.Response, error) {
+	return apiClient().PostNodes(path, q, nodes)
+}
+
+// statusError is the refusal a request came back with, in the words the server used. It matters
+// wherever a command handles its own status code instead of going through printBody, which is
+// every command with a 404 of its own to name; see client.StatusError.
+func statusError(resp *http.Response, what string) error { return client.StatusError(resp, what) }
 
 // printBody renders a response in the format the operator asked for with -o.
 //
@@ -177,25 +97,6 @@ func setFormatHeaders(req *http.Request, in codec.Format) {
 // text (http.Error), so parsing it as a document fails and it would otherwise be swallowed
 // entirely, leaving a rejected command looking like it succeeded. Callers that handle a
 // specific status (404, 201, 204) check it before calling this, so they are unaffected.
-// statusError is the refusal a request came back with, in the words the server used.
-//
-// A verse refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
-// installed and unchecked" — written into the response body on purpose, and reporting only
-// `400 Bad Request` throws away the whole of what the server said. It was thrown away wherever
-// a command handled its own status code instead of going through printBody, which is every
-// command that has a 404 of its own to name: `verse c -r strata <name>` answered a bare
-// 400 and left the operator with nothing to act on.
-//
-// The status is the FALLBACK, for a server that refused without saying anything.
-func statusError(resp *http.Response, what string) error {
-	body, _ := io.ReadAll(resp.Body)
-	msg := strings.TrimSpace(string(body))
-	if msg == "" {
-		msg = resp.Status
-	}
-	return fmt.Errorf("%s: %s", what, msg)
-}
-
 func printBody(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -281,17 +182,7 @@ func printDoc(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 }
 
 // okBody reads a response body, turning a 4xx/5xx into the error it carries.
-func okBody(resp *http.Response) ([]byte, error) {
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= http.StatusBadRequest {
-		msg := strings.TrimSpace(string(body))
-		if msg == "" {
-			msg = resp.Status
-		}
-		return nil, errors.New(msg)
-	}
-	return body, nil
-}
+func okBody(resp *http.Response) ([]byte, error) { return client.OKBody(resp) }
 
 // printNode writes a value this CLI COMPUTED, under the same rules a passed-through response
 // gets: the configured output format (`-o`, then VERSE_FORMAT/config), and colour when the
@@ -327,73 +218,26 @@ func printIR(cc *cli.Context, node *ir.Node) error {
 	return codec.EncodeNode(cc.Out, node, out)
 }
 
-// respFmt reads the format a response declares — a fact about the server, not a
-// preference of ours, which is why it is read off the reply rather than assumed.
-//
-// An UNLABELLED body is read as tony, and that covers the old JSON-speaking server too:
-// JSON is parsed by the tony parser (codec.readAs), so the one guess that used to be
-// necessary here is no longer a guess about anything.
-func respFmt(resp *http.Response) codec.Format {
-	if f, ok := codec.FormatForMedia(resp.Header.Get("Content-Type")); ok {
-		return f
-	}
-	return codec.Tony
-}
+// respFmt reads the format a response declares; see client.ResponseFormat.
+func respFmt(resp *http.Response) codec.Format { return client.ResponseFormat(resp) }
 
-func httpPut(path string, body any) (*http.Response, error) {
-	f := wireFmt()
-	b, err := codec.Marshal(body, f)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPut, urlFor(path, nil), bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	setFormatHeaders(req, f)
-	return verse.Do(req)
-}
+func httpPut(path string, body any) (*http.Response, error) { return apiClient().Put(path, body) }
 
 func httpDelete(path string, q url.Values) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, urlFor(path, q), nil)
-	if err != nil {
-		return nil, err
-	}
-	return verse.Do(req)
+	return apiClient().Delete(path, q)
 }
 
-// decodeClose decodes a response into v, reading it in the format the response declared,
-// and closes the body.
-func decodeClose(resp *http.Response, v any) {
-	defer resp.Body.Close()
-	decodeBody(resp, v)
-}
+// decodeClose decodes a response into v, reading it in the format the response declared, and
+// closes the body.
+func decodeClose(resp *http.Response, v any) { _ = client.DecodeClose(resp, v) }
 
-// decodeBody decodes a response into v without closing it, for callers already deferring
-// their own Close.
-func decodeBody(resp *http.Response, v any) {
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-	_ = codec.Unmarshal(data, v, respFmt(resp))
-}
+// decodeBody decodes a response into v without closing it, for callers already deferring their
+// own Close.
+func decodeBody(resp *http.Response, v any) { _ = client.Decode(resp, v) }
 
-// httpPostURL posts to an ABSOLUTE url — used for a task's broker face (its dialURL),
-// which lives on a sibling port, not the operator API at g.Addr.
-func httpPostURL(u string, body any) (*http.Response, error) {
-	f := wireFmt()
-	b, err := codec.Marshal(body, f)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	setFormatHeaders(req, f)
-	return verse.Do(req)
-}
+// httpPostURL posts to an ABSOLUTE url — used for a task's broker face (its dialURL), which lives
+// on a sibling port, not the operator API at g.Addr.
+func httpPostURL(u string, body any) (*http.Response, error) { return apiClient().PostURL(u, body) }
 
 // brokerClaim claims a task at its broker face as identity, returning the epoch (the
 // fencing token to carry on report/inbox) and the control cursor (cCursor, where to read the

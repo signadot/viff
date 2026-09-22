@@ -8,16 +8,13 @@ import (
 	"sync"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/client"
 )
 
 // verse is the http.Client every command talks through. Its transport stamps this binary's
-// version on the way out and reads the server's on the way back, which is the only reason it
-// exists — a plain http.Client would work perfectly and say nothing.
-//
-// It is a TRANSPORT rather than a check at each call site because the call sites are a listing,
-// a write, a stream and a broker poll, and a version check that covers three of the four is a
-// version check that is wrong when it matters. There is one place every request passes through,
-// so the check goes there.
+// version and the principal in force on the way out and reads the server's version on the way
+// back (client.Transport), which is the only reason it exists — a plain http.Client would work
+// perfectly and say nothing.
 var verse = &http.Client{Transport: skewCheck{mine: api.Version()}}
 
 // skewWarned makes the warning once per invocation. A command that pages through a listing or
@@ -32,13 +29,9 @@ var (
 	warnTo io.Writer = os.Stderr
 )
 
-// skewCheck stamps and compares.
-//
-// The INCOMPATIBLE case fails the request here, in the client, even though the server refuses
-// it too (see versed's version middleware). The two are not redundant: the server's refusal is
-// what stops a skewed write from happening at all, and this one is what still reports the truth
-// when the server is old enough not to look at the header — which, on the day a check like this
-// starts to matter, is precisely the server you are talking to.
+// skewCheck is client.Transport with what is the CLI's to say: the principal is asked afresh on
+// each request, because `--as` on a command changes it after the client exists, and drift is
+// said once per invocation, on stderr.
 //
 // mine is stated rather than read on each request, which is also what makes it testable: every
 // binary in a test tree reports "(devel)", so a skew cannot be arranged by building one.
@@ -48,42 +41,12 @@ type skewCheck struct {
 }
 
 func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
-	// A RoundTripper must not modify the request it is given.
-	r = r.Clone(r.Context())
-	r.Header.Set(api.VersionHeader, s.mine)
-	// AND WHO IS ASKING, on every request for the same reason the version is: a principal
-	// that reaches three of the four call sites is one the fourth writes as nobody.
-	p, err := principal("")
-	if err != nil {
-		return nil, err
-	}
-	if p != "" {
-		r.Header.Set(api.PrincipalHeader, p)
-	}
-
-	base := s.base
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	resp, err := base.RoundTrip(r)
-	if err != nil {
-		return resp, err
-	}
-	// A server that says nothing is not a server that disagrees. It may be a verse older than
-	// this check, or the broker face, or a proxy, or curl's idea of a good time — and none of
-	// those is a version to compare against. The check is between two things that both speak
-	// this contract; where one does not, there is nothing to report and reporting it anyway
-	// would put a warning on every `verse task do` that dials a broker.
-	theirs := resp.Header.Get(api.VersionHeader)
-	if theirs == "" {
-		return resp, nil
-	}
-	switch skew, msg := api.VersionSkew(s.mine, theirs); skew {
-	case api.VersionIncompatible:
-		resp.Body.Close()
-		return nil, fmt.Errorf("%s", msg)
-	case api.VersionDrift:
-		skewWarned.Do(func() { fmt.Fprintf(warnTo, "verse: %s\n", msg) })
-	}
-	return resp, nil
+	return client.Transport{
+		Base:      s.base,
+		Version:   s.mine,
+		Principal: func() (string, error) { return principal("") },
+		Warn: func(msg string) {
+			skewWarned.Do(func() { fmt.Fprintf(warnTo, "verse: %s\n", msg) })
+		},
+	}.RoundTrip(r)
 }
