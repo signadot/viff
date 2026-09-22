@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/source"
@@ -214,7 +215,7 @@ func TestGitMirrorFailsLoudlyWhenTheRemoteIsNotThere(t *testing.T) {
 //
 // `for-each-ref` with no pattern is EVERY ref, and a mirror clone maps every ref the remote
 // has — so mirroring a GitHub repo reflected `refs/pull/<n>/head` and `.../merge` (4739 of
-// them on one repo here) and `refs/issues/*`, which is git-issue's namespace. Worse than the
+// them on one repo here) and `refs/git-issues/*`, which is git-issue's namespace. Worse than the
 // volume: GitHub recreates the `/merge` refs whenever the base branch moves, so every fetch
 // after any push wrote a batch of new shas and the store grew on every pass with nothing
 // anybody would call activity happening.
@@ -229,7 +230,7 @@ func TestGitReflectsBranchesAndTagsAndNothingElse(t *testing.T) {
 	// The two shapes a mirror of a GitHub remote brings with it.
 	gitRun(t, dir, "update-ref", "refs/pull/7/head", sha)
 	gitRun(t, dir, "update-ref", "refs/pull/7/merge", sha)
-	gitRun(t, dir, "update-ref", "refs/issues/k0d4y1m6", sha)
+	gitRun(t, dir, "update-ref", issuelib.OpenPrefix+"k0d4y1m6", sha)
 
 	g := source.NewGit()
 	g.AddRepo("r", dir)

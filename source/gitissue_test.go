@@ -291,7 +291,8 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 	fine := fileIssue(t, dir, "an ordinary issue", "", nil)
 	victim := fileIssue(t, dir, "will become legacy", "", nil)
 
-	// Rewrite one into the old shape, at the old six-digit ref.
+	// Rewrite one into the old shape, at a six-digit ref: what adopting an unmigrated numeric
+	// issue into the current layout leaves, since adoption keeps the id it finds.
 	t.Chdir(dir)
 	s := issuelib.NewGitStoreWithOutput(testLog{t})
 	legacy := "id: 5\nstatus: open\nlabels: []\ncommits: []\nbranches: []\n" +
@@ -303,7 +304,7 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplaceTree: %v", err)
 	}
-	if err := s.MoveRef(issuelib.RefForXIDR(victim), "refs/issues/000005"); err != nil {
+	if err := s.MoveRef(issuelib.RefForXIDR(victim), issuelib.OpenPrefix+"000005"); err != nil {
 		t.Fatalf("MoveRef: %v", err)
 	}
 
@@ -336,8 +337,8 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 	}
 }
 
-// A mirror carries the tracker. `git clone --mirror` maps every ref, so refs/issues and
-// refs/closed arrive with everything else — which is the whole deployed story, since a pod has
+// A mirror carries the tracker. `git clone --mirror` maps every ref, so the open and closed
+// issue refs arrive with everything else — which is the whole deployed story, since a pod has
 // no repository and somebody else's `git issue push` reaches it only as a fetch.
 func TestGitIssueMirrorCarriesTheTracker(t *testing.T) {
 	needGit(t)

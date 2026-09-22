@@ -85,7 +85,7 @@ through. A ref name keeps its slashes inside one segment: `git.verse.ref."origin
 **Three ref spaces, named rather than assumed.** `for-each-ref` with no pattern is every ref, and
 a mirror maps every ref the remote has — so this asked for `refs/heads`, `refs/tags` and
 `refs/remotes` explicitly. On GitHub the rest is `refs/pull/<n>/head` and `refs/pull/<n>/merge`
-(4739 of them on one mirrored repo) plus `refs/issues/*`, which is git-issue's namespace. The
+(4739 of them on one mirrored repo) plus `refs/git-issues/*`, which is git-issue's namespace. The
 merge refs are the reason it matters rather than a size complaint: GitHub recreates them
 whenever the base branch moves, so every fetch after any push to main changed a batch of shas
 and the store took writes on every pass with nothing having happened. A pull request's tip is
@@ -121,10 +121,18 @@ sourced git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatab
 ```
 
 [`git issue`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/cmd/git-issue) keeps its
-issues **in the repository, as refs** — `refs/issues/<xidr>` open, `refs/closed/<xidr>` closed,
-each pointing at a commit whose tree holds `meta.tony` and `description.md`. So there is no
-service to call and no credential to hold: reflecting a tracker is reading a directory, and the
-same `-repo`/`-mirror` registry the git source takes serves this one.
+issues **in the repository, as refs** — `refs/git-issues/v1/open/<xidr>` open,
+`refs/git-issues/v1/closed/<xidr>` closed, each pointing at a commit whose tree holds `meta.tony`
+and `description.md`. So there is no service to call and no credential to hold: reflecting a
+tracker is reading a directory, and the same `-repo`/`-mirror` registry the git source takes
+serves this one.
+
+**The layout is issuelib's, and the source takes it from there.** The `v1` is git-issue's
+generation, which changes when the layout does. A client sees only the refs it names, so the
+source lists the prefixes the library it is built with defines: the next generation arrives with
+the go-tony version that brings it. Refs in the layout before the generation (`refs/issues/`,
+`refs/closed/`) are not read: `git issue` adopts them in any clone it runs in, and a push from
+that clone migrates the remote a mirror fetches.
 
 **It is a separate subcommand from `git`, not more kinds on it.** The two answer different
 questions about one directory — what the repository *is* versus what somebody *filed* in it —
@@ -159,7 +167,7 @@ rather than two `git show`s per issue — 190 issues across two real trackers re
 180ms.
 
 **A mirror carries the tracker**, which is the deployed case: `git clone --mirror` maps every
-ref, so `refs/issues` and `refs/closed` arrive with the branches, and a pass fetches — so
+ref, so the open and closed issue refs arrive with the branches, and a pass fetches — so
 somebody else's `git issue push` reaches this source without a restart. It is in fact the *only*
 way it does, since issues travel as refs.
 

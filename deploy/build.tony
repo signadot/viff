@@ -166,7 +166,7 @@ build:
     # repository: `git issue` is used in some repositories and not others, so the set worth
     # mirroring for issues is a SUBSET of the set worth mirroring for branches — and the
     # shared knob made the difference unspellable, so the issue source cloned repositories
-    # with no refs/issues in them and reflected nothing from them.
+    # with no issue refs in them and reflected nothing from them.
     #
     # Empty means "whatever gitMirror says", which is what it always did, so a deployment that
     # names no set is unchanged by the split.

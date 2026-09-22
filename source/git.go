@@ -328,7 +328,7 @@ type refInfo struct{ sha, typ string }
 // NAMED EXPLICITLY, because `for-each-ref` with no pattern is EVERY ref, and a mirror clone
 // maps every ref the remote has (`+refs/*:refs/*`, see gitrepos.go). On GitHub that means
 // `refs/pull/<n>/head` and `refs/pull/<n>/merge` — 4739 of them on one repo we mirror — plus
-// `refs/issues/*`, which is git-issue's namespace and reflected properly by that source.
+// `refs/git-issues/*`, which is git-issue's namespace and reflected properly by that source.
 //
 // Two costs, and the second is the one that showed. The slice grew by thousands of entities
 // nobody asked for the moment a busy remote was added. And it never settled: GitHub RECREATES

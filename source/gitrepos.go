@@ -62,7 +62,7 @@ func (s *repoSet) add(id, dir string) string {
 // outbound executor path, and none of them is here.
 //
 // A mirror clone maps every ref (`+refs/*:refs/*`), which is why one registry serves both
-// sources: the same copy carries refs/heads for Git and refs/issues for GitIssue, and neither
+// sources: the same copy carries refs/heads for Git and refs/git-issues for GitIssue, and neither
 // has to know the other exists.
 //
 // The clone happens HERE, at startup, rather than lazily inside a reflect: an unreachable

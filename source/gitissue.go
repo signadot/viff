@@ -32,10 +32,16 @@ const GitIssueRoot = "git-issue"
 // running one program and not the other; folding them together would make that a flag.
 //
 // Storage is git refs, which is what makes this reflectable at all with no service to call:
-// `refs/issues/<xidr>` is an open issue and `refs/closed/<xidr>` a closed one, each pointing
-// at a commit whose tree holds `meta.tony` (the issue struct) and `description.md` (title on
-// the first line, body under it). The ref NAMESPACE is status — closing moves the ref rather
-// than rewriting it — so status needs no field read to establish. See issuelib's package doc.
+// `refs/git-issues/v1/open/<xidr>` is an open issue and `refs/git-issues/v1/closed/<xidr>` a
+// closed one, each pointing at a commit whose tree holds `meta.tony` (the issue struct) and
+// `description.md` (title on the first line, body under it). The ref NAMESPACE is status —
+// closing moves the ref rather than rewriting it — so status needs no field read to establish.
+// See issuelib's package doc.
+//
+// The prefixes are issuelib's, never spelled here. A client names its refspecs literally and
+// cannot see a ref it does not name, so a layout written out in this file is one this source
+// goes blind to the day the tracker moves to the next generation; taken from the library, the
+// next layout arrives with the go-tony bump that brings it.
 //
 // It does not use issuelib.GitStore, and that is deliberate rather than an oversight. That
 // store drives git through the process's working directory and holds no path of its own — its
@@ -84,8 +90,8 @@ func (g *GitIssue) AddRepo(id, dir string) string { return g.repos.add(id, dir) 
 
 // AddMirror registers a MIRROR of remote at dir, cloning it if dir does not already hold one.
 //
-// A mirror clone maps every ref, so it carries `refs/issues/*` and `refs/closed/*` like any
-// other — which is what makes the tracker reflectable from a pod that has no repository. It is
+// A mirror clone maps every ref, so it carries the open and closed issue refs like any other —
+// which is what makes the tracker reflectable from a pod that has no repository. It is
 // also the ONLY way this source sees a `git issue push` from somebody else's clone: issues
 // travel as refs, so a fetch is how they arrive.
 func (g *GitIssue) AddMirror(ctx context.Context, id, remote, dir string) (string, error) {
@@ -403,13 +409,13 @@ func addStrings(p entity.Obj, key string, v []string) {
 // gitIssueRefs lists every issue ref in the repository, open and closed, sorted — one per
 // issue, which is the part that takes work.
 //
-// `git issue` MOVES a ref to change status: closing takes refs/issues/<id> to
-// refs/closed/<id>, reopening takes it back. In the repository somebody types in, an issue
-// therefore has exactly one ref and its namespace IS its status.
+// `git issue` MOVES a ref to change status: closing takes the issue's open ref to its closed
+// one, reopening takes it back. In the repository somebody types in, an issue therefore has
+// exactly one ref and its namespace IS its status.
 //
 // A MIRROR is not that repository. `git issue push` writes the new ref and does not delete
 // the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the verse
-// tracker carry a stale refs/issues alongside their refs/closed. Read naively that is one
+// tracker carry a stale open ref alongside their closed one. Read naively that is one
 // issue reflected twice, once open and once closed, with nothing deciding which lands: nine
 // closed issues were reading `status: open` on staging, and one entity could say `status:
 // open` while carrying the `closedBy` sha of the commit that closed it.
@@ -424,7 +430,7 @@ func addStrings(p entity.Obj, key string, v []string) {
 // direction and with no clock involved. That is what this picks.
 func gitIssueRefs(ctx context.Context, dir string) ([]string, error) {
 	out, err := gitCmd(ctx, dir, "for-each-ref", "--format=%(refname)",
-		"refs/issues/", "refs/closed/")
+		issuelib.OpenPrefix, issuelib.ClosedPrefix)
 	if err != nil {
 		return nil, err
 	}

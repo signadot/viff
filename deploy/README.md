@@ -369,7 +369,7 @@ run the same binary next to it with `-repo`, or skip the deployment entirely and
 `verse source add -dir`.
 
 `gitIssueSource` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
-every ref (`+refs/*:refs/*`), so `refs/issues/*` is already there and this needs no credential
+every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential
 and no route the git connector does not already have. It is a second pod rather than a flag on
 the first because the two answer different questions about one directory and write disjoint
 slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like the git one,
