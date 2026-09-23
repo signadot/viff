@@ -71,7 +71,7 @@ spec:
             name: verse-github
         readinessProbe:
           httpGet:
-            path: /source
+            path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10

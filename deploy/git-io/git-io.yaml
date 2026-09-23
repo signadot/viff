@@ -93,7 +93,7 @@ spec:
           # readiness probe is asking. A source that cannot answer it is one verse's install
           # probe would call unreachable.
           httpGet:
-            path: /source
+            path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10

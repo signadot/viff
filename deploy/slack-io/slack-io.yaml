@@ -52,6 +52,10 @@ spec:
         # spending it lives here, next to the token. See source.Throttle.
         - -min-interval
         - "30s"
+        # BOTH HALVES. The out half is why this connector exists on staging: a gate's question
+        # reaches the people it waits on as a Slack message, and their reply answers it. It
+        # dials verse rather than being dialled, so it needs nothing open to the cluster.
+        - -out
         ports:
         - name: source
           containerPort: 9801
@@ -69,7 +73,7 @@ spec:
             name: verse-slack
         readinessProbe:
           httpGet:
-            path: /source
+            path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10

@@ -88,7 +88,7 @@ func TestStatusSources(t *testing.T) {
 		defer resp.Body.Close()
 		var out api.Status
 		decodeResp(t, resp, &out)
-		return out.Sources
+		return out.IOs
 	}
 
 	if got := sources(); len(got) != 0 {
