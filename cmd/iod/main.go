@@ -155,6 +155,25 @@ func (c *common) principal(connector string) string {
 	return "agent:" + connector + "-io"
 }
 
+// registration is the name verse installed this io under, read off the hint url, which is the one
+// place a deployment already spells it (`http://verse:9797/io/<name>/hint`). Empty when there is
+// no hint url, and then a pass is done and not reported — which is the honest outcome, since
+// nothing here can invent the name the registration was given.
+func (c *common) registration() string {
+	if c.hintURL == "" {
+		return ""
+	}
+	u, err := url.Parse(c.hintURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) >= 2 && parts[0] == "io" {
+		return parts[1]
+	}
+	return ""
+}
+
 // outHalf starts one pass loop per place, and answers them for whatever else needs to kick one.
 func (c *common) outHalf(ctx context.Context, sink verseio.Sink, places []entity.Ref) ([]*verseio.Out, error) {
 	addr := c.verse()
@@ -164,7 +183,7 @@ func (c *common) outHalf(ctx context.Context, sink verseio.Sink, places []entity
 	verse := client.New(addr, c.principal(c.root))
 	outs := make([]*verseio.Out, 0, len(places))
 	for _, place := range places {
-		o := verseio.NewOut(sink, place, verse, log.Printf)
+		o := verseio.NewOut(sink, place, verse, log.Printf).Reporting(c.registration())
 		go o.Run(ctx, c.every)
 		outs = append(outs, o)
 		log.Printf("%s out: doing what is asked under %s, as %s, reading %s every %s",

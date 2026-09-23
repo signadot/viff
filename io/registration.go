@@ -97,11 +97,25 @@ type OutHalf struct {
 	// may ask is an io that will never do anything — allowed, since a place whose grants are
 	// managed by hand is a legitimate arrangement, and saying so here is the way to say it.
 	Requesters []string `tony:"field=requesters,omitzero"`
-	// LastPass and LastError are written by the IO, not by an operator: when it last finished a
-	// pass, and the last failure that stopped one. Verse never dials an out half, so the only
-	// way it can know is to be told (POST /io/<name>/pass).
+	// LastPass, Delivered, Failed and LastError are written by the IO, not by an operator: when
+	// it last finished a pass, what that pass did, and the last failure that stopped one. Verse
+	// never dials an out half, so the only way it can know is to be told (POST /io/<name>/pass).
 	LastPass  string   `tony:"field=lastPass,omitzero"`
+	Delivered int      `tony:"field=delivered,omitzero"`
+	Failed    int      `tony:"field=failed,omitzero"`
 	LastError *Failure `tony:"field=lastError,omitzero"`
+}
+
+// OutPass is what an out half says about a pass it has just finished.
+//
+// COUNTS OF THE LAST PASS, not totals: a total would be a number nobody can act on, while "the
+// last pass delivered nothing and failed twice" is the sentence an operator wants when they ask
+// why a message has not arrived. What the io is doing right now is the pass's own business; this
+// is the part verse cannot see for itself.
+type OutPass struct {
+	Delivered int    `tony:"field=delivered,omitzero"`
+	Failed    int    `tony:"field=failed,omitzero"`
+	Error     string `tony:"field=error,omitzero"`
 }
 
 // Failure is a source's last error together with WHEN IT STARTED, and the pair is the point:

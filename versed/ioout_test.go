@@ -205,3 +205,70 @@ func TestRemovingAnIoTakesItsOutGrantsBack(t *testing.T) {
 		}
 	}
 }
+
+// Verse dials a reflection and knows how it is doing; it never dials an out half, so the out half
+// tells it. Without that, a listing shows one half of an io and calls it the io.
+func TestAnOutHalfReportsItsPasses(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := installIO(t, ts, "user:ana@example.com", map[string]any{
+		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"owns": []any{map[string]any{"at": "slack.Acme"}},
+		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-io"},
+	})
+	resp.Body.Close()
+
+	pass := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Delivered: 3})
+	pass.Body.Close()
+	if pass.StatusCode != http.StatusNoContent {
+		t.Fatalf("reporting a pass = %s", pass.Status)
+	}
+	e, _ := verseio.Find(srv.Store, "workspace")
+	if e.Out == nil || e.Out.LastPass == "" || e.Out.Delivered != 3 {
+		t.Fatalf("out half reads %+v, want when it last passed and what it did", e.Out)
+	}
+
+	// A failure carries WHEN IT STARTED, kept across repeats: an error that has been the same
+	// since breakfast reads as "now" otherwise.
+	first := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
+	first.Body.Close()
+	e, _ = verseio.Find(srv.Store, "workspace")
+	if e.Out.LastError == nil || e.Out.LastError.When == nil {
+		t.Fatalf("out half reads %+v, want the failure and when it began", e.Out)
+	}
+	began := *e.Out.LastError.When
+
+	again := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
+	again.Body.Close()
+	e, _ = verseio.Find(srv.Store, "workspace")
+	if when := *e.Out.LastError.When; when != began {
+		t.Errorf("the same failure began again at %s, was %s", when, began)
+	}
+
+	// And a pass that worked ends it.
+	ok := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Delivered: 1})
+	ok.Body.Close()
+	e, _ = verseio.Find(srv.Store, "workspace")
+	if e.Out.LastError != nil {
+		t.Errorf("the failure outlived the pass that ended it: %+v", e.Out.LastError)
+	}
+}
+
+// A pass reported for an io nobody installed is a 404 rather than a registration conjured out of
+// a timestamp.
+func TestAPassForNoSuchIoIsRefused(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := postTony(t, ts.URL+"/io/nobody/pass", verseio.OutPass{Delivered: 1})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("a pass for an io that is not installed = %s, want 404", resp.Status)
+	}
+	if _, ok := verseio.Find(srv.Store, "nobody"); ok {
+		t.Error("a registration was created by a pass report")
+	}
+}

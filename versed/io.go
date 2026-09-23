@@ -234,6 +234,60 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusCreated, out)
 }
 
+// passIO records what an out half just did: when its last pass finished, and the failure that
+// stopped one.
+//
+// UNATTRIBUTED, like the hint beside it, and for the same reason: what it carries is a fact about
+// the io's own half of the world, not a write anybody could use to say something about the tree. A
+// forged report costs a misleading timestamp on one registration, which is the same order of harm
+// as a forged hint — a reconcile of a slice the sender does not get to choose the contents of.
+//
+// It writes onto the registration rather than into a log, because what a reader wants is one
+// listing saying how both halves are doing: `verse io` already shows `lastReflect`, and an io
+// whose out half has been refused for an hour should not read as healthy there.
+func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	ref := verseio.Ref(name)
+	store := s.scopedStore(r)
+	if _, ok := verseio.Find(entity.As(store, entity.SystemDefault), entity.JoinSegs([]string{name})); !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var body verseio.OutPass
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	rec := entity.Obj{"delivered": body.Delivered, "failed": body.Failed}
+	if body.Error == "" {
+		rec["lastPass"] = now
+		rec["lastError"] = entity.Removed()
+	} else {
+		// WHEN IT STARTED, kept across repeats, for the reason the reflection's failure keeps
+		// it: an error that has been the same since breakfast reads as "now" otherwise, and the
+		// distance between it and lastPass is how long this has been going on.
+		when := now
+		if e, ok := verseio.Find(entity.As(store, entity.SystemDefault), entity.JoinSegs([]string{name})); ok &&
+			e.Out != nil && e.Out.LastError != nil && e.Out.LastError.Error == body.Error &&
+			e.Out.LastError.When != nil {
+			when = *e.Out.LastError.When
+		}
+		rec["lastError"] = entity.Obj{"error": body.Error, "when": when}
+	}
+	// Written as VERSE, not as whoever posted: what a report says is verse's own bookkeeping
+	// about an io, the same as the `lastReflect` it writes for the other half, and an io holds
+	// nothing on its own registration — that record is the installer's.
+	if _, _, err := entity.As(store, entity.SystemDefault).Write(entity.Write{
+		At: ref.At("out"), Value: rec.Payload(),
+		When: []entity.Require{stillInstalled(ref)},
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // seedOut stands up the out half's places and writes the grants the registration describes. It
 // answers what to warn about, since a place that could not be granted is an io that installs and
 // then cannot be asked for anything — worth saying, and not worth refusing an install over, since
@@ -384,6 +438,28 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(e.Owns) > 0 {
 			rec["owns"] = e.Owns
+		}
+		// BOTH HALVES IN ONE ROW, which is the whole reason an out half reports at all: an io
+		// whose reflection is healthy and whose out half has been refused for an hour must not
+		// read as healthy here. The in half's columns are verse's own knowledge; the out half's
+		// are what it was told.
+		if e.Out != nil {
+			half := map[string]any{"places": e.Out.Places, "as": e.Out.As}
+			for k, v := range map[string]string{"lastPass": e.Out.LastPass} {
+				if v != "" {
+					half[k] = v
+				}
+			}
+			if e.Out.Delivered > 0 {
+				half["delivered"] = e.Out.Delivered
+			}
+			if e.Out.Failed > 0 {
+				half["failed"] = e.Out.Failed
+			}
+			if e.Out.LastError != nil {
+				half["lastError"] = e.Out.LastError
+			}
+			rec["out"] = half
 		}
 		// When a pass last COMPLETED, from the live reflector — the signal that catches a source
 		// that has wedged (alive, answering, reflecting nothing new), which the stored

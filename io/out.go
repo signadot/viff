@@ -49,6 +49,10 @@ type Out struct {
 	log   func(string, ...any)
 	now   func() time.Time
 	kick  chan struct{}
+
+	// name is the registration this half belongs to, for the pass it reports. Empty reports
+	// nothing, which is what an out half run outside a registration does.
+	name string
 }
 
 // Sink is the out half of a connector: it makes the external system match one input.
@@ -83,6 +87,14 @@ type Input struct {
 // name derived from another (a question id is `<task>~<gate>`), and it needs no quoting in a shell
 // or a url.
 const StatusSuffix = "~status"
+
+// Reporting names the registration this half belongs to, so every pass tells verse what it did.
+// Verse dials a reflection and therefore knows how it is doing; it never dials an out half, so
+// without this a listing shows one half of an io and calls it the io.
+func (o *Out) Reporting(name string) *Out {
+	o.name = name
+	return o
+}
 
 // NewOut runs sink against place, reading and writing the verse through verse.
 func NewOut(sink Sink, place entity.Ref, verse *client.Client, log func(string, ...any)) *Out {
@@ -124,38 +136,64 @@ func (o *Out) Run(ctx context.Context, every time.Duration) {
 	}
 }
 
-// Pass reads every input under the place and asks the sink for each.
+// Pass reads every input under the place and asks the sink for each, then tells verse what it
+// did. The report is last, and it is not part of the pass's success: a verse that would not take
+// it is a verse this half has just read and written, so saying so twice adds nothing.
 func (o *Out) Pass(ctx context.Context) error {
 	place, err := o.Read(o.place.KPath())
 	if err != nil {
+		o.report(OutPass{Error: err.Error()})
 		return err
 	}
+	var pass OutPass
 	for _, target := range Fields(place) {
 		under := entity.Get(place, target)
 		for _, name := range Fields(under) {
 			if strings.HasSuffix(name, StatusSuffix) {
 				continue // a status, or one nobody asked for any more
 			}
-			o.deliver(ctx, Input{
+			if o.deliver(ctx, Input{
 				Place:  o.place,
 				Target: target, Name: name,
 				Value:  entity.Get(under, name),
 				Status: entity.Get(under, name+StatusSuffix),
-			})
+			}) {
+				pass.Delivered++
+			} else {
+				pass.Failed++
+			}
 		}
 	}
+	o.report(pass)
 	return nil
 }
 
-// deliver asks the sink about one input and records what it answered.
-func (o *Out) deliver(ctx context.Context, in Input) {
+// report tells verse what a pass did, for a registration that asked to be told.
+func (o *Out) report(p OutPass) {
+	if o.name == "" {
+		return
+	}
+	resp, err := o.verse.Post("/io/"+url.PathEscape(o.name)+"/pass", nil, p)
+	if err != nil {
+		o.log("io out: reporting a pass: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		o.log("io out: %v", client.StatusError(resp, "reporting a pass"))
+	}
+}
+
+// deliver asks the sink about one input and records what it answered. It reports whether the sink
+// got its way — an input already matching counts as delivered, since nothing is wrong with it.
+func (o *Out) deliver(ctx context.Context, in Input) bool {
 	fields, err := o.sink.Deliver(ctx, in)
 	if err != nil {
 		o.fail(in, err)
-		return
+		return false
 	}
 	if len(fields) == 0 {
-		return // already matching, and the sink said so without writing anything
+		return true // already matching, and the sink said so without writing anything
 	}
 	// The error goes with the success that ends it, in the same write: a status carrying both a
 	// fresh `postedAt` and last week's `error` is one no reader can interpret.
@@ -164,6 +202,7 @@ func (o *Out) deliver(ctx context.Context, in Input) {
 		fields["failedAt"] = entity.Removed()
 	}
 	o.Write(in.Target, in.Name, fields)
+	return true
 }
 
 // fail records a failure on the status, keeping whatever the status already says was done. The

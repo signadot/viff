@@ -1270,6 +1270,9 @@ func (s *Server) Handler() http.Handler {
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
 	rt.handleUnattributed("POST /io/{name}/hint", s.hintIO, "", nothing)
+	// And the out half's counterpart. Verse dials a reflection and therefore knows how it is
+	// doing; it never dials an out half, so the only way it can know is to be told.
+	rt.handleUnattributed("POST /io/{name}/pass", s.passIO, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
 	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
