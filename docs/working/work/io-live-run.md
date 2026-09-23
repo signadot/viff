@@ -45,9 +45,9 @@ each connector, because it is the contract's rule. The status records `to` on a 
 what lets the check compare without resolving the address again; a delivery that never happened
 records none, so a typo is still fixed by editing it.
 
-## Open
+## Open — each filed, with what it has to decide in the issue
 
-**5. An orphaned question cannot be answered or removed.** A question whose engine awaiter is gone
+**5. An orphaned question cannot be answered or removed** (`rbrgs0tm`). A question whose engine awaiter is gone
 — a restart, a rule that no longer fires — stays pending on the docket forever:
 
 - `verse gate <id> -answer deny -as <them>` → `no such question`, because `answerQuestion` finds
@@ -58,12 +58,12 @@ records none, so a typo is still fixed by editing it.
 The only thing that clears one is a restart, which withdraws orphans at startup. Since **3** it no
 longer reaches anybody, so what is left is a docket that cannot be emptied and a read per pass.
 
-**6. The CLI reports an unreadable node as an absent one.** `verse d verse gate question '<id>'`
+**6. The CLI reports an unreadable node as an absent one** (`65xaf72n`). `verse d verse gate question '<id>'`
 says *"nothing stands at …"* for a question that does stand and that its own answerer can read.
 Reading `verse.gate` itself says `refused: … holds nothing`, so the two answers disagree about the
 same tree, and "nothing stands" sends a reader looking for the wrong problem.
 
-**7. `--if` on `verse d` is a guard, not a selector**, and reads like one. The answer is one item,
+**7. `--if` on `verse d` is a guard, not a selector** (`rb6nvzjp`), and reads like one. The answer is one item,
 so `-if '{name: verse-dev}'` over a collection of channels prints `{}` rather than the channel
 that has that name. Documented in `cmd/verse/filter.go`, and still the first thing an operator
 tries. That comment also names a `state` command that no longer exists.
