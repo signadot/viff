@@ -47,9 +47,9 @@ func TestEveryWaitNamesItsDischarge(t *testing.T) {
 // resolver is a registry with no client — and the task still ends, because a cancel breaks it.
 // The other exit is an operator's say (TestASayWithdrawsAStandingQuestion).
 //
-// What must NOT remain is a wait whose only discharge is a person choosing to look. A binding
+// What must NOT remain is a wait whose only discharge is a person choosing to look. A resolver
 // that carries neither a deadline nor an answerer is one this loop can now end, and the install
-// is where such a binding should be refused or warned about — that part is not here, and saying
+// is where such a resolver should be refused or warned about — that part is not here, and saying
 // so is the point.
 func TestAStandingQuestionIsDischargedByACancel(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("A")}}

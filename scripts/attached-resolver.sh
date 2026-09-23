@@ -3,24 +3,25 @@
 # attached-resolver.sh — a service that answers a run's gates, one act each, so you can watch
 # supervision happen instead of reading about it.
 #
-# A resolver is a BINDING (`verse.resolvers.<name>`) plus whatever is currently reading for
-# it (`verse.watch.<name>@<origin>`). It is not a callback verse invokes: the service
-# dials IN, reads the run's own stream, and posts a verdict — which is why the two commands
-# that ACT as the resolver here use curl, and everything else is `verse`.
+# A resolver is an installed RECORD (`verse.resolvers.<name>`) saying who answers; the service
+# it names is its answerer, and it reads through a COVER — one resolver on one gate stream,
+# `verse.covers.<name>@<stream>`. It is not a callback verse invokes: the service dials IN,
+# reads the run's own stream, and posts a verdict — which is why the two commands that ACT as
+# the resolver here use curl, and everything else is `verse`.
 #
 #   ./scripts/attached-resolver.sh                    list the acts
 #   ./scripts/attached-resolver.sh show    <act>      print what it installs, without installing
 #   ./scripts/attached-resolver.sh run     <act>      set it up and pose a question
-#   ./scripts/attached-resolver.sh watch              read the RESOLVER's stream (ctrl-c to stop)
+#   ./scripts/attached-resolver.sh watch              read the COVER's stream, as the answerer does (ctrl-c to stop)
 #   ./scripts/attached-resolver.sh attach             read the RUN's stream — the operator's view
 #   ./scripts/attached-resolver.sh answer  [verdict]  answer AS the resolver: proceed|deny|escalate
-#   ./scripts/attached-resolver.sh state              the binding, the instance, and the question
-#   ./scripts/attached-resolver.sh clean              remove the bindings and the entities
+#   ./scripts/attached-resolver.sh state              the resolver, the cover, and the question
+#   ./scripts/attached-resolver.sh clean              remove the resolvers and the entities
 #
 # The acts, in the order they build on each other:
 #
 #   named       a spawn names its answerer. One layer, and ⊤ — the human docket — above it.
-#   standing    nobody names anybody; a binding COVERS the subject and owns its questions.
+#   standing    nobody names anybody; a resolver MATCHES the subject and owns its questions.
 #   layered     both. The named layer owns it; `escalate` hands it up, and again, to ⊤.
 #   deadline    the same handover, more slowly: silence past `within` moves it on the next read.
 #   exclusive   whose answer COUNTS. A person is refused, and told how to override.
@@ -43,19 +44,19 @@ RUN_NAME=review
 describe() {
 	case "$1" in
 	named) echo "a spawn names its answerer: one layer, and the human docket above it." ;;
-	standing) echo "a binding that COVERS the subject: nobody named it, and it owns the question anyway." ;;
+	standing) echo "a resolver that MATCHES the subject: nobody named it, and it owns the question anyway." ;;
 	layered) echo "both at once: named owns it, escalate hands it up, and the second hop is ⊤." ;;
 	deadline) echo "silence does what escalate does: past \`within\`, the next reader finds it moved." ;;
 	exclusive) echo "whose answer counts: a person is refused and told how to override." ;;
 	esac
 }
 
-# ── the bindings ─────────────────────────────────────────────────────────────
-# Every binding needs a door: `byRef` is the one a spawn or a rule comes through, `condition`
-# is the one nobody has to open. Neither is refused at install — a binding nothing can reach
+# ── the resolvers ────────────────────────────────────────────────────────────
+# Every resolver needs a door: `byRef` is the one a spawn or a rule comes through, `condition`
+# is the one nobody has to open. Neither is refused at install — a resolver nothing can reach
 # answers nothing.
 
-binding_named() {
+resolver_named() {
 	cat <<-'TONY'
 		name:   reviewer
 		byRef:  true
@@ -63,7 +64,7 @@ binding_named() {
 	TONY
 }
 
-binding_standing() {
+resolver_standing() {
 	cat <<-'TONY'
 		name: payments-review
 		condition:
@@ -72,7 +73,7 @@ binding_standing() {
 	TONY
 }
 
-binding_deadline() {
+resolver_deadline() {
 	cat <<-'TONY'
 		name:     reviewer
 		byRef:    true
@@ -81,7 +82,7 @@ binding_deadline() {
 	TONY
 }
 
-binding_exclusive() {
+resolver_exclusive() {
 	cat <<-'TONY'
 		name:      payments-review
 		exclusive: true
@@ -94,47 +95,47 @@ binding_exclusive() {
 
 show() {
 	case "$1" in
-	named) binding_named ;;
-	standing) binding_standing ;;
+	named) resolver_named ;;
+	standing) resolver_standing ;;
 	layered | deadline)
-		[ "$1" = deadline ] && binding_deadline || binding_named
+		[ "$1" = deadline ] && resolver_deadline || resolver_named
 		printf -- '---\n'
-		binding_standing
+		resolver_standing
 		;;
-	exclusive) binding_exclusive ;;
+	exclusive) resolver_exclusive ;;
 	esac
 }
 
 # ── setup ────────────────────────────────────────────────────────────────────
 
 setup() {
-	local bound=
+	local named=
 	case "$1" in
 	named)
-		binding_named | v resolver add - >/dev/null
-		bound=verse.resolvers.reviewer
+		resolver_named | v resolver add - >/dev/null
+		named=verse.resolvers.reviewer
 		;;
-	standing) binding_standing | v resolver add - >/dev/null ;;
+	standing) resolver_standing | v resolver add - >/dev/null ;;
 	layered)
-		binding_named | v resolver add - >/dev/null
-		binding_standing | v resolver add - >/dev/null
-		bound=verse.resolvers.reviewer
+		resolver_named | v resolver add - >/dev/null
+		resolver_standing | v resolver add - >/dev/null
+		named=verse.resolvers.reviewer
 		;;
 	deadline)
-		binding_deadline | v resolver add - >/dev/null
-		binding_standing | v resolver add - >/dev/null
-		bound=verse.resolvers.reviewer
+		resolver_deadline | v resolver add - >/dev/null
+		resolver_standing | v resolver add - >/dev/null
+		named=verse.resolvers.reviewer
 		;;
-	exclusive) binding_exclusive | v resolver add - >/dev/null ;;
+	exclusive) resolver_exclusive | v resolver add - >/dev/null ;;
 	esac
 	# Anchored at column 0, where a top-level list item's first key sits — `at` sorts before
-	# every other key in a binding, so the address rides the `- ` line rather than an indented
+	# every other key in a resolver, so the address rides the `- ` line rather than an indented
 	# one, and an unanchored match would also take an `at:` nested inside a condition.
 	ok "installed: $(v resolver -o tony | sed -n 's/^- at:[[:space:]]*//p' | tr '\n' ' ')"
 
 	retire_previous
 
-	# What the work is ABOUT. A standing binding matches on this, which is the whole difference
+	# What the work is ABOUT. A standing resolver matches on this, which is the whole difference
 	# between the two doors: one is named by the work, the other selects it.
 	# shellcheck disable=SC2086
 	v data $SUBJECT_AT --put '{area: payments, title: "raise the retry budget"}' >/dev/null
@@ -144,16 +145,16 @@ setup() {
 	#
 	# --name is a LABEL: the id is derived and printed, because an id is the prefix of every
 	# gate question the run raises and answering one cuts at the first `~`. --subject joins the
-	# flow; --resolver is the named door, and a binding that is not installed is refused here
-	# rather than silently shadowing whatever covers the subject.
+	# flow; --resolver is the named door, and a resolver that is not installed is refused here
+	# rather than silently shadowing whatever matches the subject.
 	# --vector ask is what makes it stop and ASK: without it the run is `auto` and a resolver
-	# bound to it would have nothing to answer. --driver scripted so the question is the same
+	# named on it would have nothing to answer. --driver scripted so the question is the same
 	# one every time — the default driver is an llm, which may answer in prose and call no
 	# tool at all, and a demo that sometimes poses no question teaches nothing.
 	local run
 	run=$(v task run 'echo reviewing' --name "$RUN_NAME" --subject "$SUBJECT" \
-		--driver scripted --vector ask ${bound:+--resolver "$bound"})
-	ok "spawned $run${bound:+, bound to $bound}"
+		--driver scripted --vector ask ${named:+--resolver "$named"})
+	ok "spawned $run${named:+, its questions held out to $named}"
 }
 
 # ── looking at it ────────────────────────────────────────────────────────────
@@ -197,7 +198,7 @@ question_id() {
 	local tries=0 run q
 	while [ $tries -lt 40 ]; do
 		# INSIDE the loop: a run that has just been spawned has not reached its gate yet, so
-		# it holds no question and run_id does not see it. Resolving the run once and giving
+		# it holds no question and run_id does not see it. Looking up the run once and giving
 		# up is how this came to report "no question was posed" about a run that was still
 		# walking to the gate.
 		run=$(run_id)
@@ -214,16 +215,16 @@ question_id() {
 }
 
 # A field of the question, and nothing for one that is absent or null: a question handed up to ⊤
-# says `resolver: null`, and the word would otherwise read as a binding's name.
+# says `resolver: null`, and the word would otherwise read as a resolver's name.
 field() { v data verse gate question "$1" -o tony | sed -n "s/^[[:space:]]*$2:[[:space:]]*//p" | grep -vx null || true; }
 
 state() {
-	step "the bindings — who may answer, and for what"
+	step "the resolvers — who may answer, and for what"
 	v resolver
-	step "the instances — who is READING, one per (binding, origin)"
-	v data verse watch
-	printf '\n  the address is `<name>@<origin>`, so one `verse data verse resolvers` shows both what is\n'
-	printf '  installed and who is watching what, with no singular/plural pair to mistype.\n'
+	step "the covers — who is READING, one per (resolver, stream)"
+	v data verse covers
+	printf '\n  the address is `<name>@<stream>`: the resolver, then the run (or subject) whose\n'
+	printf '  stream it reads.\n'
 	local q
 	q=$(question_id)
 	if [ -z "$q" ]; then
@@ -238,14 +239,14 @@ state() {
 	printf '  overrode:      who was answered OVER, if anyone.\n\n'
 }
 
-# ── being the resolver ───────────────────────────────────────────────────────
-# The two streams a resolver lives on, addressed by INSTANCE — the binding watching one run —
+# ── being the answerer ───────────────────────────────────────────────────────
+# The two streams an answerer lives on, addressed by COVER — the resolver watching one run —
 # so neither route needs a second parameter to say which run it is about.
 
-# The instance to act AS: the one whose binding currently owns the question, not merely the
+# The cover to act AS: the one whose resolver currently owns the question, not merely the
 # first one watching this run. After an escalation there are two — the layer that handed it on
-# still has its instance, and reading a stream is not the same as owning a docket.
-instance_of() {
+# still has its cover, and reading a stream is not the same as owning a docket.
+cover_of() {
 	local run owner q
 	run=$(run_id)
 	[ -n "$run" ] || return 0
@@ -253,15 +254,15 @@ instance_of() {
 	[ -n "$q" ] || return 0
 	owner=$(field "$q" resolver)
 	if [ -z "$owner" ]; then
-		return 0 # ⊤ owns it: there is no instance to answer as, which is the point
+		return 0 # ⊤ owns it: there is no cover to answer as, which is the point
 	fi
-	# The NAME half of the binding's address — its last segment — then the run it watches.
+	# The NAME half of the resolver's address — its last segment — then the run it watches.
 	# `${owner##*:}` was that answer while an address was colons and is the whole string now.
 	echo "${owner##*.}@$run"
 }
 
 # The same run, from the outside. The point of this one is what it does NOT hide: the ask, the
-# decision with the binding in `by`, and the action that followed, in order, on the run's own
+# decision with the resolver in `by`, and the action that followed, in order, on the run's own
 # read plane. There is no supervised run that reads as unsupervised, and no way to answer
 # invisibly — which is a claim worth seeing rather than being told.
 #
@@ -279,34 +280,34 @@ attach() {
 }
 
 watch() {
-	local inst
-	inst=$(instance_of)
-	[ -n "$inst" ] || die "nothing is watching $(run_id) — run an act first"
-	step "reading $inst from the beginning"
-	printf '  this is the RUN'"'"'s own stream, not a projection of it: a resolver sees what an\n'
+	local cover
+	cover=$(cover_of)
+	[ -n "$cover" ] || die "nothing is watching $(run_id) — run an act first"
+	step "reading $cover from the beginning"
+	printf '  this is the RUN'"'"'s own stream, not a projection of it: an answerer sees what an\n'
 	printf '  attached observer sees, or there would be two orders to reconcile.\n\n'
-	curl -sN "$(addr)/resolvers/instance/$inst/events?since=0"
+	curl -sN "$(addr)/resolvers/cover/$cover/events?since=0"
 }
 
 answer() {
-	local verdict="${1:-proceed}" inst q code
-	inst=$(instance_of)
-	if [ -z "$inst" ]; then
+	local verdict="${1:-proceed}" cover q code
+	cover=$(cover_of)
+	if [ -z "$cover" ]; then
 		die "no resolver owns this question — it is ⊤'s, so a person answers it:
       $BIN gates
       $BIN gate y <id> --as user:you"
 	fi
 	q=$(question_id)
 	[ -n "$q" ] || die "no open question"
-	step "answering as $inst"
+	step "answering as $cover"
 	code=$(curl -s -o /tmp/attached-resolver.out -w '%{http_code}' -X POST \
 		-H 'Content-Type: application/tony' \
 		-d "{id: \"$q\", verdict: $verdict}" \
-		"$(addr)/resolvers/instance/$inst/verdicts")
+		"$(addr)/resolvers/cover/$cover/verdicts")
 	case "$code" in
 	204)
 		ok "$verdict"
-		printf '  `by` on the record is the BINDING, stamped by verse. A service says what it\n'
+		printf '  `by` on the record is the RESOLVER, stamped by verse. A service says what it\n'
 		printf '  decided, never who it is.\n'
 		[ "$verdict" = escalate ] && printf '  now: %s state — `resolver:` has changed, and `reownedFrom:` says what moved it\n' "$0"
 		;;
@@ -325,14 +326,14 @@ run_act() {
 	[ -n "$q" ] || die "no question was posed"
 	owner=$(field "$q" resolver)
 	ok "question $q"
-	printf '  owner: %s\n' "${owner:-⊤ (nobody named, nothing covers it — the human docket)}"
+	printf '  owner: %s\n' "${owner:-⊤ (nobody named, nothing matches it — the human docket)}"
 
 	case "$1" in
 	named | standing)
-		next "$0 watch" "the RESOLVER's stream — what it decides on" \
+		next "$0 watch" "the COVER's stream — what the answerer decides on" \
 			"$0 attach" "the RUN's stream — and answer from another terminal to watch it land" \
-			"$0 answer" "answer as the bound resolver" \
-			"$0 state" "the binding, the instance, and the question"
+			"$0 answer" "answer as the resolver the question is held out to" \
+			"$0 state" "the resolver, the cover, and the question"
 		;;
 	layered)
 		next "$0 answer escalate" "hand it to the layer above" \
@@ -373,7 +374,7 @@ clean() {
 	done
 	# shellcheck disable=SC2086
 	v data $SUBJECT_AT --rm >/dev/null 2>&1 || true
-	ok "removed the bindings, the run and $SUBJECT"
+	ok "removed the resolvers, the run and $SUBJECT"
 	printf '  answered questions are kept: a docket that forgets is one nobody can audit.\n\n'
 }
 

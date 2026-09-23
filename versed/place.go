@@ -57,7 +57,7 @@ func takePlace(store entity.Store, installer string, ref entity.Ref, what string
 var errActsAsNobody = errors.New("installed as nobody's")
 
 // actsAsInstaller is what every verb that makes a place that ACTS ends with — a rule, a
-// schedule, a source, a binding: the place acts as somebody, and where this install made it,
+// schedule, a source, a resolver: the place acts as somebody, and where this install made it,
 // as whoever installed it.
 //
 // A place acts as the owner on its own record and as nobody without one (entity.ActsAs). The
@@ -105,7 +105,7 @@ func (s *Server) takeBackOut(r *http.Request, ref entity.Ref, stood bool) {
 }
 
 // actingAsNobody is every place that acts and has no owner record of its own — a rule, a
-// schedule, a source, a binding that stands, lists as installed, and holds nothing, so that
+// schedule, a source, a resolver that stands, lists as installed, and holds nothing, so that
 // whatever it does is refused. An install cannot leave one (actsAsInstaller); a store written by
 // a build that could, or by hand, can hold them, and the fix for each is to remove it and
 // install it again as somebody.
@@ -118,7 +118,7 @@ func actingAsNobody(store entity.Store) ([]entity.Ref, error) {
 		{[]string{entity.VerseRoot, trigger.CharterSystem, trigger.CharterKind}, nil},
 		{[]string{entity.VerseRoot, schedule.System}, schedule.IsRecord},
 		{[]string{entity.VerseRoot, verseio.System}, verseio.IsRegistration},
-		{[]string{entity.VerseRoot, resolver.System}, resolver.IsBinding},
+		{[]string{entity.VerseRoot, resolver.System}, resolver.IsResolver},
 	} {
 		ents, err := entity.BelowErr(store, reg.pred, 1, reg.at...)
 		if err != nil {

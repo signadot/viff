@@ -60,7 +60,7 @@ func (rt *router) handle(pattern string, h http.HandlerFunc, req string, ret ret
 }
 
 // handleUnattributed is handle for a route whose caller is no principal and acts as none: what
-// it does is done as a party the ROUTE names — the binding an instance belongs to, the source a
+// it does is done as a party the ROUTE names — the resolver a cover is of, the source a
 // hint is for — and never as whoever sent it. It is said here, per route, because the default is
 // the other way: a request that is not a read names who makes it (Server.principals), and a
 // route added without thinking about it is one that refuses.

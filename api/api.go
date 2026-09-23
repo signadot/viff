@@ -89,7 +89,7 @@ type Condition struct {
 	Pattern entity.Payload `tony:"field=pattern,omitzero"`
 }
 
-// Escalate is a person handing a question on to the next rung covering its subject
+// Escalate is a person handing a question on to the next rung matching its subject
 // (`verse gate escalate`): the question, who handed it on, and a word about why.
 //
 //tony:schemagen=verse-escalate,notag
@@ -143,7 +143,7 @@ type Resolve struct {
 	// list because task.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.
 	Say []string `tony:"field=say,omitzero"`
-	// Override answers a question an exclusive binding owns, as somebody else.
+	// Override answers a question an exclusive resolver owns, as somebody else.
 	//
 	// It exists because `exclusive` is not real against whoever holds this API, and a dial
 	// that pretended otherwise would be a lie told to the person relying on it. So the
@@ -194,8 +194,8 @@ type Spawn struct {
 	// document a person typed (task.ParseCalls) and sends this, so a list that will not read
 	// is a message on their terminal rather than a task that failed on a machine elsewhere.
 	Calls []task.Call `tony:"field=calls,omitzero"`
-	// Resolver names the binding that answers this run's gates — the ad-hoc face of a
-	// spawn's `resolver:`, so `verse task run` and a firing can bind the same way.
+	// Resolver names the resolver that answers this run's gates — the ad-hoc face of a
+	// spawn's `resolver:`, so `verse task run` and a firing can name one the same way.
 	Resolver string `tony:"field=resolver,omitzero"`
 	// Runner names WHERE this run runs — `verse.runners.<name>`, installed with `verse
 	// runner add`. Empty means the verse's own default runner, which is what `local` means
@@ -246,9 +246,9 @@ type Spawned struct {
 	ID string `tony:"field=id"`
 }
 
-// Verdict is one answer from a resolver (`POST /resolvers/instance/{id}/verdicts`).
+// Verdict is one answer through a resolver's cover (`POST /resolvers/cover/{id}/verdicts`).
 //
-// It names the question rather than being addressed to it: a resolver reads a stream and
+// It names the question rather than being addressed to it: an answerer reads a gate stream and
 // decides about what it sees, so the id is which of the things it has read this is about.
 //
 //tony:schemagen=verse-verdict,notag
@@ -264,12 +264,12 @@ type Verdict struct {
 	Say []string `tony:"field=say,omitzero"`
 }
 
-// Position is how far a resolver has read (`POST /resolvers/instance/{id}/position`).
+// Position is how far a cover has read (`POST /resolvers/cover/{id}/position`).
 //
 // Reported even when nothing was decided, which is the point: a hundred frames may produce no
 // verdict, and the position advancing is what tells "has not decided" from "has not caught
 // up". Notes are a handover for whoever picks the position up — a replacement after a
-// restart, or the same resolver with a fresh context — not a memory, since a live one
+// restart, or the same answerer with a fresh context — not a memory, since a live one
 // remembers by being alive.
 //
 //tony:schemagen=verse-position,notag

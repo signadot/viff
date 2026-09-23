@@ -13,7 +13,7 @@ import (
 
 func resolverCmd() *cli.Command {
 	return collection("resolver", "resolvers", "/resolvers",
-		"resolver — who answers questions; add|show|remove one binding",
+		"resolver — who answers questions; add|show|remove one",
 		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd())
 }
 

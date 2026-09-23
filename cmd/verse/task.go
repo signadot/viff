@@ -418,7 +418,7 @@ type taskRunConfig struct {
 	// The two fields a spawn has carried all along with no way to type them.
 	Subject string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
 	// Without this a scripted run is `auto` and asks nothing (see scriptedVector), so a
-	// --resolver bound to it would have no question to answer.
+	// --resolver named for it would have no question to answer.
 	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
 	// The run's own gates over that default, from a file — the ad-hoc face of a spawn's
 	// `gates:`. A gate carries the question it poses (need, options, deadline), which a name
@@ -430,7 +430,7 @@ type taskRunConfig struct {
 	// PRINCIPAL, so a runner whose effects leave the verse can say on whose account.
 	// Self-asserted, like every other `--as` here.
 	As       string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
-	Resolver string `cli:"name=resolver desc='binding that answers the gates this run raises (verse.resolvers.<name>)'"`
+	Resolver string `cli:"name=resolver desc='resolver that answers the gates this run raises (verse.resolvers.<name>)'"`
 	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (verse.runners.<name>, or the bare <name>); default: the verse default'"`
 	// The shape this run's final message must have — a tony match pattern in a file, the
 	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model

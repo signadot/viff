@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// The places the grammar says act are the places that do: a rule, a source and a binding each
+// The places the grammar says act are the places that do: a rule, a source and a resolver each
 // spell a principal the grammar reads, and a runner's address — which has a record and acts as
 // its identity instead — is refused. entity names the three systems because it cannot import
 // the packages that own them; this is where the two spellings are held together.
@@ -72,7 +72,7 @@ func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
 }
 
 // Every edge a grantee is written at reads it in the grammar: a group's member, a person or a
-// group binding's answerer. The old spellings are refused, saying the grammar; the new ones are
+// group resolver's answerer. The old spellings are refused, saying the grammar; the new ones are
 // stored as the grammar spells them.
 func TestTheEdgesRefuseWhatTheGrammarDoesNotRead(t *testing.T) {
 	srv := testServer(t)

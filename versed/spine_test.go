@@ -93,8 +93,8 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 	entitytest.Set(t, asTester(srv), subject, entity.Obj{"area": "payments", "stage": "proposed"}.Payload())
 	waitOwner(t, srv, "guard")
 
-	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/events?since=0",
+	cover := resolver.CoverRef("payments-review", mirror.StreamKey(subject))
+	got := commitsOf(t, ts.URL+"/resolvers/cover/"+cover.Name()+"/events?since=0",
 		carries(2, func(ev entity.Event) bool { return ev.Ref == subject }))
 	if len(got) < 2 {
 		t.Fatalf("the spine carried %d commits, want the subject's history: %+v", len(got), got)
@@ -116,14 +116,14 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 		t.Fatalf("the spine carried %d of the subject's own commits, want its history", own)
 	}
 
-	// And it answers the firing's gate through its own instance.
+	// And it answers the firing's gate through its own cover.
 	var qid string
 	for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
 		return mirror.IsQuestion(ref)
 	}) {
 		qid = ent.Ref.Name()
 	}
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/cover/"+cover.Name()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed", Why: "read the history first"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -144,7 +144,7 @@ func TestASpineReadsASubjectAndAnswersAFiring(t *testing.T) {
 // A whole life on one spine: born, marked vanishing, deleted, and written again under the same
 // ref — four commits in order, to a resolver that never stopped reading.
 //
-// This is why the narrowing is by REF and not by the binding's condition. A predicate reads a
+// This is why the narrowing is by REF and not by the resolver's condition. A predicate reads a
 // payload and a deletion has none, so a condition-narrowed stream would hide exactly the end
 // of a life it most needs to show. And nothing about the entity's death ends the watch: a
 // position addresses the STORE's revision line, which does not die when an entity does.
@@ -155,9 +155,9 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
 
 	subject := entity.RefAt("change", "pr", "1")
-	mirror.Watch(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
-	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
-	before, _, _ := srv.Store.Get(inst)
+	mirror.Cover(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
+	cover := resolver.CoverRef("payments-review", mirror.StreamKey(subject))
+	before, _, _ := srv.Store.Get(cover)
 	startedAt := entity.ToObj(before.Payload)["position"]
 
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
@@ -168,7 +168,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 	}
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
 
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/events?since=0",
+	got := commitsOf(t, ts.URL+"/resolvers/cover/"+cover.Name()+"/events?since=0",
 		carries(4, func(ev entity.Event) bool { return ev.Ref == subject }))
 	if len(got) != 4 {
 		t.Fatalf("a whole life came through as %d commits, want 4: %+v", len(got), got)
@@ -194,13 +194,13 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 		t.Fatalf("the rebirth never reached the spine: %+v", got)
 	}
 
-	// And the instance is the same record throughout, at the position it had reached.
-	after, ok, _ := srv.Store.Get(inst)
+	// And the cover is the same record throughout, at the position it had reached.
+	after, ok, _ := srv.Store.Get(cover)
 	if !ok {
-		t.Fatal("the instance did not survive its subject")
+		t.Fatal("the cover did not survive its subject")
 	}
 	if entity.ToObj(after.Payload)["position"] != startedAt {
-		t.Fatalf("the instance moved on its own: %v → %v",
+		t.Fatalf("the cover moved on its own: %v → %v",
 			startedAt, entity.ToObj(after.Payload)["position"])
 	}
 }
@@ -209,7 +209,7 @@ func TestASpineCarriesAWholeLife(t *testing.T) {
 //
 // A run about the subject writes a `task:instance` entity naming it as its flow, and a
 // spawn is a commit there because the mirror writes it. So a resolver reading the spine learns
-// a run began — and its own instance for that run is where the frames are. That is the whole
+// a run began — and its own cover for that run is where the frames are. That is the whole
 // of the navigation between the two planes: no sequencer, and no merged order for anything to
 // disagree about.
 func TestTheSpineCarriesItsAnchors(t *testing.T) {
@@ -220,13 +220,13 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 
 	subject := entity.RefAt("change", "pr", "1")
 	entitytest.Set(t, srv.Store, subject, entity.Obj{"area": "payments"}.Payload())
-	mirror.Watch(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
+	mirror.Cover(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
 
 	spawnFor(t, ts, "run-1", subject.String(), "")
 	waitQuestion(t, srv, "run-1")
 
-	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(subject))
-	got := commitsOf(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/events?since=0",
+	cover := resolver.CoverRef("payments-review", mirror.StreamKey(subject))
+	got := commitsOf(t, ts.URL+"/resolvers/cover/"+cover.Name()+"/events?since=0",
 		carries(1, func(ev entity.Event) bool { return ev.Ref == mirror.Ref("run-1") }))
 
 	var anchor entity.Event
@@ -248,16 +248,16 @@ func TestTheSpineCarriesItsAnchors(t *testing.T) {
 	entitytest.Set(t, srv.Store, other, entity.Obj{"area": "payments"}.Payload())
 	spawnFor(t, ts, "run-2", other.String(), "")
 	waitQuestion(t, srv, "run-2")
-	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+inst.Name()+"/events?since=0", nil) {
+	for _, ev := range commitsOf(t, ts.URL+"/resolvers/cover/"+cover.Name()+"/events?since=0", nil) {
 		if ev.Ref == mirror.Ref("run-2") {
 			t.Fatalf("another subject's run is on this spine: %+v", ev)
 		}
 	}
 
-	// The fine grain is where the anchor says: that run's own instance, serving its frames.
-	fine := resolver.InstanceRef("payments-review", "run-1")
-	waitInstance(t, srv, "payments-review", "run-1")
-	if len(framesSoFar(t, ts.URL+"/resolvers/instance/"+fine.Name()+"/events?since=0")) == 0 {
-		t.Fatal("the run instance served no frames")
+	// The fine grain is where the anchor says: that run's own cover, serving its frames.
+	fine := resolver.CoverRef("payments-review", "run-1")
+	waitCover(t, srv, "payments-review", "run-1")
+	if len(framesSoFar(t, ts.URL+"/resolvers/cover/"+fine.Name()+"/events?since=0")) == 0 {
+		t.Fatal("the run's cover served no frames")
 	}
 }

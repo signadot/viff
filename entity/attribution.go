@@ -2315,7 +2315,7 @@ func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 }
 
 // resolve is the owner a principal confers: itself, unless it is a place acting — `via:` a
-// rule, a source, a binding — in which case the owner ON THAT PLACE'S OWN RECORD, and nobody
+// rule, a source, a resolver — in which case the owner ON THAT PLACE'S OWN RECORD, and nobody
 // where it has none. An owner on record is always a principal that resolved already, so one
 // record is the whole walk.
 //
@@ -2408,7 +2408,7 @@ func AddGrant(s Store, ref Ref, g Grant) error {
 }
 
 // SetGrants replaces the grants on the perms record of ref, as the system: what a question
-// holds out is exactly its binding's, so a change of binding is a replacement and not an
+// holds out is exactly its resolver's, so a change of resolver is a replacement and not an
 // addition. An empty list is written as one — a grants field holding nothing — since a record
 // with no grants field at all is one from before defaults existed, read as the root's.
 func SetGrants(s Store, ref Ref, gs []Grant) error {
@@ -2704,9 +2704,9 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 // task or a schedule there — a grant that, with no record to stop at, reaches what the system
 // made too: a task a system rule spawned was anybody's to take, and its gate's with it. But it
 // cannot be a rule of the check, because some of what the system makes there is made FOR
-// somebody who then writes it — a binding's instance — and a system record on it would shut
-// them out. So each maker says: this one here, a question at pose, an instance under its
-// binding (mirror.Watch).
+// somebody who then writes it — a resolver's cover — and a system record on it would shut
+// them out. So each maker says: this one here, a question at pose, a cover under its
+// resolver (mirror.Cover).
 func OwnedForSystem(s Store, ref Ref, principal string) error {
 	a, ok := s.(*attributed)
 	if !ok {
@@ -2980,8 +2980,9 @@ func Members(s Store, group string, seen map[string]bool) []string {
 
 // SetLevel replaces who holds level on ref's own lines — the grants at the node itself, not
 // beneath it: every such line loses the level, and the first of them (or a new one) gets it
-// back with names. Empty names remove the level. A binding's grant on a question is written
-// this way, so binding and unbinding move `read-write` and leave `read` as the default gave it.
+// back with names. Empty names remove the level. A resolver's grant on a question is written
+// this way, so holding it out and releasing it move `read-write` and leave `read` as the default
+// gave it.
 func SetLevel(s Store, ref Ref, level Level, names []string) error {
 	a, ok := s.(*attributed)
 	if !ok {

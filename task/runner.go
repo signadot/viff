@@ -35,8 +35,8 @@ type Launch struct {
 	// Empty = the driver's own default frame.
 	Frame string
 
-	// Resolver is the binding that answers this task's gates — `verse.resolvers.<name>`.
-	// Empty means nobody is bound, and its questions go to whoever reads the docket.
+	// Resolver is the resolver that answers this task's gates — `verse.resolvers.<name>`.
+	// Empty means none is named, and its questions go to whoever reads the docket.
 	Resolver string
 
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's

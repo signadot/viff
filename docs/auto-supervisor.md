@@ -257,7 +257,7 @@ assess@change.pr.9` shows what the supervisor read and said, and the change ends
   different fields, with `land-auto` requiring both, is the shape that works.
 - **The inside is a different layer.** The supervisor here decides whether a change lands, by
   writing to the subject. What the *worker* agent may do while producing it is the other
-  supervision layer, and binding a resolver from a charter — `gating.resolver` for a rule's own
+  supervision layer, and naming a resolver from a charter — `gating.resolver` for a rule's own
   gates, `spawn.resolver` for its run's — is [attached resolvers](attached-resolvers.md). The two
   compose: this charter decides about the change, a resolver decides about the actions taken to
   produce it.

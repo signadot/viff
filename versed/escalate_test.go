@@ -14,14 +14,14 @@ import (
 
 func escalateAs(t *testing.T, ts *httptest.Server, instID, qid string) *http.Response {
 	t.Helper()
-	return postTony(t, ts.URL+"/resolvers/instance/"+instID+"/verdicts",
+	return postTony(t, ts.URL+"/resolvers/cover/"+instID+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "escalate", Why: "not mine to call"})
 }
 
-// A named binding escalates to the standing one covering the subject, and that one to `⊤`.
+// A named resolver escalates to the standing one matching the subject, and that one to `⊤`.
 //
 // Two hops and no counter, which falls out of the ladder rather than being enforced by it: a
-// binding cannot hand a question to itself, so the second hop always lands at the docket a
+// resolver cannot hand a question to itself, so the second hop always lands at the docket a
 // person reads. Escalating changes who answers and not what is being answered — the question
 // id is the same throughout, because the thing being decided did not change.
 func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
@@ -40,15 +40,15 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 		t.Fatalf("owned by %v before any escalation", got)
 	}
 
-	// Hop one: the named layer declines, and the standing binding covering the subject owns it.
-	resp := escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid)
+	// Hop one: the named layer declines, and the standing resolver matching the subject owns it.
+	resp := escalateAs(t, ts, waitCover(t, srv, "security-review", "run-1"), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("escalate = %s, want 204", resp.Status)
 	}
 	got := question(t, srv, qid)
 	if got["resolver"] != "verse.resolvers.payments-review" {
-		t.Fatalf("hop one landed on %v, want the standing binding", got["resolver"])
+		t.Fatalf("hop one landed on %v, want the standing resolver", got["resolver"])
 	}
 	if got["reownedFrom"] != "verse.resolvers.security-review" || got["reownedWhy"] != "escalated" {
 		t.Fatalf("the transfer left no trace, or the wrong one: %+v", got)
@@ -57,8 +57,8 @@ func TestEscalationReachesTheDocketInTwoHops(t *testing.T) {
 		t.Fatalf("escalating settled the question: %+v", got)
 	}
 
-	// Hop two: the standing binding declines, and there is nobody above it. Absent is ⊤.
-	resp = escalateAs(t, ts, waitInstance(t, srv, "payments-review", "run-1"), qid)
+	// Hop two: the standing resolver declines, and there is nobody above it. Absent is ⊤.
+	resp = escalateAs(t, ts, waitCover(t, srv, "payments-review", "run-1"), qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("second escalate = %s, want 204", resp.Status)
@@ -91,16 +91,16 @@ func TestEscalatingWhatIsNotYours(t *testing.T) {
 	mine := waitQuestion(t, srv, "run-1")
 	theirs := waitQuestion(t, srv, "run-2")
 
-	inst := waitInstance(t, srv, "payments-review", "run-1")
-	resp := escalateAs(t, ts, inst, theirs)
+	cover := waitCover(t, srv, "payments-review", "run-1")
+	resp := escalateAs(t, ts, cover, theirs)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("escalating another instance's question = %s, want 403", resp.Status)
+		t.Fatalf("escalating another cover's question = %s, want 403", resp.Status)
 	}
 
 	ans := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: mine, Choice: "proceed", By: "user:" + tester})
 	ans.Body.Close()
-	resp = escalateAs(t, ts, inst, mine)
+	resp = escalateAs(t, ts, cover, mine)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("escalating a settled question = %s, want 409", resp.Status)
@@ -121,18 +121,18 @@ func TestAnEscalationArrivesOnTheSpine(t *testing.T) {
 		`{name: security-review, byRef: true, method: {driver: url, url: "https://x"}}`).Body.Close()
 	subject := entity.RefAt("change", "pr", "1")
 	pr(t, srv, "1", "payments")
-	mirror.Watch(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
+	mirror.Cover(srv.Store, "verse.resolvers.payments-review", "payments-review", subject)
 
 	spawnFor(t, ts, "run-1", subject.String(), "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
-	escalateAs(t, ts, waitInstance(t, srv, "security-review", "run-1"), qid).Body.Close()
+	escalateAs(t, ts, waitCover(t, srv, "security-review", "run-1"), qid).Body.Close()
 
-	spine := resolver.InstanceRef("payments-review", mirror.OriginKey(subject)).Name()
+	spine := resolver.CoverRef("payments-review", mirror.StreamKey(subject)).Name()
 	transfer := func(ev entity.Event) bool {
 		return ev.Ref == mirror.QuestionRef(qid) && entity.Str(ev.To, "resolver") == "verse.resolvers.payments-review"
 	}
 	var arrived bool
-	for _, ev := range commitsOf(t, ts.URL+"/resolvers/instance/"+spine+"/events?since=0", carries(1, transfer)) {
+	for _, ev := range commitsOf(t, ts.URL+"/resolvers/cover/"+spine+"/events?since=0", carries(1, transfer)) {
 		arrived = arrived || transfer(ev)
 	}
 	if !arrived {
@@ -149,7 +149,7 @@ func standingWithDeadline(name, area, within string) string {
 // waitArmed waits for a posed question to carry its owner's deadline, and returns it.
 //
 // Arming is a SECOND write: posting the question publishes it, and stamping `escalatesAt`
-// happens after, because the instant is computed from a binding that has to be looked up
+// happens after, because the instant is computed from a resolver that has to be looked up
 // first (see the `arm` hook in server.go). So a reader that waits for the question and then
 // reads the clock is reading between two writes, and the answer is legitimately nil — which
 // is what made this test fail under -race and pass otherwise. It is the arming that is being
@@ -189,7 +189,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "run-1")
 
-	// Armed, and absolute: a duration on the binding becomes an instant on the question,
+	// Armed, and absolute: a duration on the resolver becomes an instant on the question,
 	// so a restart cannot slide it.
 	got := waitArmed(t, srv, qid)
 	due, err := time.Parse(time.RFC3339Nano, got["escalatesAt"].(string))
@@ -234,7 +234,7 @@ func TestSilencePastTheDeadlineEscalates(t *testing.T) {
 	}
 }
 
-// A binding that answers before its deadline never escalates at all.
+// A resolver that answers before its deadline never escalates at all.
 func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -244,7 +244,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
 
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+waitInstance(t, srv, "payments-review", "run-1")+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/cover/"+waitCover(t, srv, "payments-review", "run-1")+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
@@ -265,7 +265,7 @@ func TestAnsweringBeforeTheDeadline(t *testing.T) {
 		t.Fatalf("an answered question was moved by its own deadline: %+v", got)
 	}
 	if got["by"] != "via:verse.resolvers.payments-review" {
-		t.Fatalf("answered by %v, want the binding that answered in time", got["by"])
+		t.Fatalf("answered by %v, want the resolver that answered in time", got["by"])
 	}
 }
 
@@ -290,8 +290,8 @@ func TestAnAnswerBeatsAHandover(t *testing.T) {
 	time.Sleep(30 * time.Millisecond) // overdue
 
 	// Settled first, then the sweep arrives and must decline to move it.
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+
-		resolver.InstanceRef("security-review", "run-1").Name()+"/verdicts",
+	resp := postTony(t, ts.URL+"/resolvers/cover/"+
+		resolver.CoverRef("security-review", "run-1").Name()+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	docket(t, srv)

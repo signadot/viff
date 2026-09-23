@@ -143,9 +143,9 @@ func TestARestartHonoursASelectionsDeadline(t *testing.T) {
 	}
 }
 
-// A vote under an exclusive binding is refused at install: an exclusive binding answers
+// A vote under an exclusive resolver is refused at install: an exclusive resolver answers
 // alone, and a vote is a room. `ask` composes with it and installs.
-func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
+func TestAVoteUnderAnExclusiveResolverIsRefusedAtInstall(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -166,9 +166,9 @@ func TestAVoteUnderAnExclusiveBindingIsRefusedAtInstall(t *testing.T) {
 	}
 	code, body := postCharterFile(t, ts.URL, rule("vote", 2))
 	if code != http.StatusBadRequest || !strings.Contains(body, "exclusive") {
-		t.Fatalf("a vote under an exclusive binding installed: %d %s", code, body)
+		t.Fatalf("a vote under an exclusive resolver installed: %d %s", code, body)
 	}
 	if code, body := postCharterFile(t, ts.URL, rule("ask", 1)); code != http.StatusCreated {
-		t.Fatalf("an ask under an exclusive binding was refused: %d %s", code, body)
+		t.Fatalf("an ask under an exclusive resolver was refused: %d %s", code, body)
 	}
 }

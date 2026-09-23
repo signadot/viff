@@ -338,9 +338,9 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 	}
 }
 
-// A RESUMED task is watched by whoever was watching it.
+// A RESUMED task is covered by whoever was covering it.
 //
-// The binding its spawn named is on the entity, so a restart reads it back rather than
+// The resolver its spawn named is on the entity, so a restart reads it back rather than
 // remembering it — and the standing layer is consulted for its questions exactly as it was
 // before. Neither survived the first cut of this: reconcile rebuilt its own Meta by hand and
 // dropped both, silently, which is what an optional field on a struct three call sites
@@ -348,17 +348,17 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 func TestAResumedTaskKeepsItsResolver(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	const binding = "verse.resolvers.security-review"
+	const resolverRef = "verse.resolvers.security-review"
 	entitytest.Set(t, first.Store, mirror.Ref("p"), entity.Obj{
 		"status": string(task.Running), "runner": "http://elsewhere.invalid",
-		"flow": `change.pr."1"`, "resolver": binding,
+		"flow": `change.pr."1"`, "resolver": resolverRef,
 	}.Payload())
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.reconcileTasks()
 
 	e, _, _ := second.Store.Get(mirror.Ref("p"))
-	if got := entity.Str(e.Payload, "resolver"); got != binding {
-		t.Fatalf("a resumed task is watched by %q, want the binding it was spawned with", got)
+	if got := entity.Str(e.Payload, "resolver"); got != resolverRef {
+		t.Fatalf("a resumed task is covered by %q, want the resolver it was spawned with", got)
 	}
 }

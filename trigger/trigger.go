@@ -119,7 +119,7 @@ type Gating struct {
 	ResolverNote []string `tony:"-"`
 	GatesDoc     []string `tony:"-"`
 	GatesNote    []string `tony:"-"`
-	// Resolver names the binding that answers these gates — `verse.resolvers.<name>`. Same
+	// Resolver names the resolver that answers these gates — `verse.resolvers.<name>`. Same
 	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
 	// and one word for it is worth more than either word being marginally better in its own
 	// place. Empty leaves the question to the standing layer, then to the human docket.
@@ -135,7 +135,7 @@ func (t Trigger) AllGates() []Gate {
 	return t.Gates
 }
 
-// GateResolver is the binding named to answer this rule's own gates, empty for none.
+// GateResolver is the resolver named to answer this rule's own gates, empty for none.
 func (t Trigger) GateResolver() string {
 	if t.Gating == nil {
 		return ""
@@ -346,7 +346,7 @@ type Gate struct {
 	// Text with no expression in it is text.
 	Pose string `tony:"field=pose,omitzero"`
 	// Answerers is who the question is held out to, when the gate says: grantees, the way a
-	// grant names them — a person, a kind (`user`, `agent`), `*`, a group's or a binding's
+	// grant names them — a person, a kind (`user`, `agent`), `*`, a group's or a resolver's
 	// address. Written as the question's `read-write` grant when it is posed, in place of the
 	// docket's default, so a gate naming davido is davido's to answer and the charter's owner's,
 	// who co-owns what their rule asked. `need` is how many of them it takes.

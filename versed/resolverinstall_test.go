@@ -28,7 +28,7 @@ const goodResolver = `{
 }`
 
 // A resolver is installed, listed and removed — the whole of what an operator can do with one
-// before anything is bound to it.
+// before any question is held out to it.
 func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -75,7 +75,7 @@ func TestAResolverIsInstalledListedAndRemoved(t *testing.T) {
 		t.Fatalf("remove = %s, want 204", del.Status)
 	}
 	if _, ok, _ := srv.Store.Get(resolver.Ref("security-review")); ok {
-		t.Fatal("the binding survived its removal")
+		t.Fatal("the resolver survived its removal")
 	}
 }
 
@@ -113,7 +113,7 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 		{"a url driver with nowhere to dial",
 			`{name: r, byRef: true, method: {driver: url}}`,
 			"method.url is required"},
-		// A binding's address is its name. One that still files itself under a kind is told which
+		// A resolver's address is its name. One that still files itself under a kind is told which
 		// field it is, rather than installed with the field dropped in silence.
 		{"a kind",
 			`{name: r, kind: security, byRef: true, method: {driver: url, url: "https://x"}}`,
@@ -150,7 +150,7 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 
 // The two dials, and the rule the design binds them with: exclusive needs a deadline.
 //
-// An exclusive binding's answer is the only one that counts, so one that is down turns every
+// An exclusive resolver's answer is the only one that counts, so one that is down turns every
 // question it owns into a question nobody may answer. A deadline is what makes that a delay
 // instead of a deadlock — which is why the two arrive together rather than one at a time.
 func TestExclusiveNeedsADeadline(t *testing.T) {

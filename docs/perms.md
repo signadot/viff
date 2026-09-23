@@ -98,7 +98,7 @@ it is read when it is checked, so membership changes without touching the grants
 
 ## What acts on its own
 
-A rule fires, an io reflects, a binding answers a gate, a schedule ticks — and nobody typed
+A rule fires, an io reflects, a resolver answers a gate, a schedule ticks — and nobody typed
 any of it. One rule covers all four: **an installed thing acts as whoever installed it.** Its
 writes appear as `via:<its address>`, and the check treats that as the owner of its record.
 
@@ -130,7 +130,7 @@ the root in both, and so co-owns everything.
 
 ## Verse's own half
 
-Everything under `verse` — rules, tasks, runners, ios, bindings, schedules, open questions,
+Everything under `verse` — rules, tasks, runners, ios, resolvers, schedules, open questions,
 these records themselves — is the system's. You do not write there directly: you make things
 with the verbs that own them (`charter -a`, `task run`, `io add`, `gate approve`), and what
 a verb makes for you is yours. Anybody may use those verbs in an open verse, and anybody may
@@ -144,7 +144,7 @@ task and nothing else.
 
 A gate's question may be answered by whoever owns what asked it — the task's owner, or the
 charter's — and by whoever the gate names as `answerers`; where it names nobody, by any person
-or agent. A question bound to a resolver is answered by whoever answers as that binding. The
+or agent. A question held out to a resolver is answered by whoever answers as that resolver. The
 runner working a task cannot answer that task's gate: its grant is on the task, and a question
 is not part of the task.
 

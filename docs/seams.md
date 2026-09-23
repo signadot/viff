@@ -34,7 +34,7 @@ holds the history, since a finished task leaves the live registry and survives o
 the stored per-subject index a query stands in for.
 
 The consequence is that the model is in the addressing rather than in a structure somebody
-maintains. A task id is a function of (rule, subject). A resolver instance is `binding@origin`,
+maintains. A task id is a function of (rule, subject). A resolver's cover is `resolver@stream`,
 minted per subject and per run. Parent and child in a flow tree *are* prefix and extension of the
 chain kpath, so nesting needs no parent pointer to keep correct. There is no orchestrator to remove
 because there is nowhere for one to live.
@@ -46,7 +46,7 @@ For what the components *are*, read [the overview](overview.md) first. This note
 ```mermaid
 flowchart LR
   cli["verse CLI<br/>operator"]
-  res["resolver<br/>an answerer"]
+  res["answerer<br/>through a resolver"]
   worker["worker<br/>laptop · pod · human"]
   wh["Slack · Linear · GitHub"]
   hook["git hook<br/>reference-transaction"]
@@ -103,7 +103,7 @@ every external system let you install a four-line shell script.
 | 5 | [Broker](#5-task-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
 | 6 | [Ios](#6-ios--read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
 | 7 | [Webhooks](#7-webhooks-the-only-seam-facing-the-internet) | external → source | signed `POST` | built |
-| 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | resolver → verse | SSE frames; verdict; position | built |
+| 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | answerer → verse | SSE frames; verdict; position | built |
 | 9 | [Model provider](#9-the-model-provider) | task → provider | the driver's client | built |
 
 ## 1. The operator API
@@ -306,12 +306,13 @@ it is trusted only as a reason to go and look.
 
 ## 8. Resolvers: answering from the run's own stream
 
-A resolver is a party that answers a run's gates. It dials verse:
+An answerer is a party that answers a run's gates through a resolver. It dials verse at a
+**cover**, one resolver reading one gate stream:
 
 ```
-GET  /resolvers/instance/{id}/events     the frames — SSE
-POST /resolvers/instance/{id}/verdicts   approve · deny · escalate
-POST /resolvers/instance/{id}/position   how far it has read
+GET  /resolvers/cover/{id}/events     the frames — SSE
+POST /resolvers/cover/{id}/verdicts   approve · deny · escalate
+POST /resolvers/cover/{id}/position   how far it has read
 ```
 
 The events route serves **the same stream an attached observer sees**, not a projection of it. That
@@ -319,7 +320,7 @@ is a design requirement rather than an implementation convenience: the moment it
 stream there are two orders to reconcile, and a supervised run reads differently depending on who is
 looking.
 
-A resolver that falls below the retained window is told, and only in that case is also sent the
+An answerer that falls below the retained window is told, and only in that case is also sent the
 gates still open, because the replay it missed is exactly where they were.
 
 ## 9. The model provider

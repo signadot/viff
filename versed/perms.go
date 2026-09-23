@@ -58,10 +58,10 @@ var seed = []struct {
 	{entity.VerseRef(trigger.CharterSystem, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.Read, []string{entity.Everyone}},
-	// Who is watching what: minted by the system and by nobody else, so nothing is held out to
-	// be made here, and what is held out is sight — of the place, since each instance carries
-	// a record of its own, under its binding, that says who reads it.
-	{entity.VerseRef(resolver.InstanceSystem), entity.Read, []string{entity.Everyone}},
+	// Who covers what: minted by the system and by nobody else, so nothing is held out to
+	// be made here, and what is held out is sight — of the place, since each cover carries
+	// a record of its own, under its resolver, that says who reads it.
+	{entity.VerseRef(resolver.CoverSystem), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(verseio.System), entity.OwnerLevel, []string{entity.Everyone}},

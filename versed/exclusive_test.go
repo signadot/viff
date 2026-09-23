@@ -23,19 +23,19 @@ func mustInstall(t *testing.T, base, doc string) {
 	}
 }
 
-func exclusiveBinding(name, area string) string {
+func exclusiveResolver(name, area string) string {
 	return `{name: ` + name + `, exclusive: true, deadline: {within: "1h"},` +
 		` condition: {subject: {path: "change.pr.*", value: {area: ` + area + `}}},` +
 		` method: {driver: url, url: "https://x"}}`
 }
 
-// An exclusive binding's question is not a person's to answer — until they say they are
+// An exclusive resolver's question is not a person's to answer — until they say they are
 // answering over it, which is a different act with a different record.
 func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
+	mustInstall(t, ts.URL, exclusiveResolver("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
@@ -49,7 +49,7 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("an exclusive binding hid its question from the docket")
+		t.Fatal("an exclusive resolver hid its question from the docket")
 	}
 
 	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:" + tester})
@@ -68,8 +68,8 @@ func TestExclusiveRefusesAnotherAnswerer(t *testing.T) {
 	}
 
 	// The owner's own verdict is taken, through the same path.
-	inst := waitInstance(t, srv, "payments-review", "run-1")
-	ok := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts",
+	inst := waitCover(t, srv, "payments-review", "run-1")
+	ok := postTony(t, ts.URL+"/resolvers/cover/"+inst+"/verdicts",
 		api.Verdict{ID: qid, Verdict: "proceed"})
 	defer ok.Body.Close()
 	if ok.StatusCode != http.StatusNoContent {
@@ -87,7 +87,7 @@ func TestOverrideNamesBothParties(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
+	mustInstall(t, ts.URL, exclusiveResolver("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
 	spawnFor(t, ts, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")

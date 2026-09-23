@@ -57,7 +57,7 @@ func (l Level) Admits(need Level) bool {
 // owner and it is fixed when the node is created — by whoever created it, and never by somebody
 // naming them. So there is no grant of `owner` at a node: nobody can be made the owner of
 // anything except by their own write, which is what keeps a thing that acts (a rule, a source, a
-// binding) acting as whoever made it and as nobody its maker would rather it acted as.
+// resolver) acting as whoever made it and as nobody its maker would rather it acted as.
 //
 // It always reaches what is BENEATH its path and never the path itself, so it takes no `below`.
 // The level it confers is still OwnerLevel — what an owner holds — which is why a refusal says

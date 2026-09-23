@@ -64,7 +64,7 @@ of what asked it and by whoever it was held out to. See [permissions](perms.md).
 A *subject* and a *flow* are derived, and *derived* is meant literally: neither is a record
 anything keeps. A subject is the entity a piece of work is about, the PR moving through its
 lifecycle. It is what a rule's condition selects, and half of nearly every identity verse
-keeps: a spawn's id, a gate's question, a resolver's instance. A flow is a subject's in-flight
+keeps: a spawn's id, a gate's question, a resolver's cover. A flow is a subject's in-flight
 tasks, steerable as a unit, assembled per request.
 
 ## Components

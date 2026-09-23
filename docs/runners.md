@@ -190,7 +190,7 @@ The removal itself is never refused. `-leave` always succeeds, because there is 
 a refusal with no way to satisfy it would be a trap. Its visible cost: `verse ps` shows tasks on a
 runner that `verse runner` does not list. That is the true state, and the alternatives are worse.
 
-Removing a resolver binding *hands on* what it held, because a question has a layer above to go
+Removing a resolver *hands on* what it held, because a question has a layer above to go
 to. A runner has no layer above — work in flight is somewhere physical — so the choices are
 leave it or end it, and neither is a hand-on.
 
@@ -201,7 +201,7 @@ that needs the gpu pool names the gpu pool. The provider machinery is there to c
 wants "any runner with a gpu", and copying it then, against a real want, will produce a better
 answer than guessing at the vocabulary now.
 
-**No standing runners.** A resolver may be attached by a condition covering a subject; a runner may
+**No standing runners.** A resolver may be attached by a condition matching a subject; a runner may
 not. "All work about payments runs on the payments pool" is a coherent thing to want and a different
 feature. It makes the runner a property of the *subject* rather than of the spawn, and the two would
 need a layer rule to resolve.

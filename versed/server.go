@@ -147,7 +147,7 @@ type Server struct {
 	srcMu  sync.Mutex
 	ioRuns map[string]*sourceRun
 
-	// standingOwner answers "which standing binding covers this subject", for the paths that
+	// standingOwner answers "which standing resolver matches this subject", for the paths that
 	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
 	standingOwner func(subject string) string
 	// tripPace is the cycle throttle's D, applied to every engine this server owns. Guarded by
@@ -234,10 +234,10 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
 	store = entity.As(store, entity.SystemDefault)
-	// Who answers as a binding: the person or the group behind it, or the binding itself for
-	// a service. mirror binds by it and cannot read a binding.
-	mirror.AnswererOf = func(r entity.Reader, binding string) string {
-		if res, ok := resolver.Find(r, binding); ok {
+	// Who answers through a resolver: the person or the group behind it, or the resolver itself
+	// for a service. mirror holds questions out by it and cannot read a resolver.
+	mirror.AnswererOf = func(r entity.Reader, resolverRef string) string {
+		if res, ok := resolver.Find(r, resolverRef); ok {
 			return res.Answerer()
 		}
 		return ""
@@ -290,13 +290,13 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// run's. One record shape either way — the docket, a charter predicate and an auditor all
 	// read the same fact, and neither source is privileged.
 	// The layer rule, applied where a question is posed. A question carries the owner its
-	// LAYER gives it: what named it, else the standing binding covering its subject, else
+	// LAYER gives it: what named it, else the standing resolver matching its subject, else
 	// nothing — which is `⊤`, the docket a person reads.
 	//
-	// Absent layers are skipped rather than ranked. A standing binding is not a wider claim
+	// Absent layers are skipped rather than ranked. A standing resolver is not a wider claim
 	// on a named one's questions; it answers a different set.
 	owner := func(st entity.Store, q *task.GateQuestion) {
-		if q.BoundTo != "" || q.Subject == "" {
+		if q.Resolver != "" || q.Subject == "" {
 			return
 		}
 		ref, err := entity.ParseAddr(q.Subject)
@@ -304,7 +304,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 			return
 		}
 		if res, ok := resolver.Owner(st, ref); ok {
-			q.BoundTo = resolver.Ref(res.Name).String()
+			q.Resolver = resolver.Ref(res.Name).String()
 		}
 	}
 	standingOwner := func(subject string) string {
@@ -318,37 +318,37 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		return ""
 	}
 	s.standingOwner = standingOwner
-	// A question is where an instance is minted, because that is where ownership is decided.
-	// A spawn mints one for the binding it NAMES, since ownership is settled then and a
-	// resolver should be reading before the first ask; a standing binding cannot be minted
+	// A question is where a cover is minted, because that is where ownership is decided.
+	// A spawn mints one for the resolver it NAMES, since ownership is settled then and an
+	// answerer should be reading before the first ask; a standing resolver's cannot be minted
 	// that early, because one installed mid-run would own questions an earlier mint never
-	// heard of. Both call the same create-only Watch, so the two are one act done twice.
-	watch := func(st entity.Store, q task.GateQuestion, taskID string) {
-		if q.BoundTo == "" || !dials(st, q.BoundTo) {
+	// heard of. Both call the same create-only Cover, so the two are one act done twice.
+	cover := func(st entity.Store, q task.GateQuestion, taskID string) {
+		if q.Resolver == "" || !dials(st, q.Resolver) {
 			return
 		}
-		origin, err := entity.ParseAddr(q.Subject)
+		stream, err := entity.ParseAddr(q.Subject)
 		if taskID != "" {
-			origin, err = mirror.Ref(taskID), nil // a run's questions are watched over the run
+			stream, err = mirror.Ref(taskID), nil // a run's questions are covered over the run
 		}
 		if err != nil {
 			return
 		}
-		mirror.Watch(st, q.BoundTo, resolverName(q.BoundTo), origin)
+		mirror.Cover(st, q.Resolver, resolverName(q.Resolver), stream)
 	}
-	// The clock a binding puts on its own silence, stamped when the question is posed and
-	// ABSOLUTE so a restart cannot slide it. A binding cannot know when a question will
+	// The clock a resolver puts on its own silence, stamped when the question is posed and
+	// ABSOLUTE so a restart cannot slide it. A resolver cannot know when a question will
 	// arrive, so it says a duration and the question says an instant.
 	arm := func(st entity.Store, q task.GateQuestion) {
-		// The question's own clock first: it settles, where the binding's below only hands
-		// the question up, and it exists whether or not anybody is bound.
+		// The question's own clock first: it settles, where the resolver's below only hands
+		// the question up, and it exists whether or not any resolver owns it.
 		if q.Deadline != nil {
 			s.armDeadline(st, q.ID, q.Deadline.Within)
 		}
-		if q.BoundTo == "" {
+		if q.Resolver == "" {
 			return
 		}
-		res, ok := resolver.Find(st, q.BoundTo)
+		res, ok := resolver.Find(st, q.Resolver)
 		if !ok || res.Deadline == nil {
 			return
 		}
@@ -372,7 +372,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// of them: the TRIGGER has a scope whether or not a task exists yet.
 		store := s.storeForScope(p.Question.Scope)
 		owner(store, &p.Question)
-		watch(store, p.Question, "")
+		cover(store, p.Question, "")
 		if mirror.PostQuestion(store, p, "") {
 			arm(store, p.Question)
 		}
@@ -413,14 +413,14 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// FROM THE LAUNCH, not from the task's record, for the reason the scope is: both
 		// spawn paths start the task and then write its record, and a task that asks straight
 		// away asks before the record lands. Read off the record, a question posed in that
-		// window has no subject and so no owner — no instance for the binding covering it, no
-		// deadline armed, and an exclusive binding's question answerable by anybody until the
+		// window has no subject and so no owner — no cover for the resolver matching it, no
+		// deadline armed, and an exclusive resolver's question answerable by anybody until the
 		// frame's post names the owner a moment later (git-issue nkptp9b3h12ksx3kg9n0).
 		if p.Question.Subject == "" {
 			p.Question.Subject = l.Provenance.Subject
 		}
 		owner(store, &p.Question)
-		watch(store, p.Question, l.ID)
+		cover(store, p.Question, l.ID)
 		if mirror.PostQuestion(store, p, l.ID) {
 			arm(store, p.Question)
 		}
@@ -619,10 +619,10 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		l.Occurrence = spec.Occurrence // and which run it is, so the process can say so too
 		h := place.Spawn(l, content)
 		s.reflect(st, id, h, meta)
-		// Who is watching this run, if anybody was named. Minted beside the mirror because
+		// Who covers this run, if anybody was named. Minted beside the mirror because
 		// the two answer adjacent questions — what the work is doing, and who is reading it.
 		if dials(st, l.Resolver) {
-			mirror.BindResolver(st, l.Resolver, resolverName(l.Resolver), id)
+			mirror.CoverRun(st, l.Resolver, resolverName(l.Resolver), id)
 		}
 		return h
 	}
@@ -851,8 +851,8 @@ func (s *Server) reconcileTasks() error {
 			}
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
-				// The binding its spawn named is read back off the entity rather than
-				// remembered: a resumed task must be watched by whoever was watching
+				// The resolver its spawn named is read back off the entity rather than
+				// remembered: a resumed task must be covered by whoever was covering
 				// it, and the launch that said so is long gone.
 				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
@@ -1312,7 +1312,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /schedules/{id}/tick", s.tickSchedule, "verse-schedule-tick", nothing)
 	rt.handle("DELETE /charter/{name}", s.deleteCharterItem, "", nothing)
 	rt.handle("DELETE /charter", s.deleteCharter, "", nothing)
-	// resolvers — who answers a question. A binding is installed rather than declared in a
+	// resolvers — who answers a question. A resolver is installed rather than declared in a
 	// charter, because it outlives any one rule and is managed by whoever supervises rather
 	// than by whoever wrote the work.
 	rt.handle("GET /resolvers", s.listResolvers, "", nothing)
@@ -1341,11 +1341,11 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
 	rt.handle("GET /runners/{name}/check", s.checkRunner, "", nothing)
 	rt.handle("DELETE /runners/{name}", s.removeRunner, "", nothing)
-	// The two streams a resolver lives on. Addressed by INSTANCE — the binding watching one
-	// run — so neither route needs a second parameter to say which run it is about.
-	rt.handle("GET /resolvers/instance/{id}/events", s.resolverEvents, "", stream("verse-frame"))
-	rt.handleUnattributed("POST /resolvers/instance/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
-	rt.handleUnattributed("POST /resolvers/instance/{id}/position", s.resolverPosition, "verse-position", nothing)
+	// The two streams an answerer lives on. Addressed by COVER — one resolver on one gate
+	// stream — so neither route needs a second parameter to say which run it is about.
+	rt.handle("GET /resolvers/cover/{id}/events", s.resolverEvents, "", stream("verse-frame"))
+	rt.handleUnattributed("POST /resolvers/cover/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
+	rt.handleUnattributed("POST /resolvers/cover/{id}/position", s.resolverPosition, "verse-position", nothing)
 
 	// A package's own declaration: what it reads outside its address. It carries `?at=` like
 	// the two above, and it is posted BEFORE them, because a rule is checked against it.
@@ -1426,7 +1426,7 @@ func (s *Server) Handler() http.Handler {
 // WHAT A REQUEST MAY PRESENT is `user:`, `agent:` or `runner:`, self-asserted within the three,
 // and a bare email, which is respelled `user:` on the request itself so every write and check
 // below reads the one form. A name the grammar does not read is refused. So are the names versed
-// makes — `via:` when a rule fires, a source reflects or a binding answers, `system:` when versed
+// makes — `via:` when a rule fires, a source reflects or a resolver answers, `system:` when versed
 // acts — since a header saying either is precisely the assertion that was fine while nothing was
 // refused and is a way to hold what it names once something is. What installs a system-owned
 // charter is versed itself, from the file its deployment names (Server.SystemCharter). `group:`
@@ -1462,7 +1462,7 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			switch g.Kind {
 			case entity.ViaKind, entity.SystemKind:
 				http.Error(w, fmt.Sprintf("%s: %q is a name versed makes — via: when a rule fires, a "+
-					"source reflects or a binding answers, system: when versed acts — and not one a "+
+					"source reflects or a resolver answers, system: when versed acts — and not one a "+
 					"request presents; a request is user:, agent: or runner:. A charter the system "+
 					"stands behind is installed from the file the deployment names (systemCharter "+
 					"in its config)", api.PrincipalHeader, p), http.StatusBadRequest)
@@ -1661,26 +1661,26 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 
 // asDocket is the store the docket's OWN acts go through on a request's behalf, in the
 // request's scope: the clock settling an overdue question, the layer rule handing one on when a
-// reader arrives or a binding is removed. Whoever read the docket did not decide those, and a
+// reader arrives or a resolver is removed. Whoever read the docket did not decide those, and a
 // write carrying their name would say they did.
 func (s *Server) asDocket(r *http.Request) entity.Store {
 	return entity.As(s.scopedStore(r), entity.SystemDocket)
 }
 
-// asBinding is the store a resolver acts through: the request's scope, via the binding whose
-// instance the request came through. A service says what it decided, never who it is
-// (resolverVerdict), so the party on the write is the binding — `via:` its address, which the
+// asResolver is the store a resolver acts through: the request's scope, via the resolver whose
+// cover the request came through. A service says what it decided, never who it is
+// (resolverVerdict), so the party on the write is the resolver — `via:` its address, which the
 // check resolves to whoever installed it, and which a question is held out to by name.
-func (s *Server) asBinding(r *http.Request, binding string) entity.Store {
-	return entity.As(s.scopedStore(r), bindingPrincipal(binding))
+func (s *Server) asResolver(r *http.Request, resolverRef string) entity.Store {
+	return entity.As(s.scopedStore(r), resolverPrincipal(resolverRef))
 }
 
-// bindingPrincipal is who acts as a binding: `via:` its address. An address that does not parse
+// resolverPrincipal is who acts as a resolver: `via:` its address. An address that does not parse
 // is kept as written, and names no place the check admits anybody at.
-func bindingPrincipal(binding string) string {
-	ref, err := entity.ParseAddr(binding)
+func resolverPrincipal(resolverRef string) string {
+	ref, err := entity.ParseAddr(resolverRef)
 	if err != nil {
-		return binding
+		return resolverRef
 	}
 	return entity.Via(ref)
 }
@@ -2784,8 +2784,8 @@ func (s *Server) sayOnGate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// escalateGate is a person's escalation: the question moves to the next rung covering its
-// subject, and to the docket when there is none — what a service does through its instance,
+// escalateGate is a person's escalation: the question moves to the next rung matching its
+// subject, and to the docket when there is none — what a service does through its cover,
 // done from the docket. Admitted to whoever holds `read-write` on the question, since handing
 // a question on is an answer of a kind, "not by me", and refused to anybody else.
 func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
@@ -2897,12 +2897,12 @@ func (s *Server) posed(store entity.Store, id string, raised func() bool) (q ent
 // taskID is the task the answer is addressed to, empty when the caller did not say and the
 // id must be read for it.
 //
-// store is the view the answerer acts through: the request's principal, or a binding for a
-// verdict that came through its instance. Whether that party may answer is asked of the store
+// store is the view the answerer acts through: the request's principal, or a resolver for a
+// verdict that came through its cover. Whether that party may answer is asked of the store
 // BEFORE the answer is delivered, since the record is written only afterwards and a refusal
 // then would be an answer that reached the work with no record of it. The answer is theirs to
 // give when they co-own the question — the task's owner, or the charter's — or hold `read-write`
-// on it: the binding it is held out to, or a person, under the seed.
+// on it: the resolver it is held out to, or a person, under the seed.
 func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, taskID string, store entity.Store) {
 	if body.ID == "" {
 		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
@@ -2912,7 +2912,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	// nobody, and an answer is a durable entry on the question, so an unattributable one is a
 	// permanent unattributable one. A decision is an act; acts have actors.
 	//
-	// AND THE ACTOR IS WHOEVER THE REQUEST IS MADE AS — the person, or the binding a verdict
+	// AND THE ACTOR IS WHOEVER THE REQUEST IS MADE AS — the person, or the resolver a verdict
 	// came through — which is who the check below admits (actor).
 	var ok bool
 	if body.By, ok = actor(w, store, body.By); !ok {
@@ -2976,7 +2976,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		return
 	}
 	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
-	// unchanged, and a person may read — and argue about — what an exclusive binding owns.
+	// unchanged, and a person may read — and argue about — what an exclusive resolver owns.
 	// And not a security boundary: it decides who answers an ask, never what an answer may
 	// authorise. The grant does that, and the two are not the same axis.
 	holder, exclusive, err := exclusiveOwner(store, body.ID)
@@ -2986,13 +2986,13 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	if unreadable(w, r, err) {
 		return
 	}
-	if exclusive && body.By != bindingPrincipal(holder) && !body.Override {
+	if exclusive && body.By != resolverPrincipal(holder) && !body.Override {
 		http.Error(w, holder+" answers this question exclusively; "+
 			"say override to answer it anyway, and the record will name you both",
 			http.StatusForbidden)
 		return
 	}
-	overriding := exclusive && body.By != bindingPrincipal(holder)
+	overriding := exclusive && body.By != resolverPrincipal(holder)
 	owner := taskID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
@@ -3109,7 +3109,7 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 // the original instant rather than a fresh one), and a timer fires the settle at it.
 //
 // A timer rather than a sweep, because a deadline SETTLES: it releases a firing or a task
-// loop that is blocked, and those do not read the docket. The binding's escalation beside
+// loop that is blocked, and those do not read the docket. The resolver's escalation beside
 // it can afford to wait for a reader, since a reader is the only party it is for. The
 // docket read still settles an overdue question it finds (settleOverdueIn), for the daemon
 // whose timer died with it.
@@ -3195,16 +3195,16 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 	return any
 }
 
-// instanceOf reads one resolver instance: the binding it is, and the task it watches.
+// coverOf reads one cover: the resolver it is of, and the gate stream it reads.
 //
 // Both come off the record rather than being parsed out of the address. The address is for
 // finding it; the fields are what the checks below compare, and a check that re-derives its
 // inputs from a string is one that can disagree with what is stored.
-// The READ's failure is reported rather than folded into "no such instance": every caller
-// answers 404 on false, so an unreadable store told a resolver its own instance is gone — and a
-// resolver's whole read plane hangs off that address (git-issue nkptp9b3h12ksx3kg9n0).
-func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref, ok bool, err error) {
-	ref := entity.VerseRef(resolver.InstanceSystem, r.PathValue("id"))
+// The READ's failure is reported rather than folded into "no such cover": every caller
+// answers 404 on false, so an unreadable store told an answerer its own cover is gone — and an
+// answerer's whole read plane hangs off that address (git-issue nkptp9b3h12ksx3kg9n0).
+func (s *Server) coverOf(r *http.Request) (resolverRef string, stream entity.Ref, ok bool, err error) {
+	ref := entity.VerseRef(resolver.CoverSystem, r.PathValue("id"))
 	e, found, err := s.scopedStore(r).Get(ref)
 	if err != nil {
 		return "", entity.Ref{}, false, err
@@ -3213,30 +3213,30 @@ func (s *Server) instanceOf(r *http.Request) (binding string, origin entity.Ref,
 		return "", entity.Ref{}, false, nil
 	}
 	p := entity.ToObj(e.Payload)
-	binding, _ = p["binding"].(string)
-	got, _ := p["origin"].(string)
-	origin, perr := entity.ParseAddr(got)
+	resolverRef, _ = p["resolver"].(string)
+	got, _ := p["stream"].(string)
+	stream, perr := entity.ParseAddr(got)
 	if perr != nil {
 		return "", entity.Ref{}, false, nil
 	}
-	return binding, origin, binding != "" && origin.Name() != "", nil
+	return resolverRef, stream, resolverRef != "" && stream.Name() != "", nil
 }
 
-// watchesARun reports which plane this instance is on. It follows from the ORIGIN and is not
-// stored beside it: a run's fine grain hangs off the spine, and which one you are reading is
-// a property of what you are watching rather than a flag that could disagree with it.
-func watchesARun(origin entity.Ref) bool {
-	return mirror.IsTask(origin)
+// coversARun reports which kind of gate stream this cover reads. It follows from the STREAM and
+// is not stored beside it: a run's fine grain hangs off the spine, and which one you are reading
+// is a property of what you are covering rather than a flag that could disagree with it.
+func coversARun(stream entity.Ref) bool {
+	return mirror.IsTask(stream)
 }
 
-// resolverEvents hands a resolver the stream of the run it watches — the task's OWN read
+// resolverEvents hands an answerer the gate stream of the run it covers — the task's OWN read
 // plane, from `?since=`, not a projection of it.
 //
-// Context arrives before the ask, which is the whole reason a resolver is attached rather than
+// Context arrives before the ask, which is the whole reason an answerer is attached rather than
 // handed a question: by the time it reads the gate it has read what led to it.
 func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
-	s.escalateOverdue(s.asDocket(r)) // a resolver arriving is a reader arriving
-	_, origin, ok, readErr := s.instanceOf(r)
+	s.escalateOverdue(s.asDocket(r)) // an answerer arriving is a reader arriving
+	_, stream, ok, readErr := s.coverOf(r)
 	if unreadable(w, r, readErr) {
 		return
 	}
@@ -3244,33 +3244,33 @@ func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !watchesARun(origin) {
-		s.streamSpine(w, r, origin)
+	if !coversARun(stream) {
+		s.streamSpine(w, r, stream)
 		return
 	}
 	// No local special case: the runner attaches a live in-process handle by the same call,
-	// so a resolver over a local run and one over a brokered run read through one path. The
-	// task route splits only because it forwards to the runtime's own mount, and a
-	// resolver is not asking that route's question.
-	s.streamEvents(w, r, origin.Name())
+	// so an answerer over a local run and one over a brokered run read through one path. The
+	// task route splits only because it forwards to the runtime's own mount, and an
+	// answerer is not asking that route's question.
+	s.streamEvents(w, r, stream.Name())
 }
 
 // streamSpine serves the commits that touched one subject, from `?since=<revision>`.
 //
-// The narrowing is BY REF — every commit touching it, and nothing else. Not the binding's
+// The narrowing is BY REF — every commit touching it, and nothing else. Not the resolver's
 // condition, and the reason is not tidiness: a predicate reads a payload and a deletion has
 // none, so a condition-narrowed stream would hide exactly the end of a life it most needs to
 // show. `sys:k:i` born, marked vanishing, deleted and written again under the same ref is one
-// story, and a resolver for that ref sees all of it.
+// story, and an answerer covering that ref sees all of it.
 //
-// A position here is a revision rather than a cursor, which is why an instance may be minted
+// A position here is a revision rather than a cursor, which is why a cover may be minted
 // late and still read everything that led to a question: the store keeps its commits, so the
 // subject's history is re-readable in a way a run's bounded ring is not.
 //
 // It also carries the ANCHORS: a run about this subject writes a `task:instance` entity
 // naming it as its flow, and a spawn and a terminal are both commits there because the mirror
 // writes them. That is what makes this the spine and task streams the fine grain hanging
-// off it — a resolver reading here learns a run began, and its own instance for that run is
+// off it — an answerer reading here learns a run began, and its own cover for that run is
 // where the frames are. Without them the spine would be a subject's history with the work
 // about it left out, which is most of what a supervisor is watching for.
 func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject entity.Ref) {
@@ -3311,9 +3311,9 @@ func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject ent
 		// NO HISTORY, FOR WHATEVER REASON — the cursor expired, or the store could not answer.
 		// Both leave this reader in the same position (it has missed something and cannot get
 		// it), and both take the same recovery, so they are handled together here rather than
-		// split into a refusal a resolver has no better answer to. What must not happen is
+		// split into a refusal an answerer has no better answer to. What must not happen is
 		// silence: this said nothing at all, so a reader could not tell "nothing happened"
-		// from "you missed everything". A resolver is a client of this call and nothing else,
+		// from "you missed everything". An answerer is a client of this call and nothing else,
 		// so it reconnected, learned nothing, and sat waiting for a question that had already
 		// been asked.
 		//
@@ -3387,7 +3387,7 @@ func spineCarries(ev entity.Event, subject entity.Ref) bool {
 // takes. Not a new answering path, and not a write: the record is written from the decision
 // after the fact, which is what the steering invariant requires.
 func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
-	binding, origin, ok, readErr := s.instanceOf(r)
+	resolverRef, stream, ok, readErr := s.coverOf(r)
 	if unreadable(w, r, readErr) {
 		return
 	}
@@ -3408,15 +3408,15 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 	// than settling it. Everything else names an option, and whether the record carries that
 	// option is answerQuestion's to say, with the options listed.
 	if v.Verdict == "escalate" {
-		s.escalate(w, r, v.ID, binding, origin)
+		s.escalate(w, r, v.ID, resolverRef, stream)
 		return
 	}
 	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
-	// than a policy about who is asking: the instance names its binding and its origin, so
+	// than a policy about who is asking: the cover names its resolver and its stream, so
 	// this is a comparison of two fields the question already carries.
-	// AS THE BINDING, which is what the question is held out to; the service that carried the
+	// AS THE RESOLVER, which is what the question is held out to; the service that carried the
 	// verdict may itself hold nothing on it.
-	q, found, err := s.asBinding(r, binding).Get(mirror.QuestionRef(v.ID))
+	q, found, err := s.asResolver(r, resolverRef).Get(mirror.QuestionRef(v.ID))
 	if unreadable(w, r, err) {
 		return
 	}
@@ -3424,21 +3424,21 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such question", http.StatusNotFound)
 		return
 	}
-	if !ownedBy(entity.ToObj(q.Payload), binding, origin) {
+	if !ownedBy(entity.ToObj(q.Payload), resolverRef, stream) {
 		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
 		return
 	}
-	// Attribution is verse's: `by` is the binding, stamped here. A service says what it
+	// Attribution is verse's: `by` is the resolver, stamped here. A service says what it
 	// decided, never who it is.
 	//
 	// The task id is what routes the answer, and a firing's question has none — it is
 	// answered through the engine's own registry, which answerQuestion reaches when told no
 	// task holds it.
 	var taskID string
-	if watchesARun(origin) {
-		taskID = origin.Name()
+	if coversARun(stream) {
+		taskID = stream.Name()
 	}
-	as := s.asBinding(r, binding)
+	as := s.asResolver(r, resolverRef)
 	s.answerQuestion(w, r, api.Resolve{
 		ID: v.ID, Choice: v.Verdict, By: entity.PrincipalOf(as), Say: v.Say,
 	}, taskID, as)
@@ -3446,17 +3446,17 @@ func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
 
 // ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
 //
-// A binding that is not installed is REFUSED rather than ignored, and rather than left standing
+// A resolver that is not installed is REFUSED rather than ignored, and rather than left standing
 // on the question. Left standing it is worse than useless: the question is owned by something
 // that cannot answer, and — the case that makes this a refusal rather than a shrug — it SHADOWS
-// the standing layer that covers the same subject, which never sees the question and has no
-// instance through which to reach it. A misspelled binding therefore turns a supervised subject
+// the standing layer that matches the same subject, which never sees the question and has no
+// cover through which to reach it. A misspelled resolver therefore turns a supervised subject
 // into an unsupervised one, silently, which is the shape of the hazard the first resolver plan
 // refused a `condition` to avoid.
 //
-// Checked at spawn rather than at install, because a charter and a binding are separate
-// entities and either may arrive first; what must hold is that a RUN is never bound to a name
-// nobody answers to.
+// Checked at spawn rather than at install, because a charter and a resolver are separate
+// entities and either may arrive first; what must hold is that a RUN never names a resolver
+// nobody answers through.
 func ghostResolver(store entity.Store, ref string) string {
 	if ref == "" {
 		return "" // named nobody, which is a state and not a mistake
@@ -3464,9 +3464,9 @@ func ghostResolver(store entity.Store, ref string) string {
 	if _, ok := resolver.Find(store, ref); ok {
 		return ""
 	}
-	return fmt.Sprintf("resolver %q is not installed: a spawn may not name a binding that does "+
+	return fmt.Sprintf("resolver %q is not installed: a spawn may not name a resolver that does "+
 		"not exist — the question would be owned by something that cannot answer it, and any "+
-		"standing binding covering the same subject would never see it. Install it "+
+		"standing resolver matching the same subject would never see it. Install it "+
 		"(`verse resolver add`), or leave `resolver` empty to let the standing layer own it", ref)
 }
 
@@ -3474,15 +3474,15 @@ func ghostResolver(store entity.Store, ref string) string {
 // owns it from that moment, and its answer resolves the ORIGINAL question, because escalating
 // changes who answers and not what is being answered.
 //
-// Nothing waits. The escalating resolver is not blocked and gets no answer back — it keeps
+// Nothing waits. The escalating answerer is not blocked and gets no answer back — it keeps
 // reading and may answer other questions in the next frame, and only the WORK is blocked, at
 // the gate it always was. The verdict, when it comes, arrives on its stream like any other
 // frame, which is what lets it lean on the precedent next time rather than remember it.
-func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding string, origin entity.Ref) {
-	store := s.asBinding(r, binding)
+func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, resolverRef string, stream entity.Ref) {
+	store := s.asResolver(r, resolverRef)
 	q, ok, err := store.Get(mirror.QuestionRef(id))
 	// A READ THAT DID NOT HAPPEN IS NOT A MISSING QUESTION. Collapsing the two answered 404
-	// "no such question" for a store that could not be read, which tells a resolver its
+	// "no such question" for a store that could not be read, which tells an answerer its
 	// question is gone at exactly the moment nothing can be established about it.
 	if unreadable(w, r, err) {
 		return
@@ -3496,12 +3496,12 @@ func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, binding st
 		http.Error(w, "that question is already settled", http.StatusConflict)
 		return
 	}
-	if !ownedBy(p, binding, origin) {
+	if !ownedBy(p, resolverRef, stream) {
 		http.Error(w, "that question is not this resolver's to escalate", http.StatusForbidden)
 		return
 	}
 	subject, _ := p["subject"].(string)
-	if !reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, binding, "escalated") {
+	if !reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, resolverRef, "escalated") {
 		// Answered between the check above and the write. Not this resolver's to escalate any
 		// more, and saying 204 would tell it the layer above now holds a question that is shut.
 		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
@@ -3551,8 +3551,8 @@ func (s *Server) escalateOverdueIn(store entity.Store, pending []entity.Entity) 
 	}
 }
 
-// exclusiveOwner reports the binding that owns this question and whether it owns it
-// exclusively. A question nobody owns, or one owned by an advisory binding, is answerable by
+// exclusiveOwner reports the resolver that owns this question and whether it owns it
+// exclusively. A question nobody owns, or one owned by an advisory resolver, is answerable by
 // the first party to answer — which is what advisory means, and is the default.
 // It reports the READ's failure rather than folding it into "nobody owns it". Folding it
 // inverted the guard: an unreadable store answered "not exclusive", so the second answerer this
@@ -3566,19 +3566,19 @@ func exclusiveOwner(store entity.Store, id string) (string, bool, error) {
 	if !ok {
 		return "", false, nil
 	}
-	binding := entity.Str(e.Payload, "resolver")
-	if binding == "" {
+	resolverRef := entity.Str(e.Payload, "resolver")
+	if resolverRef == "" {
 		return "", false, nil
 	}
-	res, ok, err := resolver.FindErr(store, binding)
+	res, ok, err := resolver.FindErr(store, resolverRef)
 	if err != nil {
 		return "", false, err
 	}
-	return binding, ok && res.Exclusive, nil
+	return resolverRef, ok && res.Exclusive, nil
 }
 
-// questionOrigin is what an owner of this question watches: the run that raised it, or the
-// subject it is about when a firing did. It is the same distinction an instance's address
+// questionOrigin is the gate stream an owner of this question covers: the run that raised it,
+// or the subject it is about when a firing did. It is the same distinction a cover's address
 // carries, read off the question rather than guessed.
 func questionOrigin(q map[string]any, subject string) entity.Ref {
 	if p, _ := q["task"].(string); p != "" {
@@ -3588,24 +3588,24 @@ func questionOrigin(q map[string]any, subject string) entity.Ref {
 	return ref
 }
 
-// ownedBy is the check both answering and escalating make: this binding, and this instance's
-// own origin. A run instance acts on the questions of its run and a spine on those of its
-// subject, which is how a binding with several instances cannot act through the wrong one.
-func ownedBy(q map[string]any, binding string, origin entity.Ref) bool {
-	if q["resolver"] != binding {
+// ownedBy is the check both answering and escalating make: this resolver, and this cover's
+// own stream. A run's cover acts on the questions of its run and a spine on those of its
+// subject, which is how a resolver with several covers cannot act through the wrong one.
+func ownedBy(q map[string]any, resolverRef string, stream entity.Ref) bool {
+	if q["resolver"] != resolverRef {
 		return false
 	}
-	if watchesARun(origin) {
-		return q["task"] == origin.Name()
+	if coversARun(stream) {
+		return q["task"] == stream.Name()
 	}
-	return q["subject"] == origin.String()
+	return q["subject"] == stream.String()
 }
 
-// resolverPosition records how far a resolver has read, and what it wants its successor to
-// know. On the INSTANCE, because who was watching is per run: writing it on the binding would
-// be one resolver's second run overwriting what its first one saw.
+// resolverPosition records how far an answerer has read, and what it wants its successor to
+// know. On the COVER, because who was covering is per run: writing it on the resolver would
+// be one answerer's second run overwriting what its first one saw.
 func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
-	binding, _, ok, readErr := s.instanceOf(r)
+	resolverRef, _, ok, readErr := s.coverOf(r)
 	if unreadable(w, r, readErr) {
 		return
 	} else if !ok {
@@ -3621,8 +3621,8 @@ func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
 	if p.Notes != "" {
 		rec["notes"] = p.Notes
 	}
-	ref := entity.VerseRef(resolver.InstanceSystem, r.PathValue("id"))
-	if _, _, err := s.asBinding(r, binding).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
+	ref := entity.VerseRef(resolver.CoverSystem, r.PathValue("id"))
+	if _, _, err := s.asResolver(r, resolverRef).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -3653,13 +3653,13 @@ func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.
 	mirror.Reflect(store, id, h, m)
 }
 
-// resolverName is a binding's name — the last segment of `verse.resolvers.<name>` — which is
-// what an instance's address is built from, with the origin it watches.
+// resolverName is a resolver's name — the last segment of `verse.resolvers.<name>` — which is
+// what a cover's address is built from, with the gate stream it reads.
 //
 // THE LAST SEGMENT, asked of the address rather than cut at the last delimiter. Cutting at the
 // last ':' was the same answer while an address was colons, and is no answer at all now — it
-// returned the whole string, so every instance was minted at
-// `verse.resolvers.reviewer@<origin>` and nothing that looked one up by name found it.
+// returned the whole string, so every cover was minted at
+// `verse.covers.verse.resolvers.reviewer@<stream>` and nothing that looked one up by name found it.
 func resolverName(ref string) string {
 	r, err := entity.ParseAddr(ref)
 	if err != nil {
@@ -3674,10 +3674,10 @@ func resolverName(ref string) string {
 
 // ── resolvers: who answers ───────────────────────────────────────────────────
 
-// addResolver installs a binding at `verse.resolvers.<name>`.
+// addResolver installs a resolver at `verse.resolvers.<name>`.
 //
 // A VERB rather than a raw write, and the reason survives this increment having nothing to
-// check across bindings yet: installing one is where the check that two standing conditions
+// check across resolvers yet: installing one is where the check that two standing conditions
 // do not overlap has to live, and a route that exists is a place to put it. A raw write has
 // nowhere.
 func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
@@ -3720,7 +3720,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		body["condition"] = entity.Obj{"subject": subject}
 	}
 	if res.Deadline != nil {
-		// The outcome is stored RESOLVED rather than as written: a binding that omitted it
+		// The outcome is stored RESOLVED rather than as written: a resolver that omitted it
 		// still means escalate, and a record that says so is one a later reader does not
 		// have to know the default to understand.
 		body["deadline"] = entity.Obj{
@@ -3757,7 +3757,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// A binding answers as whoever its record says (actsAsInstaller).
+	// A resolver answers as whoever its record says (actsAsInstaller).
 	if err := actsAsInstaller(store, ref, principalOf(r), before); err != nil {
 		s.takeBackOut(r, ref, stood)
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -3765,7 +3765,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 	}
 	// What it may find itself ordered against, reported and not refused. Overlap is decided
 	// by name at the moment a question is posed; saying so at install is what keeps a
-	// shadowed binding from being a silence rather than a fact.
+	// shadowed resolver from being a silence rather than a fact.
 	out := map[string]any{"at": ref.String()}
 	if over := resolver.Overlaps(s.scopedStore(r), res); len(over) > 0 {
 		out["overlaps"] = over
@@ -3775,9 +3775,9 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	// Bindings: what is INSTALLED. Who is watching what is a different question, and stands
-	// in a place of its own (resolver.InstanceSystem).
-	resolvers, readErr := entity.BelowErr(s.scopedStore(r), resolver.IsBinding, 1, entity.VerseRoot, resolver.System)
+	// Resolvers: what is INSTALLED. Who covers what is a different question, and stands
+	// in a place of its own (resolver.CoverSystem).
+	resolvers, readErr := entity.BelowErr(s.scopedStore(r), resolver.IsResolver, 1, entity.VerseRoot, resolver.System)
 	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -3842,10 +3842,10 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 // pass", handing the layer above a question somebody had already closed. The check is a
 // precondition on the write rather than a read before it, because a read before it is the same
 // race with a smaller window.
-func reown(store entity.Store, at, origin entity.Ref, subject, from, why string) bool {
+func reown(store entity.Store, at, stream entity.Ref, subject, from, why string) bool {
 	rec := entity.Obj{
 		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
-		// question left naming a binding that will not answer is one nobody can answer,
+		// question left naming a resolver that will not answer is one nobody can answer,
 		// listed on a docket as though somebody were coming.
 		"resolver": nil,
 		// And the clock goes with the owner it belonged to; the branch below arms the new
@@ -3858,18 +3858,18 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 		"reownedWhy":  why,
 		"reownedAt":   time.Now().UTC().Format(time.RFC3339),
 	}
-	binding := ""
+	resolverRef := ""
 	if subject != "" {
 		if ref, err := entity.ParseAddr(subject); err == nil {
 			if next, ok := resolver.Next(store, ref, from); ok {
-				binding = resolver.Ref(next.Name).String()
-				rec["resolver"] = binding
+				resolverRef = resolver.Ref(next.Name).String()
+				rec["resolver"] = resolverRef
 				// The new owner's clock, not the old one's. Without re-arming, a question
 				// would stay overdue against a deadline nobody set and move again on every
-				// read; without CLEARING it, one handed to a binding with no deadline would
+				// read; without CLEARING it, one handed to a resolver with no deadline would
 				// keep the last one's.
 				rec["escalatesAt"] = entity.Removed()
-				if res, ok := resolver.Find(store, binding); ok && res.Deadline != nil {
+				if res, ok := resolver.Find(store, resolverRef); ok && res.Deadline != nil {
 					if after, err := res.Deadline.After(); err == nil {
 						rec["escalatesAt"] = time.Now().Add(after).UTC().Format(time.RFC3339Nano)
 					}
@@ -3885,40 +3885,41 @@ func reown(store entity.Store, at, origin entity.Ref, subject, from, why string)
 	if err != nil || !won {
 		return false
 	}
-	// And the grant goes with the record: the question is held out to the binding that now
-	// answers it and to no other, the old binding's grant going with the old binding.
-	if err := mirror.Bind(store, at.Name(), binding); err != nil {
+	// And the grant goes with the record: the question is held out to the resolver that now
+	// answers it and to no other, the old resolver's grant going with the old resolver.
+	if err := mirror.HoldOut(store, at.Name(), resolverRef); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: question %s is recorded as %s's and still held out to who "+
-			"had it: %v\n", at.Name(), binding, err)
+			"had it: %v\n", at.Name(), resolverRef, err)
 	}
-	// The new owner gets an instance for what it now watches, because re-owning IS an
-	// ownership decision and that is where instances are minted. Without it a layer could own
-	// a question with no record through which to act on it — and no way to read the fine grain
-	// of a run it has just inherited. Create-only, so a binding that was already watching keeps
-	// the position it had. AFTER the write, so a handover that lost the race mints nothing.
-	if binding != "" && dials(store, binding) {
-		mirror.Watch(store, binding, resolverName(binding), origin)
+	// The new owner gets a cover for the gate stream it now owns questions in, because
+	// re-owning IS an ownership decision and that is where covers are minted. Without it a
+	// layer could own a question with no record through which to act on it — and no way to
+	// read the fine grain of a run it has just inherited. Create-only, so a resolver that
+	// already covered it keeps the position it had. AFTER the write, so a handover that lost
+	// the race mints nothing.
+	if resolverRef != "" && dials(store, resolverRef) {
+		mirror.Cover(store, resolverRef, resolverName(resolverRef), stream)
 	}
 	return true
 }
 
-// dials reports whether a binding reads through an instance — a service does; a person or a
-// group answers from the docket and is minted none.
-func dials(r entity.Reader, binding string) bool {
-	res, ok := resolver.Find(r, binding)
+// dials reports whether a resolver's answerer reads through a cover — a service does; a person
+// or a group answers from the docket and is minted none.
+func dials(r entity.Reader, resolverRef string) bool {
+	res, ok := resolver.Find(r, resolverRef)
 	return !ok || res.Dials()
 }
 
-// releaseResolver hands on what a removed binding was holding: the questions it owned, and
-// the instances that were reading for it.
+// releaseResolver hands on what a removed resolver was holding: the questions it owned, and
+// the covers that were reading for it.
 //
-// RE-ROUTE RATHER THAN DRAIN. Draining means the removed binding keeps answering what it
+// RE-ROUTE RATHER THAN DRAIN. Draining means the removed resolver keeps answering what it
 // already owns until those settle, which sounds gentler and is worse in the case that
 // matters: an operator removing a resolver wants it to stop, and its service is usually
 // being shut down in the same breath — so what it still owns is stuck until something
 // re-routes it anyway, and draining is a state machine that postpones the same work.
 //
-// Called AFTER the binding is gone, which is what makes the recomputation right: the layer
+// Called AFTER the resolver is gone, which is what makes the recomputation right: the layer
 // rule asked now returns the next name in order, or nothing. So this is a change of owner and
 // not only a loss of one, which is what allowing overlap bought.
 func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
@@ -3930,12 +3931,12 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 		subject, _ := p["subject"].(string)
 		reown(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed")
 	}
-	// Its instances go with it, and this is the only thing that reaps one. They are
+	// Its covers go with it, and this is the only thing that reaps one. They are
 	// machinery for a reader that no longer exists; what they were evidence of is in the
 	// store, where a position report and a note were commits when they were made and
 	// remain commits afterwards.
-	for _, ent := range entity.Below(store, resolver.IsInstance, 1, entity.VerseRoot, resolver.InstanceSystem) {
-		if entity.Str(ent.Payload, "binding") == gone.String() {
+	for _, ent := range entity.Below(store, resolver.IsCover, 1, entity.VerseRoot, resolver.CoverSystem) {
+		if entity.Str(ent.Payload, "resolver") == gone.String() {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
 	}
@@ -4557,7 +4558,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// task's first gate question arrive before the record it is about.
 	})
 	if dials(store, body.Resolver) {
-		mirror.BindResolver(store, body.Resolver, resolverName(body.Resolver), id)
+		mirror.CoverRun(store, body.Resolver, resolverName(body.Resolver), id)
 	}
 	// A FLOW, like a rule's task: tracked by the engine of the scope that spawned it, so `verse
 	// flow` lists it, the flow verbs reach it, and what holds a subject's work holds this too. A
@@ -5000,13 +5001,13 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 
 // streamEvents serves one task's read plane over SSE, from `?since=` if it carries one.
 //
-// It is factored out because a resolver reads THIS stream, not a projection of it: the design
-// requires that a resolver sees what an attached observer sees, and the moment it is a
+// It is factored out because an answerer reads THIS stream, not a projection of it: the design
+// requires that an answerer sees what an attached observer sees, and the moment it is a
 // different stream there are two orders to reconcile and a supervised run that reads
 // differently depending on who is looking.
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
 	// Wherever it runs, not wherever the default runner is: `verse task attach` on work sent
-	// to a per-spawn runner answered 404, and so — per the note above, since a resolver reads
+	// to a per-spawn runner answered 404, and so — per the note above, since an answerer reads
 	// this same stream — did every attempt to supervise it.
 	h := s.attach(id)
 	if h == nil {

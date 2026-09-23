@@ -1,8 +1,8 @@
-// Package resolver is the binding that says who answers a question, and the instance that
-// says who is watching one run.
+// Package resolver is the record that says who answers a question, and the cover that says
+// which gate stream one resolver is reading.
 //
 // A resolver answers gate questions. It is INSTALLED rather than declared in a charter,
-// because a binding outlives any one rule and is managed by whoever supervises rather than by
+// because a resolver outlives any one rule and is managed by whoever supervises rather than by
 // whoever wrote the work.
 package resolver
 
@@ -22,53 +22,52 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// System is where both bindings and instances live: `verse.resolvers.<name>` for a binding,
-// `verse.watch.<name>@<origin>` for one that is live.
+// System is where resolvers live: `verse.resolvers.<name>`. Their covers stand beside it, at
+// CoverSystem.
 //
-// Bindings stand one name beneath it, `verse.resolvers.<name>`, and nothing else does.
+// Resolvers stand one name beneath it, `verse.resolvers.<name>`, and nothing else does.
 const System = "resolvers"
 
-// InstanceSystem is where the record of a LIVE binding stands — one binding watching one origin,
-// `verse.watch.<name>@<origin>`. A place of its own, beside the bindings rather than among them:
-// an instance's address is derived and a binding's is chosen, so under one roof a binding could
-// be given a name that was an instance's, and one would overwrite the other. Only the system
-// makes one (mirror.Watch), so nobody is held out the making of anything here.
-const InstanceSystem = "watch"
+// CoverSystem is where a cover stands — one resolver on one gate stream,
+// `verse.covers.<name>@<stream>`. A place of its own, beside the resolvers rather than among
+// them: a cover's address is derived and a resolver's is chosen, so under one roof a resolver
+// could be given a name that was a cover's, and one would overwrite the other. Only the system
+// makes one (mirror.Cover), so nobody is held out the making of anything here.
+const CoverSystem = "covers"
 
-// Ref addresses a binding: its name, which is the whole of its address.
+// Ref addresses a resolver: its name, which is the whole of its address.
 func Ref(name string) entity.Ref {
 	return entity.VerseRef(System, name)
 }
 
-// InstanceRef addresses one binding watching one origin — a run, for now.
+// CoverRef addresses one resolver's cover on one gate stream — a run's, for now.
 //
 // The `@` composition is the one verse already uses for a thing that exists per pair
 // (`task:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
 // the routes that serve a resolver name a stream with one ref instead of a ref and a query
 // parameter the caller has to keep in step.
 //
-// The FIRST `@` is the separator and the rest is the origin, because an origin often contains
-// one itself — a trigger spawn is `<trigger>@<subject>`, so watching one reads
-// `verse.watch.security-review@guard@demo:pr:1`. Splitting on the first is the same
+// The FIRST `@` is the separator and the rest is the stream, because a stream often contains
+// one itself — a trigger spawn is `<trigger>@<subject>`, so covering one reads
+// `verse.covers.security-review@guard@demo:pr:1`. Splitting on the first is the same
 // rule a question id follows for `~`, and a name may not contain `@` for that reason.
-func InstanceRef(name, origin string) entity.Ref {
-	return entity.VerseRef(InstanceSystem, name+"@"+origin)
+func CoverRef(name, stream string) entity.Ref {
+	return entity.VerseRef(CoverSystem, name+"@"+stream)
 }
 
-// IsBinding reports whether an address is a binding's, and IsInstance whether it is the record of
-// a live one.
-func IsBinding(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
+// IsResolver reports whether an address is a resolver's, and IsCover whether it is a cover's.
+func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
 
-func IsInstance(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, InstanceSystem) }
+func IsCover(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, CoverSystem) }
 
-// Resolver is a binding: what it supervises, how it answers, and under what envelope.
+// Resolver is who answers: what it supervises, how it answers, and under what envelope.
 type Resolver struct {
 	// Name is its address: `verse.resolvers.<name>`.
 	Name string `tony:"field=name"`
 	// Condition makes it STANDING: nobody names it, and it supervises the work about the
 	// entities it selects. Nil means it attaches only by being named.
 	//
-	// The two doors are not exclusive: one remit can cover the subjects it always watches
+	// The two doors are not exclusive: one remit can match the subjects it always watches
 	// and still be pulled in where a charter names it.
 	Condition *Condition `tony:"field=condition,omitzero"`
 	// ByRef says it may be named — by a spawn's `resolver:`, or by a rule's `gating:`. It is
@@ -76,11 +75,11 @@ type Resolver struct {
 	ByRef bool `tony:"field=byRef,omitzero"`
 	// Method says how it answers and what the answering may do.
 	Method Method `tony:"field=method"`
-	// Deadline is what happens if this binding says nothing. Optional; without one a
-	// question waits for it indefinitely, which is what an advisory binding usually wants.
+	// Deadline is what happens if this resolver says nothing. Optional; without one a
+	// question waits for it indefinitely, which is what an advisory resolver usually wants.
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
 	// Exclusive says its answer is the one that counts, rather than the first answer to
-	// arrive. It requires a Deadline: a binding that is down would otherwise turn every
+	// arrive. It requires a Deadline: a resolver that is down would otherwise turn every
 	// question it owns into one nobody may answer.
 	Exclusive bool `tony:"field=exclusive,omitzero"`
 }
@@ -117,21 +116,21 @@ func (d *Deadline) Outcome() string {
 	return d.Then
 }
 
-// Condition selects the entities a standing binding covers, in the vocabulary a trigger's
+// Condition selects the entities a standing resolver matches, in the vocabulary a trigger's
 // own `subject` already uses — so nothing new is parsed and an operator who can write one can
 // write the other.
 type Condition struct {
 	Subject trigger.Match `tony:"field=subject"`
 }
 
-// Covers reports whether this condition selects ref right now.
+// Matches reports whether this condition selects ref right now.
 //
 // It asks the store rather than the ref alone, because a condition reads values —
 // `{area: payments}` is a fact about the entity, not about its address. It inherits Select's
 // treatment of an entity on its way out: one marked VANISHING is not selected, so a gate
 // about something that is leaving falls to whoever reads the docket rather than to a
 // supervisor of a thing that will not be there.
-func (c *Condition) Covers(r entity.Reader, ref entity.Ref) bool {
+func (c *Condition) Matches(r entity.Reader, ref entity.Ref) bool {
 	if c == nil {
 		return false
 	}
@@ -158,7 +157,7 @@ type Method struct {
 	// held out to.
 	Group string `tony:"field=group,omitzero"`
 	// URL is where the service is, so verse can hand it a capability and an operator can see
-	// what is bound. It is not an endpoint verse posts questions to — the service dials out
+	// what answers. It is not an endpoint verse posts questions to — the service dials out
 	// for both streams, so one behind NAT needs no special case.
 	URL string `tony:"field=url,omitzero"`
 	// Vector, Tools and Grant bound whatever the driver runs. Inert for a `url`, which runs
@@ -169,7 +168,7 @@ type Method struct {
 	Grant  string   `tony:"field=grant,omitzero"`
 }
 
-// Check validates a binding for THIS increment, refusing what it cannot yet honour rather
+// Check validates a resolver for THIS increment, refusing what it cannot yet honour rather
 // than storing it.
 //
 // Refusing is the point. A field accepted and not read is a supervisor that reports installed
@@ -183,20 +182,20 @@ func (r Resolver) Check() error {
 	}
 	if strings.Contains(r.Name, "@") {
 		return fmt.Errorf("resolver %q: a name may not contain @ — it is the separator in an "+
-			"instance's address (verse.%s.<name>@<origin>), and an origin often contains one "+
-			"of its own", r.Name, InstanceSystem)
+			"cover's address (verse.%s.<name>@<stream>), and a stream often contains one "+
+			"of its own", r.Name, CoverSystem)
 	}
-	// Two doors, and one of them must be open. A binding that may not be named and covers
+	// Two doors, and one of them must be open. A resolver that may not be named and matches
 	// nothing applies to nothing, which is a supervisor that reports installed and
 	// supervises nothing — the failure this whole design is arranged around.
 	if !r.ByRef && r.Condition == nil {
 		return fmt.Errorf("resolver %q: needs a door — `byRef: true` to be named by a spawn "+
-			"or a rule, or a `condition` to cover the subjects it watches. Both is allowed; "+
+			"or a rule, or a `condition` to match the subjects it watches. Both is allowed; "+
 			"neither applies to nothing", r.Name)
 	}
 	if r.Condition != nil && !r.Condition.Subject.Selects() {
 		return fmt.Errorf("resolver %q: condition.subject must be a path beginning with a literal — "+
-			"it selects the nodes this binding covers, and one that selects from the top is a "+
+			"it selects the nodes this resolver matches, and one that selects from the top is a "+
 			"claim on every question in the verse", r.Name)
 	}
 	if r.Deadline != nil {
@@ -210,12 +209,12 @@ func (r Resolver) Check() error {
 				"fires is how a motion says proceed-on-silence", r.Name, got, Escalate)
 		}
 	}
-	// The coupling the design states, enforced where it is cheap: an exclusive binding that
+	// The coupling the design states, enforced where it is cheap: an exclusive resolver that
 	// is down is a question nobody may answer, and a deadline is what makes that a delay
 	// instead of a deadlock.
 	if r.Exclusive && r.Deadline == nil {
 		return fmt.Errorf("resolver %q: exclusive needs a deadline — its answer is the only "+
-			"one that counts, so a binding that is down would turn every question it owns "+
+			"one that counts, so a resolver that is down would turn every question it owns "+
 			"into one nobody may answer. `deadline: {within: \"4h\"}` makes that a delay",
 			r.Name)
 	}
@@ -254,15 +253,15 @@ func (r Resolver) Check() error {
 	return nil
 }
 
-// The drivers: who answers as the binding.
+// The drivers: who answers through the resolver.
 const (
 	DriverURL    = "url"
 	DriverPerson = "person"
 	DriverGroup  = "group"
 )
 
-// Answerer is who a question bound to this binding is held out to, as the grammar spells it: the
-// binding, `via:` its address, for a service, which acts as the binding through its instance;
+// Answerer is who a question this resolver owns is held out to, as the grammar spells it: the
+// resolver, `via:` its address, for a service, which acts as the resolver through its cover;
 // the person, or the group, otherwise, since they answer as themselves from the docket.
 func (r Resolver) Answerer() string {
 	switch r.Method.Driver {
@@ -279,7 +278,7 @@ func (r Resolver) Answerer() string {
 	return entity.Via(Ref(r.Name))
 }
 
-// Dials reports whether the binding's resolver reads through an instance: a service does, a
+// Dials reports whether the resolver's answerer reads through a cover: a service does, a
 // person or a group answers from the docket and is minted none.
 func (r Resolver) Dials() bool { return r.Method.Driver == DriverURL }
 
@@ -300,7 +299,7 @@ func CheckFields(node *ir.Node) error {
 		if field == "condition" {
 			return checkFields(val, "resolver condition", map[string]string{
 				"subject": "",
-				"when": "a standing binding covers ENTITIES, and its spine is that subject's " +
+				"when": "a standing resolver matches ENTITIES, and its spine is that subject's " +
 					"whole story rather than a filtered view of it; there is no firing here " +
 					"for a `when` to dispatch",
 			}, nil)
@@ -363,22 +362,22 @@ func unwrap(n *ir.Node) *ir.Node {
 	return n
 }
 
-// List reads every installed binding, ordered by name.
+// List reads every installed resolver, ordered by name.
 //
 // The order is the point, not a convenience: it is what decides ownership when more than one
-// standing binding covers a subject, so it must be total, stable, and the same for everyone
+// standing resolver matches a subject, so it must be total, stable, and the same for everyone
 // who asks.
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
-	for _, ent := range entity.Below(r, IsBinding, 1, entity.VerseRoot, System) {
+	for _, ent := range entity.Below(r, IsResolver, 1, entity.VerseRoot, System) {
 		var res Resolver
 		if err := codec.FromNode(ent.Payload, &res); err != nil {
-			// A binding this build cannot read is one it cannot honour either — and it SAYS so,
+			// A resolver this build cannot read is one it cannot honour either — and it SAYS so,
 			// once, because the alternative is an answerer that has quietly stopped existing and
 			// questions that go unanswered with nothing pointing at why.
 			if _, said := unreadable.LoadOrStore(ent.Ref.String(), true); !said {
-				slog.Warn("resolver: a binding this build cannot read answers nothing",
-					"binding", ent.Ref.String(), "err", err)
+				slog.Warn("resolver: a resolver this build cannot read answers nothing",
+					"resolver", ent.Ref.String(), "err", err)
 			}
 			continue
 		}
@@ -388,49 +387,49 @@ func List(r entity.Reader) []Resolver {
 	return out
 }
 
-// unreadable is the bindings List has already said it cannot read, so it says it once rather
+// unreadable is the resolvers List has already said it cannot read, so it says it once rather
 // than at every question.
 var unreadable sync.Map
 
-// Owner returns the binding that answers questions about subject, and whether there is one.
+// Owner returns the resolver that answers questions about subject, and whether there is one.
 //
-// OVERLAP IS ORDERED, NOT FORBIDDEN. When several standing bindings cover a subject, the
+// OVERLAP IS ORDERED, NOT FORBIDDEN. When several standing resolvers match a subject, the
 // first by name owns it. That keeps the design's requirement — a question has exactly one
 // answerer at its layer — while dropping the one it cannot keep: disjointness of two
 // predicates is undecidable in general, so a refusal at install has to be conservative, and a
 // conservative refusal tells an operator with `{area: payments}` and `{area: infra}` no for a
 // reason that is not true of their case.
 //
-// What ordering costs is a binding silently shadowed by an earlier name. Two things answer
+// What ordering costs is a resolver silently shadowed by an earlier name. Two things answer
 // that without the check having to be sound: the owner is stamped on every question, so "why
 // is mine idle" is a selection rather than an inference, and installing reports what a new
-// binding overlaps.
+// resolver overlaps.
 func Owner(r entity.Reader, subject entity.Ref) (Resolver, bool) {
 	for _, res := range List(r) {
-		if res.Condition.Covers(r, subject) {
+		if res.Condition.Matches(r, subject) {
 			return res, true
 		}
 	}
 	return Resolver{}, false
 }
 
-// Next returns the binding that answers a question about subject once `from` steps aside —
+// Next returns the resolver that answers a question about subject once `from` steps aside —
 // by declining it, or by being removed.
 //
-// THE LADDER IS THE STANDING BINDINGS IN NAME ORDER, AND NEEDS NO COUNTER. A named binding
-// gives way to the first standing one covering the subject; a standing one gives way to the
+// THE LADDER IS THE STANDING RESOLVERS IN NAME ORDER, AND NEEDS NO COUNTER. A named resolver
+// gives way to the first standing one matching the subject; a standing one gives way to the
 // next standing one after it by name; the last gives way to nothing, which is `⊤`, the docket
 // a person reads. That falls out of walking the same list Owner walks and refusing to hand a
-// question back to `from` or to anything before it — a binding cannot hand a question to
-// itself, and the list is the order, so it needs no layer stored anywhere. A binding that is
+// question back to `from` or to anything before it — a resolver cannot hand a question to
+// itself, and the list is the order, so it needs no layer stored anywhere. A resolver that is
 // both named and standing is the same case as a standing one declining.
 //
-// The rungs are what a person, a group and a service are all bound through, so A handing to
-// B and B to C is three standing bindings over the subject, by name.
+// The rungs are what a person, a group and a service all answer through, so A handing to
+// B and B to C is three standing resolvers over the subject, by name.
 func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 	passed := from == ""
 	for _, res := range List(r) {
-		if !res.Condition.Covers(r, subject) {
+		if !res.Condition.Matches(r, subject) {
 			continue
 		}
 		if Ref(res.Name).String() == from {
@@ -444,16 +443,16 @@ func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
 	if passed {
 		return Resolver{}, false
 	}
-	// from was a named binding, not on the ladder: the first standing one covering the subject.
+	// from was a named resolver, not on the ladder: the first standing one matching the subject.
 	return Owner(r, subject)
 }
 
-// Find reads one binding by its ref, for a caller that has an owner and wants its dials.
+// Find reads one resolver by its ref, for a caller that has an owner and wants its dials.
 //
 // FindErr is the same read reporting whether it HAPPENED. Find keeps the two-value shape for the
 // callers that genuinely cannot act on the difference, but a caller deciding something on the
-// strength of "no such binding" wants FindErr: an unreadable store answering "not installed"
-// makes an exclusive binding look advisory, which is how a second answerer got admitted and the
+// strength of "no such resolver" wants FindErr: an unreadable store answering "not installed"
+// makes an exclusive resolver look advisory, which is how a second answerer got admitted and the
 // record came out not naming them both (git-issue nkptp9b3h12ksx3kg9n0).
 func Find(r entity.Reader, ref string) (Resolver, bool) {
 	res, ok, _ := FindErr(r, ref)
@@ -479,7 +478,7 @@ func FindErr(r entity.Reader, ref string) (Resolver, bool, error) {
 	return res, true, nil
 }
 
-// Overlaps reports the installed bindings whose subject paths could meet res's — what a new one
+// Overlaps reports the installed resolvers whose subject paths could meet res's — what a new one
 // may find itself ordered against.
 //
 // Deliberately cheap and deliberately not sound: it is a NOTICE rather than a refusal, so a

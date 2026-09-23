@@ -209,8 +209,8 @@ runtime holds the work — the local one, a broker, a remote taskd — so a clie
 the frames after its cursor and no others, wherever the task runs.
 
 A resume that falls below the window also replays the gates still open below it. The gap says a
-reader missed something; this says what. It matters because a resolver is a client of this endpoint
-and nothing else, so without it a reconnecting resolver learns it is behind and cannot see the
+reader missed something; this says what. It matters because an answering service is a client of this endpoint
+and nothing else, so without it a reconnecting answerer learns it is behind and cannot see the
 question it exists to answer. Only in the gap case: inside the window the replay already carries
 them.
 
@@ -457,7 +457,7 @@ event and relays the item to the worker's inbox at a new `cCursor`. One fact, tw
 
 Who authors an effect event follows the interlock rule: truth is what was applied.
 Operator-authored events — a `decision` from `/resolve`, a `vector` from set-vector, an operator
-`say` — are emitted by the broker on the POST, because the operator or resolver acted, and the item
+`say` — are emitted by the broker on the POST, because the operator or answerer acted, and the item
 is relayed for the worker to act on. There is no duplication: the `say` is the operator speaking,
 and the worker's resulting action is a separate `exec`.
 

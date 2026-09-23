@@ -19,13 +19,13 @@ import (
 // look at, and returns its id.
 func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef string) {
 	t.Helper()
-	// The binding has to EXIST. A spawn naming one that does not is refused now — it would
+	// The resolver has to EXIST. A spawn naming one that does not is refused — it would
 	// otherwise own the question with something that cannot answer it, and shadow whatever
-	// standing binding covers the same subject. These tests are about a spawn naming a
-	// binding, so they install the one they name.
+	// standing resolver matches the same subject. These tests are about a spawn naming a
+	// resolver, so they install the one they name.
 	if resolverRef != "" {
 		ref, err := entity.ParseAddr(resolverRef)
-		if err != nil || !resolver.IsBinding(ref) {
+		if err != nil || !resolver.IsResolver(ref) {
 			t.Fatalf("askingRun: %q is not verse.resolvers.<name>: %v", resolverRef, err)
 		}
 		installResolver(t, ts.URL, `{name: `+ref.Name()+
@@ -39,12 +39,12 @@ func askingRun(t *testing.T, srv *Server, ts *httptest.Server, id, resolverRef s
 	}
 }
 
-// A spawn that names a resolver binds an INSTANCE and stamps the binding on its questions.
+// A spawn naming a resolver mints a COVER on its run and stamps the resolver on its questions.
 //
 // `launch.Spec.Resolver` has been decoded, bound and then dropped at launchOf all along, so a
 // charter could name a resolver on a spawn and have it do nothing at all — silently, which is
 // the failure the whole increment is arranged around. This is the test that fails today.
-func TestASpawnBindsItsResolver(t *testing.T) {
+func TestASpawnCoversItsRun(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -60,30 +60,30 @@ func TestASpawnBindsItsResolver(t *testing.T) {
 		t.Fatalf("the question names %v as its owner, want %q: %+v", q["resolver"], ref, q)
 	}
 
-	// And there is a record of who is watching, minted at spawn rather than at the ask —
-	// a resolver reads context BEFORE the question, which is why it is attached at all.
-	inst, ok, _ := srv.Store.Get(resolver.InstanceRef("security-review", "watched"))
+	// And there is a record of who covers it, minted at spawn rather than at the ask —
+	// an answerer reads context BEFORE the question, which is why it is attached at all.
+	cover, ok, _ := srv.Store.Get(resolver.CoverRef("security-review", "watched"))
 	if !ok {
-		t.Fatal("no instance was minted for a run whose spawn named a resolver")
+		t.Fatal("no cover was minted for a run whose spawn named a resolver")
 	}
-	got := entity.ToObj(inst.Payload)
-	if got["binding"] != ref {
-		t.Errorf("the instance does not name its binding: %+v", got)
+	got := entity.ToObj(cover.Payload)
+	if got["resolver"] != ref {
+		t.Errorf("the cover does not name its resolver: %+v", got)
 	}
-	if got["origin"] != mirror.Ref("watched").String() {
-		t.Errorf("the instance does not name what it is watching: %+v", got)
+	if got["stream"] != mirror.Ref("watched").String() {
+		t.Errorf("the cover does not name its gate stream: %+v", got)
 	}
 	if got["position"] == nil {
-		t.Errorf("the instance has no position, so nothing can tell 'has not decided' from "+
+		t.Errorf("the cover has no position, so nothing can tell 'has not decided' from "+
 			"'has not caught up': %+v", got)
 	}
 }
 
-// A spawn that names none binds nothing, and its questions say so by ABSENCE.
+// A spawn that names none covers nothing, and its questions say so by ABSENCE.
 //
 // Absent is not the same as an owner nobody can name: it means the question belongs to whoever
 // reads the docket, and a later layer depends on telling those apart.
-func TestASpawnWithNoResolverBindsNothing(t *testing.T) {
+func TestASpawnWithNoResolverCoversNothing(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -92,10 +92,10 @@ func TestASpawnWithNoResolverBindsNothing(t *testing.T) {
 	qid := waitQuestion(t, srv, "unwatched")
 
 	if q := question(t, srv, qid); q["resolver"] != nil {
-		t.Fatalf("an unbound question carries %v as its owner: %+v", q["resolver"], q)
+		t.Fatalf("an unowned question carries %v as its owner: %+v", q["resolver"], q)
 	}
-	for _, ent := range entity.Below(srv.Store, resolver.IsInstance, 1, entity.VerseRoot, resolver.InstanceSystem) {
-		t.Fatalf("an unbound spawn minted %s", ent.Ref)
+	for _, ent := range entity.Below(srv.Store, resolver.IsCover, 1, entity.VerseRoot, resolver.CoverSystem) {
+		t.Fatalf("a spawn naming no resolver minted %s", ent.Ref)
 	}
 }
 
@@ -124,14 +124,14 @@ func TestAResolversDocketIsASelection(t *testing.T) {
 	}
 }
 
-// A spawn may not name a binding that is not installed.
+// A spawn may not name a resolver that is not installed.
 //
 // Left standing it is worse than useless: the question is owned by something that cannot answer
 // it, and — the case that makes this a refusal rather than a shrug — it SHADOWS the standing
-// binding covering the same subject, which never sees the question and has no instance through
-// which to reach it. A misspelled binding turns a supervised subject into an unsupervised one,
+// resolver matching the same subject, which never sees the question and has no cover through
+// which to reach it. A misspelled resolver turns a supervised subject into an unsupervised one,
 // silently.
-func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
+func TestASpawnMayNotNameAResolverThatDoesNotExist(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -144,12 +144,12 @@ func TestASpawnMayNotNameABindingThatDoesNotExist(t *testing.T) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("a spawn named a binding that does not exist: %s %s", resp.Status, raw)
+		t.Fatalf("a spawn named a resolver that does not exist: %s %s", resp.Status, raw)
 	}
 	if !strings.Contains(string(raw), "not installed") {
 		t.Fatalf("the refusal does not say what is wrong: %s", raw)
 	}
-	// And the standing layer still owns what it covers, for a spawn that names nobody.
+	// And the standing layer still owns what it matches, for a spawn that names nobody.
 	spawnFor(t, ts, "run-2", `change.pr."1"`, "")
 	if got := waitOwned(t, srv, waitQuestion(t, srv, "run-2"))["resolver"]; got != "verse.resolvers.payments-review" {
 		t.Fatalf("the standing layer does not own an unnamed run: %v", got)

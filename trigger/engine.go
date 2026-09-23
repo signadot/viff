@@ -926,7 +926,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// The named layer for a FIRING's gates, which a spawn has had all along and a
 			// rule did not. Empty leaves the question to the standing layer, and then to
 			// the docket a person reads.
-			BoundTo: t.GateResolver(),
+			Resolver: t.GateResolver(),
 			// And WHICH federation is asking, for the same reason a spawn carries it: the
 			// question is about this engine's subject, which outside this scope is an entity
 			// that does not exist.

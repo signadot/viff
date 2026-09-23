@@ -72,10 +72,10 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		// Derived from the spec and the action, so a re-fire — and a restart — re-poses the
 		// same question and joins the ballots already cast on it.
 		ID: selectID(e.idOwner(), spawn.Chain, subject, p), Origin: origin, Mode: task.Ask, Gate: "provider",
-		Reason:  fmt.Sprintf("select a doer for %s on %s", spawn.Chain, subject),
-		Subject: subject.String(),
-		Spawns:  spawnID(e.idOwner(), chainID(spawn.Chain), subject),
-		BoundTo: spawn.Resolver, Scope: e.scope, At: e.At(),
+		Reason:   fmt.Sprintf("select a doer for %s on %s", spawn.Chain, subject),
+		Subject:  subject.String(),
+		Spawns:   spawnID(e.idOwner(), chainID(spawn.Chain), subject),
+		Resolver: spawn.Resolver, Scope: e.scope, At: e.At(),
 		Options: opts, Deadline: deadline, Chain: spawn.Chain,
 	}
 	ctx := e.bgctx

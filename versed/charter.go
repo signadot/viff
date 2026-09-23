@@ -883,9 +883,9 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 }
 
 // exclusiveVote refuses a spawn whose selection is a vote and whose resolver answers
-// exclusively. An exclusive binding's answer is the only one that counts, and a vote is a room:
+// exclusively. An exclusive resolver's answer is the only one that counts, and a vote is a room:
 // under one, a threshold of three would either never be reached — one answerer, one ballot —
-// or be reached by a binding casting as three, and neither is what the author wrote.
+// or be reached by one resolver casting as three, and neither is what the author wrote.
 // `select: ask` is one party choosing and composes with it; a vote does not.
 func exclusiveVote(store entity.Store, t trigger.Trigger) error {
 	var err error
@@ -901,8 +901,8 @@ func exclusiveVote(store entity.Store, t trigger.Trigger) error {
 			return
 		}
 		err = fmt.Errorf("%s: `select: vote` at `need: %d` under resolver %q, which is exclusive — "+
-			"an exclusive binding answers alone, and a vote is a room. Use `select: ask`, drop "+
-			"`exclusive` on the binding, or name a binding that is not exclusive",
+			"an exclusive resolver answers alone, and a vote is a room. Use `select: ask`, drop "+
+			"`exclusive` on the resolver, or name a resolver that is not exclusive",
 			chain, spec.Provider.Need, spec.Resolver)
 	})
 	return err

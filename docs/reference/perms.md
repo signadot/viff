@@ -22,7 +22,7 @@ grantee   ::= principal
 
 Every surface that takes a name reads this and refuses what it does not: `-as`, the config's
 `user:` and `agent:`, a grant line, a `child-grants`, a group's members, a gate's `answerers`, a
-binding's `who` and `group`.
+resolver's `who` and `group`.
 
 - A bare email is read as `user:<email>` and stored with its kind. Any other bare word names
   nothing, and neither does a bare `verse.…` address.
@@ -31,7 +31,7 @@ binding's `who` and `group`.
   not read.
 - **A request that is not a read presents one.** Every method but GET and HEAD is refused 400
   without `Verse-Principal`. Three routes are registered otherwise, each acting for a party the
-  route itself names: an io's `hint`, and a resolver instance's `verdicts` and `position`.
+  route itself names: an io's `hint`, and a cover's `verdicts` and `position`.
 - A principal is listed the first time it presents itself, under
   `verse.principal.<kind>.<name>`.
 - `system:<part>` names the part of verse that wrote — `docket` (questions), `mirror` (task
@@ -45,7 +45,7 @@ binding's `who` and `group`.
 |---|---|
 | `<kind>:<id>` | the principal named exactly that, and anything installed that acts as them |
 | `<kind>:*` | any principal of the kind, and anything installed that acts as one |
-| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, an io or a binding is named this way; a runner acts as `runner:<identity>` |
+| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, an io or a resolver is named this way; a runner acts as `runner:<identity>` |
 | `group:<name>` | the group's members, each matched as above. A member may be another group, which is followed; a group already met on the walk is not entered again, so groups that name each other end the walk instead of looping, and admit exactly the members found along it |
 | `*` | everyone |
 
@@ -63,7 +63,7 @@ reads and sets them.
 | `owner` | the principal who owns the node. Absent on a record that only holds grants out (a seed row) |
 | `grants` | a list of lines. `[]` holds out nothing |
 | `child-grants` | levels → grantees: what a record made beneath this node starts out holding out, copied when that record is written. It is no fallback: changing it touches nothing that exists. The nearest `child-grants` up the tree applies; the root's is the last |
-| `under` | an address. Whoever co-owns that node co-owns this one. Verse writes it on a question (what asked it) and on a resolver's instance (its binding) |
+| `under` | an address. Whoever co-owns that node co-owns this one. Verse writes it on a question (what asked it) and on a cover (its resolver) |
 
 A grant line:
 
@@ -160,7 +160,7 @@ site knowing. A refusal is a 403 with the check's words, and a count under `perm
 
 ## Installed things
 
-A rule, an io, a binding and a schedule act as `via:<address>`, which resolves to the owner
+A rule, an io, a resolver and a schedule act as `via:<address>`, which resolves to the owner
 on the record **at that address** and to nobody where it has none. It does not fall back to the
 owner above: above is verse's half, which is the system's.
 
@@ -194,9 +194,9 @@ asked it.
   gate's `answerers`; for a gate a worker raises, the spawn's gate of that name, else whom the
   worker named (`task do gate -to`); else the `child-grants` on `verse.gate.question`
   (`read-write: [user:*, agent:*]`). A runner's grant is on its task and reaches no question.
-- **Bound to a resolver**, the line is whoever answers as the binding: `via:` its address for a
+- **Held out to a resolver**, the line is whoever answers as the resolver: `via:` its address for a
   service, the person or the group behind it otherwise. A change of hands replaces the line;
-  handed up — escalated, overdue, its binding removed — it goes back to the gate's `answerers`,
+  handed up — escalated, overdue, its resolver removed — it goes back to the gate's `answerers`,
   and to that `child-grants` only where the gate named nobody.
 - **Asked again**, a question keeps its id, and who may answer belongs to the new asking.
 - **Answerable once posed.** Posing is two writes, the record and then the question. An answer
@@ -222,7 +222,7 @@ asked it.
 | a spawn | the task, as the requester — or `via:` the rule for a firing, which is the charter's owner |
 | a worker's claim | `read-write` and `control` for the claimant on the task's record and the run's, as `system:mirror`; every report from then on is written as the claimant. A runner reached by url gets the same at the first reflection, as `runner:` its `identity` |
 | posing, settling, escalating, handing on a question | as `system:docket`, in the request's scope, whoever is working the task |
-| binding a question | its `read-write` line, to whoever answers as the binding |
+| holding a question out to a resolver | its `read-write` line, to whoever answers as the resolver |
 | an install | the thing, as its installer, with their record |
 | the deployment's charter | as `system:charter`, at start, after the restore |
 | a suspension | as the system, naming who holds it under `held` |
@@ -258,7 +258,7 @@ operator's edit included.
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | child-owner, read | everyone |
 | `verse.io.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
 | `verse.principal.group.*` | child-owner, read | everyone |
-| `verse.principal.*`, `verse.watch.*`, `verse.trigger.suspension.*` | read | everyone |
+| `verse.principal.*`, `verse.covers.*`, `verse.trigger.suspension.*` | read | everyone |
 | `verse.gate.question.*` | read | everyone |
 | `verse.gate.question.*` | read-write | `user:*`, `agent:*` |
 

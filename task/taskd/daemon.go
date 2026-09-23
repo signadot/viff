@@ -210,8 +210,8 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	if l.Vector != nil {
 		tk.SetVector(l.Vector, "launch")
 	}
-	tk.SetRetain(l.Retain)    // how much of its read plane a resuming reader can still see
-	tk.SetBoundTo(l.Resolver) // who owns the questions it raises
+	tk.SetRetain(l.Retain)        // how much of its read plane a resuming reader can still see
+	tk.SetResolverRef(l.Resolver) // who owns the questions it raises
 	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver,
 		occurrence: l.Occurrence, scope: l.Scope, status: task.Running}
 

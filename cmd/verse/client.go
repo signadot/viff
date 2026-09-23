@@ -773,7 +773,7 @@ type gateAnswerConfig struct {
 	*cli.Command
 	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
 	As  string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
-	// The refusal an exclusive resolver produces names the binding and says to use this, so
+	// The refusal an exclusive resolver produces names the resolver and says to use this, so
 	// the flag is the answer to a question the operator has just been asked. It is a named
 	// act rather than a bypass: `exclusive` was never real against whoever holds this API,
 	// and the record ends up naming both parties.
@@ -822,8 +822,8 @@ type gateEscalateConfig struct {
 	Say string `cli:"name=say desc='a word about why, on the record'"`
 }
 
-// gateEscalateCmd is `gate escalate <id>`: hand a question on to the next rung covering its
-// subject — a person's form of what a service does through its instance.
+// gateEscalateCmd is `gate escalate <id>`: hand a question on to the next rung matching its
+// subject — a person's form of what a service does through its cover.
 func gateEscalateCmd() *cli.Command {
 	cfg := &gateEscalateConfig{}
 	opts, err := cli.StructOpts(cfg)
@@ -831,7 +831,7 @@ func gateEscalateCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "escalate").
-		WithSynopsis("escalate a question to the next rung covering its subject: escalate <id> [--as <who>] [--say <why>]").
+		WithSynopsis("escalate a question to the next rung matching its subject: escalate <id> [--as <who>] [--say <why>]").
 		WithOpts(opts...).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)

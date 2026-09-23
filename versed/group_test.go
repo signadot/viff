@@ -86,8 +86,8 @@ func TestAGateHeldOutToAGroup(t *testing.T) {
 	}
 }
 
-// A binding whose resolver is a group holds its questions out to the members.
-func TestAGroupAsABindingsResolver(t *testing.T) {
+// A resolver whose answerer is a group holds its questions out to the members.
+func TestAGroupAsAResolversAnswerer(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

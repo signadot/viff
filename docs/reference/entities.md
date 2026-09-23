@@ -267,8 +267,8 @@ verse.trigger.rule.review
 
 Under `verse` are `task.instance.*` (the mirror of every running task), `task.run.*` (the
 record of a run that happened) and `task.claim.*` (a sequence's run claim); `gate.question.*`
-(every gate awaiting an answer); `resolvers.*` (who answers them) and `watch.*` (who is watching what, one record per binding
-and origin — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
+(every gate awaiting an answer); `resolvers.*` (who answers them) and `covers.*` (who is watching what, one record per resolver
+and gate stream — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
 installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
 `trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
 `runners.*` (where work can run) and `io.*` (what reflects an external system in and acts out);

@@ -11,7 +11,7 @@ import (
 )
 
 // Every name the docs show being typed is in the grammar: a `-as`, a `VERSE_USER`, a `-to`, a
-// grantee list on a grant, a default or a gate, a group's members, a binding's `who` and `group`.
+// grantee list on a grant, a default or a gate, a group's members, a resolver's `who` and `group`.
 // The examples are what people copy, and a spelling the grammar refuses teaches a refusal.
 //
 // Only fenced blocks are read, and a name holding a placeholder (`<who>`, `$USER`, `…`) is

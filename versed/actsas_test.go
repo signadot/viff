@@ -18,7 +18,7 @@ import (
 )
 
 // A PLACE THAT ACTS IS INSTALLED AS SOMEBODY'S OR NOT AT ALL. A rule fires, a source reflects, a
-// binding answers and a schedule ticks as the owner on the place's own record, and as nobody
+// resolver answers and a schedule ticks as the owner on the place's own record, and as nobody
 // without one. The record is written after the place and only for a writer who holds `owner`
 // there, so each of these used to leave a place that stood, listed as installed, and did
 // nothing. The install is refused and nothing is left standing.
@@ -62,7 +62,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 		}`), trigger.CharterRef("carols")},
 		{"a schedule", installAs(t, carol, ts.URL, `{name: carols-hour, every: 1h}`),
 			schedule.Ref(schedule.RecordID("", "carols-hour"))},
-		{"a binding", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
+		{"a resolver", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
 			`{name: carols-review, byRef: true, method: {driver: url, url: "https://x"}}`), resolver.Ref("carols-review")},
 		{"a source", postAs(t, carol, ts.URL+"/io", "application/tony",
 			fmt.Sprintf(`{name: carols-repo, root: git, dir: %q}`, dir)), verseio.Ref("carols-repo")},
@@ -131,10 +131,10 @@ func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 	resp = postAs(t, "alice@example.com", ts.URL+"/resolvers", "application/tony",
 		`{name: reviewer, byRef: true, method: {driver: url, url: "https://x"}}`)
 	if body := bodyOf(t, resp); resp.StatusCode != http.StatusConflict {
-		t.Errorf("a binding whose record was lost: %s %q, want 409", resp.Status, body)
+		t.Errorf("a resolver whose record was lost: %s %q, want 409", resp.Status, body)
 	}
 	if _, stands, _ := srv.Store.Get(resolver.Ref("reviewer")); stands {
-		t.Error("the binding stands, with no record to say whose")
+		t.Error("the resolver stands, with no record to say whose")
 	}
 
 	// And with the store answering, the same installs land and act as her.
@@ -177,7 +177,7 @@ func TestTheStartNamesWhatActsAsNobody(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0] != orphan {
-		t.Fatalf("acting as nobody: %v, want the binding written by hand and nothing else "+
+		t.Fatalf("acting as nobody: %v, want the resolver written by hand and nothing else "+
 			"(not alice's rule, not the base charter's)", got)
 	}
 }

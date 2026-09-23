@@ -300,20 +300,20 @@ func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
 	same(t, waitsOn(t, store, "run-a~d2"), []string{"user:*"})
 }
 
-// A binding takes the question, and the field says so: an escalation and a hand-back come through
+// A resolver takes the question, and the field says so: an escalation and a hand-back come through
 // the same grant, so the answer to "who now?" is never the gate's first answer.
-func TestBindingAQuestionMovesWhoItWaitsOn(t *testing.T) {
+func TestHoldingOutAQuestionMovesWhoItWaitsOn(t *testing.T) {
 	store := docket(t)
 	poseTo(t, store, "run-a~d1", "user:scott@example.com")
 
-	if err := Bind(store, "run-a~d1", "verse.resolver.binding.oncall"); err != nil {
-		t.Fatalf("binding: %v", err)
+	if err := HoldOut(store, "run-a~d1", "verse.resolvers.oncall"); err != nil {
+		t.Fatalf("holding out: %v", err)
 	}
 	if got := waitsOn(t, store, "run-a~d1"); len(got) != 1 || !strings.Contains(got[0], "oncall") {
-		t.Errorf("waits on %v, want the binding that now answers it", got)
+		t.Errorf("waits on %v, want the resolver that now answers it", got)
 	}
-	if err := Bind(store, "run-a~d1", ""); err != nil {
-		t.Fatalf("unbinding: %v", err)
+	if err := HoldOut(store, "run-a~d1", ""); err != nil {
+		t.Fatalf("releasing: %v", err)
 	}
 	same(t, waitsOn(t, store, "run-a~d1"), []string{"user:scott@example.com"})
 }

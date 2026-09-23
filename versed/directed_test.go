@@ -135,7 +135,7 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 		{`{name: g, mode: ask, need: 2, answerers: [oscar@example.com]}`, "nobody can settle"},
 		{`{name: g, mode: ask, answerers: [nobody]}`, "a bare word names nothing"},
 		{`{name: g, mode: ask, answerers: [verse.principal.group.payments]}`, "is no person"},
-		{`{name: g, mode: ask, answerers: [verse.watch.review@run-1]}`, "is no person"},
+		{`{name: g, mode: ask, answerers: [verse.covers.review@run-1]}`, "is no person"},
 		{`{name: g, mode: ask, answerers: [group:payments]}`, "nothing stands at verse.principal.group.payments"},
 		{`{name: g, mode: ask, answerers: [via:verse.resolvers.ghost]}`, "nothing stands at verse.resolvers.ghost"},
 		{`{name: g, mode: ask, need: 3, options: [{id: yes, need: 3}], answerers: [a@x, b@x]}`, "nobody can settle"},

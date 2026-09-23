@@ -11,7 +11,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [entities.md](entities.md) | refs, payloads, merging writes, conditional writes, selection, and watching |
 | [tasks.md](tasks.md) | the task surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |
-| [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
+| [resolvers.md](resolvers.md) | the resolver surface: the resolver, its two entities, the routes an answering service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
 | [perms.md](perms.md) | permissions in detail: the grammar, a record's fields, what is checked on a write and a read, installed things, questions, the seed, `verse perms` — the model itself is [../perms.md](../perms.md) |
 | [io.md](io.md) | the io surface: a connector that reflects an external system in and acts out — the entity, ownership globs, the verbs, the routes, the out half's place and status, and the contract an io serves |
@@ -192,7 +192,7 @@ verse
                                              tally stands (`1 of 2 for proceed`)
           approve <id> [-say <text>] · deny <id> [-say <text>]
           approve: y, yes · deny: n, no · -say: -s — the two default options, as verbs
-          escalate <id> [-as <who>] [-say <why>]     hand it on to the next binding covering
+          escalate <id> [-as <who>] [-say <why>]     hand it on to the next resolver matching
                                              its subject, or to the docket
   charter (charters, c) [<path>]             THE INSTALLED CHARTER, at a path: what may
                                              be written there, what it reads, its rules

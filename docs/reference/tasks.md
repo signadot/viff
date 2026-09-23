@@ -153,12 +153,12 @@ verse gate approve run-f3e31ed0390f~d1 -as you@example.com    # or: task approve
 ```
 
 **Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
-answers what their own work asked; a gate's `answerers`, or the binding a question is held out
-to, answer it; and a person answers an unbound question by the docket's default. The runner
-working the task holds nothing on the question it raised, and is refused. A refusal is a 403
-naming who holds what and which record decided ([perms.md](../perms.md)). Whoever may answer
-may also hand the question on — `verse gate escalate <id> -as <who> [-say <why>]` — to the
-next binding covering its subject, and to the docket when there is none.
+answers what their own work asked; a gate's `answerers`, or the resolver a question is held out
+to, answer it; and a person answers a question held out to no resolver by the docket's
+default. The runner working the task holds nothing on the question it raised, and is refused. A
+refusal is a 403 naming who holds what and which record decided ([perms.md](../perms.md)).
+Whoever may answer may also hand the question on — `verse gate escalate <id> -as <who> [-say <why>]` — to the
+next resolver matching its subject, and to the docket when there is none.
 
 **A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
 `options` and, as answers arrive, its `ballots`; `verse gate approve <id> -as <who>` casts one, and
@@ -258,7 +258,7 @@ unattended run stops parking on a question nobody will find: when the clock pass
 is refused as `by: deadline` and comes back to the agent as a refusal it re-plans around, the
 same one a person's no would be. `default: proceed` lets the action through; no default settles
 on `none`, which the loop also reads as a refusal — nobody made it, and the record says so. A
-bound resolver's own `deadline` is a different clock: it hands the question up to the layer
+resolver's own `deadline` is a different clock: it hands the question up to the layer
 above rather than settling it. Both instants sit on the record, and the earlier fires first.
 
 **A delegation's question offers the child modes.** A gate over `call_agent` asks how the
@@ -379,11 +379,11 @@ It is a record, not a mailbox: answering happens over the resolve API, and the e
 afterwards to `status: answered` with the verdict and who gave it. A question outlives its
 answer, because a docket that forgets is one nobody can audit.
 
-`resolver` names the binding that owns the question — what a spawn or a rule named, else the
-standing binding covering its subject, else absent, which is the docket a person reads.
+`resolver` names the resolver the question is held out to — what a spawn or a rule named, else
+the standing resolver matching its subject, else absent, which is the docket a person reads.
 `reownedFrom` appears when a question changed hands, with `reownedWhy` saying what moved it —
 `escalated` when its owner declined, `removed` when its owner was uninstalled. Either way it
-went to the layer above: the standing binding covering its subject, else the docket a person
+went to the layer above: the standing resolver matching its subject, else the docket a person
 reads. The question itself is unchanged, because escalating changes who answers and not what
 is being answered.
 

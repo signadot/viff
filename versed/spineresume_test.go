@@ -58,7 +58,7 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	defer ts.Close()
 
 	installResolver(t, ts.URL, standing("payments-review", "payments")).Body.Close()
-	// A FIRING's question, not a run's: its origin is the SUBJECT, because a firing has no
+	// A FIRING's question, not a run's: its gate stream is the SUBJECT, because a firing has no
 	// event stream of its own — which is the whole reason this path exists.
 	if err := srv.Eng.AddTrigger(trigger.Trigger{
 		Name:      "review",
@@ -71,8 +71,8 @@ func TestASubjectStreamBelowTheWindowSaysWhatIsOpen(t *testing.T) {
 	pr(t, srv, "1", "payments")
 	qid := waitAnyQuestion(t, srv)
 
-	inst := resolver.InstanceRef("payments-review", mirror.OriginKey(entity.RefAt("change", "pr", "1"))).Name()
-	_, lines, stop := sseData(t, http.DefaultClient, ts.URL+"/resolvers/instance/"+inst+"/events?since=1")
+	cover := resolver.CoverRef("payments-review", mirror.StreamKey(entity.RefAt("change", "pr", "1"))).Name()
+	_, lines, stop := sseData(t, http.DefaultClient, ts.URL+"/resolvers/cover/"+cover+"/events?since=1")
 	defer stop()
 
 	var gap, sawQuestion bool

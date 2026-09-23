@@ -531,7 +531,7 @@ func TestADeleteForgetsTheRecordsBeneathIt(t *testing.T) {
 	}
 }
 
-// A group admits its members: a principal, a kind, everyone, another group, a binding. A group
+// A group admits its members: a principal, a kind, everyone, another group, a resolver. A group
 // of groups is walked exactly — five deep admits the leaf — and a cycle admits nobody because
 // the walk ends.
 func TestAGroupAdmitsItsMembers(t *testing.T) {

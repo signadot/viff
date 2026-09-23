@@ -67,12 +67,12 @@ entities, tasks, and the charters that relate them.
   works whichever it is.
 - `mirror/` — reflects a running task into the verse as a `verse.task.instance` entity, so
   "observe or steer another task" is just "observe an entity."
-- `resolver/` — who answers a gate. A binding is *installed* rather than written into a
+- `resolver/` — who answers a gate. A resolver is *installed* rather than written into a
   charter, because it outlives any one rule and belongs to whoever supervises rather than to
-  whoever wrote the work. It covers a subject by match or a run by name, and one instance is
-  minted per thing it watches (`verse.watch.<name>@<origin>`), carrying that watcher's
-  own position. Its resolver is a service, a person or a group; a binding that goes silent
-  past its deadline hands the question to the next binding covering the subject, and the last
+  whoever wrote the work. It matches a subject by condition or is named by a run, and one cover
+  is minted per gate stream it reads (`verse.covers.<name>@<stream>`), carrying that reader's
+  own position. Its answerer is a service, a person or a group; a resolver that goes silent
+  past its deadline hands the question to the next resolver matching the subject, and the last
   hop is always the docket a person reads.
 - `io/` and `cmd/iod/` — the seam to an external system, in two halves: an io reflects state
   *in* and acts *out*. You deploy it and install it (`verse io add`), and it owns a place like

@@ -1096,7 +1096,7 @@ func nestPattern(root patTree, segs []string, pattern Payload) {
 // Asking the REF for its segments rather than naming three is what keeps a precondition about
 // verse's own half pointed at it: built from (system, kind, id) alone, an absence check for
 // `verse:resolvers:instance:x` asked about `resolvers.instance.x`, where nothing ever stands —
-// so create-only writes always fired, and a resolver's read position reset every time a
+// so create-only writes always fired, and a cover's read position reset every time a
 // question was posed.
 func (p Path) segments() []string {
 	segs := p.Ref.Segs()

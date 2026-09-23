@@ -54,9 +54,9 @@ func RecordID(at, name string) string {
 
 // poseRecord writes the question's own record, once: the system's, under what posed it — the task,
 // or the rule of the charter that asked — and holding out what the default on
-// `verse.gate.question` says, or the gate's own answerers when it named them, or the binding
-// that answers it when it is bound. The binding is on the record FROM THE WRITE THAT MAKES IT:
-// a record that held the default out first and was narrowed to the binding afterwards is a
+// `verse.gate.question` says, or the gate's own answerers when it named them, or the resolver's
+// answerers when a resolver owns it. The resolver is on the record FROM THE WRITE THAT MAKES IT:
+// a record that held the default out first and was narrowed to the resolver afterwards is a
 // question every person may settle for as long as the second write takes, and for good when it
 // fails.
 //
@@ -75,8 +75,8 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 	}
 	ref := QuestionRef(q.ID)
 	answers := entity.Canonical(q.Answerers)
-	if q.BoundTo != "" {
-		answers = boundNames(store, q.BoundTo)
+	if q.Resolver != "" {
+		answers = resolverAnswerers(store, q.Resolver)
 	}
 	// NOT THROWN AWAY. A question whose record did not land stands with none, and one with none
 	// is answered by whoever the docket's row admits — every person — so a store refusing this
@@ -100,7 +100,7 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 // poses the same id, so where the question standing is one that SETTLED, this is a new asking
 // and the record is rewritten to say who answers it (entity.Reestablish). Where it stands
 // pending it is the same asking reported a second time — a local run posts from the registry
-// and again from the frame — and the record is left as it is: a binding it has been handed to
+// and again from the frame — and the record is left as it is: a resolver it has been handed to
 // since keeps it.
 func poseRecordOnce(store entity.Store, ref, origin entity.Ref, answers []string) error {
 	var grants []entity.Grant
@@ -125,21 +125,22 @@ func poseRecordOnce(store entity.Store, ref, origin entity.Ref, answers []string
 	return entity.Reestablish(store, ref, entity.SystemDocket, origin, grants)
 }
 
-// Bind holds the question out to the binding that answers it: `read-write` on the question's
-// own record, which is what a resolver binding IS under the ownership model. The grantee is
-// who answers as the binding — its address for a service, which acts as the binding through
-// its instance; the person or the group behind it otherwise (resolver.Answerer) — so a
-// verdict is admitted, and a binding with no question to answer holds nothing. Exactly one
-// binding at a time: a change of hands replaces the level, and unbinding gives the question
-// back to whoever the default holds it out to. `read` is left as the record has it.
-func Bind(store entity.Store, id, binding string) error {
+// HoldOut holds the question out to the resolver that answers it: `read-write` on the question's
+// own record, which is what owning a question IS under the ownership model. The grantee is
+// who answers through the resolver — its address for a service, which acts as the resolver
+// through its cover; the person or the group behind it otherwise (resolver.Answerer) — so a
+// verdict is admitted, and a resolver with no question to answer holds nothing. Exactly one
+// resolver at a time: a change of hands replaces the level, and releasing (an empty resolver)
+// gives the question back to whoever the default holds it out to. `read` is left as the record
+// has it.
+func HoldOut(store entity.Store, id, resolver string) error {
 	ref := QuestionRef(id)
-	names := boundNames(store, binding)
-	if binding == "" {
-		// BACK TO WHOM THE GATE NAMED, and to the default only where it named nobody. A bound
-		// question's record carries its binding alone, so the gate's own answerers are kept on
+	names := resolverAnswerers(store, resolver)
+	if resolver == "" {
+		// BACK TO WHOM THE GATE NAMED, and to the default only where it named nobody. A held-out
+		// question's record carries its resolver alone, so the gate's own answerers are kept on
 		// the question (AnswerersField): handed up to the docket without them, a gate held out
-		// to davido became every person's the moment its binding let go.
+		// to davido became every person's the moment its resolver let go.
 		q, _, err := store.Get(ref)
 		if err != nil {
 			return err
@@ -184,7 +185,7 @@ func SayOn(store entity.Store, id, by, said string) {
 	})
 }
 
-// AnswerersField is who the gate itself named to answer, on the question: what unbinding gives
+// AnswerersField is who the gate itself named to answer, on the question: what releasing gives
 // the question back to. Absent where the gate named nobody.
 const AnswerersField = "answerers"
 
@@ -192,7 +193,7 @@ const AnswerersField = "answerers"
 // answer it as it stands.
 //
 // A READER CANNOT WORK THIS OUT. `answerers` is there only where the gate named somebody, and the
-// rest of who may answer — the binding a question was handed to, the rung that took it after an
+// rest of who may answer — the resolver a question was handed to, the rung that took it after an
 // escalation, the docket's own default — is on the question's perms record, which only the system
 // may read. So a docket, a charter deriving one message per person, and `verse gate` would each
 // have to guess, and would each guess differently.
@@ -239,14 +240,14 @@ func waitingOn(store entity.Store, ref entity.Ref) any {
 	return answerersValue(out)
 }
 
-// boundNames is who a question bound to binding is held out to.
-func boundNames(store entity.Store, binding string) []string {
+// resolverAnswerers is who a question is held out to when resolver owns it.
+func resolverAnswerers(store entity.Store, resolver string) []string {
 	if AnswererOf != nil {
-		if who := AnswererOf(store, binding); who != "" {
+		if who := AnswererOf(store, resolver); who != "" {
 			return entity.Canonical([]string{who})
 		}
 	}
-	return []string{viaBinding(binding)}
+	return []string{viaResolver(resolver)}
 }
 
 // about is the one line the question's subject offers about ITSELF, copied onto the question so
@@ -299,21 +300,21 @@ func answerersValue(names []string) any {
 	return out
 }
 
-// viaBinding is the principal a binding acts as, from its address: `via:<address>`. An address
+// viaResolver is the principal a resolver acts as, from its address: `via:<address>`. An address
 // that does not parse is held out as written, and the grammar admits nobody by it.
-func viaBinding(binding string) string {
-	ref, err := entity.ParseAddr(binding)
+func viaResolver(resolver string) string {
+	ref, err := entity.ParseAddr(resolver)
 	if err != nil {
-		return binding
+		return resolver
 	}
 	return entity.Via(ref)
 }
 
-// AnswererOf says who answers as a binding — its own address for a service, the person or the
-// group behind it otherwise (resolver.Resolver.Answerer). Supplied by the party that can read
-// a binding, since mirror may not import resolver (see Meta.Owner for the cycle); nil binds
-// the address itself.
-var AnswererOf func(r entity.Reader, binding string) string
+// AnswererOf says who answers through a resolver — its own address for a service, the person or
+// the group behind it otherwise (resolver.Resolver.Answerer). Supplied by the party that can
+// read a resolver, since mirror may not import resolver (see Meta.Owner for the cycle); nil
+// holds the question out to the address itself.
+var AnswererOf func(r entity.Reader, resolver string) string
 
 // Question status, monotonic: a question is posed once and settles once.
 const (
@@ -374,10 +375,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"chain": q.Chain,
 		"tool":  p.Tool,
 		"task":  taskID,
-		// resolver is the BINDING that owns this question. Absent means UNBOUND — nobody was
-		// declared, so it belongs to whoever reads the docket — which is a different fact
+		// resolver is the RESOLVER that owns this question. Absent means nobody holds it — none
+		// was declared, so it belongs to whoever reads the docket — which is a different fact
 		// from an owner nobody can name, and a later reader depends on the distinction.
-		"resolver": q.BoundTo,
+		"resolver": q.Resolver,
 	} {
 		if v != "" {
 			rec[k] = v
@@ -418,24 +419,24 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	}
 	// AFTER the record of who may answer, and read back from it: an asking that named nobody is
 	// held out by the default above, and one posed again while it stands pending keeps whatever
-	// binding it has been handed to since.
+	// resolver it has been handed to since.
 	rec[WaitingOnField] = waitingOn(store, QuestionRef(q.ID))
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
-	if q.BoundTo != "" {
-		rebind(store, q.ID, q.BoundTo)
+	if q.Resolver != "" {
+		holdOutAgain(store, q.ID, q.Resolver)
 	}
 	return true
 }
 
-// rebind is Bind for a question posed AGAIN: its record stands from the first asking and is left
-// as it is (poseRecord), so a binding that has changed since is written over it here. A failure
-// is said and leaves the record as the last asking had it — held out to the last binding, never
-// to everybody.
-func rebind(store entity.Store, id, binding string) {
-	if err := Bind(store, id, binding); err != nil {
+// holdOutAgain is HoldOut for a question posed AGAIN: its record stands from the first asking and
+// is left as it is (poseRecord), so a resolver that has changed since is written over it here. A
+// failure is said and leaves the record as the last asking had it — held out to the last
+// resolver, never to everybody.
+func holdOutAgain(store entity.Store, id, resolver string) {
+	if err := HoldOut(store, id, resolver); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: question %s is still held out as it was last posed; "+
-			"holding it out to %s failed: %v\n", id, binding, err)
+			"holding it out to %s failed: %v\n", id, resolver, err)
 	}
 }
 
@@ -690,7 +691,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 	}
 	// The record first, for the reason Pose writes it first: a question standing without one is
 	// everybody's to answer.
-	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers, BoundTo: owner}, taskID); err != nil {
+	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers, Resolver: owner}, taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
 			"written, so nobody is asked until it is posed again: %v\n", ev.ID, err)
 		return false
@@ -705,7 +706,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
 	if owner != "" {
-		rebind(store, ev.ID, owner)
+		holdOutAgain(store, ev.ID, owner)
 	}
 	return true
 }
@@ -763,9 +764,9 @@ func QueuedAnswer(store entity.Store, id string, res task.Resolution) {
 	}
 }
 
-// Overrode records that an answer was taken against an exclusive binding's claim on the
+// Overrode records that an answer was taken against an exclusive resolver's claim on the
 // question. `by` already names who answered; this names whom they answered over, so the pair
-// is on the record and neither half has to be inferred from a binding that may since have
+// is on the record and neither half has to be inferred from a resolver that may since have
 // changed or gone.
 func Overrode(store entity.Store, id, owner string) {
 	writeAt(store, QuestionRef(id), entity.Obj{"overrode": owner})

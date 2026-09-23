@@ -41,7 +41,7 @@ func TestDocCharartersInstall(t *testing.T) {
 	// strata: an ordering is charter-wide, so two docs each owning `gh` at level 0 would
 	// collide on a shared engine over nothing more than both being examples.
 	store := entitytest.Store(t)
-	total, n, proposed, bindings, packaged := 0, 0, 0, 0, 0
+	total, n, proposed, resolvers, packaged := 0, 0, 0, 0, 0
 	for _, path := range docs {
 		src, err := os.ReadFile(path)
 		if err != nil {
@@ -52,12 +52,12 @@ func TestDocCharartersInstall(t *testing.T) {
 				proposed++
 				continue
 			}
-			// A resolver binding is tony, is not a charter, and would be read as one carrying
+			// A resolver is tony, is not a charter, and would be read as one carrying
 			// unknown fields. It cannot be CHECKED here — `resolver` imports this package, so
 			// the arrow cannot come back — so it is classified structurally and counted: a
-			// binding says how it answers, and no rule has a `method`.
-			if isBinding(blk.text) {
-				bindings++
+			// resolver says how it answers, and no rule has a `method`.
+			if isResolver(blk.text) {
+				resolvers++
 				continue
 			}
 			// Bounded, because a parse can HANG rather than fail: go-tony loops forever on a
@@ -124,7 +124,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			"would make this test pass forever while checking nothing")
 	}
 	t.Logf("installed %d charter block(s) from %d docs (%d as packages, confined and declared); "+
-		"%d marked proposed, %d resolver bindings", total, len(docs), packaged, proposed, bindings)
+		"%d marked proposed, %d resolvers", total, len(docs), packaged, proposed, resolvers)
 	if packaged == 0 {
 		t.Error("no doc block declared a package — either the docs stopped documenting them or " +
 			"the declaration stopped being recognized, and both make this test check less than " +
@@ -138,10 +138,10 @@ type block struct {
 	proposed bool // fenced ```tony proposed: syntax that does not exist yet
 }
 
-// isBinding reports whether a block is a resolver binding rather than a charter: it says how it
+// isResolver reports whether a block is a resolver rather than a charter: it says how it
 // ANSWERS, which no rule does. Structural rather than a fence marker, so it cannot be applied to
 // a charter by mistake — the thing `proposed` has to be watched for.
-func isBinding(text string) bool {
+func isResolver(text string) bool {
 	return strings.Contains(text, "method:") && strings.Contains(text, "driver:") &&
 		!strings.Contains(text, "action:")
 }

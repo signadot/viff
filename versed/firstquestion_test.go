@@ -39,10 +39,10 @@ func (h *heldRecord) let() { h.once.Do(func() { close(h.gate) }) }
 //
 // Both spawn paths start the task and then write its record, so a task that asks straight away
 // asks inside that window. The layer rule finds an owner by the question's subject, and a
-// subject that had to come off the record would be missing there: no owner, no instance for the
-// binding covering the run, and an exclusive binding's question open to whoever answers first.
-// Left to load, that one window shows up as three tests failing three different ways — an
-// instance never minted, a 404 where a 403 is due, an override that does not name who it
+// subject that had to come off the record would be missing there: no owner, no cover for the
+// resolver matching the run, and an exclusive resolver's question open to whoever answers first.
+// Left to load, that one window shows up as three tests failing three different ways — a
+// cover never minted, a 404 where a 403 is due, an override that does not name who it
 // overrode (git-issue nkptp9b3h12ksx3kg9n0). Held open here, it is there on every run.
 func TestARunsFirstQuestionIsOwnedBeforeItsRecordLands(t *testing.T) {
 	held := &heldRecord{Store: entitytest.Store(t), ref: mirror.Ref("run-1"), gate: make(chan struct{})}
@@ -50,7 +50,7 @@ func TestARunsFirstQuestionIsOwnedBeforeItsRecordLands(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	defer held.let() // before the server closes: the spawn's handler is parked on the gate
-	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
+	mustInstall(t, ts.URL, exclusiveResolver("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
 
 	// The spawn cannot answer while its record is held, so it is made from beside the test.
@@ -80,13 +80,13 @@ func TestARunsFirstQuestionIsOwnedBeforeItsRecordLands(t *testing.T) {
 	if q["subject"] != `change.pr."1"` || q["resolver"] != "verse.resolvers.payments-review" {
 		t.Fatalf("a question posed before its run's record carries no layer: %+v", q)
 	}
-	if _, ok, err := srv.Store.Get(resolver.InstanceRef("payments-review", "run-1")); err != nil || !ok {
-		t.Fatalf("the binding that owns the question has no instance to answer it through (ok=%v, err=%v)", ok, err)
+	if _, ok, err := srv.Store.Get(resolver.CoverRef("payments-review", "run-1")); err != nil || !ok {
+		t.Fatalf("the resolver that owns the question has no cover to answer it through (ok=%v, err=%v)", ok, err)
 	}
 	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("a person answering an exclusive binding's question without override = %s, want 403", resp.Status)
+		t.Fatalf("a person answering an exclusive resolver's question without override = %s, want 403", resp.Status)
 	}
 
 	held.let()

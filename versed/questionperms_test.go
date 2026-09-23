@@ -16,8 +16,8 @@ import (
 )
 
 // withoutTheDocketDefault removes the seed's grant on questions, so that only a co-owner or
-// the binding a question is held out to may answer: the model with the open default off,
-// which is what makes the co-ownership edge and the binding's grant visible.
+// the resolver a question is held out to may answer: the model with the open default off,
+// which is what makes the co-ownership edge and the resolver's grant visible.
 func withoutTheDocketDefault(t *testing.T, srv *Server) {
 	t.Helper()
 	questions := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
@@ -87,22 +87,22 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	}
 }
 
-// A question is held out to the binding it is bound to, by the binding's address: the
-// binding's own verdict is admitted, made as the binding through its instance, and the grant
+// A question is held out to the resolver that owns it, by the resolver's address: the
+// resolver's own verdict is admitted, made as the resolver through its cover, and the grant
 // is on the question's record where anyone can read who may answer.
-func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
+func TestAnOwnedQuestionIsHeldOutToItsResolver(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
 
-	mustInstall(t, ts.URL, exclusiveBinding("payments-review", "payments"))
+	mustInstall(t, ts.URL, exclusiveResolver("payments-review", "payments"))
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
 	qid := waitQuestion(t, srv, "run-1")
-	binding := "verse.resolvers.payments-review"
+	resolverRef := "verse.resolvers.payments-review"
 
-	// The record is posed with the default's `read`, and the binding's `read-write` lands on
+	// The record is posed with the default's `read`, and the resolver's `read-write` lands on
 	// the same line a moment later.
 	deadline := time.Now().Add(3 * time.Second)
 	var grants []entity.Grant
@@ -114,24 +114,24 @@ func TestABoundQuestionIsHeldOutToItsBinding(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "via:"+binding ||
+	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "via:"+resolverRef ||
 		len(grants[0].To[entity.Read]) != 1 || grants[0].To[entity.Read][0] != entity.Everyone {
-		t.Fatalf("the question's grants = %+v, want read-write for its binding beside read for everyone", grants)
+		t.Fatalf("the question's grants = %+v, want read-write for its resolver beside read for everyone", grants)
 	}
-	if ok, _ := entity.Holds(srv.Store, "via:"+binding, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
-		t.Fatal("the binding does not hold read-write on the question held out to it")
+	if ok, _ := entity.Holds(srv.Store, "via:"+resolverRef, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
+		t.Fatal("the resolver does not hold read-write on the question held out to it")
 	}
 	if ok, _ := entity.Holds(srv.Store, "user:carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
-		t.Fatal("somebody else holds what the binding was granted")
+		t.Fatal("somebody else holds what the resolver was granted")
 	}
 
-	inst := waitInstance(t, srv, "payments-review", "run-1")
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts", api.Verdict{ID: qid, Verdict: "proceed"})
+	cover := waitCover(t, srv, "payments-review", "run-1")
+	resp := postTony(t, ts.URL+"/resolvers/cover/"+cover+"/verdicts", api.Verdict{ID: qid, Verdict: "proceed"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the binding's verdict was refused: %s", resp.Status)
+		t.Fatalf("the resolver's verdict was refused: %s", resp.Status)
 	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "via:"+binding {
+	if q := settledQuestion(t, srv, qid); q["by"] != "via:"+resolverRef {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }

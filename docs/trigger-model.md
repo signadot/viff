@@ -751,13 +751,13 @@ refused, since auto asks nobody.
 
 `answerers` is who the question is held out to: grantees in the
 [grammar](perms.md#principals-and-grantees) a grant names them in — a person (`user:<email>`, or
-the bare email), a whole kind (`user:*`), `*`, a group (`group:<name>`), a binding
+the bare email), a whole kind (`user:*`), `*`, a group (`group:<name>`), a resolver
 (`via:verse.resolvers.<name>`). It is written as the question's
 `read-write` grant when the question is posed, in place of the docket's default, and `need` over
 it is what one-or-many means: one ballot per answerer, `need: 1` a race, `need` equal to their
 number all of them. The charter's owner co-owns what their rule asked and answers it without
 being named. A gate nobody could settle is refused at install: a threshold above the answerers
-named, an answerer the grammar does not read, or a group or a binding that does not stand. [perms.md](perms.md) has the record it becomes.
+named, an answerer the grammar does not read, or a group or a resolver that does not stand. [perms.md](perms.md) has the record it becomes.
 
 The tally is whoever answers' to keep, not the engine's: an answer is a ballot on the record,
 the question settles in the same write as the ballot that reaches a threshold, and one answerer
@@ -788,7 +788,7 @@ same subjects the firing was about. It hangs off the *gate* rather than the acti
 the gate's outcome: two gates refuse for different reasons, and each says what its own refusal
 means. It is not a completion hook and needs no spawn of its own.
 
-Only a committed refusal runs it. A resolver that could not be reached, or a question withdrawn
+Only a committed refusal runs it. An answerer that could not be reached, or a question withdrawn
 because its subject left the selection, said nothing at all, and writing a rejection on their
 behalf would put a decision in the store that nobody made. It applies to a no however it arrives:
 one person's, a threshold of them, or the clock's default.
@@ -1042,7 +1042,7 @@ offered whatever you list, since it is how a task reports it could not do the wo
 
 An unknown `vector`, `grant`, or tool name fails the spawn rather than falling back to unbounded. A
 field that reads back as written and enforces nothing is the failure this is built to avoid.
-`resolver` names the binding that answers this run's gates, and a spawn naming one that is not
+`resolver` names the resolver that answers this run's gates, and a spawn naming one that is not
 installed is refused rather than left unsupervised; see
 [attached resolvers](attached-resolvers.md). `environment` is declared and unread.
 
@@ -1121,10 +1121,10 @@ at the top level means `gating: {gates: …}`, one field read two ways rather th
 disagree, and writing both is refused rather than merged, because a rule that says which gates it
 has twice has said it twice.
 
-`resolver` names an installed binding (`verse resolver add`). It is the same word a spawn uses for
+`resolver` names an installed resolver (`verse resolver add`). It is the same word a spawn uses for
 the same act: a spawn names who answers the run it starts, a rule names who answers the gates it
-raises itself. Empty leaves the question to whatever standing binding covers its subject, and then
-to the docket a person reads. A binding that is not installed is refused here rather than left to
+raises itself. Empty leaves the question to whatever standing resolver matches its subject, and then
+to the docket a person reads. A resolver that is not installed is refused here rather than left to
 own a question nothing can answer; see [attached resolvers](attached-resolvers.md).
 
 `seq` runs a list of actions in order, each starting when the previous one completes. It is

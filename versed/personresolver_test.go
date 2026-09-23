@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/resolver"
 )
 
-func personBinding(name, area, who, deadline string) string {
+func personResolver(name, area, who, deadline string) string {
 	d := ""
 	if deadline != "" {
 		d = `deadline: {within: "` + deadline + `"},`
@@ -33,15 +33,15 @@ func handOnAs(t *testing.T, as, url, id, say string) *http.Response {
 	return postAs(t, as, url+"/gate/escalate", "application/tony", string(b))
 }
 
-// A person is a binding's resolver: the standing door takes the questions its condition
-// covers and holds them out to the person, who answers from the docket; nobody else does; no
-// instance is minted, since a person does not dial in.
-func TestAPersonAsABindingsResolver(t *testing.T) {
+// A person is a resolver's answerer: the standing door takes the questions its condition
+// matches and holds them out to the person, who answers from the docket; nobody else does; no
+// cover is minted, since a person does not dial in.
+func TestAPersonAsAResolversAnswerer(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
-	mustInstall(t, ts.URL, personBinding("payments-owner", "payments", "oscar@example.com", ""))
+	mustInstall(t, ts.URL, personResolver("payments-owner", "payments", "oscar@example.com", ""))
 
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
@@ -54,14 +54,14 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if q := question(t, srv, qid); q["resolver"] != "verse.resolvers.payments-owner" {
-		t.Fatalf("the question is owned by %v, want the person's binding", q["resolver"])
+		t.Fatalf("the question is owned by %v, want the person's resolver", q["resolver"])
 	}
 	if ok, _ := entity.Holds(srv.Store, "user:oscar@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
 		rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
-		t.Fatalf("davido does not hold read-write on the question his binding took: %v", entity.ToObj(rec.Payload))
+		t.Fatalf("davido does not hold read-write on the question his resolver took: %v", entity.ToObj(rec.Payload))
 	}
-	if _, ok, _ := srv.Store.Get(resolver.InstanceRef("payments-owner", "run-1")); ok {
-		t.Fatal("an instance was minted for a person")
+	if _, ok, _ := srv.Store.Get(resolver.CoverRef("payments-owner", "run-1")); ok {
+		t.Fatal("a cover was minted for a person")
 	}
 
 	resp := answerAs(t, "bob@example.com", ts.URL, qid)
@@ -81,7 +81,7 @@ func TestAPersonAsABindingsResolver(t *testing.T) {
 	}
 }
 
-// A person escalates the way a service does: the question moves to the next rung covering its
+// A person escalates the way a service does: the question moves to the next rung matching its
 // subject, and to the docket when there is none, where the default holds it out again. A
 // stranger cannot hand on what is not theirs, and silence past the person's deadline hands it
 // on for them.
@@ -91,8 +91,8 @@ func TestAPersonEscalates(t *testing.T) {
 	defer ts.Close()
 	withoutTheDocketDefault(t, srv)
 	// Two rungs over payments, by name: alpha then zulu; then the docket.
-	mustInstall(t, ts.URL, personBinding("alpha", "payments", "oscar@example.com", ""))
-	mustInstall(t, ts.URL, personBinding("zulu", "payments", "carol@example.com", "1ms"))
+	mustInstall(t, ts.URL, personResolver("alpha", "payments", "oscar@example.com", ""))
+	mustInstall(t, ts.URL, personResolver("zulu", "payments", "carol@example.com", "1ms"))
 
 	pr(t, srv, "1", "payments")
 	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
@@ -136,20 +136,20 @@ func TestAPersonEscalates(t *testing.T) {
 	}
 }
 
-// waitOwnedBy waits for a question to be owned by the given binding — "" for the docket, once
+// waitOwnedBy waits for a question to be owned by the given resolver — "" for the docket, once
 // a handover has been recorded.
-func waitOwnedBy(t *testing.T, srv *Server, qid, binding string) map[string]any {
+func waitOwnedBy(t *testing.T, srv *Server, qid, resolverRef string) map[string]any {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
 		p := question(t, srv, qid)
 		owner, _ := p["resolver"].(string)
-		if owner == binding && (binding != "" || p["reownedWhy"] != nil) {
+		if owner == resolverRef && (resolverRef != "" || p["reownedWhy"] != nil) {
 			return p
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("question %s never became %q's: %+v", qid, binding, p)
+			t.Fatalf("question %s never became %q's: %+v", qid, resolverRef, p)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

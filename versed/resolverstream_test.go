@@ -24,12 +24,12 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const binding = "verse.resolvers.security-review"
+	const resolverRef = "verse.resolvers.security-review"
 
-	askingRun(t, srv, ts, "watched", binding)
+	askingRun(t, srv, ts, "watched", resolverRef)
 	qid := waitQuestion(t, srv, "watched")
-	inst := resolver.InstanceRef("security-review", "watched").Name()
-	base := ts.URL + "/resolvers/instance/" + inst
+	cover := resolver.CoverRef("security-review", "watched").Name()
+	base := ts.URL + "/resolvers/cover/" + cover
 
 	// Dial the stream from the beginning and read until the ask, keeping what came before it.
 	resp, err := http.Get(base + "/events?since=0")
@@ -82,15 +82,15 @@ func TestAResolverReadsARunAndAnswersIt(t *testing.T) {
 		t.Fatalf("the question did not settle: %+v", settled)
 	}
 	// Attribution is verse's: a service says what it decided, never who it is.
-	if settled["by"] != "via:"+binding {
-		t.Fatalf("by = %v, want via the resolver's own ref %q", settled["by"], binding)
+	if settled["by"] != "via:"+resolverRef {
+		t.Fatalf("by = %v, want via the resolver's own ref %q", settled["by"], resolverRef)
 	}
 }
 
 // A stream it may READ is not a docket it may ANSWER.
 //
-// The check is structural rather than a policy about who is asking: the instance names its
-// binding and its origin, so this is a comparison against two fields the question carries.
+// The check is structural rather than a policy about who is asking: the cover names its
+// resolver and its stream, so this is a comparison against two fields the question carries.
 func TestAResolverCannotAnswerAQuestionItDoesNotOwn(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -101,7 +101,7 @@ func TestAResolverCannotAnswerAQuestionItDoesNotOwn(t *testing.T) {
 	mine := waitQuestion(t, srv, "watched")
 	theirs := waitQuestion(t, srv, "elsewhere")
 
-	base := ts.URL + "/resolvers/instance/" + resolver.InstanceRef("security-review", "watched").Name()
+	base := ts.URL + "/resolvers/cover/" + resolver.CoverRef("security-review", "watched").Name()
 	resp := postTony(t, base+"/verdicts", api.Verdict{ID: theirs, Verdict: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -125,9 +125,9 @@ func TestAResolverReportsItsPosition(t *testing.T) {
 
 	askingRun(t, srv, ts, "watched", "verse.resolvers.security-review")
 	waitQuestion(t, srv, "watched")
-	ref := resolver.InstanceRef("security-review", "watched")
+	ref := resolver.CoverRef("security-review", "watched")
 
-	resp := postTony(t, ts.URL+"/resolvers/instance/"+ref.Name()+"/position",
+	resp := postTony(t, ts.URL+"/resolvers/cover/"+ref.Name()+"/position",
 		api.Position{Position: 12, Notes: "denied the prod path once; staging is fine"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
@@ -141,25 +141,25 @@ func TestAResolverReportsItsPosition(t *testing.T) {
 	if got["notes"] == nil {
 		t.Fatalf("the handover was dropped: %+v", got)
 	}
-	// And nothing about it reached the task's stream: what was WATCHED is not what was
+	// And nothing about it reached the task's stream: what was READ is not what was
 	// decided, and only one of the two is the run's business.
 	if q := question(t, srv, waitQuestion(t, srv, "watched")); q["status"] != mirror.QuestionPending {
 		t.Fatalf("reporting a position settled a question: %+v", q)
 	}
 }
 
-// An instance nobody minted is not a stream anybody may read.
-func TestAnUnknownInstanceIsNotAStream(t *testing.T) {
+// A cover nobody minted is not a stream anybody may read.
+func TestAnUnknownCoverIsNotAStream(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/resolvers/instance/nobody@nothing/events?since=0")
+	resp, err := http.Get(ts.URL + "/resolvers/cover/nobody@nothing/events?since=0")
 	if err != nil {
 		t.Fatalf("events: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("an unminted instance = %s, want 404", resp.Status)
+		t.Fatalf("an unminted cover = %s, want 404", resp.Status)
 	}
 }

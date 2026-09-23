@@ -88,7 +88,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const binding = "verse.resolvers.security-review"
+	const resolverRef = "verse.resolvers.security-review"
 
 	askingRun(t, srv, ts, "byhand", "")
 	byHand := planeOf(t, ts, "byhand", func(qid string) {
@@ -96,10 +96,10 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 		r.Body.Close()
 	})
 
-	askingRun(t, srv, ts, "watched", binding)
-	inst := resolver.InstanceRef("security-review", "watched").Name()
+	askingRun(t, srv, ts, "watched", resolverRef)
+	cover := resolver.CoverRef("security-review", "watched").Name()
 	byResolver := planeOf(t, ts, "watched", func(qid string) {
-		r := postTony(t, ts.URL+"/resolvers/instance/"+inst+"/verdicts",
+		r := postTony(t, ts.URL+"/resolvers/cover/"+cover+"/verdicts",
 			api.Verdict{ID: qid, Verdict: "proceed"})
 		r.Body.Close()
 	})
@@ -112,8 +112,8 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 	if hand.By != "user:scott@example.com" {
 		t.Fatalf("the human's decision is attributed to %q", hand.By)
 	}
-	if res.By != "via:"+binding {
-		t.Fatalf("the resolver's decision is attributed to %q, want via %q", res.By, binding)
+	if res.By != "via:"+resolverRef {
+		t.Fatalf("the resolver's decision is attributed to %q, want via %q", res.By, resolverRef)
 	}
 	// Everything else about the two decisions is the same act.
 	if hand.Proceed != res.Proceed || hand.Tool != res.Tool {
@@ -122,7 +122,7 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 
 	// And both settle their question the same way — the docket cannot tell them apart
 	// either, except by reading who answered.
-	for _, c := range []struct{ task, by string }{{"byhand", "user:scott@example.com"}, {"watched", "via:" + binding}} {
+	for _, c := range []struct{ task, by string }{{"byhand", "user:scott@example.com"}, {"watched", "via:" + resolverRef}} {
 		q := settledQuestion(t, srv, c.task+"~d1")
 		if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" || q["by"] != c.by {
 			t.Fatalf("%s settled as %+v", c.task, q)
@@ -134,48 +134,48 @@ func TestASupervisedRunReadsLikeAHumanSupervisedOne(t *testing.T) {
 }
 
 // A position that advances with no verdict emits NOTHING on the task's stream, and shows on
-// the resolver's record.
+// the resolver's cover.
 //
-// That is the whole of "what was watched" being a separate fact from "what was decided": a
+// That is the whole of "what was read" being a separate fact from "what was decided": a
 // hundred frames may produce no verdict, which is the ordinary case, and the run has no
 // business being told that somebody read it.
-func TestWatchingIsNotDeciding(t *testing.T) {
+func TestReadingIsNotDeciding(t *testing.T) {
 	srv := askingServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
 	askingRun(t, srv, ts, "watched", "verse.resolvers.security-review")
 	qid := waitQuestion(t, srv, "watched")
-	ref := resolver.InstanceRef("security-review", "watched")
+	ref := resolver.CoverRef("security-review", "watched")
 
 	before := framesSoFar(t, ts.URL+"/tasks/watched/events?since=0")
 	for _, p := range []int64{3, 7, 11} {
-		r := postTony(t, ts.URL+"/resolvers/instance/"+ref.Name()+"/position",
+		r := postTony(t, ts.URL+"/resolvers/cover/"+ref.Name()+"/position",
 			api.Position{Position: p, Notes: "still reading"})
 		r.Body.Close()
 	}
 	after := framesSoFar(t, ts.URL+"/tasks/watched/events?since=0")
 
 	if len(after) != len(before) {
-		t.Fatalf("watching put %d frame(s) on the run's stream: %v",
+		t.Fatalf("reading put %d frame(s) on the run's stream: %v",
 			len(after)-len(before), shape(after[len(before):]))
 	}
 	e, _, _ := srv.Store.Get(ref)
 	if got := entity.ToObj(e.Payload); got["position"] != int64(11) {
-		t.Fatalf("the instance is at %v, want 11 — the last position it reported", got["position"])
+		t.Fatalf("the cover is at %v, want 11 — the last position it reported", got["position"])
 	}
 	// The question is untouched by all that reading: it is still open, still nobody's answer.
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("reading settled the question: %+v", q)
 	}
-	// AND THE INSTANCE IS ITS BINDING'S TO WRITE, and nobody else's: the system mints it beneath
+	// AND THE COVER IS ITS RESOLVER'S TO WRITE, and nobody else's: the system mints it beneath
 	// a row that holds `owner` out to everyone, so it carries the system's record under its
-	// binding — whose owner co-owns it, which is who wrote the positions above.
+	// resolver — whose owner co-owns it, which is who wrote the positions above.
 	if got := owner(t, srv, ref); !entity.IsSystem(got) {
-		t.Errorf("the instance's record is %q's, want the system's, under its binding", got)
+		t.Errorf("the cover's record is %q's, want the system's, under its resolver", got)
 	}
 	if ok, _ := entity.Holds(srv.Store, "user:mallory@example.com", entity.ReadWrite, ref); ok {
-		t.Error("a stranger writes a binding's instance: its position, and whose it is")
+		t.Error("a stranger writes a resolver's cover: its position, and whose it is")
 	}
 }
 

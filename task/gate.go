@@ -41,7 +41,7 @@ type Gate struct {
 	// passes with none at its threshold. An empty default settles on nothing, which the loop
 	// reads as a refusal nobody made: the action is held, and the agent re-plans around it.
 	//
-	// It is the question's own clock. A bound resolver's `deadline` is the resolver's, and
+	// It is the question's own clock. The owning resolver's `deadline` is the resolver's, and
 	// hands the question up rather than settling it; when both are set the earlier fires
 	// first, as on every other question record.
 	Deadline *Deadline `tony:"field=deadline,omitzero"`

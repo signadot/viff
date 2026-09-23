@@ -51,8 +51,8 @@ resolve, do this.
 **Tasks and autonomy** — a task is a governed unit of agentic work, and how it runs is a seam.
 
 - [Task control](task-control.md) — the base-URL contract and the dial-in protocol.
-- [Attached resolvers](attached-resolvers.md) — a service that answers gates, and whose answer
-  counts.
+- [Attached resolvers](attached-resolvers.md) — a service that answers gates through a resolver,
+  and whose answer counts.
 - [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
 - [External tasks](external-tasks.md) — how the seam was chosen.
 

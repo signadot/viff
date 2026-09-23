@@ -69,7 +69,7 @@ func TestGranteeRefusals(t *testing.T) {
 		"via:verse.*",                  // no system, so nothing that acts
 		"via:verse.runners.coderunner", // a runner acts as runner:<identity>
 		"via:verse.trigger.package.x",  // a package is not a rule
-		"verse.watch.review@run-1",     // an instance's address is no person
+		"verse.covers.review@run-1",    // a cover's address is no person
 	} {
 		_, err := entity.ParseGrantee(in)
 		if err == nil {

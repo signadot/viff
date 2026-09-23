@@ -69,7 +69,7 @@ func TestARevokeThatDropsALineDoesNotMoveItsGrantee(t *testing.T) {
 }
 
 // SetLevel takes a level off the node's own line and drops the line when that empties it, which
-// is how a binding's grant on a question is taken back.
+// is how a resolver's grant on a question is taken back.
 func TestSettingALevelToNobodyTakesItOff(t *testing.T) {
 	store, at := place(t)
 	ana := "user:ana@example.com"

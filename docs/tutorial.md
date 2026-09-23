@@ -456,11 +456,11 @@ what stops that, and verse warns at install if you do not.
 
 ### A service that answers them
 
-The docket is not only for people. A **resolver** is a service bound to a run, or to a class of
-subjects, that reads the run's own stream and answers its gates, through the same path
-`verse gate approve` takes, with `by` naming the binding instead of a person. It can hand a question
-up a layer, carry a deadline that does the same thing more slowly, and be made the only answer that
-counts. The same binding can put a person, or a group, on that rung instead of a service
+The docket is not only for people. A **resolver** is an installed record that holds a run's
+questions, or a class of subjects', out to an **answerer**: a service that reads the run's own
+stream and answers its gates, through the same path `verse gate approve` takes, with `by` naming
+the resolver instead of a person. It can hand a question up a layer, carry a deadline that does
+the same thing more slowly, and be made the only answer that counts. The same resolver can put a person, or a group, on that rung instead of a service
 (`method: {driver: person, who: oscar@example.com}`), and a person climbs the ladder with
 `verse gate escalate`.
 
@@ -715,7 +715,7 @@ asked, and so does anyone the gate names:
 Ana, not named, is refused, and told so. A gate that names nobody is held out to every person,
 which is the open verse's default; a worker raising a gate of its own says who it is for with
 `task do gate -to`; and whoever may answer may hand the question on instead, `verse gate
-escalate <id>`, to the next binding covering its subject. `need` over the answerers is what one
+escalate <id>`, to the next resolver matching its subject. `need` over the answerers is what one
 or many means: one ballot each, `need: 1` a race, `need` equal to their number all of them.
 [Permissions](perms.md) is the whole of who may do what.
 

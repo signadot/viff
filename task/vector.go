@@ -57,13 +57,13 @@ type GateQuestion struct {
 	// existing. Empty when the action starts nothing, and note these are ids-to-be: a
 	// denied gate, or a provider selection that resolves to no doer, creates none of them.
 	Spawns string
-	// Boundto is the resolver BINDING that owns this question — `verse.resolvers.<name>` —
-	// empty when nobody is bound and the question belongs to whoever reads the docket.
+	// Resolver is the RESOLVER that owns this question — `verse.resolvers.<name>` — empty
+	// when no resolver holds it and the question belongs to whoever reads the docket.
 	//
-	// The binding rather than the live instance, because a question is owned by what was
-	// declared and answered by whatever is currently watching. The instance is derivable from
-	// the two (binding, origin) and would be a second spelling of a pair already here.
-	BoundTo string
+	// The resolver rather than its cover, because a question is owned by what was declared
+	// and answered by whatever is currently reading its gate stream. The cover is derivable
+	// from the two (resolver, origin) and would be a second spelling of a pair already here.
+	Resolver string
 	// Answerers is who the gate held the question out to, when it named them — grantees, the
 	// way a grant names them: a principal, a kind, a group's address. Empty leaves the question
 	// to the docket's default. Written as the question's `read-write` grant when it is posed.
@@ -226,12 +226,12 @@ func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 // running task" operation; swapping the resolver is supervisor-agnosticity
 // — a human or another task answering the same gates through one interface.
 type Supervisor struct {
-	vec      atomic.Pointer[Vector]
-	resolver atomic.Pointer[resolverBox]
-	deriver  Deriver
-	origin   string // task id, stamped onto each GateQuestion
-	boundTo  string // resolver binding that owns this task's questions, if any
-	dc       uint64 // question counter (one Check goroutine per Supervisor)
+	vec         atomic.Pointer[Vector]
+	resolver    atomic.Pointer[resolverBox]
+	deriver     Deriver
+	origin      string // task id, stamped onto each GateQuestion
+	resolverRef string // resolver that owns this task's questions, if any
+	dc          uint64 // question counter (one Check goroutine per Supervisor)
 }
 
 type resolverBox struct{ r Resolver }
@@ -266,10 +266,10 @@ func (s *Supervisor) Derive(tu *ToolUse) {
 // SetOrigin stamps this supervisor's questions with a task id (attribution).
 func (s *Supervisor) SetOrigin(id string) { s.origin = id }
 
-// SetBoundTo names the resolver binding that owns this task's questions. Set at spawn from
-// the launch, before the loop runs; empty means nobody is bound and the questions belong to
-// whoever reads the docket.
-func (s *Supervisor) SetBoundTo(ref string) { s.boundTo = ref }
+// SetResolverRef names the resolver that owns this task's questions. Set at spawn from
+// the launch, before the loop runs; empty means no resolver holds them and the questions belong
+// to whoever reads the docket.
+func (s *Supervisor) SetResolverRef(ref string) { s.resolverRef = ref }
 
 // Vector returns the current gate vector (for read-surface display).
 func (s *Supervisor) Vector() *Vector { return s.vec.Load() }
@@ -289,7 +289,7 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d := s.vec.Load().Evaluate(tu)
 	s.dc++
 	d.Origin = s.origin
-	d.BoundTo = s.boundTo
+	d.Resolver = s.resolverRef
 	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
 	if !d.Mode.Blocks() {
 		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: d}, nil

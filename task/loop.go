@@ -228,9 +228,9 @@ func (p *Task) SetFinisher(f Finisher) { p.fin = f }
 // wherever the driver stops.
 func (p *Task) SetAnswerCheck(a AnswerCheck) { p.ansck = a }
 
-// SetBoundTo names the resolver binding that owns this task's questions, from the launch.
+// SetResolverRef names the resolver that owns this task's questions, from the launch.
 // Applied at spawn, before the loop runs.
-func (p *Task) SetBoundTo(ref string) { p.sup.SetBoundTo(ref) }
+func (p *Task) SetResolverRef(ref string) { p.sup.SetResolverRef(ref) }
 
 // SetDeriver swaps the capability-classification step — what turns a self-reported action into
 // the typed effects a vector matches on. A runtime that installs its own (harness does, so its

@@ -69,7 +69,7 @@ the answerable, attributable surface. An auto pick has no answerer and casts no 
 record for it would put a decision on the docket reported as the group's that nobody made. A
 gate is the same rule from the other side: a question is posed for `ask`, never for `mode: auto`.
 
-A vote under an `exclusive` resolver is refused at install: an exclusive binding answers alone,
+A vote under an `exclusive` resolver is refused at install: an exclusive resolver answers alone,
 and a vote is a room. `ask` composes with it.
 
 Nor is an auto pick latched. Re-deriving per firing is deterministic given the same registry, since

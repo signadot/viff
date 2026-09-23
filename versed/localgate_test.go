@@ -78,16 +78,16 @@ func waitOwned(t *testing.T, srv *Server, qid string) map[string]any {
 	}
 }
 
-// waitInstance waits for a resolver INSTANCE to be minted and returns its id.
+// waitCover waits for a COVER to be minted and returns its id.
 //
-// A question and the instance beside it are two writes: mirror.Watch mints the instance when the
-// question is posed, and a test that builds an instance id and addresses it the moment
+// A question and the cover beside it are two writes: mirror.Cover mints the cover when the
+// question is posed, and a test that builds a cover id and addresses it the moment
 // waitQuestion returns is racing that second write. Every route under
-// /resolvers/instance/{id} answers 404 until it lands, so the race shows up as "no such
-// instance" rather than as a wait (git-issue nkptp9b3h12ksx3kg9n0).
-func waitInstance(t *testing.T, srv *Server, name, origin string) string {
+// /resolvers/cover/{id} answers 404 until it lands, so the race shows up as "no such
+// cover" rather than as a wait (git-issue nkptp9b3h12ksx3kg9n0).
+func waitCover(t *testing.T, srv *Server, name, stream string) string {
 	t.Helper()
-	ref := resolver.InstanceRef(name, origin)
+	ref := resolver.CoverRef(name, stream)
 	deadline := time.After(5 * time.Second)
 	for {
 		if _, ok, _ := srv.Store.Get(ref); ok {
@@ -95,7 +95,7 @@ func waitInstance(t *testing.T, srv *Server, name, origin string) string {
 		}
 		select {
 		case <-deadline:
-			t.Fatalf("instance %s was never minted", ref.Name())
+			t.Fatalf("cover %s was never minted", ref.Name())
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

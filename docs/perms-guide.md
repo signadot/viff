@@ -49,7 +49,7 @@ what a name may do, not about proving who holds it.
 Three things to know before the first step, because each is a reasonable guess that is wrong:
 
 - **A group is not a principal.** `group:<name>` is a grantee — on a grant line, in a gate's
-  `answerers`, behind a binding — and it admits the group's members, each acting as themselves.
+  `answerers`, behind a resolver — and it admits the group's members, each acting as themselves.
   Nothing ever acts *as* a group, no request can present one, and a group owns nothing.
 - **The `agent` principal exists and nothing uses it yet.** A harness driving verse from
   outside can present itself as an agent (`agent:` in the CLI's config) and is listed under its
@@ -168,7 +168,7 @@ special-cases this; it is what "a grant does not reach through an owner record" 
   `answerers` is *who* may answer: it becomes the question's `read-write` line when the
   question is posed, in place of the docket's default. Left off, the default stands — `[user:*,
   agent:*]` in the seed, which is any person.
-- `-resolver <binding>` hands the run's questions to a binding instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
+- `-resolver <resolver>` holds the run's questions out to a resolver instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
 - `-as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
 
 What the task may *do* in the world — write files, push, delegate — is a different axis: the
@@ -295,22 +295,23 @@ verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
 
 **To close the docket for a whole verse,** narrow the `child-grants` on `verse.gate.question`,
 which each question's record is given when it is posed: a private verse sets it to
-`{read: ["*"]}` or less, after which only co-owners, named answerers and bindings answer
+`{read: ["*"]}` or less, after which only co-owners, named answerers and resolvers answer
 anything.
 
 **Handing it on.** `verse gate escalate <id> -as <who> [-say <why>]` is open to whoever may
-answer, and it takes no `-to`: the question goes to the next rung of the ladder covering its
-subject, and the ladder is the standing bindings. On a verse with none, an escalation lands
+answer, and it takes no `-to`: the question goes to the next rung of the ladder matching its
+subject, and the ladder is the standing resolvers. On a verse with none, an escalation lands
 the question back on the open docket, where it already was. Giving the ladder a rung is
 [step 5](#step-5-a-gate-with-a-resolver-behind-it).
 
 ## Step 5: a gate with a resolver behind it
 
-A binding ([reference/resolvers.md](reference/resolvers.md)) is who answers questions about a
-subject: a service that dials in, a person, or a group. It is a grant with a door in front of
-it. The door is `condition.subject`, a match over the entities whose questions it covers, or
-`byRef`, so a spawn's `-resolver` or a rule's `gating.resolver` can name it. The grant is
-what binding a question does to the record:
+A resolver ([reference/resolvers.md](reference/resolvers.md)) is the installed record of who
+answers questions about a subject, and its answerer is a service that dials in, a person, or a
+group. It is a grant with a door in front of it. The door is `condition.subject`, a match over
+the entities whose questions it takes, or `byRef`, so a spawn's `-resolver` or a rule's
+`gating.resolver` can name it. The grant is what holding a question out to it does to the
+record:
 
 ```sh
 verse resolver add - <<'EOF'
@@ -324,27 +325,28 @@ EOF
 verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 -as user:walter@example.com
 ```
 
-Binding **replaces the `read-write` line** with whoever answers as the binding: `via:` the
-binding's address for a `url` service, whose instance answers as it; the person for `person`;
+Holding a question out to a resolver **replaces the `read-write` line** with whoever answers as
+the resolver: `via:` the resolver's address for a `url` service, whose cover answers as it; the
+person for `person`;
 `group:<name>` for `group`, its members each as themselves. The default `[user:*, agent:*]` line
 goes with it,
-so nobody outside the binding answers any more — except the co-owners, who hold it by
-ownership and not by the line. `read` stays as the default gave it. Unbinding, when the
-binding is removed or the ladder runs out, gives the default line back.
+so nobody outside the resolver answers any more — except the co-owners, who hold it by
+ownership and not by the line. `read` stays as the default gave it. Releasing it, when the
+resolver is removed or the ladder runs out, gives the default line back.
 
-**The ladder.** Escalation walks the standing bindings that cover the subject **by name**, from
-the one the question is on to the next, and past the last one to the open docket. A binding's
+**The ladder.** Escalation walks the standing resolvers that match the subject **by name**, from
+the one the question is on to the next, and past the last one to the open docket. A resolver's
 `deadline: {within, then: escalate}` walks the same rung on its own when the question stands
 unanswered that long, so a person who is away does not hold a question forever. A question's
 own `deadline`, from the gate, is a different clock: it *settles* the question on its default.
 Both are on the record, and the earlier fires first.
 
-**What a service holds.** A `url` binding is answered through an instance,
-`verse.watch.<name>@<origin>`, and the instance acts as the binding: its verdict,
+**What a service holds.** A `url` resolver is answered through a cover — one resolver on one
+gate stream, `verse.covers.<name>@<stream>` — and the cover acts as the resolver: its verdict,
 its escalation and its position are written as `via:verse.resolvers.<name>`, and that
 name is what the question's line holds. The service says what it decided and never who it is —
-`by` on the decision frame is the binding's name, stamped by verse. An instance's own address is
-no principal: as a grantee it is refused, and never read as a person's email. `exclusive` on a binding decides
+`by` on the decision frame is the resolver's name, stamped by verse. A cover's own address is
+no principal: as a grantee it is refused, and never read as a person's email. `exclusive` on a resolver decides
 whose answer *counts* when several may answer, and is not a security boundary: the line is.
 
 **Groups, here and on a gate.** A group is a named set of grantees, and `group:<name>` is how
@@ -363,9 +365,9 @@ purpose: change who is in the group and every line that names it follows. The me
 walked exactly: a group already met on the walk is skipped, so a group nested in a group nested
 in a group admits its members however deep, and a cycle admits nobody because the walk ends.
 
-A group binding, `method: {driver: group, group: group:release}`, and a gate's
+A group resolver, `method: {driver: group, group: group:release}`, and a gate's
 `answerers: [group:release]` hold a question out to the same people; the difference is that the
-binding is a rung on the ladder and the gate's line is not.
+resolver is a rung on the ladder and the gate's line is not.
 
 ## What to check when something surprises you
 

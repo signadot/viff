@@ -186,7 +186,7 @@ func TestUnmigratingALineWithAPathSaysBeneathInThePath(t *testing.T) {
 
 // A NODE'S OWNER IS WHOEVER CREATED IT, and nobody names somebody else. Every record this package
 // can be asked to write carries the writer's own name or the claimant's, which is what keeps a
-// thing that acts — a rule, a source, a binding — acting as whoever made it: if joe could put
+// thing that acts — a rule, a source, a resolver — acting as whoever made it: if joe could put
 // admin's name on the record of his rule, his rule would fire with admin's authority.
 func TestNobodyIsMadeAnOwnerExceptByTheirOwnWrite(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)

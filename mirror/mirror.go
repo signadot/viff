@@ -140,8 +140,8 @@ type Meta struct {
 	Doer  string
 	Grant string
 	Tools []string
-	// Resolver is the binding a spawn NAMED to answer this run's gates, published on the
-	// entity so "who is watching this" is readable beside what the work may do.
+	// Resolver is the resolver a spawn NAMED to answer this run's gates, published on the
+	// entity so "who is covering this" is readable beside what the work may do.
 	Resolver string
 	// As is the principal the runner acts as, when the runner is known at spawn — a runner
 	// reached by url carries its identity on its entity. The mirror then does at the first
@@ -160,19 +160,19 @@ type Meta struct {
 	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
 	// the frame says: that gate is the charter's, and the runner does not get to soften it.
 	Gates []task.Gate
-	// Owner answers "which standing binding covers this subject", for a question the spawn
+	// Owner answers "which standing resolver matches this subject", for a question the spawn
 	// named nobody for. It is a callback rather than a call because mirror must not import
 	// the resolver package: resolver reads the charter's match vocabulary, trigger reads
 	// mirror, and the cycle closes. So the party that knows all three supplies the lookup.
 	//
 	// Nil means no standing layer is consulted, which is what a caller with no store view
-	// of bindings should pass.
+	// of resolvers should pass.
 	//
 	// TODO: cut the cycle rather than routing around it, before the resolver work
 	// multiplies this. Two symptoms already: an optional field three call sites build by
 	// hand lost the standing layer for resumed tasks in the commit that added it (see
-	// versed.Server.reflect), and the resolver system and instance kind are spelled here as
-	// private constants because the real ones cannot be imported — one fact, two spellings.
+	// versed.Server.reflect), and the resolver's cover system is spelled here as a
+	// private constant because the real one cannot be imported — one fact, two spellings.
 	//
 	// The edge to cut is resolver → trigger, not trigger → mirror. Trigger uses Reflect,
 	// Meta and ParseResult, which is the projection itself and not addressing, so no
@@ -556,8 +556,8 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				st["pending"] = QuestionRef(ev.ID).String()
 				// A frame carries no subject and no owner — the deriver that knew them ran
 				// on another machine — so they come from what this mirror already holds:
-				// the run's flow, the binding its spawn named, and failing that the
-				// standing layer covering the subject.
+				// the run's flow, the resolver its spawn named, and failing that the
+				// standing layer matching the subject.
 				subject := entity.Str(st.Payload(), "flow")
 				owner := m.Resolver
 				if owner == "" && subject != "" && m.Owner != nil {
@@ -660,68 +660,68 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 	return false, heard
 }
 
-// BindResolver mints the record of a resolver watching one run: `verse.watch.<name>@<id>`.
+// CoverRun mints a resolver's cover on one run: `verse.covers.<name>@<id>`.
 //
 // At SPAWN rather than at the first question, because a resolver reads context before the ask
 // — that is the whole reason it is attached rather than handed a question — so the thing that
-// says who is watching has to exist from the moment there is something to watch.
+// says who is covering it has to exist from the moment there is something to read.
 //
-// It carries the binding and the origin as fields as well as in its address, because an
-// address is for finding one and a field is for selecting many: "every instance of the
+// It carries the resolver and the stream as fields as well as in its address, because an
+// address is for finding one and a field is for selecting many: "every cover of the
 // security reviewer" is a predicate, not a glob.
-func BindResolver(store entity.Store, binding, name, taskID string) {
-	Watch(store, binding, name, Ref(taskID))
+func CoverRun(store entity.Store, resolver, name, taskID string) {
+	Cover(store, resolver, name, Ref(taskID))
 }
 
-// OriginKey is the origin half of an instance's id — the one place that says how an instance is
+// StreamKey is the stream half of a cover's id — the one place that says how a cover is
 // addressed, so a reader building the address finds the record the writer put there.
 //
 // A TASK is named by its id alone, which is already unique across the runtime. Anything else is
 // a SUBJECT, whose last segment is not unique across systems, so it carries the whole address —
-// as a TOKEN, never as a rendering. An instance id crosses `/resolvers/instance/{id}`, and a
+// as a TOKEN, never as a rendering. A cover id crosses `/resolvers/cover/{id}`, and a
 // rendering quotes a segment that would otherwise read as something else (`change.pr."1"`),
 // which a URL path may not hold.
-func OriginKey(origin entity.Ref) string {
-	if IsTask(origin) {
-		return origin.Name()
+func StreamKey(stream entity.Ref) string {
+	if IsTask(stream) {
+		return stream.Name()
 	}
-	return origin.Token()
+	return stream.Token()
 }
 
-// Watch mints the record of one binding watching one origin, and does nothing if it already
+// Cover mints the record of one resolver on one gate stream, and does nothing if it already
 // exists.
 //
-// AN INSTANCE FOLLOWS ITS ORIGIN, NOT ITS BINDING. "An instance lives for the duration of what
-// it resolves, and the origin decides what that is" — so a binding watching a subject and
-// three runs about it has four instances, each living exactly as long as the thing it watches.
+// A COVER FOLLOWS ITS STREAM, NOT ITS RESOLVER. A cover lives for the duration of what it
+// reads, and the stream decides what that is — so a resolver covering a subject and three
+// runs about it has four covers, each living exactly as long as the stream it reads.
 // That is also what carrying a cursor pair means: two positions as two records rather than two
 // fields, so there is no place for a merged order to be invented.
 //
-// Which plane an instance is on follows from its origin and is not stored beside it: an origin
-// under `task:instance` is a run, whose position is a cursor, and anything else is a
+// Which kind of stream a cover reads follows from its stream's address and is not stored
+// beside it: a stream under `task:instance` is a run, whose position is a cursor, and anything else is a
 // subject, whose position is a revision. One fact, one spelling.
 //
 // Create-only, and the precondition is the whole point rather than an optimisation: this is
 // called every time a question is posed, so a plain write would reset the position of a
 // resolver that is already reading — retiring its progress on the arrival of the very question
 // it was reading towards.
-func Watch(store entity.Store, binding, name string, origin entity.Ref) {
-	if binding == "" || name == "" {
+func Cover(store entity.Store, resolver, name string, stream entity.Ref) {
+	if resolver == "" || name == "" {
 		return
 	}
-	ref := entity.VerseRef(resolverInstances, name+"@"+OriginKey(origin))
-	// AS THE SYSTEM, whatever view it was handed. Minting an instance is the mirror's act, and
-	// the caller's view is as often somebody else's: an escalation mints the NEXT binding's
-	// instance from the request of the binding handing the question up, and written as that one
-	// the instance would be refused — nothing is held out to be made here — or, were it
-	// admitted, recorded as the wrong binding's installer's.
+	ref := entity.VerseRef(resolverCovers, name+"@"+StreamKey(stream))
+	// AS THE SYSTEM, whatever view it was handed. Minting a cover is the mirror's act, and
+	// the caller's view is as often somebody else's: an escalation mints the NEXT resolver's
+	// cover from the request of the resolver handing the question up, and written as that one
+	// the cover would be refused — nothing is held out to be made here — or, were it
+	// admitted, recorded as the wrong resolver's installer's.
 	store = asPrincipal(store, entity.SystemMirror)
 	committed, _, err := store.Write(entity.Write{
 		At: ref.At(),
 		Value: entity.Obj{
-			"binding": binding,
-			"origin":  origin.String(),
-			// position is where this instance has read to, and starts before the first
+			"resolver": resolver,
+			"stream":   stream.String(),
+			// position is where this cover has read to, and starts before the first
 			// frame. It is on the record rather than only in the reader because that is
 			// what tells "has not decided" from "has not caught up".
 			"position": int64(0),
@@ -731,31 +731,31 @@ func Watch(store entity.Store, binding, name string, origin entity.Ref) {
 	if err != nil {
 		return
 	}
-	// THE INSTANCE IS ITS BINDING'S, and says so. It is minted by the system, whose write records
+	// THE COVER IS ITS RESOLVER'S, and says so. It is minted by the system, whose write records
 	// no owner, beneath a row that holds `owner` out to everyone — so with no record of its own
-	// an instance is anybody's to write: its position, and whose it is. The system's record,
-	// under the binding: whoever owns the binding co-owns its instances, which is who writes
-	// them. Written when the instance is minted, and for one standing with none; this runs at
-	// every question posed, and an instance already recorded costs a look at the mirror in hand.
+	// a cover is anybody's to write: its position, and whose it is. The system's record,
+	// under the resolver: whoever owns the resolver co-owns its covers, which is who writes
+	// them. Written when the cover is minted, and for one standing with none; this runs at
+	// every question posed, and a cover already recorded costs a look at the mirror in hand.
 	if !committed {
 		if ok, err := entity.Recorded(store, ref); err != nil || ok {
 			return
 		}
 	}
-	if bound, err := entity.ParseAddr(binding); err == nil {
-		if err := entity.Establish(store, ref, entity.SystemMirror, bound, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: instance %s has no record of its own: %v\n", ref, err)
+	if at, err := entity.ParseAddr(resolver); err == nil {
+		if err := entity.Establish(store, ref, entity.SystemMirror, at, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: cover %s has no record of its own: %v\n", ref, err)
 		}
 	}
 }
 
-// The resolver system, spelled here rather than imported: mirror is what every runtime writes
-// through, and a dependency from it onto the resolver package would put the binding's own
+// The cover system, spelled here rather than imported: mirror is what every runtime writes
+// through, and a dependency from it onto the resolver package would put the resolver's own
 // vocabulary underneath the index that merely records it.
 //
 // Which is the polite reading. The blunt one is that the import is a cycle, and this is one
 // fact with two spellings until that is cut — see Meta.Owner.
-const resolverInstances = "watch" // resolver.InstanceSystem
+const resolverCovers = "covers" // resolver.CoverSystem
 
 // write projects the accumulated state onto the task's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the

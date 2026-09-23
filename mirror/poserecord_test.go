@@ -102,19 +102,19 @@ func (o *oneRecordWrite) Write(w entity.Write) (bool, int64, error) {
 	return o.Store.Write(w)
 }
 
-// A BOUND QUESTION IS ITS BINDING'S FROM THE WRITE THAT MAKES ITS RECORD. Held out by the default
-// first and narrowed to the binding in a second write, it was every person's to settle for as
+// A QUESTION A RESOLVER OWNS IS THE RESOLVER'S FROM THE WRITE THAT MAKES ITS RECORD. Held out by
+// the default first and narrowed to the resolver in a second write, it was every person's to settle for as
 // long as that write took — and for good when it failed, which nothing said.
-func TestABoundQuestionIsNeverHeldOutToEverybody(t *testing.T) {
+func TestAResolversQuestionIsNeverHeldOutToEverybody(t *testing.T) {
 	inner := &oneRecordWrite{Store: entitytest.OpenStore(t)}
 	store := entity.As(inner, entity.SystemDocket)
-	q := task.GateQuestion{ID: "review~d1", Gate: "approve", BoundTo: "verse.resolvers.reviewbot"}
+	q := task.GateQuestion{ID: "review~d1", Gate: "approve", Resolver: "verse.resolvers.reviewbot"}
 	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
 		t.Fatal("not posed")
 	}
 	view := entity.As(inner.Store, entity.SystemDefault)
 	if ok, _ := entity.Holds(view, "user:mallory@example.com", entity.ReadWrite, mirror.QuestionRef(q.ID)); ok {
-		t.Error("a bound question whose second write failed is anybody's to answer")
+		t.Error("a resolver's question whose second write failed is anybody's to answer")
 	}
 	rec, ok, err := inner.Store.Get(entity.PermsRef(mirror.QuestionRef(q.ID)))
 	if err != nil || !ok {
@@ -124,8 +124,8 @@ func TestABoundQuestionIsNeverHeldOutToEverybody(t *testing.T) {
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("grants = %v (err %v)", gs, err)
 	}
-	if got := gs[0].To[entity.ReadWrite]; len(got) != 1 || got[0] != "via:"+q.BoundTo {
-		t.Errorf("held out to %v, want the binding", got)
+	if got := gs[0].To[entity.ReadWrite]; len(got) != 1 || got[0] != "via:"+q.Resolver {
+		t.Errorf("held out to %v, want the resolver", got)
 	}
 }
 
@@ -161,23 +161,23 @@ func TestAQuestionAskedAgainIsHeldOutToWhomThisAskingNames(t *testing.T) {
 	}
 }
 
-// HANDED UP, A QUESTION GOES BACK TO WHOM ITS GATE NAMED. A bound question's record carries its
-// binding alone, so unbinding to the docket's default would make a gate held out to davido every
-// person's the moment its binding escalates, times out or is removed.
-func TestUnbindingGivesAQuestionBackToItsAnswerers(t *testing.T) {
+// HANDED UP, A QUESTION GOES BACK TO WHOM ITS GATE NAMED. A held-out question's record carries its
+// resolver alone, so releasing it to the docket's default would make a gate held out to davido
+// every person's the moment its resolver escalates, times out or is removed.
+func TestReleasingGivesAQuestionBackToItsAnswerers(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDocket)
 	view := entity.As(store, entity.SystemDefault)
 	davido, mallory := "user:davido@example.com", "user:mallory@example.com"
 	q := task.GateQuestion{ID: "review~1", Gate: "approve", Answerers: []string{davido},
-		BoundTo: "verse.resolvers.reviewbot"}
+		Resolver: "verse.resolvers.reviewbot"}
 	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
 		t.Fatal("not posed")
 	}
 	ref := mirror.QuestionRef(q.ID)
 	if ok, _ := entity.Holds(view, davido, entity.ReadWrite, ref); ok {
-		t.Fatal("the fixture is wrong: a bound question is its binding's, and davido holds it")
+		t.Fatal("the fixture is wrong: a question a resolver owns is the resolver's, and davido holds it")
 	}
-	if err := mirror.Bind(store, q.ID, ""); err != nil {
+	if err := mirror.HoldOut(store, q.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := entity.Holds(view, mallory, entity.ReadWrite, ref); ok {
@@ -192,9 +192,9 @@ func TestUnbindingGivesAQuestionBackToItsAnswerers(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	open := task.GateQuestion{ID: "open~1", Gate: "approve", BoundTo: q.BoundTo}
+	open := task.GateQuestion{ID: "open~1", Gate: "approve", Resolver: q.Resolver}
 	mirror.PostQuestion(store, task.Pending{Question: open}, "")
-	if err := mirror.Bind(store, open.ID, ""); err != nil {
+	if err := mirror.HoldOut(store, open.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := entity.Holds(view, mallory, entity.ReadWrite, mirror.QuestionRef(open.ID)); err != nil || !ok {
