@@ -409,6 +409,26 @@ func (a *api) userEmail(ctx context.Context, userID string) (string, error) {
 	return r.User.Profile.Email, nil
 }
 
+// lookupByEmail is the Slack user with this email (`users:read.email`): how a person verse knows
+// as `user:<email>` becomes somebody Slack can be told something.
+//
+// THE JOIN IS SLACK'S, not a table this program keeps. The reflection already writes every user's
+// email (slack.<ws>.user.*), and reading it back would be a second source of truth that is stale
+// exactly when somebody has just changed their address — which is the moment a gate goes to the
+// wrong person.
+func (a *api) lookupByEmail(ctx context.Context, email string) (string, error) {
+	var r userInfoResp
+	if err := a.call(ctx, "users.lookupByEmail", url.Values{"email": {email}}, &r); err != nil {
+		// The address in the message, because Slack's own refusal does not carry it and
+		// "users_not_found" on a status tells a reader nothing about WHO was not found.
+		return "", fmt.Errorf("%s: %w", email, err)
+	}
+	if r.User.ID == "" {
+		return "", fmt.Errorf("slack users.lookupByEmail: nobody in this workspace has %s", email)
+	}
+	return r.User.ID, nil
+}
+
 type connectionsResp struct {
 	envelope
 	URL string `json:"url"`

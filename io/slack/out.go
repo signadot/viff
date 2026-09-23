@@ -407,14 +407,29 @@ func strs(n *ir.Node) []string {
 }
 
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.
+//
+// A PERSON MAY BE NAMED AS VERSE KNOWS THEM — `user:ana@acme.test`, or the bare email — and not
+// only as Slack does. That is what lets a charter address the people a question waits on: what it
+// reads off the record is a principal, and asking it to carry Slack ids would mean somebody
+// maintaining a table mapping one to the other, stale precisely when a gate most needs to reach
+// somebody. The lookup is Slack's own (users.lookupByEmail), and the DM it opens is written on the
+// status, so it is paid once per request rather than once per pass.
 func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
+	if email := strings.TrimPrefix(target, "user:"); strings.Contains(email, "@") {
+		who, err := k.s.api.lookupByEmail(ctx, email)
+		if err != nil {
+			return "", err
+		}
+		return k.s.api.openDM(ctx, who)
+	}
 	switch {
 	case strings.HasPrefix(target, "U"), strings.HasPrefix(target, "W"):
 		return k.s.api.openDM(ctx, target)
 	case strings.HasPrefix(target, "C"), strings.HasPrefix(target, "G"), strings.HasPrefix(target, "D"):
 		return target, nil
 	}
-	return "", fmt.Errorf("target %q is not a Slack id: U… for a person, C… or G… for a channel", target)
+	return "", fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… a channel) "+
+		"nor somebody verse knows (user:<email>)", target)
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is

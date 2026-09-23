@@ -120,6 +120,42 @@ func TestOutUpdatesTheMessageWhenTheInputChanges(t *testing.T) {
 	}
 }
 
+// A person may be named as verse knows them, which is what lets a charter address the people a
+// question waits on: what it reads off the record is a principal, not a Slack id.
+func TestOutSaysToSomebodyVerseKnows(t *testing.T) {
+	for _, target := range []string{"user:ana@example.com", "ana@example.com"} {
+		t.Run(target, func(t *testing.T) {
+			r := newOutRig(t)
+			r.fake.users = []map[string]any{
+				{"id": "U9", "name": "ana", "profile": map[string]any{"email": "ana@example.com"}},
+			}
+			r.ask(t, target, "hello", entity.Obj{"text": "the review is waiting on you"})
+			r.pass(t)
+
+			if r.fake.opened["U9"] != 1 || len(r.fake.posted) != 1 {
+				t.Fatalf("opened %v, posted %v: want her DM opened and the message said in it",
+					r.fake.opened, r.fake.posted)
+			}
+			if st := r.status(t, target, "hello"); st["channel"] != "DU9" {
+				t.Errorf("status %v, want the DM it landed in written down, so the lookup is paid once", st)
+			}
+		})
+	}
+}
+
+// Somebody this workspace has never heard of is a failure on the status, in Slack's words.
+func TestOutRefusesSomebodySlackDoesNotKnow(t *testing.T) {
+	r := newOutRig(t)
+	r.ask(t, "user:nobody@example.com", "hello", entity.Obj{"text": "hi"})
+	r.pass(t)
+	if len(r.fake.posted) != 0 {
+		t.Errorf("said %v, want nothing said", r.fake.posted)
+	}
+	if st := r.status(t, "user:nobody@example.com", "hello"); !strings.Contains(entityStr(st, "error"), "nobody@example.com") {
+		t.Errorf("status %v, want the address named", st)
+	}
+}
+
 // A channel is said in as it is; no DM is opened.
 func TestOutSaysInAChannelDirectly(t *testing.T) {
 	r := newOutRig(t)
@@ -164,7 +200,7 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	if st := r.status(t, "U123", "empty"); !strings.Contains(st["error"].(string), "text") {
 		t.Errorf("status %v, want the missing text named", st)
 	}
-	if st := r.status(t, "X1", "nowhere"); !strings.Contains(st["error"].(string), "not a Slack id") {
+	if st := r.status(t, "X1", "nowhere"); !strings.Contains(st["error"].(string), "neither a Slack id") {
 		t.Errorf("status %v, want the target refused", st)
 	}
 }
@@ -389,4 +425,9 @@ func TestOutSaysAPlainInputAsItIs(t *testing.T) {
 	if said := shown(t, r.fake.posted[0]); said != "staging.3 is out" {
 		t.Errorf("said %q, want the text as written", said)
 	}
+}
+
+func entityStr(o entity.Obj, field string) string {
+	s, _ := o[field].(string)
+	return s
 }

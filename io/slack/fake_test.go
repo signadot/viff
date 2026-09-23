@@ -127,6 +127,14 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		write(w, map[string]any{"ok": false, "error": "user_not_found"})
+	case "users.lookupByEmail":
+		for _, u := range f.users {
+			if p, _ := u["profile"].(map[string]any); p != nil && p["email"] == q.Get("email") {
+				write(w, map[string]any{"ok": true, "user": u})
+				return
+			}
+		}
+		write(w, map[string]any{"ok": false, "error": "users_not_found"})
 	case "apps.connections.open":
 		write(w, map[string]any{"ok": true, "url": f.socketURL})
 	case "conversations.open":

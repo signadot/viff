@@ -280,9 +280,16 @@ verse data slack acme out C0456 release -put '{text: "staging.3 is out"}'       
 verse data slack acme out U0123 'hello~status'
 ```
 
-`<target>` is a Slack id: `U…` is a person, whose DM is opened; `C…` and `G…` are channels, said in
-as they are, so the bot must be in them. `<name>` is the writer's. It needs `chat:write` and
-`im:write` beyond the reflection's scopes.
+`<target>` is a Slack id or somebody verse knows: `U…` is a person, whose DM is opened; `C…` and
+`G…` are channels, said in as they are, so the bot must be in them; `user:<email>` (or the bare
+email) is a person named as the tree names them, looked up with `users.lookupByEmail` and DM'd.
+`<name>` is the writer's. It needs `chat:write`, `im:write` and `users:read.email` beyond the
+reflection's scopes.
+
+That last spelling is what lets a charter address the people a question waits on: `waitingOn`
+holds principals, and asking a charter to carry Slack ids would mean somebody maintaining a table
+mapping one to the other — stale exactly when a gate most needs to reach somebody. The DM it
+opens is written on the status, so the lookup is paid once per request rather than once per pass.
 
 **A pass is level-triggered**, every `-out-every`: it lays out the message each input asks for,
 compares it with what the status says was posted, and does the difference. A new input is posted; a
