@@ -125,6 +125,7 @@ func TestEveryWritingRouteRefusesARequestThatNamesNobody(t *testing.T) {
 	defer ts.Close()
 	unattributed := map[string]bool{
 		"POST /io/{name}/hint":                   true, // a hook's nudge: what is reflected is reflected as the source
+		"POST /io/{name}/pass":                   true, // an out half saying what it just did, about its own half of the world
 		"POST /resolvers/instance/{id}/verdicts": true, // a service answers as its binding, never as itself
 		"POST /resolvers/instance/{id}/position": true,
 	}
