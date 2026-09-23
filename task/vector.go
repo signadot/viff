@@ -62,7 +62,8 @@ type GateQuestion struct {
 	//
 	// The resolver rather than its cover, because a question is owned by what was declared
 	// and answered by whatever is currently reading its gate stream. The cover is derivable
-	// from the two (resolver, origin) and would be a second spelling of a pair already here.
+	// from the resolver and the question's origin, and would be a second spelling of a pair
+	// already here.
 	Resolver string
 	// Answerers is who the gate held the question out to, when it named them — grantees, the
 	// way a grant names them: a principal, a kind, a group's address. Empty leaves the question

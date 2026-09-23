@@ -72,8 +72,8 @@ func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
 }
 
 // Every edge a grantee is written at reads it in the grammar: a group's member, a person or a
-// group resolver's answerer. The old spellings are refused, saying the grammar; the new ones are
-// stored as the grammar spells them.
+// group resolver's answerer. A spelling the grammar does not read is refused, saying the
+// grammar; one it reads is stored as the grammar spells it.
 func TestTheEdgesRefuseWhatTheGrammarDoesNotRead(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())

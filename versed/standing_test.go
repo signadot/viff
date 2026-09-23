@@ -22,8 +22,8 @@ func spawnFor(t *testing.T, ts *httptest.Server, id, subject, resolverRef string
 		"id": id, "prompt": "true", "subject": subject, "resolver": resolverRef,
 	})
 	defer resp.Body.Close()
-	// Loudly: a swallowed status is how a spawn naming a resolver that does not exist went
-	// unnoticed, and a test whose run never started fails three assertions later as a timeout.
+	// Loudly: a swallowed status hides a spawn naming a resolver that does not exist, and a
+	// test whose run never started fails three assertions later as a timeout.
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)
 		t.Fatalf("spawn %s: %s: %s", id, resp.Status, strings.TrimSpace(string(raw)))

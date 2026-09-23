@@ -40,7 +40,7 @@ func Ref(name string) entity.Ref {
 	return entity.VerseRef(System, name)
 }
 
-// CoverRef addresses one resolver's cover on one gate stream — a run's, for now.
+// CoverRef addresses one resolver's cover on one gate stream — a run's, or a subject's.
 //
 // The `@` composition is the one verse already uses for a thing that exists per pair
 // (`task:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
@@ -60,7 +60,7 @@ func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, Syst
 
 func IsCover(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, CoverSystem) }
 
-// Resolver is who answers: what it supervises, how it answers, and under what envelope.
+// Resolver says who answers: what it supervises, how it answers, and under what envelope.
 type Resolver struct {
 	// Name is its address: `verse.resolvers.<name>`.
 	Name string `tony:"field=name"`
