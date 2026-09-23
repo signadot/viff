@@ -33,11 +33,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/signadot/verse/adminface"
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	verseiod "github.com/signadot/verse/io/iod"
@@ -94,6 +96,13 @@ type common struct {
 	minInterval time.Duration
 	hintURL     string
 	root        string
+
+	// The out half's three, shared because every connector that acts needs the same three and
+	// none of them is its own: which verse to read what is asked of it, who to be while doing
+	// it, and how often to look.
+	verseAddr string
+	as        string
+	every     time.Duration
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
@@ -114,6 +123,54 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
 		"verse's hint route for THIS registration (http://verse:9797/io/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
+	fs.StringVar(&c.verseAddr, "verse-addr", os.Getenv("VERSE_ADDR"),
+		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
+	fs.StringVar(&c.as, "as", "", "the principal the out half reads and writes as "+
+		"(default: agent:<connector>-io)")
+	fs.DurationVar(&c.every, "out-every", 5*time.Second,
+		"how often the out half reads what is asked of it")
+}
+
+// verse is where the out half reads and writes: what -verse-addr says, or the host the hint url
+// already names, so a deployment says where verse is once.
+func (c *common) verse() string {
+	if c.verseAddr != "" {
+		return c.verseAddr
+	}
+	if c.hintURL != "" {
+		if u, err := url.Parse(c.hintURL); err == nil {
+			return u.Host
+		}
+	}
+	return ""
+}
+
+// principal is who the out half acts as: what -as says, or the connector's own name, since one
+// deployment per external system is the shape and `agent:slack-io` is what its grants are written
+// against.
+func (c *common) principal(connector string) string {
+	if c.as != "" {
+		return c.as
+	}
+	return "agent:" + connector + "-io"
+}
+
+// outHalf starts one pass loop per place, and answers them for whatever else needs to kick one.
+func (c *common) outHalf(ctx context.Context, sink verseio.Sink, places []entity.Ref) ([]*verseio.Out, error) {
+	addr := c.verse()
+	if addr == "" {
+		return nil, fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
+	}
+	verse := client.New(addr, c.principal(c.root))
+	outs := make([]*verseio.Out, 0, len(places))
+	for _, place := range places {
+		o := verseio.NewOut(sink, place, verse, log.Printf)
+		go o.Run(ctx, c.every)
+		outs = append(outs, o)
+		log.Printf("%s out: doing what is asked under %s, as %s, reading %s every %s",
+			c.root, place, c.principal(c.root), addr, c.every)
+	}
+	return outs, nil
 }
 
 // serve mounts the contract and whatever delivery routes this source owns, and runs.

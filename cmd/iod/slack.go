@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
-	"time"
 
 	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
 )
@@ -38,10 +35,6 @@ func slackMain(args []string) error {
 		"slack.<ws>.out, and write each one's <name>~status (needs chat:write, im:write); with "+
 		"SLACK_APP_TOKEN, a reply in a message's thread answers the question it asks "+
 		"(needs users:read.email and the message events)")
-	verseAddr := fs.String("verse-addr", os.Getenv("VERSE_ADDR"),
-		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
-	as := fs.String("as", "agent:slack-io", "the principal the out half reads and writes as")
-	every := fs.Duration("out-every", 5*time.Second, "how often the out half reads what is asked")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -77,24 +70,16 @@ func slackMain(args []string) error {
 	// The out half dials the verse, where the reflection is dialled BY it: it reads what is asked
 	// and writes what became of it, as a principal of its own. Its address defaults to the one the
 	// hint url already names, so a deployment says where verse is once.
-	addr := *verseAddr
-	if addr == "" && c.hintURL != "" {
-		if u, err := url.Parse(c.hintURL); err == nil {
-			addr = u.Host
-		}
-	}
+	addr := c.verse()
 	var sink *slack.Sink
 	var o *verseio.Out
 	if *out {
-		if addr == "" {
-			return fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
+		sink = src.Sink(client.New(addr, c.principal(c.root)))
+		outs, err := c.outHalf(ctx, sink, []entity.Ref{src.OutRef()})
+		if err != nil {
+			return err
 		}
-		verse := client.New(addr, *as)
-		sink = src.Sink(verse)
-		o = verseio.NewOut(sink, src.OutRef(), verse, log.Printf)
-		go o.Run(ctx, *every)
-		log.Printf("slack out: saying what is written under %s, as %s, reading %s every %s",
-			src.OutRef(), *as, addr, *every)
+		o = outs[0]
 	}
 
 	// Socket Mode, which this dials out to, so no Ingress is needed: Slack's event deliveries

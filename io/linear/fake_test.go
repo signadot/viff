@@ -24,6 +24,10 @@ type fakeLinear struct {
 	cycles   map[string][]map[string]any // team key → its cycles
 	projects map[string][]map[string]any // team key → its projects (one may be under several)
 
+	// The out half's side: what was commented, and on what.
+	comments []map[string]any // in order: issue, body, id
+	noIssue  bool             // `issue(id:)` answers null, as it does for one nobody may see
+
 	page    int    // issues per page (0 = all in one)
 	failure string // when set, every query answers with this GraphQL error
 	queries int
@@ -102,6 +106,41 @@ func (f *fakeLinear) handle(w http.ResponseWriter, r *http.Request) {
 			"data":   nil,
 			"errors": []map[string]any{{"message": f.failure}},
 		})
+		return
+	}
+	switch {
+	case strings.Contains(req.Query, "issue(id:"):
+		if f.noIssue {
+			writeJSON(w, map[string]any{"data": map[string]any{"issue": nil}})
+			return
+		}
+		id, _ := req.Variables["id"].(string)
+		writeJSON(w, map[string]any{"data": map[string]any{
+			"issue": map[string]any{"id": "uuid-" + id},
+		}})
+		return
+	case strings.Contains(req.Query, "commentCreate"):
+		issue, _ := req.Variables["issue"].(string)
+		body, _ := req.Variables["body"].(string)
+		id := fmt.Sprintf("comment-%d", len(f.comments)+1)
+		f.comments = append(f.comments, map[string]any{"issue": issue, "body": body, "id": id})
+		writeJSON(w, map[string]any{"data": map[string]any{
+			"commentCreate": map[string]any{"success": true, "comment": map[string]any{
+				"id": id, "url": "https://linear.app/c/" + id,
+			}},
+		}})
+		return
+	case strings.Contains(req.Query, "commentUpdate"):
+		id, _ := req.Variables["id"].(string)
+		body, _ := req.Variables["body"].(string)
+		for _, c := range f.comments {
+			if c["id"] == id {
+				c["body"] = body
+			}
+		}
+		writeJSON(w, map[string]any{"data": map[string]any{
+			"commentUpdate": map[string]any{"success": true},
+		}})
 		return
 	}
 	// The teams-only query (the startup check) carries no variables.

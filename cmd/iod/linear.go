@@ -29,6 +29,8 @@ func linearMain(args []string) error {
 	max := fs.Int("max-issues", linear.DefaultMaxIssues,
 		"refuse to reflect a team with more issues than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
+	out := fs.Bool("out", false, "also run the out half: comment on the issue named by what is "+
+		"written under linear.<team>.out.<issue>.<name>, and write each one's <name>~status")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -56,6 +58,14 @@ func linearMain(args []string) error {
 	}
 	routes := map[string]http.Handler{
 		"POST /linear/webhook": src.Webhook(signing, c.hinter()),
+	}
+
+	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
+	// team's place, all of them the same sink, since an issue identifier says which team it is.
+	if *out {
+		if _, err := c.outHalf(ctx, src.Sink(), src.OutRefs()); err != nil {
+			return err
+		}
 	}
 	return c.serve(src.Root(), src, routes)
 }

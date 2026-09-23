@@ -293,3 +293,75 @@ func (a *api) readTeam(ctx context.Context, key string, pageSize, max int) (team
 		after = page.Issues.PageInfo.EndCursor
 	}
 }
+
+// ── the out half's three calls ───────────────────────────────────────────────
+
+type issueIDResp struct {
+	Issue *struct {
+		ID string `json:"id"`
+	} `json:"issue"`
+}
+
+// issueID resolves the identifier a person types — `ENG-42` — into the uuid Linear's mutations
+// take. Linear's `issue(id:)` accepts either, and answering null for an identifier nobody can see
+// is how a typo and a permission both arrive: named as "no such issue", since from here they are
+// the same fact.
+func (a *api) issueID(ctx context.Context, identifier string) (string, error) {
+	const q = `query($id: String!) { issue(id: $id) { id } }`
+	var r issueIDResp
+	if err := a.query(ctx, q, map[string]any{"id": identifier}, &r); err != nil {
+		return "", err
+	}
+	if r.Issue == nil || r.Issue.ID == "" {
+		return "", fmt.Errorf("linear: no issue %s this credential can see", identifier)
+	}
+	return r.Issue.ID, nil
+}
+
+type commentResp struct {
+	CommentCreate *struct {
+		Success bool `json:"success"`
+		Comment struct {
+			ID  string `json:"id"`
+			URL string `json:"url"`
+		} `json:"comment"`
+	} `json:"commentCreate"`
+}
+
+// createComment says something on an issue, and answers the comment's id and where to read it.
+func (a *api) createComment(ctx context.Context, issueID, body string) (id, url string, err error) {
+	const q = `mutation($issue: String!, $body: String!) {
+	  commentCreate(input: {issueId: $issue, body: $body}) { success comment { id url } }
+	}`
+	var r commentResp
+	if err := a.query(ctx, q, map[string]any{"issue": issueID, "body": body}, &r); err != nil {
+		return "", "", err
+	}
+	if r.CommentCreate == nil || !r.CommentCreate.Success || r.CommentCreate.Comment.ID == "" {
+		return "", "", fmt.Errorf("linear: the comment was not created")
+	}
+	return r.CommentCreate.Comment.ID, r.CommentCreate.Comment.URL, nil
+}
+
+type commentUpdateResp struct {
+	CommentUpdate *struct {
+		Success bool `json:"success"`
+	} `json:"commentUpdate"`
+}
+
+// updateComment rewrites one this program left earlier. A comment is editable, so a changed input
+// is an edit rather than a second comment: the thread stays as long as the conversation, not as
+// long as the number of passes.
+func (a *api) updateComment(ctx context.Context, id, body string) error {
+	const q = `mutation($id: String!, $body: String!) {
+	  commentUpdate(id: $id, input: {body: $body}) { success }
+	}`
+	var r commentUpdateResp
+	if err := a.query(ctx, q, map[string]any{"id": id, "body": body}, &r); err != nil {
+		return err
+	}
+	if r.CommentUpdate == nil || !r.CommentUpdate.Success {
+		return fmt.Errorf("linear: comment %s was not updated", id)
+	}
+	return nil
+}

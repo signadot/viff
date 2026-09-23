@@ -66,6 +66,9 @@ type Sink interface {
 
 // Input is one thing asked of an out half, and what the last pass did about it.
 type Input struct {
+	// Place is where it was asked, for a sink serving more than one — a Linear io reads a place
+	// per team.
+	Place entity.Ref
 	// Target and Name are the two segments under the place: whom or what it is about, and the
 	// writer's own name for this request. Both are the requester's to choose.
 	Target, Name string
@@ -134,6 +137,7 @@ func (o *Out) Pass(ctx context.Context) error {
 				continue // a status, or one nobody asked for any more
 			}
 			o.deliver(ctx, Input{
+				Place:  o.place,
 				Target: target, Name: name,
 				Value:  entity.Get(under, name),
 				Status: entity.Get(under, name+StatusSuffix),
