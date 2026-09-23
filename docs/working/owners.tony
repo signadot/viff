@@ -35,6 +35,7 @@
 
 - work:  gates-reach-users
   item:  "a gate reaches its answerers in slack, and is answered there"
+  owner: walter@example.com
 
 - work:  tracking-unclaimed
   item:  "what is in work and what is free, derived here rather than kept by hand"
