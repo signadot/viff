@@ -4007,7 +4007,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Tasks:       taskCount(s.scopedStore(r)),
 		Fired:       s.firedTotal(),
 		Runners:     runnerRefs(s.scopedStore(r)),
-		Sources:     sourceRefs(s.scopedStore(r)),
+		IOs:         ioRefs(s.scopedStore(r)),
 		Charter:     s.charterTop(),
 		Runner:      s.runnerStatus(), // how tasks run: kind + resume + dial legs
 		LLM:         s.LLM,            // secrets-safe: are agent creds configured on THIS server
@@ -4250,12 +4250,12 @@ func runnerRefs(store entity.Store) []string {
 	return out
 }
 
-// sourceRefs is what writes into this verse. Refs rather than records, for runnerRefs' reason —
-// but it earns its line here for one of its own: every other counter measures what verse is
-// doing with what it was given, and none of them can tell "nothing is happening" from "nothing
-// is arriving". A verse whose only source was dropped reports a steady store rev and an idle
-// charter, which is what a healthy quiet one reports too. `verse ios` carries the health.
-func sourceRefs(store entity.Store) []string {
+// ioRefs is what reaches the world for this verse. Refs rather than records, for runnerRefs'
+// reason — but it earns its line here for one of its own: every other counter measures what
+// verse is doing with what it was given, and none of them can tell "nothing is happening" from
+// "nothing is arriving". A verse whose only io was dropped reports a steady store rev and an
+// idle charter, which is what a healthy quiet one reports too. `verse io` carries the health.
+func ioRefs(store entity.Store) []string {
 	es := verseio.List(store)
 	out := make([]string, 0, len(es))
 	for _, e := range es {

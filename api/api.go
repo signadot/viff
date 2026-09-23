@@ -536,8 +536,8 @@ type Status struct {
 	//
 	// Runners are the refs a spawn may name (`verse.runners.code`), which is a different question
 	// from `runner` below — that one is how THIS verse runs a task when a spawn names nobody.
-	// Sources are the refs of what WRITES into this verse (`verse.io.main`) — the one line
-	// here that says anything is arriving at all, since a verse whose sources are gone goes on
+	// IOs are the refs of what reaches the world for this verse (`verse.io.slack`) — the one
+	// line here that says anything is arriving at all, since a verse whose ios are gone goes on
 	// reporting a fine store rev and an idle charter.
 	//
 	// The charter used to be here too, as `rules` (a count) and `strata` (names in level
@@ -546,10 +546,11 @@ type Status struct {
 	// bug, not the zero. `charter` below carries both, per node, where the shape says whose.
 	//
 	// All three are refs rather than records: status is an orientation, and `verse charter`,
-	// `verse runners` and `verse ios` are the surfaces that answer what one IS. A source's
-	// health — when its last pass completed, whether it is failing — is on `verse ios`.
+	// `verse runners` and `verse io` are the surfaces that answer what one IS. An io's health —
+	// when its last pass completed, whether it is failing, what its out half delivered — is on
+	// `verse io`.
 	Runners []string `tony:"field=runners,omitzero"`
-	Sources []string `tony:"field=sources,omitzero"`
+	IOs     []string `tony:"field=io,omitzero"`
 	// Charter is the charter as a CENSUS: how much is installed, and where.
 	//
 	//	charter:
