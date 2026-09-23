@@ -896,6 +896,7 @@ build:
               - ":9801"
               - -min-interval
               - "30s"
+              - -out
               - -workspace
               - $[slackWorkspace]
 
