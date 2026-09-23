@@ -213,6 +213,18 @@ func (r *outRig) pose(t *testing.T, id string, record entity.Obj) {
 	entitytest.Set(t, r.store, mirror.QuestionRef(id), record.Payload())
 }
 
+// unpose removes a question's record, as a settle that cleans up after itself would, so what a
+// message says about a question that is no longer there can be asked.
+func (r *outRig) unpose(t *testing.T, id string) {
+	t.Helper()
+	at := entity.RefAt(entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	if _, _, err := r.store.Write(entity.Write{
+		At: at.At(), Value: entity.Obj{id: entity.Removed()}.Payload(),
+	}); err != nil {
+		t.Fatalf("removing the question record: %v", err)
+	}
+}
+
 // askAbout writes an input about the question q.
 func (r *outRig) askAbout(t *testing.T, q string) {
 	t.Helper()
@@ -370,7 +382,6 @@ func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 		openStill bool
 		says      string
 	}{
-		{"not asked", nil, false, "No question `q~1` stands"},
 		{"a ballot so far", entity.Obj{"status": mirror.QuestionPending,
 			"options": []any{map[string]any{"id": "proceed"}},
 			"ballots": map[string]any{"user:ani@example.com": map[string]any{"choice": "proceed"}}},
@@ -403,7 +414,27 @@ func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 	}
 }
 
-// A message posted before its question stands says so, and says how to answer once it does.
+// A MESSAGE ABOUT A QUESTION THAT DOES NOT STAND IS NOT SENT, and the status says why.
+//
+// Not a hypothetical: on the first live run a charter derived one input per person for an
+// ORPHANED question — a record the system can read and this program cannot, which the docket
+// goes on listing — and what arrived in somebody's DMs was "No question `…` stands", once per
+// pass. A message a reader can do nothing with is worse than silence, and silence here is not
+// even lossy: the input stands, and the moment the question can be read it is sent.
+func TestOutSaysNothingAboutAQuestionThatDoesNotStand(t *testing.T) {
+	r := newOutRig(t)
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	if len(r.fake.posted) != 0 {
+		t.Fatalf("posted %v about a question that does not stand", r.fake.posted)
+	}
+	if err, _ := r.status(t, "review")["error"].(string); !strings.Contains(err, "q~1") {
+		t.Errorf("status %v, want the question it could not read named", r.status(t, "review"))
+	}
+}
+
+// …and the wait costs nothing: the next pass after it stands is the one that speaks, and it
+// POSTS rather than redrawing, because nothing was said before.
 func TestOutSaysHowToAnswerOnceTheQuestionStands(t *testing.T) {
 	r := newOutRig(t)
 	r.askAbout(t, "q~1")
@@ -411,11 +442,45 @@ func TestOutSaysHowToAnswerOnceTheQuestionStands(t *testing.T) {
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
 		"options": []any{map[string]any{"id": "proceed"}, map[string]any{"id": "deny"}}})
 	r.pass(t)
-	if len(r.fake.updates) != 1 {
-		t.Fatalf("updated %d times, want the message redrawn once the question stood", len(r.fake.updates))
+	if len(r.fake.posted) != 1 || len(r.fake.updates) != 0 {
+		t.Fatalf("posted %d and updated %d, want one post once the question stood",
+			len(r.fake.posted), len(r.fake.updates))
 	}
-	if said := shown(t, r.fake.updates[0]); !strings.Contains(said, "Answer in this thread: `proceed`, `deny`") {
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "Answer in this thread: `proceed`, `deny`") {
 		t.Errorf("said %q, want the options it takes", said)
+	}
+	// And the failure that stood while it waited is gone with the success that ended it.
+	if st := r.status(t, "review"); st["error"] != nil {
+		t.Errorf("status %v, want the wait's error cleared by the post", st)
+	}
+}
+
+// THE OTHER HALF OF THE RULE: a message that ALREADY stands says its question is gone.
+//
+// Here somebody was asked, the message is in front of them, and what became of the question is
+// the news — so the line that would be noise in a new message is the truth in this one. Saying
+// nothing would leave them waiting on a question that no longer exists.
+func TestOutTellsAMessageThatStandsThatItsQuestionIsGone(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
+		"options": []any{map[string]any{"id": "proceed"}}})
+	r.askAbout(t, "q~1")
+	r.pass(t)
+	if len(r.fake.posted) != 1 {
+		t.Fatalf("posted %v, want the question announced", r.fake.posted)
+	}
+
+	r.unpose(t, "q~1")
+	r.pass(t)
+	if len(r.fake.updates) != 1 {
+		t.Fatalf("updated %d times, want the standing message redrawn", len(r.fake.updates))
+	}
+	said := shown(t, r.fake.updates[0])
+	if !strings.Contains(said, "No question `q~1` stands") {
+		t.Errorf("said %q, want it to say the question is gone", said)
+	}
+	if strings.Contains(said, "Answer in this thread") {
+		t.Errorf("said %q, want no way left to answer a question that is gone", said)
 	}
 }
 

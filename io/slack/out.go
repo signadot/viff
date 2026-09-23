@@ -96,6 +96,25 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	fp := fingerprint(body)
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
+
+	// NEVER CREATE A MESSAGE ABOUT A QUESTION THAT DOES NOT STAND.
+	//
+	// A message whose every question is unreadable says only that: "No question `…` stands",
+	// sent to a person who can do nothing with it and did not ask. That is what an orphaned
+	// question produces today — the charter selects it as the system, which can read it, and
+	// this program cannot — and one message per person per pass is how it arrives.
+	//
+	// A REDRAW is the opposite case and keeps the line. There the message exists, somebody was
+	// asked, and what became of the question is the news; saying nothing would leave them
+	// waiting on a question that is gone. So the rule is about creating, not about saying.
+	//
+	// The refusal lands on the status and the next pass tries again, which is also right for the
+	// race it covers: an input derived a moment before its question became readable here.
+	if ts == "" && len(asked) > 0 && !anyStanding(asked) {
+		return nil, fmt.Errorf("nothing to say: this asks about %s, and no such question stands "+
+			"here — a message about a question nobody can read tells its reader nothing",
+			strings.Join(askedIDs(asked), ", "))
+	}
 	k.remember(channel, ts, asked)
 	if ts != "" && entity.Str(in.Status, "posted") == fp {
 		return nil, nil // in step: the message shows this input
@@ -157,7 +176,7 @@ func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
 		// outlives its decision, and what people say there afterwards — why it went that way,
 		// what it cost — is worth keeping on the question rather than dropping on the floor.
 		asked = append(asked, Asked{ID: id, Options: optionIDs(q.opts), Settled: !q.pending(),
-			Line: q.line()})
+			Standing: q.standing, Line: q.line()})
 		if !q.pending() {
 			continue
 		}
@@ -182,12 +201,35 @@ func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
 type Asked struct {
 	ID      string
 	Options []string
+	// Standing says the question could be read at all. A question record carries the grants
+	// versed wrote at posing, so one that has outlived them is invisible to this program while
+	// the docket — which reads as the system — goes on listing it.
+	Standing bool
 	// Settled says the question takes no more answers. It stays in the index anyway, because a
 	// thread goes on after its decision and what is said there belongs on the question.
 	Settled bool
 	// Line is what the message says of it, for telling somebody who answers too late what
 	// became of it.
 	Line string
+}
+
+// anyStanding says whether any of the questions an input asks about could be read.
+func anyStanding(asked []Asked) bool {
+	for _, a := range asked {
+		if a.Standing {
+			return true
+		}
+	}
+	return false
+}
+
+// askedIDs are the questions an input names, for a refusal that says which.
+func askedIDs(asked []Asked) []string {
+	out := make([]string, 0, len(asked))
+	for _, a := range asked {
+		out = append(out, a.ID)
+	}
+	return out
 }
 
 // Asked is the questions the message at (channel, ts) is about, as the last pass read them, each
