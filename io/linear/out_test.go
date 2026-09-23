@@ -43,7 +43,8 @@ func newOutRig(t *testing.T) *outRig {
 
 func (r *outRig) ask(t *testing.T, issue, name string, input entity.Obj) {
 	t.Helper()
-	entitytest.Set(t, r.store, entity.RefAt("linear", "ENG", "out", issue, name), input.Payload())
+	input["to"] = issue
+	entitytest.Set(t, r.store, entity.RefAt("linear", "ENG", "out", name), input.Payload())
 }
 
 func (r *outRig) pass(t *testing.T) {
@@ -53,9 +54,9 @@ func (r *outRig) pass(t *testing.T) {
 	}
 }
 
-func (r *outRig) status(t *testing.T, issue, name string) entity.Obj {
+func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("linear", "ENG", "out", issue, name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("linear", "ENG", "out", name+verseio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestAnInputBecomesACommentOnItsIssue(t *testing.T) {
 	if c := r.fake.comments[0]; c["issue"] != "uuid-ENG-42" || c["body"] != "verse says this is waiting on a decision" {
 		t.Errorf("commented %v, want it on the issue, as written", c)
 	}
-	st := r.status(t, "ENG-42", "review")
+	st := r.status(t, "review")
 	if st["comment"] == nil || st["posted"] == nil || st["error"] != nil {
 		t.Errorf("status %v, want the comment, its fingerprint and no error", st)
 	}
@@ -105,7 +106,7 @@ func TestAChangedInputEditsTheComment(t *testing.T) {
 	r := newOutRig(t)
 	r.ask(t, "ENG-42", "review", entity.Obj{"text": "waiting"})
 	r.pass(t)
-	first := r.status(t, "ENG-42", "review")
+	first := r.status(t, "review")
 
 	r.ask(t, "ENG-42", "review", entity.Obj{"text": "answered: proceed"})
 	r.pass(t)
@@ -115,7 +116,7 @@ func TestAChangedInputEditsTheComment(t *testing.T) {
 	if r.fake.comments[0]["body"] != "answered: proceed" {
 		t.Errorf("comment %v, want what the input now says", r.fake.comments[0])
 	}
-	st := r.status(t, "ENG-42", "review")
+	st := r.status(t, "review")
 	if st["comment"] != first["comment"] {
 		t.Errorf("comment moved from %v to %v: it left a second one", first["comment"], st["comment"])
 	}
@@ -131,14 +132,14 @@ func TestAnIssueItCannotSeeIsRecordedAndRetried(t *testing.T) {
 	r.fake.noIssue = true
 	r.ask(t, "ENG-9999", "review", entity.Obj{"text": "waiting"})
 	r.pass(t)
-	st := r.status(t, "ENG-9999", "review")
+	st := r.status(t, "review")
 	if err, _ := st["error"].(string); !strings.Contains(err, "no issue ENG-9999") {
 		t.Fatalf("status %v, want the issue named", st)
 	}
 
 	r.fake.noIssue = false
 	r.pass(t)
-	st = r.status(t, "ENG-9999", "review")
+	st = r.status(t, "review")
 	if st["comment"] == nil || st["error"] != nil {
 		t.Errorf("status %v, want the retry commented and the error gone", st)
 	}
@@ -152,7 +153,7 @@ func TestAnInputWithNoTextIsRefused(t *testing.T) {
 	if len(r.fake.comments) != 0 {
 		t.Errorf("commented %v, want nothing said", r.fake.comments)
 	}
-	if st := r.status(t, "ENG-42", "review"); !strings.Contains(entityStr(st, "error"), "text") {
+	if st := r.status(t, "review"); !strings.Contains(entityStr(st, "error"), "text") {
 		t.Errorf("status %v, want the missing text named", st)
 	}
 }

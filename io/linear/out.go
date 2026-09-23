@@ -85,7 +85,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	// A person types `ENG-42`; Linear's mutation takes the issue's uuid. The lookup is the one
 	// extra call this connector has and Slack does not, and it is why the id lands on the status:
 	// an update never pays for it again.
-	issue, err := k.l.api.issueID(ctx, in.Target)
+	issue, err := k.l.api.issueID(ctx, in.To)
 	if err != nil {
 		return nil, err
 	}

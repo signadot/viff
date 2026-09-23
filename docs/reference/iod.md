@@ -271,16 +271,16 @@ With `-out` the same program also says things in Slack. Somebody — a person, a
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | `slack.<ws>.out.<target>.<name>` | whoever asks | `text`, and `asks` |
-| status | `slack.<ws>.out.<target>.<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted` (the message's fingerprint), and `error` while one stands |
+| input | anywhere under `slack.<ws>.out` | whoever asks | `to`, `text`, and `asks` |
+| status | the sibling `<name>~status` | the program alone | `channel, ts, permalink, postedAt, updatedAt, posted` (the message's fingerprint), and `error` while one stands |
 
 ```sh
-verse data slack acme out U0123 hello -put '{text: "the review is waiting on you"}'   # a DM
-verse data slack acme out C0456 release -put '{text: "staging.3 is out"}'             # a channel
-verse data slack acme out U0123 'hello~status'
+verse data slack acme out hello   -put '{to: "user:ana@acme.test", text: "the review is waiting on you"}'
+verse data slack acme out release -put '{to: C0456, text: "staging.3 is out"}'
+verse data slack acme out 'hello~status'
 ```
 
-`<target>` is a Slack id or somebody verse knows: `U…` is a person, whose DM is opened; `C…` and
+`to` is a Slack id or somebody verse knows: `U…` is a person, whose DM is opened; `C…` and
 `G…` are channels, said in as they are, so the bot must be in them; `user:<email>` (or the bare
 email) is a person named as the tree names them, looked up with `users.lookupByEmail` and DM'd.
 `<name>` is the writer's. It needs `chat:write`, `im:write` and `users:read.email` beyond the
@@ -327,7 +327,8 @@ An input may name the question(s) it is about, and the message then says what ea
 and how to answer it:
 
 ```sh
-verse data slack acme out U0123 review -put '{
+verse data slack acme out review -put '{
+  to: "user:ana@acme.test",
   text: "slack-try asks: approve demo.slack.1?",
   asks: "verse.trigger.slack-try.approval~efcf56b5"}'
 ```

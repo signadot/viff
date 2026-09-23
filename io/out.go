@@ -27,10 +27,19 @@ import (
 // it, and nothing is delivered exactly once — a pass reads the truth and does the difference, so
 // a crash mid-pass costs a repeat of one comparison rather than a lost message.
 //
-// Somebody (a person with `verse data`, a charter's `derive`) writes an INPUT at
-// `<place>.<target>.<name>`, and this answers with its STATUS at the sibling
-// `<place>.<target>.<name>~status`. What an input holds and what a status holds are the
-// connector's (Sink.Deliver); what is the same for every connector is here:
+// Somebody (a person with `verse data`, a charter's `derive`) writes an INPUT anywhere under the
+// place, and this answers with its STATUS at the sibling `<name>~status`. An input is a node
+// carrying `to`, which says whom or what it is about — a channel, a person, an issue — and the
+// connector reads the rest.
+//
+// TO IS A FIELD, NOT A LEVEL OF THE ADDRESS, and that is what lets anything but a person write
+// one. A charter's fan-out addresses what it derives as (rule, subject, key) — seven levels deep
+// for one message per person a question waits on — so a contract that read the target off the
+// second segment could be written by hand and by nothing else. The address is where a request
+// came from; the payload is who it is for.
+//
+// What an input holds beyond `to`, and what a status holds, are the connector's (Sink.Deliver);
+// what is the same for every connector is here:
 //
 //   - a pass every interval, and one on demand (Kick), over every input under the place;
 //   - a name ending in StatusSuffix is never an input, so a status can never ask for anything;
@@ -73,9 +82,14 @@ type Input struct {
 	// Place is where it was asked, for a sink serving more than one — a Linear io reads a place
 	// per team.
 	Place entity.Ref
-	// Target and Name are the two segments under the place: whom or what it is about, and the
-	// writer's own name for this request. Both are the requester's to choose.
-	Target, Name string
+	// At is the input's own address, and Name its last segment. Where it stands is the
+	// requester's to choose: by hand, one level under the place; by a charter, wherever its
+	// derive lands.
+	At   entity.Ref
+	Name string
+	// To is whom or what it is about, off the input's own `to`: a channel, a person verse knows,
+	// an issue. What a connector makes of it is the connector's.
+	To string
 	// Value is what they asked for, and Status what the last pass recorded — nil the first time.
 	Value, Status *ir.Node
 }
@@ -136,7 +150,7 @@ func (o *Out) Run(ctx context.Context, every time.Duration) {
 	}
 }
 
-// Pass reads every input under the place and asks the sink for each, then tells verse what it
+// Pass finds every input under the place and asks the sink for each, then tells verse what it
 // did. The report is last, and it is not part of the pass's success: a verse that would not take
 // it is a verse this half has just read and written, so saying so twice adds nothing.
 func (o *Out) Pass(ctx context.Context) error {
@@ -146,26 +160,37 @@ func (o *Out) Pass(ctx context.Context) error {
 		return err
 	}
 	var pass OutPass
-	for _, target := range Fields(place) {
-		under := entity.Get(place, target)
-		for _, name := range Fields(under) {
-			if strings.HasSuffix(name, StatusSuffix) {
-				continue // a status, or one nobody asked for any more
-			}
+	o.walk(ctx, place, o.place.Segs(), &pass)
+	o.report(pass)
+	return nil
+}
+
+// walk descends the place looking for inputs, which are the nodes carrying `to`.
+//
+// AT ANY DEPTH, because what writes them decides where they stand: a person types one under the
+// place, and a charter's fan-out lands one per person under (rule, subject, key). A node with no
+// `to` is a level on the way to one — or somebody's own structure, which this walks past without
+// touching.
+func (o *Out) walk(ctx context.Context, node *ir.Node, at []string, pass *OutPass) {
+	for _, name := range Fields(node) {
+		if strings.HasSuffix(name, StatusSuffix) {
+			continue // a status, or one nobody asked for any more
+		}
+		child := entity.Get(node, name)
+		segs := append(append([]string{}, at...), name)
+		if to := entity.Str(child, "to"); to != "" {
 			if o.deliver(ctx, Input{
-				Place:  o.place,
-				Target: target, Name: name,
-				Value:  entity.Get(under, name),
-				Status: entity.Get(under, name+StatusSuffix),
+				Place: o.place, At: entity.RefAt(segs...), Name: name, To: to,
+				Value: child, Status: entity.Get(node, name+StatusSuffix),
 			}) {
 				pass.Delivered++
 			} else {
 				pass.Failed++
 			}
+			continue
 		}
+		o.walk(ctx, child, segs, pass)
 	}
-	o.report(pass)
-	return nil
 }
 
 // report tells verse what a pass did, for a registration that asked to be told.
@@ -201,7 +226,7 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 		fields["error"] = entity.Removed()
 		fields["failedAt"] = entity.Removed()
 	}
-	o.Write(in.Target, in.Name, fields)
+	o.Write(in, fields)
 	return true
 }
 
@@ -212,16 +237,18 @@ func (o *Out) fail(in Input, err error) {
 	if entity.Str(in.Status, "error") == err.Error() {
 		return
 	}
-	o.Write(in.Target, in.Name, entity.Obj{
+	o.Write(in, entity.Obj{
 		"error": err.Error(), "failedAt": o.now().UTC().Format(time.RFC3339),
 	})
 }
 
-// Write merges fields into one input's status. A refusal is logged, because it is the one failure
-// a status cannot hold: most likely somebody created the status name before this program did
-// (a grant says who may create beneath a node, never which name is whose).
-func (o *Out) Write(target, name string, fields entity.Obj) {
-	at := entity.RefAt(append(append([]string{}, o.place.Segs()...), target, name+StatusSuffix)...)
+// Write merges fields into one input's status, which stands beside the input at whatever depth it
+// was written. A refusal is logged, because it is the one failure a status cannot hold: most
+// likely somebody created the status name before this program did (a grant says who may create
+// beneath a node, never which name is whose).
+func (o *Out) Write(in Input, fields entity.Obj) {
+	segs := in.At.Segs()
+	at := entity.RefAt(append(append([]string{}, segs[:len(segs)-1]...), in.Name+StatusSuffix)...)
 	resp, err := o.verse.Post("/entity", nil, verseapi.PutEntity{At: at.KPath(), Payload: fields.Payload()})
 	if err != nil {
 		o.log("io out: writing %s: %v", at, err)

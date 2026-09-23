@@ -268,8 +268,14 @@ place whose grants stand is one a re-install lands back on.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | `<place>.<target>.<name>` | whoever asks | whatever the connector reads (`text`, and Slack's `asks`) |
-| status | `<place>.<target>.<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands |
+| input | anywhere under `<place>` | whoever asks | `to` — whom or what it is about — and whatever the connector reads (`text`, Slack's `asks`) |
+| status | the sibling `<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands |
+
+**An input is a node carrying `to`, at any depth.** Where it stands is whatever wrote it: a person
+types one under the place, and a charter's fan-out lands one per person under (rule, subject, key)
+— seven levels down for one message per answerer of a question. A contract that read the target
+off a fixed level could be written by hand and by nothing else, so the address says where a
+request came from and the payload says who it is for.
 
 A name ending in `~status` is never read as an input — a status would otherwise ask for what it is
 the answer to. A pass is **level-triggered**: every input is offered to the connector on every

@@ -78,9 +78,9 @@ func (r *outRig) pass(t *testing.T) {
 	}
 }
 
-func (r *outRig) status(t *testing.T, target, name string) entity.Obj {
+func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("demo", "out", target, name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("demo", "out", name+verseio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -90,9 +90,19 @@ func (r *outRig) status(t *testing.T, target, name string) entity.Obj {
 	return entity.ToObj(e.Payload)
 }
 
-func ask(t *testing.T, store entity.Store, target, name string, input entity.Obj) {
+// ask writes an input the way a person would: under the place, saying whom it is for.
+func ask(t *testing.T, store entity.Store, to, name string, input entity.Obj) {
 	t.Helper()
-	entitytest.Set(t, store, entity.RefAt("demo", "out", target, name), input.Payload())
+	input["to"] = to
+	entitytest.Set(t, store, entity.RefAt("demo", "out", name), input.Payload())
+}
+
+// askDeep writes one where a charter's fan-out would land it, which is the shape a person never
+// types and the one that has to work.
+func askDeep(t *testing.T, store entity.Store, segs []string, to string, input entity.Obj) {
+	t.Helper()
+	input["to"] = to
+	entitytest.Set(t, store, entity.RefAt(append([]string{"demo", "out"}, segs...)...), input.Payload())
 }
 
 // Every input under the place reaches the sink, with what the last pass recorded beside it, and
@@ -101,13 +111,13 @@ func TestAPassAsksTheSinkForEachInputAndRecordsWhatItSays(t *testing.T) {
 	r := newOutRig(t)
 	r.sink.fields = entity.Obj{"said": "yes"}
 	ask(t, r.store, "ana", "hello", entity.Obj{"text": "hi"})
-	ask(t, r.store, "bo", "hello", entity.Obj{"text": "hi again"})
+	ask(t, r.store, "bo", "hello-again", entity.Obj{"text": "hi again"})
 	r.pass(t)
 
 	if n := r.sink.count(); n != 2 {
 		t.Fatalf("delivered %d, want both inputs", n)
 	}
-	if got := r.status(t, "ana", "hello")["said"]; got != "yes" {
+	if got := r.status(t, "hello")["said"]; got != "yes" {
 		t.Errorf("status %v, want what the sink answered", got)
 	}
 	// And the second pass hands the sink what the first one wrote.
@@ -116,8 +126,36 @@ func TestAPassAsksTheSinkForEachInputAndRecordsWhatItSays(t *testing.T) {
 	if entity.Str(last.Status, "said") != "yes" {
 		t.Errorf("the sink was handed status %v, want what it recorded last time", last.Status)
 	}
-	if entity.Str(last.Value, "text") == "" || last.Target == "" || last.Name == "" {
+	if entity.Str(last.Value, "text") == "" || last.To == "" || last.Name == "" {
 		t.Errorf("the sink was handed %+v, want the input and where it stands", last)
+	}
+}
+
+// An input is found wherever it stands, because what writes one decides where: a person types one
+// under the place, and a charter's fan-out lands one per person under (rule, subject, key). A
+// contract that read the target off a fixed level could be written by hand and by nothing else.
+func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
+	r := newOutRig(t)
+	r.sink.fields = entity.Obj{"said": "yes"}
+	deep := []string{"gate-ask", "verse", "gate", "question", "review~1", "user:ana@example.com"}
+	askDeep(t, r.store, deep, "user:ana@example.com", entity.Obj{"text": "the review is waiting"})
+	r.pass(t)
+
+	if n := r.sink.count(); n != 1 {
+		t.Fatalf("delivered %d, want the one input, however deep it stands", n)
+	}
+	in := r.sink.seen[0]
+	if in.To != "user:ana@example.com" || in.Name != "user:ana@example.com" {
+		t.Errorf("the sink was handed %+v, want whom it is for and what it is called", in)
+	}
+	if want := "demo.out.gate-ask.verse.gate.question"; !strings.Contains(in.At.String(), want) {
+		t.Errorf("at %s, want the address it was written at", in.At)
+	}
+	// And its status stands beside it, at that same depth.
+	at := entity.RefAt(append(append([]string{"demo", "out"}, deep[:len(deep)-1]...),
+		deep[len(deep)-1]+verseio.StatusSuffix)...)
+	if _, ok, err := r.store.Get(at); err != nil || !ok {
+		t.Errorf("no status at %s: ok %v, %v", at, ok, err)
 	}
 }
 
@@ -127,7 +165,7 @@ func TestASinkThatSaysNothingWritesNothing(t *testing.T) {
 	r := newOutRig(t)
 	ask(t, r.store, "ana", "hello", entity.Obj{"text": "hi"})
 	r.pass(t)
-	if st := r.status(t, "ana", "hello"); st != nil {
+	if st := r.status(t, "hello"); st != nil {
 		t.Errorf("status %v, want none written", st)
 	}
 }
@@ -149,21 +187,21 @@ func TestAFailureIsWrittenOnceAndClearedByTheNextSuccess(t *testing.T) {
 	r.sink.err = fmt.Errorf("the far end refused")
 	ask(t, r.store, "ana", "hello", entity.Obj{"text": "hi"})
 	r.pass(t)
-	st := r.status(t, "ana", "hello")
+	st := r.status(t, "hello")
 	if !strings.Contains(fmt.Sprint(st["error"]), "refused") || st["failedAt"] == nil {
 		t.Fatalf("status %v, want the failure and when it began", st)
 	}
 	began := st["failedAt"]
 
 	r.pass(t) // the same failure again says nothing new
-	if got := r.status(t, "ana", "hello")["failedAt"]; got != began {
+	if got := r.status(t, "hello")["failedAt"]; got != began {
 		t.Errorf("failedAt moved to %v: the same failure was written twice", got)
 	}
 
 	r.sink.err = nil
 	r.sink.fields = entity.Obj{"said": "yes"}
 	r.pass(t)
-	if st := r.status(t, "ana", "hello"); st["error"] != nil || st["failedAt"] != nil {
+	if st := r.status(t, "hello"); st["error"] != nil || st["failedAt"] != nil {
 		t.Errorf("status %v, want the failure gone with the success that ended it", st)
 	}
 }

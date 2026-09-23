@@ -93,8 +93,10 @@ The in half is the reflection above, and the rest of this page is about it. The 
 same reconciliation in the other direction, and is worth stating in one place because everything
 else about it follows.
 
-Somebody writes what they want at `<place>.<target>.<name>` — a person with `verse data`, a
-charter's `derive` — and the io writes back at the sibling `<name>~status` what became of it. A
+Somebody writes what they want under the io's place — a person with `verse data`, a charter's
+`derive` — as a node carrying `to`, whom or what it is about, and the io writes back at the
+sibling `<name>~status` what became of it. Depth is the writer's: a person types one under the
+place, a fan-out lands one per person wherever its keying puts it. A
 pass every few seconds offers every input to the connector with what the last pass recorded beside
 it; the connector says what to record now, or nothing at all when the world already matches. There
 is no queue and nothing is delivered exactly once: a pass reads the truth and does the difference,

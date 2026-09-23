@@ -37,16 +37,18 @@ func newOutRig(t *testing.T) *outRig {
 		out: verseio.NewOut(sink, src.OutRef(), verse, nil)}
 }
 
-// ask writes an input, as a person or a charter would.
-func (r *outRig) ask(t *testing.T, target, name string, input entity.Obj) {
+// ask writes an input, as a person or a charter would: whom it is for is a field, and where it
+// stands is whatever the writer chose.
+func (r *outRig) ask(t *testing.T, to, name string, input entity.Obj) {
 	t.Helper()
-	entitytest.Set(t, r.store, entity.RefAt("slack", "Acme", "out", target, name), input.Payload())
+	input["to"] = to
+	entitytest.Set(t, r.store, entity.RefAt("slack", "Acme", "out", name), input.Payload())
 }
 
 // status reads what the out half wrote back, or nil.
-func (r *outRig) status(t *testing.T, target, name string) entity.Obj {
+func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", target, name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", name+verseio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -75,7 +77,7 @@ func TestOutSaysAnInputToAPersonAndWritesItsStatus(t *testing.T) {
 	if p := r.fake.posted[0]; p["channel"] != "DU123" || p["text"] != "the review is waiting on you" {
 		t.Errorf("said %v, want the text in the person's DM", p)
 	}
-	st := r.status(t, "U123", "hello")
+	st := r.status(t, "hello")
 	if st["channel"] != "DU123" || st["ts"] != r.fake.posted[0]["ts"] || st["posted"] == nil {
 		t.Errorf("status %v, want where it landed, the message's ts and the fingerprint said", st)
 	}
@@ -105,7 +107,7 @@ func TestOutUpdatesTheMessageWhenTheInputChanges(t *testing.T) {
 	r := newOutRig(t)
 	r.ask(t, "U123", "hello", entity.Obj{"text": "hi"})
 	r.pass(t)
-	first := r.status(t, "U123", "hello")
+	first := r.status(t, "hello")
 
 	r.ask(t, "U123", "hello", entity.Obj{"text": "hi, again"})
 	r.pass(t)
@@ -115,7 +117,7 @@ func TestOutUpdatesTheMessageWhenTheInputChanges(t *testing.T) {
 	if u := r.fake.updates[0]; u["ts"] != first["ts"] || u["text"] != "hi, again" {
 		t.Errorf("updated %v, want the message at %v", u, first["ts"])
 	}
-	if st := r.status(t, "U123", "hello"); st["posted"] == first["posted"] {
+	if st := r.status(t, "hello"); st["posted"] == first["posted"] {
 		t.Error("the fingerprint did not move with the input")
 	}
 }
@@ -136,7 +138,7 @@ func TestOutSaysToSomebodyVerseKnows(t *testing.T) {
 				t.Fatalf("opened %v, posted %v: want her DM opened and the message said in it",
 					r.fake.opened, r.fake.posted)
 			}
-			if st := r.status(t, target, "hello"); st["channel"] != "DU9" {
+			if st := r.status(t, "hello"); st["channel"] != "DU9" {
 				t.Errorf("status %v, want the DM it landed in written down, so the lookup is paid once", st)
 			}
 		})
@@ -151,7 +153,7 @@ func TestOutRefusesSomebodySlackDoesNotKnow(t *testing.T) {
 	if len(r.fake.posted) != 0 {
 		t.Errorf("said %v, want nothing said", r.fake.posted)
 	}
-	if st := r.status(t, "user:nobody@example.com", "hello"); !strings.Contains(entityStr(st, "error"), "nobody@example.com") {
+	if st := r.status(t, "hello"); !strings.Contains(entityStr(st, "error"), "nobody@example.com") {
 		t.Errorf("status %v, want the address named", st)
 	}
 }
@@ -173,13 +175,13 @@ func TestOutRecordsAFailureAndRetries(t *testing.T) {
 	r.fake.fail["chat.postMessage"] = "not_in_channel"
 	r.ask(t, "C999", "release", entity.Obj{"text": "staging.3 is out"})
 	r.pass(t)
-	if st := r.status(t, "C999", "release"); !strings.Contains(st["error"].(string), "not_in_channel") {
+	if st := r.status(t, "release"); !strings.Contains(st["error"].(string), "not_in_channel") {
 		t.Fatalf("status %v, want Slack's refusal", st)
 	}
 
 	delete(r.fake.fail, "chat.postMessage")
 	r.pass(t)
-	st := r.status(t, "C999", "release")
+	st := r.status(t, "release")
 	if st["ts"] == nil || st["error"] != nil {
 		t.Errorf("status %v, want the retry posted and the error gone", st)
 	}
@@ -197,10 +199,10 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	if len(r.fake.posted) != 0 {
 		t.Errorf("said %v, want nothing said", r.fake.posted)
 	}
-	if st := r.status(t, "U123", "empty"); !strings.Contains(st["error"].(string), "text") {
+	if st := r.status(t, "empty"); !strings.Contains(st["error"].(string), "text") {
 		t.Errorf("status %v, want the missing text named", st)
 	}
-	if st := r.status(t, "X1", "nowhere"); !strings.Contains(st["error"].(string), "neither a Slack id") {
+	if st := r.status(t, "nowhere"); !strings.Contains(st["error"].(string), "neither a Slack id") {
 		t.Errorf("status %v, want the target refused", st)
 	}
 }

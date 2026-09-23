@@ -110,7 +110,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 
 	if channel == "" {
-		if channel, err = k.channelFor(ctx, in.Target); err != nil {
+		if channel, err = k.channelFor(ctx, in.To); err != nil {
 			return nil, err
 		}
 	}
