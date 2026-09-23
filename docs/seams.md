@@ -82,7 +82,7 @@ flowchart LR
 ```
 
 Blue dials *into* verse. Green is dialled *by* verse. `iod` is both, and that is the point
-of [seam 6](#6-sources--read-one-way-hint-the-other).
+of [seam 6](#6-ios--read-one-way-hint-and-act-the-other).
 
 The two paths into a hint are not a choice between routes. They are different systems, and which
 one a source takes is decided by what its external system will let you install. Slack and Linear
@@ -101,7 +101,7 @@ every external system let you install a four-line shell script.
 | 3 | [Content](#3-content-federation-a-read-that-follows-the-reference-out) | controller → docd | `libctl` controller on the mount face | built |
 | 4 | [Remote runner](#4-task-control-dialled-out) | verse → runner | `POST /tasks`, `GET /events?since`, control | built |
 | 5 | [Broker](#5-task-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
-| 6 | [Sources](#6-sources--read-one-way-hint-the-other) | both, by question | `GET /source`, `GET /reflect`; `POST …/hint` | built (`dial-in` is not) |
+| 6 | [Ios](#6-ios--read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
 | 7 | [Webhooks](#7-webhooks-the-only-seam-facing-the-internet) | external → source | signed `POST` | built |
 | 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | resolver → verse | SSE frames; verdict; position | built |
 | 9 | [Model provider](#9-the-model-provider) | task → provider | the driver's client | built |
@@ -222,15 +222,17 @@ is the executor's leg of exactly this protocol, and `-as` is required because a 
 attributable. Every `verse task` verb works the same whether the work is local, remote, or
 in somebody's terminal.
 
-## 6. Sources — read one way, hint the other
+## 6. Ios — read one way, hint and act the other
 
-This is the seam whose direction splits by *question*, and it is worth reading closely.
+This is the seam whose direction splits by *question*, and it is worth reading closely — it is
+also the one the io generalises from: one program, two halves, distinguished by nothing except
+which side dials.
 
 Verse dials the source to **read**. Two routes are the whole contract: one question about what the
 program is, one about what it sees.
 
 ```
-GET {url}/source              → Descriptor  { root, owns }
+GET {url}/io                  → Descriptor  { root, owns }
 GET {url}/reflect[?ref=<ref>] → Reflection  { covers, entities }
 ```
 
@@ -261,6 +263,19 @@ sequenceDiagram
 correctness, because the periodic pass catches it, which is why a full hint queue drops rather than
 blocks. That is the same level-triggered discipline the whole engine runs on, and it is what lets
 this seam be unreliable without being wrong.
+
+**The OUT half is the same seam pointed the other way, and it is the io that dials.** It reads what
+is asked of it under the place it owns, makes the external system match, and writes a status per
+request; it reports each pass (`POST /io/{name}/pass`), because verse cannot see a half it does not
+dial. Nothing here is pushed to it and nothing is delivered exactly once — which is what makes the
+two halves one discipline rather than two, and why a connector that could only be reached would
+need an Ingress while one that dials needs nothing
+([io.md](io.md#the-out-half)).
+
+A third direction rides the same connection where the external system offers one: what people DO
+over there — a reply, a mention — reaching verse as a control request made as the person who did
+it, never as the io ([io.md](io.md#control-what-people-do-over-there)). Slack's Socket Mode is the
+worked example: the io dials out, so clicks and replies arrive with no public url anywhere.
 
 The direction split matters in deployment: in the Kubernetes build, verse reaches the source at
 `http://<source>:9801/reflect`, and the source is configured with

@@ -626,7 +626,7 @@ kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed -
 
 make ship-docd          # the store; versed is down, so nothing is talking to it
 make ship-versed        # the engine, against a docd that is already up and new
-make ship-sources       # the connectors
+make ship-ios           # the connectors
 make ship-coderunner    # its own image
 ```
 

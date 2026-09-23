@@ -77,6 +77,40 @@ place against a concurrent writer that cannot exist.
 What that is worth is modest — a pass costs about a quarter less — and the reason to keep it is the
 rule rather than the measurement.
 
+## The out half: verse asks, the io does it
+
+The in half is the reflection above, and the rest of this page is about it. The other half runs the
+same reconciliation in the other direction, and is worth stating in one place because everything
+else about it follows.
+
+Somebody writes what they want at `<place>.<target>.<name>` — a person with `verse data`, a
+charter's `derive` — and the io writes back at the sibling `<name>~status` what became of it. A
+pass every few seconds offers every input to the connector with what the last pass recorded beside
+it; the connector says what to record now, or nothing at all when the world already matches. There
+is no queue and nothing is delivered exactly once: a pass reads the truth and does the difference,
+so a crash mid-pass costs a repeat of one comparison rather than a lost message.
+
+What differs from the reflection is only the direction, and what follows from it:
+
+| | in | out |
+|---|---|---|
+| who dials | verse | the io |
+| what it carries | entities and covers | inputs, and a status per input |
+| the law | the single writer of what it covers; covered-and-omitted is tombstoned | what is asked is compared with what was done, and the difference is done |
+| failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass |
+| who verse trusts | what the reflection answers | what the io says it did (it cannot see for itself) |
+
+Its place must lie **inside the io's claim and outside its covers**: inside so no second writer can
+be asked for the same things, outside so a reflection never tombstones a request. The registration
+says where, who the io acts as, and who may ask; the install writes the grants that describes, so
+standing one up is one act rather than four `verse perms` lines and a flag
+([reference/io.md](reference/io.md#the-out-half)).
+
+Not every io has an out half. Git's outbound act is a push, which is irreversible: it belongs to a
+task, gated per step and done once. **The rule is reversibility** — a sink is for what is kept in
+step with a record and corrected by editing, a task is for what cannot be taken back — and it is
+what keeps this from becoming an RPC framework.
+
 ## The seam: a source answers, verse converges
 
 ```go
@@ -403,6 +437,18 @@ and is SDLC-native.
 - It reflects git-*aware* state — branch, HEAD, dirty, ahead/behind — which is what SDLC flows
   react to ("commit landed on main", "branch deleted", "tag created"), not "a byte changed". An
   index, not a warehouse: a task needing a diff follows the ref into the real repo.
+
+## Control: what people do over there
+
+A press in Slack, a reply in a thread, a mention is neither a reflection nor a delivery: it is a
+control request, and [an intervention is never a store write](control.md). So a connector that
+hears one asks verse through the ordinary route, as the person who did it, and writes nothing.
+
+`io.Controller` is handed a way to act as somebody rather than a way to write — a client factory,
+one principal per request — and three invariants hold whatever it connects: **which** request is
+decided without reading prose, **what** it may ask for is bounded by what the record already
+offers, and **who** it is made as is the person. An answer recorded as the io's own principal
+would be an answer nobody gave.
 
 ## A Source is not a controller, and cannot be
 

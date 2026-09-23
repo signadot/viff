@@ -122,7 +122,7 @@ ship: ## build+push both images at the current commit and deploy staging at that
 # can read:
 #
 #   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
-#   make ship-docd && make ship-versed && make ship-sources && make ship-coderunner
+#   make ship-docd && make ship-versed && make ship-ios && make ship-coderunner
 #
 # The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
 # docd (the store), versed (the engine and its two Services), source (the connectors), runner
@@ -156,12 +156,12 @@ ship-push-coderunner: ship-clean
 SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
 	  E="-e coderunnerImage=$(SHIP_CODERUNNER)"
 
-.PHONY: ship-docd ship-versed ship-sources ship-coderunner
+.PHONY: ship-docd ship-versed ship-ios ship-coderunner
 ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
 	$(SHIP_DEPLOY) SELECT=tier=docd
 ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
 	$(SHIP_DEPLOY) SELECT=tier=versed
-ship-sources: ship-push ## ship the source connectors alone, and wait for them
+ship-ios: ship-push ## ship the io connectors alone, and wait for them
 	$(SHIP_DEPLOY) SELECT=tier=io
 ship-coderunner: ship-push-coderunner ## ship the coderunner alone (its own image), and wait for it
 	$(SHIP_DEPLOY) SELECT=tier=runner

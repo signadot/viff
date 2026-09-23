@@ -4,19 +4,23 @@ The surface. For what an io *is* — one program, two halves, and which side dia
 [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-A source is an entity at `verse.io.<name>`:
+An io is an entity at `verse.io.<name>`:
 
 | | |
 |---|---|
-| `name` | its name, and the whole of its address under `verse.sources`. Required |
-| `root` | the root of the tree this source reflects and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
+| `name` | its name, and the whole of its address under `verse.io`. Required |
+| `root` | the root of the tree this io writes and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task — no network |
-| `dial-in` | the source dials verse. Designed, refused at install until it is built |
-| `owns` | the places this source claims to be the single writer of (see below) |
+| `dial-in` | the io dials verse. Designed, refused at install until it is built |
+| `owns` | the places this io claims to be the single writer of (see below) |
+| `out` | its out half: where it reads what is asked of it, who it acts as, who may ask (see below) |
 | `scope` | the copy-on-write scope it reflects into; empty is baseline |
-| `lastReflect` | when verse last *wrote* from this source. Written by verse |
-| `lastError` | the last failure, cleared by the next success. Written by verse |
+| `lastReflect` | when verse last *wrote* from this io. Written by verse |
+| `lastError` | the last failure of the reflection, cleared by the next success. Written by verse |
+
+The first four columns and `lastReflect` are the IN half — the reflection verse dials. `out` is the
+other half, which dials verse.
 
 **Exactly one of `url`/`dir`/`dial-in`.** They differ only in where the connection comes from;
 `Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
@@ -207,3 +211,99 @@ Scoped registrations are **not** restored on restart: `entity.Store` has no way 
 scopes, and a scoped store reads baseline layered underneath, so nothing can find them. It is
 the gap scoped charters have — a scope is created on demand by whatever owns it, so the thing
 that made the scope can install into it again.
+
+
+## The out half
+
+An io that acts back says so on its registration, and the install writes the grants that describes:
+
+```tony
+out:
+  places:     [slack.Signadot.out]     # where it reads what is asked of it
+  as:         agent:slack-io           # who it acts as, and owns every status it writes
+  requesters: [group:verse-dev]        # who may ask it for something
+```
+
+| | |
+|---|---|
+| `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this io claims, and outside what its reflection covers. A LIST, because one io may serve several — a Linear io reads a place per team, since a claim per team is what keeps two installs apart |
+| `as` | the principal it acts as. Every status it writes is owned by this, so nobody else can forge one |
+| `requesters` | who may ask, as grantees. Empty asks for nobody, which is how an operator says the grants are managed by hand |
+| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. Written by the IO (see below) |
+
+```sh
+verse io add workspace http://slack-io:9801 --root slack \
+  --out slack.Signadot.out --as agent:slack-io --requesters group:verse-dev
+```
+
+**The install writes four grants**, from the record, once:
+
+```
+read-write   <requesters>       below the place    they may ask, and may not write the answers
+read         <as>               below the place    the io reads what is asked
+child-owner  <as>                                  and OWNS each status it creates
+child-grants {read: ["*"]}                         which everyone may read
+```
+
+The requesters' line is *below* rather than a child grant on purpose: a child grant is copied onto
+every record created beneath, statuses included, and would hand the askers write on the answers.
+That distinction is invisible until somebody edits a status, which is why it is written from the
+record rather than explained in a runbook.
+
+What is checked at install, where the operator is present: `places` and `as` are required, `as`
+parses as a principal, every requester parses as a grantee, and each place lies inside what this io
+claims — an io asked for things outside its own slice would seed grants in somebody else's tree.
+Whether a place is outside the reflection's COVERS stays the connector's to arrange, since covers
+come with an answer rather than with a claim.
+
+`--forget` takes the grants back with everything else the io left; `--keep` keeps them, since a
+place whose grants stand is one a re-install lands back on.
+
+### What is asked, and what became of it
+
+| | where | written by | holds |
+|---|---|---|---|
+| input | `<place>.<target>.<name>` | whoever asks | whatever the connector reads (`text`, and Slack's `asks`) |
+| status | `<place>.<target>.<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands |
+
+A name ending in `~status` is never read as an input — a status would otherwise ask for what it is
+the answer to. A pass is **level-triggered**: every input is offered to the connector on every
+pass, with what the last pass recorded beside it, and the connector answers what to record now or
+nothing at all when the world already matches. A failure is written once, with the instant it
+began, and cleared by the success that ends it.
+
+### Health: verse is told
+
+Verse dials a reflection and therefore knows how it is doing. It never dials an out half, so the
+out half says:
+
+```
+POST /io/<name>/pass   {delivered, failed, error?}
+```
+
+which lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`, and shows in
+`verse io` beside the reflection's columns — so an io whose reflection is healthy and whose out
+half has been refused for an hour does not read as healthy. The counts are the last pass's rather
+than totals: "the last pass delivered nothing and failed twice" is the sentence somebody can act
+on. Unattributed, like the hint beside it, and for the same reason — it is a fact about the io's
+own half of the world, and a forged one costs a misleading timestamp.
+
+## Control: what people do over there
+
+A press, a reply, a mention is neither a reflection nor a delivery. It is a control request, and
+an intervention is never a store write ([control.md](../control.md)), so a connector that hears
+one asks verse for it through the ordinary route rather than writing the record.
+
+`io.Controller` is that seam, and it is handed `func(principal string) *client.Client` — a factory
+rather than a client, so a request is made as whoever the external system says did the thing.
+Three invariants hold whatever the connector is:
+
+- **which** request is decided without reading prose (the Slack io knows which question a reply
+  answers because it posted the message that reply is under);
+- **what** it may ask for is bounded by what the record already offers — the options on a question
+  — and never invented;
+- **who** it is made as is the person, never the io's own principal: an answer recorded as
+  `agent:slack-io` is an answer nobody gave.
+
+That person is asserted to verse the way the CLI asserts its own user, and verse trusts it as it
+trusts the CLI's. A principal verse verifies for itself is the fix, and it is not this seam's.
