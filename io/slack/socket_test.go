@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
@@ -100,13 +101,15 @@ func newSocketRig(t *testing.T) *socketRig {
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
-	out := src.Out(client.New(addr, "agent:slack-io"))
-	r.outRig = &outRig{store: store, fake: f, out: out}
+	verse := client.New(addr, "agent:slack-io")
+	sink := src.Sink(verse)
+	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
+	r.outRig = &outRig{store: store, fake: f, sink: sink, out: out}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s := src.Socket(appToken, addr)
-	s.Asking = out.Asked
+	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
 	go func() { defer close(done); s.Run(ctx) }()

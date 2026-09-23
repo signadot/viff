@@ -5,20 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net/http"
-	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	verseapi "github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
@@ -62,151 +58,74 @@ import (
 //
 // Removing an input leaves its status, so the ts survives for whoever later decides what a
 // removal should do to the message; for now the message stays as it is.
-type Out struct {
+type Sink struct {
 	s     *Slack
 	verse *client.Client
 	now   func() time.Time
-	kick  chan struct{}
 
 	mu    sync.Mutex
 	asked map[string][]Asked // (channel, ts) → the questions that message is asking
 }
 
-// StatusSuffix ends the name of every status, and of no input.
-const StatusSuffix = "~status"
-
-// Out is this workspace's out half, reading and writing the verse through verse.
-func (s *Slack) Out(verse *client.Client) *Out {
-	return &Out{s: s, verse: verse, now: time.Now, kick: make(chan struct{}, 1)}
-}
-
-// Kick asks for a pass now rather than at the next interval: a press just answered a question,
-// and the message should say so while the person who pressed is looking at it.
-func (o *Out) Kick() {
-	select {
-	case o.kick <- struct{}{}:
-	default: // one is already asked for
-	}
+// Sink is this workspace's out half: what it says in Slack, and what it remembers of its own
+// messages. The pass that drives it, the status it writes and the failures it records are the io
+// framework's (verseio.Out); what is here is Slack.
+func (s *Slack) Sink(verse *client.Client) *Sink {
+	return &Sink{s: s, verse: verse, now: time.Now}
 }
 
 // OutRef is the place inputs are written under.
 func (s *Slack) OutRef() entity.Ref { return entity.RefAt(s.place("out")...) }
 
-// Run passes every interval until ctx is done. A pass that fails is logged and the next one tries
-// again, which is the whole of its retry policy: the next pass reads the same truth.
-func (o *Out) Run(ctx context.Context, every time.Duration) {
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		if err := o.Pass(ctx); err != nil {
-			o.s.log("slack out: %v", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		case <-o.kick:
-		}
-	}
-}
-
-// Pass reads every input under the out place and does what its status says is not done yet.
-func (o *Out) Pass(ctx context.Context) error {
-	place, err := o.read()
-	if err != nil {
-		return err
-	}
-	for _, target := range fieldNames(place) {
-		under := entity.Get(place, target)
-		for _, name := range fieldNames(under) {
-			if strings.HasSuffix(name, StatusSuffix) {
-				continue // a status, or one nobody asked for any more
-			}
-			o.deliver(ctx, target, name, entity.Get(under, name), entity.Get(under, name+StatusSuffix))
-		}
-	}
-	return nil
-}
-
-// read answers the out place as one document, or nil when nothing stands there. The answer is what
-// stands AT the place: its targets, and under each its inputs and statuses.
-func (o *Out) read() (*ir.Node, error) { return o.get(o.s.OutRef().KPath()) }
-
-// get answers the document standing at a place, or nil when nothing stands there.
-func (o *Out) get(at string) (*ir.Node, error) {
-	resp, err := o.verse.Get("/state", url.Values{"at": {at}})
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", at, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
-	body, err := client.OKBody(resp)
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", at, err)
-	}
-	doc, err := codec.ParseNode(body, client.ResponseFormat(resp))
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", at, err)
-	}
-	return doc, nil
-}
-
-// deliver does what one input's status says is not done yet, and writes what happened.
-func (o *Out) deliver(ctx context.Context, target, name string, input, status *ir.Node) {
-	text := entity.Str(input, "text")
+// Deliver says one input in Slack, or updates what it already said, and answers what to record.
+//
+// WHETHER ANYTHING IS DUE is decided here rather than by the framework, because only this half
+// knows what a message shows: the fingerprint is of the drawn message, not of the input, so a
+// question settling is an update nobody wrote and a field the writer added that changes nothing
+// visible is not. Every pass re-reads the questions and re-remembers what this message is asking,
+// including the passes that say nothing to Slack, which is how a reply in a thread is matched to
+// the question that thread is about (socket.go).
+func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+	text := entity.Str(in.Value, "text")
 	if text == "" {
-		o.fail(target, name, status, fmt.Errorf("an input carries {text}, and this one has none"))
-		return
+		return nil, fmt.Errorf("an input carries {text}, and this one has none")
 	}
-	body, asked, err := o.body(text, input)
+	body, asked, err := k.body(text, in.Value)
 	if err != nil {
-		o.fail(target, name, status, err)
-		return
+		return nil, err
 	}
 	fp := fingerprint(body)
-	channel, ts := entity.Str(status, "channel"), entity.Str(status, "ts")
-	// Every pass, in step or not: what this message is asking is how a reply to it is matched,
-	// and the pass that says nothing to Slack is the ordinary one.
-	o.remember(channel, ts, asked)
-	if ts != "" && entity.Str(status, "posted") == fp {
-		return // in step: the message shows this input
+	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
+	k.remember(channel, ts, asked)
+	if ts != "" && entity.Str(in.Status, "posted") == fp {
+		return nil, nil // in step: the message shows this input
 	}
-	now := o.now().UTC().Format(time.RFC3339)
+	now := k.now().UTC().Format(time.RFC3339)
 
 	if ts != "" {
-		if err := o.s.api.updateMessage(ctx, channel, ts, body); err != nil {
-			o.fail(target, name, status, err)
-			return
+		if err := k.s.api.updateMessage(ctx, channel, ts, body); err != nil {
+			return nil, err
 		}
-		o.write(target, name, entity.Obj{"updatedAt": now, "posted": fp, "error": entity.Removed()})
-		return
+		return entity.Obj{"updatedAt": now, "posted": fp}, nil
 	}
 
 	if channel == "" {
-		var err error
-		if channel, err = o.channelFor(ctx, target); err != nil {
-			o.fail(target, name, status, err)
-			return
+		if channel, err = k.channelFor(ctx, in.Target); err != nil {
+			return nil, err
 		}
 	}
-	landed, ts, err := o.s.api.postMessage(ctx, channel, "", body)
+	landed, ts, err := k.s.api.postMessage(ctx, channel, "", body)
 	if err != nil {
-		o.fail(target, name, status, err)
-		return
+		return nil, err
 	}
-	st := entity.Obj{
-		"channel": landed, "ts": ts, "postedAt": now, "updatedAt": now, "posted": fp,
-		"error": entity.Removed(),
-	}
+	st := entity.Obj{"channel": landed, "ts": ts, "postedAt": now, "updatedAt": now, "posted": fp}
 	// A permalink is for a reader and not for this program, so failing to get one does not undo
 	// a post that happened.
-	if link, err := o.s.api.permalink(ctx, landed, ts); err == nil && link != "" {
+	if link, err := k.s.api.permalink(ctx, landed, ts); err == nil && link != "" {
 		st["permalink"] = link
 	}
-	o.remember(landed, ts, asked)
-	o.write(target, name, st)
+	k.remember(landed, ts, asked)
+	return st, nil
 }
 
 // body is the message an input asks for: its text, and beneath it a line of this program's own for
@@ -217,7 +136,7 @@ func (o *Out) deliver(ctx context.Context, target, name string, input, status *i
 // waits on while it is pending, the verdict and who gave it once answered, why it was withdrawn —
 // so a question settling redraws a message nobody wrote to, and everyone who can see it is told,
 // not only whoever answered. An input that asks about nothing is its text and no more.
-func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
+func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
 	asks := strs(entity.Get(input, "asks"))
 	if len(asks) == 0 {
 		return text, nil, nil
@@ -226,7 +145,7 @@ func (o *Out) body(text string, input *ir.Node) (string, []Asked, error) {
 	var asked []Asked
 	var options []task.Option
 	for _, id := range asks {
-		q, err := o.question(id)
+		q, err := k.question(id)
 		if err != nil {
 			return "", nil, err
 		}
@@ -273,27 +192,27 @@ type Asked struct {
 
 // Asked is the questions the message at (channel, ts) is about, as the last pass read them, each
 // saying whether it still takes an answer. Nothing, for a message this program did not post.
-func (o *Out) Asked(channel, ts string) []Asked {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return o.asked[channel+"/"+ts]
+func (k *Sink) Asked(channel, ts string) []Asked {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.asked[channel+"/"+ts]
 }
 
 // remember indexes one posted message by where it landed, for Asked.
-func (o *Out) remember(channel, ts string, asked []Asked) {
+func (k *Sink) remember(channel, ts string, asked []Asked) {
 	if channel == "" || ts == "" {
 		return
 	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.asked == nil {
-		o.asked = map[string][]Asked{}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.asked == nil {
+		k.asked = map[string][]Asked{}
 	}
 	if len(asked) == 0 {
-		delete(o.asked, channel+"/"+ts)
+		delete(k.asked, channel+"/"+ts)
 		return
 	}
-	o.asked[channel+"/"+ts] = asked
+	k.asked[channel+"/"+ts] = asked
 }
 
 // code is a list as Slack renders code: `proceed`, `deny`.
@@ -347,9 +266,9 @@ type question struct {
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
-func (o *Out) question(id string) (question, error) {
+func (k *Sink) question(id string) (question, error) {
 	q := question{id: id}
-	doc, err := o.get(mirror.QuestionRef(id).KPath())
+	doc, err := verseio.ReadAt(k.verse, mirror.QuestionRef(id).KPath())
 	if err != nil {
 		return q, fmt.Errorf("reading question %s: %w", id, err)
 	}
@@ -370,7 +289,7 @@ func (o *Out) question(id string) (question, error) {
 		q.opts = mirror.OptionsOf(doc)
 	}
 	ballots := entity.Get(doc, "ballots")
-	for _, who := range fieldNames(ballots) {
+	for _, who := range verseio.Fields(ballots) {
 		b := entity.Get(ballots, who)
 		cast := person(who) + " " + entity.Str(b, "choice")
 		// What somebody said with their ballot is half of what they decided, and a channel that
@@ -488,41 +407,14 @@ func strs(n *ir.Node) []string {
 }
 
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.
-func (o *Out) channelFor(ctx context.Context, target string) (string, error) {
+func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	switch {
 	case strings.HasPrefix(target, "U"), strings.HasPrefix(target, "W"):
-		return o.s.api.openDM(ctx, target)
+		return k.s.api.openDM(ctx, target)
 	case strings.HasPrefix(target, "C"), strings.HasPrefix(target, "G"), strings.HasPrefix(target, "D"):
 		return target, nil
 	}
 	return "", fmt.Errorf("target %q is not a Slack id: U… for a person, C… or G… for a channel", target)
-}
-
-// fail records a failure on the status, keeping whatever the status already says was done. The
-// same failure again is not written again: an input that stays broken would otherwise cost a
-// commit a pass, saying nothing new.
-func (o *Out) fail(target, name string, status *ir.Node, err error) {
-	if entity.Str(status, "error") == err.Error() {
-		return
-	}
-	o.write(target, name, entity.Obj{
-		"error": err.Error(), "failedAt": o.now().UTC().Format(time.RFC3339),
-	})
-}
-
-// write merges fields into the status. A refusal is logged, because it is the one failure the
-// status cannot hold: most likely somebody created the status name before this program did.
-func (o *Out) write(target, name string, fields entity.Obj) {
-	at := entity.RefAt(o.s.place("out", target, name+StatusSuffix)...)
-	resp, err := o.verse.Post("/entity", nil, verseapi.PutEntity{At: at.KPath(), Payload: fields.Payload()})
-	if err != nil {
-		o.s.log("slack out: writing %s: %v", at, err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= http.StatusBadRequest {
-		o.s.log("slack out: %v", client.StatusError(resp, "writing "+at.String()))
-	}
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is
@@ -530,18 +422,4 @@ func (o *Out) write(target, name string, fields entity.Obj) {
 func fingerprint(body string) string {
 	sum := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(sum[:8])
-}
-
-// fieldNames is an object's keys, sorted so a pass says things in a stable order.
-func fieldNames(n *ir.Node) []string {
-	n = ir.Uncomment(n)
-	if n == nil || n.Type != ir.ObjectType {
-		return nil
-	}
-	names := make([]string, 0, len(n.Fields))
-	for _, f := range n.Fields {
-		names = append(names, f.String)
-	}
-	sort.Strings(names)
-	return names
 }

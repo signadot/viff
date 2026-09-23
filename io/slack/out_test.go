@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/versed"
@@ -19,7 +20,8 @@ import (
 type outRig struct {
 	store entity.Store
 	fake  *fakeSlack
-	out   *slack.Out
+	sink  *slack.Sink
+	out   *verseio.Out
 }
 
 func newOutRig(t *testing.T) *outRig {
@@ -29,10 +31,10 @@ func newOutRig(t *testing.T) *outRig {
 	t.Cleanup(ts.Close)
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
-	return &outRig{
-		store: store, fake: f,
-		out: src.Out(client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-io")),
-	}
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-io")
+	sink := src.Sink(verse)
+	return &outRig{store: store, fake: f, sink: sink,
+		out: verseio.NewOut(sink, src.OutRef(), verse, nil)}
 }
 
 // ask writes an input, as a person or a charter would.
@@ -44,7 +46,7 @@ func (r *outRig) ask(t *testing.T, target, name string, input entity.Obj) {
 // status reads what the out half wrote back, or nil.
 func (r *outRig) status(t *testing.T, target, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", target, name+slack.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", target, name+verseio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -153,7 +155,7 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	r := newOutRig(t)
 	r.ask(t, "U123", "empty", entity.Obj{"title": "no text"})
 	r.ask(t, "X1", "nowhere", entity.Obj{"text": "hi"})
-	r.ask(t, "U123", "gone"+slack.StatusSuffix, entity.Obj{"ts": "1.1"})
+	r.ask(t, "U123", "gone"+verseio.StatusSuffix, entity.Obj{"ts": "1.1"})
 	r.pass(t)
 
 	if len(r.fake.posted) != 0 {

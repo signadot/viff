@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/client"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
 )
 
@@ -82,12 +83,15 @@ func slackMain(args []string) error {
 			addr = u.Host
 		}
 	}
-	var o *slack.Out
+	var sink *slack.Sink
+	var o *verseio.Out
 	if *out {
 		if addr == "" {
 			return fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
 		}
-		o = src.Out(client.New(addr, *as))
+		verse := client.New(addr, *as)
+		sink = src.Sink(verse)
+		o = verseio.NewOut(sink, src.OutRef(), verse, log.Printf)
 		go o.Run(ctx, *every)
 		log.Printf("slack out: saying what is written under %s, as %s, reading %s every %s",
 			src.OutRef(), *as, addr, *every)
@@ -100,7 +104,7 @@ func slackMain(args []string) error {
 		sock := src.Socket(app, addr)
 		sock.Hint = c.hinter()
 		if o != nil {
-			sock.Asking, sock.Answered = o.Asked, o.Kick
+			sock.Asking, sock.Answered = sink.Asked, o.Kick
 			log.Printf("slack socket: hearing events, and answering questions at %s as whoever replies in the thread", addr)
 		} else {
 			log.Printf("slack socket: hearing events")
