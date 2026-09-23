@@ -592,6 +592,11 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["environment"] = ir.FromString(string(s.Environment))
 	}
 
+	// Field: VirtualKey
+	if s.VirtualKey != "" {
+		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
+	}
+
 	// Field: Answer (optional)
 	if s.Answer != nil {
 		irMap["answer"] = s.Answer
@@ -725,6 +730,12 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
 			}
 			s.Environment = string(fieldNodeUnwrapped.String)
+		case "virtualKey":
+			// Field: VirtualKey
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "virtualKey", fieldNodeUnwrapped.Type)
+			}
+			s.VirtualKey = string(fieldNodeUnwrapped.String)
 		case "answer":
 			if gomap.GetUnmapComments(opts...) {
 				s.Answer = fieldNode

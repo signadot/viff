@@ -75,6 +75,28 @@ type Spec struct {
 	// because a tool withheld never comes up, while a tool offered-but-ungranted costs a
 	// turn being refused.
 	Tools []string `tony:"field=tools,omitzero"`
+	// VirtualKey is the ADDRESS of the model credential this work runs under —
+	// `acme.keys.review` — and the node standing there holds the key.
+	//
+	// AN ADDRESS RATHER THAN A NAME, because verse already has one namespace and it is the
+	// tree. A name would need a registry beside it, per runtime, agreeing across deployments
+	// and carrying no permissions of its own.
+	//
+	// THE READ IS THE AUTHORITY. Spending a credential has a cost, so who may spend it is a
+	// permission — and the one verse already has answers it, with no group or list invented
+	// for keys. versed resolves this as WHOEVER NAMED IT (versed.credentialAt) before the task
+	// starts, so a charter naming an address its own owner may not read is refused rather than
+	// run. Conventions for where keys live are the deployment's; verse imposes none.
+	//
+	// THE NODE HOLDS THE KEY, so rotating one is a write and every charter naming that address
+	// follows untouched. The cost is that the store holds bearer strings, and a rule that may
+	// read one may also derive it into an io's place and have it said out loud — so the perms
+	// on these nodes are the whole of the protection, and one wants the fencing verse's own
+	// half has. It is payable because a Portkey virtual key is bounded by its own budget and
+	// route; a provider key is not, and does not belong here.
+	//
+	// Empty = the runtime's default credential, which is every spawn written before this.
+	VirtualKey string `tony:"field=virtualKey,omitzero"`
 	// Answer is this spawn's ANSWER CONTRACT: the shape its final message must have, as a
 	// tony match pattern (a schema's `accept` clause, or a bare pattern, which is the same
 	// thing without the wrapper). nil = no contract, and the run ends wherever the model
@@ -301,6 +323,11 @@ func (s Spec) Bind(b Binding) Spec {
 	// which tools an agent is handed is the widening-by-binding risk authority.md names.
 	// Copied rather than shared so a bound spec cannot alias the charter's slice.
 	out.Tools = append([]string(nil), s.Tools...)
+	// VirtualKey is carried and NOT expanded, for Tools' reason and more sharply. It names a
+	// credential the runtime holds, drawn from a fixed set, so a $var in one could only name a
+	// key that does not exist — or one chosen by whoever last wrote the entity being matched,
+	// which would let payload text decide whose budget this firing spends.
+	out.VirtualKey = s.VirtualKey
 	out.Gates = append([]task.Gate(nil), s.Gates...)
 	out.Calls = bindCalls(s.Calls, b)
 	return out

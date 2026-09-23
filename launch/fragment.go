@@ -35,12 +35,21 @@ type Fragment struct {
 	Frame  string
 	Grant  string
 	Tools  []string
+	// VirtualKey is which model credential the doer runs under, by ADDRESS. It belongs here
+	// rather than only on the spawn because it is the clearest thing that distinguishes two
+	// doers sharing a driver: the same harness, a different budget and a different route.
+	//
+	// A provider entity may set it although it is adjacent to spending, because the address is
+	// not the authority — the READ of it is, checked against whoever named it before the task
+	// starts. A doer naming an address nobody may read is a doer that cannot run.
+	VirtualKey string
 }
 
 // IsZero reports whether the fragment contributes nothing — a provider that is only
 // attributes, which is every provider written before this existed.
 func (f Fragment) IsZero() bool {
-	return f.Driver == "" && f.Frame == "" && f.Grant == "" && len(f.Tools) == 0
+	return f.Driver == "" && f.Frame == "" && f.Grant == "" && len(f.Tools) == 0 &&
+		f.VirtualKey == ""
 }
 
 // Overlay returns the spec the selection produces: the charter's spawn as the base, the
@@ -50,7 +59,7 @@ func (f Fragment) IsZero() bool {
 //
 // Per field, and the reason each rule is not the other one:
 //
-//   - Driver, Frame, Grant: set replaces, absent inherits. A provider that says `tools` and
+//   - Driver, Frame, Grant, VirtualKey: set replaces, absent inherits. A provider that says `tools` and
 //     not `grant` keeps the spawn's grant rather than losing it — "absent" and "empty" are
 //     different values on both sides, which is exactly why task.NamedGrant returns an ok
 //     rather than a zero Grant.
@@ -77,6 +86,12 @@ func (s Spec) Overlay(f Fragment) (Spec, error) {
 	}
 	if f.Grant != "" {
 		out.Grant = f.Grant
+	}
+	// A name, not a secret, so replacing one is not widening anything: what the name is
+	// ALLOWED to resolve to is the runtime's, and who may name it is the same grants
+	// question the doer's own writability already is.
+	if f.VirtualKey != "" {
+		out.VirtualKey = f.VirtualKey
 	}
 	tools, err := intersectTools(s.Tools, f.Tools)
 	if err != nil {

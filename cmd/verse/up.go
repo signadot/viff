@@ -226,6 +226,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			if !appCfg.LLM.Available() {
 				return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
 			}
+			// WHICH CREDENTIAL: the one the spawn named, else this verse's own. The spawn's is
+			// already the key — versed read it from the address the spawn named, as whoever
+			// named it, and refused there if that read was not theirs to make.
+			virtualKey := appCfg.LLM.VirtualKeyOr(l.VirtualKey)
 			// content (non-nil for a scoped federation) routes read_file through the
 			// verse; otherwise the agent reads the server-side --root tree.
 			//
@@ -239,7 +243,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 				ID: l.ID, Prompt: l.Prompt, Root: root, Resolver: reg, Log: cc.Err, Content: content,
 				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
 				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
-				LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
+				LLMVirtualKey: virtualKey, LLMModel: appCfg.LLM.Model,
 			})
 			return p
 		case task.DriverCalls:

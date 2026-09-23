@@ -43,5 +43,6 @@ define:
   subject: .[string]
   tools: .[array(string)]
   vector: .[string]
+  virtualKey: .[string]
 signature:
   name: verse-launch-spec

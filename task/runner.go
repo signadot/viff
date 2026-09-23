@@ -52,6 +52,19 @@ type Launch struct {
 	// work). A name no driver knows fails the spawn rather than shrinking it in silence.
 	Tools []string
 
+	// VirtualKey is the model credential this task runs under — THE KEY ITSELF, not an address
+	// and not a name. Empty means the runtime's own.
+	//
+	// It is the one field here that carries a secret, and it does so because the permission
+	// question is answered before this exists: versed read it from the address the spawn named,
+	// AS WHOEVER NAMED IT, and refused the spawn if that read was not theirs to make. What a
+	// runner receives is the answer, so it has nothing to check and no list to hold.
+	//
+	// A Portkey virtual key is what this is for. It is bounded by its own budget and route, so
+	// it can cross a wire verse already trusts with a task's prompt, its grant and its
+	// provenance. A provider key is not bounded that way and does not belong on it.
+	VirtualKey string
+
 	// Answer is the ANSWER CONTRACT: the shape this task's final message must have,
 	// as a tony match pattern (see package answer). nil = no contract.
 	//

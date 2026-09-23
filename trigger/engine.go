@@ -1235,6 +1235,8 @@ func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
 		Frame:  entity.Str(payload, "frame"),
 		Grant:  entity.Str(payload, "grant"),
 		Tools:  entity.Strs(payload, "tools"),
+
+		VirtualKey: entity.Str(payload, "virtualKey"),
 	}
 	if f.Driver == "" {
 		f.Driver = ref.Name()

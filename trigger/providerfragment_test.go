@@ -154,6 +154,39 @@ func TestAttributeOnlyProviderStillWorks(t *testing.T) {
 	}
 }
 
+// A DOER'S CREDENTIAL REACHES THE SPAWN, by name.
+//
+// Two doers on one driver differing by budget and route is the case this is for — a cheap model
+// for triage and an expensive one for review stop being two runner deployments — and the name is
+// all that crosses. What it resolves to belongs to the runtime that holds the values, which is
+// why a provider entity, writable by anyone who can write entities, may set this at all.
+func TestAProviderNamesItsVirtualKey(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, denyResolver{})
+	entitytest.Set(t, store, entity.RefAt("provider", "review", "careful"),
+		entity.Obj{"driver": "llm", "virtualKey": "review"}.Payload())
+
+	frag, ok := eng.selectProvider(
+		launch.Spec{Provider: &launch.Provider{Capability: "review", Select: "auto"}},
+		entity.RefAt("change", "pr", "1"))
+	if !ok {
+		t.Fatal("the provider did not select")
+	}
+	if frag.VirtualKey != "review" {
+		t.Fatalf("fragment = %+v, want the credential it names", frag)
+	}
+
+	// And it reaches the launch, over the spawn's own: a doer that names one is running under
+	// it, not under whatever the charter happened to say.
+	spec, err := launch.Spec{VirtualKey: "general"}.Overlay(frag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.VirtualKey != "review" {
+		t.Errorf("spec runs under %q, want the doer's", spec.VirtualKey)
+	}
+}
+
 // A doer whose tools share nothing with the spawn's is never offered. The spawn cannot be
 // narrowed to "no tools" — an empty list means ALL of them — so rather than resolve that at
 // launch, the doer is ineligible: it cannot be picked, cannot be voted for, and the empty

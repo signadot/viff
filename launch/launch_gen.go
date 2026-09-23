@@ -49,6 +49,11 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tools"] = ir.FromSlice(slice)
 	}
 
+	// Field: VirtualKey
+	if s.VirtualKey != "" {
+		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
+	}
+
 	// Field: Answer (optional)
 	if s.Answer != nil {
 		irMap["answer"] = s.Answer
@@ -222,6 +227,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
 			}
+		case "virtualKey":
+			// Field: VirtualKey
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "virtualKey", fieldNodeUnwrapped.Type)
+			}
+			s.VirtualKey = string(fieldNodeUnwrapped.String)
 		case "answer":
 			if gomap.GetUnmapComments(opts...) {
 				s.Answer = fieldNode

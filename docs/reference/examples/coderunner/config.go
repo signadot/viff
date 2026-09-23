@@ -74,8 +74,11 @@ type Config struct {
 // file that is read, copied and committed carries no secret — the same choice the git token
 // makes, for the same reason.
 type LLM struct {
-	BaseURL       string `tony:"field=baseUrl,omitzero"`
-	APIKeyEnv     string `tony:"field=apiKeyEnv,omitzero"`
+	BaseURL   string `tony:"field=baseUrl,omitzero"`
+	APIKeyEnv string `tony:"field=apiKeyEnv,omitzero"`
+	// VirtualKeyEnv is this runner's OWN credential, for a spawn that names none. A spawn that
+	// names one carries the key itself, read for it by verse from the address it named, as
+	// whoever named it — so there is no list here, and nothing to keep in step with the store.
 	VirtualKeyEnv string `tony:"field=virtualKeyEnv,omitzero"`
 	Model         string `tony:"field=model,omitzero"`
 }
@@ -664,6 +667,22 @@ func (c *Config) MissingLLMCreds() string {
 			"set for the runner rather than for verse or for your shell", c.LLM.APIKeyEnv)
 	}
 	return ""
+}
+
+// VirtualKeyOr is the credential a task runs under: the one its spawn carried, else this
+// runner's own out of the environment.
+//
+// A spawn's is already the key. Verse read it from the address the spawn named, as whoever named
+// it, and refused there if that read was not theirs to make — so the permission question is
+// answered where the store is, and this side has no list to hold and nothing to check against.
+func (c *Config) VirtualKeyOr(carried string) string {
+	if carried != "" {
+		return carried
+	}
+	if c.LLM.VirtualKeyEnv == "" {
+		return "" // none configured: the account key alone, as before
+	}
+	return os.Getenv(c.LLM.VirtualKeyEnv)
 }
 
 // Environment resolves the name a spawn carried. A name this runner does not have is an

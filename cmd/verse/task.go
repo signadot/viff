@@ -439,6 +439,9 @@ type taskRunConfig struct {
 	// Which workspace the runner should build — a repo at a base, a toolchain, a
 	// containment. Resolved by the runner against its own config; verse carries the name.
 	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
+	// Which credential this run spends, by address. Read as the person running it, so this
+	// flag hands nobody anything they could not already read.
+	VirtualKey string `cli:"name=virtual-key desc='address of the model credential this run spends (a node holding {key: <name>}, readable by you); default: the runtime default'"`
 }
 
 func taskRunCmd() *cli.Command {
@@ -520,7 +523,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
-		Runner: cfg.Runner, Environment: cfg.Environment, Principal: by,
+		Runner: cfg.Runner, Environment: cfg.Environment, VirtualKey: cfg.VirtualKey, Principal: by,
 		Answer: contract,
 	})
 	if err != nil {

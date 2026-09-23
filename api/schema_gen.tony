@@ -278,6 +278,7 @@ define:
   runner: .[string]
   subject: .[string]
   vector: .[string]
+  virtualKey: .[string]
 signature:
   name: verse-spawn
 ---

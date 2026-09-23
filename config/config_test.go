@@ -279,3 +279,24 @@ func TestUserFromFileAndEnv(t *testing.T) {
 		t.Errorf("user = %q, want VERSE_USER over the file", c.User)
 	}
 }
+
+// A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this verse's only when it carries none.
+//
+// There is nothing to look up: what a spawn carries is already the key, read for it from the
+// address it named by whoever named it. This verse's own is the default, which is every spawn
+// written before credentials had addresses.
+func TestASpawnsCredentialBeatsTheVersesOwn(t *testing.T) {
+	llm := LLMConfig{APIKey: "pk", VirtualKey: "vk-general"}
+
+	if got := llm.VirtualKeyOr("vk-review"); got != "vk-review" {
+		t.Errorf("carried → %q, want the spawn's own", got)
+	}
+	if got := llm.VirtualKeyOr(""); got != "vk-general" {
+		t.Errorf("unnamed → %q, want this verse's", got)
+	}
+	// A verse with none, asked by a spawn with none: no virtual key at all, which is the
+	// account key alone and the state every verse was in before this.
+	if got := (LLMConfig{APIKey: "pk"}).VirtualKeyOr(""); got != "" {
+		t.Errorf("neither → %q, want no virtual key", got)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -173,6 +174,40 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 				t.Fatalf("reason = %q, want the runner's own words (%q)", ev.Err, tc.body)
 			}
 		})
+	}
+}
+
+// THE CREDENTIAL'S NAME CROSSES THE WIRE, and only the name.
+//
+// A remote runner holds the values and resolves the name against its own config, so this is the
+// one field about a secret that verse may send in the clear — and the field a dropped line would
+// break silently: the work would run, on whatever budget the runner defaults to, and nothing
+// would say which one.
+func TestHTTPRunnerSendsTheCredentialName(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		n, err := codec.ParseNode(body, codec.Tony)
+		if err != nil {
+			t.Errorf("the spawn body does not parse: %v", err)
+		}
+		got = entity.ToObj(n)
+		http.Error(w, "enough", http.StatusBadRequest) // the reply is not what this asks about
+	}))
+	defer srv.Close()
+
+	runner.HTTP(srv.URL).Spawn(task.Launch{
+		ID: "k", Prompt: "review it", Driver: "llm", VirtualKey: "review",
+	}, nil)
+
+	if got["virtualKey"] != "review" {
+		t.Errorf("the spawn sent %v, want the credential named", got["virtualKey"])
+	}
+	// …and a launch naming none says nothing, the way every optional field here does: an empty
+	// one written out is a claim rather than an absence.
+	runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"}, nil)
+	if _, said := got["virtualKey"]; said {
+		t.Errorf("a launch naming no credential sent %v", got["virtualKey"])
 	}
 }
 

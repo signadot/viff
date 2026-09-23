@@ -380,3 +380,27 @@ func TestAMissingModelCredentialIsRefusedNotDiscovered(t *testing.T) {
 		t.Errorf("a config with no llm block does not say so: %q", why)
 	}
 }
+
+// A SPAWN'S OWN CREDENTIAL BEATS THIS RUNNER'S, and a spawn without one gets the runner's.
+//
+// What a spawn carries IS the key — verse read it from the address the spawn named, as whoever
+// named it, and refused there if that read was not theirs — so this side has nothing to look up
+// and no list to keep in step with the store. The whole permission question was answered before
+// the launch arrived.
+func TestASpawnsOwnCredentialBeatsTheRunners(t *testing.T) {
+	t.Setenv("RUNNER_VK", "vk-runner")
+	cfg := &Config{LLM: LLM{APIKeyEnv: "DRIVE_KEY", VirtualKeyEnv: "RUNNER_VK", Model: "m"}}
+
+	if got := cfg.VirtualKeyOr("vk-review"); got != "vk-review" {
+		t.Errorf("carried → %q, want the spawn's own", got)
+	}
+	if got := cfg.VirtualKeyOr(""); got != "vk-runner" {
+		t.Errorf("unnamed → %q, want this runner's", got)
+	}
+	// A runner naming no variable, asked by a spawn carrying nothing: the account key alone,
+	// which is what every runner did before credentials had addresses.
+	none := &Config{LLM: LLM{APIKeyEnv: "DRIVE_KEY"}}
+	if got := none.VirtualKeyOr(""); got != "" {
+		t.Errorf("neither → %q, want no virtual key", got)
+	}
+}

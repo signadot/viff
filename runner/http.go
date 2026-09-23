@@ -96,6 +96,12 @@ func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
 	if l.Environment != "" {
 		req["environment"] = l.Environment
 	}
+	// The NAME of the credential, never the credential: the remote holds the values and
+	// resolves the name against its own config, which is the same split `environment` above
+	// already makes and the reason verse can send this in the clear.
+	if l.VirtualKey != "" {
+		req["virtualKey"] = l.VirtualKey
+	}
 	// Provenance is sent field by field for the reason every other field here is conditional:
 	// an empty one means verse did not know, and writing it out empty would be a claim of
 	// having asked rather than a record of not knowing.

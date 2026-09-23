@@ -291,7 +291,7 @@ func (c *child) stop() {
 }
 
 // startChild prepares and starts one task process, and returns once it is answering.
-func (r *Runner) startChild(c *child, env Environment, point Point, driver string) error {
+func (r *Runner) startChild(c *child, env Environment, point Point, driver, virtualKey string) error {
 	id, ws := c.id, c.ws
 	// The socket lives in the runner's own control directory, which is not under the workspace
 	// and is not bind-mounted into any sandbox. The child never sees this path — it inherits the
@@ -358,8 +358,11 @@ func (r *Runner) startChild(c *child, env Environment, point Point, driver strin
 		Environment: env, Agents: r.cfg.Agents, Egress: eg.insideAs(r.conf),
 		LLM: LLMCreds{
 			BaseURL: r.cfg.LLM.BaseURL, Model: r.cfg.LLM.Model,
-			Key:        os.Getenv(r.cfg.LLM.APIKeyEnv),
-			VirtualKey: os.Getenv(r.cfg.LLM.VirtualKeyEnv),
+			Key: os.Getenv(r.cfg.LLM.APIKeyEnv),
+			// The account key is this runner's and never varies. The virtual key does, and
+			// when a spawn named one it IS the key — read for it by verse, from the address it
+			// named, as whoever named it.
+			VirtualKey: r.cfg.VirtualKeyOr(virtualKey),
 		},
 	}
 	blob, err := codec.Marshal(cfg, codec.Tony)
@@ -569,6 +572,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	prov := ir.Get(&body, "provenance")
 	l := task.Launch{
 		ID: id, Prompt: field(&body, "prompt"), Driver: driver, Environment: env.Name,
+		VirtualKey: field(&body, "virtualKey"),
 		Provenance: task.Provenance{
 			Principal: field(prov, "principal"),
 			Subject:   field(prov, "subject"),
@@ -636,7 +640,7 @@ func (r *Runner) prepare(ctx context.Context, c *child, l task.Launch, env Envir
 		return
 	}
 	c.ws = ws
-	if err := r.startChild(c, env, point, driver); err != nil {
+	if err := r.startChild(c, env, point, driver, l.VirtualKey); err != nil {
 		_ = ws.Remove(context.Background())
 		before(task.Failed, err)
 		return

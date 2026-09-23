@@ -595,6 +595,15 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			s.reflect(st, id, h, meta)
 			return h
 		}
+		// WHICH CREDENTIAL, resolved as the rule that named it — before the launch, so a spawn
+		// that may not spend what it asked for never starts.
+		key, kerr := credentialAt(st, by, spec.VirtualKey)
+		if kerr != nil {
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, kerr))
+			s.reflect(st, id, h, meta)
+			return h
+		}
+		spec.VirtualKey = key
 		l, err := launchOf(id, spec, by)
 		if err != nil {
 			// A charter that names an envelope this build does not have must not run
@@ -667,11 +676,65 @@ func callsOf(cs []launch.Call) ([]task.Call, error) {
 	return out, nil
 }
 
+// credentialAt resolves the ADDRESS a spawn named for its model credential to the credential
+// itself, reading the node AS WHOEVER NAMED IT.
+//
+// THE READ IS THE AUTHORITY. Spending a credential has a cost, so who may spend it is a
+// permission — and the permissions model verse already has answers it, rather than a group or a
+// list invented for keys. Checked against the namer and not against the runtime: a runner reads
+// as itself, so a charter naming an address its own owner may not read would otherwise work, and
+// the whole property would evaporate.
+//
+// THE NODE HOLDS THE KEY. That makes the store hold bearer strings, which is a real cost —
+// backups, snapshots, and any rule that may read one may also derive it into an io's place and
+// have it said out loud. It is taken deliberately, because the alternative (a reference to a
+// name the runtime allowlists) bought less than it looked: whoever may read a credential may
+// already SPEND it by naming it in a spawn, so the reference only moved where the key was typed,
+// at the price of a third name, an allowlist per runtime to keep in step, and a deploy to
+// rotate. A Portkey virtual key is bounded by its own budget and route, which is what makes that
+// trade payable; a provider key would not be.
+//
+// So: one write rotates a key, perms decide who may spend it, and a node holding one wants the
+// same fencing verse's own half has, or a stray `--below` grant reaches it.
+//
+// The refusal cannot tell "not there" from "not yours" (git-issue 65xaf72n), so it says both.
+func credentialAt(store entity.Store, principal, at string) (string, error) {
+	if at == "" {
+		return "", nil
+	}
+	ref, err := entity.ParseAddr(at)
+	if err != nil {
+		return "", fmt.Errorf("virtualKey %q is not an address: %w", at, err)
+	}
+	e, ok, err := entity.As(store, principal).Get(ref)
+	if err != nil {
+		return "", fmt.Errorf("reading the credential at %s: %w", at, err)
+	}
+	if !ok {
+		return "", fmt.Errorf("no credential stands at %s, or it is not %s's to read: a spawn "+
+			"spends what its namer may read, and this one may not", at, principalOrNobody(principal))
+	}
+	key := entity.Str(e.Payload, "key")
+	if key == "" {
+		return "", fmt.Errorf("the credential at %s holds no `key`: the node IS the credential, "+
+			"and one that carries nothing would run this work on a budget nobody named", at)
+	}
+	return key, nil
+}
+
+// principalOrNobody names the namer in a refusal, for a spawn that named nobody.
+func principalOrNobody(p string) string {
+	if p == "" {
+		return "nobody"
+	}
+	return p
+}
+
 func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
-		Resolver: spec.Resolver, Environment: spec.Environment,
+		Resolver: spec.Resolver, Environment: spec.Environment, VirtualKey: spec.VirtualKey,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
 		Provenance: task.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
@@ -4462,10 +4525,19 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The credential this run spends, read as WHOEVER ASKED — the same rule a charter's spawn
+	// gets, and the reason typing an address buys nothing a person could not already read. The
+	// refusal is a 400 rather than a task that fails, because somebody is standing here.
+	credential, err := credentialAt(store, body.Principal, body.VirtualKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
 		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
-		Answer: body.Answer, Calls: body.Calls,
+		VirtualKey: credential,
+		Answer:     body.Answer, Calls: body.Calls,
 		// And the same scope the record above goes to, so this run's gates reach the
 		// docket of whoever asked for it rather than everybody's.
 		Scope: scope,

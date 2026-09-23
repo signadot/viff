@@ -211,6 +211,14 @@ type Spawn struct {
 	// thing. Resolved by the runner against its own config, never by verse: see
 	// task.Launch.Environment.
 	Environment string `tony:"field=environment,omitzero"`
+	// VirtualKey is the ADDRESS of the model credential this run spends — the ad-hoc face of a
+	// spawn's `virtualKey:`, so `verse task run` can ask for the review budget the way a
+	// charter's provider does.
+	//
+	// Read as the run's Principal before anything starts, so typing an address buys nothing a
+	// person could not already read — which is the whole of the authority story here, and the
+	// reason this needs no flag, group or list of its own.
+	VirtualKey string `tony:"field=virtualKey,omitzero"`
 	// Answer is this run's ANSWER CONTRACT — the shape its final message must have, as a tony
 	// match pattern. The ad-hoc face of a spawn's `answer:`, so `verse task run` can declare
 	// what a charter can.

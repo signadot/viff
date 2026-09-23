@@ -118,3 +118,37 @@ func TestFragmentIsZero(t *testing.T) {
 		}
 	}
 }
+
+// A DOER NAMES ITS CREDENTIAL, and that is most of what distinguishes two doers sharing a
+// driver: the same harness, a different budget and a different route.
+//
+// It overlays like driver, frame and grant — set replaces, absent inherits — and unlike tools it
+// needs no intersection, because a name is not a capability. What the name is ALLOWED to resolve
+// to belongs to the runtime that holds the values, and who may name it is the same question the
+// provider entity's own writability already is.
+func TestAProviderNamesTheCredentialItRunsUnder(t *testing.T) {
+	spawn := Spec{Prompt: "review this", VirtualKey: "general"}
+
+	got, err := spawn.Overlay(Fragment{ID: "provider.review.careful", VirtualKey: "review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VirtualKey != "review" {
+		t.Errorf("virtual key %q, want the doer's", got.VirtualKey)
+	}
+
+	// A doer that names none keeps the spawn's: absent is not empty, here as everywhere.
+	kept, err := spawn.Overlay(Fragment{ID: "provider.review.plain", Driver: "llm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.VirtualKey != "general" {
+		t.Errorf("virtual key %q, want the spawn's kept", kept.VirtualKey)
+	}
+
+	// And a fragment that names only a credential contributes something, so it is not zero —
+	// otherwise the selection would treat it as a provider that is only attributes.
+	if (Fragment{VirtualKey: "review"}).IsZero() {
+		t.Error("a fragment naming a credential reads as contributing nothing")
+	}
+}

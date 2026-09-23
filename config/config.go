@@ -200,6 +200,16 @@ type LLMConfig struct {
 	Model      string `tony:"field=model,omitzero"`
 }
 
+// VirtualKeyOr is the credential a task runs under: the one its spawn named, else this verse's
+// own. A spawn's is already the resolved key — versed read it from the address the spawn named,
+// as whoever named it — so there is nothing to look up here and no list to keep.
+func (l LLMConfig) VirtualKeyOr(named string) string {
+	if named != "" {
+		return named
+	}
+	return l.VirtualKey
+}
+
 // Available reports whether the llm driver can be built — an API key is configured.
 // The virtual key is optional (Portkey routing); requiring it would wrongly fall back
 // to scripted for a direct-key setup.
