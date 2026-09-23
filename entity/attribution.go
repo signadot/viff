@@ -126,7 +126,7 @@ type Attribution struct {
 	// rebuilding it from every record per call is a cost a source's pass pays per row.
 	placesAt *placeTrie
 	// rootChildGrants is what a node created with no default above it holds out — the root's
-	// default (DefaultField), the one default that is not data since the root has no record.
+	// default (ChildGrantsField), the one default that is not data since the root has no record.
 	// The open verse's is `read: ["*"]`: whatever anybody creates is readable by everyone
 	// until a default beneath says otherwise. A record written before defaults existed carries
 	// no grants field and is read as holding out this.
@@ -260,7 +260,7 @@ type permsRecord struct {
 	under  string
 	grants []Grant
 	// childGrants is what is created beneath this node holds out, when the record says
-	// (hasDefault); a record that says nothing inherits.
+	// (hasChildGrants); a record that says nothing inherits.
 	childGrants    Levels
 	hasChildGrants bool
 }
@@ -2452,7 +2452,7 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	return nil
 }
 
-// SetChildGrants sets what a node created beneath ref holds out (DefaultField), as the system: a
+// SetChildGrants sets what a node created beneath ref holds out (ChildGrantsField), as the system: a
 // nil map removes the field, so the node inherits again; an empty one says nothing is held
 // out.
 func SetChildGrants(s Store, ref Ref, levels Levels) error {

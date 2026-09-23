@@ -909,7 +909,7 @@ func (s *Server) stopAllIOs() {
 //     the write that clears it is the one that says it recovered.
 //   - `lastReflect` is written only when a pass actually WROTE something. It is the poll
 //     cursor: when verse last changed the verse because of this source. Stamping it every pass
-//     would put a write on `sources:*` once per resync interval forever, and anything watching
+//     would put a write on `io:*` once per resync interval forever, and anything watching
 //     that slice would fire on a verse where nothing is happening.
 //
 // What that costs is stated in docs/io.md: the cursor cannot catch a source

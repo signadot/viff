@@ -84,7 +84,7 @@ type Config struct {
 }
 
 // PermsConfig is what a deployment sets about permissions that no record can say: the root's
-// default. Every other default is a record (`verse perms <path> --default`).
+// default. Every other default is a record (`verse perms <path> --child-grants`).
 //
 //tony:schemagen=verse-perms-config,notag
 type PermsConfig struct {

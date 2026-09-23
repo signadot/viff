@@ -49,7 +49,7 @@ func Ref(name string) entity.Ref {
 //
 // The FIRST `@` is the separator and the rest is the origin, because an origin often contains
 // one itself — a trigger spawn is `<trigger>@<subject>`, so watching one reads
-// `resolvers:instance:security-review@guard@demo:pr:1`. Splitting on the first is the same
+// `verse.watch.security-review@guard@demo:pr:1`. Splitting on the first is the same
 // rule a question id follows for `~`, and a name may not contain `@` for that reason.
 func InstanceRef(name, origin string) entity.Ref {
 	return entity.VerseRef(InstanceSystem, name+"@"+origin)
