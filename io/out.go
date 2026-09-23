@@ -212,6 +212,25 @@ func (o *Out) report(p OutPass) {
 // deliver asks the sink about one input and records what it answered. It reports whether the sink
 // got its way — an input already matching counts as delivered, since nothing is wrong with it.
 func (o *Out) deliver(ctx context.Context, in Input) bool {
+	// A TARGET IS FIXED AT FIRST DELIVERY, and a changed one is refused here rather than in each
+	// connector.
+	//
+	// Every sink resolves `to` only when it has nothing yet — a Slack channel is in the status,
+	// a Linear comment's id is, and both are what an update is addressed by — so a `to` edited
+	// afterwards was read by nobody and the input went on quietly editing the message it first
+	// made. Retargeting neither moved it nor failed, which is the one outcome nothing can be
+	// written against. Refusing says so on the status and costs no call to the far side.
+	//
+	// It is asked of what the status SAYS was delivered, not of what the sink would resolve now:
+	// resolving costs an API call per input per pass, which is exactly what the status exists to
+	// avoid. A status written before this carries no `to` and is left alone — the next delivery
+	// records one.
+	if was := entity.Str(in.Status, "to"); was != "" && was != in.To {
+		o.fail(in, fmt.Errorf("this was delivered to %s and now asks for %s: a target is fixed "+
+			"at first delivery, because what was said is addressed by what the status already "+
+			"holds. Ask under a new name, or put %s back", was, in.To, was))
+		return false
+	}
 	fields, err := o.sink.Deliver(ctx, in)
 	if err != nil {
 		o.fail(in, err)
@@ -225,6 +244,13 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 	if _, said := fields["error"]; !said {
 		fields["error"] = entity.Removed()
 		fields["failedAt"] = entity.Removed()
+	}
+	// WHO IT WENT TO, as the input said it. The connector's own fields say where it landed on
+	// the far side — a channel id, a comment uuid — which is not the address a requester wrote
+	// and cannot be compared with one. This is what makes the check above possible, and it
+	// answers "who was this for" for a reader of the status.
+	if _, said := fields["to"]; !said {
+		fields["to"] = in.To
 	}
 	o.Write(in, fields)
 	return true

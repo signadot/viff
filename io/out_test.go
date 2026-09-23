@@ -2,6 +2,7 @@ package io_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -232,4 +233,69 @@ func until(t *testing.T, ok func() bool, why string) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal(why)
+}
+
+// A TARGET IS FIXED AT FIRST DELIVERY.
+//
+// Every sink resolves `to` once and then addresses what it already made — a Slack channel and ts,
+// a Linear comment id, both on the status. So a `to` changed afterwards reached nobody: the input
+// went on editing the message it first made, at the old target, silently. Found by writing an
+// address that was not one (`user:scott@…`, an ellipsis) and watching the DM update anyway.
+func TestATargetIsFixedAtFirstDelivery(t *testing.T) {
+	r := newOutRig(t)
+	r.sink.fields = entity.Obj{"ts": "1.1"}
+	ask(t, r.store, "C111", "note", entity.Obj{"text": "hello"})
+	r.pass(t)
+	if st := r.status(t, "note"); st["to"] != "C111" {
+		t.Fatalf("status %v, want who it went to — which is what makes the check below possible", st)
+	}
+	delivered := r.sink.count()
+
+	// Retargeted: refused, said on the status, and the sink is never asked — so no call is made
+	// to the far side about a message it would address by the old target anyway.
+	ask(t, r.store, "C222", "note", entity.Obj{"text": "hello"})
+	r.pass(t)
+	if r.sink.count() != delivered {
+		t.Errorf("the sink was asked %d times, want the retarget refused before it",
+			r.sink.count()-delivered)
+	}
+	st := r.status(t, "note")
+	err, _ := st["error"].(string)
+	if !strings.Contains(err, "C111") || !strings.Contains(err, "C222") {
+		t.Errorf("status %v, want both targets named", st)
+	}
+	if st["to"] != "C111" {
+		t.Errorf("status says it went to %v, want the target it was actually delivered to", st["to"])
+	}
+
+	// …and putting it back is enough: the refusal is level-triggered like everything else here.
+	ask(t, r.store, "C111", "note", entity.Obj{"text": "hello again"})
+	r.pass(t)
+	if r.sink.count() == delivered {
+		t.Error("the sink was not asked again once the target was put back")
+	}
+	if st := r.status(t, "note"); st["error"] != nil {
+		t.Errorf("status %v, want the refusal cleared by the delivery that ended it", st)
+	}
+}
+
+// AND A TARGET THAT NEVER REACHED ANYBODY MAY STILL BE CORRECTED: a first delivery that failed
+// writes no `to`, so a typo'd address is fixed by editing it, which is what anybody would try.
+func TestATargetThatNeverDeliveredMayBeCorrected(t *testing.T) {
+	r := newOutRig(t)
+	r.sink.err = errors.New("no such channel")
+	ask(t, r.store, "C-typo", "note", entity.Obj{"text": "hello"})
+	r.pass(t)
+	if st := r.status(t, "note"); st["to"] != nil {
+		t.Fatalf("status %v, want no target recorded for a delivery that did not happen", st)
+	}
+
+	r.sink.err = nil
+	r.sink.fields = entity.Obj{"ts": "1.1"}
+	ask(t, r.store, "C-right", "note", entity.Obj{"text": "hello"})
+	r.pass(t)
+	st := r.status(t, "note")
+	if st["to"] != "C-right" || st["error"] != nil {
+		t.Errorf("status %v, want the corrected target delivered and the error gone", st)
+	}
 }
