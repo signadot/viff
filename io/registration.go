@@ -217,17 +217,13 @@ func (e Entity) Check() error {
 	if _, err := ParseOwns(e.Owns); err != nil {
 		return fmt.Errorf("source %q: %w", e.Name, err)
 	}
-	return e.Out.check(e.Name, e.Owns)
+	return e.Out.check(e.Name)
 }
 
-// check refuses an out half that could not work: no place to read, nobody to act as, a principal
-// the grammar does not admit, or a place outside what this io claims.
-//
-// INSIDE THE CLAIM is the load-bearing one. An io asked for things outside its own slice would
-// write statuses where another writer owns the tree, and the grants this install seeds would be
-// seeded there too — so the check is the same disjointness the in half has always had, applied to
-// the other direction.
-func (o *OutHalf) check(name string, owns []Own) error {
+// check refuses an out half that could not work on its own terms: no place to read, nobody to
+// act as, or a principal the grammar does not admit. Whether its places are inside the io's
+// claim is CheckClaimed, asked separately because the claim is not always in the request.
+func (o *OutHalf) check(name string) error {
 	if o == nil {
 		return nil
 	}
@@ -246,6 +242,26 @@ func (o *OutHalf) check(name string, owns []Own) error {
 		if _, err := entity.ParseGrantee(who); err != nil {
 			return fmt.Errorf("io %q: out.requesters %w", name, err)
 		}
+	}
+	return nil
+}
+
+// CheckClaimed refuses an out half whose places fall outside what the io claims, and is asked
+// with the claim the install SETTLED ON rather than the one the request carried.
+//
+// The difference is the whole reason it is its own call. An operator types `verse io add slack
+// <url> --root slack --out slack.Signadot.out` and names no claim at all: the claim comes from
+// probing the io, which happens after the request is read. Asked of the request, this check saw
+// an empty claim and refused every out half an operator ever typed — the deployment path, since
+// repopulate.sh types exactly that.
+//
+// INSIDE THE CLAIM is load-bearing. An io asked for things outside its own slice would write
+// statuses where another writer owns the tree, and the grants this install seeds would be seeded
+// there too — so the check is the same disjointness the in half has always had, applied to the
+// other direction.
+func (o *OutHalf) CheckClaimed(name string, owns []Own) error {
+	if o == nil {
+		return nil
 	}
 	claims, err := ParseOwns(owns)
 	if err != nil {

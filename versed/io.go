@@ -142,6 +142,13 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// AND NOW THE OUT HALF'S PLACES, against the claim the install settled on — which is the
+	// probe's when the operator named none, so this cannot be asked before the probe.
+	if err := e.Out.CheckClaimed(e.Name, e.Owns); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Single-writer is what makes a reflected slice need no CAS. In task it held because
 	// there was one Git value; across deployments nothing holds it but this.
 	if r.URL.Query().Get("allow-overlap") != "true" {

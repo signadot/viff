@@ -272,3 +272,57 @@ func TestAPassForNoSuchIoIsRefused(t *testing.T) {
 		t.Error("a registration was created by a pass report")
 	}
 }
+
+// THE OPERATOR'S PATH: an out half named on the command line, with no claim in the request.
+//
+// `verse io add slack <url> --root slack --out slack.Signadot.out` says nothing about what the
+// io owns — the claim comes from PROBING it. So the check that an out place is inside the claim
+// cannot be asked of the request, and asking it there refused every out half an operator typed,
+// including the one repopulate.sh types. The other tests here pass `owns` explicitly and so
+// never went through this door.
+func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
+	requireGit(t)
+	srv := testServer(t)
+	face := sourceFace(t, "verse") // claims git.verse, and says so when asked
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
+		"root": "git", "name": "laptop", "url": face.URL,
+		"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-io"},
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s: %s", resp.Status, read(t, resp))
+	}
+	// And the claim it was checked against is the probe's, which is also what makes the
+	// refusal below meaningful rather than vacuous.
+	e, ok := verseio.Find(srv.Store, "laptop")
+	if !ok || len(e.Owns) != 1 || e.Owns[0].At != "git.verse" {
+		t.Fatalf("registration owns %+v, want what the probe read", e.Owns)
+	}
+
+	// …and a place outside that claim is still refused, now for the right reason.
+	bad := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
+		"root": "git", "name": "laptop2", "url": face.URL,
+		"out": map[string]any{"places": []any{"elsewhere.out"}, "as": "agent:git-io"},
+	})
+	defer bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a place outside the probed claim = %s, want 400", bad.Status)
+	}
+	if said := read(t, bad); !strings.Contains(said, "outside what this io claims (git.verse)") {
+		t.Errorf("refusal %q, want the probed claim named", said)
+	}
+}
+
+// postAsTony is postTony as somebody: an install names who makes it, and these two want an
+// owner for the places they take.
+func postAsTony(t *testing.T, as, url string, body map[string]any) *http.Response {
+	t.Helper()
+	b, err := codec.Marshal(body, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return postAs(t, as, url, "application/tony", string(b))
+}
