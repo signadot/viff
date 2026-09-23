@@ -108,11 +108,11 @@ func newSocketRig(t *testing.T) *socketRig {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	s := src.Socket(appToken, addr)
+	s := src.Socket(appToken)
 	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
-	go func() { defer close(done); s.Run(ctx) }()
+	go func() { defer close(done); _ = s.Control(ctx, verseio.As(addr)) }()
 	t.Cleanup(func() { cancel(); <-done })
 	return r
 }

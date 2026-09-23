@@ -58,9 +58,11 @@ import (
 // principal; verse trusts it as it trusts the CLI's. A principal verse verifies for itself is the
 // fix for both.
 type Socket struct {
-	s     *Slack
-	app   *api // holding the app-level token, which only apps.connections.open takes
-	verse string
+	s   *Slack
+	app *api // holding the app-level token, which only apps.connections.open takes
+	// as is the client factory io.Controller is handed: one verse, and a request made as
+	// whoever Slack says did the thing. nil until Control runs, and then never as this program.
+	as func(principal string) *client.Client
 
 	// Hint, when set, receives the hint each Events API delivery calls for, as the request url's
 	// handler would send it.
@@ -76,9 +78,18 @@ type Socket struct {
 }
 
 // Socket is this workspace's Socket Mode listener, answering clicks at the verse at verseAddr.
-func (s *Slack) Socket(appToken, verseAddr string) *Socket {
-	return &Socket{s: s, app: newAPI(appToken, s.api.base, s.api.cl), verse: verseAddr}
+func (s *Slack) Socket(appToken string) *Socket {
+	return &Socket{s: s, app: newAPI(appToken, s.api.base, s.api.cl)}
 }
+
+// Control is io.Controller: the socket, run until ctx is done, answering as whoever typed.
+func (k *Socket) Control(ctx context.Context, as func(principal string) *client.Client) error {
+	k.as = as
+	k.Run(ctx)
+	return ctx.Err()
+}
+
+var _ verseio.Controller = (*Socket)(nil)
 
 // Run keeps a connection open until ctx is done. Slack's disconnect is a request to dial again,
 // which is done at once; a failure is dialled again after a backoff that resets once a connection
@@ -425,7 +436,7 @@ func stripMentions(text string) string {
 // reports whether anything was written, since what it tells them afterwards depends on it.
 func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text string) bool {
 	text = strings.TrimSpace(stripMentions(text))
-	if text == "" || k.verse == "" {
+	if text == "" || k.as == nil {
 		return false
 	}
 	email, err := k.s.api.userEmail(ctx, userID)
@@ -434,7 +445,7 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 		return false
 	}
 	who := "user:" + email
-	verse := client.New(k.verse, who)
+	verse := k.as(who)
 	noted := false
 	for _, a := range asked {
 		resp, err := verse.Post("/gate/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
@@ -456,7 +467,7 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 // counted — an answer, or a ballot on a question that takes more than one voice — and whether what
 // there is to say belongs in the thread or to them alone.
 func (k *Socket) answer(ctx context.Context, userID, id, option string) (said string, answered, public bool) {
-	if k.verse == "" {
+	if k.as == nil {
 		return "Not answered: this program was not told which verse the question is in", false, false
 	}
 	email, err := k.s.api.userEmail(ctx, userID)
@@ -464,7 +475,7 @@ func (k *Socket) answer(ctx context.Context, userID, id, option string) (said st
 		return "Not answered: " + err.Error(), false, false
 	}
 	who := "user:" + email
-	resp, err := client.New(k.verse, who).Post("/gate/resolve", nil,
+	resp, err := k.as(who).Post("/gate/resolve", nil,
 		verseapi.Resolve{ID: id, Choice: option, By: who})
 	if err != nil {
 		return "Not answered: " + err.Error(), false, false

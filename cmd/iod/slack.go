@@ -86,7 +86,7 @@ func slackMain(args []string) error {
 	// arrive down it as hints, and with -out so do presses of the buttons it said.
 	switch {
 	case app != "":
-		sock := src.Socket(app, addr)
+		sock := src.Socket(app)
 		sock.Hint = c.hinter()
 		if o != nil {
 			sock.Asking, sock.Answered = sink.Asked, o.Kick
@@ -94,7 +94,13 @@ func slackMain(args []string) error {
 		} else {
 			log.Printf("slack socket: hearing events")
 		}
-		go sock.Run(ctx)
+		// The control seam: a client factory rather than a client, so what it asks for is asked
+		// as whoever Slack says did the thing and never as this program (io.Controller).
+		go func() {
+			if err := sock.Control(ctx, verseio.As(addr)); err != nil && ctx.Err() == nil {
+				log.Printf("slack socket: %v", err)
+			}
+		}()
 	case o != nil:
 		log.Printf("no SLACK_APP_TOKEN: questions are asked in Slack, and nothing there can answer one")
 	}
