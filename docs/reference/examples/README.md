@@ -274,11 +274,11 @@ rather than running the task with a proxy it is free to ignore.
 go run ./docs/reference/examples/io -addr :9801 -repo verse=/path/to/a/repo
 ```
 
-It serves two routes and nothing else — `GET /source` says what it is, `GET /reflect` says
+It serves two routes and nothing else — `GET /io` says what it is, `GET /reflect` says
 what it sees — so you can look at exactly what verse would be told:
 
 ```sh
-curl localhost:9801/source
+curl localhost:9801/io
 curl "localhost:9801/reflect?at=git.verse"
 ```
 

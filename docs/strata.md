@@ -281,7 +281,7 @@ And an element whose `key` is empty **fails the whole firing**, naming which ele
 the others would lose a member into a ledger that reads short, and short is the one failure
 nobody can see.
 
-The address flattens what an id may not hold (`source/github.Reflect` → `source_github.Reflect`)
+The address flattens what an id may not hold (`io/github.Reflect` → `io_github.Reflect`)
 and carries a hash of the original when it does, so two keys that flatten alike stay two
 entities. Put the readable key in the payload too; the address is for the engine.
 

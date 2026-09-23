@@ -37,15 +37,15 @@ verses run one of each and a name that says no more than `root` does is a second
 fact. It is only a convention: the name is free, and a second io on one connector is exactly where
 spending a word on it pays (`git` beside `git-buildhost`).
 
-A source reflects what the world is about and never what verse keeps under `verse`: a reflection
+An io reflects what the world is about and never what verse keeps under `verse`: a reflection
 naming an address under `verse.` is refused, a claim that names it is refused at install, and no
 claim reaches there however wide it is written — `*` claims every place but `verse`.
 
 ## Ownership
 
 `owns` is a list of claims, and it is what an install proves disjointness against, what a
-`-forget` removal may tombstone, and what names the nodes the source owns. A claim's node is its
-levels up to the first glob; installing takes each for the installer, so what the source reflects
+`-forget` removal may tombstone, and what names the nodes the io owns. A claim's node is its
+levels up to the first glob; installing takes each for the installer, so what the io reflects
 beneath is theirs with no owner record per entity, and an install over a node somebody else owns
 is refused ([perms.md](../perms.md#ownership)). An ownership claim is an **address**, not a payload predicate,
 because an install compares declarations with no entities in hand.
@@ -54,15 +54,15 @@ because an install compares declarations with no entities in hand.
 {at: "git.verse.head"}         one entity
 {at: "git.verse"}              a whole subtree: everything under it, at every depth
 {at: "linear.ENG.issue.*"}     a level may be `*`, and may END in one — a literal prefix
-{at: "verse-dev.drift"}        …which is how a source that keeps two levels of its own says so
-{at: "linear.project.*.owners.ENG"}   one place inside a node several sources share
+{at: "verse-dev.drift"}        …which is how an io that keeps two levels of its own says so
+{at: "linear.project.*.owners.ENG"}   one place inside a node several ios share
 ```
 
 A claim is **one pattern per level, at whatever depth** — the same shape an address is. It owns
 the node it names and everything under it, so `git` owns every repository and
 `verse-dev.drift` owns the tree a package keeps there.
 
-**Sharing is a deeper address.** Two sources that share a thing do not share a node: they own
+**Sharing is a deeper address.** Two ios that share a thing do not share a node: they own
 two nodes beneath it — `linear.project.p1.owners.ENG` and `…owners.OPS` — which are two
 addresses, proved apart by the same level-by-level comparison as any other pair. Sharing is not
 an exception to single-writership; it is single-writership one level down, and the level is
@@ -104,7 +104,7 @@ verse io add <name> <url> -root <root>       install one, probing the url first
        add -dir <d> <name>                  …or a local git repo, reflected in task
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
-           [-allow-overlap]                  install though another source may write the same place
+           [-allow-overlap]                  install though another io may write the same place
        show <ref>                            the entity
        check <ref>                           ask it what it is and what it claims, right now
        remove <ref>                          take it away; refused if it reflected anything
@@ -113,21 +113,21 @@ verse io add <name> <url> -root <root>       install one, probing the url first
 ```
 
 A `<ref>` is `verse.io.laptop` or `laptop` — the whole address or the bare name; the
-middle form (`sources.laptop`) is not accepted.
+middle form (`io.laptop`) is not accepted.
 
-`verse status` names the installed sources — refs only, health left to `verse io`. It is
+`verse status` names the installed ios under `io:` — refs only, health left to `verse io`. It is
 there because it is the one line of a status that says anything is *arriving*: every counter
-beside it moves on what verse was already given, so a verse whose last source was removed reads
+beside it moves on what verse was already given, so a verse whose last io was removed reads
 exactly like a healthy quiet one until that list is empty.
 
-Every command takes the global `-scope`, and a scoped source is installed, listed, and removed
+Every command takes the global `-scope`, and a scoped io is installed, listed, and removed
 in the scope it reflects into.
 
 ## Routes
 
 | | |
 |---|---|
-| `GET /io` | list; `?probe=true` adds a live `reach` per source |
+| `GET /io` | list; `?probe=true` adds a live `reach` per io |
 | `POST /io` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{ref, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
 | `GET /io/{name}` | the entity |
 | `GET /io/{name}/check` | `{ref, reach}`, plus `says: {root, owns}` when it answered |
@@ -135,8 +135,8 @@ in the scope it reflects into.
 | `POST /io/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
 
 `reach` is one of `a source`, `not a source`, `unreachable`, and nothing about it is written to
-the store. A `500` from a source is *unreachable* rather than *not a source*: something is
-speaking HTTP and failing, which is a source having a bad day at least as often as it is the
+the store. A `500` from an io is *unreachable* rather than *not a source*: something is
+speaking HTTP and failing, which is an io having a bad day at least as often as it is the
 wrong url, and refusing an install on it would refuse a fact that fixes itself.
 
 The listing reports `lastPass` from the live reflector — when a pass last *completed*, whatever
@@ -149,13 +149,13 @@ of. A malformed ref is `400` rather than a silent full resync, and a hint at a r
 is installed but not running is `503` rather than a quiet `204` — a swallowed hint looks exactly
 like one that worked.
 
-## The contract a source serves
+## The contract an io serves
 
 Two routes, no state, no write face:
 
 | | |
 |---|---|
-| `GET /source` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
+| `GET /io` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
 | `GET /reflect` | `?at=<address>` (absent = everything it owns) → a `Reflection` |
 
 ```tony
@@ -175,14 +175,14 @@ is how git keeps history, since it covers `ref` and `head` and not `commit`.
 
 A cover's `path` is a pattern, one segment per level with `*` any one segment, and it is also
 what converge **reads**: the refs under `git.verse.ref` and the node `git.verse.head`, rather than
-all of `git`. Its first segment is a literal, and it is this source's `root` — a cover that
+all of `git`. Its first segment is a literal, and it is this io's `root` — a cover that
 begins with `*` would claim every place it is compared against, and is refused. A cover may add `value`, a payload predicate, where a place alone cannot say what
 the answer is complete for — GitHub covers a repository's open issues and its recent closed
 ones as two halves of `github.<org>.<name>.issue.*`.
 
-**A cover goes as deep as the answer does.** A source that owns one place inside a shared thing
+**A cover goes as deep as the answer does.** An io that owns one place inside a shared thing
 covers that place — `linear.project.*.owners.ENG` — and converge writes, compares and tombstones
-there and nowhere else. Two sources can be the single writers of two nodes under one project,
+there and nowhere else. Two ios can be the single writers of two nodes under one project,
 each proved apart by its `owns`, neither able to reach the other. Removing the last one empties
 `owners`, which empties the project, and each step up is a conditional delete — the only
 contended write in the design, and it stops the moment something else is still standing.

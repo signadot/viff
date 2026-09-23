@@ -16,7 +16,7 @@ iod linear    [flags]   Linear teams
 iod github    [flags]   GitHub repositories
 ```
 
-Each serves the same two routes verse dials (`GET /source`, `GET /reflect`), plus — for the three
+Each serves the same two routes verse dials (`GET /io`, `GET /reflect`), plus — for the three
 that have one — the delivery endpoint it owns. Install one exactly like any other source:
 
 ```sh
@@ -67,7 +67,7 @@ says so in `lastError` instead of quietly answering last week's shas.
 
 An unreachable remote or a missing credential is a **startup** failure, not a per-pass one.
 
-The hint is a git hook (`source.Git.InstallHook`), which posts to verse directly; there is
+The hint is a git hook (`io.Git.InstallHook`), which posts to verse directly; there is
 nothing for this program to receive. A mirror has no hook — nobody pushes to it — so it
 converges on the resync.
 
@@ -527,14 +527,13 @@ reflected leaves what was written standing, frozen: nothing covers it, so nothin
 
 ## Deploying them
 
-`deploy/git-source`, `deploy/slack-source`, `deploy/linear-source` and `deploy/github-source`
-are the manifests, each off by default and turned on by its own knob (`-e slackSource=true`,
-`-e githubSource=true -e githubRepos=org/name`).
+`deploy/git-io`, `deploy/git-issue-io`, `deploy/slack-io`, `deploy/linear-io` and
+`deploy/github-io` are the manifests — one per connector, all five — each turned on by its own
+knob (`-e slackIO=true`, `-e githubIO=true -e githubRepos=org/name`). They carry the label
+`tier: io`, which is what `make ship-ios` selects on.
 
-**git-issue has no manifest yet**, which is a gap rather than a decision — it is the same
-binary and the same `-repo`/`-mirror` flags as `git-source`, so the manifest is that one with
-the subcommand and the knob changed. Run it outside the cluster, or copy `deploy/git-source`,
-until somebody driving it needs one. See
+A readiness probe asks each one `GET /io`, the contract's own "what are you", so a pod reads as
+ready exactly when it can answer the question verse will ask it. See
 [deploy/README.md](https://github.com/signadot/verse/blob/main/deploy/README.md) for the credentials, the ingress and the registration
 step — which stays a verb somebody runs, because an install carries an ownership claim verse
 checks against what is already standing.

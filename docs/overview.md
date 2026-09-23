@@ -137,7 +137,7 @@ below.
 `source` federates external state in. `verse connect` reflects a working tree into a scope,
 writing file metadata as entities and serving contents on demand through a docd controller, and
 the same pattern generalizes to git, GitHub and the rest. See [connect](reference/connect.md),
-[sources](io.md), and [content federation](content-federation.md).
+[ios](io.md), and [content federation](content-federation.md).
 
 ## Design decisions
 
@@ -252,7 +252,7 @@ corrupt the log.
 - *Task control* — where and how a task runs: a k8s Job, a lambda, a broker for humans.
 - *Store* — logd/docd, or anything implementing the `Store` interface.
 - *Source* — reflect an external system into an owned place in the verse, as a program you deploy
-  and install ([sources](io.md)). Distinct from a *docd controller*, which serves bytes
+  and install ([ios](io.md)). Distinct from a *docd controller*, which serves bytes
   somebody asks for rather than facts something reacts to
   ([writing a controller](controllers.md)).
 

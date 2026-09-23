@@ -328,7 +328,7 @@ func (e Entity) checkReach() error {
 	// can dial.
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("source %q: url %q needs an http:// or https:// scheme — it is what "+
-			"source.HTTP dials and what a restart reconstructs from", e.Name, e.URL)
+			"io.HTTP dials and what a restart reconstructs from", e.Name, e.URL)
 	}
 	if u.Host == "" {
 		return fmt.Errorf("source %q: url %q has no host", e.Name, e.URL)

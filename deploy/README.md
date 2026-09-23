@@ -34,9 +34,9 @@ docd — one per face, because a face is the unit anything grants or reaches:
 > o build deploy -O yaml -p <profile> | kubectl apply -f -
 > ```
 
-Optionally a third tier: **source connectors**, one `Deployment` + `Service` each, running
-`iod` (git, Slack, Linear). Each is a singleton for the reason versed is — a source is the
-single writer of its slice — and each is off by default. See [Sources](#sources-optional).
+Optionally a third tier: **ios**, one `Deployment` + `Service` each, running `iod` (git,
+git-issue, Slack, Linear, GitHub). Each is a singleton for the reason versed is — an io is
+the single writer of its slice — and each is off by default. See [Ios](#ios-optional).
 
 ## Build the image
 
@@ -52,7 +52,7 @@ make docker IMAGE_ARCH=amd64      # target amd64 nodes (default: your host arch)
 
 `make deploy PROFILE=minikube HOSTPATH=/Users/<you>/.verse/minikube-default` renders and
 applies in one step (`make help` lists all targets). The image bundles `verse`, the pinned
-`o` (which docd's pod runs), `iod` (the source connectors), and `git` — one image, several
+`o` (which docd's pod runs), `iod` (the ios), and `git` — one image, several
 roles, so there is one ref to pin and one build to cache.
 
 ## Render + apply
@@ -172,7 +172,7 @@ with an `OwnerRefInvalidNamespace` event as the only trace.
 
 The knob attaches it to the namespace's **`default` ServiceAccount**, not to each pod spec:
 the ServiceAccount admission plugin copies `imagePullSecrets` into every pod created in the
-namespace, so versed, docd and every source connector are covered by one object rather than a
+namespace, so versed, docd and every io are covered by one object rather than a
 patch each. The build emits that ServiceAccount immediately after the Namespace, before the
 workloads, because the copy happens **at pod creation** — an account that gains the secret
 later does nothing for pods already standing:
@@ -253,13 +253,14 @@ handing it to somebody outside the cluster a different act from handing them the
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
 | `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
-| the source knobs | off | see [Sources](#sources-optional) |
+| the io knobs | off | see [Ios](#ios-optional) |
 
-## Sources (optional)
+## Ios (optional)
 
-What reflects an external system into the verse ([docs/io.md](../docs/io.md)). Three
-are shipped, each its own Deployment + Service, each **off by default** and turned on
-independently — the git one costs a clone, the other two cost a credential in the cluster.
+The seam to an external system — reflecting it in, and acting out
+([docs/io.md](../docs/io.md)). Five are shipped, each its own Deployment + Service, each **off
+by default** and turned on independently — the git ones cost a clone, the SaaS ones cost a
+credential in the cluster.
 
 ```sh
 make deploy E='-e gitIO=true'
@@ -289,11 +290,11 @@ so the address has to be reachable from where the client is.
 (`http://verse:9797/io/<name>/hint`), so a registration under a different name means
 verse 404s every delivery — loud, but only if you look.
 
-⚠️ **Widening what a source reflects is two steps, and the deploy is only the first.** A
+⚠️ **Widening what an io reflects is two steps, and the deploy is only the first.** A
 registration stores the ownership claim as it stood when it was installed, so adding a
 repository to `gitMirror`, `gitIssueMirror` or `githubRepos` and rolling the pod leaves verse
-holding the old claim — and it FENCES the new slice out rather than letting the source write
-outside what was proved. The symptom is a source that looks healthy and reflects nothing new.
+holding the old claim — and it FENCES the new slice out rather than letting the io write
+outside what was proved. The symptom is an io that looks healthy and reflects nothing new.
 Re-run the same `verse io add` afterwards; it updates the claim in place.
 
 ```sh
@@ -301,16 +302,16 @@ verse io check issues   # `owns` is what verse holds, `says` is what it claims n
 verse io add git-issue http://git-issue-io:9801 -root git-issue   # reconcile them
 ```
 
-Driven, on a source moved from one repository to two: only the first repository's entities were
+Driven, on an io moved from one repository to two: only the first repository's entities were
 written while the claim was stale, `check` showed the two values side by side, and the second
 repository's appeared within a pass of the re-add. Removal is the other direction and needs no
 such care — but note it asks for `-forget` or `-keep`, and there is nothing to forget on a
-source you are only widening.
+io you are only widening.
 
 ### Credentials
 
 The two that need one take it from a Secret, and `optional` is **false** on purpose: a Slack
-source with no token has nothing to reflect, so it fails to start rather than installing clean
+io with no token has nothing to reflect, so it fails to start rather than installing clean
 and failing every pass. Either name a store entry — `slackSecretKey`, `linearSecretKey`,
 `githubSecretKey`, see [Credentials](#credentials) — or create the Secret yourself:
 
@@ -326,9 +327,9 @@ kubectl -n verse create secret generic verse-linear \
 
 ### Webhooks
 
-verse dials a source, and the source dials verse — only the *delivery* leg comes from the
-internet, and only the two SaaS sources have one. Set a host and an Ingress is emitted for it;
-leave it empty and there is none, and the source converges on the periodic resync (one minute)
+verse dials an io, and the io dials verse — only the *delivery* leg comes from the
+internet, and only the two SaaS ios have one. Set a host and an Ingress is emitted for it;
+leave it empty and there is none, and the io converges on the periodic resync (one minute)
 instead of on delivery.
 
 ```sh
@@ -337,7 +338,7 @@ o build deploy -O yaml -e slackIO=true -e slackWebhookHost=slack.verse.example.c
 ```
 
 Then point Slack's Event Subscriptions request url at `https://<host>/slack/events`, and
-Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each source verifies its
+Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each io verifies its
 own signature; verse never sees the delivery.
 
 ### A private mirror needs a credential
@@ -360,7 +361,7 @@ writes the file back on success *and* on failure, so against a read-only mount i
 ⚠️ **The shipped `gitMirror` default is `signadot/verse`, which is private** — so the connector
 crash-loops until that Secret exists, with git's own "could not read Username" in the log.
 
-### The git source has no repositories
+### The git io has no repositories
 
 A pod has none, so `-mirror` makes one: it clones the remote at startup and fetches on every
 pass. That is the read — nothing is ever pushed. The mirror lives on an `emptyDir`, so a restart
@@ -391,11 +392,11 @@ cloning one it can reflect nothing from.
 | `gitIssueIO` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
 | `slackIO` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
-| `slackIOName` | `workspace` | the registration name — must match `verse io add <name> -root slack` |
+| `slackIOName` | `slack` | the registration name — must match `verse io add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
 | `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
 | `linearIO` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
-| `linearIOName` | `teams` | the registration name |
+| `linearIOName` | `linear` | the registration name |
 | `linearTeams` | `""` | comma-separated team keys; `""` is every team the credential sees. Quote it: `-e 'linearTeams="ENG,OPS"'` |
 | `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
 | `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
@@ -409,7 +410,7 @@ knob naming the secret-store entry it comes from, and each emits an `ExternalSec
 right answer on a cluster with no External Secrets Operator.
 
 One knob per credential rather than one for all, because they are held by different processes
-and revoked on different days: the git source's PAT and the coderunner's push token can be the
+and revoked on different days: the git io's PAT and the coderunner's push token can be the
 same secret and should still be two entries, so taking one away does not take the other.
 
 ⚠️ **The entry's own key names land in the Secret verbatim** (`dataFrom.extract` copies them
@@ -491,7 +492,7 @@ start, so the connector needs restarting to see the new value even once the Secr
 
 **Create the entry before setting the knob.** A knob naming an entry that does not exist is an
 `ExternalSecret` stuck in `SecretSyncedError` and a Secret that never appears — which for the
-Slack connector is a pod that will not start, and for the git source is an empty credential
+Slack io is a pod that will not start, and for the git io is an empty credential
 mount, an anonymous clone, and a private repository answering 404.
 
 **`envFrom` and secret volumes are read when the pod starts**, so a Secret that lands after its
@@ -536,7 +537,7 @@ choice is deployment config and belongs in the open, not smuggled into a store e
 ## The coderunner (`coderunner`, off by default)
 
 A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a workspace and a
-process per task, bubblewrap around the process. Not a source and not the engine: verse reaches
+process per task, bubblewrap around the process. Not an io and not the engine: verse reaches
 it by url, and deploying it does not install it.
 
 ```sh
@@ -546,7 +547,7 @@ verse runner add coderunner http://coderunner:9802 -identity coderunner    # it 
 ```
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
-acceptance test, and the first thing that exercises bubblewrap on the node. As with a source,
+acceptance test, and the first thing that exercises bubblewrap on the node. As with an io,
 the url is the in-cluster Service name because versed dials it (`runner.Probe`, server-side);
 your CLI needs to reach the *API*, not the runner.
 
@@ -636,7 +637,7 @@ availability that a deploy was not already spending — versed is `replicas: 1` 
 runs before applying, so any one of them alone is a whole ship; pushing a tag that is already
 there is a manifest check, not an upload.
 
-The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `source`,
+The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `io`,
 `runner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
 the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
 deploy`: these targets update a deployment that exists rather than standing one up.
@@ -648,7 +649,7 @@ profile that is not staging.
 
 Every daemon here — versed, each `iod`, the coderunner — serves `net/http/pprof`, full
 goroutine stacks, and a short index of what it is and where it listens, on a port **one up from
-the one it serves on**: versed's API is 9797, its admin face 9798; a source's 9801/9802; the
+the one it serves on**: versed's API is 9797, its admin face 9798; an io's 9801/9802; the
 coderunner's 9802/9803.
 
 ```

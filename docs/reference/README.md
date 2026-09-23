@@ -14,7 +14,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [resolvers.md](resolvers.md) | the resolver surface: the binding, its two entities, the routes a service lives on, and the verbs |
 | [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
 | [perms.md](perms.md) | permissions in detail: the grammar, a record's fields, what is checked on a write and a read, installed things, questions, the seed, `verse perms` — the model itself is [../perms.md](../perms.md) |
-| [sources.md](io.md) | the source surface: what reflects an external system in — the entity, ownership globs, the verbs, the routes, and the contract a source serves |
+| [io.md](io.md) | the io surface: a connector that reflects an external system in and acts out — the entity, ownership globs, the verbs, the routes, the out half's place and status, and the contract an io serves |
 | [iod.md](iod.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
@@ -272,8 +272,10 @@ verse
                                              one node's record, as its owner: read with no
                                              flags; take the place and set what it and what
                                              is created beneath it hold out
-  source (sources) [-probe]                  what reflects an external system in
-          add <name> <url> -root <root> [-no-probe] [-allow-overlap]
+  io (ios) [-probe]                          a connector between the verse and an external
+                                             system: it reflects in, and it acts out
+          add <name> <url> -root <root> [-out <place>] [-requesters <who>]
+                                            [-as <principal>] [-no-probe] [-allow-overlap]
           add -dir <d> <name>               a local git repo, reflected in task
           add [-file <f>|-] [file] · show <ref>
           check <ref>                        ask it what it is and what it claims, right now

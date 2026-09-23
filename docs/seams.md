@@ -70,7 +70,7 @@ flowchart LR
 
   versed -->|"session: read · write · watch"| docd
   versed -->|"spawn · events?since · control"| remote
-  versed -->|"GET /source · GET /reflect"| src
+  versed -->|"GET /io · GET /reflect"| src
   src -->|"POST .../hint"| versed
   ctl -->|"controller, mount face"| docd
   remote -.->|"llm"| llm
@@ -284,7 +284,7 @@ client.
 
 Two variants avoid the network entirely or do not exist yet. `-dir` reflects a local git
 repository **in task** — no `iod`, no port. And `dial-in`, for a source verse must not
-dial, is designed and **refused at install** until it is built ([sources](reference/io.md)).
+dial, is designed and **refused at install** until it is built ([ios](reference/io.md)).
 
 ## 7. Webhooks: the only seam facing the internet
 

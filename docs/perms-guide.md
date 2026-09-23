@@ -99,7 +99,7 @@ taken AHEAD of what goes in it. A node that already stands has an owner, the nea
 above it, and is not taken from them by arriving: holding `child-owner` somewhere is the right
 to create there, and says nothing about what stands. Under `verse` a place is taken only where
 something stands, and only by its owner:
-what stands there is made by the verb that owns it (`charter -a`, `source add`, `task run`),
+what stands there is made by the verb that owns it (`charter -a`, `io add`, `task run`),
 and is its maker's.
 
 ```sh

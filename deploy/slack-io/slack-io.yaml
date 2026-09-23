@@ -49,7 +49,7 @@ spec:
         - :9801
         # A source's own rate limit. verse resyncs every minute and Slack's per-method budget
         # is not verse's to know about, so the window that keeps a delivery storm from
-        # spending it lives here, next to the token. See source.Throttle.
+        # spending it lives here, next to the token. See io.Throttle.
         - -min-interval
         - "30s"
         # BOTH HALVES. The out half is why this connector exists on staging: a gate's question

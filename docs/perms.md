@@ -98,11 +98,11 @@ it is read when it is checked, so membership changes without touching the grants
 
 ## What acts on its own
 
-A rule fires, a source reflects, a binding answers a gate, a schedule ticks — and nobody typed
+A rule fires, an io reflects, a binding answers a gate, a schedule ticks — and nobody typed
 any of it. One rule covers all four: **an installed thing acts as whoever installed it.** Its
 writes appear as `via:<its address>`, and the check treats that as the owner of its record.
 
-So a rule can do exactly what its installer can do, and sees exactly what they can see. A source
+So a rule can do exactly what its installer can do, and sees exactly what they can see. An io
 writes what it reflects as its installer, into places its installer owns. Installing over
 somebody else's place is refused. And an install that would leave no owner on record is refused
 outright, since a thing with no owner acts as nobody and would sit there doing nothing.
@@ -130,9 +130,9 @@ the root in both, and so co-owns everything.
 
 ## Verse's own half
 
-Everything under `verse` — rules, tasks, runners, sources, bindings, schedules, open questions,
+Everything under `verse` — rules, tasks, runners, ios, bindings, schedules, open questions,
 these records themselves — is the system's. You do not write there directly: you make things
-with the verbs that own them (`charter -a`, `task run`, `source add`, `gate approve`), and what
+with the verbs that own them (`charter -a`, `task run`, `io add`, `gate approve`), and what
 a verb makes for you is yours. Anybody may use those verbs in an open verse, and anybody may
 read what stands there, except the records, which you read with `verse perms`. A rule may watch
 verse's half and react to it; it may not write into it.

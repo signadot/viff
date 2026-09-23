@@ -26,7 +26,7 @@ import (
 // sourceFor builds the Source a registration names. The three ways in differ only in where the
 // net.Conn comes from; Reflect is the same call down all three.
 //
-// It is here rather than in package source because `dir` needs a *verseio.Git built in this
+// It is here rather than in package io because `dir` needs a *verseio.Git built in this
 // task, which is a choice about how verse hosts a source rather than part of the contract.
 func (s *Server) sourceFor(e verseio.Entity) (verseio.Source, error) {
 	switch {

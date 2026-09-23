@@ -166,16 +166,16 @@ source stopped reporting is gone. Merging would leave the stale field standing, 
 unchanged-check compares against what the source said, the entity would then differ on every pass
 forever, firing its triggers each time.
 
-## A source you deploy
+## An io you deploy
 
-`source/iod` serves the contract as two routes — `GET /source` for a descriptor, `GET /reflect`
-for a `Reflection` — and `source.HTTP` is the client verse drives it with. That is `taskd`'s trick,
-for `taskd`'s reason: `source.Git` behind `iod` *is* the sample external source, and the same
+`io/iod` serves the contract as two routes — `GET /io` for a descriptor, `GET /reflect`
+for a `Reflection` — and `io.HTTP` is the client verse drives it with. That is `taskd`'s trick,
+for `taskd`'s reason: `io.Git` behind `iod` *is* the sample external io, and the same
 value behind verse's own reflector is the built-in, so there is no privileged local path for a
 deployed one to differ from.
 
 **Three ways to reach one, one contract.** A registration carries exactly one of `url` (verse
-dials), `dir` (the in-process git source), or `dial-in` (the source dials — designed, not
+dials), `dir` (the in-process git io), or `dial-in` (the io dials — designed, not
 built). They differ only in where the
 `net.Conn` comes from; `Reflect` is the same call down all three. This is deliberately not the
 runner's "a runner with no url is refused": there, absence already meant `local`, so a url-less
@@ -282,11 +282,11 @@ A clean shutdown is not a failure and is not recorded as one. Cancelling a refle
 pass in flight; written down, every source would come back from a clean stop carrying it, and a
 listing after a restart would show a verse full of broken sources that are all fine.
 
-## Scoped sources
+## Scoped ios
 
-A source registers into a scope. The obvious-sounding alternative — a reflection is a fact about
+An io registers into a scope. The obvious-sounding alternative — a reflection is a fact about
 the outside world, so every scope should read the same one — is wrong, and `verse connect` refutes
-it: it reflects a working tree into a per-session scope, which is a scoped source built as a
+it: it reflects a working tree into a per-session scope, which is a scoped io built as a
 special case. The general form is the sandbox: **my checkout's branches shadow baseline's view of
 the same repo, for my triggers, without touching anyone else's.** A verse whose reflections are all
 shared has no way to say "in here, the repo looks like this", which is the question a sandbox
@@ -351,7 +351,7 @@ repository. The arity of the hint and the arity of the cover are the same questi
 **A source is where an API budget is known.** verse's resync interval is a constant (one
 minute); Linear's complexity budget is hourly and Slack's is per-method-per-minute. Making the
 interval a registration field would move that knowledge to the side that does not have it, so
-the answer is `source.Throttle`: a window inside which a source answers with its last
+the answer is `io.Throttle`: a window inside which a source answers with its last
 *successful* reflection rather than asking again. It costs a hint's latency in a burst, which is
 the right direction — a source that has been rate-limited reflects nothing at all until the
 limit lifts. A failure is never cached, for the reason everything here turns on: a cached

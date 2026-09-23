@@ -22,7 +22,7 @@
 // nothing; they do not ride in the same process.
 //
 // To reflect a system that is not one of these three, copy
-// docs/reference/examples/source/main.go, which is the smallest program that serves the same
+// docs/reference/examples/io/main.go, which is the smallest program that serves the same
 // contract. Nothing here is privileged: these are ordinary external sources that happen to be
 // maintained in this tree.
 package main

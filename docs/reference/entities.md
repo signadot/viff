@@ -127,10 +127,10 @@ Two, and each is asked one way, which is what keeps containment from being asked
 | | |
 |---|---|
 | **reach** — does this pattern reach that path; is this write under that confinement | kpath's, `Matches` and `MatchesPrefix` |
-| **overlap** — can two patterns reach a common path: two strata, two sources' claims | one walk to the shorter length, asking at each position whether the two segments can meet |
+| **overlap** — can two patterns reach a common path: two strata, two ios' claims | one walk to the shorter length, asking at each position whether the two segments can meet |
 
 A charter's subject may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`),
-and a source's claim may put a literal prefix there (`ws/*`). Either stays a match on the field
+and an io's claim may put a literal prefix there (`ws/*`). Either stays a match on the field
 name at that position; the structure around it — its length, its wildcards, its `..` — is kpath's.
 
 > **Pending.** Descent is the corner where the tree has not caught up with this. A match compares
@@ -218,7 +218,7 @@ verse data verse task instance '*'            # …and every task record under i
 
 The address parses; the write is refused. `verse data verse task instance x '{…}' -put` is a
 well-formed address and a 403: what verse writes about itself is written by the verbs that own it
-(`charter -a`, `runner add`, `source add`, `gate approve`). Reading is unrestricted.
+(`charter -a`, `runner add`, `io add`, `gate approve`). Reading is unrestricted.
 
 In a charter an address is a kinded path — on its own, or as the `path` of a match that also
 carries a predicate:
@@ -244,7 +244,7 @@ A `*` is a position, which is why the length of the path is the depth it selects
 |---|---|
 | `verse data`, `data/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
 | `verse flow show <subject>`, and `--subject` on the flow verbs | one token: a kinded path, `*` for any segment |
-| `verse runner/source/resolver show/check/remove` | one token: `<kind>.<name>`, or the address as stored |
+| `verse runner/io/resolver show/check/remove` | one token: `<kind>.<name>`, or the address as stored |
 | `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter verse-dev drift` |
 | `verse c <address> rules <name>` | a path: the address, then into it |
 | `verse perms <step>…` | the node a record is about, as steps |
@@ -271,7 +271,7 @@ record of a run that happened) and `task.claim.*` (a sequence's run claim); `gat
 and origin — see [resolvers.md](resolvers.md)); `trigger.rule.*` (the
 installed charter — `trigger.rule.<package>:<name>` for a rule installed at an address),
 `trigger.strata.*` (its declared levels) and `trigger.package.*` (what each package declares it reads);
-`runners.*` (where work can run) and `sources.*` (what reflects an external system in);
+`runners.*` (where work can run) and `io.*` (what reflects an external system in and acts out);
 `schedule.<name>` (a schedule: its period, its phase, the `next` the daemon is armed against,
 and under `schedule.<name>.tick.<instant>` the tick standing, written only by the schedule),
 beside `schedule.date`, `schedule.time` and the other calendar facts the base charter derives
@@ -300,7 +300,7 @@ What is under `verse` is read like anything else and written only through the ve
 `verse data verse trigger rule review` reads a rule; `verse data -put` at any address under
 `verse` is refused, and says which verb to use instead (`verse c -a`,
 `verse resolver add`, `verse runner add`, `verse io add`, `verse gate approve`). Each verb
-is where its checks live — what a rule may read, what a runner is, whether a source's claim
+is where its checks live — what a rule may read, what a runner is, whether an io's claim
 overlaps — and beneath every one of them the store itself checks the write against what its
 place permits ([perms.md](../perms.md)), so nothing reaching the store may install a rule, stamp
 a task record or answer a question on somebody else's behalf.

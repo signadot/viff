@@ -31,7 +31,8 @@ verse provider
 Its payload is one namespace holding two kinds of key, and they are deliberately not separated:
 
 - **attributes** — `risk`, `tier`, `cost`, anything: what a selection *matches on*;
-- **fragment fields** — `driver`, `frame`, `tools`, `grant`: what the winner *contributes*.
+- **fragment fields** — `driver`, `frame`, `tools`, `grant`, `virtualKey`: what the winner
+  *contributes*.
 
 `driver` is both, matchable and bound. Splitting the two would make a provider entity a schema
 rather than the free-form thing that lets a new attribute be invented without a code change.
@@ -77,8 +78,8 @@ outlive the doer it named.
 
 ## What the winner contributes
 
-The winner is bound as a `launch.Fragment` — `driver`, `frame`, `tools`, `grant`, plus its own
-id — and the spawn is the base it overlays. That is the shape that matters: the charter's
+The winner is bound as a `launch.Fragment` — `driver`, `frame`, `tools`, `grant`, `virtualKey`,
+plus its own id — and the spawn is the base it overlays. That is the shape that matters: the charter's
 spawn block is what a doer varies *from*, not a set of fields every doer must satisfy. One
 trigger can route to a fixer and a memo-writer that share `driver: llm` and differ in
 everything else.
@@ -91,6 +92,7 @@ The overlay only ever narrows.
 | `frame` | replaces when set; absent inherits the spawn's |
 | `tools` | **intersect** — never replace |
 | `grant` | replaces when set and must be within the spawn's; absent inherits the spawn's |
+| `virtualKey` | replaces when set; absent inherits the spawn's |
 | `prompt`, `vector`, everything else | the charter's, untouched |
 
 Two of those need their reasons stated, because the obvious rule is the wrong one.
@@ -110,6 +112,90 @@ intersection is the empty set, the empty set is spelled by an empty list, and an
 all of them, so the silent answer to "these two agree on nothing" would be "have everything". Such
 a pair is refused instead. It is a contradiction anyway, since a doer that can use no tool the
 spawn permits cannot do the work.
+
+## Which credential it runs under
+
+`virtualKey` is the ADDRESS of the model credential the work runs under:
+
+```sh
+verse data acme keys review -put '{key: "vk-abc123"}'      # the node IS the credential
+verse perms acme keys review --grants '[{read: [group:reviewers]}]'
+
+verse data provider review careful -put '{
+  driver: llm, risk: low,
+  virtualKey: acme.keys.review,
+  frame: "You review the change against the tests it claims to pass."
+}'
+```
+
+An address rather than a name, because verse already has one namespace and it is the tree. A name
+would want a registry beside it — per runtime, agreeing across deployments, carrying no
+permissions of its own.
+
+**The read is the authority.** Spending a credential has a cost, so who may spend it is a
+permission, and the one verse already has answers it: versed resolves the address **as whoever
+named it** before the task starts, so a charter naming a node its own owner may not read is
+refused rather than run. There is no group, flag or list invented for keys — put the perms you
+want on the node, and where credentials live is your convention, not verse's.
+
+That is also why a provider entity may set this field at all. A provider is an ordinary entity,
+writable by anyone who can write entities; the address it carries is not authority, and the read
+of it is checked against the namer regardless of who wrote the provider.
+
+**The node holds the key**, so rotating one is a write — `verse data acme keys review -put …` —
+and every charter and provider naming that address follows without being touched. Nothing is
+declared twice and no config is redeployed.
+
+That means the store holds bearer strings, which is a real cost and was taken deliberately. The
+alternative was a reference to a name each runtime allowlists, and it bought less than it looked:
+whoever may read a credential can already SPEND it by naming it in a spawn, so the indirection
+only moved where the key was typed — at the price of a third name, a list per runtime to keep in
+step, and a deploy to rotate. What is left is a smaller difference: a permitted reader can also
+copy the key OUT. A Portkey virtual key is bounded by its own budget and route, which is what
+makes that payable. **A provider key is not, and does not belong here.**
+
+### What protects a key here, and what does not
+
+**A credential in the verse is protected by permissions and by nothing else.** It is stored as
+written — there is no encryption at rest in the store, no envelope, no key management — so the
+protection is a convention the permissions model enforces: who may read the node is who may use
+the key, and who may read the node is whatever its record says.
+
+That has two edges worth knowing before you put a real key in.
+
+**You must fence the place.** A verse with an open root holds out `read` to everyone, so a
+credential written into it is readable by everyone the moment it exists, including by every rule.
+Set the place up once and everything created under it is fenced, including nodes that are already
+there:
+
+```sh
+verse perms acme keys --grants '[]' --child-grants '{}'
+```
+
+Both halves are needed. `--child-grants '{}'` alone hands nothing down but leaves the place itself
+readable, and a child inherits that.
+
+**A rule that may read a key may also copy it.** Fencing decides *who*; it cannot decide what they
+do next. A rule runs as its owner, so a rule owned by somebody who may read a credential can derive
+that node's contents anywhere it may write — into an io's place, where a connector will say it out
+loud. There is no check against this and there is not going to be one: the same read that lets a
+spawn spend the key lets a rule copy it, and refusing the second while allowing the first would be
+a distinction the model cannot draw.
+
+So the honest statement of the guarantee: **verse keeps a key from people the record excludes, and
+keeps nothing from people the record admits.** That is enough for a Portkey virtual key, which is
+bounded by its own budget and route — the worst case is spend, inside a limit somebody set. It is
+not enough for a provider key, which is unbounded, and one does not belong here at all.
+
+If you need more than permissions, verse is not where the secret should live: keep it in the
+runtime's own environment and let a spawn name no credential at all, or store something verse can
+hold safely — an encrypted value your runner can open, a reference into a secret manager — and
+accept that rotation then happens wherever that lives rather than in a write.
+
+So two things are separated that one mechanism would have run together: **who may spend** (perms
+on the node) and **what it costs** (Portkey, which hangs budget, rate and routing off the virtual
+key). The second is why spend gets an owner without verse growing an accounting system, and why
+cheap-model triage and expensive review are one line rather than two runner deployments.
 
 ## The ceiling
 

@@ -31,7 +31,7 @@ binding's `who` and `group`.
   not read.
 - **A request that is not a read presents one.** Every method but GET and HEAD is refused 400
   without `Verse-Principal`. Three routes are registered otherwise, each acting for a party the
-  route itself names: a source's `hint`, and a resolver instance's `verdicts` and `position`.
+  route itself names: an io's `hint`, and a resolver instance's `verdicts` and `position`.
 - A principal is listed the first time it presents itself, under
   `verse.principal.<kind>.<name>`.
 - `system:<part>` names the part of verse that wrote — `docket` (questions), `mirror` (task
@@ -45,7 +45,7 @@ binding's `who` and `group`.
 |---|---|
 | `<kind>:<id>` | the principal named exactly that, and anything installed that acts as them |
 | `<kind>:*` | any principal of the kind, and anything installed that acts as one |
-| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, a source or a binding is named this way; a runner acts as `runner:<identity>` |
+| `via:<address>` | the installed thing at that address and nothing else — not its owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, an io or a binding is named this way; a runner acts as `runner:<identity>` |
 | `group:<name>` | the group's members, each matched as above. A member may be another group, which is followed; a group already met on the walk is not entered again, so groups that name each other end the walk instead of looping, and admit exactly the members found along it |
 | `*` | everyone |
 
@@ -136,7 +136,7 @@ site knowing. A refusal is a 403 with the check's words, and a count under `perm
 - **What a write asks about, its writer may read.** A `when:` precondition on a node the writer
   may not read is refused as a read of it would be. A pattern is followed field by field, so it
   is never refused for what it does not mention.
-- **What a request removes is asked first.** Removing a rule, a level, a package, a source or a
+- **What a request removes is asked first.** Removing a rule, a level, a package, an io or a
   runner needs `owner` on it and is checked before anything is stopped or deleted. Replacing a
   rule or a level is a write over what stands: its record and grants stand through the edit,
   and a co-owner who edits a rule has not become its owner.
@@ -160,7 +160,7 @@ site knowing. A refusal is a 403 with the check's words, and a count under `perm
 
 ## Installed things
 
-A rule, a source, a binding and a schedule act as `via:<address>`, which resolves to the owner
+A rule, an io, a binding and a schedule act as `via:<address>`, which resolves to the owner
 on the record **at that address** and to nobody where it has none. It does not fall back to the
 owner above: above is verse's half, which is the system's.
 
@@ -179,9 +179,9 @@ owner above: above is verse's half, which is the system's.
 - **No rule but the system's writes under `verse`.** A `patch` of a subject there, or a `derive`
   into it, is refused at install (403) where the rule names the address, and at the write. A
   rule may select a subject there and spawn about it.
-- **A source takes the nodes its claims name** — each claim's levels up to its first glob — for
-  its installer, at install. What it reflects beneath is owned through them. A source over a
-  node somebody else owns is refused, so two sources sharing a node share an installer.
+- **An io takes the nodes its claims name** — each claim's levels up to its first glob — for
+  its installer, at install. What it reflects beneath is owned through them. An io over a
+  node somebody else owns is refused, so two ios sharing a node share an installer.
 - **A charter package takes the address it is installed at** for its installer, the same way.
 
 ## Questions

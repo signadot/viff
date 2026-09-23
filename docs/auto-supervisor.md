@@ -137,7 +137,7 @@ confirm each `read_file` is how an escalation surface stops being read.
 
 **The remit belongs to the charter.** `land-auto` requires three things, and the supervisor
 authors exactly one of them. `review.risk` is its own claim, and `tests: green` is not: that
-fact comes from a source reflecting CI ([sources](io.md)), which the supervisor has no
+fact comes from a source reflecting CI ([ios](io.md)), which the supervisor has no
 authority to write. So from `review.decision: approve` alone nothing follows — there is a
 world where the supervisor says `approve` and the change does not land, which is the property
 you want and the reason `remit` exists as its own rule. `remit` is the complement of

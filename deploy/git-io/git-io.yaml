@@ -89,7 +89,7 @@ spec:
           mountPath: /git-credentials
           readOnly: true
         readinessProbe:
-          # GET /source is the contract's own "what are you", which is exactly the question a
+          # GET /io is the contract's own "what are you", which is exactly the question a
           # readiness probe is asking. A source that cannot answer it is one verse's install
           # probe would call unreachable.
           httpGet:
