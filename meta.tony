@@ -1,0 +1,16 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-09-23T15:38:24.402438+02:00"
+duplicates: []
+id: dxe2txpgh12krm6ppdn0
+labels:
+- design
+- perms
+- runner
+related_issues:
+- hm4rgsyvh12krm5cpdn0
+status: open
+updated: "2026-09-23T21:40:49.936236+02:00"
