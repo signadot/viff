@@ -61,6 +61,10 @@ type Entity struct {
 	// lives in the scope it reflects into — so DeleteScope takes it and everything it wrote.
 	Scope string `tony:"field=scope,omitzero"`
 
+	// Out is the OUT half: the places it reads what is asked of it, who it acts as while doing
+	// it, and who may ask. Absent for an io that only reflects, which is most of them today.
+	Out *OutHalf `tony:"field=out,omitzero"`
+
 	// LastReflect and LastError are written by VERSE, not by an operator: when verse last wrote
 	// from this source, and the last failure (cleared by the next success). They are declared
 	// here so that `verse source show` piped back into `verse source add` is not refused for
@@ -68,6 +72,36 @@ type Entity struct {
 	// decode. Check ignores them.
 	LastReflect string   `tony:"field=lastReflect,omitzero"`
 	LastError   *Failure `tony:"field=lastError,omitzero"`
+}
+
+// OutHalf is what a registration says about acting back on the external system.
+//
+// It exists so that an install is ONE act. Before it, standing up an out half meant a flag naming
+// a principal, a place hardcoded in the connector, and four `verse perms` lines an operator had to
+// know and get right — and a verse that knew none of it, so `verse io` could show a healthy io
+// whose out half had been refused for an hour.
+type OutHalf struct {
+	// Places are where it reads what is asked of it, as kinded paths. Each must lie inside this
+	// registration's claim (an io may only be asked for things in its own slice) and outside the
+	// covers its reflection carries, or the next pass would tombstone the requests — which the
+	// connector arranges by putting them somewhere it does not reflect.
+	//
+	// A LIST, because one io may serve several: a Linear io reads a place per team, since a
+	// claim per team is what keeps two installs from writing each other's.
+	Places []string `tony:"field=places"`
+	// As is the principal the out half reads and writes as — `agent:slack-io`. It is what the
+	// grants below are written against, and what owns every status the io writes.
+	As string `tony:"field=as"`
+	// Requesters are the grantees who may ask: they get `read-write` BELOW each place, which is
+	// what lets them write inputs and not the statuses. Empty asks for nobody, and an io nobody
+	// may ask is an io that will never do anything — allowed, since a place whose grants are
+	// managed by hand is a legitimate arrangement, and saying so here is the way to say it.
+	Requesters []string `tony:"field=requesters,omitzero"`
+	// LastPass and LastError are written by the IO, not by an operator: when it last finished a
+	// pass, and the last failure that stopped one. Verse never dials an out half, so the only
+	// way it can know is to be told (POST /io/<name>/pass).
+	LastPass  string   `tony:"field=lastPass,omitzero"`
+	LastError *Failure `tony:"field=lastError,omitzero"`
 }
 
 // Failure is a source's last error together with WHEN IT STARTED, and the pair is the point:
@@ -169,7 +203,61 @@ func (e Entity) Check() error {
 	if _, err := ParseOwns(e.Owns); err != nil {
 		return fmt.Errorf("source %q: %w", e.Name, err)
 	}
+	return e.Out.check(e.Name, e.Owns)
+}
+
+// check refuses an out half that could not work: no place to read, nobody to act as, a principal
+// the grammar does not admit, or a place outside what this io claims.
+//
+// INSIDE THE CLAIM is the load-bearing one. An io asked for things outside its own slice would
+// write statuses where another writer owns the tree, and the grants this install seeds would be
+// seeded there too — so the check is the same disjointness the in half has always had, applied to
+// the other direction.
+func (o *OutHalf) check(name string, owns []Own) error {
+	if o == nil {
+		return nil
+	}
+	if len(o.Places) == 0 {
+		return fmt.Errorf("io %q: out.places is required — an out half with nowhere to read is "+
+			"one nobody can ask for anything", name)
+	}
+	if o.As == "" {
+		return fmt.Errorf("io %q: out.as is required — every status it writes is owned by "+
+			"somebody, and an io that says who is one whose statuses nobody else can forge", name)
+	}
+	if _, err := entity.ParsePrincipal(o.As); err != nil {
+		return fmt.Errorf("io %q: out.as %w", name, err)
+	}
+	for _, who := range o.Requesters {
+		if _, err := entity.ParseGrantee(who); err != nil {
+			return fmt.Errorf("io %q: out.requesters %w", name, err)
+		}
+	}
+	claims, err := ParseOwns(owns)
+	if err != nil {
+		return fmt.Errorf("io %q: %w", name, err)
+	}
+	for _, at := range o.Places {
+		ref, err := entity.ParseAddr(at)
+		if err != nil {
+			return fmt.Errorf("io %q: out.places %q: %w", name, at, err)
+		}
+		if len(Claimed(claims, ref)) == 0 {
+			return fmt.Errorf("io %q: out.places %q is outside what this io claims (%s) — an io "+
+				"is asked for things in its own slice, and the grants an install seeds are "+
+				"seeded there", name, at, ownsAt(owns))
+		}
+	}
 	return nil
+}
+
+// ownsAt is the claims as an operator wrote them, for a refusal that shows what was allowed.
+func ownsAt(owns []Own) string {
+	at := make([]string, 0, len(owns))
+	for _, o := range owns {
+		at = append(at, o.At)
+	}
+	return strings.Join(at, ", ")
 }
 
 // checkReach enforces exactly one way in, and validates the one that is set.
@@ -227,7 +315,7 @@ func (e Entity) checkReach() error {
 // and a dropped `scope` silently reflects into baseline, where everybody sees it.
 func CheckFields(node *ir.Node) error {
 	known := []string{
-		"name", "root", "url", "dial-in", "dir", "owns", "scope",
+		"name", "root", "url", "dial-in", "dir", "owns", "out", "scope",
 		"lastReflect", "lastError",
 	}
 	node = codec.Unwrap(node)

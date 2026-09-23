@@ -184,6 +184,16 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	if len(e.Owns) > 0 {
 		body["owns"] = e.Owns
 	}
+	// The out half rides the record, because everything about it is read back later: a removal
+	// takes its grants back from here, a listing says what it last did, and a reader asking what
+	// this io is has to be told that it acts at all.
+	if e.Out != nil {
+		out := entity.Obj{"places": e.Out.Places, "as": e.Out.As}
+		if len(e.Out.Requesters) > 0 {
+			out["requesters"] = e.Out.Requesters
+		}
+		body["out"] = out
+	}
 	ref := verseio.Ref(e.Name)
 	before, err := entity.ActsAs(store, ref)
 	if unreadable(w, r, err) {
@@ -209,6 +219,12 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	for _, node := range nodes {
 		takePlace(store, installer, node, "source "+verseio.Ref(e.Name).String())
 	}
+	// And the out half's places, with the grants the registration describes: an install is one
+	// act, and what an operator used to type as four `verse perms` lines is written here, from
+	// the record, where it cannot be typed wrong or forgotten.
+	if warn := seedOut(store, installer, e); warn != "" {
+		out["warning"] = warn
+	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
 	// for.
@@ -216,6 +232,57 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 		out["warning"] = "installed, but not running: " + err.Error()
 	}
 	writeOut(w, r, http.StatusCreated, out)
+}
+
+// seedOut stands up the out half's places and writes the grants the registration describes. It
+// answers what to warn about, since a place that could not be granted is an io that installs and
+// then cannot be asked for anything — worth saying, and not worth refusing an install over, since
+// the in half works regardless and the grants can be written by hand.
+//
+// FOUR LINES, and each is the answer to a question somebody would otherwise get wrong:
+//
+//	read-write   requesters     --below   they may ask for things, and may not write the answers
+//	read         as             --below   the io reads what is asked
+//	child-owner  as                       and OWNS each status it creates, so nobody can forge one
+//	child-grants {read: ["*"]}            which everyone may read
+//
+// The requesters' line is `--below` rather than a child grant on purpose: a child grant is copied
+// onto every record created beneath, including the statuses, and would hand the askers write on
+// the answers. The distinction is invisible until somebody edits a status, so it is written once,
+// here, rather than explained in a runbook.
+func seedOut(store entity.Store, installer string, e verseio.Entity) string {
+	if e.Out == nil {
+		return ""
+	}
+	for _, at := range e.Out.Places {
+		ref, err := entity.ParseAddr(at)
+		if err != nil {
+			return fmt.Sprintf("out place %s: %v", at, err) // Check parsed it; a store is not it
+		}
+		// The place itself first, owned by the installer, since a node with no owner record is
+		// open inside and the grants below are written onto that record.
+		takePlace(store, installer, ref, "io "+verseio.Ref(e.Name).String()+" out")
+		to := map[entity.Level][]string{
+			entity.Read: {e.Out.As},
+			// `child-owner`, which is how ownership is held out and therefore always about what
+			// is BENEATH the node (entity.ChildOwnerKey): the io owns each status it creates, so
+			// an owner record stands on it and the askers' grant from above stops there.
+			entity.OwnerLevel: {e.Out.As},
+		}
+		if len(e.Out.Requesters) > 0 {
+			to[entity.ReadWrite] = e.Out.Requesters
+		}
+		grants := []entity.Grant{{At: entity.SegsOf(ref), Below: true, To: to}}
+		if err := entity.SetGrants(store, ref, grants); err != nil {
+			return fmt.Sprintf("out place %s: its grants were not written (%v) — the io cannot "+
+				"be asked for anything until they are", at, err)
+		}
+		if err := entity.SetChildGrants(store, ref, entity.Levels{entity.Read: {entity.Everyone}}); err != nil {
+			return fmt.Sprintf("out place %s: what it holds out was not written (%v) — its "+
+				"statuses will be readable only by the io itself", at, err)
+		}
+	}
+	return ""
 }
 
 // overlaps reports why this registration may not stand beside the ones already installed, or ""
@@ -465,6 +532,13 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	} else if len(reflected) > 0 {
 		out["kept"] = len(reflected)
 	}
+	// The out half's grants go the way everything else this io left goes: with --forget, which
+	// is the answer to "this io is over". --keep keeps them, since a place whose grants stand is
+	// one a re-install lands back on, and taking them from somebody who said keep would be this
+	// verb deciding more than it was asked.
+	if forget {
+		unseedOut(store, e)
+	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		if refused(w, err) {
 			return
@@ -473,6 +547,28 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// unseedOut removes the grants seedOut wrote, for a removal that says the io is over. A failure is
+// said on stderr rather than refusing the removal: a registration that will not go because a grant
+// would not is worse than a grant left standing, and the grant is visible to `verse perms` either
+// way.
+func unseedOut(store entity.Store, e verseio.Entity) {
+	if e.Out == nil {
+		return
+	}
+	for _, at := range e.Out.Places {
+		ref, err := entity.ParseAddr(at)
+		if err != nil {
+			continue
+		}
+		if err := entity.SetGrants(store, ref, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: io %s: its grants at %s still stand: %v\n", e.Name, at, err)
+		}
+		if err := entity.SetChildGrants(store, ref, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: io %s: what %s holds out still stands: %v\n", e.Name, at, err)
+		}
+	}
 }
 
 // reflectedBy returns the PLACES standing in the store that this registration's ownership

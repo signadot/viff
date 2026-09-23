@@ -152,6 +152,9 @@ type ioAddConfig struct {
 	Root         string `cli:"name=root desc='the root of the tree this io writes, which is which connector it is: git, github, linear, slack (default with --dir: git)'"`
 	NoProbe      bool   `cli:"name=no-probe desc='install without asking it what it is'"`
 	AllowOverlap bool   `cli:"name=allow-overlap desc='install even though another io may write the same slice (both will tombstone what the other reflected)'"`
+	Out          string `cli:"name=out desc='the place its OUT half reads what is asked of it (repeatable, comma-separated): inside what it claims, outside what it reflects'"`
+	As           string `cli:"name=as desc='the principal the out half acts as, and the owner of every status it writes (default: agent:<root>-io)'"`
+	Requesters   string `cli:"name=requesters desc='who may ask it for something (comma-separated grantees): they get read-write below each out place, and never on the statuses'"`
 }
 
 func ioAddCmd() *cli.Command {
@@ -206,6 +209,9 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 		} else {
 			body["url"] = args[1]
 		}
+		if out := cfg.outHalf(root); out != nil {
+			body["out"] = out
+		}
 		resp, err := httpPostTo("/io", q, body)
 		return ioAdded(cc, resp, err)
 	}
@@ -226,6 +232,36 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 	}
 	resp, err := httpPostNodeTo("/io", q, node)
 	return ioAdded(cc, resp, err)
+}
+
+// outHalf is the out half an operator spelled on the command line, or nil for an io that only
+// reflects. `--as` defaults to the connector's own name, since one deployment per external system
+// is the shape and `agent:slack-io` is what its grants are written against.
+func (cfg *ioAddConfig) outHalf(root string) map[string]any {
+	if cfg.Out == "" {
+		return nil
+	}
+	as := cfg.As
+	if as == "" {
+		as = "agent:" + root + "-io"
+	}
+	out := map[string]any{"places": splitList(cfg.Out), "as": as}
+	if cfg.Requesters != "" {
+		out["requesters"] = splitList(cfg.Requesters)
+	}
+	return out
+}
+
+// splitList reads a comma-separated flag as the list it spells, dropping the empties a trailing
+// comma leaves.
+func splitList(s string) []any {
+	var out []any
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func ioAdded(cc *cli.Context, resp *http.Response, err error) error {
