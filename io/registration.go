@@ -67,7 +67,7 @@ type Entity struct {
 
 	// LastReflect and LastError are written by VERSE, not by an operator: when verse last wrote
 	// from this source, and the last failure (cleared by the next success). They are declared
-	// here so that `verse source show` piped back into `verse source add` is not refused for
+	// here so that `verse io show` piped back into `verse io add` is not refused for
 	// carrying fields it was just handed, and so a listing can read them without a second
 	// decode. Check ignores them.
 	LastReflect string   `tony:"field=lastReflect,omitzero"`
@@ -125,7 +125,7 @@ type OutPass struct {
 //
 // When is the instant the source ENTERED this failure, not the last time it repeated. A source
 // failing the same way every minute keeps the When it started with, so the distance between it
-// and lastPass is how long this has been going on, and a `verse source` listing can say "since
+// and lastPass is how long this has been going on, and a `verse io` listing can say "since
 // 20:39" rather than "now" about something that has been broken since breakfast. A NEW error —
 // different text — is a new failure and takes a new When.
 //
@@ -382,7 +382,7 @@ func ownsAreDocuments(node *ir.Node) error {
 
 // Find reads one installed source by what a CLI argument names: its address as it is stored and
 // listed (`verse.io.laptop`), or its name (`laptop`) — an operator reading `verse data` and
-// one typing `verse source show` should not have to know two spellings of one thing.
+// one typing `verse io show` should not have to know two spellings of one thing.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	name, ok := NameOf(ref)
 	if !ok {

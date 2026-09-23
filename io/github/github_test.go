@@ -1146,7 +1146,7 @@ func TestATargetedCommentPassAgreesAndCoversOnlyItself(t *testing.T) {
 // GitHub's web UI submits CRLF, so nearly every comment body carries `\r\n`. A string holding
 // one renders as a tony block scalar whose next sibling key comes back at column zero, the
 // document is imbalanced, and verse refuses the whole reflection as undecodable: every pass
-// fails, the slice freezes at whatever it last held, and `verse source` shows a source that is
+// fails, the slice freezes at whatever it last held, and `verse io` shows an io that is
 // alive and reflecting nothing. Found against a real repository, one comment after it started
 // working. Upstream: item 21 of tony-format#f69agjyeh12ksa25cnn0.
 //

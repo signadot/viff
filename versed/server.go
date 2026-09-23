@@ -2585,7 +2585,7 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -3725,7 +3725,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -4254,7 +4254,7 @@ func runnerRefs(store entity.Store) []string {
 // but it earns its line here for one of its own: every other counter measures what verse is
 // doing with what it was given, and none of them can tell "nothing is happening" from "nothing
 // is arriving". A verse whose only source was dropped reports a steady store rev and an idle
-// charter, which is what a healthy quiet one reports too. `verse sources` carries the health.
+// charter, which is what a healthy quiet one reports too. `verse ios` carries the health.
 func sourceRefs(store entity.Store) []string {
 	es := verseio.List(store)
 	out := make([]string, 0, len(es))

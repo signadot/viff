@@ -11,8 +11,8 @@
 //
 // Then install it, from anywhere that can reach verse:
 //
-//	verse source add build-host http://localhost:9801 -root git
-//	verse source
+//	verse io add build-host http://localhost:9801 -root git
+//	verse io
 //
 // WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
 // somebody deploys, and the whole argument for the seam is that verse does not have to be
@@ -217,7 +217,7 @@ func (c *common) serve(root string, src verseio.Source, routes map[string]http.H
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	log.Printf("%s source on %s — install it with: verse source add <name> %s -root %s",
+	log.Printf("%s io on %s — install it with: verse io add <name> %s -root %s",
 		root, c.addr, dialable(c.addr), root)
 	if c.hintURL == "" && len(routes) > 0 {
 		log.Printf("no -hint-url: deliveries will be verified and dropped, and only verse's " +

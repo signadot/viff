@@ -282,7 +282,7 @@ Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and
 would depend on your current kubectx and skip the version-skew check the CLI's own transport
 does on every request. **The url stays the in-cluster Service name**, because it is *versed*
 that dials it: the CLI only posts `{kind, name, url}`, and the probe happens server-side
-(`versed/sources.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
+(`versed/io.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
 so the address has to be reachable from where the client is.
 
 ⚠️ **The name has to match `<x>IOName`.** The hint url is baked into the pod

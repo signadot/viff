@@ -113,8 +113,8 @@ func TestRegistrationCheckFields(t *testing.T) {
 			t.Fatalf("%s should have named the unknown field", src)
 		}
 	}
-	// Everything verse itself writes is known, so `verse source show` piped back into
-	// `verse source add` is not refused for carrying what it was just handed.
+	// Everything verse itself writes is known, so `verse io show` piped back into
+	// `verse io add` is not refused for carrying what it was just handed.
 	full := "{name: a, root: git, url: \"http://x:1\", owns: [{at: \"git.*.a/*\"}], scope: s, " +
 		"lastReflect: \"2026-01-01T00:00:00Z\", lastError: \"\"}"
 	if err := verseio.CheckFields(parse(t, full)); err != nil {

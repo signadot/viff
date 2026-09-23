@@ -63,7 +63,7 @@ func main() {
 	// it sees. verse drives exactly this over HTTP, and its own in-process source is the same
 	// value behind the same handler — so there is no privileged local path for this to differ
 	// from.
-	log.Printf("source listening on %s — install it with: verse source add <name> http://<host>%s -root <root>",
+	log.Printf("source listening on %s — install it with: verse io add <name> http://<host>%s -root <root>",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, verseiod.New(src).Handler()); err != nil {
 		log.Fatalf("source: %v", err)

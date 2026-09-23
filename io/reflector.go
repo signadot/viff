@@ -178,7 +178,7 @@ func (rf *Reflector) OnPass(f func(Pass)) *Reflector { rf.onPass = f; return rf 
 //
 // It is exported because it is the whole of what a reflector does, and because the initial
 // sync, the periodic net and a hint are all this call with different arguments — a caller
-// wanting one pass (a test, a `verse source sync`) should drive the same path they do rather
+// wanting one pass (a test, a `verse io sync`) should drive the same path they do rather
 // than a second one that could differ.
 func (rf *Reflector) Reconcile(ctx context.Context, ref entity.Ref) error {
 	p := Pass{Ref: ref}

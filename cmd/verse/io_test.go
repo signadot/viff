@@ -15,7 +15,7 @@ import (
 	verseiod "github.com/signadot/verse/io/iod"
 )
 
-// sourceFace is a real source for the client to install: the same sourced handler verse's own
+// sourceFace is a real source for the client to install: the same iod handler verse's own
 // in-process source is, so the install probe has something truthful to find.
 func sourceFace(t *testing.T, repo string) *httptest.Server {
 	t.Helper()
@@ -42,7 +42,7 @@ func sourceFace(t *testing.T, repo string) *httptest.Server {
 	return srv
 }
 
-// `verse source add` reaches the route, through the client the way a person types it.
+// `verse io add` reaches the route, through the client the way a person types it.
 //
 // This test exists for the reason the runner's does: every other test of this feature drives
 // the HTTP layer directly, so all of them can pass while the command an operator would run

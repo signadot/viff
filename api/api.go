@@ -546,8 +546,8 @@ type Status struct {
 	// bug, not the zero. `charter` below carries both, per node, where the shape says whose.
 	//
 	// All three are refs rather than records: status is an orientation, and `verse charter`,
-	// `verse runners` and `verse sources` are the surfaces that answer what one IS. A source's
-	// health — when its last pass completed, whether it is failing — is on `verse sources`.
+	// `verse runners` and `verse ios` are the surfaces that answer what one IS. A source's
+	// health — when its last pass completed, whether it is failing — is on `verse ios`.
 	Runners []string `tony:"field=runners,omitzero"`
 	Sources []string `tony:"field=sources,omitzero"`
 	// Charter is the charter as a CENSUS: how much is installed, and where.

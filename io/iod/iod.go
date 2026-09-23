@@ -16,7 +16,7 @@
 // is a presentation, and presentation carries hazards a machine has no use for: it is
 // indentation-sensitive, and a comment body ending a line in whitespace once produced a
 // reflection verse could not read back, from a source that believed it had answered. Nothing
-// about a reflection wants to be laid out; `verse source check` is where a person reads one.
+// about a reflection wants to be laid out; `verse io check` is where a person reads one.
 package iod
 
 import (

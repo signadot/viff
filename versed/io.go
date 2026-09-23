@@ -50,7 +50,7 @@ func (s *Server) sourceFor(e verseio.Entity) (verseio.Source, error) {
 // describe asks a registration what it is, and is the whole of the install probe.
 //
 // A `dir` source is described WITHOUT a network, by building it and asking it — which is the
-// same question `sourced` answers over HTTP, put to the same value. That is what keeps `dir`
+// same question `iod` answers over HTTP, put to the same value. That is what keeps `dir`
 // first-class rather than a path with fewer checks than the others.
 func (s *Server) describe(r *http.Request, e verseio.Entity) (verseio.Reach, verseio.Descriptor, error) {
 	if e.Dir != "" {
@@ -133,7 +133,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// An ownership claim the operator did not write is taken from what the source SAID,
-			// which is how `verse source add git:laptop <url>` gets one at all. It is a snapshot
+			// which is how `verse io add git:laptop <url>` gets one at all. It is a snapshot
 			// exactly as the url is: what the source claimed when somebody installed it.
 			if len(e.Owns) == 0 && len(d.Owns) > 0 {
 				e.Owns = d.Owns
@@ -489,7 +489,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse source` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason. THIS
 	// read's error, not the store's last one — see unreadable.
 	if unreadable(w, r, readErr) {
@@ -964,7 +964,7 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 		//
 		// That is not hypothetical. Staging recorded an error, recovered on the next pass, and
 		// the clearing write timed out (`recording error: … context deadline exceeded`, which
-		// is this very line). Two passes later `verse source` still reported the source in
+		// is this very line). Two passes later `verse io` still reported the source in
 		// error while the entity it had failed on was present and correct — the one field an
 		// operator reads to decide whether a source is healthy, stuck on a transient.
 		// A REFUSED WRITE IS NOT A WRITE. Store.Write answers (committed, rev, err) and a
