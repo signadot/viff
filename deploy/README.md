@@ -272,9 +272,9 @@ They run `iod`, the connector binary in the same image
 standing, so it stays a verb somebody runs.
 
 ```sh
-verse io add cluster   http://git-io:9801   -root git
-verse io add workspace http://slack-io:9801 -root slack
-verse io add teams     http://linear-io:9801 -root linear
+verse io add git       http://git-io:9801   -root git
+verse io add slack http://slack-io:9801 -root slack
+verse io add linear    http://linear-io:9801 -root linear
 verse io
 ```
 
@@ -298,7 +298,7 @@ Re-run the same `verse io add` afterwards; it updates the claim in place.
 
 ```sh
 verse io check issues   # `owns` is what verse holds, `says` is what it claims now
-verse io add issues http://git-issue-io:9801 -root git-issue   # reconcile them
+verse io add git-issue http://git-issue-io:9801 -root git-issue   # reconcile them
 ```
 
 Driven, on a source moved from one repository to two: only the first repository's entities were
@@ -376,7 +376,7 @@ slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like t
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
-verse io add issues http://git-issue-io:9801 -root git-issue
+verse io add git-issue http://git-issue-io:9801 -root git-issue
 ```
 
 It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say

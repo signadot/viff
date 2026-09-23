@@ -153,9 +153,16 @@ build:
     # against what is already standing, and a manifest is not where that conversation happens.
     #
     # The `<x>IOName` knobs are the registration name each will be added under. They are
-    # here because the hint url a source posts deliveries to contains it, so the name has to be
+    # here because the hint url an io posts deliveries to contains it, so the name has to be
     # decided before the pod starts — and verse 404s a hint for a name it has no registration
     # under, which is how a mismatch announces itself.
+    #
+    # NAMED AFTER THE CONNECTOR, because this deployment runs one of each. The name is free —
+    # two ios may share a root, and then the name is what tells them apart (`git` on the cluster
+    # and `git-laptop` somewhere else) — but a name that says nothing more than the root does is
+    # a second vocabulary for one fact, and `cluster`, `issues`, `repos` and `teams` were exactly
+    # that. A second instance of one connector is where a name earns its keep, and it can say so
+    # then.
     gitIO: false
     gitMirror: "https://github.com/signadot/verse.git"
 
@@ -182,7 +189,7 @@ build:
     gitIssueBodies: true
 
     slackIO: false
-    slackIOName: "workspace"
+    slackIOName: "slack"
     # "" takes the team name the bot token belongs to — the id prefix every slack:* entity
     # carries and the ownership claim is spelled with.
     slackWorkspace: ""
@@ -191,13 +198,13 @@ build:
     slackWebhookHost: ""
 
     linearIO: false
-    linearIOName: "teams"
+    linearIOName: "linear"
     # Comma-separated team keys (ENG,OPS); "" is every team the credential can see.
     linearTeams: ""
     linearWebhookHost: ""
 
     githubIO: false
-    githubIOName: "repos"
+    githubIOName: "github"
     # Comma-separated repositories (org/name,org/other). Required: a GitHub source with none
     # reflects nothing, claims nothing and never writes, so it refuses to start.
     githubRepos: ""

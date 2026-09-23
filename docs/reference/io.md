@@ -27,10 +27,15 @@ other half, which dials verse.
 field present says which it is.
 
 The address is the name and nothing else (`verse.io.<name>`, under the reserved root like
-everything verse keeps about its own running), so two sources of one connector are told apart by
-what an operator called them. `root` answers the question verse asks of a registration — who
-writes `git.*` — and is one segment of an address, so it may not contain `:`, `/` or `.`; a
-name may not contain `/`, since it is a segment of the route that serves it.
+everything verse keeps about its own running), so two ios of one connector are told apart by what
+an operator called them. `root` answers the question verse asks of a registration — who writes
+`git.*` — and is one segment of an address, so it may not contain `:`, `/` or `.`; a name may not
+contain `/`, since it is a segment of the route that serves it.
+
+**The convention is to name an io after its connector** — `git`, `git-issue`, `slack` — since most
+verses run one of each and a name that says no more than `root` does is a second vocabulary for one
+fact. It is only a convention: the name is free, and a second io on one connector is exactly where
+spending a word on it pays (`git` beside `git-buildhost`).
 
 A source reflects what the world is about and never what verse keeps under `verse`: a reflection
 naming an address under `verse.` is refused, a claim that names it is refused at install, and no
@@ -232,7 +237,7 @@ out:
 | `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. Written by the IO (see below) |
 
 ```sh
-verse io add workspace http://slack-io:9801 --root slack \
+verse io add slack http://slack-io:9801 --root slack \
   --out slack.Signadot.out --as agent:slack-io --requesters group:verse-dev
 ```
 

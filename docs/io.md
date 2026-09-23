@@ -29,9 +29,19 @@ Linear, GitHub — see [reference/iod.md](reference/iod.md). To build one of you
 with the tree.
 
 ```sh
-verse io add laptop http://build-host:9801 -root git
-verse io add workspace http://slack-io:9801 -root slack
+verse io add git   http://git-io:9801    -root git
+verse io add slack http://slack-io:9801  -root slack
 verse io
+```
+
+**Name it after the connector unless there are two of them.** The name is the whole of the
+address (`verse.io.<name>`) and is free, so where one io of a kind runs, `git` says everything
+`--root git` already said and nothing a reader has to learn. Where two do — the repos on the
+cluster and the ones on a build host — the name is the only thing that tells them apart, and
+that is where it earns a word of its own:
+
+```sh
+verse io add git-buildhost http://build-host:9801 -root git
 ```
 
 ## The core law: a hint is a hint, reconcile is the truth
