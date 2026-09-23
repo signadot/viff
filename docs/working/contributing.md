@@ -259,6 +259,27 @@ not part of the ritual, but a timeout change that skipped it should say so.
 the charter gives a use: a claim stays alive by being engaged with, and the log is where that
 shows. Omit it on a commit no claim carries.
 
+### Declare the contract where the work lands, not on the way there
+
+`Tier: contract`, the `!` marker and `Breaks:` are about the branch's NET effect on main — and
+mid-branch that is not yet known. Written per commit they end up describing states that never
+leave the branch: one commit breaks what the commit before it introduced, and the reader on main,
+who saw neither, is told about a break that never reached them.
+
+So on a branch commit, say what changed in the body and keep `Checked:`, which is an honest
+record of what actually ran at that point. Add `Tier:` and `Breaks:` **when the work lands** — at
+the merge or the fast-forward — and compute them by asking what somebody *on main* has to do
+differently, not what changed since your previous commit.
+
+The tell, which is worth checking before writing one: **if a `Breaks:` line describes something
+you introduced earlier in the same branch, it is wrong.** It is a note to your past self, and it
+will be obsolete before anybody reads it.
+
+Driven: a credentials branch declared a contract break three times in an afternoon — a field that
+was a name, then an address, then a node holding a value — and squashing it to what main would
+actually receive left one `Tier: change` and no `Breaks:` at all, because nothing a reader had
+ever seen was breaking.
+
 ```sh
 fmt='%h %ad %s ::%(trailers:key=Work,valueonly)'
 git log --date=short --format="$fmt" | grep '::auth'   # what has moved on the auth claim
