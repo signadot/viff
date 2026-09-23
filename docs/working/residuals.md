@@ -27,7 +27,7 @@ gap is missing from, and where it is tracked. Nothing here owes coherence to the
 | [perms.md](../perms.md), [reference/tasks.md](../reference/tasks.md) | a task's snapshot, events and inbox are served with no permission check | `97g07t23` |
 | [reference/connect.md](../reference/connect.md) | a scope name nobody made opens a store session and an attribution, and nothing deletes them | `f80cejye` |
 | [runners.md](../runners.md) | `/broker/local` serves the whole local runtime to anybody who can reach the port | `jp9dy8an` |
-| [reference/examples/README.md §push](../reference/examples/README.md#a-push-is-a-capability-with-named-destinations) | what a person is actually asked, and the gate nothing withdraws | `8wt1ta8r` |
+| [trigger-model.md §a condition may read](../trigger-model.md#a-condition-may-read-too-and-that-one-does-track) | a condition's read cannot name `$subject`, so nothing is resolved per candidate and a sweep cannot ask whether anything standing names what it would retire | `8wt1ta8r` |
 | [reference/entities.md](../reference/entities.md) | descent in a match, `Depth`, a ref keyed as text | `jabt2frr` |
 | [provider-selection.md](../provider-selection.md) | required/excluded tools, a vector a provider may not set | `5ny7rn0r` |
 | [runners.md](../runners.md) | control applied by convention, whether `local` should be nameable | `f6bmet8r` |
