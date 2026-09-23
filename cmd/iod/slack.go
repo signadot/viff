@@ -75,7 +75,7 @@ func slackMain(args []string) error {
 	var o *verseio.Out
 	if *out {
 		sink = src.Sink(client.New(addr, c.principal(c.root)))
-		outs, err := c.outHalf(ctx, sink, []entity.Ref{src.OutRef()})
+		outs, err := c.outHalf(ctx, src.Root(), sink, []entity.Ref{src.OutRef()})
 		if err != nil {
 			return err
 		}

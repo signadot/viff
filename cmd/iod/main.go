@@ -175,19 +175,24 @@ func (c *common) registration() string {
 }
 
 // outHalf starts one pass loop per place, and answers them for whatever else needs to kick one.
-func (c *common) outHalf(ctx context.Context, sink verseio.Sink, places []entity.Ref) ([]*verseio.Out, error) {
+//
+// THE ROOT IS THE CONNECTOR'S, not the -root flag's. `-root` is how one deployment takes a slice
+// of its own and is usually not given, so reading the principal off it made an out half act as
+// `agent:-io` — a name the install seeds no grants for, so every status it wrote was refused
+// while the registration held grants for `agent:slack-io`.
+func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref) ([]*verseio.Out, error) {
 	addr := c.verse()
 	if addr == "" {
 		return nil, fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
 	}
-	verse := client.New(addr, c.principal(c.root))
+	verse := client.New(addr, c.principal(root))
 	outs := make([]*verseio.Out, 0, len(places))
 	for _, place := range places {
 		o := verseio.NewOut(sink, place, verse, log.Printf).Reporting(c.registration())
 		go o.Run(ctx, c.every)
 		outs = append(outs, o)
 		log.Printf("%s out: doing what is asked under %s, as %s, reading %s every %s",
-			c.root, place, c.principal(c.root), addr, c.every)
+			root, place, c.principal(root), addr, c.every)
 	}
 	return outs, nil
 }
