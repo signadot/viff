@@ -9,7 +9,8 @@ A **resolver** is the installed record that says who answers, and that service i
 long as the run lasts, so the context arrives before the ask. It answers through the same path
 `verse gate approve` takes, with `by` naming the resolver instead of a person.
 
-`driver: url` is the only driver built.
+This page is about a service, `driver: url`. A resolver may name a person or a group instead,
+who answer from the docket ([reference/resolvers.md](reference/resolvers.md#the-resolver)).
 [An automatic supervisor](auto-supervisor.md) is the charter-level counterpart: an agent that
 decides by writing to the subject, where this decides by answering the gate.
 

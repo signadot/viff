@@ -3656,10 +3656,9 @@ func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.
 // resolverName is a resolver's name — the last segment of `verse.resolvers.<name>` — which is
 // what a cover's address is built from, with the gate stream it reads.
 //
-// THE LAST SEGMENT, asked of the address rather than cut at the last delimiter. Cutting at the
-// last ':' was the same answer while an address was colons, and is no answer at all now — it
-// returned the whole string, so every cover was minted at
-// `verse.covers.verse.resolvers.reviewer@<stream>` and nothing that looked one up by name found it.
+// THE LAST SEGMENT, asked of the address rather than cut at a delimiter. A cut that misses
+// returns the whole string, which mints every cover at
+// `verse.covers.verse.resolvers.reviewer@<stream>`, where nothing looking one up by name finds it.
 func resolverName(ref string) string {
 	r, err := entity.ParseAddr(ref)
 	if err != nil {

@@ -1093,11 +1093,9 @@ func nestPattern(root patTree, segs []string, pattern Payload) {
 // the first empty one. A ref with no ID addresses a whole kind subtree (a motion's vote log),
 // which is why the tail may be short rather than invalid.
 //
-// Asking the REF for its segments rather than naming three is what keeps a precondition about
-// verse's own half pointed at it: built from (system, kind, id) alone, an absence check for
-// `verse:resolvers:instance:x` asked about `resolvers.instance.x`, where nothing ever stands —
-// so create-only writes always fired, and a cover's read position reset every time a
-// question was posed.
+// Asking the REF for its segments is what keeps a precondition pointed at the node it names. An
+// absence check built any other way asks about a place where nothing stands, so a create-only
+// write always fires — and a cover's read position resets every time a question is posed.
 func (p Path) segments() []string {
 	segs := p.Ref.Segs()
 	out := make([]string, 0, len(segs))
