@@ -1,0 +1,18 @@
+!issue
+blocked_by: []
+blocks:
+- 2dchqs8jh12kr1s0pnn0
+branches: []
+commits: []
+created: "2026-09-24T15:05:10.631102+02:00"
+duplicates: []
+id: 09r1j5gjh12kr1h0pnn0
+labels:
+- design
+- perms
+- roadmap
+related_issues:
+- 4eg94w0jh12kr1h0pnn0
+- e3b4qmach12ksw02p1n0
+status: open
+updated: "2026-09-24T15:05:12.512981+02:00"
