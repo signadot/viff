@@ -291,9 +291,10 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 		t, _ = harness.Build(harness.Config{
 			ID: l.ID, Prompt: l.Prompt, Root: p.ws.Root, Resolver: reg, Content: content,
 			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
-			Log:    os.Stderr, // the parent copies this onto its own log, tagged with the task id
-			Finish: p.fin,     // the runner's own closing act, inside the loop
-			Extra:  p.extra,   // and what only this runner can do: push to a declared destination
+			Env:    p.cfg.Environment.Env, // this process was started with only these; say so
+			Log:    os.Stderr,             // the parent copies this onto its own log, tagged with the task id
+			Finish: p.fin,                 // the runner's own closing act, inside the loop
+			Extra:  p.extra,               // and what only this runner can do: push to a declared destination
 			// Resolved by the parent and sent on stdin. Nothing here reads an environment
 			// variable for a credential: that is the ambient-credential shape this design
 			// refuses everywhere else.
@@ -321,6 +322,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 		t = harness.Calls(harness.Config{
 			ID: l.ID, Root: p.ws.Root, Resolver: reg, Content: content,
 			Tools: tools, Answer: l.Answer, Vector: l.Vector,
+			Env:    p.cfg.Environment.Env,
 			Log:    os.Stderr,
 			Finish: p.fin,
 			Extra:  p.extra,

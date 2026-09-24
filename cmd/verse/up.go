@@ -210,6 +210,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		defaultDriver = "llm"
 		fmt.Fprintf(cc.Err, "agents rooted at %s\n", root)
 	}
+	// What a task's shell inherits from this process, which holds the model credentials.
+	shellEnv := appCfg.ShellEnv
+	if len(shellEnv) == 0 {
+		shellEnv = task.DefaultShellEnv
+	}
 	build := func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
 		driver := l.Driver
 		if driver == "" {
@@ -221,7 +226,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// ask again, so honouring the field would mean dropping it, and a dropped
 			// contract is worse than none. The refusal lives in NewCallsTaskFrom now, so
 			// both runtimes state it once and neither can forget it.
-			return versed.NewScriptedTask(l, root, reg)
+			return versed.NewScriptedTask(l, root, shellEnv, reg)
 		case "llm":
 			if !appCfg.LLM.Available() {
 				return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
@@ -241,7 +246,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			// scripted driver, so neither path depends on a builder remembering.
 			p, _ := harness.Build(harness.Config{
 				ID: l.ID, Prompt: l.Prompt, Root: root, Resolver: reg, Log: cc.Err, Content: content,
-				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
+				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: shellEnv,
 				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
 				LLMVirtualKey: virtualKey, LLMModel: appCfg.LLM.Model,
 			})
@@ -257,7 +262,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			}
 			return harness.Calls(harness.Config{
 				ID: l.ID, Root: root, Resolver: reg, Log: cc.Err, Content: content,
-				Tools: l.Tools, Answer: l.Answer, Vector: l.Vector,
+				Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: shellEnv,
 			}, l.Calls)
 		default:
 			return task.NewFailed(l.ID, reg,

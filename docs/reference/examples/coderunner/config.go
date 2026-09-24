@@ -126,9 +126,8 @@ type Environment struct {
 	// action the vector sees, gates, and narrates onto the read plane.
 	Tools []string `tony:"field=tools,omitzero"`
 	// Env is the passthrough allowlist: the variables a task's shell inherits. Everything
-	// else is UNSET, which is the point — the harness today runs `bash -lc` with no
-	// c.Env at all, so an agent's shell inherits the server's entire environment including
-	// the model credentials the harness itself runs on.
+	// else is UNSET, which is the point — the runner's environment carries the git token and
+	// the model credentials, and a task's shell is what the MODEL drives.
 	// A floor that has to be enforced by a gate is not a floor.
 	Env []string `tony:"field=env,omitzero"`
 	// Egress is the allowlist of destinations a task here may reach: `api.anthropic.com`,

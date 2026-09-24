@@ -139,6 +139,7 @@ type fsExec struct {
 	log     io.Writer
 	content task.ContentReader
 	extra   map[string]Tool // the runtime's own tools (see Tool)
+	env     []string        // the variables run_bash passes through (see Config.Env)
 	seq     int
 	records []ExecRecord
 }
@@ -273,11 +274,14 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 const orphanWaitDelay = 2 * time.Second
 
 // runBash executes a command with stdout and stderr captured into SEPARATE
-// buffers and the real exit code recorded.
+// buffers and the real exit code recorded. The shell's environment is the declared passthrough
+// and nothing else: this process is frequently the one holding the model credentials the agent
+// runs on, and a shell that inherited them would hand them to the agent.
 func (e *fsExec) runBash(ctx context.Context, command string, rec *ExecRecord) {
 	c := exec.CommandContext(ctx, "bash", "-lc", command)
 	c.WaitDelay = orphanWaitDelay
 	c.Dir = e.root
+	c.Env = task.ShellEnv(e.env)
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
 	err := c.Run()

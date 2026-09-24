@@ -31,7 +31,7 @@ func askingServer(t *testing.T) *Server {
 func askingBuilder(t *testing.T) taskd.Builder {
 	t.Helper()
 	return func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
-		return NewScriptedTask(l, t.TempDir(), reg)
+		return NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
 	}
 }
 

@@ -81,6 +81,11 @@ type Config struct {
 	// Perms is the part of the permission check's policy that is a setting rather than a
 	// record. Server-side, read by `verse up`.
 	Perms PermsConfig `tony:"field=perms,omitzero"`
+	// ShellEnv names the variables a local task's shell (run_bash, under the llm, calls and
+	// scripted drivers) passes through from the server's environment. Everything else is unset,
+	// the server's model credentials included. Empty means task.DefaultShellEnv. Server-side,
+	// read by `verse up`.
+	ShellEnv []string `tony:"field=shellEnv,omitzero"`
 }
 
 // PermsConfig is what a deployment sets about permissions that no record can say: the root's

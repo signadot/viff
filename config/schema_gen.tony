@@ -36,6 +36,7 @@ define:
   llm: !verse-llm null
   perms: !verse-perms-config null
   scope: .[string]
+  shellEnv: .[array(string)]
   systemCharter: .[string]
   tripDuration: .[string]
   user: .[string]

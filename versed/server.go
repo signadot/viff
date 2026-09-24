@@ -1502,11 +1502,12 @@ func (s *Server) notePrincipal(p string) {
 // ScriptedBuilder is the taskd.Builder form (root = the task's cwd). `verse up` uses
 // NewScriptedTask directly to confine scripted commands to the agent root.
 func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
-	return NewScriptedTask(l, "", reg)
+	return NewScriptedTask(l, "", task.DefaultShellEnv, reg)
 }
 
 // NewScriptedTask builds a scripted task rooted at root — a call list of exactly one call,
-// which is what `scripted` always was.
+// which is what `scripted` always was. env names the variables its shell passes through from
+// this process; see task.ShellEnv.
 //
 // It used to be its own driver with its own vector, hardcoded to Auto. Both are gone. The
 // driver is task's, because one shell command is the degenerate case of a list of calls and
@@ -1520,25 +1521,31 @@ func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *t
 // exemption that justified auto — "you authorized it by typing it" — is true of `verse task
 // run --driver scripted` and of nothing else, so it lives on that path now (cmd/verse/task.go)
 // rather than travelling to charters that typed nothing.
-func NewScriptedTask(l task.Launch, root string, reg *task.Registry) *task.Task {
+func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registry) *task.Task {
 	// An empty prompt is an empty list: the task completes having done nothing, which is
 	// what the old driver did with a blank command.
 	var calls []task.Call
 	if strings.TrimSpace(l.Prompt) != "" {
 		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
 	}
-	return task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root})
+	return task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env})
 }
 
 // shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
-// confined to root. It is the scripted driver's counterpart of the harness's fsExec.
-type shellExec struct{ root string }
+// confined to root, with only the variables env names. It is the scripted driver's counterpart
+// of the harness's fsExec.
+type shellExec struct {
+	root string
+	env  []string
+}
 
 func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
-	// bash -c (non-login): inherits the server's env/PATH, and avoids the login shell's
-	// job-control setpgid ("failed to change group ID") that fails in restricted envs (CI, sandboxes).
+	// bash -c (non-login): avoids the login shell's job-control setpgid ("failed to change
+	// group ID") that fails in restricted envs (CI, sandboxes). Its environment is the declared
+	// passthrough rather than the server's, which carries the server's credentials.
 	c := exec.CommandContext(ctx, "bash", "-c", str(tu.Input, "command"))
 	c.Dir = e.root
+	c.Env = task.ShellEnv(e.env)
 	out, err := c.CombinedOutput()
 	res := strings.TrimSpace(string(out))
 	// The code, alongside the Err this executor folds it into. Both, because the fold is this
