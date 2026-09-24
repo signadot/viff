@@ -28,7 +28,7 @@
 # A fourth is real and NOT demonstrable here, because seeding hides it: a rule does not
 # backfill. Entities written before a charter was installed never fire it, and there is no
 # replay verb. This script always installs its rules first, so it never meets that; running it
-# against a repository already reflected does, and docs/working/gh-source-residual.md records it.
+# against a repository already reflected does.
 #
 # Like seed-demo.sh — and unlike smoke.sh — this talks to YOUR verse and leaves what it
 # writes behind for you to poke at.

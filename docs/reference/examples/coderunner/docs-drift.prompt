@@ -16,8 +16,6 @@ Only report what you have checked against the tree. A claim you could not verify
 finding — say so instead of guessing. Do not rewrite prose you merely disagree with: this is
 about references that are FALSE, not about style.
 
-Read <repo>/docs/working/contributing.md first and hold to it.
-
 Leave the tree building. Edit the file and stop — do not commit, and do not run the full test
 suite: a single file's references are checkable by reading the code they name, and this task is
 meant to be short.

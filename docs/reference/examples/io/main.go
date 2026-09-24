@@ -11,7 +11,7 @@
 // block goes stale the first time a signature moves and nobody finds out. It also is not a
 // toy — as shipped it serves verseio.Git, the same value verse runs in task, so what you
 // copy already works before you change anything. See ../../../io.md for what an io IS
-// and ../../../working/sources-residual.md for what is left.
+// and git issue 1yke34rr for what is left.
 //
 // # What to change
 //

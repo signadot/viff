@@ -6,11 +6,10 @@ repo_url: https://github.com/signadot/verse
 repo_name: GitHub
 edit_uri: ""
 
-# The site is what verse does. roadmap/ and working/ are design notes for work that is not
-# built, and articles/ is prose written for somewhere else; all three are read in the
-# repository, so the site does not publish them at all: a published page that points at one
-# links to it on GitHub, and `make check-docs` fails on a relative link into any of them,
-# because that link would 404 here.
+# The site is what verse does. articles/ is prose written for somewhere else, read in the
+# repository, so the site does not publish it at all: a published page that points at one
+# links to it on GitHub, and `make check-docs` fails on a relative link into it, because that
+# link would 404 here.
 exclude_docs: |
   /articles/
 

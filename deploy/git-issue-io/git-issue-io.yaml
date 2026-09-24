@@ -15,8 +15,8 @@
 # and posts no hints, so there is nothing for a baked-in url to have to match.
 #   verse io add issues http://git-issue-io:9801 -root git-issue
 #
-# What it reflects is the drive's own notices: the `contract` issues contributing.md asks for
-# before a breaking push land in this slice, which is what makes `verse docket`'s neighbourhood
+# What it reflects is the drive's own notices: an issue filed before a breaking push lands in
+# this slice, which is what makes `verse docket`'s neighbourhood
 # — a charter reacting to a notice — something that can be written at all.
 apiVersion: apps/v1
 kind: Deployment

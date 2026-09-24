@@ -320,7 +320,7 @@ func (s Spec) Bind(b Binding) Spec {
 	// driver defines, so a $var in one could only ever name a tool that does not exist, or
 	// name one chosen by whoever last wrote the entity being matched. The second is the
 	// interesting case: this list is adjacent to authority, and letting payload text pick
-	// which tools an agent is handed is the widening-by-binding risk authority.md names.
+	// which tools an agent is handed would widen its authority by binding.
 	// Copied rather than shared so a bound spec cannot alias the charter's slice.
 	out.Tools = append([]string(nil), s.Tools...)
 	// VirtualKey is carried and NOT expanded, for Tools' reason and more sharply. It names a

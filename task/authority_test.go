@@ -124,9 +124,8 @@ func TestNamedGrantRejectsUnknownRatherThanWidening(t *testing.T) {
 }
 
 // An action the deriver cannot classify carries no effects and so matches no verb
-// predicate: it is refused under any narrowed envelope. That is fail-closed, which is the
-// direction authority.md asks for — the action nobody can classify is exactly the one an
-// envelope should not admit.
+// predicate: it is refused under any narrowed envelope. That is fail-closed, deliberately —
+// the action nobody can classify is exactly the one an envelope should not admit.
 func TestUnclassifiedActionIsRefusedUnderANarrowedGrant(t *testing.T) {
 	g := Grant{Allow: []GateMatch{{Verbs: []Verb{Read}}}}
 	if g.Permits(ToolUse{Name: "something_new"}) {

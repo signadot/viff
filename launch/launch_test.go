@@ -65,8 +65,8 @@ func TestBindExpandsFrame(t *testing.T) {
 // other string here is a template because a charter has reason to build it out of the
 // firing — but a tool name comes from a fixed set the driver defines, so a $var in one
 // could only name a tool that does not exist, or name one chosen by whoever last wrote the
-// entity being matched. The second is the widening-by-binding risk authority.md flags, one
-// field away from the grant.
+// entity being matched. The second widens authority by binding, one field away from the
+// grant.
 func TestBindDoesNotExpandTools(t *testing.T) {
 	s := Spec{Tools: []string{"read_file", "$sneaky"}}
 	got := s.Bind(Binding{"sneaky": "run_bash"})

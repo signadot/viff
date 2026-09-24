@@ -27,8 +27,7 @@
 #           $subject.system / .kind / .id.
 #   Prose, in any file: system:kind:id, "system, kind and id", "three segments", `{system: {kind:`.
 #
-# docs/working/ and docs/roadmap/ are records, and are not counted; CLAUDE.md states the rule this
-# enforces, and is not counted either.
+# CLAUDE.md states the rule this enforces, and is not counted.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -58,7 +57,7 @@ done
 
 current() {
   git grep -c -E "${args[@]}" -- '*.go' '*.md' '*.tony' '*.sh' '*.yaml' '*.yml' \
-    ':!docs/working/**' ':!scripts/check-paths.sh' ':!scripts/check-paths.baseline' \
+    ':!scripts/check-paths.sh' ':!scripts/check-paths.baseline' \
     ':!CLAUDE.md' \
     | awk -F: '{n=$NF; sub(/:[0-9]+$/, ""); print n, $0}' \
     | sort -k2 || true

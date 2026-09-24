@@ -15,11 +15,10 @@ import (
 // no vocabulary to resolve against and no enforcement point to reach if it had. That is the
 // worst state an authority field can be in — it reads back correctly.
 //
-// What is implemented here is the OVERRIDE half of that note (its "The override" section):
-// an explicitly declared vector or grant is honored. The derived envelope — inferring
-// authority from the request text — is deliberately not here. The note's own risk section
-// says why: a trigger's task is a template whose $vars expand from an entity payload, so
-// anyone who can write a field could widen an envelope by writing into it. Until derivation
+// What is implemented here is the OVERRIDE half: an explicitly declared vector or grant is
+// honored. The derived envelope — inferring authority from the request text — is
+// deliberately not here, because a trigger's task is a template whose $vars expand from an
+// entity payload, so anyone who can write a field could widen an envelope by writing into it. Until derivation
 // can be pinned to the authored template and its author, a trigger spawn takes a DECLARED
 // grant only. This is that declaration, and nothing more.
 
@@ -72,8 +71,8 @@ func NamedVector(name string) (*Vector, error) {
 	}
 	// A named vector is a bare default with no gates, which is the point of naming one:
 	// `vector: auto` on a trigger spawn says "this firing already answered its gates, do
-	// not re-ask per action" — the double-ask authority.md names under "Where this meets
-	// the rest". Restraint then comes from the grant, which refuses rather than asks.
+	// not re-ask per action" — the firing and then each action asking the same question.
+	// Restraint then comes from the grant, which refuses rather than asks.
 	return &Vector{Default: m}, nil
 }
 
@@ -168,8 +167,8 @@ func GrantNames() []string {
 // one the gates describe.
 //
 // The consequence is that an action with no derived effects matches no verb predicate and
-// is refused under any non-wildcard grant. That is fail-closed, which authority.md asks
-// for: an action nothing could classify is exactly the one an envelope should not admit.
+// is refused under any non-wildcard grant. That is fail-closed, deliberately: an action
+// nothing could classify is exactly the one an envelope should not admit.
 func (g Grant) Permits(tu ToolUse) bool {
 	if g.allowsAll() {
 		return true
