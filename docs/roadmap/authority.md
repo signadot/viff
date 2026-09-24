@@ -244,13 +244,20 @@ authorized to do, and on whose behalf is it currently acting. The third is the o
 at the end of this note — whether an envelope belongs to the task or to the (requester,
 request) pair — arriving from the other side.
 
-Runtimes are converging on the mechanics too. Google's Agent Executor (an open-source
-distributed agent runtime, early as of 2026) keeps a durable event log with snapshots held
-separately, resumes a session from a step rather than replaying it, and — the relevant part —
-treats *suspended while awaiting an approval* as a first-class runtime state rather than a
-blocked thread. That is `park`. Its single-writer session state is the same conclusion as the
-claim-and-report, compare-and-swap model in [external tasks](../external-tasks.md).
-None of these systems, however, derives authority from the request; they carry a decision made
+Runtimes are converging on the mechanics, though less far than their announcements suggest.
+Google's Agent Executor (`google/ax`, read at commit
+[`ace03604`](https://github.com/google/ax/tree/ace03604a60167d111589c6db8c1c7f88aa8e6b5),
+2026-09-23) makes suspension a runtime operation: `SuspendTask` checkpoints the actor and
+restores `/workspace` into a fresh container on resume. But suspension there is a manual
+checkpoint, not a state a task enters to await a decision — the task spec's approval and budget
+field (`policies`) is removed and reserved, and approval policies are a roadmap item. Nor does
+it carry authority down a tree of tasks: its concepts doc describes an agent spawning a tree of
+tasks, but a `Task` names no parent, the sandbox is handed neither the API's address nor a
+credential, and the create API does not authenticate its caller — so a task that is wired to
+reach it creates a peer, choosing its own image and gateway, not a child narrowed to its
+parent's envelope. The approval-as-state that `park` is, and the monotonic envelope a
+delegation carries, are not borrowed from it.
+None of these systems derives authority from the request; they carry a decision made
 elsewhere. The derivation is the part that is ours to design.
 
 ## Risks
@@ -298,7 +305,8 @@ elsewhere. The derivation is the part that is ours to design.
   Model Context Protocol tool-authorization profile.
 - [Agent2Agent (A2A) protocol specification](https://a2a-protocol.org/latest/specification/) — how
   a peer protocol represents an action needing authorization or human approval.
-- [Agent Executor](https://github.com/google/ax) (`google/ax`) and its
+- [Agent Executor](https://github.com/google/ax) (`google/ax`, read at
+  [`ace03604`](https://github.com/google/ax/tree/ace03604a60167d111589c6db8c1c7f88aa8e6b5)) and its
   [announcement](https://cloud.google.com/blog/products/ai-machine-learning/agent-executor-googles-distributed-agent-runtime)
-  — durable event log, snapshot-and-resume, single-writer session state, and suspension while
-  awaiting approval.
+  — suspend-and-resume by checkpointing an actor; approval policies on its roadmap, not in its
+  task spec; no parent link or authority narrowing between tasks.
