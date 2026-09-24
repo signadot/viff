@@ -50,3 +50,22 @@ An issue travels with `git issue push`/`pull`, survives a rebase of the
 branch, and is reflected into verse like any other issue.
 
 
+
+## Commits
+
+Optional: a commit may declare what it is with git trailers, so the log can be
+queried for it.
+
+```
+Tier: change | contract       # omit for an ordinary fix
+Checked: <what you ran>
+Breaks: <what someone on main must do differently>
+```
+
+`contract` is a change that is not backward compatible, and is the one worth
+declaring, with `Breaks:`, and a `!` after the subject's prefix (`api!: ...`).
+Declare it where the work lands on `main`, not on each branch commit.
+
+Trailers parse only as the final paragraph of the message, every line in it a
+trailer (`Co-Authored-By:` included).  Check with
+`git log -1 --format='%(trailers)'`.
