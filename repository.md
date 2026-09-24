@@ -69,3 +69,8 @@ Declare it where the work lands on `main`, not on each branch commit.
 Trailers parse only as the final paragraph of the message, every line in it a
 trailer (`Co-Authored-By:` included).  Check with
 `git log -1 --format='%(trailers)'`.
+
+**Agents.** A coding agent appends `Co-Authored-By:` by habit, often as the only
+trailer and often after a blank line that leaves the others as prose.  If an
+agent commits for you and you want the trailers, tell it to check them on the
+commit with the command above.
