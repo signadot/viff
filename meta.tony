@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-09-24T19:17:12.935011+02:00"
+duplicates: []
+id: 69q1sc5ah12kr62vpnn0
+labels:
+- design
+related_issues:
+- js1e345ah12kr62vpnn0
+- d5npd85ah12kr62vpnn0
+status: open
+updated: "2026-09-25T13:07:52.154215+02:00"
