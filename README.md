@@ -114,3 +114,13 @@ shape. Start with:
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
   cluster.
+  
+## Deployment
+
+- Deployment of shared instance `I` gets an annotated git tag `deploy/<I>.N`. 
+  The annotation for the tag mentions the components which are deployed.
+- Deployment tags the main branch in normal operation, but may tag off main
+  to work around a deployment issue.  If it tags off-main, the tag annotation names the
+  nearest main commit.
+- main stays ff-only
+
