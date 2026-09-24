@@ -15,8 +15,9 @@ type Reader interface {
 	// Get returns an entity by ref: ok reports whether it exists, err reports whether the
 	// read could be performed at all. See Store.Get — the distinction is the point.
 	Get(ref Ref) (Entity, bool, error)
-	// List enumerates the stored entities whose ref satisfies pred (nil = all), at the depth an
-	// address has had all along — three segments, four in verse's own half.
+	// List enumerates the stored entities whose ref satisfies pred (nil = all), at the fixed walk
+	// depth listWalkArity names, one deeper in verse's own half — a depth the tree has not shed.
+	// ListAt takes the depth from the caller instead.
 	List(pred func(Ref) bool) []Entity
 	// ListAt enumerates the nodes at a STATED depth under a prefix — whatever stands there, and
 	// nothing shallower.
@@ -59,7 +60,7 @@ type Snapshot interface {
 type docSnapshot struct {
 	root string   // the document's root key, so a ref can be navigated to
 	rev  int64    // the commit this reads at
-	doc  *ir.Node // root-rooted: {<root>: {system: {kind: {id: payload}}}}
+	doc  *ir.Node // root-rooted: {<root>: …}, every address a path into it
 }
 
 func (s docSnapshot) Rev() int64 { return s.rev }

@@ -536,7 +536,7 @@ func (r *readingStore) ListAt(at []string, depth int, pred func(entity.Ref) bool
 // A PASS READS WHERE ITS ANSWER IS, and nothing beside it. One repository's refs and head are
 // the places its covers name, and its commits — which no cover holds — are read where they
 // stand; another repository's history under the same system is never read. It is also where
-// the mixed depths meet: a head three segments deep beside refs and commits four deep, each
+// the mixed depths meet: a head at one depth beside refs and commits one deeper, each
 // read at its own depth, and a second pass over the same answer writes nothing.
 func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 	store := &readingStore{Store: entitytest.Store(t)}

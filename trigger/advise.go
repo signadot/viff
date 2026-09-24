@@ -201,8 +201,8 @@ func adviseDenyLatch(t Trigger) []string {
 // deterministic and often exactly right, and it is not what "ship every reviewed PR when CI is
 // green" sounds like:
 //
-//	on:      { system: ci,   kind: status, value: { state: green } }
-//	subject: { system: demo, kind: pr,     value: { stage: reviewed } }
+//	on:      { path: "ci.status.*", value: { state: green } }
+//	subject: { path: "demo.pr.*",   value: { stage: reviewed } }
 //
 // says *ship everything reviewed AT THE MOMENT CI went green*, not *while CI is green*. The
 // second is what you get by dropping the `on` and keeping the condition as a `when`: then

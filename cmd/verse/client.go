@@ -955,11 +955,8 @@ type stateConfig struct {
 
 // dataCmd is `verse data`: the verse's data at a path.
 //
-// It replaces `verse entity`, and the noun went with the answer. The old command listed rows of
-// a table that the store does not hold — `[{ref, payload}, …]`, flattened out of the document it
-// does hold — and addressed them in three vocabularies: `--system`/`--kind` to narrow a listing,
-// `system:kind:id` to name one, `--at` to reach inside it. They are one kinded path asked at
-// different depths, so that is what this takes: `verse data`, `verse data demo`,
+// The answer is the document the store holds, not rows flattened out of it, and every question
+// is one kinded path asked at a different depth: `verse data`, `verse data demo`,
 // `verse data demo.pr`, `verse data demo.pr.1`, `verse data demo.pr.1.labels.urgent`,
 // `verse data 'demo.pr.*.stage'`.
 //
@@ -1245,7 +1242,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 // within each branch, bounded by --depth when the reader wants less.
 //
 // It listed one level and took a `--depth` to say which, and that could not be got right: an
-// address may be three segments or deeper (a write names a place at whatever depth), and nothing
+// address may be at any depth (a write names a place at whatever depth), and nothing
 // in the answer says where an entity ends, so the level was a guess the reader had to make on
 // the store's behalf. Guessing low printed the place and nothing in it — `verse data
 // verse-dev.drift.range --paths` answering `verse-dev.drift.range`, which is true and useless.

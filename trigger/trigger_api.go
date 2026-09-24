@@ -818,8 +818,8 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	b[refSubject] = subject.String()
 	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
 	// reference machinery — launch.Bind is a flat ReplaceAll over this map. Without them
-	// `task: "approve $subject.id"` would substitute the bare key and leave the text
-	// "gh:issue:1.id": wrong, and silently so, which is the worst way for a template to fail.
+	// `task: "approve $subject.name"` would substitute the bare key and leave the text
+	// "gh.issue.1.name": wrong, and silently so, which is the worst way for a template to fail.
 	//
 	// launch.expand sorts its keys longest-first, so the dotted key wins over the bare one.
 	// That sort was written for an unrelated reason and is what makes this work at all.

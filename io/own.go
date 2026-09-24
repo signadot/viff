@@ -111,10 +111,8 @@ func ParseOwns(owns []Own) ([]Claim, error) {
 
 // Claim is one parsed ownership claim: a pattern per LEVEL of the address, at whatever depth.
 //
-// IT IS A TREE. Three named positions with three different rules — the first two a literal or
-// `*`, the third also a prefix glob — is the arity written down three times, and it cannot say
-// what a source owns once entities are deeper than three segments. One Seg per level says the
-// rule once, at every level, and a claim as short as `git` owns the whole subtree under it.
+// IT IS A TREE. Named positions with a rule each write an arity down, and cannot say what a
+// source owns at any other depth. One Seg per level says the rule once, at every level, and a claim as short as `git` owns the whole subtree under it.
 type Claim struct {
 	// Segs is the address pattern, one per level. A claim SHORTER than an address covers
 	// everything under it, which is what makes `git` a claim on the whole root.

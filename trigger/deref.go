@@ -112,7 +112,7 @@ func subjectNode(subj entity.Ref, value entity.Payload, commit int64) *ir.Node {
 }
 
 // subjectWants is what a firing needs about its subject beyond identity. Identity is free —
-// three segments already in hand — while `value` may cost a read at a revision, which the store
+// the path is already in hand — while `value` may cost a read at a revision, which the store
 // answers by replaying its log to that commit (entity/logdstore.go). So it is asked for rather
 // than always supplied.
 type subjectWants struct{ value, commit bool }

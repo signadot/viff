@@ -368,7 +368,7 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 	}
 }
 
-// A claim carries three segments and no root, so `task.*.*` — and the wildcard `*:*:*`, which
+// A claim carries no root, so `task.*.*` — and the wildcard `*:*:*`, which
 // a source may register when nothing else is installed — asks about `verse.task.instance.x` as
 // readily as about the world's `task.instance.x`. It must own neither: the caller that deletes
 // (`verse io remove --forget`) writes straight to the store, below the refusal that guards

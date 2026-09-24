@@ -150,9 +150,9 @@ func (t Trigger) GateResolver() string {
 // is temporal.
 //
 // The REQUIRED half is the Subject. An implicit subject — "whatever entity the when
-// matched" — reads fine on a when that pins one system:kind, and has no coherent general
-// meaning at all: `{system: demo}` already spans kinds, and a disjunctive when (`!or [a:b:c,
-// {system: d, kind: e}]`) makes it plain, since "the matched entity" answers *which entity
+// matched" — reads fine on a when that names one place, and has no coherent general
+// meaning at all: `demo.*.*` already spans many, and a disjunctive when (`!or [a.b.c,
+// {path: "d.e.*"}]`) makes it plain, since "the matched entity" answers *which entity
 // fired* when the question is *what is this rule about*. A trigger that acts on whichever
 // disjunct happened to fire is not a rule anyone wrote down.
 //
@@ -193,7 +193,7 @@ type Condition struct {
 	// every charter written so far relies on.
 	//
 	// Two consequences worth knowing before writing one. An EDGE DOES NOT RE-FIRE while it
-	// stays true: `on: {system: demo, kind: pr, value: {stage: reviewed}}` rises when the
+	// stays true: `on: {path: "demo.pr.*", value: {stage: reviewed}}` rises when the
 	// first PR reaches `reviewed` and says nothing about the second, because the predicate was
 	// already true. And an `on` trigger does NOT act on the backlog — installed over a verse
 	// where its predicate already holds, there is no rising edge to observe, where a
@@ -222,8 +222,8 @@ func (c Condition) validate() error {
 	if len(c.Subject) == 0 {
 		return fmt.Errorf(`condition.subject required: a trigger has to say what it acts on, ` +
 			`because nothing else in it does — the action has no target of its own, and a when ` +
-			`that spans kinds has no one entity to inherit. Name it ("demo.pr.1"), or select a ` +
-			`kind ({system: demo, kind: pr}). A subject alone is a complete condition: it fires ` +
+			`that spans places has no one entity to inherit. Name it ("demo.pr.1"), or select ` +
+			`with a glob ("demo.pr.*"). A subject alone is a complete condition: it fires ` +
 			`on changes to what it names`)
 	}
 	if err := c.Subject.Validate(); err != nil {
@@ -244,7 +244,7 @@ func (c Condition) validate() error {
 	} else if c.When == nil {
 		// The subject is the cause too: this fires on changes to what it is about, one firing
 		// per change, so the subject is never asked to select a set out of the store and needs
-		// no definite kind. `{system: demo}` is a complete condition — every demo entity that
+		// no definite place. `demo.*.*` is a complete condition — every node there that
 		// changes, about the one that changed.
 		return nil
 	}

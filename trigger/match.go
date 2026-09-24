@@ -646,16 +646,14 @@ func subtreeOf(m Match) Subtree {
 			break
 		}
 	}
-	st := atDepth(SubtreeAt(segs[:cut]...), len(segs))
+	// A PREFIX, watched for nodes deeper than the prefix itself.
+	st := SubtreeAt(segs[:cut]...)
+	st.depth = len(segs)
 	if kp, err := entity.KPathOf(segs); err == nil {
 		st.pat = kp // the whole question, for the watch: a `*` and a `..` are segments of it
 	}
 	return st
 }
-
-// atDepth is a subtree watched for nodes at a depth other than its own — a PREFIX, where what
-// stands under it is deeper than the prefix itself.
-func atDepth(s Subtree, depth int) Subtree { s.depth = depth; return s }
 
 // paths renders subtrees as the segment lists a read or a watch takes.
 func paths(sts []Subtree) [][]string {

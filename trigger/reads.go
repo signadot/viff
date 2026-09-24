@@ -30,8 +30,8 @@ import (
 //	reads: [ !verse-path [git], drift ]
 //	---
 //	- name: proposal-says
-//	  condition: {subject: {system: merge, kind: proposal}}
-//	  action: {patch: {says: !get-path {system: drift, kind: head, id: …, path: result.report}}}
+//	  condition: {subject: {path: "merge.proposal.*"}}
+//	  action: {patch: {says: !get-path {at: "drift.head.…", path: result.report}}}
 //
 // THREE THINGS AT ONCE, which is why it is a declaration rather than an inference. A cycle is
 // refused rather than throttled; a reader sees a package's dependencies without reading its
