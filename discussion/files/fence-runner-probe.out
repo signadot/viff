@@ -1,0 +1,16 @@
+# ad hoc: verse task run --runner
+ok   open runner, member: spawned
+ok   owner-only, member: refused
+ok   owner-only, owner: spawned
+ok   group read, member: spawned
+ok   group read, outsider: refused
+ok   member dropped: refused
+# read-write lets a member repoint the runner (why to grant read)
+ok   read-write member repointed url (hazard confirmed)
+ok   read-write member cannot change perms
+ok   read-write member cannot remove
+# charter: the spawn reads the runner as the RULE'S OWNER
+ok   owner-only, member's rule: refused
+ok   group read, member's rule: spawned
+ok   member dropped, member's rule: refused
+ok   owner writes the subject, member's rule: refused
