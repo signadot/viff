@@ -1722,11 +1722,9 @@ func trimEmpty(prefix []string) []string {
 // read; it is one flag on the request verse already makes, and the alternative — reading the path
 // first to decide whether to open the stream — would be verse re-implementing what the store
 // does at the point it is asked.
-// NO INIT EVENT, which is the other half of being a stream a person opened. A subtree watch
-// normally opens with the full state at the starting commit; `Observe`, which this replaces on
-// the watch route, has no such thing — a subscriber joins a running stream. Delivering the init
-// would make `verse watch` with no cursor replay everything standing at the path, which is what
-// `--since` is for and what a cursorless watch explicitly is not.
+// NO INIT EVENT: a subtree watch normally opens with the full state at the starting commit, and
+// this one joins the stream at its next change, as `Observe` does. A caller that wants what
+// already stands there asks WatchPattern for it, which is what `verse watch --init` does.
 func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...string) (<-chan Commit, func(), error) {
 	prefix = trimEmpty(prefix)
 	return s.WatchPattern(prefix, PrefixPattern(prefix, depth), waitIfAbsent, true)

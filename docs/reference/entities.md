@@ -629,6 +629,13 @@ it is a different act from watching: a replay of a long-lived store is a lot of 
 nobody typed a flag for, and on a store that cannot replay from the beginning it is a refusal
 rather than a stream.
 
+What stands now is not history, and a watch at a path opens with it: a `set` for each node the
+path reaches, at the revision the watch opened at, then the changes. So `-until` over a state
+already reached ends at once rather than waiting for it to happen again. `-no-init` starts
+from the next change instead. A watch with no literal prefix (`verse watch`, `verse watch '*'
+…`) joins the verse-wide stream, which has no opening state, and a cursor replays history in
+its place.
+
 ```tony
 {op: set at: demo.pr.1 rev: 1 to: {stage: open owner: ana}}
 {op: delete at: demo.pr.9 rev: 7}

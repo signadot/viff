@@ -68,6 +68,14 @@ verse
                                              asked for rather than assumed, because the
                                              address came from a person and a typo held open
                                              for ever looks exactly like a quiet verse
+         -init                               …open with what already stands at the path, a
+                                             `set` per node at the revision the watch opened
+                                             at, then the changes. The default, so `-until`
+                                             over a state already reached ends at once;
+                                             `-no-init` streams from now. Not with -since/-ago,
+                                             which replay history instead, nor at a path with
+                                             no literal prefix (`verse watch`, `'*' …`), which
+                                             joins the verse-wide stream and has no opening state
          -ago <n>                            …the last <n> COMMITS, resolved by the store
                                              against its watermark and clamped to the history
                                              it retains — so a deep one answers with what is

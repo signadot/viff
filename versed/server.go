@@ -1830,6 +1830,16 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
+	// `init` opens the stream with what stands at the path, as the substrate's opening state
+	// diffed against nothing: a set per node, at the revision the watch opened at. Refused where
+	// it cannot mean that rather than dropped — a cursor has already said what comes first, and
+	// a watch with no literal prefix is the verse-wide stream, which has no opening state.
+	withInit := q.Get("init") == "true"
+	if withInit && catchUp {
+		codec.HTTPError(w, r, http.StatusBadRequest,
+			"init and since both say what comes first — what stands now, or history from a revision; ask one")
+		return
+	}
 	match := sel.matchEvent
 
 	// Subscribe BEFORE the catch-up snapshot, so an event landing between the two is
@@ -1840,7 +1850,11 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// who typed an address wrong is told so instead of holding a stream that will never carry
 	// anything. It also narrows what crosses: observing the root and filtering here means every
 	// commit in the verse is delivered to a watch on one slice.
-	ch, unsub, err := watchFor(store, sel, waitIfAbsent)
+	ch, unsub, err := watchFor(store, sel, waitIfAbsent, withInit)
+	if errors.Is(err, errNoOpeningState) {
+		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		// The substrate refuses a watch on a path holding nothing unless the client asked to
 		// wait, which is the same answer a read of it gives — so this needs no read of its own
@@ -2116,20 +2130,28 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, entity.Doc{Node: out})
 }
 
+// errNoOpeningState refuses `init` on a watch that has no opening state to give.
+var errNoOpeningState = errors.New("init needs a path with a literal prefix: without one the " +
+	"watch joins the verse-wide stream, which has no opening state")
+
 // watchFor opens the narrowest watch the selector allows: at its literal prefix, reporting at the
-// depth the path names, or at the root when it names no prefix.
-func watchFor(store entity.Store, sel selector, waitIfAbsent bool) (<-chan entity.Commit, func(), error) {
+// depth the path names, or at the root when it names no prefix. withInit opens it with what
+// stands at the path, which only the watch at a prefix has.
+func watchFor(store entity.Store, sel selector, waitIfAbsent, withInit bool) (<-chan entity.Commit, func(), error) {
 	prefix, _ := entity.LiteralPrefix(sel.at)
 	narrow, hasNarrow := store.(interface {
 		WatchPattern([]string, *kpath.KPath, bool, bool) (<-chan entity.Commit, func(), error)
 	})
 	if len(prefix) == 0 || !hasNarrow {
+		if withInit {
+			return nil, nil, errNoOpeningState
+		}
 		ch, unsub := store.Observe(sel.at)
 		return ch, unsub, nil
 	}
 	// WITH THE PATH ITSELF: what is reported is what the path reaches, whether that is one
 	// depth or — under a `..` — every depth beneath it.
-	return narrow.WatchPattern(prefix, sel.at, waitIfAbsent, true)
+	return narrow.WatchPattern(prefix, sel.at, waitIfAbsent, !withInit)
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {

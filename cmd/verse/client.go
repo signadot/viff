@@ -412,6 +412,16 @@ type watchConfig struct {
 	// Waiting is a real thing to want — watching for what a task is about to write — so it is
 	// asked for rather than assumed, and it is the substrate's own option under its own name.
 	WaitIfAbsent bool `cli:"name=wait-if-absent desc='watch a path that holds nothing yet, and report when a value arrives (default: refuse it, as a read of the same path does)'"`
+	// --init opens the stream with what already stands at the path, as a `set` per node at the
+	// revision the watch opened at, and then the changes. It is the default because a watch is
+	// mostly asked "tell me when this is so", and a stream that starts from now answers that
+	// only if it was not already so: `--until` over a state already reached waits for ever.
+	//
+	// It is the substrate's opening state, so it lines up with the stream exactly, and it is
+	// there only where the watch is the substrate's: a path with a literal prefix. One without
+	// (`verse watch`, `'*' …`) joins the verse-wide stream, which has no opening state, and a
+	// cursor asks for history in its place.
+	Init bool `cli:"name=init default=true desc='open with what already stands at the path — a set per node — then stream changes. not with --since/--ago, which replay history instead, nor at a path with no literal prefix'"`
 }
 
 func watchCmd() *cli.Command {
@@ -500,11 +510,25 @@ func (cfg *watchConfig) run(cc *cli.Context, args []string) error {
 	if cfg.WaitIfAbsent {
 		q.Set("wait-if-absent", "true")
 	}
+	if cfg.Init && !q.Has("since") && hasLiteralPrefix(at) {
+		q.Set("init", "true")
+	}
 	u, err := readUntil(cfg.Until)
 	if err != nil {
 		return err
 	}
 	return streamChanges(cc, "watch", q, stream{until: u, nowire: cfg.NoWire})
+}
+
+// hasLiteralPrefix is whether a watch at `at` opens at a path, which is where an opening state
+// exists (see versed's watchFor).
+func hasLiteralPrefix(at string) bool {
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return false
+	}
+	prefix, _ := entity.LiteralPrefix(kp)
+	return len(prefix) > 0
 }
 
 // stream is what a caller asks of a change stream beyond its selector: where it ends, and what
