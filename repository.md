@@ -34,7 +34,19 @@ how work lands is generally iterative, eg final docs land after implementation,
 prerequesites that fix defects land before, the branch is rebased on `main` or merges
 `main` to re-sync work.  All of these are articulation points with `main`.
 
-At each point, a git note on the corresponding `verse/*` branch commit is
-encouraged to help track the status of the branch.
+Each `verse/*` branch has one git issue tracking its status: titled with the
+branch name and labelled `branch`.  At each articulation point, comment on it
+with where the branch stands and link the commit.
+
+```
+git issue create verse/<name>        # once, when the branch is pushed
+git issue label <id> branch
+git issue comment <id> "<status>"    # at each articulation point
+git issue link <id> <commit>
+git issue list --label branch        # every verse/* branch and its status
+```
+
+An issue travels with `git issue push`/`pull`, survives a rebase of the
+branch, and is reflected into verse like any other issue.
 
 
