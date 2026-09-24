@@ -13,8 +13,6 @@ edit_uri: ""
 # because that link would 404 here.
 exclude_docs: |
   /articles/
-  /roadmap/
-  /working/
 
 # The nav follows docs/README.md's four kinds rather than the directory layout: a welcome,
 # the walks a person drives, the architecture by subject, and the reference. Where the two

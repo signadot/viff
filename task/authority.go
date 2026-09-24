@@ -13,8 +13,7 @@ import (
 // expanded by Bind, and rendered back by `trigger show`. Nothing read either one. A charter
 // that said `grant: read-only` got an agent that ran shell commands, because the string had
 // no vocabulary to resolve against and no enforcement point to reach if it had. That is the
-// worst state an authority field can be in — it reads back correctly, so you believe it —
-// and it is the state docs/roadmap/authority.md describes at lines 70-72.
+// worst state an authority field can be in — it reads back correctly.
 //
 // What is implemented here is the OVERRIDE half of that note (its "The override" section):
 // an explicitly declared vector or grant is honored. The derived envelope — inferring

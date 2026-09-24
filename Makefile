@@ -307,7 +307,7 @@ check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is ab
 # serves docs/ and nothing above it, so a link out of the tree (`../../scripts/x.sh`) resolves
 # for a reader of the repo and 404s for a reader of the site. --strict makes that a failure.
 #
-# A link into articles/, roadmap/ or working/ 404s the same way, because mkdocs.yml excludes
+# A link into articles/ 404s the same way, because mkdocs.yml excludes
 # them, but mkdocs reports a link to an excluded page at INFO whatever --strict and the
 # validation levels say. So its message is matched here, and that line is the failure.
 #

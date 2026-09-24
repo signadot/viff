@@ -78,8 +78,7 @@ func (p Point) String() string {
 //
 // It is also the seam where the DEPLOYMENT decides how a point is built, and the mechanism
 // varies by more than taste. On a single host it is a uid pool and namespaces; on Kubernetes it
-// is a sandbox the platform hands you (docs/roadmap/expose.md surveys Agent Sandbox, which
-// reaches several of these leaves at once with gVisor or a lightweight VM). Neither is more
+// is a sandbox the platform hands you. Neither is more
 // correct than the other, and neither changes anything above this line: the classes, the
 // comparison and the refusal are the same either way, which is what makes the vocabulary worth
 // having separately from any one substrate.

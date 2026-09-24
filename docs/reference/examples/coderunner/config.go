@@ -128,7 +128,7 @@ type Environment struct {
 	// Env is the passthrough allowlist: the variables a task's shell inherits. Everything
 	// else is UNSET, which is the point — the harness today runs `bash -lc` with no
 	// c.Env at all, so an agent's shell inherits the server's entire environment including
-	// the model credentials the harness itself runs on (docs/roadmap/expose.md names this).
+	// the model credentials the harness itself runs on.
 	// A floor that has to be enforced by a gate is not a floor.
 	Env []string `tony:"field=env,omitzero"`
 	// Egress is the allowlist of destinations a task here may reach: `api.anthropic.com`,

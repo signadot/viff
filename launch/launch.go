@@ -22,7 +22,7 @@
 // verse for the entity-store isolation overlay (entity.Store.Scope, config.Scope, --scope,
 // VERSE_SCOPE, connect's nonce), and this field is the one place it meant authority. The
 // word the type (task.Grant) and the delegation check (Grant.Subset) already use is the
-// right one. See docs/roadmap/expose.md.
+// right one.
 package launch
 
 //go:generate go tool tony-codegen -dir .

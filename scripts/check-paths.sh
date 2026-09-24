@@ -58,7 +58,7 @@ done
 
 current() {
   git grep -c -E "${args[@]}" -- '*.go' '*.md' '*.tony' '*.sh' '*.yaml' '*.yml' \
-    ':!docs/working/**' ':!docs/roadmap/**' ':!scripts/check-paths.sh' ':!scripts/check-paths.baseline' \
+    ':!docs/working/**' ':!scripts/check-paths.sh' ':!scripts/check-paths.baseline' \
     ':!CLAUDE.md' \
     | awk -F: '{n=$NF; sub(/:[0-9]+$/, ""); print n, $0}' \
     | sort -k2 || true

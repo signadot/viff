@@ -92,10 +92,7 @@ entities, tasks, and the charters that relate them.
 
 [docs/](docs/README.md) is the index, in four parts: the overview, the walks you drive, the
 architecture by subject, and the reference. It describes what runs today, and so does the
-site mkdocs builds from it. Design notes for work that is not built are read here in the
-repository and left off the site: [docs/roadmap/](docs/roadmap/README.md), one argument read
-front to back, and [docs/working/](docs/working/README.md), everything still finding its
-shape. Start with:
+site mkdocs builds from it.  Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the
   load-bearing decisions. Read this first.

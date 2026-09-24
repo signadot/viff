@@ -166,10 +166,10 @@ type Launch struct {
 // field is optional and an empty one means verse did not know, which is a real state and
 // not a default.
 //
-// It is deliberately NOT authority. A runner must not read Principal and confer anything on
-// the strength of it — that is the on-behalf-of model docs/roadmap/authority.md rejects by
-// name, where an agent inherits what a user may do rather than what a user asked for. What
-// may be done is Grant, and nothing here widens it.
+// It is deliberately NOT authority. A runner must not read Principal and confer
+// anything on the strength of it — that is rejected, where an agent inherits
+// what a user may do rather than what a user asked for. What may be done is
+// Grant, and nothing here widens it.
 type Provenance struct {
 	// Principal is who is answerable for this launch — the argument half of the
 	// parameter-at-install / argument-at-launch split.
