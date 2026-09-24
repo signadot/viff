@@ -602,14 +602,21 @@ func (e *Engine) RemoveStratum(name string) error {
 		return fmt.Errorf("%w: %q", ErrNoStratum, name)
 	}
 	if len(users) > 0 {
+		// PATHS, not names: a path is where to look, and a name is only something to search
+		// for — the same rule name can stand in several packages.
 		sort.Strings(users)
-		shown := users
-		if len(shown) > 3 {
-			shown = shown[:3]
+		var shown []string
+		for i, u := range users {
+			if i == 3 {
+				shown = append(shown, "…")
+				break
+			}
+			shown = append(shown, e.RuleRef(u).String())
 		}
-		return fmt.Errorf("stratum %q still holds %d rule(s) (%v): removing it would leave them "+
-			"installed and unchecked — every subject that passed its pattern would be answering "+
-			"to nothing. Remove the rules first, or move them", name, len(users), shown)
+		return fmt.Errorf("stratum %q at %s still holds %d rule(s) (%s): removing it would leave "+
+			"them installed and unchecked — every subject that passed its pattern would be "+
+			"answering to nothing. Remove the rules first, or move them",
+			name, StrataRefAt(e.confine.stamp(), name), len(users), strings.Join(shown, ", "))
 	}
 	e.removeStratum(name)
 	e.write(StrataRefAt(e.confine.stamp(), name).At(), nil)
