@@ -1,0 +1,16 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-09-24T15:05:10.869182+02:00"
+duplicates: []
+id: 4eg94w0jh12kr1h0pnn0
+labels:
+- design
+- roadmap
+- runner
+related_issues:
+- yjn5qagjh12kr1s0pnn0
+status: open
+updated: "2026-09-24T15:05:11.96436+02:00"
