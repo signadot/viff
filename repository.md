@@ -18,6 +18,16 @@ git issue push [<xidr>] [-all | -n ] # pushes your local changes to remote origi
 git issue show|create|comment|label|unlabel|close|list|... # operations on your local view of the issues
 ```
 
+Centralised or coordinated issue tracking with git issue is opt-in.  So,
+the git issues may be partial.  Where they exist, they track
+
+- design asks, sketches, documents, and residuals of implemented designs (which are often also bugs)
+- implementation plans
+- state of work (see branches below)
+
+An issue travels with `git issue push`/`pull`, independent of branch rebases, merges etc
+and is reflected into verse like any other issue.
+
 ## Branches
 
 ### `main`
@@ -27,29 +37,33 @@ instances.  Intended to reflect group disposition.
 
 ### `verse/*`
 
-`verse/*` The expectation of these branches are that they contain shared work.
+`verse/*` branches are expected to contain shared work.
 
 `verse/*` branches are articulation points for merging to main, as
 how work lands is generally iterative, eg final docs land after implementation,
-prerequesites that fix defects land before, the branch is rebased on `main` or merges
+prerequisites that fix defects land before, the branch is rebased on `main` or merges
 `main` to re-sync work.  All of these are articulation points with `main`.
 
-Each `verse/*` branch has one git issue tracking its status: titled with the
-branch name and labelled `branch`.  At each articulation point, comment on it
-with where the branch stands and link the commit.
+Each `verse/*` branch is encouraged to have a git issue tracking its status: titled with the
+branch name and labelled `branch`.
 
 ```
 git issue create verse/<name>        # once, when the branch is pushed
 git issue label <id> branch
-git issue comment <id> "<status>"    # at each articulation point
-git issue link <id> <commit>
-git issue list --label branch        # every verse/* branch and its status
 ```
 
-An issue travels with `git issue push`/`pull`, survives a rebase of the
-branch, and is reflected into verse like any other issue.
+At each articulation point, comment on it with where the branch stands and link
+the commit.
 
+```
+git issue comment <id> "<status>"    # at each articulation point
+git issue link <id> <commit>
+```
 
+Show git issues for `verse/*` branches.
+```
+git issue list --label branch        # verse/* branches using this mechanism and their status
+```
 
 ## Commits
 
@@ -57,7 +71,7 @@ Optional: a commit may declare what it is with git trailers, so the log can be
 queried for it.
 
 ```
-Tier: change | contract       # omit for an ordinary fix
+Tier: change | contract | docs | design      # omit for an ordinary fix, comma separated
 Checked: <what you ran>
 Breaks: <what someone on main must do differently>
 ```

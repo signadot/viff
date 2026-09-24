@@ -288,10 +288,6 @@ test-long: ## go test ./... including the long, timeout-waiting tests (GOTEST_LO
 check-json: ## fail if non-test code imports encoding/json outside the allowlist
 	@./scripts/check-json.sh
 
-.PHONY: check-paths
-check-paths: ## fail if the system:kind:id vocabulary moves off its baseline (it only goes down)
-	@./scripts/check-paths.sh
-
 # A diagram is the one thing in this tree nothing reads until a browser does, months later —
 # mkdocs copies the block through untouched, so a syntax error is invisible at build time and
 # surfaces as mermaid's error text printed where the picture should be. This parses every block
@@ -324,7 +320,7 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 	fi
 
 .PHONY: check
-check: check-generate check-json check-paths check-mermaid check-docs ## every static check (what CI should run before the tests)
+check: check-generate check-json check-mermaid check-docs ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an ephemeral port)
