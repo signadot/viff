@@ -31,11 +31,12 @@ const replyOption = "reply"
 func askFor(resolver task.Resolver) Tool {
 	return Tool{
 		Name: askTool,
-		Description: "Ask the person this task is running for something, and wait for their " +
-			"answer; it is this tool's result. Your turn pauses until they reply, which may take " +
-			"a while. Use it when you need a decision or information only they have — and, when " +
-			"the task is a conversation, after each answer, to hand them the turn. `options` " +
-			"lists outcomes for them to choose between; without it they answer in words.",
+		Description: "Say something to the person this task is running for and wait for their " +
+			"reply; it is this tool's result. Your turn pauses until they answer, which may take " +
+			"a while. Use it whenever you need a decision or information only they have, and in " +
+			"a conversation after EVERY answer, to hand them the turn — stopping instead ends the " +
+			"task. `options` lists outcomes for them to choose between; without it they reply in " +
+			"words.",
 		Params: map[string]any{
 			"question": map[string]any{"type": "string",
 				"description": "what you want to know, or say before handing over the turn"},

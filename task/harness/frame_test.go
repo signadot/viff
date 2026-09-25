@@ -195,7 +195,7 @@ func TestDefaultFrameExplainsAskWhenOffered(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := defaultFrame(with, Vector(), nil)
-	for _, want := range []string{"hand them the turn", "stopping without asking ENDS the task"} {
+	for _, want := range []string{"hand them the turn", "Stopping without asking ENDS the task"} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("the frame does not say %q:\n%s", want, frame)
 		}
