@@ -25,7 +25,7 @@ func TestDefaultFrameNeverRecommendsWhatTheVectorBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, vec, nil)
+	frame := defaultFrame(tds, vec, nil, false)
 
 	if strings.Contains(strings.ToLower(frame), "prefer call_agent") {
 		t.Error("the frame recommends call_agent while the vector gates it")
@@ -54,7 +54,7 @@ func TestDefaultFrameDescribesAnUngatedVectorAsUngated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, &task.Vector{Default: task.Auto}, nil)
+	frame := defaultFrame(tds, &task.Vector{Default: task.Auto}, nil, false)
 	if strings.Contains(frame, "STOP the loop") {
 		t.Error("no tool is gated under an auto vector, so nothing should be described as stopping the loop")
 	}
@@ -72,7 +72,7 @@ func TestDefaultFrameDescribesAnUngatedVectorAsUngated(t *testing.T) {
 // message is FOR, so a task that names a shape is not competing with the frame.
 func TestDefaultFrameDoesNotMandateAProseSummary(t *testing.T) {
 	tds, _ := selectTools(nil, nil)
-	frame := defaultFrame(tds, Vector(), nil)
+	frame := defaultFrame(tds, Vector(), nil, false)
 	low := strings.ToLower(frame)
 
 	for _, banned := range []string{"one-paragraph summary", "paragraph summary", "summarize what you did"} {
@@ -96,7 +96,7 @@ func TestDefaultFrameNamesOnlyTheToolsOnOffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, Vector(), nil)
+	frame := defaultFrame(tds, Vector(), nil, false)
 	for _, withheld := range []string{"write_file", "run_bash", "call_agent"} {
 		if strings.Contains(frame, withheld) {
 			t.Errorf("the frame names %s, which this spawn does not offer", withheld)
@@ -194,7 +194,7 @@ func TestDefaultFrameExplainsAskWhenOffered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(with, Vector(), nil)
+	frame := defaultFrame(with, Vector(), nil, false)
 	for _, want := range []string{"hand them the turn", "Stopping without asking ENDS the task"} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("the frame does not say %q:\n%s", want, frame)
@@ -208,7 +208,26 @@ func TestDefaultFrameExplainsAskWhenOffered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(defaultFrame(without, Vector(), nil), "hand them the turn") {
+	if strings.Contains(defaultFrame(without, Vector(), nil, false), "hand them the turn") {
 		t.Error("the frame describes ask to a task that was not offered it")
+	}
+}
+
+// IN A CONVERSATION THE FRAME SAYS THE TURN IS HANDED OVER BY STOPPING, and not by ask — the
+// loop hands the person the turn whenever the model goes quiet, so a model told to ask after
+// every answer would put a question in front of a person who already has the turn.
+func TestDefaultFrameDescribesAConversation(t *testing.T) {
+	tds, err := selectTools(nil, []Tool{askFor(task.AutoResolver{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := defaultFrame(tds, Vector(), nil, true)
+	for _, want := range []string{"CONVERSATION", "say what you have to say and stop", yieldDone} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("the conversation frame does not say %q:\n%s", want, frame)
+		}
+	}
+	if strings.Contains(frame, "hand them the turn") || strings.Contains(frame, "Your final message ENDS") {
+		t.Errorf("the conversation frame still tells the model that stopping ends the task:\n%s", frame)
 	}
 }

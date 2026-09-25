@@ -152,7 +152,7 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, vec, nil) + "\n\n" + contractClause(contract)
+	frame := defaultFrame(tds, vec, nil, false) + "\n\n" + contractClause(contract)
 	d := &llmDriver{client: client, tools: tds, frame: frame, prompt: drivePrompt, log: os.Stderr}
 	p := task.NewTask("drive", sup, d, &fsExec{root: root, log: os.Stderr})
 	p.SetLog(os.Stderr)
@@ -249,7 +249,7 @@ func TestDriveAnImpossibleJobYieldsCannot(t *testing.T) {
 	vec := &task.Vector{Default: task.Auto}
 	sup := task.NewSupervisor(vec, task.AutoResolver{})
 	sup.SetDeriver(demoDeriver{})
-	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec, nil), log: os.Stderr,
+	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec, nil, false), log: os.Stderr,
 		prompt: "Read the file `quarterly-revenue.csv` in your working directory and report the " +
 			"total revenue for Q3. Report the number and nothing else."}
 	p := task.NewTask("impossible", sup, d, &fsExec{root: root, log: os.Stderr})

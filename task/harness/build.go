@@ -39,7 +39,7 @@ import (
 // unattended trigger firing means park. Rewording the constant would not fix it, because
 // the vector is per-spawn and slidable while the constant is neither. Deriving the advice
 // from the vector does: below, each tool is described as it will actually behave.
-func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string {
+func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool, converse bool) string {
 	var free, gated []string
 	asks := false
 	for _, td := range tds {
@@ -74,7 +74,16 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string
 		"the same action — take another approach, or hand control back with %s.\n", yieldHint)
 	b.WriteString("A result saying an action is outside your grant is final. Nobody present can " +
 		"approve it and no rephrasing makes it permitted.\n")
-	if asks {
+	if converse {
+		// A conversation: the loop hands the person the turn whenever the model stops, so the
+		// model is told to stop when it has said its piece, and that ending is the person's.
+		fmt.Fprintf(&b, "This task is a CONVERSATION with the person it runs for. When you stop "+
+			"talking they are given the turn, and what they say arrives as your next message; "+
+			"the conversation ends when they end it, or when you call %s with reason %q. So say "+
+			"what you have to say and stop — you need not call %s to hand over the turn, though "+
+			"you may use it to put a specific question or a choice to them.\n",
+			yieldTool, yieldDone, askTool)
+	} else if asks {
 		// The one tool whose wait is a PERSON's, said in terms of what it does to the turn, and
 		// said BEFORE the sentence about the final message: a model told first that its last
 		// message is the answer, and then that it may ask, answered a "let's chat" once and
@@ -88,6 +97,10 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string
 			"STOP after answering: call %s with your message to hand them the turn, every time, "+
 			"and end only when they say they are done. Stopping without asking ENDS the task.\n",
 			askTool, askTool)
+	}
+	if converse {
+		b.WriteString("When the conversation ends, your last message is this task's result.")
+		return b.String()
 	}
 	b.WriteString("Your final message ENDS this task and IS its result. It is read by whatever asked " +
 		"for the work — often another part of the system rather than a person — so make it the " +
@@ -242,6 +255,9 @@ type Config struct {
 	// Extra are tools the RUNTIME adds to this agent's vocabulary, beyond the ones this
 	// package implements. See Tool.
 	Extra []Tool
+	// Converse: the run is a conversation (task.Launch.Converse), so the frame says the person
+	// is handed the turn whenever the model stops, and `ask` is not how to hand it over.
+	Converse bool
 
 	// Finish is the RUNTIME's own closing act, composed onto the end of this task's loop: a
 	// coding runner's push, and anything else a runtime does with the work rather than to it.
@@ -316,7 +332,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	// write one, so what the agent is told matches what it will actually meet.
 	frame := cfg.Frame
 	if frame == "" {
-		frame = defaultFrame(tools, vec, extra)
+		frame = defaultFrame(tools, vec, extra, cfg.Converse)
 	}
 	// The contract is stated in the frame even when the spawn wrote the frame itself, and
 	// appending to an author's text is otherwise not this function's business. It is

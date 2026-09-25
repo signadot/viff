@@ -290,7 +290,13 @@ type llmDriver struct {
 	log      io.Writer
 	emit     func(task.Frame) // publish narration onto the task read plane; nil = log only
 	folding  []chatMessage    // messages waiting to land, folded in before the next model turn
+	ended    bool             // the model ended the RUN (yield done), not merely its turn
 }
+
+// Ended reports whether the model ended the run itself. In a conversation the loop hands the
+// person the turn whenever the model stops talking; `yield done` is the model saying there is
+// nothing more to talk about, and this is how the loop can tell.
+func (d *llmDriver) Ended() bool { return d.ended }
 
 func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
 	if d.last != nil { // record the result of the tool call we dispatched last
@@ -622,6 +628,7 @@ func (d *llmDriver) yield(tc toolCall) (task.ToolUse, bool, error) {
 	case yieldWaiting:
 		said += " You will be called again as soon as a sub-agent reports, with its result."
 	case yieldDone:
+		d.ended = true
 		said += " Your last message stands as this task's answer."
 	default:
 		said += fmt.Sprintf(" (Reason %q is not one of %q, %q or %q. If you could not complete "+
