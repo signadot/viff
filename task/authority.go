@@ -170,7 +170,7 @@ func GrantNames() []string {
 // is refused under any non-wildcard grant. That is fail-closed, deliberately: an action
 // nothing could classify is exactly the one an envelope should not admit.
 func (g Grant) Permits(tu ToolUse) bool {
-	if g.allowsAll() {
+	if g.allowsAll() || tu.IsQuestion() {
 		return true
 	}
 	for _, m := range g.Allow {

@@ -43,8 +43,8 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string
 	var free, gated []string
 	for _, td := range tds {
 		name := td.Function.Name
-		if name == yieldTool {
-			continue // not an action; described on its own terms at the end
+		if name == yieldTool || name == askTool {
+			continue // not actions on the world; each is described on its own terms
 		}
 		if gateModeFor(name, vec, extra).Blocks() {
 			gated = append(gated, name)
@@ -263,6 +263,9 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	if cfg.Log == nil {
 		cfg.Log = io.Discard
 	}
+	// The harness's own fifth tool, offered on the runtime tools' terms: narrowable by a
+	// spawn's `tools:`, handed to children, dispatched through the same seam. See askTool.
+	cfg.Extra = append(append([]Tool{}, cfg.Extra...), askFor(cfg.Resolver))
 	extra := byName(cfg.Extra)
 	tools, err := selectTools(cfg.Tools, cfg.Extra)
 	if err != nil {

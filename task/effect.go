@@ -28,6 +28,11 @@ const (
 	// runner performs it, so it carries the runner's credential and lands somewhere with its
 	// own history — which is exactly why it is worth a gate and worth a name.
 	Push Verb = "push"
+	// Question hands the turn to a person: the task poses a question and blocks on its answer.
+	// It is the one verb that names no capability — a question changes nothing until somebody
+	// answers, and the answer is theirs — which is why a grant admits it whatever else it
+	// excludes and the vector never asks whether the task may ask (see IsQuestion).
+	Question Verb = "question"
 	// Reserved: an asynchronous "spawn"/"go" verb (fork a concurrent task,
 	// teardown-at-join) is deliberately omitted — it needs a different lifetime
 	// model (structured concurrency + monitoring) and breaks the quiescent
@@ -46,7 +51,7 @@ const (
 // So the exclusion is computed from this, and the test beside it pins the promise. A new verb
 // that nobody adds here is a verb no grant admits, which fails loudly the first time it is used
 // rather than quietly forever.
-var AllVerbs = []Verb{Read, Write, Create, Delete, Exec, Network, CallAgent, Resolve, Push}
+var AllVerbs = []Verb{Read, Write, Create, Delete, Exec, Network, CallAgent, Resolve, Push, Question}
 
 // MarshalText / UnmarshalText spell Verb as its text, which is what it already is.
 //
@@ -100,6 +105,22 @@ type Resource struct {
 type Effect struct {
 	Verb     Verb
 	Resource Resource
+}
+
+// IsQuestion reports whether an action is a question for a person and nothing else: every
+// derived effect is Question. Such an action is outside what a grant bounds and a vector gates —
+// asking is the instrument those two are enforced WITH, not a capability they govern — so both
+// pass it, and the wait it opens is the question's own.
+func (tu ToolUse) IsQuestion() bool {
+	if len(tu.Effects) == 0 {
+		return false
+	}
+	for _, e := range tu.Effects {
+		if e.Verb != Question {
+			return false
+		}
+	}
+	return true
 }
 
 // Convenience constructors for typed resources.

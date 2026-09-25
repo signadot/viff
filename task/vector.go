@@ -292,6 +292,12 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d.Origin = s.origin
 	d.Resolver = s.resolverRef
 	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
+	// A question is not asked about. Under `vector: ask` the default would gate the asking
+	// itself, and the person would be asked whether the task may ask them — the question the
+	// task poses is the one that blocks, on the docket, with their answer as its outcome.
+	if tu.IsQuestion() {
+		d.Mode = Auto
+	}
 	if !d.Mode.Blocks() {
 		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: d}, nil
 	}
