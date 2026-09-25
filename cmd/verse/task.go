@@ -540,7 +540,11 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
 		// stream continues to completion. Ctrl-c to detach; the task keeps running.
-		if err := streamEvents(cc, sp.ID, by); err != nil {
+		// From the start. A live attach joins the stream at its next frame, and the task was
+		// running before this request reached it, so its first frames were already gone — a
+		// run that answered in one turn printed from cursor 2. This command spawned it, so
+		// everything it has said is what was asked for.
+		if err := streamEvents(cc, sp.ID, by, "0"); err != nil {
 			return err
 		}
 	}
@@ -731,15 +735,23 @@ func (cfg *taskAttachConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return streamEvents(cc, id, by)
+	return streamEvents(cc, id, by, "")
 }
 
 // streamEvents streams a task's read plane (SSE) to stdout — the agent's words, each
 // action, and any gate it blocks on. On an interactive terminal it also PROMPTS you to
 // approve/deny each gate as it blocks and resolves it inline (the agent unblocks and the
 // stream continues); piped/non-tty it just streams. Runs until the stream ends or you ^C.
-func streamEvents(cc *cli.Context, id, as string) error {
-	resp, err := httpGet("/tasks/"+id+"/events", nil)
+//
+// since is the cursor to read from — "" joins live, "0" replays everything retained — and it is
+// the caller's to say: `task run` wants the whole run it just started, `task attach` the run
+// from here on.
+func streamEvents(cc *cli.Context, id, as, since string) error {
+	var q url.Values
+	if since != "" {
+		q = url.Values{"since": {since}}
+	}
+	resp, err := httpGet("/tasks/"+id+"/events", q)
 	if err != nil {
 		return fmt.Errorf("task attach: %w", err)
 	}
