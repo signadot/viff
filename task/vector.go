@@ -158,6 +158,11 @@ type Option struct {
 const (
 	Proceed = "proceed"
 	Deny    = "deny"
+	// Reply and End are the options of a question that wants WORDS: an `ask` the model poses,
+	// or the turn the runtime hands a person in a conversation. Reply carries the words as the
+	// answer's say; End is the person ending the conversation.
+	Reply = "reply"
+	End   = "end"
 )
 
 // DefaultOptions is the question a gate poses when it names no options: yes or no, each

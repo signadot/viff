@@ -41,6 +41,14 @@ type Conversation interface {
 	Fold(messages []string)
 }
 
+// Ender is an optional Driver capability: after Next returns !more, whether the driver ended the
+// RUN rather than its turn. A model that stops talking has ended its turn, and in a
+// conversation the person's turn follows; `yield done` is the model ending the conversation,
+// and only the driver can tell the two apart.
+type Ender interface {
+	Ended() bool
+}
+
 // Resulter is an optional Driver capability: report a completed run's result
 // (e.g. the agent's final message) so a parent CallAgent folds in the child's
 // output rather than just a note that it completed.
@@ -144,6 +152,8 @@ type Task struct {
 	driver Driver
 	exec   Executor
 	fin    Finisher    // the runtime's closing act, consulted when the input goes quiet
+	turn   Resolver    // where the person's turn is posed, when this run is a conversation; nil = it is not
+	turns  int         // turns handed over, for their ids
 	ansck  AnswerCheck // what this spawn declared its answer must be; nil = no contract
 	scope  Grant       // this task's own authority — checked against a CallAgent's Grant
 	repo   func() *RepoContext
@@ -223,6 +233,21 @@ func (p *Task) SetSpawn(f SpawnFunc) { p.spawn = f }
 // path as anything else — which is every property the driver-wrapping version bought, without
 // the latch it needed to keep. See Finisher.
 func (p *Task) SetFinisher(f Finisher) { p.fin = f }
+
+// SetConverse makes this run a conversation: when the driver goes quiet, the person is handed
+// the turn as a question posed through r — the task's own resolver, so it is on the docket and
+// answered from wherever a gate is — and the run ends when they end it. nil (the default) means
+// the run ends when the driver stops.
+//
+// Refused, with a line in the log, for a driver that holds no conversation: a turn handed to a
+// call list is words nobody hears, and the run would stand at a question for ever.
+func (p *Task) SetConverse(r Resolver) {
+	if _, ok := p.driver.(Conversation); !ok {
+		p.logf("⚠ converse ignored: this driver holds no conversation")
+		return
+	}
+	p.turn = r
+}
 
 // SetAnswerCheck installs this spawn's answer contract. nil (the default) means the run ends
 // wherever the driver stops.
@@ -377,6 +402,7 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 		failFast:       p.failFast,
 		hasFinisher:    p.fin != nil,
 		hasAnswerCheck: p.ansck != nil,
+		converse:       p.turn != nil,
 	}
 	replies := make(chan input, 16)
 
@@ -460,7 +486,11 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 						tu.ID = p.nextID()
 						p.sup.Derive(&tu) // classify before the machine checks the envelope
 					}
-					return inDriver{tu: tu, more: more, err: err, answer: p.Result(), tok: tok}
+					ended := false
+					if e, ok := p.driver.(Ender); ok && err == nil && !more {
+						ended = e.Ended()
+					}
+					return inDriver{tu: tu, more: more, ended: ended, err: err, answer: p.Result(), tok: tok}
 				})
 
 		case effGate:
@@ -534,6 +564,25 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 				p.sup.Derive(&tu)
 			}
 			replies <- inFinish{tu: tu, ok: ok, tok: v.tok}
+
+		case effTurn:
+			// The person's turn, posed as the question it is. Its context is the standing
+			// question's, so a say or a pause withdraws it the way they withdraw a gate.
+			gctx, gcancel := context.WithCancelCause(ctx)
+			p.gateCancel = gcancel
+			p.turns++
+			q := GateQuestion{
+				ID: fmt.Sprintf("%s%st%d", p.ID, GateSep, p.turns), Origin: p.ID, Gate: "turn",
+				Mode: Ask, Reason: "your turn",
+				Options: []Option{{ID: Reply, Says: "say something"}, {ID: End, Says: "end the conversation"}},
+			}
+			tok := v.tok
+			p.seam("the turn", replies,
+				func(err error) input { return inTurn{err: err, tok: tok} },
+				func() input {
+					res, err := p.turn.Resolve(gctx, q, ToolUse{Name: "turn", ID: q.ID})
+					return inTurn{res: res, err: err, tok: tok}
+				})
 
 		case effCancelChildren:
 			for _, id := range v.ids {

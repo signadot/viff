@@ -61,6 +61,11 @@ type world struct {
 	repairs int // contract rejections still to hand out
 	execs   int
 	faulted bool // a seam has already failed on this path (see fault)
+	// converse: the run is a conversation. turns counts the person's turns taken; the first
+	// is words (which reopens the input) and the next ends it, so every path both continues
+	// and ends a conversation.
+	converse bool
+	turns    int
 }
 
 // script is what the driver proposes, in order: two delegations, an action that fails, and one
@@ -113,6 +118,13 @@ func (w world) reply(e effect) (input, world) {
 		return inChecked{tok: v.tok}, w
 	case effFinish:
 		return inFinish{tu: ToolUse{Name: "deliver", ID: "deliver"}, ok: true, tok: v.tok}, w
+	case effTurn:
+		w.turns++
+		q := GateQuestion{ID: fmt.Sprintf("t%d", w.turns), Gate: "turn", Mode: Ask}
+		if w.turns == 1 {
+			return inTurn{res: Resolution{Choice: Reply, By: "human:test", Steer: []string{"go on"}, Question: q}, tok: v.tok}, w
+		}
+		return inTurn{res: Resolution{Choice: End, By: "human:test", Question: q}, tok: v.tok}, w
 	}
 	return nil, w
 }
@@ -165,6 +177,9 @@ func (w world) fault(e effect) (input, world, bool) {
 	case effFinish:
 		// Not a failure so much as the other branch: nowhere to deliver, so nothing proposed.
 		return inFinish{ok: false, tok: v.tok}, w, true
+	case effTurn:
+		// The context ended under the turn: the question left the docket unanswered.
+		return inTurn{err: errCancelled, tok: v.tok}, w, true
 	}
 	return nil, w, false
 }
@@ -187,6 +202,8 @@ func tokOf(e effect) int {
 		return v.tok
 	case effFinish:
 		return v.tok
+	case effTurn:
+		return v.tok
 	}
 	return 0
 }
@@ -199,7 +216,7 @@ func blocking(t *testing.T, effs []effect) effect {
 	var found effect
 	for _, e := range effs {
 		switch e.(type) {
-		case effHold, effAsk, effGate, effExecute, effSpawn, effCheck, effFinish:
+		case effHold, effAsk, effGate, effExecute, effSpawn, effCheck, effFinish, effTurn:
 			if found != nil {
 				t.Fatalf("two blocking effects in one transition: %T and %T", found, e)
 			}
@@ -237,6 +254,19 @@ func TestEveryOrderingHoldsTheContract(t *testing.T) {
 	enumerate(t, arrivals, world{repairs: 1}, true)
 }
 
+// The same run as a CONVERSATION: the person is handed the turn whenever the driver goes quiet,
+// their words reopen the input, and the run ends when they end it. Every path here continues
+// once and ends once, interleaved with everything above — a say arriving while the turn stands,
+// a child reporting under it, the contract's repair after the person spoke.
+func TestEveryOrderingHoldsTheContractInConversation(t *testing.T) {
+	arrivals := []arrival{
+		{"say", inSay{msgs: []convMsg{{text: "actually, do it this way", by: "human:test"}}}, anytime},
+		{"kid1", inChild{id: kidID(1), reason: string(Done), summary: "child kid1 completed (done)"}, childReady(kidID(1))},
+		{"kid2", inChild{id: kidID(2), reason: string(Failed), failed: true, summary: "child kid2 ended with error: boom"}, childReady(kidID(2))},
+	}
+	enumerate(t, arrivals, world{repairs: 1, converse: true}, true)
+}
+
 // The same, with a CANCEL in place of the say: the winding-down paths, where a child that
 // reports is joined rather than heard and nothing an operator says re-enters.
 //
@@ -264,6 +294,7 @@ func enumerate(t *testing.T, arrivals []arrival, w world, mustEnd bool) {
 		hasFinisher:    true,
 		hasAnswerCheck: true,
 		failFast:       true,
+		converse:       w.converse,
 	}
 	s, effs := step(start, inStart{})
 

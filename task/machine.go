@@ -45,6 +45,7 @@ const (
 	phSpawn        // a child's start is outstanding
 	phCheck        // the answer contract's verdict is outstanding
 	phFinish       // the finisher's proposal is outstanding
+	phTurn         // the person's turn is outstanding (a question on the docket; preemptible like a gate)
 	phExit         // winding down: children are cancelled and being joined
 	phEnd          // terminal; nothing follows
 )
@@ -67,6 +68,8 @@ func (p phase) String() string {
 		return "check"
 	case phFinish:
 		return "finish"
+	case phTurn:
+		return "turn"
 	case phExit:
 		return "exit"
 	case phEnd:
@@ -86,6 +89,7 @@ const (
 	convSay    convKind = iota // an operator said something (Handle.Steer)
 	convChild                  // a child of this task reported its result
 	convRepair                 // the runtime is asking for the answer to be repaired
+	convTurn                   // the person took their turn in a conversation: their words, plain
 	convGate                   // a resolver attached context to its answer
 )
 
@@ -126,10 +130,11 @@ type state struct {
 	// re-plan.
 	regate bool
 
-	// What this quiescence has already done. Both reset when the input reopens, which is what
+	// What this quiescence has already done. All reset when the input reopens, which is what
 	// makes delivery per-quiescence rather than once-ever.
 	answerOK bool
 	finished bool
+	turned   bool // the person has been handed the turn in this quiescence
 
 	// Winding down.
 	cancelling bool   // an intervention or a failure is ending this run
@@ -148,6 +153,10 @@ type state struct {
 	failFast       bool
 	hasFinisher    bool
 	hasAnswerCheck bool
+	// converse: this spawn is a conversation. When the driver goes quiet the person is handed
+	// the turn as a question, and the run ends when they end it rather than when the model
+	// stops. Cleared by End, and by a driver that says it has ended.
+	converse bool
 }
 
 func (s state) clone() state {
@@ -195,6 +204,7 @@ type (
 	inDriver struct { // reply: what the driver proposes
 		tu     ToolUse
 		more   bool
+		ended  bool // with !more: the driver ended the run itself, not merely its turn
 		err    error
 		answer string
 		tok    int
@@ -225,6 +235,11 @@ type (
 		ok  bool
 		tok int
 	}
+	inTurn struct { // reply: what the person did with their turn
+		res Resolution
+		err error
+		tok int
+	}
 )
 
 func (inStart) input()    {}
@@ -241,6 +256,7 @@ func (inExecuted) input() {}
 func (inSpawned) input()  {}
 func (inChecked) input()  {}
 func (inFinish) input()   {}
+func (inTurn) input()     {}
 
 // ── effects ─────────────────────────────────────────────────────────────────────
 //
@@ -283,6 +299,7 @@ type (
 		answer string
 		tok    int
 	} // → inFinish
+	effTurn           struct{ tok int } // → inTurn: hand the person the turn, as a question
 	effCancelChildren struct{ ids []string }
 
 	// effTeardown is the last effect of a run: unwind the frames bottom-up and emit the
@@ -308,6 +325,7 @@ func (effSpawn) effect()          {}
 func (effConverse) effect()       {}
 func (effCheck) effect()          {}
 func (effFinish) effect()         {}
+func (effTurn) effect()           {}
 func (effCancelChildren) effect() {}
 func (effTeardown) effect()       {}
 
@@ -435,6 +453,9 @@ func (s *state) fold(in input) []effect {
 		}
 		if !v.more {
 			s.driverQuiet = true
+			if v.ended {
+				s.converse = false // the driver ended the conversation itself (yield done)
+			}
 			return s.quiesce()
 		}
 		return s.propose(v.tu)
@@ -472,8 +493,44 @@ func (s *state) fold(in input) []effect {
 			return nil
 		}
 		return s.finish(v)
+
+	case inTurn:
+		if !s.expecting(phTurn, v.tok) {
+			return nil
+		}
+		return s.turnTaken(v)
 	}
 	return nil
+}
+
+// turnTaken folds what the person did with their turn. Words reopen the input as a say — the
+// driver's next message is theirs — and End ends the conversation: the quiescence continues
+// into the contract, the finisher and `done`. An empty reply is neither, and the turn is
+// handed over again.
+func (s *state) turnTaken(v inTurn) []effect {
+	if v.err != nil { // the context ended under the question: it has left the docket
+		s.setCause(v.err)
+		s.cancelling = true
+		return s.exit(Cancelled)
+	}
+	q := v.res.Question
+	effs := []effect{
+		effJournal{fmt.Sprintf("[%s] turn → %s by %s", q.ID, v.res.Choice, v.res.By)},
+		effEmit{Frame{Kind: EvDecision, ID: q.ID, Tool: "turn", Gate: q.Gate, Mode: q.Mode.String(),
+			Proceed: v.res.Choice != End, By: v.res.By, Text: v.res.Choice}},
+	}
+	if v.res.Choice == End {
+		s.converse = false
+		return append(effs, s.quiesce()...)
+	}
+	words := strings.TrimSpace(strings.Join(v.res.Steer, "\n"))
+	if words == "" {
+		s.turned = false
+		return append(effs, s.quiesce()...)
+	}
+	s.conv = append(s.conv, convMsg{text: words, by: v.res.By, kind: convTurn})
+	s.reopen()
+	return append(effs, s.hinge()...)
 }
 
 // winding reports whether this run is on its way out, in which case an operator's input has
@@ -485,6 +542,13 @@ func (s *state) winding() bool { return s.cancelling || s.ph == phExit || s.ph =
 // not mid-action, and that is worth keeping deliberately rather than by accident.
 func (s *state) interrupt(why string) []effect {
 	switch s.ph {
+	case phTurn:
+		// The turn is withdrawn and, since `turned` resets with the input, handed over again
+		// at the next quiescence — after whatever the intervention folded in. A say IS the
+		// turn taken: the words are in the conversation, and the question would otherwise
+		// stand for an answer already given.
+		s.turned = false
+		return append([]effect{effDropGate{why: why}}, s.hinge()...)
 	case phGate:
 		// The action is not taken. The driver is told so as a refusal it can re-plan around,
 		// which is the same shape a denial already has — unless the action was the CLOSING one,
@@ -518,6 +582,7 @@ func (s *state) reopen() {
 	s.driverQuiet = false
 	s.answerOK = false
 	s.finished = false
+	s.turned = false
 }
 
 // hinge is the boundary: the one hinge of the loop, and the only place anything that is not
@@ -574,12 +639,12 @@ func (s *state) drainConversation() []convMsg {
 	}
 	out := make([]convMsg, 0, len(s.conv))
 	for _, m := range s.conv {
-		if m.kind == convSay {
+		if m.kind == convSay || m.kind == convTurn {
 			out = append(out, m)
 		}
 	}
 	for _, m := range s.conv {
-		if m.kind != convSay {
+		if m.kind != convSay && m.kind != convTurn {
 			// Steer over a contract repair: a run that has been told something new is not a
 			// run that should be arguing with its own answer. The repair is dropped; the
 			// driver will produce a new answer, checked when the stream next goes quiet.
@@ -609,6 +674,14 @@ func (s *state) quiesce() []effect {
 		// recover) rather than a hope.
 		s.ph = phHinge
 		return nil
+	}
+	// The person's turn, in a conversation: once per quiescence, above the contract and the
+	// finisher so neither runs until the conversation is over. It is a question, so it is the
+	// wait a gate is — on the docket, withdrawn by an intervention or a cancel — and property 5
+	// needs nothing new said for it.
+	if s.converse && !s.turned {
+		s.turned = true
+		return []effect{effTurn{tok: s.await(phTurn)}}
 	}
 	if s.hasAnswerCheck && !s.answerOK {
 		return []effect{effCheck{answer: s.answer, tok: s.await(phCheck)}}

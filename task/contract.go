@@ -79,6 +79,8 @@ func (s state) Waiting() string {
 		return "the answer contract's verdict"
 	case phFinish:
 		return "the finisher's closing action"
+	case phTurn:
+		return "the person to take their turn or end the conversation (a question on the docket, withdrawn by a say or a cancel)"
 	case phExit:
 		if len(s.children) > 0 {
 			return fmt.Sprintf("%d cancelled child(ren) to report", len(s.children))
