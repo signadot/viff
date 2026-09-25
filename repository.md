@@ -1,5 +1,11 @@
 # Repository
 
+## Documentation
+
+Design and documentation on `main` are authoritative.  Documentation lives
+mostly under `docs/` as markdown files presented by
+[mkdocs](https://www.mkdocs.org/); use `mkdocs serve` to view in a browser.
+
 ## Git Issues
 
 This repository contains git issues, an in-repository distributed
