@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -786,65 +785,238 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	}
 	in := streamFmt(resp)
 	color := colorize(cc.Out)
-	// Only offer to answer if there is a name to answer AS. A gate still shows either way —
+	// Only offer to answer if there is a name to answer AS. A question still shows either way —
 	// attaching is watching, and watching never required an identity.
-	interactive := isTTY() && as != ""
-	stdin := bufio.NewReader(os.Stdin)
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
-		}
-		// Wire, always: a transcript is a running commentary, and the loop below reads each
-		// frame as a task.Frame to know when the task is over — so one frame per line is what
-		// the person watching and the code watching both want.
-		fmt.Fprintln(cc.Out, renderFrame(data, in, out, color, true))
-		// task.Frame, not a hand-copied subset of it: the six fields this loop reads
-		// were re-declared here with their tony tags, so a rename on the emitting side
-		// would have gone unnoticed and simply stopped populating them.
-		var ev task.Frame
-		_ = codec.Unmarshal([]byte(data), &ev, in)
-		// The task reached a terminal status — the stream won't emit more, so detach
-		// (else attach would hang waiting on a closed-but-not-EOF stream).
-		if ev.Kind == "status" && isTerminalStatus(ev.Text) {
-			return nil
-		}
-		// A gate is worth naming even when this attach cannot answer it: the run is stopped,
-		// and a reader watching a stream go quiet should be told why and what would move it.
-		if !interactive && ev.Kind == "pending" && ev.ID != "" {
-			if opts := (task.GateQuestion{Options: ev.Options}).OptionsOrDefault(); yesOrNo(opts) {
-				fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate approve %s --as <who>\n",
-					ev.Gate, ev.Tool, ev.ID)
-			} else {
-				fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — answer it: verse gate %s --answer <%s> --as <who>\n",
-					ev.Gate, ev.Tool, ev.ID, strings.Join(task.OptionIDs(opts), "|"))
-			}
-		}
-		// A pending gate blocks the task HERE until answered — prompt and resolve inline.
-		if interactive && ev.Kind == "pending" {
-			pid := ev.Task
-			if pid == "" {
-				pid, _, _ = strings.Cut(ev.ID, task.GateSep)
-			}
-			choice := promptGate(cc, stdin, ev)
-			if choice == "" {
-				fmt.Fprintf(cc.Out, "  left standing — answer it: verse gate %s --answer <option> --as %s\n", ev.ID, as)
+	interactive := as != ""
+	// Frames and typed lines both arrive on channels, so a prompt never stops the stream: a
+	// question answered elsewhere while its prompt is up closes the prompt here, and a task
+	// that ends while somebody is deciding is seen to end.
+	frames := scanFrames(resp.Body)
+	lines := readLines(cc.In)
+	// Lines typed while no prompt is up are for the task's NEXT question. A line cannot answer
+	// a question it was typed before — on a yes-or-no gate it would deny an action the person
+	// never saw — so it waits, and a `reply` prompt takes everything waiting as one message,
+	// the way a person's paragraphs are one message.
+	var queued []string
+	var open *prompt
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				lines = nil // EOF: nothing more will be typed; the stream goes on
 				continue
 			}
-			if err := resolveTaskGate(pid, ev.ID, choice, as); err != nil {
-				fmt.Fprintf(cc.Err, "  resolve %s: %v\n", ev.ID, err)
-			} else if choice != task.Proceed && choice != task.Deny {
-				fmt.Fprintf(cc.Out, "  → %s: %s\n", ev.ID, choice)
-			} else if choice == task.Proceed {
-				fmt.Fprintf(cc.Out, "  → approved %s\n", ev.ID)
-			} else {
-				fmt.Fprintf(cc.Out, "  → denied %s\n", ev.ID)
+			if open == nil {
+				queued = append(queued, line)
+				fmt.Fprintln(cc.Out, "  (queued for the task's next question)")
+				continue
 			}
+			choice, say, ok := open.take(line)
+			if !ok {
+				open.show(cc.Out) // not an answer: ask again
+				continue
+			}
+			answerPrompt(cc, open, choice, say, as)
+			open = nil
+
+		case data, ok := <-frames:
+			if !ok {
+				return nil
+			}
+			// Wire, always: a transcript is a running commentary, and the loop below reads
+			// each frame as a task.Frame to know when the task is over — so one frame per
+			// line is what the person watching and the code watching both want.
+			fmt.Fprintln(cc.Out, renderFrame(data, in, out, color, true))
+			// task.Frame, not a hand-copied subset of it: the six fields this loop reads
+			// were re-declared here with their tony tags, so a rename on the emitting side
+			// would have gone unnoticed and simply stopped populating them.
+			var ev task.Frame
+			_ = codec.Unmarshal([]byte(data), &ev, in)
+			// The task reached a terminal status — the stream won't emit more, so detach
+			// (else attach would hang waiting on a closed-but-not-EOF stream).
+			if ev.Kind == task.EvStatus && isTerminalStatus(ev.Text) {
+				return nil
+			}
+			if ev.Kind == task.EvDecision && open != nil && ev.ID == open.id {
+				fmt.Fprintf(cc.Out, "  answered by %s\n", ev.By)
+				open = nil
+				continue
+			}
+			if ev.Kind != task.EvPending || ev.ID == "" {
+				continue
+			}
+			pr := newPrompt(ev)
+			// A question is worth naming even when this attach cannot answer it: the run is
+			// stopped, and a reader watching a stream go quiet should be told why and what
+			// would move it. That is also the case once stdin is closed and nothing is
+			// waiting to be said — except that a `reply` still takes what was typed before.
+			if pr.reply && len(queued) > 0 && interactive {
+				fmt.Fprintf(cc.Out, "  ❓ %s\n", ev.Text)
+				answerPrompt(cc, pr, replyOption, []string{strings.Join(queued, "\n")}, as)
+				queued = nil
+				continue
+			}
+			if !interactive || lines == nil {
+				fmt.Fprintln(cc.Out, "  ⏸ "+pr.hint(as))
+				continue
+			}
+			open = pr
+			open.show(cc.Out)
 		}
 	}
-	return nil
+}
+
+// scanFrames hands the stream's frames over a channel, closed when the stream ends.
+func scanFrames(body io.Reader) <-chan string {
+	ch := make(chan string, 16)
+	go func() {
+		defer close(ch)
+		sc := bufio.NewScanner(body)
+		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		for sc.Scan() {
+			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
+				ch <- data
+			}
+		}
+	}()
+	return ch
+}
+
+// readLines hands what is typed over a channel, line by line, closed at EOF. A nil reader is
+// a closed channel: nothing will be typed.
+func readLines(in io.Reader) <-chan string {
+	ch := make(chan string)
+	if in == nil {
+		close(ch)
+		return ch
+	}
+	go func() {
+		defer close(ch)
+		sc := bufio.NewScanner(in)
+		for sc.Scan() {
+			ch <- sc.Text()
+		}
+	}()
+	return ch
+}
+
+// replyOption is the option a question offers when it wants an answer in words — what the
+// harness's `ask` poses when the model named no outcomes.
+const replyOption = "reply"
+
+// prompt is one question put to the person at the terminal: which task, which question, and
+// what an answer to it looks like.
+type prompt struct {
+	pid, id string
+	text    string // the question, in the asker's words
+	gate    string
+	tool    string
+	opts    []task.Option
+	reply   bool // an answer in words
+	yesno   bool // the default two options
+}
+
+func newPrompt(ev task.Frame) *prompt {
+	pid := ev.Task
+	if pid == "" {
+		pid, _, _ = strings.Cut(ev.ID, task.GateSep)
+	}
+	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
+	pr := &prompt{pid: pid, id: ev.ID, text: ev.Text, gate: ev.Gate, tool: ev.Tool, opts: opts}
+	for _, o := range opts {
+		if o.ID == replyOption {
+			pr.reply = true
+		}
+	}
+	pr.yesno = yesOrNo(opts)
+	return pr
+}
+
+// show puts the question in front of the person, in the form its options take.
+func (pr *prompt) show(w io.Writer) {
+	switch {
+	case pr.reply && len(pr.opts) == 1:
+		fmt.Fprintf(w, "  ❓ %s\n  > ", pr.text)
+	case pr.yesno:
+		fmt.Fprintf(w, "  ⏸ gate %q (%s) — approve? [y/n] ", pr.gate, pr.tool)
+	default:
+		fmt.Fprintf(w, "  ⏸ gate %q (%s) — choose:\n", pr.gate, pr.tool)
+		for i, o := range pr.opts {
+			need := ""
+			if o.Need > 1 {
+				need = fmt.Sprintf(" (needs %d)", o.Need)
+			}
+			says := ""
+			if o.Says != "" {
+				says = " — " + o.Says
+			}
+			fmt.Fprintf(w, "    %d. %s%s%s\n", i+1, o.ID, need, says)
+		}
+		fmt.Fprint(w, "  > ")
+	}
+}
+
+// take reads a typed line as an answer. ok is false when it is not one: a yes-or-no question
+// wants a yes or a no, and anything else is asked again rather than read as a refusal.
+func (pr *prompt) take(line string) (choice string, say []string, ok bool) {
+	line = strings.TrimSpace(line)
+	if pr.reply && len(pr.opts) == 1 {
+		return replyOption, []string{line}, true
+	}
+	if pr.yesno {
+		switch strings.ToLower(line) {
+		case "y", "yes":
+			return task.Proceed, nil, true
+		case "n", "no":
+			return task.Deny, nil, true
+		}
+		return "", nil, false
+	}
+	if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(pr.opts) {
+		return pr.opts[n-1].ID, nil, true
+	}
+	for _, o := range pr.opts {
+		if o.ID == line {
+			return o.ID, nil, true
+		}
+	}
+	return "", nil, false
+}
+
+// hint is the command that answers this question from anywhere, for a reader who cannot here.
+func (pr *prompt) hint(as string) string {
+	who := as
+	if who == "" {
+		who = "<who>"
+	}
+	switch {
+	case pr.reply && len(pr.opts) == 1:
+		return fmt.Sprintf("%s — answer it: verse gate %s --answer %s --say \"…\" --as %s",
+			pr.text, pr.id, replyOption, who)
+	case pr.yesno:
+		return fmt.Sprintf("gate %q (%s) — answer it: verse gate approve %s --as %s", pr.gate, pr.tool, pr.id, who)
+	default:
+		return fmt.Sprintf("gate %q (%s) — answer it: verse gate %s --answer <%s> --as %s",
+			pr.gate, pr.tool, pr.id, strings.Join(task.OptionIDs(pr.opts), "|"), who)
+	}
+}
+
+// answerPrompt sends the answer and says what happened.
+func answerPrompt(cc *cli.Context, pr *prompt, choice string, say []string, as string) {
+	if err := resolveTaskGate(pr.pid, pr.id, choice, say, as); err != nil {
+		fmt.Fprintf(cc.Err, "  resolve %s: %v\n", pr.id, err)
+		return
+	}
+	switch choice {
+	case task.Proceed:
+		fmt.Fprintf(cc.Out, "  → approved %s\n", pr.id)
+	case task.Deny:
+		fmt.Fprintf(cc.Out, "  → denied %s\n", pr.id)
+	case replyOption:
+		fmt.Fprintf(cc.Out, "  → sent\n")
+	default:
+		fmt.Fprintf(cc.Out, "  → %s: %s\n", pr.id, choice)
+	}
 }
 
 // recordedFailure asks the server what it knows about a task that could not be attached to:
@@ -881,60 +1053,16 @@ func isTerminalStatus(text string) bool {
 	return strings.Contains(text, "error")
 }
 
-// isTTY reports whether stdin is an interactive terminal (so we prompt) vs a pipe (stream only).
-func isTTY() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
-
-// promptGate asks how to answer a blocked gate and returns the option chosen, or "" for
-// none. A two-option question is the yes-or-no it has always been, default deny; one with
-// options of its own lists them, and a number or an id picks one. An empty or unknown line
-// on a listed question chooses nothing: the question stands, and the caller says how to
-// answer it later, rather than posting a deny the record may not even carry.
-func promptGate(cc *cli.Context, in *bufio.Reader, ev task.Frame) string {
-	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
-	if yesOrNo(opts) {
-		fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — approve? [y/N] ", ev.Gate, ev.Tool)
-		line, _ := in.ReadString('\n')
-		line = strings.TrimSpace(strings.ToLower(line))
-		if line == "y" || line == "yes" {
-			return task.Proceed
-		}
-		return task.Deny
-	}
-	fmt.Fprintf(cc.Out, "  ⏸ gate %q (%s) — choose:\n", ev.Gate, ev.Tool)
-	for i, o := range opts {
-		need := ""
-		if o.Need > 1 {
-			need = fmt.Sprintf(" (needs %d)", o.Need)
-		}
-		fmt.Fprintf(cc.Out, "    %d. %s%s\n", i+1, o.ID, need)
-	}
-	fmt.Fprint(cc.Out, "  > ")
-	line, _ := in.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(opts) {
-		return opts[n-1].ID
-	}
-	for _, o := range opts {
-		if o.ID == line {
-			return o.ID
-		}
-	}
-	return ""
-}
-
 // yesOrNo reports whether a question's options are the default two, in which case the
 // prompt is the one an operator already knows.
 func yesOrNo(opts []task.Option) bool {
 	return len(opts) == 2 && opts[0].ID == task.Proceed && opts[1].ID == task.Deny
 }
 
-// resolveTaskGate answers a task's pending decision by option.
-func resolveTaskGate(pid, decisionID, choice, by string) error {
+// resolveTaskGate answers a task's pending decision by option, with what the answerer said.
+func resolveTaskGate(pid, decisionID, choice string, say []string, by string) error {
 	resp, err := httpPost("/tasks/"+pid+"/resolve",
-		api.Resolve{ID: decisionID, Choice: choice, By: by})
+		api.Resolve{ID: decisionID, Choice: choice, Say: say, By: by})
 	if err != nil {
 		return err
 	}
