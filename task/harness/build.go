@@ -41,8 +41,12 @@ import (
 // from the vector does: below, each tool is described as it will actually behave.
 func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string {
 	var free, gated []string
+	asks := false
 	for _, td := range tds {
 		name := td.Function.Name
+		if name == askTool {
+			asks = true
+		}
 		if name == yieldTool || name == askTool {
 			continue // not actions on the world; each is described on its own terms
 		}
@@ -65,6 +69,17 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool) string
 		// the old "prefer call_agent" advice inverted.
 		fmt.Fprintf(&b, "These tools STOP the loop until a supervisor approves each use, and may be "+
 			"denied: %s. Use them where the task requires it, not by preference.\n", strings.Join(gated, ", "))
+	}
+	if asks {
+		// The one tool whose wait is a PERSON's, said in terms of what it does to the turn.
+		// Without this a model asked to chat answers once and stops, which ends the task with
+		// the person's reply arriving at nothing: a stop is read as finished, and the model
+		// needs to be told that the way to hand the turn over is to ask.
+		fmt.Fprintf(&b, "%s puts a question to the person this task runs for and waits for their "+
+			"answer, which is its result; your turn pauses until it comes, and that may take a "+
+			"while. Use it when you need a decision or information only they have. When the task "+
+			"is a conversation, answer and then call %s to hand them the turn: stopping without "+
+			"asking ENDS the task, and your last message is its result.\n", askTool, askTool)
 	}
 	fmt.Fprintf(&b, "A tool result that says DENIED is a decision, not a transient error: do not retry "+
 		"the same action — take another approach, or hand control back with %s.\n", yieldHint)

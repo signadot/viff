@@ -185,3 +185,30 @@ func TestEmptyFrameSendsNoSystemMessage(t *testing.T) {
 		}
 	}
 }
+
+// THE FRAME SAYS WHAT ASKING DOES TO THE TURN, when ask is offered, and says nothing of it when
+// a spawn narrowed it away. A model told only that a tool exists answers a chat once and stops,
+// which is the task ending with the person's reply arriving at nothing.
+func TestDefaultFrameExplainsAskWhenOffered(t *testing.T) {
+	with, err := selectTools(nil, []Tool{askFor(task.AutoResolver{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame := defaultFrame(with, Vector(), nil)
+	for _, want := range []string{"hand them the turn", "stopping without asking ENDS the task"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("the frame does not say %q:\n%s", want, frame)
+		}
+	}
+	if strings.Contains(frame, "These tools run without interruption: "+askTool) ||
+		strings.Contains(frame, ", "+askTool+",") || strings.Contains(frame, ", "+askTool+".") {
+		t.Errorf("ask is listed as a tool that runs without interruption; it waits on a person:\n%s", frame)
+	}
+	without, err := selectTools([]string{"read_file"}, []Tool{askFor(task.AutoResolver{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(defaultFrame(without, Vector(), nil), "hand them the turn") {
+		t.Error("the frame describes ask to a task that was not offered it")
+	}
+}
