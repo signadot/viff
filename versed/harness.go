@@ -60,7 +60,7 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 			ID: l.ID, Prompt: l.Prompt, Root: h.Root, Resolver: reg, Log: h.Log, Content: content,
 			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env,
 			LLMBaseURL: h.LLMBaseURL, LLMKey: h.LLMKey,
-			LLMVirtualKey: virtualKey, LLMModel: h.LLMModel,
+			LLMVirtualKey: virtualKey, LLMModel: h.LLMModel, Converse: l.Converse,
 		})
 		return p
 	case task.DriverCalls:

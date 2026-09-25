@@ -392,9 +392,15 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 
 type taskRunConfig struct {
 	*cli.Command
-	Wait   bool   `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
-	Attach bool   `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
-	Driver string `cli:"name=driver desc='task driver: scripted | calls | llm (default: the runtime default)'"`
+	Wait   bool `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
+	Attach bool `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
+	// Converse is on by default and means something only with -attach: a person is at the
+	// terminal, so when the model goes quiet they are handed the turn (a question on the
+	// docket) and the run ends when they end it — Ctrl-D, or `end` from anywhere. Without
+	// -attach nobody is there to take a turn, so the run ends when the model stops, whatever
+	// this says. -no-converse is an attached run that should end when the model stops.
+	Converse bool   `cli:"name=converse default=true desc='with -attach: hand me the turn when the model goes quiet, until I end it (Ctrl-D); -no-converse ends the run when the model stops'"`
+	Driver   string `cli:"name=driver desc='task driver: scripted | calls | llm (default: the runtime default)'"`
 	// Name is a LABEL, not an address. The id is derived from it and returned, because a
 	// caller-chosen id is a caller-chosen prefix on every gate question the run raises
 	// (`<id>~d1`) — and answering one recovers the owner by cutting at the first `~`, so a
@@ -515,7 +521,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
 		Runner: cfg.Runner, Environment: cfg.Environment, VirtualKey: cfg.VirtualKey, Principal: by,
-		Answer: contract,
+		Answer: contract, Converse: cfg.Attach && cfg.Converse,
 	})
 	if err != nil {
 		return fmt.Errorf("task run: %w", err)
@@ -804,6 +810,12 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 		case line, ok := <-lines:
 			if !ok {
 				lines = nil // EOF: nothing more will be typed; the stream goes on
+				// …except a conversation, which EOF ends: Ctrl-D at the turn is the
+				// person leaving, and the turn is answered `end` on their behalf.
+				if open != nil && open.turn {
+					answerPrompt(cc, open, task.End, nil, as)
+					open = nil
+				}
 				continue
 			}
 			if open == nil {
@@ -851,9 +863,15 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 			// would move it. That is also the case once stdin is closed and nothing is
 			// waiting to be said — except that a `reply` still takes what was typed before.
 			if pr.reply && len(queued) > 0 && interactive {
-				fmt.Fprintf(cc.Out, "  ❓ %s\n", ev.Text)
-				answerPrompt(cc, pr, replyOption, []string{strings.Join(queued, "\n")}, as)
+				if !pr.turn {
+					fmt.Fprintf(cc.Out, "  ❓ %s\n", ev.Text)
+				}
+				answerPrompt(cc, pr, task.Reply, []string{strings.Join(queued, "\n")}, as)
 				queued = nil
+				continue
+			}
+			if pr.turn && interactive && lines == nil {
+				answerPrompt(cc, pr, task.End, nil, as) // stdin already closed: the person has left
 				continue
 			}
 			if !interactive || lines == nil {
@@ -900,10 +918,6 @@ func readLines(in io.Reader) <-chan string {
 	return ch
 }
 
-// replyOption is the option a question offers when it wants an answer in words — what the
-// harness's `ask` poses when the model named no outcomes.
-const replyOption = "reply"
-
 // prompt is one question put to the person at the terminal: which task, which question, and
 // what an answer to it looks like.
 type prompt struct {
@@ -913,6 +927,7 @@ type prompt struct {
 	tool    string
 	opts    []task.Option
 	reply   bool // an answer in words
+	turn    bool // the person's turn in a conversation: words, or Ctrl-D to end it
 	yesno   bool // the default two options
 }
 
@@ -924,10 +939,11 @@ func newPrompt(ev task.Frame) *prompt {
 	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
 	pr := &prompt{pid: pid, id: ev.ID, text: ev.Text, gate: ev.Gate, tool: ev.Tool, opts: opts}
 	for _, o := range opts {
-		if o.ID == replyOption {
+		if o.ID == task.Reply {
 			pr.reply = true
 		}
 	}
+	pr.turn = ev.Gate == "turn"
 	pr.yesno = yesOrNo(opts)
 	return pr
 }
@@ -935,7 +951,9 @@ func newPrompt(ev task.Frame) *prompt {
 // show puts the question in front of the person, in the form its options take.
 func (pr *prompt) show(w io.Writer) {
 	switch {
-	case pr.reply && len(pr.opts) == 1:
+	case pr.turn:
+		fmt.Fprint(w, "  > ")
+	case pr.reply:
 		fmt.Fprintf(w, "  ❓ %s\n  > ", pr.text)
 	case pr.yesno:
 		fmt.Fprintf(w, "  ⏸ gate %q (%s) — approve? [y/n] ", pr.gate, pr.tool)
@@ -960,8 +978,8 @@ func (pr *prompt) show(w io.Writer) {
 // wants a yes or a no, and anything else is asked again rather than read as a refusal.
 func (pr *prompt) take(line string) (choice string, say []string, ok bool) {
 	line = strings.TrimSpace(line)
-	if pr.reply && len(pr.opts) == 1 {
-		return replyOption, []string{line}, true
+	if pr.reply {
+		return task.Reply, []string{line}, true
 	}
 	if pr.yesno {
 		switch strings.ToLower(line) {
@@ -990,9 +1008,9 @@ func (pr *prompt) hint(as string) string {
 		who = "<who>"
 	}
 	switch {
-	case pr.reply && len(pr.opts) == 1:
+	case pr.reply:
 		return fmt.Sprintf("%s — answer it: verse gate %s --answer %s --say \"…\" --as %s",
-			pr.text, pr.id, replyOption, who)
+			pr.text, pr.id, task.Reply, who)
 	case pr.yesno:
 		return fmt.Sprintf("gate %q (%s) — answer it: verse gate approve %s --as %s", pr.gate, pr.tool, pr.id, who)
 	default:
@@ -1012,8 +1030,10 @@ func answerPrompt(cc *cli.Context, pr *prompt, choice string, say []string, as s
 		fmt.Fprintf(cc.Out, "  → approved %s\n", pr.id)
 	case task.Deny:
 		fmt.Fprintf(cc.Out, "  → denied %s\n", pr.id)
-	case replyOption:
+	case task.Reply:
 		fmt.Fprintf(cc.Out, "  → sent\n")
+	case task.End:
+		fmt.Fprintf(cc.Out, "  → ended\n")
 	default:
 		fmt.Fprintf(cc.Out, "  → %s: %s\n", pr.id, choice)
 	}

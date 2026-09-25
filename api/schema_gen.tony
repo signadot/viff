@@ -291,6 +291,7 @@ context:
 define:
   answer: .[tony-base:ir]
   calls: .[array(task:verse-call)]
+  converse: .[bool]
   driver: .[string]
   environment: .[string]
   gates: .[array(task:verse-gate)]

@@ -232,8 +232,8 @@ func TestPromptTake(t *testing.T) {
 	if _, _, ok := menu.take("c"); ok {
 		t.Error("a menu took an option it does not offer")
 	}
-	reply := newPrompt(task.Frame{ID: "t~3", Options: []task.Option{{ID: replyOption}}})
-	if c, say, ok := reply.take("  some words "); !ok || c != replyOption || say[0] != "some words" {
+	reply := newPrompt(task.Frame{ID: "t~3", Options: []task.Option{{ID: task.Reply}}})
+	if c, say, ok := reply.take("  some words "); !ok || c != task.Reply || say[0] != "some words" {
 		t.Errorf("words → %q %v %v", c, say, ok)
 	}
 }

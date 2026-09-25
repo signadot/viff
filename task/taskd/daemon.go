@@ -210,6 +210,9 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	}
 	tk.SetRetain(l.Retain)        // how much of its read plane a resuming reader can still see
 	tk.SetResolverRef(l.Resolver) // who owns the questions it raises
+	if l.Converse {
+		tk.SetConverse(reg) // the person's turn is a question on this task's own docket
+	}
 	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver,
 		occurrence: l.Occurrence, scope: l.Scope, status: task.Running}
 

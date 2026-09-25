@@ -43,6 +43,11 @@ type Launch struct {
 	// default. It is per-spawn because the right number is a property of the work: see
 	// launch.Spec.Retain.
 	Retain int
+	// Converse makes the run a conversation: when its driver goes quiet the person is handed
+	// the turn as a question on the docket, and the run ends when they end it rather than when
+	// the model stops. Set by `task run -attach` for a person at a terminal; a charter cannot
+	// set it, since a conversation with nobody on the other end would stand forever.
+	Converse bool
 
 	// Tools names the tools offered to the agent, narrowing the driver's full set. Empty
 	// = all of them. It is the hard counterpart of Frame's advice: a frame can only ask

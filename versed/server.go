@@ -4650,7 +4650,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := place.Spawn(task.Launch{
-		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain,
+		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain, Converse: body.Converse,
 		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
 		VirtualKey: credential,
 		Answer:     body.Answer, Calls: body.Calls,
