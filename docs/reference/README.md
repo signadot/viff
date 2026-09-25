@@ -204,6 +204,8 @@ verse
           run [-environment <name>] [-virtual-key <address>]    the workspace the runner builds,
                                              and the model credential the run spends
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
+                                             attach prompts for each gate and for a question
+                                             asked in words (`ask`), with an identity
           cancel <id> · say <id> <text…>
           vector <id> auto|ask|park [-as <who>] · vector <id> -file <f>
           approve|deny <id> <decision> [-say <text>]     (also y|yes, n|no)

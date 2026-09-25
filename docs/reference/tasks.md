@@ -218,11 +218,12 @@ verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as you@example.c
 The `~` that separates the gate from its task needs no quotes and no escape, in a shell or in
 a URL.
 
-On a terminal, `run -attach` asks inline instead
-(`⏸ gate "write" (write_file) — approve? [y/N]`). Answer `y` to allow, and anything else to
-deny. A denied gate comes back to the agent as an error, and the agent makes a new plan. When
-the output is piped (not a tty), `attach` only streams. The gate is the same question in both
-cases. It stays in `verse gate`, and anybody can resolve it by id from anywhere.
+With an identity, `run -attach` and `attach` ask inline instead
+(`⏸ gate "write" (write_file) — approve? [y/n]`). Answer `y` to allow and `n` to deny. Any
+other answer is asked again; it is not read as a refusal. A denied gate comes back to the agent
+as an error, and the agent makes a new plan. Without an identity, `attach` only streams, and
+prints the `verse gate` command that answers. The gate is the same question in both cases. It
+stays in `verse gate`, and anybody can resolve it by id from anywhere.
 
 ### A gate's question
 
@@ -337,6 +338,36 @@ verse gate run-f3e31ed0390f~d2 -answer careful -as you@example.com
 
 A gate that wrote `options` of its own over a delegation keeps them. A `need` on such a gate
 is the threshold for every mode.
+
+### A question for the person
+
+A task can ask the person it runs for. The `ask` tool — offered to the `llm` driver and to a
+call list — poses a question and blocks until it is answered, and the answer is the tool's
+result. It is a gate's record: on the docket, in `verse gate`, in Slack, answerable from any of
+them, withdrawn if the task is cancelled. Its one option, `reply`, takes words:
+
+```sh
+verse gate run-4708ef20b92d~3 -answer reply -say "the second one" -as you@example.com
+```
+
+Attached, the prompt is the question and a line:
+
+```
+{cursor: 4 kind: pending id: run-4708ef20b92d~3 tool: ask text: "which one?" …}
+  ❓ which one?
+  > the second one
+  → sent
+```
+
+A line typed while no prompt is up waits for the task's next question — it cannot answer one it
+was typed before, which on a yes-or-no gate would deny an action you never saw — and a `reply`
+takes everything waiting as one message, so what you wrote while the task was working arrives
+as one message with its paragraphs. `options` on the ask makes it a menu instead of words.
+
+A conversation is a run of asks: the model answers, asks, and is answered. It ends when the
+model stops without asking, and its last message is the result, which the frame tells the
+model. A question is inside every grant and outside every vector: a `read-only` task may ask,
+and `vector: ask` never asks whether the task may ask.
 
 <a id="who-you-addressed"></a>
 ### The rough edge: who you addressed
