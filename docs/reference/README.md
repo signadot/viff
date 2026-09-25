@@ -194,7 +194,9 @@ verse
           what it holds. A bare rule or list of them installs at the path. A directory of
           charter files is several packages. charter.md#a-charter-can-be-installed-at-an-address
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
-          run <prompt…> [-attach] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
+          run <prompt…> [-attach [-no-converse]] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
+                                             -attach is a conversation: the turn is yours whenever
+                                             the model goes quiet, and Ctrl-D ends it
           run [-runner <ref>]                …on an installed runner, not the verse default
           run [-name <label>] [-subject <ref>] [-as <who>]      what the run is called, what it
                                              is about, and who it is

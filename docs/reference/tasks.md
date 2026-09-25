@@ -364,10 +364,31 @@ was typed before, which on a yes-or-no gate would deny an action you never saw �
 takes everything waiting as one message, so what you wrote while the task was working arrives
 as one message with its paragraphs. `options` on the ask makes it a menu instead of words.
 
-A conversation is a run of asks: the model answers, asks, and is answered. It ends when the
-model stops without asking, and its last message is the result, which the frame tells the
-model. A question is inside every grant and outside every vector: a `read-only` task may ask,
-and `vector: ask` never asks whether the task may ask.
+A question is inside every grant and outside every vector: a `read-only` task may ask, and
+`vector: ask` never asks whether the task may ask.
+
+### A conversation
+
+`task run -attach` is a conversation unless told `-no-converse`: whenever the model goes quiet,
+you are handed the turn — the same record, `gate: turn`, with the options `reply` and `end` —
+and the run ends when you end it, not when the model stops. At the terminal the turn is a bare
+prompt; a line is your next message, and Ctrl-D ends the conversation. From anywhere else it is
+`verse gate <id> -answer reply -say "…"` or `-answer end`, and a `task say` while the turn
+stands is the turn taken. The model is told all this, so it says its piece and stops rather than
+calling `ask` to hand over; `yield` with reason `done` is the model ending it. The last message
+is the result, and the finisher, if any, runs once, after the end.
+
+```
+{cursor: 2 kind: say task: run-… text: "Hey there! What's on your mind?"}
+{cursor: 3 gate: turn id: run-…~t1 kind: pending options: [{id: reply says: "say something"} {id: end says: "end the conversation"}] text: "your turn" …}
+  > tell me a joke
+  → sent
+```
+
+Without `-attach` nobody is there to take a turn, so the run ends when the model stops whatever
+the flag says; a charter cannot ask for one, since a conversation with nobody on the other end
+would stand for ever. A turn has no deadline: an abandoned conversation stays pending on the
+docket, cancellable with `task cancel`, and is orphaned at a restart like any question.
 
 <a id="who-you-addressed"></a>
 ### The rough edge: who you addressed
