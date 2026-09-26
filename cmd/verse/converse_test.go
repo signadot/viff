@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -108,5 +109,36 @@ func TestConverseMeansNothingWithoutAttach(t *testing.T) {
 	}
 	if strings.Contains(out, "turn") {
 		t.Fatalf("a turn was posed with nobody attached:\n%s", out)
+	}
+}
+
+// A SAY WHILE THE TURN STANDS, THEN A REPLY AT THE NEXT TURN — the sequence a person produces
+// with two terminals: the say withdraws the standing turn and is folded, the model speaks, a new
+// turn is posed, and the reply typed at its prompt answers THAT turn.
+func TestASayWhileTheTurnStandsDoesNotBreakTheNextTurn(t *testing.T) {
+	serveParrot(t)
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	// As the test config's own user, so the out-of-band say (which takes no --as) holds control.
+	out, done := runCLIIn(t, pr, "task", "run", "--driver", "parrot", "--attach", "--as", "user:tester@example.com", "chat")
+	waitFor(t, out, "id: ")
+	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
+	waitFor(t, out, "~t1 kind: pending")
+	if _, err := runCLI(t, "task", "say", id, "hello oob"); err != nil {
+		t.Fatalf("say: %v", err)
+	}
+	waitFor(t, out, "~t2 kind: pending")
+	io.WriteString(pw, "anything\n")
+	waitFor(t, out, "→ sent")
+	pw.Close()
+	got := waitEnd(t, out, done)
+	if strings.Contains(got, "404") || strings.Contains(got, "no such question") {
+		t.Fatalf("the reply at the second turn was refused:\n%s", got)
+	}
+	if !strings.Contains(got, "~t2 kind: decision") {
+		t.Fatalf("the second turn was not answered by the typed reply:\n%s", got)
+	}
+	if !strings.Contains(got, "you said: anything") {
+		t.Fatalf("the reply did not reach the driver as the turn's answer:\n%s", got)
 	}
 }
