@@ -12,11 +12,15 @@ This repository contains git issues, an in-repository distributed
 issue tracker.
 
 ```
-go install github.com/signadot/tony-format/go-tony/cmd/git-issue@latest
+go install github.com/signadot/tony-format/git-issue@latest
 ```
 
 It is a git plugin, so `git issue x` calls `git-issue x` resolved
 via your $PATH.
+
+`git issue mcp` serves the issues to an agent over MCP, and this
+repository's `.mcp.json` names it, so Claude Code opened here offers it
+once you have `git-issue` installed.
 
 ```
 git issue pull # gets remote issues, merging with local
