@@ -665,13 +665,12 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		origin = ""
 	}
 	for k, v := range map[string]string{
-		"origin":   origin,
-		"mode":     ev.Mode,
-		"reason":   ev.Text,
-		"tool":     ev.Tool,
-		"task":     taskID,
-		"subject":  subject,
-		"resolver": owner,
+		"origin":  origin,
+		"mode":    ev.Mode,
+		"reason":  ev.Text,
+		"tool":    ev.Tool,
+		"task":    taskID,
+		"subject": subject,
 	} {
 		if v != "" {
 			rec[k] = v
@@ -705,10 +704,31 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
+	// THE OWNER IS THE OTHER FIELD A LATER ACT CONTRADICTS. The frame names the owner it looked
+	// up when it was reported; a resolver removed or declining since has handed the question on
+	// (reown, which stamps `reownedFrom`), and this write landing after that would name the old
+	// owner again — and hold the question out to it — stranding it on a resolver that no longer
+	// answers. So the owner, and the grant that goes with it, land only on a question not handed
+	// on since; the handover stands. The same caveat as `status` above: the store checks, against
+	// a view that can lag, so this narrows the window rather than closing it
+	// (git-issue nkptp9b3h12ksx3kg9n0).
 	if owner != "" {
-		holdOutAgain(store, ev.ID, owner)
+		named, _, _ := store.Write(entity.Write{
+			At:    ref.At(),
+			Value: entity.Obj{"resolver": owner}.Payload(),
+			When:  []entity.Require{notHandedOn()},
+		})
+		if named {
+			holdOutAgain(store, ev.ID, owner)
+		}
 	}
 	return true
+}
+
+// notHandedOn is the precondition "this question has not changed hands": no `reownedFrom` on the
+// record. Asked of the whole payload, as notStatus is, so a record the frame is creating passes.
+func notHandedOn() entity.Require {
+	return entity.Require{Pattern: entity.Obj{"reownedFrom": entity.Present()}.Payload().WithTag("!not")}
 }
 
 // notStatus is the precondition "this record does not say status: s".
