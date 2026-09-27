@@ -107,6 +107,8 @@ type Escalate struct {
 // comment that settled a gate by accident would be the worst possible failure of this model. What
 // it leaves is a durable, attributed line on the question, where everyone who reads the question
 // reads it, rather than in whatever chat window it was typed in.
+//
+//tony:schemagen=verse-gate-say,notag
 type GateSay struct {
 	ID  string `tony:"field=id"`
 	By  string `tony:"field=by"`

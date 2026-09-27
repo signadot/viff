@@ -88,6 +88,15 @@ signature:
 context:
 - tony-format/context
 define:
+  by: .[string]
+  id: .[string]
+  say: .[string]
+signature:
+  name: verse-gate-say
+---
+context:
+- tony-format/context
+define:
   members: .[array(string)]
   name: .[string]
 signature:

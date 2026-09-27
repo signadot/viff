@@ -132,7 +132,7 @@ in the scope it reflects into.
 | `GET /io/{name}` | the entity |
 | `GET /io/{name}/check` | `{ref, reach}`, plus `says: {root, owns}` when it answered |
 | `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
-| `POST /io/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
+| `POST /io/{name}/hint` | `?at=<address>` (repeatable) — reconcile those places; none means a full resync. `204` |
 
 A route that names one io has two answers when it does not find it:
 

@@ -233,7 +233,7 @@ program is, one about what it sees.
 
 ```
 GET {url}/io                  → Descriptor  { root, owns }
-GET {url}/reflect[?ref=<ref>] → Reflection  { covers, entities }
+GET {url}/reflect[?at=<address>] → Reflection  { covers, entities }
 ```
 
 The source dials verse to **hint** — `POST /io/{name}/hint` — and a hint carries
@@ -253,8 +253,8 @@ sequenceDiagram
 
   Note over X,V: the low-latency half — the source says "look now"
   X->>Src: a push, a webhook
-  Src->>V: POST /io/{name}/hint?ref=…
-  V->>Src: GET /reflect?ref=…
+  Src->>V: POST /io/{name}/hint?at=…
+  V->>Src: GET /reflect?at=…
   Src-->>V: Reflection (that place)
   V->>V: converge
 ```

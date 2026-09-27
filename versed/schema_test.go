@@ -124,6 +124,14 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	if r := got["POST /entity"]; r.Request != "verse-put-entity" {
 		t.Errorf("POST /entity request = %q, want verse-put-entity", r.Request)
 	}
+	// Two routes are called `say` and take different bodies: a word about a question, and a
+	// re-prompt of a task. Each publishes its own.
+	if r := got["POST /gate/say"]; r.Request != "verse-gate-say" {
+		t.Errorf("POST /gate/say request = %q, want verse-gate-say", r.Request)
+	}
+	if r := got["POST /tasks/{id}/say"]; r.Request != "verse-say" {
+		t.Errorf("POST /tasks/{id}/say request = %q, want verse-say", r.Request)
+	}
 	for _, route := range []string{"POST /flow/suspend", "POST /flow/resume"} {
 		if r := got[route]; r.Request != "verse-flow-select" || r.Response != "verse-flow-row" {
 			t.Errorf("%s = %+v, want a verse-flow-select answered by a verse-flow-row", route, r)

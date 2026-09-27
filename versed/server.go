@@ -1353,7 +1353,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
 	rt.handle("POST /gate/escalate", s.escalateGate, "verse-escalate", nothing)
-	rt.handle("POST /gate/say", s.sayOnGate, "verse-say", nothing)
+	rt.handle("POST /gate/say", s.sayOnGate, "verse-gate-say", nothing)
 	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
 	// (flows.go).
 	rt.handle("POST /flow/suspend", s.flowSuspend, "verse-flow-select", one("verse-flow-row"))
