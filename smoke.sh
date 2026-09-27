@@ -759,4 +759,59 @@ step "down"
 v down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons
 ok "down"
 
+# ── the quick start: a fresh verse, and nobody configured ────────────────────
+# What the README tells a new developer to type, as they arrive: no config, no VERSE_USER, a
+# verse on this machine. Every seed script writes, so each one running is a check that a CLI
+# with nobody configured acts as somebody here (the local user), and that the scripts a
+# newcomer meets first still say what the CLI takes.
+#
+# A verse of its own, because the scripts seed baseline: beside the rules the steps above
+# installed, what a seeded entity does would be theirs to decide as much as the seed's.
+step "quick start (a fresh verse, nobody configured)"
+QADDR="127.0.0.1:$(free_port)" || die "could not reserve an ephemeral port"
+# The environment a newcomer has: no user, no agent, and no config file in either layer.
+q() { env -u VERSE_USER -u VERSE_AGENT VERSE_CONFIG="$tmp/none.tony" VERSE="$BIN" VERSE_ADDR="$QADDR" "$@"; }
+env -u VERSE_USER -u VERSE_AGENT VERSE_CONFIG="$tmp/none.tony" \
+	"$BIN" --addr "$QADDR" up --data "$tmp/quick" --o-bin "$tmp/o" >"$tmp/quick.log" 2>&1 &
+SRV=$!
+ready=
+for _ in $(seq 1 300); do
+	if q "$BIN" status >/dev/null 2>&1; then
+		ready=1
+		break
+	fi
+	kill -0 "$SRV" 2>/dev/null || { tail -20 "$tmp/quick.log" >&2; die "the quick start's server exited during startup"; }
+	sleep 0.5
+done
+[ -n "$ready" ] || { tail -20 "$tmp/quick.log" >&2; die "the quick start's server never became ready"; }
+
+q ./scripts/seed-demo.sh >"$tmp/seed-demo.out" 2>&1 ||
+	{ cat "$tmp/seed-demo.out" >&2; die "seed-demo.sh failed with nobody configured"; }
+haskv "$(q "$BIN" data demo task hotfix-1)" stage escalated || die "seed-demo.sh: demo-escalate did not advance demo.task.hotfix-1"
+has "$(cat "$tmp/seed-demo.out")" 'is holding demo.pr.1 at a gate' || { cat "$tmp/seed-demo.out" >&2; die "seed-demo.sh: no gate is waiting"; }
+ok "seed-demo.sh: the charter, its entities, and a gate waiting"
+has "$(q "$BIN" perms demo)" '@localhost' || die "what the quick start wrote is not the local user's: $(q "$BIN" perms demo)"
+ok "what it wrote is the local user's"
+# The answer the script says to type next, as it says to type it: no --as.
+GID=$(q "$BIN" gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+q "$BIN" gate approve "$GID" >/dev/null || die "the gate could not be answered with nobody configured"
+ok "the waiting gate is answered with no --as"
+q ./scripts/seed-demo.sh --clean >/dev/null 2>&1 || die "seed-demo.sh --clean failed"
+
+q ./scripts/seed-entities.sh >"$tmp/seed-entities.out" 2>&1 ||
+	{ cat "$tmp/seed-entities.out" >&2; die "seed-entities.sh failed with nobody configured"; }
+haskv "$(q "$BIN" data human person ana)" team platform || die "seed-entities.sh: human.person.ana is not there"
+ok "seed-entities.sh: a world to select over"
+
+for shape in patch derive; do
+	q ./scripts/charter-shapes.sh run "$shape" >"$tmp/shape.out" 2>&1 ||
+		{ cat "$tmp/shape.out" >&2; die "charter-shapes.sh run $shape failed with nobody configured"; }
+done
+ok "charter-shapes.sh: a shape installs and is driven"
+
+# ── shutdown, again ──────────────────────────────────────────────────────────
+step "down (the quick start's verse)"
+q "$BIN" down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons
+ok "down"
+
 printf '\n\033[32mSMOKE PASSED\033[0m — %d checks\n' "$checks"

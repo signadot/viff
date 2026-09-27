@@ -219,7 +219,7 @@ fi
 # takes it back.
 step "the ordering, and the rules that cross it"
 for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
-for s in "${STRATA[@]}"; do v charter remove "$s" >/dev/null 2>&1 || true; done
+for s in "${STRATA[@]}"; do v charter -r strata "$s" >/dev/null 2>&1 || true; done
 v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 - name: lin-source
   level: 0

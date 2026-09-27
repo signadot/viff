@@ -111,11 +111,11 @@ if $clean; then
 fi
 
 # A world is only inert if nothing is watching it. `seed-demo.sh` installs rules over
-# demo:pr and demo:task — exactly what this seeds — so say so rather than let the reader
+# demo.pr and demo.task — exactly what this seeds — so say so rather than let the reader
 # wonder why an entity they just wrote is already at a different stage.
 if [ -n "$(v charter -o tony 2>/dev/null | grep -v '^\[\]$')" ]; then
 	printf '\n  \033[33m~\033[0m a charter is installed, so some of this will be reacted to at once.\n'
-	printf '    For a world nothing is watching: %s charter remove <name> (or ./scripts/seed-demo.sh --clean)\n' "$BIN"
+	printf '    For a world nothing is watching: %s charter -r rules <name> (or ./scripts/seed-demo.sh --clean)\n' "$BIN"
 fi
 
 step "seeding ${#WORLD[@]} entities"
@@ -139,7 +139,7 @@ seeded. Now select over it:
   $BIN$scope_note data                                     the whole verse, one document
   $BIN$scope_note data demo pr                             by where it lives
   $BIN$scope_note data demo pr 1                           one of them
-  $BIN$scope_note data 'demo.pr.*.stage'                   one field of each, keyed by id
+  $BIN$scope_note data --at 'demo.pr.*.stage'              one field of each, keyed by id
   $BIN$scope_note data demo pr '*' --if '{stage: open}'    by what it says
   $BIN$scope_note data demo pr '*' --if '{stage: !or [open, merged]}'      …with an operator
   $BIN$scope_note data demo pr '*' --if '{urgent: true}' --if-at labels     …rooted inside the payload

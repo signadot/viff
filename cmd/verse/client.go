@@ -980,12 +980,10 @@ type stateConfig struct {
 // dataCmd is `verse data`: the verse's data at a path.
 //
 // The answer is the document the store holds, not rows flattened out of it, and every question
-// is one kinded path asked at a different depth: `verse data`, `verse data demo`,
-// `verse data demo.pr`, `verse data demo.pr.1`, `verse data demo.pr.1.labels.urgent`,
-// `verse data 'demo.pr.*.stage'`.
-//
-// A ref is that same path with `:` for a delimiter, which is why get/put/rm still take one and
-// why nothing about identity moved (see entity/doc.go).
+// is one path asked at a different depth, typed as steps: `verse data`, `verse data demo`,
+// `verse data demo pr`, `verse data demo pr 1`, `verse data demo pr 1 labels urgent`. A path in
+// one token, as a document prints it, goes after `--at`: `verse data --at 'demo.pr.*.stage'`
+// (see address).
 func dataCmd() *cli.Command {
 	cfg := &stateConfig{}
 	opts, err := cli.StructOpts(cfg)
