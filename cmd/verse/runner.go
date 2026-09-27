@@ -60,11 +60,7 @@ func (cfg *runnerShowConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("runner show: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("runner show: no such runner %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "runner show")
 }
 
 type runnerCheckConfig struct{ *cli.Command }
@@ -88,11 +84,7 @@ func (cfg *runnerCheckConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("runner check: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("runner check: no such runner %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "runner check")
 }
 
 type runnerRemoveConfig struct {
@@ -137,11 +129,7 @@ func (cfg *runnerRemoveConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("runner remove: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("runner remove: no such runner %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "runner remove")
 }
 
 type runnerAddConfig struct {

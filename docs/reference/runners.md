@@ -57,6 +57,16 @@ verse task run -runner <ref> <prompt>     run this one there
 `reach` is one of `a runner`, `not a runner`, `unreachable`. Nothing about it is written to the
 store — it is answered live and discarded, so a reachability column is always as of now.
 
+A route that names one runner has two answers when it does not find it:
+
+| | |
+|---|---|
+| `404` | `in your view, no runner "<name>" is installed`. The runner is not installed, or it is not yours to read. The answer is the same for both. |
+| `503` | `runner "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
+
+The listing leaves out the runners you may not read, and answers `503` when the store could
+not be read.
+
 ## On a spawn
 
 `runner:` on a charter's `spawn:`, and `-runner` / `runner` on the ad-hoc face. Empty means the
@@ -65,6 +75,12 @@ verse's default runner, which `verse up -runner` / `-broker` set.
 A spawn naming a runner that is not installed is **refused** on both paths — an ad-hoc run with
 `400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto
 the flow. It is never quietly run somewhere else.
+
+The runner is looked up in the spawner's view: for a rule, that is the view of the rule's
+owner. A runner the spawner may not read is refused in the same words as one that is not
+installed, `in the view of <spawner>, no runner "<name>" is installed`, followed by the runners
+the spawner may read. When the store could not be read the refusal says so, and says nothing
+about what is installed.
 
 ## On the task
 

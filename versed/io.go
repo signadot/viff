@@ -256,8 +256,8 @@ func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ref := verseio.Ref(name)
 	store := s.scopedStore(r)
-	if _, ok := verseio.Find(entity.As(store, entity.SystemDefault), entity.JoinSegs([]string{name})); !ok {
-		http.NotFound(w, r)
+	_, ok, err := verseio.FindErr(entity.As(store, entity.SystemDefault), entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
 	var body verseio.OutPass
@@ -506,14 +506,9 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getIO(w http.ResponseWriter, r *http.Request) {
-	ref := verseio.Ref(r.PathValue("name"))
-	e, ok, err := s.scopedStore(r).Get(ref)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
+	name := r.PathValue("name")
+	e, ok, err := s.scopedStore(r).Get(verseio.Ref(name))
+	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
@@ -523,9 +518,8 @@ func (s *Server) getIO(w http.ResponseWriter, r *http.Request) {
 // an operator reads before deciding whether `--allow-overlap` is honest.
 func (s *Server) checkIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok := verseio.Find(s.scopedStore(r), entity.JoinSegs([]string{name}))
-	if !ok {
-		http.NotFound(w, r)
+	e, ok, err := verseio.FindErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
 	reach, d, why := s.describe(r, e)
@@ -565,9 +559,8 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	name := r.PathValue("name")
 	ref := verseio.Ref(name)
-	e, ok := verseio.Find(store, entity.JoinSegs([]string{name}))
-	if !ok {
-		http.NotFound(w, r)
+	e, ok, err := verseio.FindErr(store, entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
 	q := r.URL.Query()
@@ -1082,8 +1075,8 @@ func (s *Server) hintIO(w http.ResponseWriter, r *http.Request) {
 	// Looked up as the system, in the request's scope. A hint names nobody — it is a hook's
 	// nudge, and what is reflected is reflected as the source — so looked up as its sender, a
 	// registration in a verse that holds out no read was not found by the hook it installed.
-	if _, ok := verseio.Find(entity.As(s.scopedStore(r), entity.SystemDefault), entity.JoinSegs([]string{name})); !ok {
-		http.NotFound(w, r)
+	_, ok, err := verseio.FindErr(entity.As(s.scopedStore(r), entity.SystemDefault), entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
 	var refs []entity.Ref

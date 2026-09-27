@@ -399,20 +399,27 @@ func ownsAreDocuments(node *ir.Node) error {
 // Find reads one installed source by what a CLI argument names: its address as it is stored and
 // listed (`verse.io.laptop`), or its name (`laptop`) — an operator reading `verse data` and
 // one typing `verse io show` should not have to know two spellings of one thing.
+//
+// FindErr is the same read reporting whether it HAPPENED — see runner.FindErr.
 func Find(r entity.Reader, ref string) (Entity, bool) {
+	e, ok, _ := FindErr(r, ref)
+	return e, ok
+}
+
+func FindErr(r entity.Reader, ref string) (Entity, bool, error) {
 	name, ok := NameOf(ref)
 	if !ok {
-		return Entity{}, false
+		return Entity{}, false, nil
 	}
 	e, ok, err := r.Get(Ref(name))
 	if err != nil || !ok {
-		return Entity{}, false
+		return Entity{}, false, err
 	}
 	var out Entity
 	if codec.FromNode(e.Payload, &out) != nil {
-		return Entity{}, false
+		return Entity{}, false, nil
 	}
-	return out, true
+	return out, true, nil
 }
 
 // List reads every installed source, ordered by address, so two readers see one order.

@@ -97,6 +97,16 @@ func statusError(resp *http.Response, what string) error { return client.StatusE
 // text (http.Error), so parsing it as a document fails and it would otherwise be swallowed
 // entirely, leaving a rejected command looking like it succeeded. Callers that handle a
 // specific status (404, 201, 204) check it before calling this, so they are unaffected.
+// said is printBody for a command that names itself in what it refuses with: the server's own
+// words — what is not in the asker's view, a read that did not happen — under the command's
+// name, and never a sentence of the CLI's in their place.
+func said(cc *cli.Context, resp *http.Response, what string) error {
+	if err := printBody(cc, resp); err != nil {
+		return fmt.Errorf("%s: %w", what, err)
+	}
+	return nil
+}
+
 func printBody(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)

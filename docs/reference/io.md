@@ -134,6 +134,16 @@ in the scope it reflects into.
 | `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
 | `POST /io/{name}/hint` | `?ref=` (repeatable) — reconcile those places; none means a full resync. `204` |
 
+A route that names one io has two answers when it does not find it:
+
+| | |
+|---|---|
+| `404` | `in your view, no io "<name>" is installed`. The io is not installed, or it is not yours to read. The answer is the same for both. |
+| `503` | `io "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
+
+The listing leaves out the ios you may not read, and answers `503` when the store could not
+be read.
+
 `reach` is one of `a source`, `not a source`, `unreachable`, and nothing about it is written to
 the store. A `500` from an io is *unreachable* rather than *not a source*: something is
 speaking HTTP and failing, which is an io having a bad day at least as often as it is the

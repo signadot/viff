@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -125,14 +126,9 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
-	ref := runner.Ref(r.PathValue("name"))
-	e, ok, err := s.scopedStore(r).Get(ref)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
+	name := r.PathValue("name")
+	e, ok, err := s.scopedStore(r).Get(runner.Ref(name))
+	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
@@ -143,9 +139,8 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 // already gone — and this says so beforehand rather than in the report afterwards.
 func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok := runner.Find(s.scopedStore(r), entity.JoinSegs([]string{name}))
-	if !ok {
-		http.NotFound(w, r)
+	e, ok, err := runner.FindErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
 	reach, why := runner.Probe(e.URL)
@@ -175,9 +170,8 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	name := r.PathValue("name")
 	ref := runner.Ref(name)
-	e, ok := runner.Find(store, entity.JoinSegs([]string{name}))
-	if !ok {
-		http.NotFound(w, r)
+	e, ok, err := runner.FindErr(store, entity.JoinSegs([]string{name}))
+	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
 	q := r.URL.Query()
@@ -349,22 +343,39 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 		}
 		return s.broker, brokerName, nil
 	}
-	e, ok := runner.Find(store, name)
+	e, ok, err := runner.FindErr(store, name)
+	if err != nil && !errors.Is(err, entity.ErrForbidden) {
+		// The read did not happen, which is not a runner that is not installed: said as what
+		// it is, so whoever reads the refusal waits for the store rather than installs again.
+		return nil, "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
+	}
 	if !ok {
-		installed := runner.List(store)
-		names := make([]string, 0, len(installed))
-		for _, i := range installed {
-			names = append(names, runner.Ref(i.Name).String())
+		// IN THE SPAWNER'S VIEW: the store is theirs, so a runner they may not read and one
+		// that is not there are one answer, and the listing beside it is what they may read.
+		// A failed listing names none rather than saying none are installed.
+		have := "its runners could not be listed"
+		if listed, err := runner.ListErr(store); err == nil {
+			names := make([]string, 0, len(listed))
+			for _, i := range listed {
+				names = append(names, runner.Ref(i.Name).String())
+			}
+			if s.broker != nil {
+				names = append(names, brokerName)
+			}
+			have = "none are installed"
+			if len(names) > 0 {
+				have = "installed: " + strings.Join(names, ", ")
+			}
 		}
-		if s.broker != nil {
-			names = append(names, brokerName)
+		// Whose view, by name where the store says: a store read as nobody in particular is
+		// the spawner's all the same.
+		who := "the spawner"
+		if st, ok := store.(entity.Store); ok && entity.PrincipalOf(st) != "" {
+			who = entity.PrincipalOf(st)
 		}
-		have := "none are installed"
-		if len(names) > 0 {
-			have = "installed: " + strings.Join(names, ", ")
-		}
-		return nil, "", fmt.Errorf("no runner %q (%s) — a spawn naming a runner that is not "+
-			"installed is refused rather than run somewhere else", name, have)
+		return nil, "", fmt.Errorf("in the view of %s, no runner %q is installed (%s) — a spawn "+
+			"naming a runner that is not installed is refused rather than run somewhere else",
+			who, name, have)
 	}
 	return runner.HTTP(e.URL), runner.Ref(e.Name).String(), nil
 }

@@ -62,11 +62,7 @@ func (cfg *ioShowConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("io show: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("io show: no such io %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "io show")
 }
 
 type ioCheckConfig struct{ *cli.Command }
@@ -91,11 +87,7 @@ func (cfg *ioCheckConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("io check: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("io check: no such io %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "io check")
 }
 
 type ioRemoveConfig struct {
@@ -138,11 +130,7 @@ func (cfg *ioRemoveConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("io remove: %w", err)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("io remove: no such io %q", ref)
-	}
-	return printBody(cc, resp)
+	return said(cc, resp, "io remove")
 }
 
 type ioAddConfig struct {

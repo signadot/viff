@@ -134,20 +134,29 @@ func unwrapNode(n *ir.Node) *ir.Node {
 // Find reads one installed runner by what a charter or a CLI argument names: its address as it
 // is stored and listed (`verse.runners.gpu`), or its name (`gpu`) — an operator reading `verse
 // data` and one typing `verse runner show` should not have to know two spellings of one thing.
+//
+// FindErr is the same read reporting whether it HAPPENED, and it is the one a caller deciding
+// something uses: a read that failed, or one the reader may not make, is not a runner that is
+// not installed, and a spawn told "not installed" is work that does not run.
 func Find(r entity.Reader, ref string) (Entity, bool) {
+	e, ok, _ := FindErr(r, ref)
+	return e, ok
+}
+
+func FindErr(r entity.Reader, ref string) (Entity, bool, error) {
 	name, ok := NameOf(ref)
 	if !ok {
-		return Entity{}, false
+		return Entity{}, false, nil
 	}
 	e, ok, err := r.Get(Ref(name))
 	if err != nil || !ok {
-		return Entity{}, false
+		return Entity{}, false, err
 	}
 	var out Entity
 	if codec.FromNode(e.Payload, &out) != nil {
-		return Entity{}, false
+		return Entity{}, false, nil
 	}
-	return out, true
+	return out, true, nil
 }
 
 // List reads every installed runner, ordered by address, so two readers see one order.
