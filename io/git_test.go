@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"

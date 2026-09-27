@@ -7,7 +7,8 @@ require (
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/gops v0.3.28
 	github.com/scott-cotton/cli v0.3.1
-	github.com/signadot/tony-format/go-tony v0.0.237
+	github.com/signadot/tony-format/git-issue v0.3.2
+	github.com/signadot/tony-format/go-tony v0.0.239
 	golang.org/x/net v0.59.0
 )
 
@@ -32,7 +33,7 @@ require (
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
-	github.com/segmentio/encoding v0.3.4 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect

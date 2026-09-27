@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 )

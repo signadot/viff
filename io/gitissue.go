@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/tony-format/go-tony/cmd/git-issue/issuelib"
+	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
