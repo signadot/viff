@@ -3854,7 +3854,13 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.releaseResolver(s.asDocket(r), ref)
+	// Removed either way: the resolver is gone, and the answer says whether what it held went
+	// with it. An operator told only "removed" would not look for questions still naming it.
+	if err := s.releaseResolver(s.asDocket(r), ref); err != nil {
+		http.Error(w, fmt.Sprintf("removed %s, but what it held was not all handed on: %v", ref, err),
+			http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -3871,6 +3877,15 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 // precondition on the write rather than a read before it, because a read before it is the same
 // race with a smaller window.
 func reown(store entity.Store, at, stream entity.Ref, subject, from, why string) bool {
+	landed, _ := reownErr(store, at, stream, subject, from, why)
+	return landed
+}
+
+// reownErr is reown, telling apart the two ways a handover does not land. A question that settled
+// in between LOST the race — an answer beats a transfer, and that is no failure — while a write
+// that could not be made leaves the question naming whoever it named, which for a removed
+// resolver is a name nothing will answer. Only the second is an error.
+func reownErr(store entity.Store, at, stream entity.Ref, subject, from, why string) (bool, error) {
 	rec := entity.Obj{
 		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
 		// question left naming a resolver that will not answer is one nobody can answer,
@@ -3910,8 +3925,11 @@ func reown(store entity.Store, at, stream entity.Ref, subject, from, why string)
 		At: at.At(), Value: rec.Payload(),
 		When: []entity.Require{{Pattern: entity.Obj{"status": mirror.QuestionPending}.Payload()}},
 	})
-	if err != nil || !won {
-		return false
+	if err != nil {
+		return false, err
+	}
+	if !won {
+		return false, nil
 	}
 	// And the grant goes with the record: the question is held out to the resolver that now
 	// answers it and to no other, the old resolver's grant going with the old resolver.
@@ -3928,7 +3946,7 @@ func reown(store entity.Store, at, stream entity.Ref, subject, from, why string)
 	if resolverRef != "" && dials(store, resolverRef) {
 		mirror.Cover(store, resolverRef, resolverName(resolverRef), stream)
 	}
-	return true
+	return true, nil
 }
 
 // dials reports whether a resolver's answerer reads through a cover — a service does; a person
@@ -3950,14 +3968,28 @@ func dials(r entity.Reader, resolverRef string) bool {
 // Called AFTER the resolver is gone, which is what makes the recomputation right: the layer
 // rule asked now returns the next name in order, or nothing. So this is a change of owner and
 // not only a loss of one, which is what allowing overlap bought.
-func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
-	for _, ent := range pendingQuestions(store) {
+//
+// A HANDOVER THAT DID NOT HAPPEN IS SAID, not swallowed. Reading the questions can fail — a busy
+// store times out — and a listing that failed is not a resolver that owned nothing: read as
+// empty, every question it held stays naming a resolver that no longer exists, on a docket
+// promising an answer that will not come, while the removal reports success. So a failed read,
+// and a handover whose write failed, are the error this returns; a question that settled in
+// between is not, since an answer beats a transfer.
+func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) error {
+	questions, err := pendingQuestionsErr(store)
+	if err != nil {
+		return fmt.Errorf("reading the questions %s owned: %w", gone, err)
+	}
+	var stranded []string
+	for _, ent := range questions {
 		p := entity.ToObj(ent.Payload)
 		if p["resolver"] != gone.String() {
 			continue
 		}
 		subject, _ := p["subject"].(string)
-		reown(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed")
+		if _, err := reownErr(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed"); err != nil {
+			stranded = append(stranded, fmt.Sprintf("%s (%v)", ent.Ref.Name(), err))
+		}
 	}
 	// Its covers go with it, and this is the only thing that reaps one. They are
 	// machinery for a reader that no longer exists; what they were evidence of is in the
@@ -3968,6 +4000,11 @@ func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) {
 			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
 		}
 	}
+	if len(stranded) > 0 {
+		return fmt.Errorf("%d question(s) still name %s and could not be handed on: %s",
+			len(stranded), gone, strings.Join(stranded, "; "))
+	}
+	return nil
 }
 
 // engForRequest is the engine a LISTING is about: baseline, a scope's, or a charter package's.
