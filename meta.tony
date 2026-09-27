@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-09-28T00:21:45.93709+02:00"
+duplicates: []
+id: v27eah17h12ksycpq5n0
+labels:
+- design
+- mcp
+related_issues:
+- 55crejnfh12ksb4kq5n0
+status: open
+updated: "2026-09-28T13:26:00.254941+02:00"
