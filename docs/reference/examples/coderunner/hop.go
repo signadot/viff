@@ -463,11 +463,15 @@ func (c *child) awaitReady() error {
 // spawn is POST /tasks: prepare a workspace, start a contained process, and forward the launch
 // to it verbatim.
 //
-// The body is forwarded rather than re-encoded. This runner reads three things out of it — which
-// environment, which driver, and the id — and everything else (frame, tools, answer contract,
-// vector, grant, provenance) is the child's business and travels untouched. A proxy that
-// re-marshalled would silently drop whatever it had not been taught about yet, which is the one
-// failure this seam must not have.
+// The body is forwarded rather than re-encoded. This runner reads a few things out of it — which
+// environment, which driver, the id, the credential, and whose account the work is on — and
+// everything else (frame, tools, answer contract, vector, grant) is the child's business and
+// travels untouched. A proxy that re-marshalled would silently drop whatever it had not been
+// taught about yet, which is the one failure this seam must not have.
+//
+// WHAT IT READS, IT READS AS THE CONTRACT DECLARES IT (task.SpawnRequest), so a field renamed
+// there is renamed here by the compiler. What it writes back into the body it forwards — the
+// id it minted, the driver it chose — goes in under the names that type gives.
 func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	raw, err := io.ReadAll(io.LimitReader(req.Body, 1<<20))
 	if err != nil {
@@ -483,8 +487,13 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("the spawn body does not parse: %v", err), http.StatusBadRequest)
 		return
 	}
+	var sent task.SpawnRequest
+	if err := codec.Unmarshal(raw, &sent, format); err != nil {
+		http.Error(w, fmt.Sprintf("the spawn body is not a launch: %v", err), http.StatusBadRequest)
+		return
+	}
 
-	id := field(&body, "id")
+	id := sent.ID
 	if id == "" {
 		// Minted here rather than by the child, because the workspace and the branch are named
 		// after it and both exist before any child does.
@@ -525,7 +534,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// is the improvement the hop brings here: runner.HTTP reads the status, so a launch this
 	// runner will not host comes back as `spawn refused by <url>: <reason>` on the flow that
 	// asked for it, instead of a task that exists for one tick.
-	env, err := r.cfg.Environment(field(&body, "environment"))
+	env, err := r.cfg.Environment(sent.Environment)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -538,7 +547,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("environment %q: %v", env.Name, err), http.StatusBadRequest)
 		return
 	}
-	driver := field(&body, "driver")
+	driver := sent.Driver
 	if driver == "" {
 		driver = orDefault(env.Driver, driverLLM)
 		// Written back so the snapshot reports what actually ran. A launch that named no driver
@@ -569,16 +578,8 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	// The launch this side keeps is what delivery writes into the commit trailers: the only
 	// externally checkable link back into the verse from a push made under a shared credential.
 	//
-	prov := ir.Get(&body, "provenance")
-	l := task.Launch{
-		ID: id, Prompt: field(&body, "prompt"), Driver: driver, Environment: env.Name,
-		VirtualKey: field(&body, "virtualKey"),
-		Provenance: task.Provenance{
-			Principal: field(prov, "principal"),
-			Subject:   field(prov, "subject"),
-			Chain:     field(prov, "chain"),
-		},
-	}
+	l := sent.Launch()
+	l.ID, l.Driver, l.Environment = id, driver, env.Name
 
 	// ACCEPTED, and answered now. What is validated above is everything this side can refuse
 	// without doing any work — the environment, the containment, the driver, the credentials —

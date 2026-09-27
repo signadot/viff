@@ -122,8 +122,8 @@ that has moved on.
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
 mirrors the stream into the `verse.task.instance` entity, so durability lives in verse rather than
-the runner. Which runner runs a given task is a per-spawn binding — `runner: <url>` in the charter
-or spec, like `-driver` — and there is deliberately no in-memory shortcut: `verse task
+the runner. Which runner runs a given task is a per-spawn binding — `runner: <name>` in the charter
+or spec, the name of an installed runner, like `-driver` — and there is deliberately no in-memory shortcut: `verse task
 cancel|say` and `verse flow suspend -task` go through the same dispatch as a remote one, which
 forces the contract to be complete and keeps local equivalent to remote. The dispatch is per scope: with `-scope` it reaches
 a task that scope spawned and refuses one it inherited, naming the scope that holds it (see [what a
@@ -145,18 +145,61 @@ tell them apart either retries what already happened or abandons what never arri
 distinction is carried in the status, and across the Go seam as `task.ErrUnreachable` and friends.
 
 ```
+GET    /tasks                      every task the runner hosts, as snapshots
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
-POST   /tasks/{id}/resolve  {id, choice, by, say?, key}      answer a gate: choice is proceed | deny, or an option the record names
-       204 applied · 404 no such decision · 409 already answered · 502 runner unreachable
-POST   /tasks/{id}/say      {text, by, key}                  say to it (re-prompt)
-POST   /tasks/{id}/cancel   {by, key}
-POST   /tasks/{id}/pause    {by}                             the operator's hold (docs/control.md)
-POST   /tasks/{id}/resume   {by}                             409 when a suspension holds the task
-PUT    /tasks/{id}/vector   {vector, by}                     slide autonomy
-POST   /tasks                {id?, prompt, subject, vector, claim?, runner-config}  spawn → {id}
-                               (idempotent by id: 201 built it, 200 it was already running)
+POST   /tasks               the launch (below)             spawn → {id}
+       201 built it · 200 it was already running · 400 the body does not parse, or the runner will not host it
+POST   /tasks/{id}/resolve  {id, choice, by, say?}         answer a gate: choice is proceed | deny, or an option the record names
+       204 applied · 404 no such decision, or it is already answered
+POST   /tasks/{id}/say      {instruction, by?}             say to it (re-prompt)
+POST   /tasks/{id}/cancel   {reason?}                      end it, and say why
+POST   /tasks/{id}/pause                                   the operator's hold (docs/control.md)
+POST   /tasks/{id}/resume
+PUT    /tasks/{id}/vector   {vector, by?}                  slide autonomy
 ```
+
+A control call that was applied answers `204`. A task the runner does not host answers `404`.
+
+### The bodies
+
+Each body is one Go type in package `task`, used by verse when it sends and by the stock runner
+(`task/taskd`) when it reads. Each is in the schema under its name (`verse schema`), which is
+where a runner in another language reads it.
+
+| Route | Type | Schema name |
+|---|---|---|
+| `POST /tasks` | `task.SpawnRequest` | `verse-runner-spawn` |
+| `POST /tasks`, the answer | `task.Spawned` | `verse-runner-spawned` |
+| `POST /tasks/{id}/say` | `task.SayRequest` | `verse-runner-say` |
+| `POST /tasks/{id}/cancel` | `task.CancelRequest` | `verse-runner-cancel` |
+| `PUT /tasks/{id}/vector` | `task.VectorRequest` | `verse-runner-vector` |
+| `GET /tasks/{id}` | `task.Instance` | `verse-instance` |
+
+**The launch.** Every field is optional. A field that is absent means the runner's own default.
+
+| Field | What it is |
+|---|---|
+| `id` | the task's id. verse mints it, so that it matches the task's record. A runner sent none mints its own. |
+| `prompt` | the one job |
+| `driver` | which driver runs it: `llm`, `scripted`, `calls`, or one the runner declares |
+| `frame` | the standing instructions the prompt is read in |
+| `tools` | the tools offered. Absent is all of them. A name no driver knows fails the spawn. |
+| `retain` | how many events to keep for a reader that resumes |
+| `virtualKey` | the model credential the task runs under: the key itself. It is the one field that carries a secret. |
+| `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the spawn. |
+| `calls` | the work itself, for the `calls` driver |
+| `vector` | the gate vector to launch under, as resolved values |
+| `grant` | the hard envelope, as resolved values. Absent is unbounded. |
+| `environment` | the name of the workspace. The runner resolves it, and refuses a name it does not have. |
+| `occurrence` | which run this is: the store revision it is about. The runner says it back on the snapshot. |
+| `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what |
+
+Two facts about a launch stay in verse and are not sent: the scope the task was spawned into,
+and the resolver its questions are held out to.
+
+**A spawn is idempotent by id while the task runs.** A second spawn of a live id answers `200`
+with the task that is running. A spawn of an id whose task has ended is a new run.
 
 ### The event envelope and the cursor
 
@@ -238,7 +281,7 @@ Control ingress is a distinct, out-of-band `POST`, never a store write — the r
 [deployment and steering](deployment-and-steering.md) — but its application is emitted as an event
 on the one ordered stream. The POST is the request; the event is the truth.
 
-The POST return is `202 Accepted`, and verse never assumes control took hold until the
+The POST return is `204 No Content`, and verse never assumes control took hold until the
 corresponding event appears at a new cursor. That dissolves races: a `cancel` POSTed after
 completion never yields a `cancelled` event, and a `resolve` for an already-timed-out gate comes
 back as a `decision` marked stale, a recorded no-op rather than a silent drop. The POST does not
@@ -249,8 +292,9 @@ order verse replays with nothing else to reconcile. Priority is that ordering: "
 outranks observation" means the runner drains control at the boundary before the next action,
 so a control-effect event precedes the action it gated in cursor order.
 
-Control POSTs carry an idempotency `key` echoed on the resulting event, so a retried `say` or
-`cancel` yields at most one event; verse also dedups by cursor.
+A control POST carries no idempotency key. A `cancel` of a task that has ended changes nothing,
+and an answer to a decision that is already answered is refused `404`. A `say` sent twice is
+said twice. verse dedups events by cursor.
 
 The gate lifecycle, end to end, is entirely on the stream and fully resumable (a say-to is a
 `say` event with `by` set — the operator's side of the conversation):
@@ -258,15 +302,16 @@ The gate lifecycle, end to end, is entirely on the stream and fully resumable (a
 ```
 pending  @40 {id:G, gate:"deploy", mode:ask, tool:merge}   → verse mirrors pending[G]
    … verse routes G to a Resolver, gets a verdict …
-POST /resolve {id:G, proceed:true, by:"human:scott", say:"squash first", key}   → 202
-decision @41 {id:G, proceed:true, by:"human:scott"}        → verse clears pending[G]
-say      @42 {by:"human:scott", text:"squash first"}        → folded in
+POST /resolve {id:G, choice:proceed, by:"user:scott@example.com", say:["squash first"]}   → 204
+decision @41 {id:G, choice:proceed, proceed:true, by:"user:scott@example.com"}   → verse clears pending[G]
+say      @42 {by:"user:scott@example.com", text:"squash first"}                  → folded in
 exec     @43 {tool:merge, text:"merged"}                    → worker proceeded
 ```
 
-Restart between @40 and @41 → verse replays `pending@40`, re-routes, re-POSTs `resolve`
-with the same `key`; the runner re-surfaces `decision@41`; verse dedups by cursor. Replay +
-idempotent re-POST converge — no lost gate, no double-merge.
+Restart between @40 and @41 → verse replays `pending@40`, re-routes, and re-POSTs `resolve`. If
+the first answer landed, the runner refuses the second as already answered and the replay
+carries `decision@41`; verse dedups by cursor. Either way there is one decision — no lost gate,
+no double-merge.
 
 ## Invariants verse CAS-enforces on the entity
 
@@ -349,7 +394,8 @@ front door still binds an external URL directly.
 
 Per task: assign gapless per-task cursors; serve `GET /tasks/{id}` as current truth; serve
 `GET /events?since=` with replay-then-live and a `gap` frame below its watermark; emit the kinds
-above; make every control POST idempotent by `key` and echo its application as an ordered event;
+above; read the bodies as [the contract](#the-bodies) declares them, refusing one that does not
+parse; echo the application of every control POST as an ordered event;
 make the terminal a stable, replayable last event. Nothing about *how* it runs the work leaks
 through, which is what makes local, k8s, lambda and a NAT'd broker interchangeable behind the
 URL.

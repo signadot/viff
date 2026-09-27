@@ -11,6 +11,13 @@ signature:
 context:
 - tony-format/context
 define:
+  reason: .[string]
+signature:
+  name: verse-runner-cancel
+---
+context:
+- tony-format/context
+define:
   default: .[string]
   within: .[string]
 signature:
@@ -133,7 +140,60 @@ signature:
 context:
 - tony-format/context
 define:
+  by: .[string]
+  instruction: .[string]
+signature:
+  name: verse-runner-say
+---
+context:
+- tony-format/context
+define:
+  chain: .[string]
+  principal: .[string]
+  subject: .[string]
+signature:
+  name: verse-runner-provenance
+---
+context:
+- tony-format/context
+define:
   default: .[string]
   gates: .[array(verse-gate)]
 signature:
   name: verse-vector
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  answer: .[tony-base:ir]
+  calls: .[array(verse-call)]
+  driver: .[string]
+  environment: .[string]
+  frame: .[string]
+  grant: .[nullable(verse-grant)]
+  id: .[string]
+  occurrence: .[int]
+  prompt: .[string]
+  provenance: .[nullable(verse-runner-provenance)]
+  retain: .[int]
+  tools: .[array(string)]
+  vector: .[nullable(verse-vector)]
+  virtualKey: .[string]
+signature:
+  name: verse-runner-spawn
+---
+context:
+- tony-format/context
+define:
+  id: .[string]
+signature:
+  name: verse-runner-spawned
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  vector: !verse-vector null
+signature:
+  name: verse-runner-vector

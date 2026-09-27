@@ -68,57 +68,12 @@ type httpRunner struct {
 // the task:instance entity). content is not forwarded — a remote runtime resolves
 // files its own way; federating a remote read_file is a later concern.
 func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
-	req := map[string]any{"id": l.ID, "prompt": l.Prompt, "driver": l.Driver}
-	// Send only what the spawn actually said. An empty frame or an absent grant means "the
-	// remote's own default", and writing them out empty would be a claim rather than an
-	// absence — the grant especially, since the zero Grant permits nothing, so sending it
-	// unconditionally would refuse every action of every task nobody meant to bound.
-	if l.Frame != "" {
-		req["frame"] = l.Frame
+	// The launch as it crosses (task.SpawnRequest): every field of it but the two that are
+	// verse's own, each absent where the spawn said nothing, which is the runner's default.
+	body, err := codec.Marshal(l.Wire(), codec.Tony)
+	if err != nil {
+		return task.FailedHandle(fmt.Sprintf("spawn on %s: the launch does not render: %v", p.base, err))
 	}
-	if len(l.Tools) > 0 {
-		req["tools"] = l.Tools
-	}
-	if l.Answer != nil {
-		req["answer"] = l.Answer
-	}
-	// The work itself, for a call list. It rides as the field it is rather than as text in the
-	// prompt, so a remote runner gets the same structure the charter wrote — see task.Launch.Calls.
-	if len(l.Calls) > 0 {
-		req["calls"] = l.Calls
-	}
-	if l.Vector != nil {
-		req["vector"] = l.Vector
-	}
-	if l.Grant != nil {
-		req["grant"] = l.Grant
-	}
-	if l.Environment != "" {
-		req["environment"] = l.Environment
-	}
-	// The NAME of the credential, never the credential: the remote holds the values and
-	// resolves the name against its own config, which is the same split `environment` above
-	// already makes and the reason verse can send this in the clear.
-	if l.VirtualKey != "" {
-		req["virtualKey"] = l.VirtualKey
-	}
-	// Provenance is sent field by field for the reason every other field here is conditional:
-	// an empty one means verse did not know, and writing it out empty would be a claim of
-	// having asked rather than a record of not knowing.
-	if p := l.Provenance; p != (task.Provenance{}) {
-		prov := map[string]any{}
-		if p.Principal != "" {
-			prov["principal"] = p.Principal
-		}
-		if p.Subject != "" {
-			prov["subject"] = p.Subject
-		}
-		if p.Chain != "" {
-			prov["chain"] = p.Chain
-		}
-		req["provenance"] = prov
-	}
-	body, _ := codec.Marshal(req, codec.Tony)
 	resp, err := p.cl.Post(p.base+"/tasks", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
 		return task.FailedHandle(err.Error())
@@ -345,15 +300,24 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 	return out, cancel
 }
 
-func (h *remoteHandle) Pause() error               { return h.post("/pause", nil) }
-func (h *remoteHandle) Resume() error              { return h.post("/resume", nil) }
-func (h *remoteHandle) Cancel(reason string) error { return h.post("/cancel", nil) } // remote cancel takes no reason
+func (h *remoteHandle) Pause() error  { return h.post("/pause", nil) }
+func (h *remoteHandle) Resume() error { return h.post("/resume", nil) }
+
+// Cancel ends the task, and says why: the reason is what the task's charters see, so it
+// crosses with the cancel.
+func (h *remoteHandle) Cancel(reason string) error {
+	return h.post("/cancel", task.CancelRequest{Reason: reason})
+}
+
 func (h *remoteHandle) Steer(instr, by string) error {
-	return h.post("/say", map[string]string{"instruction": instr, "by": by})
+	return h.post("/say", task.SayRequest{Instruction: instr, By: by})
 }
 
 func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
-	b, err := codec.Marshal(map[string]any{"vector": v, "by": by}, codec.Tony)
+	if v == nil {
+		return fmt.Errorf("%s: no vector to set", h.id)
+	}
+	b, err := codec.Marshal(task.VectorRequest{Vector: *v, By: by}, codec.Tony)
 	if err != nil {
 		return err
 	}

@@ -19,8 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/signadot/tony-format/go-tony/ir"
-
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
 )
@@ -295,53 +293,35 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 }
 
 func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Id     string       `tony:"field=id"`
-		Prompt string       `tony:"field=prompt"`
-		Driver string       `tony:"field=driver"`
-		Frame  string       `tony:"field=frame"`
-		Tools  []string     `tony:"field=tools"`
-		Answer *ir.Node     `tony:"field=answer,omitzero"`
-		Calls  []task.Call  `tony:"field=calls,omitzero"`
-		Vector *task.Vector `tony:"field=vector,omitzero"`
-		Grant  *task.Grant  `tony:"field=grant,omitzero"`
-		// Environment names the workspace the runner should build; Provenance is what it
-		// needs to make its own effects auditable. Both are the runner's to interpret —
-		// taskd carries them to the Builder and reads neither.
-		Environment string `tony:"field=environment,omitzero"`
-		Provenance  struct {
-			Principal string `tony:"field=principal,omitzero"`
-			Subject   string `tony:"field=subject,omitzero"`
-			Chain     string `tony:"field=chain,omitzero"`
-		} `tony:"field=provenance,omitzero"`
+	// The launch as the contract declares it (task.SpawnRequest), which is what the caller
+	// rendered: a field this end had its own name for is a field the two could disagree on.
+	var body task.SpawnRequest
+	// A BODY THAT DOES NOT PARSE IS REFUSED. Spawned anyway it is a task with no prompt under
+	// the id of nothing, answered `201`, and the caller is told its work is running. No body
+	// at all is a launch that says nothing, which is a spawn of the runner's defaults.
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, fmt.Sprintf("the spawn does not parse: %v", err), http.StatusBadRequest)
+		return
 	}
-	_ = codec.Read(r, &body)
-	id := body.Id // a runner client (the engine) passes its own id so it matches
-	if id == "" { // the task:instance entity; an ad-hoc `task run` gets a fresh one
-		id = fmt.Sprintf("p%d", d.seq.Add(1))
+	l := body.Launch()
+	// a runner client (the engine) passes its own id so it matches the task:instance entity;
+	// an ad-hoc spawn gets a fresh one
+	if l.ID == "" {
+		l.ID = fmt.Sprintf("p%d", d.seq.Add(1))
 	}
-	// ad-hoc `task run`: local filesystem. Everything that shapes or bounds the agent
-	// rides the wire, so a task hosted on a REMOTE runner is framed and bounded exactly
-	// as a local one — the seam is complete or the guarantee is local-only. The vector and
-	// grant arrive as resolved predicates rather than names for the reason task.Launch
-	// gives: the vocabulary lives at one end, so the two cannot drift apart.
-	h, created := d.spawnHosted(task.Launch{
-		ID: id, Prompt: body.Prompt, Driver: body.Driver, Frame: body.Frame, Tools: body.Tools,
-		Answer: body.Answer, Calls: body.Calls, Vector: body.Vector, Grant: body.Grant,
-		Environment: body.Environment,
-		Provenance: task.Provenance{
-			Principal: body.Provenance.Principal,
-			Subject:   body.Provenance.Subject,
-			Chain:     body.Provenance.Chain,
-		},
-	}, nil)
+	// THE WHOLE LAUNCH reaches the builder. Everything that shapes or bounds the agent rides
+	// the wire, so a task hosted on a REMOTE runner is framed and bounded exactly as a local
+	// one — the seam is complete or the guarantee is local-only. The vector and grant arrive
+	// as resolved predicates rather than names for the reason task.Launch gives: the
+	// vocabulary lives at one end, so the two cannot drift apart.
+	h, created := d.spawnHosted(l, nil)
 	// 201 built it, 200 found it already running. A retrying client needs no more than
 	// that, and a client that does not care can ignore it: both mean "this id is running".
 	status := http.StatusCreated
 	if !created {
 		status = http.StatusOK
 	}
-	writeOut(w, r, status, map[string]any{"id": h.task.ID})
+	writeOut(w, r, status, task.Spawned{ID: h.task.ID})
 }
 
 // Count returns the number of hosted tasks (live and completed-but-unreaped).
@@ -512,19 +492,24 @@ func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var body struct {
-		Instruction string `tony:"field=instruction"`
-		By          string `tony:"field=by"`
+	var body task.SayRequest
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, fmt.Sprintf("the say does not parse: %v", err), http.StatusBadRequest)
+		return
 	}
-	if err := codec.Read(r, &body); err != nil || body.Instruction == "" {
-		http.Error(w, "instruction required", http.StatusBadRequest)
+	if body.Instruction == "" {
+		http.Error(w, "a say carries an `instruction`", http.StatusBadRequest)
 		return
 	}
 	h.task.Steer(body.Instruction, body.By) // empty is an unattributed caller, said as such
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// control returns a handler for the subtree ops that take no body.
+// cancelledHere is the reason a cancel gives when its caller gave none.
+const cancelledHere = "cancelled via daemon"
+
+// control returns a handler for the subtree ops. A cancel carries why (task.CancelRequest);
+// pause and resume carry nothing.
 func (d *Daemon) control(op string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h := d.lookup(r)
@@ -534,7 +519,18 @@ func (d *Daemon) control(op string) http.HandlerFunc {
 		}
 		switch op {
 		case "cancel":
-			h.task.Cancel("cancelled via daemon")
+			// The reason is what the task's charters see on `onCancelled`. A cancel with no
+			// body is a cancel all the same; one whose body does not parse is refused, since
+			// the reason it meant to give is not known and the task would end under another.
+			var body task.CancelRequest
+			if err := codec.Read(r, &body); err != nil {
+				http.Error(w, fmt.Sprintf("the cancel does not parse: %v", err), http.StatusBadRequest)
+				return
+			}
+			if body.Reason == "" {
+				body.Reason = cancelledHere
+			}
+			h.task.Cancel(body.Reason)
 		case "pause":
 			h.task.Pause()
 		case "resume":
@@ -550,10 +546,7 @@ func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var body struct {
-		Vector task.Vector `tony:"field=vector"`
-		By     string      `tony:"field=by"`
-	}
+	var body task.VectorRequest
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

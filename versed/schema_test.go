@@ -437,3 +437,30 @@ func TestSteerRoutesShareOneShapeCarryingTheVerb(t *testing.T) {
 		}
 	}
 }
+
+// The bodies of the runner contract are published, each under its name: a runner in another
+// language is written from the schema, and a body that is in no schema is one it guesses at.
+func TestSchemaPublishesTheRunnerContract(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	defs := ir.Get(published(t, ts, "/schema"), "define")
+	if defs == nil {
+		t.Fatal("/schema has no define")
+	}
+	for _, name := range []string{
+		"verse-runner-spawn", "verse-runner-provenance", "verse-runner-spawned",
+		"verse-runner-say", "verse-runner-cancel", "verse-runner-vector", "verse-instance",
+	} {
+		if ir.Get(defs, name) == nil {
+			t.Errorf("/schema does not define %s", name)
+		}
+	}
+	spawn := ir.Get(defs, "verse-runner-spawn")
+	for _, field := range []string{"virtualKey", "retain", "occurrence", "provenance", "answer"} {
+		if spawn != nil && ir.Get(spawn, field) == nil {
+			t.Errorf("verse-runner-spawn has no %s", field)
+		}
+	}
+}
