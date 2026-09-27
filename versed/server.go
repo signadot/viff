@@ -2004,6 +2004,9 @@ func storeUnreadable(st entity.Reader) error {
 // notFoundAt says nothing stands at the address asked for, in the address the caller wrote —
 // which is the whole point of answering it rather than an empty document: a reader learns their
 // path is wrong instead of that the verse is empty.
+//
+// IN THE ASKER'S VIEW, and it says so: what a read answers is what its reader may read, so
+// "nothing stands" is a statement about that and not about the store (view.go).
 func notFoundAt(w http.ResponseWriter, r *http.Request, at *kpath.KPath) {
 	spelled := r.URL.Query().Get("at")
 	if spelled == "" {
@@ -2012,10 +2015,10 @@ func notFoundAt(w http.ResponseWriter, r *http.Request, at *kpath.KPath) {
 	if spelled == "" {
 		// The whole verse, on a verse nobody has written to. Naming the address would name
 		// nothing, and "the verse is empty" is the fact a reader wants on their first read.
-		codec.HTTPError(w, r, http.StatusNotFound, "the verse is empty: nothing has been written yet")
+		codec.HTTPError(w, r, http.StatusNotFound, "in your view, the verse is empty: nothing has been written yet")
 		return
 	}
-	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf("nothing stands at %s", spelled))
+	codec.HTTPError(w, r, http.StatusNotFound, nothingStands(spelled))
 }
 
 func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
@@ -2173,7 +2176,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		http.NotFound(w, r)
+		codec.HTTPError(w, r, http.StatusNotFound, nothingStands(ref.String()))
 		return
 	}
 	// The entity itself. Its Ref carries MarshalText, so it still renders as the address

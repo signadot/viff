@@ -416,9 +416,14 @@ a document somebody wrote; it is not what a read says about a path nobody wrote,
 there" is not a question with `none` as its answer, it is a question about a node that is not
 there.
 
-    verse data nosuch            nothing stands at nosuch
-    verse data demo pr nosuch    nothing stands at demo.pr."nosuch"
-    verse data                   the verse is empty: nothing has been written yet
+    verse data nosuch            in your view, nothing stands at nosuch
+    verse data demo pr nosuch    in your view, nothing stands at demo.pr."nosuch"
+    verse data                   in your view, the verse is empty: nothing has been written yet
+
+"In your view" because a read answers what its reader may read. A node that you may not read
+is left out of what a wider read answers, so it is not in your view. A read *at* an address you
+may not read into is different: it is refused, and the refusal names the nearest owner
+([permissions](perms.md#what-is-checked-on-a-read)).
 
 A `*` reaches the children of what it lands on, so over a node with none it reaches nothing:
 `verse data solo '*'` over `solo: {}` is a 404 too, and over `solo: {hollow: {}}` it answers

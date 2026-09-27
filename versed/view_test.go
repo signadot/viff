@@ -121,3 +121,37 @@ func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
 		t.Errorf("spawn with the store unreadable = %q, which says what is installed", msg)
 	}
 }
+
+// An address the asker's view holds nothing at says so as the view's, on both routes that read
+// one address; an address the asker may not read into is refused, naming the nearest owner, and
+// is the same refusal for a node that stands there and one that does not.
+func TestAReadAtOneAddressSaysWhoseViewAndRefusesWhatIsNotTheirs(t *testing.T) {
+	srv := testServer(t)
+	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	resp := putAs(t, "alice@example.com", ts.URL, "spaces.alice.notes", entity.Obj{"todo": "milk"}.Payload())
+	resp.Body.Close()
+
+	for _, route := range []string{"/state?at=spaces.alice.nope", "/entity?at=spaces.alice.nope"} {
+		resp := getAs(t, "alice@example.com", ts.URL+route)
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusNotFound || !strings.Contains(body, "in your view, nothing stands at spaces.alice.nope") {
+			t.Errorf("alice reads %s: %s %q, want 404 in her view", route, resp.Status, body)
+		}
+	}
+	refusals := map[string]string{}
+	for _, leaf := range []string{"notes", "nope"} {
+		for _, route := range []string{"/state?at=spaces.alice.", "/entity?at=spaces.alice."} {
+			resp := getAs(t, "bob@example.com", ts.URL+route+leaf)
+			body := readBody(t, resp)
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "nearest owner on record is user:alice@example.com") {
+				t.Errorf("bob reads %s%s: %s %q, want it refused naming the owner", route, leaf, resp.Status, body)
+			}
+			refusals[leaf] = strings.ReplaceAll(body, leaf, "<leaf>")
+		}
+	}
+	if refusals["notes"] != refusals["nope"] {
+		t.Errorf("the refusal says whether a node stands there:\n  %s\n  %s", refusals["notes"], refusals["nope"])
+	}
+}
