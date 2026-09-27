@@ -26,10 +26,19 @@ user: "walter@example.com"
 `VERSE_USER` in the environment overrides the file for a shell, and `-as` overrides both on
 the commands that take one, which is how you act as somebody else for one command to see what
 they see. `VERSE_CONFIG=<file>` replaces both file layers outright, so a second verse gets a
-second file rather than a second identity in one. With no `user` anywhere a request names
-nobody: it reads what `*` may read, and it writes nothing — every request that is not a read is
-refused `400 Verse-Principal is required`, since a write by nobody would be recorded as the
-system's.
+second file rather than a second identity in one.
+
+With no `user` anywhere, who the CLI acts as depends on where the verse is:
+
+- **A verse on this machine** (`localhost`, `127.0.0.1`, `::1`): the CLI acts as the local
+  user, `user:<login>@localhost`, where `<login>` is your login name. This is who you are in
+  the [tutorial](tutorial.md) before you configure anything.
+- **Any other verse:** the request names nobody. It reads what `*` may read, and it writes
+  nothing. Every request that is not a read is refused `400 Verse-Principal is required`,
+  since a write by nobody would be recorded as the system's.
+
+The server refuses a request that names nobody wherever it comes from. The local user is the
+CLI's default, so a program of your own that writes must name somebody itself.
 
 ```sh
 verse data spaces scott notes -put '{todo: [buy milk]}'

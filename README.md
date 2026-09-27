@@ -41,6 +41,9 @@ resolves the `o` that hosts them itself (`-o-bin`, else a version-matched one on
 else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the-o-binary)), so
 `up` works wherever you run it, not only in a checkout.
 
+You need no configuration to start. Toward a verse on your own machine the CLI acts as
+`user:<login>@localhost`, where `<login>` is your login name.
+
 `scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
 reaction that has already happened and one gate waiting for you — then prints what to type
 next. Or do it by hand: `verse c -a …`, `verse data …`, `verse -put gate`,

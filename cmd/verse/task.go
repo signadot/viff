@@ -998,7 +998,8 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 var asOverride string
 
 // principal resolves who a command acts as, spelled in the grammar (entity.Grammar): its --as
-// where it took one, else the config's `agent:` as `agent:<name>`, else its `user:`. --as and
+// where it took one, else the config's `agent:` as `agent:<name>`, else its `user:`, else the
+// local user when the verse is on this machine (localUser) and nobody when it is not. --as and
 // `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused
 // rather than guessed at, so `--as coderunner` is an error and `--as runner:coderunner` a
 // worker. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
@@ -1035,13 +1036,15 @@ func principal(as string) (string, error) {
 		}
 		return g.String(), nil
 	}
-	return "", nil
+	return localUser(g.Addr), nil
 }
 
 // requireAs refuses an unattributed action. A claim, a ballot and a report all name who
 // made them, and the refusal is a USAGE error in each — so the command whose --as is most
 // obviously load-bearing prints the usage rather than a bare line. What it answers is the
-// principal to act as: --as, or the config's user when the flag was left off.
+// principal to act as: --as, or whoever the CLI acts as when the flag was left off (principal).
+// Toward a verse on this machine that is always somebody, so the refusal is one a shared verse
+// gives.
 func requireAs(as, noun, why string) (string, error) {
 	if p, err := principal(as); err != nil || p != "" {
 		return p, err

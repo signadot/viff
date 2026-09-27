@@ -43,6 +43,11 @@ working before reading about it:
 ./scripts/seed-demo.sh     # a charter, the entities it reacts to, one gate waiting for you
 ```
 
+You have not said who you are, and you do not need to yet. Toward a verse on your own machine
+the CLI acts as `user:<login>@localhost`, where `<login>` is your login name. What you write
+is owned by that user. [The permissions walk](perms-guide.md#before-the-first-step-who-you-are)
+shows how to name yourself.
+
 `up` decides three things for the whole runtime, and the defaults need no attention now. The
 **store** is a fresh docd on a temp dir; `-data <dir>` keeps it. The default **driver** is a real
 llm agent when credentials are configured, and `scripted` — a prompt run as a shell command — when

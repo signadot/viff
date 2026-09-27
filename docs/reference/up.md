@@ -180,7 +180,9 @@ the request creates is owned by them. It is a principal in the
 [grammar](../perms.md#principals-and-grantees): a bare email goes on the wire as `user:<email>`,
 a worker sets `runner:<identity>`, and a bare word is refused. It is self-asserted — there is no
 login — and `-as` overrides it on the commands that take one, which is also why those commands
-no longer insist on the flag when the config names a user. Env: `VERSE_USER`. `agent` names an
+no longer insist on the flag when the config names a user. Env: `VERSE_USER`. With no `user`
+and no `agent`, the CLI acts as the local user, `user:<login>@localhost`, toward a verse on
+this machine (`localhost`, `127.0.0.1`, `::1`), and names nobody toward any other. `agent` names an
 operator agent instead — a harness driving verse through the api, which is a principal of its
 own kind rather than the person whose terminal it runs in; when set, every request is
 `agent:<name>` and `-as` still names somebody else. Env: `VERSE_AGENT`. `systemCharter` is
