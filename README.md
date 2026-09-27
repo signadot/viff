@@ -1,11 +1,22 @@
 # verse
 
-A small runtime for governing SDLC work across systems you do not own, on a dial of agentic
-autonomy. You install a *charter* of event-condition-action rules; the runtime reacts to
-changes in a shared, observable entity-verse and does the work with governed agents. Every
-reaction passes a gate — *auto*, *ask* (a human or agent approves), or *park* — so you set how
-much runs on its own, action by action, and the agents doing the work stay observable and
-steerable.
+Verse is a small runtime. It governs software delivery work across systems that you do not
+own, and you choose how much of that work agents do without asking.
+
+You install a *charter*. A charter is a list of rules, and each rule has an event, a condition
+and an action. Verse keeps a shared store of *entities*, which anyone may observe. When an
+entity changes, verse finds the rules that match and does the work with agents.
+
+Every reaction passes a *gate*. A gate has one of three modes:
+
+| Mode | What happens |
+|---|---|
+| `auto` | the action runs |
+| `ask` | a person or an agent must approve first |
+| `park` | the action is held |
+
+You set the mode for each action. The agents that do the work stay observable, and you can
+steer them while they run.
 
 ```
 entity change ──▶ trigger matches ──▶ gate resolves ──▶ action fires
@@ -13,18 +24,29 @@ entity change ──▶ trigger matches ──▶ gate resolves ──▶ action
      └───────────── actions write entities ◀────────────────┘
 ```
 
-There is no orchestrator, and that is a consequence rather than a preference. A repository, a
-chat workspace, a colleague's afternoon: verse can *observe* these and *request* that they
-change, and it can do nothing else — it cannot hold them still. Sequencing the work would mean
-holding a position in a plan, and that position is a second claim about state verse does not
-own, wrong the moment the world moves between two steps. Reacting to what was last observed is
-what remains once that is admitted, and it is why the loop above closes through the store
-rather than through a scheduler.
+## No orchestrator
 
-So the flow is not written down anywhere, because there is nowhere for it to live. It is
-*derived*: `verse flow show <subject>` assembles a subject's shape per request from the charter
-(what may yet happen), the mirror (what already did) and the live registry (what is running).
-What you author is the rules, and how much autonomy each of them runs with.
+Verse has no orchestrator. This follows from what verse can do. It is not a preference.
+
+Verse works with things it does not own: a repository, a chat workspace, a person's time.
+Verse can *observe* them, and it can *request* that they change. It cannot stop them from
+changing.
+
+An orchestrator keeps a position in a plan. That position is a second statement about the
+state of those things, and it is wrong as soon as one of them changes between two steps. So
+verse keeps no plan. It reacts to what it last observed. This is why the loop in the diagram
+goes through the store, and not through a scheduler.
+
+The flow of work is therefore not written down anywhere. Verse *derives* it when you ask:
+`verse flow show <subject>` builds the flow for one subject from three sources.
+
+| Source | What it says |
+|---|---|
+| the charter | what may still happen |
+| the mirror | what has already happened |
+| the live registry | what is running now |
+
+You write the rules, and you choose how much autonomy each rule has.
 
 ## Quick start
 
@@ -39,59 +61,76 @@ verse up                          # engine + task runtime + store, in one proces
 ./scripts/seed-demo.sh            # in another terminal: a charter, entities, a waiting gate
 ```
 
-`up` brings up logd and docd as children, so the store is durable from the first run — it
-resolves the `o` that hosts them itself (`-o-bin`, else a version-matched one on `PATH`,
-else installed into `~/.verse/bin`; see [the reference](docs/reference/up.md#the-o-binary)), so
-`up` works wherever you run it, not only in a checkout.
+`verse up` starts the store too, as two child processes (logd and docd), so the store is
+durable from the first run. `up` finds the `o` binary that hosts them by itself. It uses
+`-o-bin` if you give it, else a matching version on `PATH`, else one it installs into
+`~/.verse/bin` ([the reference](docs/reference/up.md#the-o-binary)). So `up` works in any
+directory, and not only in a checkout.
 
 You need no configuration to start. Toward a verse on your own machine the CLI acts as
 `user:<login>@localhost`, where `<login>` is your login name.
 
-`scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
-reaction that has already happened and one gate waiting for you — then prints what to type
-next. Or do it by hand: `verse charter -a …`, `verse data … --put …`, `verse gate`,
-`verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
-`scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
-shapes a rule comes in, one command each). The tutorial walks the lot in five sections —
-entities, tasks, and the charters that relate them.
+`scripts/seed-demo.sh` fills the empty verse. It writes two rules and a few entities. When it
+ends, one reaction has already happened and one gate is waiting for you. Then it prints what
+to type next.
+
+You can do the same by hand: `verse charter -a …`, `verse data … --put …`, `verse gate`,
+`verse gate approve …`.
+
+Two more scripts seed the sections of the [tutorial](docs/tutorial.md):
+
+- `scripts/seed-entities.sh` writes entities to select over.
+- `scripts/charter-shapes.sh` installs the shapes a rule can have, one command each.
+
+The tutorial has five sections, about entities, tasks, and the charters that relate them.
 
 ## What's here
 
-- `entity/` — the entity-verse: one tree addressed by kinded paths, observable and
-  revision-cursored, durable and scope-aware with copy-on-write, over logd/docd. One
-  conditional write addresses a node at any path, and every write names
-  who made it: a node is its creator's, and the store refuses what its place does not permit
-  ([permissions](docs/perms.md)).
-- `trigger/` — the ECA engine: conjunctive matches, conjunctive gates posed concurrently,
-  actions-as-data, level-triggered catch-up via a cursor, and per-subtree watches with no
-  root watch.
-- `task/` and `task/taskd/` — governed, steerable units of work, scripted or LLM
-  agents, behind an HTTP control and read plane.
-- `runner/` and `broker/` — how a task *runs* is a seam: local (in-process),
-  remote (another verse over HTTP), or a dial-in broker where a firewalled worker or a human
-  executes it. The engine drives all three through one handle, so every `verse task` verb
-  works whichever it is.
-- `mirror/` — reflects a running task into the verse as a `verse.task.instance` entity, so
-  "observe or steer another task" is just "observe an entity."
-- `resolver/` — who answers a gate. A resolver is *installed* rather than written into a
-  charter, because it outlives any one rule and belongs to whoever supervises rather than to
-  whoever wrote the work. It matches a subject by condition or is named by a run, and one cover
-  is minted per gate stream it reads (`verse.covers.<name>@<stream>`), carrying that reader's
-  own position. Its answerer is a service, a person or a group; a resolver that goes silent
-  past its deadline hands the question to the next resolver matching the subject, and the last
-  hop is always the docket a person reads.
-- `io/` and `cmd/iod/` — the seam to an external system, in two halves: an io reflects state
-  *in* and acts *out*. You deploy it and install it (`verse io add`), and it owns a place like
-  `git` that triggers react to. Five ship (`iod git|git-issue|slack|linear|github`); anything
-  else is the sample program plus one function. `verse connect` federates your working tree
-  the same way, into a scope.
-- `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `data`,
-  `charter`, `schedule`, `task` (including the `do` executor verbs), `flow`, `resolver`,
-  `runner`, `io`, `perms`, `group`. What it answers with: `gate`. What it reads: `status`,
-  `watch`, `provider`, `schema`. Each is one command, named in the singular, and bare it
-  lists. What it runs: `up`, `down`, `connect`, `disconnect`.
-- `deploy/` and `Makefile` — a checked-in `o build` and a local-build image pipeline to run
-  verse on Kubernetes.
+- `entity/` — the store of entities. It is one tree, and a kinded path addresses each node.
+  The store can be watched, and every commit has a revision. It is durable, and a *scope* is a
+  copy-on-write view of it. It runs over logd and docd. Every write names who made it. A node
+  belongs to whoever created it, and the store refuses a write that the node's permissions do
+  not allow ([permissions](docs/perms.md)).
+- `trigger/` — the rule engine. A rule matches when all of its conditions hold. All the gates
+  of a rule are asked at the same time, and all must pass. An action is data, not code. A new
+  rule acts on what already stands in the store. The engine watches only the subtrees that
+  its rules read.
+- `task/` and `task/taskd/` — a *task* is a unit of agent work that verse governs and that you
+  can steer. Its driver is a script or an LLM agent. It serves HTTP, for control and for
+  reading.
+- `runner/` and `broker/` — where a task runs. There are three ways: local, in the verse
+  process; remote, on another verse over HTTP; and a broker, where a worker behind a firewall,
+  or a person, dials in and does the work. The engine drives all three through one interface,
+  so every `verse task` command works with each.
+- `mirror/` — writes each running task into the store, as a `verse.task.instance` entity. So
+  to observe or steer a task, you observe an entity.
+- `resolver/` — who answers a gate. A resolver is installed. It is not written in a charter,
+  because it lasts longer than one rule, and because it belongs to the person who supervises
+  and not to the person who wrote the work. A resolver matches a subject by a condition, or a
+  run names it. It reads through a *cover*, one for each stream of gates
+  (`verse.covers.<name>@<stream>`), and a cover keeps its own position in the stream. The
+  answerer is a service, a person or a group. When a resolver does not answer before its
+  deadline, the question goes to the next resolver that matches the subject. After the last
+  one it goes to the *docket*: the list of questions waiting for an answer, which a person
+  reads.
+- `io/` and `cmd/iod/` — the connection to an external system. An *io* has two halves: it
+  reflects state in, and it acts out. You deploy an io and install it (`verse io add`). It
+  owns a place in the store, such as `git`, and rules react to that place. Verse ships five
+  (`iod git|git-issue|slack|linear|github`). To write another, copy the sample program and
+  write one function. `verse connect` reflects your working tree in the same way, into a
+  scope.
+- `versed/` and `cmd/verse/` — the HTTP server and the `verse` CLI. Each command is named in
+  the singular, and with no argument it lists.
+
+  | The CLI | Commands |
+  |---|---|
+  | governs | `data`, `charter`, `schedule`, `task` (with the `do` verbs for an executor), `flow`, `resolver`, `runner`, `io`, `perms`, `group` |
+  | answers with | `gate` |
+  | reads | `status`, `watch`, `provider`, `schema` |
+  | runs | `up`, `down`, `connect`, `disconnect` |
+
+- `deploy/` and `Makefile` — build the image locally and run verse on Kubernetes, from a
+  checked-in `o build`.
 
 ## Docs
 
@@ -99,16 +138,16 @@ entities, tasks, and the charters that relate them.
 running a verse, writing a charter, building a runner or an io, or changing verse itself. It
 describes what runs today, and so does the site mkdocs builds from it. Start with:
 
-- [Overview](docs/overview.md) — the architecture, the model, the seams, and the
-  load-bearing decisions. Read this first.
-- [Tutorial](docs/tutorial.md) — hands-on, in five sections: entities, tasks, and the
-  charters that relate them, each with a script that seeds it.
+- [Overview](docs/overview.md) — the architecture, the model, the seams, and the decisions
+  the design depends on. Read this first.
+- [Tutorial](docs/tutorial.md) — five sections that you run yourself: entities, tasks, and
+  the charters that relate them. A script seeds each section.
 - [Trigger model](docs/trigger-model.md) — the two grammars a charter is written in, and
   what every field of a rule means.
-- [Seams](docs/seams.md) — the nine seams that can be a network, and which side opens each:
-  what may run remote, what may sit behind a firewall, and what that costs.
-- [Reference](docs/reference/README.md) — the command surface, the config layers, and a
-  per-topic deep end: [starting a verse](docs/reference/up.md),
+- [Seams](docs/seams.md) — the nine places that can be a network, and which side opens
+  each: what may run remotely, what may sit behind a firewall, and what each costs.
+- [Reference](docs/reference/README.md) — the commands, the config layers, and a page for
+  each topic: [starting a verse](docs/reference/up.md),
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
   [ios](docs/reference/io.md) and [the five that ship](docs/reference/iod.md),
