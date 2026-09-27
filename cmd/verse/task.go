@@ -570,20 +570,28 @@ func taskSnapshot(id string, v any) error {
 	return client.Decode(r, v)
 }
 
-// brokerOf is where a worker dials in for a task: the task's dialURL, which only a brokered
-// task carries.
+// brokerOf is where a worker dials in for a task, asked of the route that answers that and
+// nothing else (GET /tasks/<id>/dial).
+//
+// NOT THE TASK'S SNAPSHOT, which a worker that has claimed nothing may not read: it is granted
+// the task at its claim, and the claim is made at the address this answers.
 func brokerOf(id string) (string, error) {
-	var snap struct {
-		DialURL string `tony:"field=dialURL"`
-		Runner  string `tony:"field=runner"`
-	}
-	if err := taskSnapshot(id, &snap); err != nil {
+	r, err := httpGet("/tasks/"+id+"/dial", nil)
+	if err != nil {
 		return "", err
 	}
-	if snap.DialURL == "" {
-		return "", fmt.Errorf("%s is not a brokered task (runner %q) — no broker to dial in to", id, snap.Runner)
+	defer r.Body.Close()
+	if r.StatusCode >= http.StatusBadRequest {
+		return "", client.StatusError(r, "finding where to dial in")
 	}
-	return strings.TrimRight(snap.DialURL, "/"), nil
+	var dial api.Dial
+	if err := client.Decode(r, &dial); err != nil {
+		return "", fmt.Errorf("finding where to dial in: %w", err)
+	}
+	if dial.DialURL == "" {
+		return "", fmt.Errorf("task %s has no broker to dial in to", id)
+	}
+	return strings.TrimRight(dial.DialURL, "/"), nil
 }
 
 // waitPoll is how often a wait asks again.

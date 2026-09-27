@@ -248,6 +248,15 @@ type Spawned struct {
 	ID string `tony:"field=id"`
 }
 
+// Dial is where a worker dials in to run one task (`GET /tasks/{id}/dial`), and nothing else
+// about the task: a worker reads it before it has claimed anything, so before it holds anything
+// on the task's record.
+//
+//tony:schemagen=verse-dial,notag
+type Dial struct {
+	DialURL string `tony:"field=dialURL"`
+}
+
 // Verdict is one answer through a resolver's cover (`POST /resolvers/cover/{id}/verdicts`).
 //
 // It names the question rather than being addressed to it: an answerer reads a gate stream and

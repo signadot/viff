@@ -1368,6 +1368,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
+	rt.handle("GET /tasks/{id}/dial", s.taskDial, "", one("verse-dial"))
 	rt.handle("GET /tasks/{id}/inbox", s.taskInbox, "", list("verse-inbox-item"))
 	rt.handle("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.taskEvents(w, r, ph)
@@ -4968,8 +4969,67 @@ func (s *Server) attach(id string) task.Handle {
 // getTask resolves one task across backends: the local runtime first (live detail),
 // then the runner's own registry (a brokered task) — so `task get <id>` works whether
 // the task runs locally or behind a broker.
+// mayReadTask asks the permission check whether the request may read a task, and answers the
+// request when it may not: refused in the check's words, or the store's error when the record
+// could not be read.
+//
+// A TASK IS READ AS ITS RECORD IS. The snapshot, the event stream and the inbox are the task's
+// prompt, its transcript, its result and the answers queued for its worker; the record
+// (`verse.task.instance.<id>`) holds less than any of them, and is the one of the four the
+// check reaches by itself. So each is asked through the record, in the scope the request names.
+//
+// A worker that has claimed nothing holds nothing on the record, and reads none of these: what
+// it needs before the claim is where to dial, which taskDial answers.
+func (s *Server) mayReadTask(w http.ResponseWriter, r *http.Request, id string) bool {
+	_, _, err := s.scopedStore(r).Get(mirror.Ref(id))
+	return !unreadable(w, r, err)
+}
+
+// taskDial answers where a worker dials in to run a task, and nothing else about it.
+//
+// NOT CHECKED, which is its reason for being: a worker is granted the task at its claim, the
+// claim is made at the address this answers, and a check here would ask for the grant before
+// the act that makes it. What it gives away is an address the broker serves to anybody who
+// can reach it.
+//
+// ONE ANSWER for a task that is not brokered and for one that is not there, so it says where
+// to dial and never whether a task exists.
+func (s *Server) taskDial(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if url := s.dialOf(r, id); url != "" {
+		writeOut(w, r, http.StatusOK, api.Dial{DialURL: url})
+		return
+	}
+	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
+		"no broker to dial in to for task %q: it is not a brokered task, or it is not there", id))
+}
+
+// dialOf is a task's dial address, from whichever holds the task: a registry that serves
+// workers, else the task's record, read as the system since the asker may hold nothing on it.
+func (s *Server) dialOf(r *http.Request, id string) string {
+	if _, ok := s.Taskd.SnapshotOf(id); ok {
+		return "" // hosted here: there is no worker to dial in
+	}
+	for _, p := range s.registries() {
+		if inst, err := p.(taskLister).TaskSnapshot(id); err == nil && inst.DialURL != "" {
+			return inst.DialURL
+		}
+	}
+	store := s.Store
+	if sc := r.URL.Query().Get("scope"); sc != "" {
+		store = s.Store.Scope(sc)
+	}
+	if e, ok, _ := entity.As(store, entity.SystemDefault).Get(mirror.Ref(id)); ok {
+		return entity.Str(e.Payload, "dialURL")
+	}
+	return ""
+}
+
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !s.mayReadTask(w, r, id) {
+		return
+	}
 	if inst, ok := s.Taskd.SnapshotOf(id); ok {
 		inst.Runner = "local"
 		writeOut(w, r, http.StatusOK, inst)
@@ -5033,6 +5093,9 @@ type inboxReader interface {
 // taskInbox is an operator peek at the control queued for a brokered task's worker —
 // unfenced, so it doesn't disturb a live worker. A local task has no worker inbox → empty.
 func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
+	if !s.mayReadTask(w, r, r.PathValue("id")) {
+		return
+	}
 	items := []api.InboxItem{}
 	// Every runtime that could hold a worker inbox, not just the default: a broker serves one
 	// whether or not unnamed work lands on it, and asking only the default answers an empty
@@ -5060,6 +5123,11 @@ func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
 // handle (which replays the merged log then goes live) and re-emit each event as SSE.
 func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
 	id := r.PathValue("id")
+	// Asked before the stream is handed to whoever serves it: a hosted task's is the runtime's
+	// own handler, which knows nothing of who is reading.
+	if !s.mayReadTask(w, r, id) {
+		return
+	}
 	if _, ok := s.Taskd.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return

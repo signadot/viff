@@ -36,15 +36,16 @@ func always(status int, body string) func(int) (int, string) {
 	return func(int) (int, string) { return status, body }
 }
 
-// A task read that gave no snapshot is the server's words, and never a statement about the
-// task: a worker refused its task is not told the task is not brokered.
-func TestATaskReadThatGaveNoSnapshotIsTheServersWords(t *testing.T) {
+// Where to dial in is asked of the route that answers only that, and an answer that is not an
+// address is the server's words: a worker is told what the server said, and never that its
+// task "is not a brokered task" by a command that read no task.
+func TestWhereToDialInIsTheServersAnswer(t *testing.T) {
 	for _, c := range []struct {
 		status int
 		body   string
 		is     func(error) bool
 	}{
-		{http.StatusNotFound, "in your view, no task \"t1\" stands", client.NotInView},
+		{http.StatusNotFound, `no broker to dial in to for task "t1": it is not a brokered task, or it is not there`, client.NotInView},
 		{http.StatusForbidden, "refused: runner:w holds nothing at verse.task.instance.t1", client.Refused},
 		{http.StatusServiceUnavailable, "the store could not be read: timeout", client.Unavailable},
 	} {
@@ -53,21 +54,52 @@ func TestATaskReadThatGaveNoSnapshotIsTheServersWords(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.body) {
 			t.Errorf("%d: err = %v, want the server's words", c.status, err)
 		}
-		if err != nil && strings.Contains(err.Error(), "not a brokered task") {
-			t.Errorf("%d: err = %v, which describes a task that was not read", c.status, err)
-		}
 		if !c.is(err) {
 			t.Errorf("%d: the status did not travel: %v", c.status, err)
 		}
 	}
-	// A task that WAS read, and is not brokered, is said to be that.
-	taskServer(t, always(http.StatusOK, `{id: t1, runner: local}`))
-	if _, err := brokerOf("t1"); err == nil || !strings.Contains(err.Error(), "not a brokered task") {
-		t.Errorf("a local task: err = %v", err)
-	}
-	taskServer(t, always(http.StatusOK, `{id: t1, runner: broker, dialURL: "http://127.0.0.1:1/b/"}`))
+	taskServer(t, always(http.StatusOK, `{dialURL: "http://127.0.0.1:1/b/"}`))
 	if base, err := brokerOf("t1"); err != nil || base != "http://127.0.0.1:1/b" {
 		t.Errorf("a brokered task: (%q, %v)", base, err)
+	}
+}
+
+// It asks the dial route and not the task's snapshot, which a worker that has claimed nothing
+// may not read.
+func TestWhereToDialInIsNotReadOffTheSnapshot(t *testing.T) {
+	var asked string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = r.URL.Path
+		io.WriteString(w, `{dialURL: "http://127.0.0.1:1/b"}`)
+	}))
+	t.Cleanup(ts.Close)
+	rootCmd()
+	at(t, strings.TrimPrefix(ts.URL, "http://"))
+	if _, err := brokerOf("t1"); err != nil || asked != "/tasks/t1/dial" {
+		t.Fatalf("asked %q (%v), want /tasks/t1/dial", asked, err)
+	}
+}
+
+// A task read that gave no snapshot is the server's words, to a command that goes on to act on
+// what the snapshot says.
+func TestATaskReadThatGaveNoSnapshotIsTheServersWords(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		body   string
+		is     func(error) bool
+	}{
+		{http.StatusNotFound, "no task \"t1\"", client.NotInView},
+		{http.StatusForbidden, "refused: bob holds nothing at verse.task.instance.t1", client.Refused},
+		{http.StatusServiceUnavailable, "the store could not be read: timeout", client.Unavailable},
+	} {
+		taskServer(t, always(c.status, c.body))
+		var snap struct {
+			Status string `tony:"field=status"`
+		}
+		err := taskSnapshot("t1", &snap)
+		if err == nil || !strings.Contains(err.Error(), c.body) || !c.is(err) {
+			t.Errorf("%d: err = %v, want the server's words and its status", c.status, err)
+		}
 	}
 }
 

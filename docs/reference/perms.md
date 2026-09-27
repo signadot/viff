@@ -152,6 +152,13 @@ site knowing. A refusal is a 403 with the check's words, and a count under `perm
   inside a payload: a node standing under a record the reader may not read is left out of what
   holds it. What is withheld is counted under `perms.hidden`.
 - A listing or a watch *at* a path the reader may not read into is refused whole.
+- **A task is read as its record is.** `GET /tasks/{id}`, its `/events` and its `/inbox` hold
+  the task's prompt, its transcript, its result and the answers queued for its worker. Each
+  asks for `read` on the task's record, `verse.task.instance.<id>`, and is refused without it.
+- **Where to dial is not checked.** `GET /tasks/{id}/dial` answers a brokered task's dial
+  address and nothing else. A worker reads it before it has claimed the task, so before it
+  holds anything on the record: the claim is what grants it. The route gives one answer for a
+  task that is not brokered and for a task that is not there.
 - One window is real and one commit wide: the record follows the write it records, so the commit
   that creates a node reaches a live watch before the record that would hide it.
 - **A rule reads as its owner.** The snapshot a condition is asked of, the one a reference

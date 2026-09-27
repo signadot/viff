@@ -12,6 +12,13 @@ signature:
 context:
 - tony-format/context
 define:
+  dialURL: .[string]
+signature:
+  name: verse-dial
+---
+context:
+- tony-format/context
+define:
   client: .[string]
   mount: .[string]
 signature:
