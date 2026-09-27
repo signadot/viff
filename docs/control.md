@@ -1,37 +1,60 @@
 # Control: holding work
 
-Two acts stop work without ending it, and they differ in how long they last and in how much they
-reach. **A run's hold** stops one task at its next boundary until somebody resumes it; the rule
-that started it goes on firing, and may start another once this one has ended. **A suspension**
-stops the work about a charter and a subject — firings, tasks, questions, what a hook would start
-— and keeps it stopped, across restarts, until somebody lifts it.
+Two acts stop work without ending it. They differ in how long they last and in how much they
+reach.
 
-Both are verbs of `verse flow`, addressed by one set of flags. A flow is a query over the work in
-flight; a suspension is a query over the work from now on, naming the same coordinates a live task
-carries. So the listing and the acts share their flags, and `verse flow` narrowed by some flags
-shows exactly what an act with those flags reaches now. Cancelling, which does end the work, is a
-verb of the same noun.
+| Act | What it stops | How long |
+|---|---|---|
+| **a hold on a run** | one task, at its next boundary | until somebody resumes it, or verse restarts |
+| **a suspension** | all the work about a charter and a subject: firings, tasks, questions, and what a hook would start | until somebody lifts it. It lasts across restarts. |
+
+Under a hold on a run, the rule that started the task goes on firing. It may start another
+task when this one has ended.
+
+Both acts are verbs of `verse flow`, and both use the same flags. A *flow* is a query over the
+work in progress. A *suspension* is a query over the work from now on, and it names the same
+coordinates that a live task carries. So the listing and the acts share their flags:
+`verse flow` with some flags shows what an act with those flags reaches now.
+
+Cancelling ends the work. It is a verb of `verse flow` too.
 
 ## The flags
 
-- `-task <id>` — **that run only**. It combines with neither of the others, so the flags alone
-  say whether an act is about one run or is durable.
-- `-charter <address>[:<rule>]` — an installed charter's address, and one rule of it after the
-  colon. Baseline's charter has no address, so its rule is `:<rule>`, and all of its rules `:`.
-  Every charter is `'*'`. `-r` (`-recursive`) names the charter at the address and every charter
-  installed beneath it.
-- `-subject <address>` — an address with `*` open in any segment, covering what stands at it or
-  beneath it: `demo.pr.1`, `demo.pr.*`, `demo.*.1`. Every subject is `'*'`. There is no payload
-  predicate: a suspension whose subject was a predicate would be lifted by an ordinary write that
-  took the subject out of the match.
+| Flag | What it names |
+|---|---|
+| `-task <id>` | one run only. It combines with neither of the other two. |
+| `-charter <address>[:<rule>]` | the address of an installed charter, and one rule of it after the colon |
+| `-subject <address>` | an address, with `*` for any segment. It covers what stands at the address and beneath it. |
 
-**An act names something.** A bare verb meaning everything is how somebody typing it to see its
-usage would suspend the verse, so an act that names nothing is refused: `suspend`, `resume` and
-`say` take `-task`, or `-charter`, `-subject` or both; `cancel` takes `-task`. A bare verb
-prints its usage and sends nothing. Of `-charter` and `-subject`, the one left out beside the
-other is `'*'`: `-charter :review` is that rule about every subject, and `-subject demo.pr.2`
-is that subject for every charter. `'*'` for both is refused. Only the listing, a read, answers
-for everything when no flag narrows it.
+**`-task`** cannot be combined with the others, so the flags alone say whether an act is about
+one run or is durable.
+
+**`-charter`**. The charter of baseline has no address, so a rule of it is `:<rule>`, and all
+its rules are `:`. Every charter is `'*'`. With `-r` (`-recursive`) the flag names the charter
+at the address and every charter installed beneath it.
+
+**`-subject`**. Examples are `demo.pr.1`, `demo.pr.*` and `demo.*.1`. Every subject is `'*'`.
+A subject takes no predicate on the payload. With one, an ordinary write that took the
+subject out of the match would lift the suspension.
+
+### An act names something
+
+An act that names nothing is refused. Without this rule, somebody who typed a bare verb to see
+its usage would suspend the whole verse.
+
+| Verb | What it takes |
+|---|---|
+| `suspend`, `resume`, `say` | `-task`, or `-charter`, or `-subject`, or `-charter` and `-subject` |
+| `cancel` | `-task` |
+
+A bare verb prints its usage and sends nothing.
+
+When you give one of `-charter` and `-subject`, the other is `'*'`. So `-charter :review` is
+that rule about every subject, and `-subject demo.pr.2` is that subject for every charter.
+`'*'` for both is refused.
+
+Only the listing answers for everything when no flag narrows it, because the listing is a
+read.
 
 ```sh
 verse flow                                           # every live task and every suspension
@@ -48,145 +71,232 @@ verse flow suspend -charter verse-dev -r -why "…"                             
 verse flow resume  -charter verse-dev.drift                                    # the same flags lift it
 ```
 
-`-args` prints each row of the listing as the flags that name it, one per line, quoted so that a
-shell and `xargs` both read it back — so what was shown is what an act reaches. A task's row is
-`-task <id>` and a suspension's `-charter … -subject …`, so a grep picks one kind:
+### `-args`: the listing as flags
+
+`-args` prints each row of the listing as the flags that name it, one row to a line. The
+quoting is what a shell and `xargs` both read back. So what the listing showed is what an act
+reaches.
+
+The row of a task is `-task <id>`. The row of a suspension is `-charter … -subject …`. A
+`grep` picks one kind:
 
 ```sh
 verse flow -args | grep -v '^-task ' | xargs -L1 verse flow resume               # lift every suspension
 verse flow -subject demo.pr.2 -args | grep '^-task ' | xargs -L1 verse flow cancel     # end every run about PR 2
 ```
 
-The listing answers rows of two kinds. A live task is `{kind: task, task, charter, subject,
-heldBy}`, its charter the rule that spawned it (`verse-dev.drift:claim`, `:review`), and absent
-for a task run by hand. A suspension is `{kind: suspension, id, charter, subject, held, holding,
-covers}`: who holds it, why and since when, how far the store has moved under it, what it is
-holding now — tasks paused, questions withdrawn, launches parked — and whether it names anything
-installed. A suspension is usually holding work that is not running yet, so it is a row of its
-own rather than a field on a task.
+### The rows of the listing
 
-A narrowed listing is what an act with the same flags reaches, an absent flag being `*`. Its task
-rows are the live tasks a suspension in those words would hold. Its suspension row is the one a
-resume in them would lift: the record the flags spell, and not a wider one that also holds the
-work — `-subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`, and `-subject
-'demo.pr.*'` lists the suspension spelled that way, not each PR's. What holds a subject's work,
-whatever spells it — including a subject with no work yet — is `verse flow show <subject>`.
+The listing has rows of two kinds.
 
-## A run's hold
+| Kind | Fields |
+|---|---|
+| a live task | `{kind: task, task, charter, subject, heldBy}` |
+| a suspension | `{kind: suspension, id, charter, subject, held, holding, covers}` |
 
-`verse flow suspend -task <id>` holds one run at its next boundary — "hold this, I want to look" —
-and `verse flow resume -task <id>` lets it carry on from there. The runtime's
-`POST /tasks/{id}/pause|resume` are the same hold. It is the operator's: the task's `heldBy` says
-`operator`, on its record and in `flow show`.
+The `charter` of a task is the rule that spawned it, such as `verse-dev.drift:claim` or
+`:review`. A task run by hand has none.
 
-It lands at a boundary. A multi-step task — the `llm` driver, whose every tool call is one — holds
-mid-run; a scripted task is a single command, so its only boundary is its end, and a hold lands
-when it finishes. A question the task is asking when the hold lands is withdrawn, since a held task
-must not leave one in front of somebody, and asked again when it resumes. A pause is not an
-answer.
+A suspension says four things:
 
-It is forgetful. It holds that run and nothing else: the rule that spawned it goes on firing, and
-may fire about the same subject again once the run has ended. Whose hold it is lives in the engine
-tracking the run, and a restart does not restore it.
+- who holds it, why, and since when;
+- how far the store has moved while it stood;
+- what it holds now: tasks paused, questions withdrawn, launches parked;
+- whether it names anything that is installed.
 
-`say` redirects the runs it reaches with an instruction, landing at the same boundary, and
-`cancel` ends one — at once, for a scripted task, by killing its command. Neither is a hold. A
-`park` gate is a third kind of stop, and a different one: a hold the *charter* declares on an
-action, answered on the docket ([the trigger model](trigger-model.md#gates--whether-it-proceeds)).
+A suspension usually holds work that is not running yet. For this reason it is a row of its
+own, and not a field on a task.
+
+### What a narrowed listing shows
+
+A narrowed listing shows what an act with the same flags reaches. A flag that is absent is
+`*`.
+
+- The task rows are the live tasks that a suspension in those words would hold.
+- The suspension row is the one that a resume in those words would lift. It is the record the
+  flags spell. It is not a wider record that holds the same work.
+
+For example, `-subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`. And
+`-subject 'demo.pr.*'` lists the suspension spelled that way, not the suspension of each PR.
+
+To see everything that holds the work of a subject, however it is spelled, use
+`verse flow show <subject>`. It answers for a subject with no work yet, too.
+
+## A hold on a run
+
+`verse flow suspend -task <id>` holds one run at its next boundary. Use it when you want to
+look before the run goes on. `verse flow resume -task <id>` lets the run continue from there.
+The routes of the runtime, `POST /tasks/{id}/pause` and `POST /tasks/{id}/resume`, are the same
+hold.
+
+The hold is the operator's. The task's `heldBy` says `operator`, on its record and in
+`flow show`.
+
+**It lands at a boundary.** A boundary is a point between two actions of a task.
+
+| Task | Where a hold lands |
+|---|---|
+| a task with many steps, such as one with the `llm` driver, where every tool call is a step | in the middle of the run |
+| a scripted task, which is one command | at its end, when the command finishes |
+
+When a hold lands, a question that the task is asking is withdrawn, because a held task must
+not leave a question in front of somebody. The task asks it again when it resumes. A pause is
+not an answer.
+
+**It does not last.** The hold holds that run and nothing else. The rule that spawned the run
+goes on firing, and may fire about the same subject again when the run has ended. The engine
+that tracks the run remembers whose hold it is, and a restart does not restore it.
+
+**Three acts that are not a hold.**
+
+| Act | What it does |
+|---|---|
+| `say` | gives the runs it reaches an instruction. It lands at the same boundary. |
+| `cancel` | ends one run. For a scripted task it ends at once, by killing the command. |
+| a `park` gate | a stop that the *charter* declares on an action. It is answered on the docket ([the trigger model](trigger-model.md#gates--whether-it-proceeds)). |
 
 ## A suspension
 
-A suspension is one record naming a charter, a rule of it, and a subject, and it covers **the work
-about that subject** in every form, by one test, the way a standing resolver does:
+A suspension is one record. It names a charter, a rule of the charter, and a subject. It
+covers **the work about that subject** in every form, by one test, as a standing resolver
+does.
 
-| work about the subject | while suspended | when the suspension lifts |
+| Work about the subject | While suspended | When the suspension lifts |
 |---|---|---|
 | a rule about to fire | starts no firing | the rule is armed again |
-| a firing waiting at its gate | its question is withdrawn, ballots kept; the firing waits | it asks the same question again, if the rule still selects the subject |
-| a live task | holds at its next boundary, `heldBy` the suspension | resumes, unless an operator's hold holds it too |
-| a completion hook, or a `seq` step | its writes land; what it would start is parked | the parked launch starts |
+| a firing waiting at its gate | its question is withdrawn and its ballots are kept. The firing waits. | it asks the same question again, if the rule still selects the subject |
+| a live task | holds at its next boundary. Its `heldBy` names the suspension. | resumes, unless an operator's hold holds it too |
+| a completion hook, or a `seq` step | its writes land. What it would start is parked. | the parked launch starts |
 | a deadline on a withdrawn question | its clock stops | it has the time it had left |
 
-`-why` is required: nothing ends a suspension but somebody reading it. There is no expiry. The
-same suspension held twice is one record with two holders, each with their reason; a person's
-resume lifts it whoever holds it, and a resume made by the system removes only the system's own
-hold. Every charter about every subject is refused.
+`-why` is required. A suspension has no expiry, so it ends only when somebody reads it and
+lifts it.
 
-**Suspensions only add up.** Work is held while any suspension covers it, and nothing exempts
-anything from a wider one. Lifting a pair that a wider suspension also covers leaves the pair
-held, and the answer says by what (`still`).
+The same suspension held twice is one record with two holders, and each holder has a reason.
+A resume by a person lifts it, whoever holds it. A resume by the system removes only the
+system's own hold.
 
-**A lift acts on the world as it stands.** The record is deleted and the suspension drains: new
-firings about its work are still refused while what it held is released — tasks resume, parked
-launches start in order, withdrawn questions are asked again — and then it is removed and every
-rule it covered is armed again, the path an install and a restart take. Nothing that happened
-meanwhile is replayed: a level rule still matching acts once, one whose condition came and went
-does nothing, and an `on` edge that rose during the suspension is not seen. A wide lift is a
-restart's worth of evaluation, at a moment somebody chose.
+A suspension of every charter about every subject is refused.
 
-The mechanism, rule by rule, is in [the trigger model](trigger-model.md#suspending).
+**Suspensions only add up.** Work is held while any suspension covers it. Nothing exempts work
+from a wider suspension. If you lift a suspension, and a wider one covers the same work, the
+work stays held. The answer names the wider one, under `still`.
+
+**A lift acts on the world as it stands.** A lift goes in this order:
+
+1. The record is deleted, and the suspension drains. New firings about its work are still
+   refused.
+2. What it held is released. Tasks resume, parked launches start in order, and withdrawn
+   questions are asked again.
+3. The suspension is removed, and every rule it covered is armed again. An install and a
+   restart arm a rule in the same way.
+
+Nothing that happened during the suspension is replayed.
+
+| Rule | What it does at the lift |
+|---|---|
+| a level rule whose condition still holds | acts once |
+| a rule whose condition held and then stopped holding | does nothing |
+| a rule with an `on` edge that rose during the suspension | does not see the edge |
+
+A wide lift costs as much evaluation as a restart, at a moment that somebody chose.
+
+[The trigger model](trigger-model.md#suspending) describes the mechanism, rule by rule.
 
 ## Whose hold it is
 
-A task knows whose hold it is under — `heldBy` lists `operator` and the suspensions that paused it
-— so the two do not undo each other. `verse flow resume -task` of a run a suspension holds is
-refused, 409, naming the suspension, since resuming it would run covered work. A lift resumes only
-what nothing else holds, so an operator's hold outlives a suspension whichever came first.
+A task knows which holds it is under. Its `heldBy` lists `operator` and the suspensions that
+paused it. So the two kinds of hold do not undo each other.
+
+- `verse flow resume -task` is refused with `409` for a run that a suspension holds. The
+  refusal names the suspension. Resuming the run would run work that is covered.
+- A lift resumes only what nothing else holds. So an operator's hold outlasts a suspension,
+  whichever came first.
 
 ## Who may
 
-Every verb over a task asks `control` of it: the task's owner holds it, and so does the runner its
-claim granted. A `say` over many tasks asks it of each before it says anything, and one refused
-refuses the whole act, naming that task.
+Every verb over a task asks for `control` of the task. The owner of the task holds `control`,
+and so does the runner that its claim granted.
 
-A suspension is asked twice ([perms](perms.md#suspending)). When it is written, the writer must
-hold `control` over the charter it names — a package's address, or a rule's own record — or at the
-subject it names, a selector being asked at its literal head (`demo` for `demo.*.1`). When it
-applies, every time work would make progress, a holder covers that work while they hold `control`
-over the work's charter or at its concrete subject — so a wildcard stops covering a subject the
-moment somebody else owns it. A rule the system installed is the system's alone to suspend.
+A `say` over many tasks asks for `control` of each task before it says anything. If one is
+refused, the whole act is refused, and the refusal names that task.
+
+A suspension is asked twice ([perms](perms.md#suspending)).
+
+**When it is written.** The writer must hold `control` in one of two places:
+
+- over the charter it names, which is the address of a package or the record of a rule;
+- at the subject it names. A selector is asked at its literal head, which is `demo` for
+  `demo.*.1`.
+
+**When it applies**, which is every time work would make progress. A holder covers that work
+while the holder has `control` over the charter of the work, or at its concrete subject. So a
+wildcard stops covering a subject as soon as somebody else owns the subject.
+
+Only the system may suspend a rule that the system installed.
 
 ## Scopes
 
-A scope owns what it creates ([connect](reference/connect.md#what-a-scope-owns)). With `-scope`,
-every verb here reaches the runs that scope started and none it merely sees through the overlay;
-addressed at baseline's work it is refused, 409, naming whose the work is and how to re-address.
-From baseline it is the same the other way. A suspension belongs to the scope it was made in and
-covers only that scope's work — baseline's and every package's without `-scope`, a scope's own
-with it — and a scope may not name a package's charter, which is baseline's.
+A scope owns what it creates ([connect](reference/connect.md#what-a-scope-owns)).
+
+| You act | What a verb reaches |
+|---|---|
+| with `-scope` | the runs that scope started. It does not reach runs that the scope only sees through the overlay. |
+| without `-scope` | the work of baseline and of every package |
+
+A verb addressed at the work of the other side is refused with `409`. The refusal names whose
+the work is, and how to address it.
+
+A suspension belongs to the scope it was made in, and covers the work of that scope only. A
+scope may not name the charter of a package, because a package belongs to baseline.
 
 ## What is not held
 
-- **A task that cannot hold.** A scripted task keeps running to its end; a suspension holds its
-  consequences — its hooks — and not the command already running.
-- **A step between deciding and doing.** An answer accepted, or a firing past its checks, a moment
-  before a suspension lands still acts.
-- **An `on` edge during a suspension**, for a firing it had not started.
-- **A parked launch across a restart.** A hook's spawn parked by a suspension is lost if verse
-  restarts before the lift.
-- **Names that moved.** A suspension names an address, a rule and a subject durably; a package
-  moved or a rule renamed leaves one naming nothing, which the listing marks `covers: false`.
-- **A lapsed holder's held work.** A holder whose authority lapses stops covering new work, but
-  what was already held stays held until somebody resumes.
+- **A task that cannot hold.** A scripted task runs to its end. A suspension holds what
+  follows from the task, which is its hooks. It does not hold the command that is already
+  running.
+- **A step between deciding and doing.** An answer that was accepted a moment before a
+  suspension lands still acts. So does a firing that had passed its checks.
+- **An `on` edge during a suspension**, for a firing that had not started.
+- **A parked launch across a restart.** A suspension parks the spawn of a hook. If verse
+  restarts before the lift, the spawn is lost.
+- **Names that moved.** A suspension names an address, a rule and a subject, and keeps those
+  names. When a package moves or a rule is renamed, the suspension names nothing. The listing
+  marks it `covers: false`.
+- **Work held by a holder whose authority ended.** A holder that loses its authority stops
+  covering new work. What it already held stays held until somebody resumes it.
 
 ## Seeing it
 
-- `verse flow` lists live tasks with `heldBy`, and suspensions with their holders, reasons, what
-  they hold and whether they cover anything.
-- `verse status` says what is live and what is held: `flows: {tasks, subjects}` — live tasks, and
-  the distinct subjects they are about — and, when anything is suspended, `suspensions: {count,
-  tasks, subjects, questions, launches}` — how many are in force, and the tasks, their subjects,
-  the questions withdrawn and the launches parked that they hold, each counted once. The charter census marks a rule suspended about every subject.
-- `verse status` counts what has gone wrong at the rules' firings, as `firings: {failed,
-  unread}`, and `verse charter` marks the rule with `trouble`
-  ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)).
-- `verse flow show <subject>` puts at the top of the tree what holds the subject's work — what
-  would hold an installed rule whose subject could select it, and what holds its live tasks — and
-  marks `heldBy` on a live task and `suspended` on each position whose work is held. A subject
-  with no work that something would hold gets a tree too, with no branches: the address itself,
-  or each stored entity a pattern selects. A tree with a live task says `active: true`;
-  `-active` shows only those, `-no-active` only the others, and neither shows every one.
-- A withdrawn question's record says which suspension withdrew it.
+| Command | What it shows |
+|---|---|
+| `verse flow` | live tasks with `heldBy`, and suspensions with their holders, their reasons, what they hold, and whether they cover anything |
+| `verse status` | counts of what is live and what is held, and of what has gone wrong |
+| `verse charter` | a rule that is suspended about every subject, and a rule in trouble |
+| `verse flow show <subject>` | what holds the work of one subject, as a tree |
 
-Why none of this rides the change stream is in [deployment and
-steering](deployment-and-steering.md).
+**`verse status`** has three counts.
+
+| Field | What it counts |
+|---|---|
+| `flows: {tasks, subjects}` | the live tasks, and the distinct subjects they are about |
+| `suspensions: {count, tasks, subjects, questions, launches}` | how many suspensions are in force, and what they hold: tasks, their subjects, questions withdrawn, launches parked. Each is counted once. The field is absent when nothing is suspended. |
+| `firings: {failed, unread}` | what has gone wrong at the firings of the rules ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)) |
+
+**`verse charter`** marks a rule in trouble with `trouble`.
+
+**`verse flow show <subject>`** puts what holds the work of the subject at the top of the
+tree. That is what would hold an installed rule whose subject could select it, and what holds
+its live tasks. The tree marks `heldBy` on a live task, and `suspended` on each position whose
+work is held.
+
+A subject with no work gets a tree too, if something would hold its work. The tree has no
+branches: it is the address itself, or each stored entity that a pattern selects.
+
+A tree with a live task says `active: true`. `-active` shows only those trees, `-no-active`
+shows only the others, and neither flag shows every tree.
+
+The record of a withdrawn question says which suspension withdrew it.
+
+[Deployment and steering](deployment-and-steering.md) says why none of this travels on the
+stream of changes.
