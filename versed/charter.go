@@ -100,11 +100,17 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 		node.writes = at + ".*"
 		node.reads = trigger.StampReads(eng.Reads())
 	}
-	node.triggers, err = codec.ToNode(eng.Triggers())
+	// THE RULES THAT STAND, the held ones among them: a held rule is written down and occupies
+	// its name, so a listing without it shows a charter its author did not install, and the
+	// rule they are looking for is the one that is missing. Each is marked with the stratum it
+	// waits for.
+	held := eng.Held()
+	node.triggers, err = codec.ToNode(append(eng.Triggers(), held...))
 	if err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
 	markSuspendedRules(eng, node.triggers)
+	markHeldRules(held, node.triggers)
 	if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
 		return err
 	}
@@ -582,6 +588,9 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*
 		}
 	}
 	takePackageAddresses(store, installer, groups)
+	for i := range groups {
+		groups[i].said = tx.notes(groups[i].at)
+	}
 	return groups, http.StatusCreated, nil
 }
 
@@ -629,12 +638,32 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 // IT IS THE SERVER'S TO SAY, because the grouping is. The CLI used to split the file itself to
 // know what to print, which meant two graders of one question — and the one that printed was
 // not the one that installed.
+//
+// AND WHAT THE INSTALL HAS TO SAY, which is the author's to read and nobody else's to act on:
+// `held`, the rules written down and waiting for a stratum, each with the stratum; `notes`, the
+// advisories, each with its rule. `rules` counts the rules that are installed and can fire, so
+// a file whose one rule is held answers 0 and says why.
 func installedReport(groups []charterGroup) []any {
 	out := make([]any, 0, len(groups))
 	for _, g := range groups {
-		e := map[string]any{"rules": len(g.rules), "strata": len(g.strata)}
+		var held, notes []any
+		for _, n := range g.said {
+			if n.Held != "" {
+				held = append(held, map[string]any{"rule": n.rule, "stratum": n.Held})
+			}
+			for _, a := range n.Advice {
+				notes = append(notes, map[string]any{"rule": n.rule, "note": a})
+			}
+		}
+		e := map[string]any{"rules": len(g.rules) - len(held), "strata": len(g.strata)}
 		if g.at != "" {
 			e["at"] = g.at
+		}
+		if len(held) > 0 {
+			e["held"] = held
+		}
+		if len(notes) > 0 {
+			e["notes"] = notes
 		}
 		out = append(out, e)
 	}
@@ -648,6 +677,8 @@ type charterGroup struct {
 	strata    []*ir.Node
 	schedules []*ir.Node
 	rules     []*ir.Node
+	// said is what installing the rules had to say, filled once the file is in.
+	said []ruleNotes
 }
 
 func (g charterGroup) empty() bool {
@@ -770,6 +801,40 @@ type charterTx struct {
 	// of no charter, and a later install there would find it rather than make one.
 	fresh []string
 	undo  []func() error
+	// placed is every rule this request installed, in the order it did, with the engine that
+	// holds it: what each has to say is asked once the whole file is in (notes).
+	placed []placedRule
+}
+
+// placedRule is a rule a request installed, the package it went to, and the engine there.
+type placedRule struct {
+	at   string
+	eng  *trigger.Engine
+	rule trigger.Trigger
+}
+
+// ruleNotes is what one rule's install has to say (trigger.Notes).
+type ruleNotes struct {
+	rule string
+	trigger.Notes
+}
+
+// notes is what the installs at one package have to say, in the order the file held them.
+//
+// ASKED ONCE THE WHOLE FILE IS IN, not as each rule lands: a rule is held until its stratum
+// arrives, and a file may carry the stratum after the rule. What the author is told is how
+// things stand when the request ends.
+func (tx *charterTx) notes(at string) []ruleNotes {
+	var out []ruleNotes
+	for _, p := range tx.placed {
+		if p.at != at {
+			continue
+		}
+		if n := p.eng.NotesOn(p.rule); n.Held != "" || len(n.Advice) > 0 {
+			out = append(out, ruleNotes{rule: p.rule.Name, Notes: n})
+		}
+	}
+	return out
 }
 
 func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
@@ -879,6 +944,7 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err := actsAsInstaller(tx.store, eng.RuleRef(t.Name), tx.as(), before); err != nil {
 		return charterCode(err), err
 	}
+	tx.placed = append(tx.placed, placedRule{at: tx.at, eng: eng, rule: t})
 	return http.StatusCreated, nil
 }
 

@@ -381,6 +381,17 @@ charter written to sit beside another one does. `verse c -a` sends a file's own 
 first, so a self-contained charter never holds; one whose rules name a neighbour's stratum holds
 exactly those rules until the neighbour is installed.
 
+The install tells you which rules it held. A stratum name with a spelling mistake in it is
+held in the same way, so read this line:
+
+```
+$ verse charter -a -f review.tony
+baseline: installed 0 trigger(s)
+  held: rule review waits for stratum sdcl, which is not installed. It fires on nothing until that stratum is.
+```
+
+The count is the rules that can fire. `verse charter` lists a held rule with `held: <stratum>`.
+
 That is the intended behaviour and it is **invisible**, which is the corner worth knowing before it
 costs you an afternoon. A held rule is not in `verse charter`, `verse c <address> rules <name>`
 answers *no such trigger*, and `verse status` counts what fires, so a four-rule charter installs

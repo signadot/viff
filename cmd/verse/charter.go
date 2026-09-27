@@ -392,6 +392,27 @@ func charterAdd(cc *cli.Context, at, file string) error {
 	return reportInstalled(cc, body, respFmt(resp))
 }
 
+// reportNotes says what installing one package had to say: the rules held, and the advisories.
+//
+// UNDER THE LINE THAT SAYS WHAT WAS INSTALLED, because each changes what that line means: a
+// held rule is counted out of it, and an advisory is a rule that was counted and does something
+// other than it reads. Both are the author's to act on, and this is where the author is.
+func reportNotes(cc *cli.Context, e *ir.Node) {
+	if held := codec.Unwrap(nodeField(e, "held")); held != nil && held.Type == ir.ArrayType {
+		for _, h := range held.Values {
+			h = codec.Unwrap(h)
+			fmt.Fprintf(cc.Out, "  held: rule %s waits for stratum %s, which is not installed. "+
+				"It fires on nothing until that stratum is.\n", nodeStr(h, "rule"), nodeStr(h, "stratum"))
+		}
+	}
+	if notes := codec.Unwrap(nodeField(e, "notes")); notes != nil && notes.Type == ir.ArrayType {
+		for _, n := range notes.Values {
+			n = codec.Unwrap(n)
+			fmt.Fprintf(cc.Out, "  note: rule %s: %s\n", nodeStr(n, "rule"), nodeStr(n, "note"))
+		}
+	}
+}
+
 // reportInstalled says what went where, in both coordinates.
 //
 // "baseline" is the unpackaged charter — the one that may write anywhere — and it is also the
@@ -431,9 +452,10 @@ func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
 		where += inScope
 		if strata == 0 {
 			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, rules)
-			continue
+		} else {
+			fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
 		}
-		fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
+		reportNotes(cc, e)
 	}
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
 	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an

@@ -794,7 +794,8 @@ behalf would put a decision in the store that nobody made. It applies to a no ho
 one person's, a threshold of them, or the clock's default.
 
 Omitting it is legitimate — "ask again next time somebody touches it" is a real policy — so a
-gate without one earns an advisory at install rather than a refusal. To say a no is final
+gate without one earns an advisory at install rather than a refusal. The install prints it
+under the line that says what was installed, as `note: rule <name>: …`. To say a no is final
 without changing the subject's own state, the vanishing-marker shape works:
 
 ```tony

@@ -420,6 +420,48 @@ func (e *Engine) Rule(name string) (Trigger, bool) {
 	return Trigger{}, false
 }
 
+// Held returns the rules that are written down and wait for their stratum: each occupies its
+// name and fires on nothing until the stratum it names is installed.
+func (e *Engine) Held() []Trigger {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	out := make([]Trigger, len(e.pending))
+	copy(out, e.pending)
+	return out
+}
+
+// Notes is what an install has to say to whoever made it, beside whether it happened.
+//
+// NEITHER IS A REFUSAL, and both change what the author does next. A held rule is installed in
+// every sense but the one that matters to somebody watching for it to fire; an advisory is a
+// rule that is legal and reads as something other than what it does. The engine's log has both,
+// and the log is read by whoever runs the daemon — the author is whoever sent the file, and
+// what they are told is the install's answer.
+type Notes struct {
+	// Held is the stratum the rule waits for, and "" for a rule that is installed.
+	Held string
+	// Advice is what the rule says that its author may not have meant (advise).
+	Advice []string
+}
+
+// NotesOn is what the install of t, just made, has to say.
+func (e *Engine) NotesOn(t Trigger) Notes {
+	var n Notes
+	e.trigMu.Lock()
+	for _, held := range e.pending {
+		if held.Name == t.Name {
+			n.Held = held.Stratum
+		}
+	}
+	e.trigMu.Unlock()
+	if n.Held != "" {
+		// A held rule is advised when it installs: what it crosses is not known until then.
+		return n
+	}
+	n.Advice = append(advise(t), e.adviseDeriveClobber(t)...)
+	return n
+}
+
 // Triggers returns the installed triggers (the charter).
 func (e *Engine) Triggers() []Trigger {
 	e.trigMu.Lock()

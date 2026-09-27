@@ -369,6 +369,26 @@ func (s *Server) suspensionCount(scope string) *api.SuspensionCount {
 
 // markSuspendedRules marks each rule in a charter listing that a suspension holds about every
 // subject with what holds it.
+// markHeldRules marks each listed rule that is held with `held: <stratum>`, the stratum it
+// waits for: it fires on nothing until that stratum is installed.
+func markHeldRules(held []trigger.Trigger, rules *ir.Node) {
+	if rules == nil || rules.Type != ir.ArrayType {
+		return
+	}
+	waits := map[string]string{}
+	for _, t := range held {
+		waits[t.Name] = t.Stratum
+	}
+	for _, rule := range rules.Values {
+		stratum, ok := waits[entity.Str(rule, "name")]
+		if !ok || rule.Type != ir.ObjectType {
+			continue
+		}
+		rule.Fields = append(rule.Fields, ir.FromString("held"))
+		rule.Values = append(rule.Values, ir.FromString(stratum))
+	}
+}
+
 func markSuspendedRules(eng *trigger.Engine, rules *ir.Node) {
 	if rules == nil || rules.Type != ir.ArrayType {
 		return
