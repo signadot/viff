@@ -861,6 +861,19 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// What $references read: the cause's payload for a hook, the subject's own otherwise.
 	// Resolved once, so a patch and a spawn in one action cannot disagree about what $x means.
 	root := e.refPayload(oc.ev, subj, src)
+
+	// EVERYTHING IS RESOLVED BEFORE ANYTHING IS WRITTEN. The patch is what takes the subject
+	// out of the rule's selection, so a patch that lands ahead of a derive that then fails is
+	// a subject latched over a write that never happened: the rule does not fire again to
+	// try, and the verse says the work finished and holds no record of it. What can fail at a
+	// firing in the ordinary way — a reference the answer did not carry, a read of an entity
+	// that is not there — is known before any write, from the firing's own snapshot, so it is
+	// found here and the firing writes nothing.
+	//
+	// The writes themselves are still one commit each, with no transaction between them: a
+	// store that fails partway leaves what landed. Resolving first is what makes that the
+	// store's failure and not the charter's.
+	var patch entity.Payload
 	if a.Patch != nil {
 		// Resolve $references against the payload that fired this action, so a patch can
 		// write a value it read (a completed task's $result, a nested $verse.review.done)
@@ -874,11 +887,18 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			e.tracef("trigger %s: %v; not spawning", chain, err)
 			return nil, err
 		}
-		patch, err := expandPatch(a.Patch, refRoot(root, sn), e.readerFor(oc))
+		patch, err = expandPatch(a.Patch, refRoot(root, sn), e.readerFor(oc))
 		if err != nil {
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err
 		}
+	}
+	derived, err := a.resolveDerives(chain, oc, subj, e, root)
+	if err != nil {
+		return nil, err
+	}
+
+	if a.Patch != nil {
 		// ev.Rev is the commit that woke this firing, and carrying it into the write is what
 		// makes the resulting commit a HOP rather than a fresh cause. It is 0 for a firing with
 		// no engine-caused cause — a completion hook, whose event comes off a task finishing
@@ -895,11 +915,38 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// DERIVATIONS, after the subject's own write and before the spawn — a derive is state, and
 	// a task started about a state the trigger failed to establish is the same failure the
 	// patch above already refuses to create.
-	//
-	// The only reference a derive may carry is $subject, checked at install (validateDerive) and
-	// resolved against a root holding nothing else. What the engine adds beyond that is the
-	// linkage — which subject this derivation is about — on the precedent the spawn below sets
-	// for its own subject.
+	for _, d := range derived {
+		// ev.Rev as the parent, exactly as the subject patch above: the derived entity is what
+		// wakes the higher stratum's rule, so this is where a cascade's causal chain crosses a
+		// level. Losing it would not loosen the throttle's bound — a chain never returns to a
+		// stratum it has left, so a per-segment count still trips — but it would truncate the
+		// report, which names the rules that looped by walking back parents (causal.go).
+		if err := e.patchEntity(chain, oc.parent, subj, d.ref, d.payload); err != nil {
+			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.ref, err)
+			return nil, err
+		}
+	}
+	if a.Spawn == nil {
+		return nil, nil
+	}
+	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev)
+}
+
+// derivedWrite is one entity an action derives, resolved: where it goes and what it holds.
+type derivedWrite struct {
+	ref     entity.Ref
+	payload entity.Payload
+}
+
+// resolveDerives resolves every entity an action derives about one subject, and writes none of
+// them: each address and each content, in the order the action declares them.
+//
+// The only reference a derive may carry is $subject, checked at install (validateDerive) and
+// resolved against a root holding nothing else. What the engine adds beyond that is the
+// linkage — which subject this derivation is about — on the precedent the spawn sets for its
+// own subject.
+func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *Engine, root entity.Payload) ([]derivedWrite, error) {
+	var out []derivedWrite
 	for _, d := range a.derives() {
 		// A FAN-OUT: one derived entity per element of `over`, addressed by `key`.
 		//
@@ -937,10 +984,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 					return nil, err
 				}
-				if err := e.patchEntity(chain, oc.parent, subj, ref, payload); err != nil {
-					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
-					return nil, err
-				}
+				out = append(out, derivedWrite{ref: ref, payload: payload})
 			}
 			continue
 		}
@@ -982,20 +1026,9 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 			return nil, err
 		}
-		// ev.Rev as the parent, exactly as the subject patch above: the derived entity is what
-		// wakes the higher stratum's rule, so this is where a cascade's causal chain crosses a
-		// level. Losing it would not loosen the throttle's bound — a chain never returns to a
-		// stratum it has left, so a per-segment count still trips — but it would truncate the
-		// report, which names the rules that looped by walking back parents (causal.go).
-		if err := e.patchEntity(chain, oc.parent, subj, ref, payload); err != nil {
-			e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
-			return nil, err
-		}
+		out = append(out, derivedWrite{ref: ref, payload: payload})
 	}
-	if a.Spawn == nil {
-		return nil, nil
-	}
-	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev)
+	return out, nil
 }
 
 // launchSpawn is the spawn half of an action: bind the spec, resolve the who-axis, and start

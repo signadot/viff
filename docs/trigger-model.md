@@ -922,6 +922,15 @@ nothing there to finish, which is also why an `onX` without a spawn or a seq is 
 does not count either: a gate on a rule with no action poses a question whose answer nothing
 reads.
 
+**An action resolves everything, then writes.** The order is: resolve the `patch` and every
+`derive`, write the patch, write each derived entity, then `spawn`. A reference that does not
+resolve, or a read of an entity that is not there, fails the firing before anything is
+written. The subject stays where it was, so the rule fires again on the next commit that
+touches it, and the failure is kept on the rule
+([when a rule does nothing](#when-a-rule-does-nothing)). The same holds for a completion hook.
+
+The writes are separate commits. If the store fails between two of them, what landed stays.
+
 `patch` writes to the subject's payload — a state transition. It is a tony patch, not an
 assignment: a nested write merges into the subtree it names rather than replacing it, so two
 triggers writing under one key do not clobber each other, and the
