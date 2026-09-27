@@ -5,86 +5,87 @@ agentic autonomy. You install a *charter* of trigger rules; the runtime reacts t
 shared entity store and does the work with governed agent tasks, and every reaction passes a
 gate.
 
-Read the overview first, and control before you let verse act. Walk the tutorial. The
-architecture and the reference are for when a subject comes up.
+The pages are grouped by who reads them. Start with the first group, then go to the group for
+your job.
 
-## Welcome
+## Start here
 
-- [Overview](overview.md) — the architecture, the model, and the decisions that hold it up.
-- [Control](control.md) — how to stop work without ending it: a run's hold and a durable
-  suspension, how long each lasts, what it reaches, whose hold it is, and who may.
+Read these in order.
 
-## Walks
+1. [Overview](overview.md) — the model, the parts, and the decisions that hold it up.
+2. [Tutorial](tutorial.md) — entities, tasks, and the charters that relate them. Each section
+   seeds itself with one command. It runs on your own machine and needs no credentials.
+3. [Control](control.md) — how to stop work without ending it. Read it before you let verse
+   act on anything that matters.
 
-Things you drive, one step at a time.
+## Run a verse
 
-- [Tutorial](tutorial.md) — entities, tasks, and the charters that relate them, in sections
-  that each seed themselves with one command.
+For an operator: starting verse, driving it, and saying who may do what.
+
+- [Starting a verse](reference/up.md) — `verse up`, its flags, and the config file.
+- [Commands](reference/README.md) — every command, and a file per topic.
 - [Permissions, walked](perms-guide.md) — your own entities, a task and its gates, a charter
   and what it owns, a gate with nobody behind it, a gate with a resolver.
+- [Tasks](reference/tasks.md) — running a task by hand, and working one as its executor.
+- [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
+  The surface is [reference/runners.md](reference/runners.md).
+- [Connect and scopes](reference/connect.md) — reflecting your working tree into a scope.
+- [Kubernetes deploy](https://github.com/signadot/verse/blob/main/deploy/README.md) — build
+  the image and run verse on a cluster.
+
+## Write a charter
+
+For a charter author: the rules, what they read, and what they may write.
+
+- [The trigger model](trigger-model.md) — every field of a rule.
+- [Entities](reference/entities.md) — addresses, reads, writes and watches.
+- [Strata](strata.md) — a declared level ordering, and `derive`.
+- [Convergence](convergence.md) — what ends a firing, and what is checked at install.
+- [Provider selection](provider-selection.md) — how a doer is chosen for a spawn.
+- [Permissions](perms.md) — one owner per node, and grants for everybody else. The detail is
+  [reference/perms.md](reference/perms.md).
 - [An automatic supervisor](auto-supervisor.md) — a worked charter where an agent decides,
   and promotes what is not its to decide.
+- [Representation](reference/representation.md) — tony, JSON and YAML: what verse reads and
+  what it writes.
+
+## Build a runner, a resolver or an io
+
+For somebody extending verse with a program of their own.
+
+- [Seams](seams.md) — the nine places that can be a network, and which side opens each.
+- [Task control](task-control.md) — the contract a runner serves, and the protocol a worker
+  dials in with.
+- [Attached resolvers](attached-resolvers.md) — a service that answers gates. The surface is
+  [reference/resolvers.md](reference/resolvers.md).
+- [Ios](io.md) — connectors: reflecting git, Slack and Linear in, and acting back out. The
+  surface is [reference/io.md](reference/io.md), and the ios verse ships are in
+  [reference/iod.md](reference/iod.md).
+- [Examples](reference/examples/README.md) — a runner, a coding runner, a worker and an io to
+  copy and change.
+- [The coding runner, walked](reference/examples/coderunner/walkthrough.md) — deploying the
+  coding runner and running a task on it.
 - [attached-resolver.sh](https://github.com/signadot/verse/blob/main/scripts/attached-resolver.sh)
   — five acts of supervision, one command each.
 
-## Architecture
+## How verse is built
 
-Why each subject is shaped the way it is. [Seams](seams.md) is the view across all of them:
-the nine seams that can be a network, and which side opens each.
-
-**Entities and the store** — everything coordinates through one observable, cursored store.
+For somebody changing verse itself. These pages say why a part is shaped the way it is. You do
+not need them to run verse, to write a charter, or to build on it.
 
 - [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain
   costs.
-- [Permissions](perms.md) — one owner per node, and grants for everybody else: the model, top
-  down. The detail is [reference/perms.md](reference/perms.md).
-
-**Charters and triggers** — a charter is a list of rules: when this changes and the gates
-resolve, do this.
-
-- [Convergence](convergence.md) — what ends a firing, and what is checked at install.
+- [The store](reference/store.md) — what the store guarantees.
 - [The cycle throttle](cycle-throttle.md) — how a runaway across rules is caught at runtime.
-- [Strata](strata.md) — a declared level ordering, and `derive`.
-- [Provider selection](provider-selection.md) — how a doer is chosen, and why it may only
-  narrow what the spawn granted.
-
-**Tasks and autonomy** — a task is a governed unit of agentic work, and how it runs is a seam.
-
-- [Task control](task-control.md) — the base-URL contract and the dial-in protocol.
-- [Attached resolvers](attached-resolvers.md) — a service that answers gates through a resolver,
-  and whose answer counts.
-- [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
-- [External tasks](external-tasks.md) — how the seam was chosen.
-
-**Steering** — observation can lag; steering cannot. The acts themselves are
-[control](control.md), above.
-
-- [Deployment and steering](deployment-and-steering.md) — the two planes, and why a hold costs
-  a cursor rather than a buffer.
-
-**Federation** — external state reflected into the place in the verse that owns it.
-
-- [Ios](io.md) — connectors: reflecting git, Slack and Linear in, and acting back out.
+  A charter author needs one section of it, [what a trip does](cycle-throttle.md#what-a-trip-does).
+- [External tasks](external-tasks.md) — how the task seam was chosen.
+- [Deployment and steering](deployment-and-steering.md) — why control is not a store write.
 - [Content federation](content-federation.md) — how `connect` federates a tree, and what a
   task reads through.
 - [Writing a controller](controllers.md) — the `Handler` contract and its invariants.
 
-## Reference
-
-- [Commands](reference/README.md) — the flat command surface, and a file per topic.
-- [The trigger model](trigger-model.md) — the two grammars a charter is written in, and every
-  field of a rule.
-- [Starting a verse](reference/up.md) · [entities](reference/entities.md) ·
-  [the store](reference/store.md) · [tasks](reference/tasks.md) ·
-  [runners](reference/runners.md) · [resolvers](reference/resolvers.md) ·
-  [ios](reference/io.md) · [the ios verse ships](reference/iod.md) ·
-  [connect and scopes](reference/connect.md) · [representation](reference/representation.md)
-- [Examples](reference/examples/README.md) — a runner, a coding runner, a worker and an io to
-  copy and change.
-
 ## Elsewhere
 
-- [Kubernetes deploy](https://github.com/signadot/verse/blob/main/deploy/README.md) — build the image and run verse on a cluster.
 - [tony](https://signadot.github.io/tony-format/) — the document language a charter is
   written in, and [docd](https://signadot.github.io/tony-format/docd/), the store behind a
   durable verse.

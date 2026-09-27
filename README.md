@@ -95,9 +95,9 @@ entities, tasks, and the charters that relate them.
 
 ## Docs
 
-[docs/](docs/README.md) is the index, in four parts: the overview, the walks you drive, the
-architecture by subject, and the reference. It describes what runs today, and so does the
-site mkdocs builds from it.  Start with:
+[docs/](docs/README.md) is the index. It groups the pages by who reads them: somebody
+running a verse, writing a charter, building a runner or an io, or changing verse itself. It
+describes what runs today, and so does the site mkdocs builds from it. Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the
   load-bearing decisions. Read this first.
