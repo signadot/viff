@@ -30,10 +30,13 @@ per-topic detail this tutorial skips, read [the reference](reference/README.md).
 
 ## 1. Start
 
+You need Go 1.27.1 or later.
+
 ```sh
-go build -o verse ./cmd/verse     # or: make bin
+go build -o verse ./cmd/verse
+export PATH="$PWD:$PATH"          # so that `verse` is this build, in every terminal you use
 export VERSE_ADDR=localhost:9797  # where clients reach it (this is the default)
-./verse up                        # engine + task runtime + store, in one process
+verse up                          # engine + task runtime + store, in one process
 ```
 
 Leave it running. Every other subcommand is a client, so open a second terminal. To see it

@@ -28,10 +28,13 @@ What you author is the rules, and how much autonomy each of them runs with.
 
 ## Quick start
 
+You need Go 1.27.1 or later.
+
 ```sh
-go build -o verse ./cmd/verse     # or: make bin
+go build -o verse ./cmd/verse
+export PATH="$PWD:$PATH"          # so that `verse` is this build
 export VERSE_ADDR=localhost:9797
-./verse up                        # engine + task runtime + store, in one process
+verse up                          # engine + task runtime + store, in one process
 
 ./scripts/seed-demo.sh            # in another terminal: a charter, entities, a waiting gate
 ```
@@ -46,7 +49,7 @@ You need no configuration to start. Toward a verse on your own machine the CLI a
 
 `scripts/seed-demo.sh` fills the empty verse: two rules, a handful of entities, one auto
 reaction that has already happened and one gate waiting for you — then prints what to type
-next. Or do it by hand: `verse c -a …`, `verse data …`, `verse -put gate`,
+next. Or do it by hand: `verse charter -a …`, `verse data … --put …`, `verse gate`,
 `verse gate approve …`. Two more scripts seed the [tutorial](docs/tutorial.md)'s sections:
 `scripts/seed-entities.sh` (a world to select over) and `scripts/charter-shapes.sh` (the
 shapes a rule comes in, one command each). The tutorial walks the lot in five sections —
@@ -82,12 +85,11 @@ entities, tasks, and the charters that relate them.
   `git` that triggers react to. Five ship (`iod git|git-issue|slack|linear|github`); anything
   else is the sample program plus one function. `verse connect` federates your working tree
   the same way, into a scope.
-- `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `entity`,
-  `trigger`, `stratum`, `goal`, `task` (including the `do` executor verbs), `flow`,
-  `resolver`, `runner`, `io`. What it answers with: `gate` and `motion`. What it
-  reads: `status`, `watch`, `provider`, `schema`. Each is one command, named in the singular:
-  bare it lists, with a verb it acts on one member, and the plural the HTTP surface uses is
-  an alias of it. What it runs: `up`, `down`, `connect`, `disconnect`.
+- `versed/` and `cmd/verse/` — one HTTP surface and one `verse` CLI. What it governs: `data`,
+  `charter`, `schedule`, `task` (including the `do` executor verbs), `flow`, `resolver`,
+  `runner`, `io`, `perms`, `group`. What it answers with: `gate`. What it reads: `status`,
+  `watch`, `provider`, `schema`. Each is one command, named in the singular, and bare it
+  lists. What it runs: `up`, `down`, `connect`, `disconnect`.
 - `deploy/` and `Makefile` — a checked-in `o build` and a local-build image pipeline to run
   verse on Kubernetes.
 
