@@ -844,13 +844,24 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 		entity.RefAt("gh", "issue", "1"))
 	waitStage(t, store, derived.Ref, "awaiting-approval")
 
-	eng.chainMu.Lock()
-	defer eng.chainMu.Unlock()
-	deepest := 0
-	for _, l := range eng.causes {
-		if l.depth > deepest {
-			deepest = l.depth
+	// THE LINK IS WAITED FOR, as the stage was. A write is committed and then its link is
+	// recorded (causal.Write), so a reader that has just seen the commit may be looking before
+	// the link is there. What is asked here is how deep the chain goes, not when it was written
+	// down.
+	depth := func() int {
+		eng.chainMu.Lock()
+		defer eng.chainMu.Unlock()
+		deepest := 0
+		for _, l := range eng.causes {
+			if l.depth > deepest {
+				deepest = l.depth
+			}
 		}
+		return deepest
+	}
+	deepest := depth()
+	for deadline := time.Now().Add(2 * time.Second); deepest < 3 && time.Now().Before(deadline); deepest = depth() {
+		time.Sleep(5 * time.Millisecond)
 	}
 	if deepest < 3 {
 		t.Fatalf("the chain did not continue across the level: deepest recorded depth is %d, "+
