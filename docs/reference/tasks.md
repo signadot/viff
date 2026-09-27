@@ -29,7 +29,7 @@ runs: the local runtime applies them directly, and a brokered or remote worker g
 relayed through its inbox.
 
 A trigger's `spawn` runs a task the same way, from the same `launch.Spec`; what a charter
-may say about one is in [the trigger model](../trigger-model.md#action--what-fires).
+may say about one is in [the trigger model](action.md#action--what-fires).
 
 ### `-answer-contract`: what finished means
 
@@ -207,7 +207,7 @@ the name itself, and `paths`, `resources`, `branches` and `onPush` for what it t
 gate writes has to hold, and one it leaves out holds for anything.
 
 `need`, `options` and `deadline` mean what they mean on a
-[charter gate](../trigger-model.md#gates--whether-it-proceeds), and are refused the same way
+[charter gate](gates.md#gates--whether-it-proceeds), and are refused the same way
 when they cannot be posed as written — at the spawn, or at `task vector`, never at the boundary
 a running task reaches.
 
@@ -416,8 +416,8 @@ A completion hook (`onDone` and friends) reads that task's own payload: `$status
 `$subject` already names it. Note that `status: done` means the task
 *stopped*, not that the work succeeded — a hook that advances state should name evidence
 (`patch: {stage: reviewed, severity: $data.severity}`) rather than trust a bare claim. See
-[bindings](../trigger-model.md#bindings) and
-[the answer contract](../trigger-model.md#the-answer-contract).
+[bindings](action.md#bindings) and
+[the answer contract](action.md#the-answer-contract).
 
 ## Steering
 

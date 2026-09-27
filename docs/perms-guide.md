@@ -181,7 +181,7 @@ special-cases this; it is what "a grant does not reach through an owner record" 
 - `-as <who>` is who the run is, and therefore who owns it and co-owns what it asks.
 
 What the task may *do* in the world — write files, push, delegate — is a different axis: the
-`grant` on a spawn (`all`, `read-only`, `no-delegate`, `none`, [trigger-model.md](trigger-model.md#action--what-fires))
+`grant` on a spawn (`all`, `read-only`, `no-delegate`, `none`, [trigger-model.md](reference/action.md#action--what-fires))
 is a hard envelope the runtime refuses outside of, not a line on a record. A manual run takes
 the runtime's default; a charter's spawn names one. The two do not meet: a permissions grant
 says who may touch an entity, a spawn's grant says what a task may attempt.

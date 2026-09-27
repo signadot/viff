@@ -91,5 +91,5 @@ author has to know:
   what a charter rule already rides on — a rule is dense with operators and is stored verbatim
   under that escape. `entity.AsData` is the same thing for a record being read, edited and put
   back, which `entity.Modify` does for its callers. Read [the trigger
-  model](../trigger-model.md#the-charter-is-durable) for the longer version, since a charter is
+  model](charter.md#the-charter-is-durable) for the longer version, since a charter is
   the payload that needed it first.

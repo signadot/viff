@@ -58,7 +58,7 @@ one.
 
 An action's reads are pinned to C too, and the ones that are say so in their spelling.
 `$subject.value`, the subject's payload, and the two path reads
-([`!get-path` / `!list-paths`](trigger-model.md#get-path-and-list-paths--reaching-another-entity))
+([`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity))
 are all answered from **one snapshot per firing, taken at the causing commit**. So a firing held at
 a gate for a day writes from the state its rule was evaluated against, not from whatever the store
 reached while a human thought about it, and a fan-out cannot mix one member's state at C with

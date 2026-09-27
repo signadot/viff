@@ -37,7 +37,17 @@ For an operator: starting verse, driving it, and saying who may do what.
 
 For a charter author: the rules, what they read, and what they may write.
 
-- [The trigger model](trigger-model.md) — every field of a rule.
+- [The trigger model](trigger-model.md) — the model of a rule. The fields of a rule are in
+  the five pages below.
+- [The condition of a rule](reference/condition.md) — `subject`, `on` and `when`, and what a
+  match can say.
+- [The action of a rule](reference/action.md) — `patch`, `derive`, `spawn`, `calls` and `seq`,
+  and what an action reads.
+- [The gates of a rule](reference/gates.md) — what a gate asks, who answers it, and how it
+  settles.
+- [The charter](reference/charter.md) — packages, what a package reads and writes, and how a
+  charter is stored.
+- [Schedules](reference/schedules.md) — schedules and their ticks, which make time a cause.
 - [Entities](reference/entities.md) — addresses, reads, writes and watches.
 - [Strata](strata.md) — a declared level ordering, and `derive`.
 - [Convergence](convergence.md) — what ends a firing, and what is checked at install.

@@ -259,8 +259,8 @@ func (c Condition) validate() error {
 	if !c.When.IsMatchAtom() {
 		return fmt.Errorf("condition.when carries temporal operators, which are not evaluated " +
 			"yet: a temporal when has no change to dispatch on, so it needs a long-lived monitor " +
-			"over the subtrees it reads (see docs/trigger-model.md). Use a point-in-time " +
-			"match here; temporal composition works today in a gate's `formula`")
+			"over the subtrees it reads (see docs/reference/condition.md). Use a point-in-time " +
+			"match here; a gate's threshold and its clock are `need:` and `deadline:` on the gate")
 	}
 	if err := c.When.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.when: %w", err)
@@ -278,8 +278,8 @@ func (c Condition) validateOn() error {
 	if !c.On.IsMatchAtom() {
 		return fmt.Errorf("condition.on carries temporal operators, which are not evaluated " +
 			"yet: `on` is a store predicate asked at two revisions, so it has to be answerable " +
-			"at one. Use a point-in-time match; temporal composition works in a gate's " +
-			"`formula`")
+			"at one. Use a point-in-time match; a gate's threshold and its clock are `need:` " +
+			"and `deadline:` on the gate")
 	}
 	if err := c.On.Req.Facts.Validate(); err != nil {
 		return fmt.Errorf("condition.on: %w", err)

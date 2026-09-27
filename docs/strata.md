@@ -217,7 +217,7 @@ there for the case a plain derive cannot say: **the same subject, decided more t
 
 A merge train is the case that needs it. `git.verse.head` is a single entity whose `sha` moves, so
 a rule deriving a batch from it writes one address, and a
-[gate](trigger-model.md#gates--whether-it-proceeds)'s id is a function of (trigger, gate, subject).
+[gate](reference/gates.md#gates--whether-it-proceeds)'s id is a function of (trigger, gate, subject).
 Without a key, the second batch lands at an address whose motion is already settled and inherits
 the first batch's answer, with nobody asked and nothing in the docket saying so. With the sha in
 the address, a new tip is a new subject and therefore a new question.
@@ -300,7 +300,7 @@ should not arrive smuggled inside a fan-out.
 
 ## Path reads inside a derive
 
-[`!get-path` and `!list-paths`](trigger-model.md#get-path-and-list-paths--reaching-another-entity)
+[`!get-path` and `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity)
 let an action copy an entity that is not its subject, and they are the one thing the ordering has
 to constrain — because they break the fact the section above rests on: that nothing a derive
 writes can be reached from a level above it.
@@ -321,7 +321,7 @@ reproducible. A rule may read any level it likes and write it to its own subject
 Nor in a condition, for the same reason one level further back: a read there decides which
 entities a rule is about and writes nothing, so there is nothing for a level above to influence.
 It is unconstrained, and it is the one read that counts toward what the trigger *reads* — see
-[the trigger model](trigger-model.md#a-condition-may-read-too-and-that-one-does-track).
+[the trigger model](reference/action.md#a-condition-may-read-too-and-that-one-does-track).
 
 ## What this earns, and what it does not
 

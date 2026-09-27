@@ -41,6 +41,11 @@ nav:
   - reference/connect.md
 - Write a charter:
   - trigger-model.md
+  - reference/condition.md
+  - reference/action.md
+  - reference/gates.md
+  - reference/charter.md
+  - reference/schedules.md
   - reference/entities.md
   - strata.md
   - convergence.md

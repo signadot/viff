@@ -334,7 +334,7 @@ subject as it stands *now*, a re-read rather than a guess, and the run names no 
 because a restart is the world coming back rather than a commit causing something. A selection
 whose rule or action has left the charter, or whose subject is gone, is settled `orphaned` with a
 `why` instead: a ballot nobody reads is worse than an empty docket. See
-[a question outlives the verse](trigger-model.md#a-question-outlives-the-verse-that-asked-it).
+[a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it).
 
 ## Corners
 

@@ -431,7 +431,7 @@ func ParseExpr(s string) (Match, error) {
 	if strings.ContainsRune(s, '$') {
 		return nil, fmt.Errorf("address %q has a $var; there is no deferred subject form — a "+
 			"subject is a pattern matched against the node a firing is about, e.g. \"demo.pr.*\" "+
-			"on a completion trigger names the PR its task was about (see docs/trigger-model.md)", s)
+			"on a completion trigger names the PR its task was about (see docs/reference/condition.md)", s)
 	}
 	// AS SEGMENTS, KINDS KEPT (entity.PatternNodes): a bare `*` is the wildcard, a bare `..` the
 	// descent, and a quoted `"*"` or `".."` the name, spelled as the match over it — the same

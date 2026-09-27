@@ -637,7 +637,7 @@ One grammar split by cardinality. `!get-path` answers with one node and refuses 
 name several; `!list-paths` answers with a list and is where the globs live. Both are read at the
 commit that caused the firing, so a rule held at a gate for a day still writes what it was evaluated
 against. Both **copy rather than track**, so add an `on` if you want to follow the thing you read.
-See [the trigger model](trigger-model.md#get-path-and-list-paths--reaching-another-entity).
+See [the trigger model](reference/action.md#get-path-and-list-paths--reaching-another-entity).
 
 ### The rest of the grammar
 
@@ -655,8 +655,10 @@ verse charter                     # and `verse c rules <name>` for one of them
 
 A charter is durable. Each rule is an entity (`verse.trigger.rule.<name>`) and so is each stratum
 (`verse.trigger.strata.<name>`), so the program a verse comes back up running is the one it went
-down with. Every field, both grammars, the answer contract a spawn can demand of an agent, chains
-and ids, and what a match can say are in [the trigger model](trigger-model.md).
+down with. The model is in [the trigger model](trigger-model.md). The fields are in the
+reference: [the condition](reference/condition.md), with what a match can say;
+[the action](reference/action.md), with the answer contract a spawn can demand of an agent,
+and chains and ids; and [the gates](reference/gates.md).
 
 ---
 
@@ -738,7 +740,7 @@ firing waiting on them, and a start gives it back: the rule is re-evaluated, re-
 question, and finds the ballots already cast. A question nothing can answer any more — its rule
 left the charter, its subject is gone — is settled `orphaned`, with a `why`, rather than left on
 the docket looking answerable. See
-[a question outlives the verse](trigger-model.md#a-question-outlives-the-verse-that-asked-it).
+[a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it).
 
 ### "No" is a real outcome
 

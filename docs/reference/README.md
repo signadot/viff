@@ -1,13 +1,18 @@
 # Reference
 
 The flat version of everything the [tutorial](../tutorial.md) walks, plus the detail it
-deliberately skips. For what a charter's fields *mean*, see
-[the trigger model](../trigger-model.md); for the map of everything,
+deliberately skips. For the model of a rule, see
+[the trigger model](../trigger-model.md). For the map of everything, see
 [the docs index](../README.md).
 
 | | |
 |---|---|
 | [up.md](up.md) | starting a verse: the store, the driver, the agent root, runners and brokers, the config layers, and the `o` binary |
+| [condition.md](condition.md) | the condition of a rule: `subject`, `on` and `when`, and what a match can say |
+| [action.md](action.md) | the action of a rule: `patch`, `derive`, `spawn`, `calls` and `seq`, what an action reads, the answer contract, hooks, and ids |
+| [gates.md](gates.md) | the gates of a rule: what a gate asks, who answers it, and how it settles |
+| [charter.md](charter.md) | the charter: packages, `reads:`, `verse charter`, and how a charter is stored |
+| [schedules.md](schedules.md) | schedules: time as a cause |
 | [entities.md](entities.md) | refs, payloads, merging writes, conditional writes, selection, and watching |
 | [tasks.md](tasks.md) | the task surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |

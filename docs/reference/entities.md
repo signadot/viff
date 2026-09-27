@@ -461,7 +461,7 @@ a charter carries in `value`, so a read answers "what would a rule with this pre
 select?". Operators (`!or`, `!and`, `!not`, `!glob`, presence and absence) are
 tony's, documented with
 [mergeop](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop); what a match
-can say inside a rule is in [the trigger model](../trigger-model.md#what-a-match-can-say).
+can say inside a rule is in [the trigger model](condition.md#what-a-match-can-say).
 
 `-if-at` roots the predicate at a dot-separated field path. See
 [Selecting by what an entity says](README.md#selecting-by-what-an-entity-says).

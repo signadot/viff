@@ -22,7 +22,7 @@ engine, or this engine before a restart — and starts a fresh chain.
 A chain that crosses engines is a different question with a different answer. Between charter
 packages the loop is excluded rather than bounded, because a package declares what it reads and
 the graph over packages must be acyclic at install
-([trigger-model.md](trigger-model.md#a-charter-can-be-installed-at-an-address)). What is left
+([trigger-model.md](reference/charter.md#a-charter-can-be-installed-at-an-address)). What is left
 here is a chain within one engine, which is what the depth cap is for.
 
 This works because a write reports the revision it landed at (`Store.Write`), and that is the

@@ -67,7 +67,7 @@ so nothing waits on the store answering for a suspension to hold, and a rule wri
 is refused at install because no table would see it. The table loads in the first phase of a
 restart, before tasks are re-attached or the charter restored, and until it has it holds
 everything — a suspension that failed open on a restart would resume what somebody stopped on
-purpose ([control](control.md), [the trigger model](trigger-model.md#suspending)).
+purpose ([control](control.md), [the trigger model](control.md#suspending)).
 
 ## What runs where
 

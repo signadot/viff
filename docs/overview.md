@@ -310,7 +310,7 @@ verse refuses the rest. A grant made in a scope governs that scope alone
 it carries the definition it was installed from. At a restart verse installs the stored rules
 before anything observes. Restoring replays, as installing does, so verse acts on a change
 that arrived while it was down. See
-[the trigger model](trigger-model.md#the-charter-is-durable).
+[the trigger model](reference/charter.md#the-charter-is-durable).
 
 **Resume, not orphan.** At a restart, `versed.reconcileTasks` looks at each task that had not
 ended.

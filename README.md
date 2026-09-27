@@ -142,8 +142,8 @@ describes what runs today, and so does the site mkdocs builds from it. Start wit
   the design depends on. Read this first.
 - [Tutorial](docs/tutorial.md) — five sections that you run yourself: entities, tasks, and
   the charters that relate them. A script seeds each section.
-- [Trigger model](docs/trigger-model.md) — the two grammars a charter is written in, and
-  what every field of a rule means.
+- [Trigger model](docs/trigger-model.md) — the model of a rule, and the two grammars a
+  charter is written in. It links to the pages that say what each field means.
 - [Seams](docs/seams.md) — the nine places that can be a network, and which side opens
   each: what may run remotely, what may sit behind a firewall, and what each costs.
 - [Reference](docs/reference/README.md) — the commands, the config layers, and a page for
