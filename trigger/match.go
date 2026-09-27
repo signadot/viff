@@ -169,11 +169,17 @@ func (m Match) Validate() error {
 			}
 		}
 	}
-	// The predicate is UNRESTRICTED in shape — any tony match, at the payload root — so the only
-	// thing to refuse here is a Go value tony cannot represent at all.
+	// The predicate is UNRESTRICTED in shape — any tony match, at the payload root — so what is
+	// refused here is a Go value tony cannot represent at all, and a tag that names no operator:
+	// tony skips a tag it does not know, so `{stage: !gloob "op*"}` would match by plain
+	// equality against a value no payload holds, and the rule would install and never fire.
 	if v, present := m[mKeyValue]; present {
-		if _, ok := predicateNode(v); !ok {
+		pred, ok := predicateNode(v)
+		if !ok {
 			return fmt.Errorf("match: %q must be a payload predicate, got %T", mKeyValue, v)
+		}
+		if err := checkOps(pred); err != nil {
+			return fmt.Errorf("match: %q: %w", mKeyValue, err)
 		}
 	}
 	return nil
@@ -337,7 +343,14 @@ func checkOps(n *ir.Node) error {
 	}
 	for _, t := range semTags(n.Tag) {
 		name, _, _ := ir.TagArgs(t)
-		if mergeop.Lookup(strings.TrimPrefix(name, "!")) == nil {
+		name = strings.TrimPrefix(name, "!")
+		// A path read is verse's own, answered before tony is handed the match (path.go), so
+		// the one of the two that tony has no operator for is an operator here all the same.
+		if name == ListPathsTag {
+			continue
+		}
+		if mergeop.Lookup(name) == nil {
+			name = "!" + name
 			return fmt.Errorf("unknown operator %q (tony ignores a tag it does not know, so "+
 				"this would match by plain equality instead of failing)", name)
 		}

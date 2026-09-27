@@ -293,3 +293,31 @@ func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 		}
 	}
 }
+
+// A tag in a `value` predicate that names no operator is refused where the rule is read, with
+// the tag named: tony would skip it and compare by equality, so the rule would install and
+// fire on nothing. An operator, and verse's own path reads, are read as what they are.
+func TestAPredicateNamingNoOperatorIsRefused(t *testing.T) {
+	for _, src := range []string{
+		`{path: "demo.pr.*", value: {stage: !gloob "op*"}}`,
+		`{path: "demo.pr.*", value: {labels: {area: !orr [auth, store]}}}`,
+		`{path: "demo.pr.*", value: !nott {stage: merged}}`,
+	} {
+		if msg := matchErr(t, src, codec.Tony); !strings.Contains(msg, "unknown operator") ||
+			!strings.Contains(msg, "value") {
+			t.Errorf("%s: refused with %q, want the unknown operator named in the predicate", src, msg)
+		}
+	}
+	for _, src := range []string{
+		`{path: "demo.pr.*", value: {stage: !glob "op*"}}`,
+		`{path: "demo.pr.*", value: {stage: !or [open, merged]}}`,
+		`{path: "demo.pr.*", value: !not {stage: merged}}`,
+		`{path: "demo.pr.*", value: {covers: !get-path {path: "git.verse.head"}}}`,
+		`{path: "demo.pr.*", value: {files: !list-paths {path: "git.verse.files"}}}`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
+			t.Errorf("%s was refused: %v", src, err)
+		}
+	}
+}
