@@ -291,7 +291,7 @@ func optionIDs(opts []task.Option) []string {
 // question is what a message says of a question it is about, as its record says it.
 type question struct {
 	id       string
-	pose     string // what it asks, in the words the gate wrote
+	pose     string // what it asks, in the words of whoever asked: a gate's pose, a task's reason
 	about    string // what its subject says about itself
 	standing bool   // a record stands at the question's place
 	status   string
@@ -319,6 +319,13 @@ func (k *Sink) question(id string) (question, error) {
 	}
 	q.standing = true
 	q.pose, q.about = entity.Str(doc, "pose"), entity.Str(doc, "about")
+	// A QUESTION THAT WROTE NO POSE IS ASKED IN ITS REASON. A task or a worker raising a
+	// question says it there (task.GateQuestion), so without this somebody asked by a task
+	// reads an id and two options. A rule's gate that wrote no pose has the rule, the gate and
+	// the subject there, which says what is asked about where the id does not.
+	if q.pose == "" {
+		q.pose = entity.Str(doc, "reason")
+	}
 	if _, dflt, at := mirror.DeadlineOf(doc); at != "" {
 		q.due, _ = time.Parse(time.RFC3339Nano, at)
 		q.settles = dflt

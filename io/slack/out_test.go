@@ -261,6 +261,32 @@ func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 	}
 }
 
+// A question a task raised has its words in `reason` and no pose: the message asks it in those
+// words, and a pose, where a gate wrote one, is what it asks instead.
+func TestOutAsksATasksQuestionInItsOwnWords(t *testing.T) {
+	r := newOutRig(t)
+	r.pose(t, "run-1~d1", entity.Obj{"status": mirror.QuestionPending, "task": "run-1",
+		"reason": "Rebase onto main, or merge main in?"})
+	r.pose(t, "q~2", entity.Obj{"status": mirror.QuestionPending,
+		"pose": "Merge this?", "reason": "trigger review gate approval on demo.pr.1"})
+	r.ask(t, "C999", "asked", entity.Obj{"text": "the run is waiting", "asks": "run-1~d1"})
+	r.ask(t, "C999", "gated", entity.Obj{"text": "the review is waiting", "asks": "q~2"})
+	r.pass(t)
+	if len(r.fake.posted) != 2 {
+		t.Fatalf("posted %v, want two messages", r.fake.posted)
+	}
+	said := shown(t, r.fake.posted[0]) + "\n" + shown(t, r.fake.posted[1])
+	if !strings.Contains(said, "> Rebase onto main, or merge main in?") {
+		t.Errorf("said %q, want the task's question in its words", said)
+	}
+	if strings.Contains(said, "Answers `run-1~d1`") {
+		t.Errorf("said %q, which asks by id a question that has words", said)
+	}
+	if !strings.Contains(said, "> Merge this?") || strings.Contains(said, "trigger review gate") {
+		t.Errorf("said %q, want the pose where a gate wrote one", said)
+	}
+}
+
 // What the question is about — its subject's own line, copied onto the question at posing — is
 // said beneath what it asks.
 func TestOutSaysWhatTheQuestionIsAbout(t *testing.T) {
