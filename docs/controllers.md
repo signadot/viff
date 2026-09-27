@@ -11,7 +11,7 @@ subtree is indistinguishable *to a read*: `demo.*` and `verse.task.*` resolve to
 indistinguishable at all, and that is the first thing to know.
 
 `verse connect` mounts one over your working tree; see
-[reference/connect.md](reference/connect.md). The content controller (`source/content.go`)
+[reference/connect.md](reference/connect.md). The content controller (`io/content.go`)
 serves file bytes on demand under `local.dir-content-<scope>.*`.
 
 This note is the how-to, and the invariants a controller must honor. Read them before you write
@@ -76,7 +76,7 @@ libctl.RunController(ctx, &libctl.ControllerConfig{
     DocdAddr:   mountAddr,                 // docd's mount (controller-facing) face
     Controller: "content-" + scope,        // identifies this controller to docd
     Path:       entity.MountKPath("local", "dir-content-"+scope), // <MountRoot>.local.dir-content-<scope>
-    Handler:    source.NewContent(root, mount),
+    Handler:    io.NewContent(root, mount),
 })
 ```
 
@@ -118,7 +118,7 @@ mount processes coming and going. Verse simply has no such watches, and that sim
 2. Only valid UTF-8, bounded content on the wire. A node carrying non-UTF-8 bytes fails docd's
    tokenizer (`read error: bad utf8`), which resets the controller's session and tombstones the
    whole mount, after which every `read_file` in the session fails "not found". Never put raw
-   bytes on the wire: guard with `utf8.Valid` and serve a marker instead, as `source/content.go`
+   bytes on the wire: guard with `utf8.Valid` and serve a marker instead, as `io/content.go`
    returns `{path, size, binary:"non-utf8"}`, and `{truncated:"size-cap"}` for an over-cap file.
    Bound size too; a subtree read should not stream an unbounded blob into one node.
 

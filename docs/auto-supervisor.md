@@ -218,13 +218,13 @@ verse data change pr 8
 #   stage: assessed          ← waiting on a person
 verse gate
 # - gate: sign-off
-#   id: trigger.land-ask.sign-off~090ea377
+#   id: verse.trigger.land-ask.sign-off~090ea377
 #   mode: ASK
 #   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change.pr.8"
 #   subject: change.pr.8
-verse gate approve trigger.land-ask.sign-off~090ea377 -as walter@example.com
-# approved trigger.land-ask.sign-off~090ea377
+verse gate approve verse.trigger.land-ask.sign-off~090ea377 -as walter@example.com
+# approved verse.trigger.land-ask.sign-off~090ea377
 verse data change pr 8      # stage: landed
 ```
 
@@ -240,21 +240,20 @@ assess@change.pr.9` shows what the supervisor read and said, and the change ends
 
 - **Silence has no clock, for this shape.** A supervisor task that never terminates leaves its
   change at `stage: assessing` forever. `onFailed` covers failing; it does not cover hanging. The
-  clock nearby does not fit: a gate's `!deadline` guards a firing that has not happened, and
+  clock nearby does not fit: a gate's `deadline` guards a firing that has not happened, and
   promote-on-silence wants a deadline on a spawn, which does not exist. A
   [resolver](attached-resolvers.md) that owns a gate does have one, `deadline: {within, then}`,
   where silence past it escalates to the layer above, but that is a clock on an unanswered
   question rather than on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor
-  wrote it, which is weaker than what the *whether* axis already gives a human: a `!quorum`
-  gate keeps an attributable, retractable ballot per voter ([§5 of the
-  tutorial](tutorial.md#5-gates-and-the-docket)). An agent casting a
-  ballot on that same surface is what the reserved `!judgment` requirement kind is for, and that
-  is a stub, so an agent cannot be one of two approvals — only the thing that decides whether the
-  one approval is needed.
-- **No second opinion.** From the same gap: two supervisors that must agree is expressible on
-  paper, as `!quorum 2` over judgments, and not in the engine. Two `assess`-style rules writing to
-  different fields, with `land-auto` requiring both, is the shape that works.
+  wrote it, which is weaker than what a gate gives: a gate with `need: 2` keeps an attributable
+  ballot per voter ([§5 of the tutorial](tutorial.md#5-gates-and-the-docket)). A principal of
+  kind `agent` can cast one of those ballots, as a person can
+  (`verse gate approve <id> -as agent:<name>`). The supervisor in this example is a task that
+  writes a field, and it casts no ballot.
+- **No second opinion, as written.** Two supervisors that must agree would be one gate with
+  `need: 2` that both answer. This example does not do that: two `assess`-style rules writing
+  to different fields, with `land-auto` requiring both, is the shape it uses.
 - **The inside is a different layer.** The supervisor here decides whether a change lands, by
   writing to the subject. What the *worker* agent may do while producing it is the other
   supervision layer, and naming a resolver from a charter — `gating.resolver` for a rule's own

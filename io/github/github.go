@@ -13,7 +13,7 @@
 // highest-cardinality paginated reads in the repository, and paying a rate limit for what git
 // gives away free is the wrong trade at one repo and impossible at many.
 //
-// The surface — flags, credentials, the kinds and what each carries — is docs/reference/verseiod.md
+// The surface — flags, credentials, the kinds and what each carries — is docs/reference/iod.md
 // under `github`, and the argument for the cover shapes is in docs/io.md. What was designed
 // and not built, and the trigger that would revive each piece, is
 // git-issue 3eskdzrq.
@@ -57,7 +57,7 @@ type Config struct {
 	// sharing `github` is the ordinary case and needs only disjoint claims; one that wants no
 	// coordination at all takes a root of its own, and two roots are disjoint on the first
 	// segment. It is also the answer to a second GitHub instance, where `org/repo` #42 is unique
-	// within a host and not across two. See docs/reference/verseiod.md under `github`.
+	// within a host and not across two. See docs/reference/iod.md under `github`.
 	Root string
 	// Settled is how many recently-closed issues and pull requests each repository keeps
 	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this

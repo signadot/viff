@@ -16,7 +16,7 @@ deliberately skips. For what a charter's fields *mean*, see
 | [perms.md](perms.md) | permissions in detail: the grammar, a record's fields, what is checked on a write and a read, installed things, questions, the seed, `verse perms` — the model itself is [../perms.md](../perms.md) |
 | [io.md](io.md) | the io surface: a connector that reflects an external system in and acts out — the entity, ownership globs, the verbs, the routes, the out half's place and status, and the contract an io serves |
 | [iod.md](iod.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
-| [examples/](examples/README.md) | working programs to copy and change: a runner, and a source |
+| [examples/](examples/README.md) | working programs to copy and change: a runner, a coding runner, a worker, and an io |
 | [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
 
@@ -26,8 +26,16 @@ deliberately skips. For what a charter's fields *mean*, see
 verse
   up   [-root <dir>]                         start the monolith (engine + store + tasks)
                                              the dir an llm agent reads/acts in; default: an
-                                             isolated temp dir, printed at start
+                                             isolated temp dir, printed at start when model
+                                             credentials are configured
        [-data <dir>]                         bring logd+docd up on <dir> (default: fresh temp dir)
+       [-logd-config <file>]                 a logd configuration for the daemons it spawns,
+                                             in place of the one verse writes
+       [-admin-addr host:port|off]           the admin and pprof face (default: the -addr port + 1)
+       [-reseed-perms]                       write the root, verse and admin-group records from
+                                             config OVER what stands (see up.md)
+       [-unmigrate-perms]                    rewrite the perms mirror for an older binary, and
+                                             EXIT without serving (see up.md)
        [-docd-addr host:port]                attach to a running docd (client face) …
        [-docd-mount-addr host:port]          … and its controller/MOUNT face
        [-docd-advertise-addr host:port]      publish THESE on /status instead, when a client
@@ -193,7 +201,10 @@ verse
                                              selection's — with its options and ballots
           <id>                               …just that one record, as it stands: options,
                                              ballots, deadline, outcome. ONE TOKEN, its id
-          <id> -answer <option> -as <who>    answer it by option. A yes-or-no question's
+          <id> -answer <option> -as <who> [-say <text>] [-override]
+                                             answer it by option. -override answers over an
+                                             exclusive resolver, and the record names you both.
+                                             A yes-or-no question's
                                              options are proceed and deny; a selection's are
                                              its doers. A question that takes more than one
                                              voice records the ballot and says where the
@@ -260,6 +271,13 @@ verse
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
           run <prompt…> [-attach] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
           run [-runner <ref>]                …on an installed runner, not the verse default
+          run [-name <label>] [-subject <ref>] [-as <who>]      what the run is called, what it
+                                             is about, and who it is
+          run [-vector auto|ask|park] [-gates <file>] [-resolver <ref>]   how far it runs by
+                                             itself, which actions ask, and who answers
+          run [-answer-contract <file>]      the shape its final message must have
+          run [-environment <name>] [-virtual-key <address>]    the workspace the runner builds,
+                                             and the model credential the run spends
           get <id> · attach <id> · inbox <id>            operator vantage (any backend):
           cancel <id> · say <id> <text…>
           vector <id> auto|ask|park [-as <who>] · vector <id> -file <f>
@@ -269,7 +287,9 @@ verse
                   [-options id[:need],…] [-deadline within[:default]]    …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [-probe]                  where work can run
-          add <name> <url> [-no-probe] · add [-file <f>|-] [file] · show <ref>
+          add <name> <url> [-identity <id>] [-no-probe] · add [-file <f>|-] [file] · show <ref>
+                                             -identity: who the runner acts as, runner:<id>
+                                             (default: its name)
           check <ref>                        ask a runner what it is, right now
           remove <ref> [-cancel "<why>" | -leave]     what becomes of the work still on it
   group (groups)                             named sets of grantees, granted as group:<name>
@@ -280,6 +300,7 @@ verse
                                              one node's record, as its owner: read with no
                                              flags; take the place and set what it and what
                                              is created beneath it hold out
+  perms -root [the same flags]               the ROOT's record, whose address is the empty path
   io (ios) [-probe]                          a connector between the verse and an external
                                              system: it reflects in, and it acts out
           add <name> <url> -root <root> [-out <place>] [-requesters <who>]
@@ -362,8 +383,8 @@ predicate is a bare scalar match. A path that leads nowhere — an absent field,
 the way — does not match, and neither does a delete on `watch`, which has no payload left to
 ask about. The pattern is read in `-ifmt` and sent as tony, so operators and tags survive.
 
-Note `entity put -if`, which is a different `-if`: a precondition on a write, not a filter
-on a read. See [entities.md](entities.md#conditional-writes).
+A precondition on a write is a different flag: `-create`, `-update` or `-expect` on
+`verse data -put`. See [entities.md](entities.md#conditional-writes).
 
 ## The scripts
 

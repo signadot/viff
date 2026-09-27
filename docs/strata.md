@@ -392,18 +392,9 @@ baseline: installed 0 trigger(s)
 
 The count is the rules that can fire. `verse charter` lists a held rule with `held: <stratum>`.
 
-That is the intended behaviour and it is **invisible**, which is the corner worth knowing before it
-costs you an afternoon. A held rule is not in `verse charter`, `verse c <address> rules <name>`
-answers *no such trigger*, and `verse status` counts what fires, so a four-rule charter installs
-into a verse that reports two rules and explains nothing. The held ones are there:
-
-```sh
-verse data trigger                 # the whole charter, held rules included
-verse charter                        # what they are waiting for
-```
-
-Read together those two say it, and nothing says it for you. What is missing is a state on the
-rule itself — held, and waiting for what — since the engine already models exactly that.
+`verse c <address> rules <name>` shows a held rule too, with the same `held` line.
+`verse status` counts the rules that can fire, so a four-rule charter with two held reports
+two.
 
 **Editing a level is re-applying the file.** A stratum already installed exactly as declared is a
 no-op, and one that differs is **replaced**, the same answer a rule of the same name gets, because

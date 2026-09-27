@@ -71,7 +71,7 @@ the scope without touching baseline, so your local changes and flows stay isolat
 ```sh
 verse connect . -scope me
 verse watch -scope me
-verse data -scope demo x 1 '{k: v}' -put me # in the scope only
+verse data -scope me demo x 1 -put '{k: v}' # in the scope only
 verse data demo x 1                          # baseline: not there
 verse disconnect -scope me                         # drop the whole overlay
 ```
@@ -92,7 +92,7 @@ prefix of the path its rule matches rather than the whole tree.
 
 A scope runs **the rules installed into it**, and only those. `verse c -a -scope me`
 writes the rule into the scope's own layer, where it is durable and addressable (`verse data
-get verse.trigger.rule.x -scope me`); the record carries `scope: me`, which is what says whose
+verse trigger rule x -scope me`); the record carries `scope: me`, which is what says whose
 it is.
 
 Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store

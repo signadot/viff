@@ -5321,7 +5321,7 @@ func (s *Server) flowTree(w http.ResponseWriter, r *http.Request) {
 	engines := s.flowEngines(r.URL.Query().Get("scope"))
 	addr := r.URL.Query().Get("subject")
 	if addr == "" {
-		http.Error(w, "subject required (an entity address, e.g. demo:pr:1 or demo:pr:*)", http.StatusBadRequest)
+		http.Error(w, "subject required (an entity address, e.g. demo.pr.1 or demo.pr.*)", http.StatusBadRequest)
 		return
 	}
 	m, err := trigger.ParseExpr(addr)

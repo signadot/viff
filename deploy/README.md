@@ -282,7 +282,7 @@ verse io
 Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and none wanted: it
 would depend on your current kubectx and skip the version-skew check the CLI's own transport
 does on every request. **The url stays the in-cluster Service name**, because it is *versed*
-that dials it: the CLI only posts `{kind, name, url}`, and the probe happens server-side
+that dials it: the CLI only posts `{name, root, url}`, and the probe happens server-side
 (`versed/io.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
 so the address has to be reachable from where the client is.
 
@@ -298,7 +298,8 @@ outside what was proved. The symptom is an io that looks healthy and reflects no
 Re-run the same `verse io add` afterwards; it updates the claim in place.
 
 ```sh
-verse io check issues   # `owns` is what verse holds, `says` is what it claims now
+verse io show git-issue    # `owns` is what verse holds
+verse io check git-issue   # `says` is what the io claims now
 verse io add git-issue http://git-issue-io:9801 -root git-issue   # reconcile them
 ```
 
@@ -310,7 +311,7 @@ io you are only widening.
 
 ### Credentials
 
-The two that need one take it from a Secret, and `optional` is **false** on purpose: a Slack
+The three that need one (Slack, Linear, GitHub) take it from a Secret, and `optional` is **false** on purpose: a Slack
 io with no token has nothing to reflect, so it fails to start rather than installing clean
 and failing every pass. Either name a store entry — `slackSecretKey`, `linearSecretKey`,
 `githubSecretKey`, see [Credentials](#credentials) — or create the Secret yourself:
@@ -328,7 +329,8 @@ kubectl -n verse create secret generic verse-linear \
 ### Webhooks
 
 verse dials an io, and the io dials verse — only the *delivery* leg comes from the
-internet, and only the two SaaS ios have one. Set a host and an Ingress is emitted for it;
+internet, and only the three SaaS ios have one (`slackWebhookHost`, `linearWebhookHost`,
+`githubWebhookHost`). Set a host and an Ingress is emitted for it;
 leave it empty and there is none, and the io converges on the periodic resync (one minute)
 instead of on delivery.
 
@@ -373,7 +375,7 @@ run the same binary next to it with `-repo`, or skip the deployment entirely and
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential
 and no route the git connector does not already have. It is a second pod rather than a flag on
 the first because the two answer different questions about one directory and write disjoint
-slices (`git:*`, `git-issue:*`): run one, the other, or both. Register it like the git one,
+slices (`git.*`, `git-issue.*`): run one, the other, or both. Register it like the git one,
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh

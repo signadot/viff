@@ -14,7 +14,7 @@ resolver answers. [reference/perms.md](reference/perms.md) has every field, rule
 | **node** | anything with an address: `demo.pr.1`, a field of it (`demo.pr.1.stage`), a rule (`verse.trigger.rule.review`). Addresses are paths, so every node has nodes above it, up to the root |
 | **principal** | who is acting: a person, an agent, a runner, or verse itself |
 | **record** | what verse keeps about a node: its owner, the grants on it, and the grants a node made beneath it starts with. Only verse writes records; you read and set your own with `verse perms` |
-| **level** | what somebody may do at a node: `read`, `read-write`, or `owner`, each including the one before; and `control`, beside them, for steering work — run, cancel, pause, say, suspend |
+| **level** | what somebody may do at a node: `read`, `read-write`, or `owner`, each including the one before; and `control`, beside them, for steering work — run, cancel, pause, resume, say, a change of vector, suspend |
 | **grant** | a line on a node's record giving a level to somebody who is not its owner |
 
 When a refusal says somebody *holds* `read` at a node, it means that is the most the records
@@ -62,8 +62,8 @@ you may (`child-owner`, below).
 over, the other party makes it. Deleting a node forgets its record and every record beneath it,
 so whoever creates there next starts clean.
 
-**A place can be taken ahead of what goes in it**: `verse perms spaces scott`, where nothing
-stands yet, makes it yours. A node that already stands is its owner's and is not taken from them.
+**A place can be taken ahead of what goes in it**: `verse perms spaces scott -grants '[]'`,
+where nothing stands yet, makes it yours. With no flag the command only reads the record. A node that already stands is its owner's and is not taken from them.
 First come, first served: a grant says who may create beneath a node and not which name is
 whose, so where `spaces` is held out to everyone, anybody may take `spaces.sally` before sally
 does, and it is the owner of `spaces` who puts that right, by removing it (`b737wbpb`).

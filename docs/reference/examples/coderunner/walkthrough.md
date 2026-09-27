@@ -168,12 +168,12 @@ export VERSE_ADDR=localhost:19797
 `runner add` registers; `runner check` is the acceptance test, and prints a live verdict.
 
 ```sh
-./verse runner add pool:code http://localhost:9802
-./verse runner check verse.runners.pool.code
+./verse runner add code http://localhost:9802
+./verse runner check code
 ```
 
-The name argument is `<kind>:<name>`; the address it lands at is **dotted** —
-`verse.runners.pool.code`. That is what every later command wants. `verse runners --probe` adds the
+The name is one word, and the address it lands at is `verse.runners.code`. A later command
+takes either. `verse runners --probe` adds the
 same liveness column to the list; the bare list deliberately says nothing about health.
 
 ### 7. Run a task
@@ -183,10 +183,10 @@ enough to judge; the same prompt against the largest doc in the tree does not co
 
 ```sh
 ./verse task run \
-  --runner verse.runners.pool.code \
+  --runner verse.runners.code \
   --environment verse-docs \
   --driver claude \
-  --as "$USER" --name docsdrift --attach \
+  --as you@example.com --name docsdrift --attach \
   --answer-contract docs/reference/examples/coderunner/docs-drift.answer \
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 ```
@@ -209,7 +209,7 @@ It parks immediately. That is the design: with no `vector:` on the spawn the run
 
 ```sh
 ./verse gate                            # what is waiting
-./verse gate approve <id> --as "$USER"
+./verse gate approve <id> --as you@example.com
 ```
 
 `--vector auto` on the spawn skips the asking entirely. Watch the first few instead.
@@ -372,18 +372,18 @@ reach the API, which staging publishes on the tailnet.
 ```sh
 export VERSE_ADDR=verse:9797
 
-verse runner add pool:code-claude http://coderunner:9802
-verse runner check verse.runners.pool.code-claude
+verse runner add code-claude http://coderunner:9802
+verse runner check code-claude
 
 verse task run \
-  --runner verse.runners.pool.code-claude \
+  --runner verse.runners.code-claude \
   --environment verse-docs-claude \
-  --as "$USER" --name docsdrift --attach \
+  --as you@example.com --name docsdrift --attach \
   --answer-contract docs/reference/examples/coderunner/docs-drift.answer \
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 
 verse gate
-verse gate approve <id> --as "$USER"
+verse gate approve <id> --as you@example.com
 ```
 
 This environment pushes to the real GitHub remote, so a delivered task leaves

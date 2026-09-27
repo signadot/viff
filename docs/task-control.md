@@ -329,7 +329,7 @@ rendezvous, and both verse and the worker dial out to it:
 
 ```
  verse ──POST/GET(events)/POST(control)──▶  broker (base URL)  ◀──claim/inbox/report── worker
- mirror → task:instance (durable truth)   per-task relay log       dials OUT (NAT-friendly)
+ mirror → task.instance (durable truth)   per-task relay log       dials OUT (NAT-friendly)
 ```
 
 The broker has two faces: the verse-facing contract above, where verse is a plain client, and a
@@ -554,7 +554,20 @@ task's `dialURL` on its entity, and is guarded by the terminal-once latch and th
 `verse task do` is the executor vantage, and every operator verb works across local, remote and
 brokered tasks alike.
 
-Not built: the inbox long-poll, so a worker polls. Two larger tracks sit outside this document:
+Not built, though the sections above describe them:
+
+- The inbox long-poll. A worker polls.
+- A timestamp `at` on an event. An event carries a cursor and no time.
+- A `claim` event kind. A claim is written on the task's record and is not an event on the
+  stream.
+- `POST /broker`, which would register a broker and mint its nonce. A verse hosts the broker it
+  was started with (`verse up -broker`).
+- Takeover by a `revoked` inbox item, and a pool claim `POST /claim`. A worker claims one task
+  by its id, and a worker that has been displaced learns it from a `409` on its next call.
+- `report {from: rCursor}`. A report carries `epoch`, `events`, and optionally `key` and
+  `result`.
+
+Two larger tracks sit outside this document:
 a human surfacer and identity-projected inbox, with `owner`, `claimant` and `resolver` stamps,
 and a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as a
 [Source](controllers.md).

@@ -74,7 +74,7 @@ func main() {
 // against a real system out of the box; replace the delegation with your own reading.
 type demo struct{ git *verseio.Git }
 
-// Root is the slice this source owns and is the SINGLE WRITER of: `git:*`, `linear:*`,
+// Root is the slice this source owns and is the SINGLE WRITER of: `git.*`, `linear.*`,
 // whatever you are reflecting. One source per system per scope — verse refuses an install
 // that cannot be proved disjoint from the ones already standing.
 func (d *demo) Root() string { return d.git.Root() }

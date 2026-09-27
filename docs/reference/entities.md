@@ -129,9 +129,10 @@ Two, and each is asked one way, which is what keeps containment from being asked
 | **reach** — does this pattern reach that path; is this write under that confinement | kpath's, `Matches` and `MatchesPrefix` |
 | **overlap** — can two patterns reach a common path: two strata, two ios' claims | one walk to the shorter length, asking at each position whether the two segments can meet |
 
-A charter's subject may put a tony operator where kpath has a field (`[demo, !glob "hot-*"]`),
-and an io's claim may put a literal prefix there (`ws/*`). Either stays a match on the field
-name at that position; the structure around it — its length, its wildcards, its `..` — is kpath's.
+An io's claim may put a literal prefix where kpath has a field (`ws/*`). It stays a match on
+the field name at that position; the structure around it — its length, its wildcards, its `..` —
+is kpath's. A charter's subject is a kinded path and takes no operator: see
+[addressing](#addressing).
 
 > **Pending.** Descent is the corner where the tree has not caught up with this. A match compares
 > a segment as a name, so `verse-dev..finding` and `verse-dev.drift.finding` do not meet, and
@@ -216,7 +217,7 @@ verse data -at verse.task.instance.run-a1b2   # …the same address copied out o
 verse data verse task instance '*'            # …and every task record under it
 ```
 
-The address parses; the write is refused. `verse data verse task instance x '{…}' -put` is a
+The address parses; the write is refused. `verse data verse task instance x -put '{…}'` is a
 well-formed address and a 403: what verse writes about itself is written by the verbs that own it
 (`charter -a`, `runner add`, `io add`, `gate approve`). Reading is unrestricted.
 
@@ -229,11 +230,10 @@ subject: {path: "verse.task.instance.*"}
 subject: demo.pr.1
 ```
 
-So `!glob "hot-*"`, `!or [hot, cold]` and `!and [!glob "h*", !not hold]` all say at a position
-what they already say about a payload. Nothing in verse enumerates the operators; `tony.Match`
-owns them. One convention sits above that: a bare `*` is any segment, and inside an operator a
-`*` is an ordinary character — which is how a name that *is* an asterisk is named (`!glob "[*]"`).
-An operator has no string spelling, so a path carrying one is written as `path:`.
+A path takes no operator. `!glob "hot-*"`, `!or [hot, cold]` and the rest are written in the
+match's `value`, over what each node holds: `{path: "demo.pr.*", value: {branch: !glob "hot-*"}}`.
+Nothing in verse enumerates the operators; `tony.Match` owns them, and a tag that names none is
+refused at install.
 
 A `*` is a position, which is why the length of the path is the depth it selects at:
 `demo.pr.*` picks the nodes under `demo.pr`, and `demo.pr` is the node `demo.pr` itself.
@@ -242,9 +242,9 @@ A `*` is a position, which is why the length of the path is the depth it selects
 
 | | |
 |---|---|
-| `verse data`, `data/put/rm`, `verse watch` | any spelling; steps may be several arguments, at any depth |
+| `verse data` (reading, `-put` and `-rm`), `verse watch` | steps, several arguments at any depth; or one kinded path after `-at` |
 | `verse flow show <subject>`, and `--subject` on the flow verbs | one token: a kinded path, `*` for any segment |
-| `verse runner/io/resolver show/check/remove` | one token: `<kind>.<name>`, or the address as stored |
+| `verse runner/io/resolver show/check/remove` | one token: the name, or the address as stored (`verse.runners.<name>`) |
 | `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter verse-dev drift` |
 | `verse c <address> rules <name>` | a path: the address, then into it |
 | `verse perms <step>…` | the node a record is about, as steps |
@@ -285,8 +285,8 @@ that claimed work, `agent` for an operator agent — and `perms.node.<address>` 
 wherever ownership changes down the tree, keyed by the node's own address spelled as one
 segment, holding `owner`, the `grants` its owner holds out, and for a question `under`, the
 address of what posed it. The owner of any node is the nearest record up its address, and the
-root is the system's, so a node owned by whoever owns the node above it has no record of its
-own. Every write carries a principal (the request's, from the CLI's `user:`; the rule's own
+root has one (owned by `user:admin@verse` as seeded), so a node owned by whoever owns the node
+above it has no record of its own. Every write carries a principal (the request's, from the CLI's `user:`; the rule's own
 address for a firing; the system for what verse writes unasked), and is admitted by what its
 place permits or refused with a 403 saying why; an entity's owner is whoever first wrote it
 holding `owner` there, fixed until the entity is deleted. A read answers only what its reader
@@ -345,7 +345,7 @@ verse data demo pr '*' -if '{urgent: true}' -if-at labels   # …rooted inside t
 ```
 
 The globbed line has a steps spelling too: `verse data demo pr '*' stage` is the same read, and
-`'"*"'` is the name that is an asterisk. See [`*`: three layers, three rules](#three-layers-three-rules).
+`'"*"'` is the name that is an asterisk. See [`*`: three layers, three rules](#-three-layers-three-rules).
 
 ### `--depth`: how far beneath the address
 
@@ -615,9 +615,8 @@ verse data -expect '{stage: draft}' demo pr 2 -put '{stage: open}' # only if it 
 ```
 
 This is CAS, spelled as a predicate rather than as a revision number: the write says what it
-believes about the entity rather than which revision it read. `-if` here is a precondition on
-a write, and is not the `-if` that filters a listing — one narrows what is written, the other
-what is read.
+believes about the entity rather than which revision it read. The three flags are
+preconditions on a write. `-if` is a different thing: it filters what a read answers.
 
 ## Watching
 

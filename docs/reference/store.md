@@ -33,10 +33,9 @@ answers with *is* this one, addressed by the same path ([entities.md](entities.m
 **Absence is a missing key, not a null.** A removal is `!delete`, which logd executes by taking
 the key out — so a deleted path reads back not_found, and a null is a node like any other. That
 holds for a path that was never written too, at every length and whether or not an ancestor of it
-resolves: a read answers null iff a null was written there. The two walks say the same thing at
-different times: a *materialized* subtree (`walkEntityDoc`, what a
-read and a snapshot see) has no removals in it to find, while a *delta* (`walkEntityChanges`) has
-no absence to observe and spells a removal with the `!delete` tag.
+resolves: a read answers null iff a null was written there. A *materialized* subtree
+(`walkEntityDoc`, what a read and a snapshot see) has no removals in it to find, and a commit's
+*delta* spells a removal with the `!delete` tag.
 
 `Since` is served natively by a `FromCommit` replay watch, so a long hold costs a cursor
 rather than a buffer. Commit numbers are monotonic but **sparse**, so the engine treats a
@@ -49,11 +48,12 @@ identical to update, since logd delivers the writer's applied patch verbatim.
 This one is subtle, and it is the load-bearing assumption worth naming.
 
 A single docd commit can atomically patch many nodes, but the store normalises each commit into
-**one change event per changed node** — `walkEntityChanges`, at the depth the watching question
-asks about — all sharing that commit's revision. That normalisation is exactly what guarantees a
-trigger's subject is always one node: dispatch is per-node edge, so `$subject`, and the flow or
-goal keyed on it, is never ambiguous even under a broad match, since a broad pattern just fans out
-to one firing per matching change.
+**one change event per changed node** — `changesAt`, which compares the document before the
+commit with the document after it, at the depth the watching question asks about — all sharing
+that commit's revision. That normalisation is exactly what guarantees a trigger's subject is
+always one node: dispatch is per-node edge, so `$subject`, and the flow keyed on it, is never
+ambiguous even under a broad match, since a broad pattern just fans out to one firing per
+matching change.
 
 Less is lost to that than it first sounds, because the commit lands *whole* before any of its
 events dispatch: the store advances its watched document by the entire patch, then walks it

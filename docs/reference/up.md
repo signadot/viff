@@ -141,7 +141,7 @@ verse up -broker -broker-addr :9090 -broker-advertise-addr verse-broker:9090
 ```
 
 Without it a wildcard bind advertises `localhost:9090`, which every worker resolves and none
-of them reaches. This is the same split as `-docd-advertise-addr` below: where a face is
+of them reaches. This is the same split as `-docd-advertise-addr` above: where a face is
 bound and where it is reached are two facts, and neither implies the other.
 
 ## Configuration
@@ -206,6 +206,24 @@ a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
 `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
 Precedence for any value is, low → high:
 `/etc/verse.tony` → `~/.config/verse.tony` → environment → CLI flag.
+
+Every key, and the variable that sets it:
+
+| Key | Variable | Read by | What it is |
+|---|---|---|---|
+| `addr` | `VERSE_ADDR` | every command | the verse to talk to |
+| `scope` | `VERSE_SCOPE` | every command | the scope to act in |
+| `user` | `VERSE_USER` | every command | who the CLI acts as |
+| `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
+| `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
+| `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
+| `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
+| `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |
+| `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
+| `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the agent driver uses |
+
+`VERSE_CONFIG=<file>` names one config file in place of both layers. `VERSE_RESEED_PERMS` is
+`-reseed-perms`. `VERSE_LOG` sets how much `verse up` logs: `debug`, `info`, `warn` or `error`.
 
 ## The o binary
 

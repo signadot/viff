@@ -274,10 +274,12 @@ Installing a trigger writes it into the verse as `verse.trigger.rule.<name>`, or
 deletes that entity, and a start reads them back before anything observes. So the program a verse
 comes back up running is the one it went down with.
 
-The record holds the rule as `spec`, the `scope` and the package address `at` it was installed in
-when it has them, and `by`: who installed it — the principal the install acted as, and
-`system:charter` for the charter the deployment names. A restore reinstalls the rule as `by`, and a
-charter file refused part way puts a replaced rule back as its installer rather than as the system.
+The record holds the rule as `spec`, and the `scope` and the package address `at` it was
+installed in when it has them. Who installed it is not in the record: it is the owner on the
+rule's own permissions record ([perms](reference/perms.md)), which is the principal the install
+acted as, and `system:charter` for the charter the deployment names. A restore reinstalls the
+rule as that owner, and a charter file refused part way puts a replaced rule back as its
+installer rather than as the system.
 
 Everything else a restart needs is durable in the same way. A task is mirrored, a sequence's
 position is a fact on its subject, a claim is a lease in the store, an open question is a record
@@ -453,9 +455,9 @@ which is why it walks instead.
 ### The string form is an address, in one grammar
 
 There is one string grammar for addressing entities by identity, and both the charter wire and the
-CLI (`verse flow <addr>`) parse it: a kinded path, with `*` for any one segment. So
-`"subject": "demo.pr.*"` in a charter and `verse flow demo.pr.*` on the command line mean the same
-set. The string is the path it spells, at every length: `"demo.pr"` names the entity at `demo.pr`,
+CLI (`verse flow show <addr>`) parse it: a kinded path, with `*` for any one segment. So
+`"subject": "demo.pr.*"` in a charter and `verse flow show 'demo.pr.*'` on the command line mean
+the same set. The string is the path it spells, at every length: `"demo.pr"` names the entity at `demo.pr`,
 and `"verse-dev.drift.head.*"` selects four segments deep. Anything else in a segment is a name —
 `hotfix-*` written in the string is the segment called `hotfix-*`, not a glob.
 
@@ -1054,7 +1056,8 @@ An unknown `vector`, `grant`, or tool name fails the spawn rather than falling b
 field that reads back as written and enforces nothing is the failure this is built to avoid.
 `resolver` names the resolver that answers this run's gates, and a spawn naming one that is not
 installed is refused rather than left unsupervised; see
-[attached resolvers](attached-resolvers.md). `environment` is declared and unread.
+[attached resolvers](attached-resolvers.md). `environment` names the workspace the task runs
+in. verse carries the name to the runner, which resolves it and refuses one it does not have.
 
 ```tony
 spawn:
@@ -1689,7 +1692,7 @@ writes their records and loaded before the scope's tasks are re-attached or its 
 until it has loaded it holds everything. A rule `derive` aimed at `verse.trigger.suspension` is
 refused at install, since no table would see it. What a suspension covers is decided each time it
 would apply, against the holder's `control` over the work's charter or at its subject, and a rule
-the system installed (`by: system:charter` on its record) is the system's alone to suspend
+the system installed (owned by `system:charter`) is the system's alone to suspend
 ([perms](perms.md#suspending)).
 
 ## Two rules, read out loud

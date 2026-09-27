@@ -104,8 +104,8 @@ one thing and the verse does another. An ad-hoc run is refused with the name in 
 nothing is started. A charter spawn has nobody to answer, so it fails the spawn and the reason
 travels onto the flow.
 
-A spawn that names none goes to the verse's own default runner, which `verse up -runner` and
-`-broker` set.
+A spawn that names none goes to the verse's own default runner, which `verse up -runner` sets.
+`-broker` serves a broker beside it, which a spawn reaches by the name `broker`.
 
 ### Not a provider
 
@@ -222,7 +222,8 @@ can reach. The install probe adds a smaller edge to the same question — writin
 makes verse issue a request to an address the writer chose, before anything has decided the
 writer may name runners at all.
 
-**A runner entity carries a url and nothing else.** A grant ceiling, a tool allowlist, a label —
+**A runner entity carries a url and who it acts as, and nothing about what work may do
+there.** A grant ceiling, a tool allowlist, a label —
 anything saying "work here may only do this" — is expressible and deliberately absent. It is the
 same narrowing a doer answers, and answering it in two places without deciding how they compose is
 how a ceiling comes to mean two things.

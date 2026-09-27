@@ -153,10 +153,10 @@ ir's `DeepEqual` documents that it does not. Under `reflect` every entity in a s
 as changed after any resync, so re-establishing a watch re-emits the whole subtree and every
 trigger over it fires again for nothing. This is
 what `LogdStore.WatchSubtree` does — and also what the root watch and the `Since`
-replay do, to level their payloads (`applyDelta`). The residual: those two still take the
-*set of changed refs* from the delta's structure (`walkEntityChanges`) rather than from a diff of
-the reconstructed document, which is safe only because a baseline delta is always a verbatim
-merge, never a scope-computed `!replace`. A root watch over a scope would need the diff.
+replay do, to level their payloads (`applyDelta`). All three take the set of changed refs from
+the same comparison of the document before the commit with the document after it (`changesAt`).
+The commit's delta only prunes the walk: a branch the delta does not name is a branch the
+commit did not change.
 
 **A State and a Patch are not rooted alike, and neither one says so.** A Patch is the
 commit's delta rooted at the document (`verse.demo.pr.1: {…}`); a State carries the value
@@ -218,7 +218,7 @@ The cost is the charter author's to carry, and it is the cost re-entry already h
 fires is "matches now", so a non-idempotent action behind a state a subject can re-enter
 fires again when the engine restarts over a verse still in that state. The latch idiom
 answers it — match a field the action advances — and a re-write to the same value stays inert
-(see edge-on-real-change, below).
+(see edge-on-real-change, above).
 
 ## One commit, many entities: the entity is the reactive grain
 

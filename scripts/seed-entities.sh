@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# seed-entities.sh — put a WORLD into a running verse: a dozen entities across two systems,
+# seed-entities.sh — put a WORLD into a running verse: a dozen entities across three systems,
 # with enough variety in their payloads that selecting over them says something.
 #
 # No charter, deliberately. This is the half of verse you can hold before any rule exists:
@@ -82,7 +82,7 @@ v status >/dev/null 2>&1 ||
 
 # ── the world ────────────────────────────────────────────────────────────────
 # Written as address + payload pairs so --clean is the same list read for its addresses, and so
-# the variety is visible in one place: two systems, three kinds, and payloads that differ in
+# the variety is visible in one place: three systems, four kinds, and payloads that differ in
 # stage, in owner, and in a nested `labels` object (which is what --if-at is for).
 #
 # The address is STEPS, one word per segment, which is what `verse data` takes and what its

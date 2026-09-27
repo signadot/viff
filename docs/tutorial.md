@@ -54,8 +54,8 @@ shows how to name yourself.
 `up` decides three things for the whole runtime, and the defaults need no attention now. The
 **store** is a fresh docd on a temp dir; `-data <dir>` keeps it. The default **driver** is a real
 llm agent when credentials are configured, and `scripted` — a prompt run as a shell command — when
-they are not. An agent's **root** is an isolated temp dir it prints at start, which is why a file
-an agent writes is not in your cwd.
+they are not. An agent's **root** is an isolated temp dir, which is why a file an agent writes
+is not in your cwd. With credentials configured, `up` prints the root at start.
 
 All three, plus the config layers, the `o` binary `up` resolves to host its daemons, and the flags
 for pointing at a store or task runner you already have, are in [reference/up.md](reference/up.md).
@@ -442,13 +442,13 @@ a second firing.
 ./scripts/charter-shapes.sh run ask
 verse gate
 # - gate: approval
-#   id: trigger.shape-ask.approval~093e7c94
+#   id: verse.trigger.shape-ask.approval~093e7c94
 #   mode: ASK
 #   origin: shape-ask
 #   reason: "trigger shape-ask gate approval on demo.ask.1"
 #   spawns: shape-ask@demo.ask.1
 #   subject: demo.ask.1
-verse gate approve trigger.shape-ask.approval~093e7c94 -as you@example.com
+verse gate approve verse.trigger.shape-ask.approval~093e7c94 -as you@example.com
 ```
 
 `gate` is the gate's own name, `origin` the rule that raised it, `subject` what it is about, and
@@ -645,6 +645,7 @@ Rules install and read back in tony, so inspecting one is a round trip rather th
 format:
 
 ```sh
+./scripts/charter-shapes.sh show latch > charter.tony   # a rule, in a file
 verse c -a -f charter.tony # or: cat charter.tony | verse c -a -f -
 verse charter
 verse c rules shape-latch
@@ -796,7 +797,7 @@ not share a filesystem with you. *Left to do: file reads are still truncated.*
 
 **Reflecting external systems** — [ios](io.md). Git, GitHub, Linear into an owned
 place in the verse, on hint-as-hint plus poll-reconcile — and a source is a program you deploy
-and install, the way a runner is: `verse io add laptop <url>`. -root git
+and install, the way a runner is: `verse io add laptop <url> -root git`.
 
 **Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
 only climb, and the two install checks that follow — plus a plain statement of what it does not

@@ -30,8 +30,8 @@ resolver's `who` and `group`.
   makes, and a request carrying one is refused 400, as is one carrying a name the grammar does
   not read.
 - **A request that is not a read presents one.** Every method but GET and HEAD is refused 400
-  without `Verse-Principal`. Three routes are registered otherwise, each acting for a party the
-  route itself names: an io's `hint`, and a cover's `verdicts` and `position`.
+  without `Verse-Principal`. Four routes are registered otherwise, each acting for a party the
+  route itself names: an io's `hint` and `pass`, and a cover's `verdicts` and `position`.
 - A principal is listed the first time it presents itself, under
   `verse.principal.<kind>.<name>`.
 - `system:<part>` names the part of verse that wrote — `docket` (questions), `mirror` (task

@@ -79,8 +79,8 @@ resolve, do this.
   [runners](reference/runners.md) · [resolvers](reference/resolvers.md) ·
   [ios](reference/io.md) · [the ios verse ships](reference/iod.md) ·
   [connect and scopes](reference/connect.md) · [representation](reference/representation.md)
-- [Examples](reference/examples/README.md) — a runner, a coding runner, and an io to copy
-  and change.
+- [Examples](reference/examples/README.md) — a runner, a coding runner, a worker and an io to
+  copy and change.
 
 ## Elsewhere
 

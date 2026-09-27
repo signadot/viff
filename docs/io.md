@@ -80,7 +80,7 @@ In task, one `Git` value holds that. Across deployments nothing holds it but the
 below.
 
 **Converge spends the single-writer property rather than paying for it twice.** It writes with no
-precondition (`entity.ReplaceFrom`), using the snapshot it already read to spell the removals that
+precondition (`entity.ReplaceAt`), using the snapshot it already read to spell the removals that
 keep the write a replace rather than a merge. A compare-and-swap here would defend a single-writer
 place against a concurrent writer that cannot exist.
 
@@ -322,7 +322,7 @@ the same image as `verse` and is deliberately not in the same process, because f
 into the engine would put every API's wire format and every credential's failure mode in the binary
 that runs everybody's triggers. There is nothing privileged about the five. They are ordinary
 external sources that happen to be maintained here, and the sample program is the thing to copy for
-a sixth. **The third and the fourth needed nothing new in `source/`, `versed/` or the CLI**, which
+a sixth. **The third and the fourth needed nothing new in `io/`, `versed/` or the CLI**, which
 is the seam's claim, tested twice.
 
 **Only one thing differs between them, and it is the credential.** git needs none, nor does
@@ -437,8 +437,7 @@ which is what makes this a shape a source can only take when the external system
 A git repo fits the pattern more cleanly than the SaaS ones, needs no credentials or network,
 and is SDLC-native.
 
-- The "webhook" is a git hook — `reference-transaction` locally, `post-receive` on a bare repo
-  — curling the registration's hint route with the ref that names the repo. No signing, no
+- The "webhook" is a git hook, `reference-transaction`, curling the registration's hint route with the ref that names the repo. No signing, no
   network, and nothing in the delivery but which place went stale (`Git.InstallHook`).
 - Reflection is **cursorless**, because git is content-addressed: `git for-each-ref` yields a
   `ref→sha` map, and comparing shas against the stored entities *is* the level-triggered diff —

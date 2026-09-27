@@ -259,9 +259,8 @@ again, rather than ignored, so a doer's entity and the task it produces cannot d
 without touching authority: `vector: auto` means "this firing already answered its gates", so a doer
 that set it would take every action boundary off the docket while its grant looked untouched.
 Whether a person sees an action is the charter's call. An ordering over `auto|ask|park` that would
-let a doer *tighten* autonomy is a live question. `resolver` and `environment` are excluded for a
-duller reason: neither has semantics to resolve to, so honoring them would be a promise nothing
-keeps.
+let a doer *tighten* autonomy is a live question. `resolver` and `environment` are excluded too:
+a spawn may set either, and a provider's fragment that sets one is refused.
 
 ## What you can see
 

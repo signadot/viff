@@ -28,8 +28,9 @@ func Ref(name string) entity.Ref {
 
 // Entity is one installed runner: an address and somewhere to reach it.
 //
-// It carries a url and nothing else. A grant ceiling, a tool allowlist, a label — anything
-// saying "work here may only do this" — is expressible and deliberately absent: it is the same
+// It carries a url and who the runner acts as, and nothing about what work may do there. A
+// grant ceiling, a tool allowlist, a label — anything saying "work here may only do this" — is
+// expressible and deliberately absent: it is the same
 // narrowing a doer answers, and answering it in two places without deciding how they compose
 // is how a ceiling comes to mean two things.
 type Entity struct {

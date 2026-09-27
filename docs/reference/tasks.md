@@ -329,7 +329,7 @@ what an observer needs, not the transcript.
 
 A task id names the *work* rather than the run: it is derived from the spawning action and the subject,
 so a rule that fires twice about one subject spawns the same id twice — which is what makes a
-re-fire idempotent and what `verse flow demo.pr.1` addresses.
+re-fire idempotent and what `verse flow show demo.pr.1` addresses.
 
 `verse.task.instance.<id>` is therefore the latest run, and each run has a record of its own:
 
@@ -490,10 +490,10 @@ Three backends, one handle. `verse task` and
 | | |
 |---|---|
 | local | the in-process supervisor — the default |
-| remote | `verse up -runner <url>` hosts tasks on another verse's task-control face |
-| broker | `verse up -broker -broker-addr :9090` hosts them behind a dial-in face a firewalled worker or a human claims |
+| remote | `verse up -runner <url>` hosts tasks on another verse's task-control face, and makes that the default |
+| broker | `verse up -broker -broker-addr :9090` serves a dial-in face a firewalled worker or a human claims. A spawn reaches it by name, `runner: broker`; the default does not change |
 
-Those three are the verse-wide default, set at startup. A spawn can also name its own place —
+The default is set at startup, by `-runner`. A spawn can also name its own place —
 `runner: verse.runners.gpu` on a charter, `-runner` on `verse task run` — so a drive can
 run part of the work somewhere the rest of the deployment knows nothing about. See
 [runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
@@ -505,13 +505,13 @@ pod behind a firewall works without verse reaching in. The contract and the prot
 
 ### Executing one by hand
 
-With a broker runner, a spawned task lands on the broker awaiting an executor instead of
-running itself, and `verse task` shows its runner and where to dial in. You never type
-that URL; verse resolves it from the task for you.
+A task spawned onto the broker lands there awaiting an executor instead of running itself,
+and `verse task` shows its runner and where to dial in. You never type that URL; verse resolves
+it from the task for you.
 
 ```sh
 verse up -broker -broker-addr :9090
-ID=$(verse task run "review the auth change")
+ID=$(verse task run -runner broker "review the auth change")
 verse task
 # - dialURL: http://localhost:9090/broker/<nonce>
 #   id: run-…
@@ -559,7 +559,7 @@ hook or a rule reacts to it exactly as if an agent had finished. A *human* did t
 flow moves on.
 
 So a task has two vantages, and every verb works whether it runs locally or behind a
-broker. From outside, the operator drives and watches: `list`, `get`, `attach`, `cancel`,
+broker. From outside, the operator drives and watches: bare `verse task` lists, then `get`, `attach`, `cancel`,
 `say`, `vector`, `approve`/`deny`. From inside, on the worker leg, the executor acts:
 `do complete|fail|note|gate`, plus `inbox` to see the control queued for the worker.
 

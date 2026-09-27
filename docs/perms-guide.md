@@ -19,7 +19,7 @@ every command acts as ([reference/up.md](reference/up.md#configuration)):
 
 ```tony
 # ~/.config/verse.tony
-addr: "verse:9797"
+addr: "localhost:9797"
 user: "walter@example.com"
 ```
 
@@ -146,7 +146,7 @@ verse perms verse task instance <id>
 ```
 
 The task is yours: the record beneath `verse.task.instance` names you as owner, because the
-seed holds `owner` there out to everyone and the spawn wrote as you. Its `run` and `claim`
+seed holds `child-owner` there out to everyone and the spawn wrote as you. Its `run` and `claim`
 records follow it. Reads of the task go by the default it was created with — everyone — and
 writes to it are yours and the runtime's.
 
@@ -325,7 +325,6 @@ record:
 ```sh
 verse resolver add - <<'EOF'
 name: ani
-kind: merge
 condition:
   subject: "verse-dev.merge.train.*"
 method: {driver: person, who: peggy@example.com}
@@ -341,7 +340,8 @@ person for `person`;
 goes with it,
 so nobody outside the resolver answers any more — except the co-owners, who hold it by
 ownership and not by the line. `read` stays as the default gave it. Releasing it, when the
-resolver is removed or the ladder runs out, gives the default line back.
+resolver is removed or the ladder runs out, gives the line back to whoever the gate named in
+`answerers`, and to the default where the gate named nobody.
 
 **The ladder.** Escalation walks the standing resolvers that match the subject **by name**, from
 the one the question is on to the next, and past the last one to the open docket. A resolver's

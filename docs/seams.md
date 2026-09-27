@@ -202,7 +202,7 @@ sequenceDiagram
     B-->>W: queued control: say · pause · cancel
     W->>B: POST /tasks/{id}/report (frames, gates, result)
     B->>V: the same frames an attached observer sees
-    V->>S: mirrored to verse.task.instance:{id}
+    V->>S: mirrored to verse.task.instance.{id}
   end
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```
@@ -270,7 +270,7 @@ request; it reports each pass (`POST /io/{name}/pass`), because verse cannot see
 dial. Nothing here is pushed to it and nothing is delivered exactly once — which is what makes the
 two halves one discipline rather than two, and why a connector that could only be reached would
 need an Ingress while one that dials needs nothing
-([io.md](io.md#the-out-half)).
+([io.md](io.md#the-out-half-verse-asks-the-io-does-it)).
 
 A third direction rides the same connection where the external system offers one: what people DO
 over there — a reply, a mention — reaching verse as a control request made as the person who did

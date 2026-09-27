@@ -42,8 +42,8 @@ it:
 
 ```sh
 verse up -broker -broker-addr :9090                                    # one terminal
-go run ./docs/reference/examples/worker -verse localhost:9797 -as "$USER"   # another
-verse task run "summarise what changed in cmd/verse this week"         # a third
+go run ./docs/reference/examples/worker -verse localhost:9797 -as "runner:$USER"   # another
+verse task run -runner broker "summarise what changed in cmd/verse this week"   # a third
 ```
 
 The task is `unclaimed` until the worker takes it, then `running`, then `done` with the agent's

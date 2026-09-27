@@ -5,7 +5,7 @@ The surface. For what a runner *is* and why it is shaped this way, see
 [../task-control.md](../task-control.md). To build one, copy
 [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `verse.runners.<name>` carrying one field:
+A runner is an entity at `verse.runners.<name>` carrying its `name` and two fields:
 
 | | |
 |---|---|
@@ -48,9 +48,9 @@ verse task run -runner <ref> <prompt>     run this one there
 | | |
 |---|---|
 | `GET /runners` | list; `?probe=true` adds a live `reach` per runner |
-| `POST /runners` | install; `?probe=false` skips the check. `201` with `{ref, reach}`, plus `warning` when unreachable |
+| `POST /runners` | install; `?probe=false` skips the check. `201` with `{at, reach}`, plus `warning` when unreachable |
 | `GET /runners/{name}` | the entity |
-| `GET /runners/{name}/check` | `{ref, url, reach}` and `why` when it is not a runner |
+| `GET /runners/{name}/check` | `{at, url, reach}` and `why` when it is not a runner |
 | `DELETE /runners/{name}` | remove. `?cancel=<why>` or `?leave=true`; `409` with both named when work is running and neither is given |
 | `GET /tasks?runner=<ref>` | the work on one runner |
 
@@ -70,7 +70,8 @@ not be read.
 ## On a spawn
 
 `runner:` on a charter's `spawn:`, and `-runner` / `runner` on the ad-hoc face. Empty means the
-verse's default runner, which `verse up -runner` / `-broker` set.
+verse's default runner, which `verse up -runner` sets. `verse up -broker` serves a broker beside
+it, which a spawn reaches by the name `broker`.
 
 A spawn naming a runner that is not installed is **refused** on both paths — an ad-hoc run with
 `400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto

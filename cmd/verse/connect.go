@@ -404,9 +404,9 @@ func docdAddrs() (client, mount string, err error) {
 }
 
 // disconnect ends a federation by dropping the --scope overlay (which also stops the
-// scope's engine); without a scope it removes any federated local:* entities.
+// scope's engine); without a scope it removes the federated entities under `local`.
 func disconnectCmd() *cli.Command {
-	return leaf("disconnect", "disconnect — end federation: drop a --scope overlay, else remove local:* entities",
+	return leaf("disconnect", "disconnect — end federation: drop a --scope overlay, else remove the entities under local",
 		func(cc *cli.Context, args []string) error {
 			if g.Scope != "" {
 				resp, err := httpPost("/scope/delete", nil) // urlFor folds in ?scope

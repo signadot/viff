@@ -46,8 +46,9 @@ and a payload predicate. `gates` is a conjunctive list. See
 A *gate* is `auto` (fire), `ask` (a human or agent must approve), or `park` (hold). This is the
 autonomy dial, expressed per action.
 
-An *action* is data, not code: `patch` an entity's payload, `spawn` a task from a `launch.Spec`,
-or both. It acts on the condition's subject and carries no target of its own. Template bindings
+An *action* is data, not code: `patch` an entity's payload, `derive` another entity from it,
+`spawn` a task from a `launch.Spec`, or run a `seq` of actions in order. One action may carry
+several of these. It acts on the condition's subject and carries no target of its own. Template bindings
 parameterize it: `$subject`, and every field of the changed payload.
 
 A *task* is a governed unit of agentic work, hosted by a runtime, observable and steerable.
@@ -134,7 +135,7 @@ copy-on-write store view, hosts brokers under `/broker/<nonce>`, and runs resume
 reconcile at startup. `runner` and `broker` are the two off-box task-control backends, described
 below.
 
-`source` federates external state in. `verse connect` reflects a working tree into a scope,
+`io` federates external state in. `verse connect` reflects a working tree into a scope,
 writing file metadata as entities and serving contents on demand through a docd controller, and
 the same pattern generalizes to git, GitHub and the rest. See [connect](reference/connect.md),
 [ios](io.md), and [content federation](content-federation.md).
@@ -193,7 +194,7 @@ path. Three implementations sit behind it:
 
 - *local* — the in-process `taskd` supervisor, reached by a Go call.
 - *remote* — `runner.HTTP(baseURL)`, driving another verse or host over the verse-facing
-  contract: `GET /tasks`, `GET /events?since`, and control POSTs.
+  contract: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs.
 - *broker* — a task whose runtime is an external dial-in worker: a laptop agent, a firewalled
   pod, or a human. The worker connects out to the broker (`claim`, `inbox`, `report`), and the
   broker glues that leg to verse's handle. It is the `task.Handle` turned inside-out: the same
