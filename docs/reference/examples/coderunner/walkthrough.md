@@ -187,7 +187,7 @@ enough to judge; the same prompt against the largest doc in the tree does not co
   --environment verse-docs \
   --driver claude \
   --as "$USER" --name docsdrift --attach \
-  --answer docs/reference/examples/coderunner/docs-drift.answer \
+  --answer-contract docs/reference/examples/coderunner/docs-drift.answer \
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 ```
 
@@ -196,7 +196,7 @@ a spawn's own driver wins. `task run --help` advertises `scripted|calls|llm`, wh
 *the local supervisor* builds; verse carries any other string without validating it, and the runner
 is what resolves it against `agents:`.
 
-**`--answer` is not optional.** Without a contract, the loop's only definition of finished is the
+**`--answer-contract` is not optional.** Without a contract, the loop's only definition of finished is the
 model declining to call another tool — which is also what a model narrating its next step looks
 like. Observed twice: a run ended mid-verification with a page of ✓ marks as its result and `done`
 on the read plane. [`docs-drift.answer`](docs-drift.answer) is two lines and says in its own header
@@ -379,7 +379,7 @@ verse task run \
   --runner verse.runners.pool.code-claude \
   --environment verse-docs-claude \
   --as "$USER" --name docsdrift --attach \
-  --answer docs/reference/examples/coderunner/docs-drift.answer \
+  --answer-contract docs/reference/examples/coderunner/docs-drift.answer \
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 
 verse gate

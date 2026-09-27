@@ -423,7 +423,11 @@ type taskRunConfig struct {
 	// The shape this run's final message must have — a tony match pattern in a file, the
 	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
 	// stopped calling tools, which is also what a model narrating its next step looks like.
-	Answer string `cli:"name=answer desc='file holding the answer contract for this run (a tony match pattern)'"`
+	//
+	// `--answer-contract`, and not `--answer`: `verse gate <id> --answer <option>` answers a
+	// question, and one name for the file that says what an answer must be and for the answer
+	// itself would be read as either.
+	AnswerContract string `cli:"name=answer-contract desc='file holding the answer contract for this run (a tony match pattern)'"`
 	// Which workspace the runner should build — a repo at a base, a toolchain, a
 	// containment. Resolved by the runner against its own config; verse carries the name.
 	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
@@ -473,10 +477,10 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	}
 	prompt := strings.Join(args, " ")
 	var contract *ir.Node
-	if cfg.Answer != "" {
-		n, _, err := codec.ReadFileNode(cfg.Answer)
+	if cfg.AnswerContract != "" {
+		n, _, err := codec.ReadFileNode(cfg.AnswerContract)
 		if err != nil {
-			return fmt.Errorf("task run: answer contract: %w", err)
+			return fmt.Errorf("task run: --answer-contract: %w", err)
 		}
 		contract = n
 	}

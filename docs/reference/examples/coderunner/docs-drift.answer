@@ -1,5 +1,5 @@
 # The shape a docs-drift task's final message must have — the ad-hoc face of a charter's
-# `answer:`, passed with `verse task run --answer`.
+# `answer:`, passed with `verse task run --answer-contract`.
 #
 # It does three jobs at once, which is why it is worth having rather than trusting a prompt:
 #

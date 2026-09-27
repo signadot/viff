@@ -12,7 +12,7 @@ verse task run -wait "echo done"                 # …and block for the final ou
 verse task run -attach 'Write a file hello.txt containing "hi".'    # …and stream it
 verse task run -driver scripted "go test ./..."
 verse task run -driver calls "$(cat merge.tony)"    # the actions themselves, no model
-verse task run -answer shape.tony "…"    # …and declare the shape its answer must have
+verse task run -answer-contract shape.tony "…"    # …and declare the shape its answer must have
 verse task run -gates gates.tony "…"     # …under gates of its own, each with its question
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
@@ -31,10 +31,10 @@ relayed through its inbox.
 A trigger's `spawn` runs a task the same way, from the same `launch.Spec`; what a charter
 may say about one is in [the trigger model](../trigger-model.md#action--what-fires).
 
-### `-answer`: what finished means
+### `-answer-contract`: what finished means
 
 ```sh
-verse task run -answer shape.tony "check every reference in docs/runners.md"
+verse task run -answer-contract shape.tony "check every reference in docs/runners.md"
 ```
 
 The file is a tony match pattern — the ad-hoc face of a charter's `answer:` — and it is the
