@@ -369,6 +369,49 @@ func (s *Server) suspensionCount(scope string) *api.SuspensionCount {
 
 // markSuspendedRules marks each rule in a charter listing that a suspension holds about every
 // subject with what holds it.
+// markTroubledRules marks each listed rule whose firings have gone wrong with `trouble`: what
+// went wrong, the latest of each kind, as the engine kept it (trigger.Trouble). The rule's
+// name is left off each entry, since the entry is on the rule.
+func markTroubledRules(eng *trigger.Engine, rules *ir.Node) error {
+	if rules == nil || rules.Type != ir.ArrayType {
+		return nil
+	}
+	byRule := map[string][]trigger.Trouble{}
+	for _, t := range eng.Troubles() {
+		byRule[t.Rule] = append(byRule[t.Rule], t)
+	}
+	for _, rule := range rules.Values {
+		troubles := byRule[entity.Str(rule, "name")]
+		if len(troubles) == 0 || rule.Type != ir.ObjectType {
+			continue
+		}
+		node, err := codec.ToNode(troubles)
+		if err != nil {
+			return err
+		}
+		for _, t := range node.Values {
+			dropField(t, "rule")
+		}
+		rule.Fields = append(rule.Fields, ir.FromString("trouble"))
+		rule.Values = append(rule.Values, node)
+	}
+	return nil
+}
+
+// dropField takes one field out of an object node.
+func dropField(obj *ir.Node, name string) {
+	if obj == nil || obj.Type != ir.ObjectType {
+		return
+	}
+	for i, f := range obj.Fields {
+		if f.String == name {
+			obj.Fields = append(obj.Fields[:i], obj.Fields[i+1:]...)
+			obj.Values = append(obj.Values[:i], obj.Values[i+1:]...)
+			return
+		}
+	}
+}
+
 // markHeldRules marks each listed rule that is held with `held: <stratum>`, the stratum it
 // waits for: it fires on nothing until that stratum is installed.
 func markHeldRules(held []trigger.Trigger, rules *ir.Node) {

@@ -548,6 +548,9 @@ type Status struct {
 	Suspensions *SuspensionCount `tony:"field=suspensions,omitzero"`
 	Tasks       int              `tony:"field=tasks"`
 	Fired       int              `tony:"field=fired"`
+	// Firings is what has gone wrong at the rules' firings since this process started, absent
+	// when nothing has. `verse charter` says which rule, and with what.
+	Firings *Firings `tony:"field=firings,omitzero"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
 	// these three are things somebody put here, and a verse that has lost them looks healthy by
@@ -609,6 +612,20 @@ type Status struct {
 	// not happen is asked again until it does; this is the sign that one is. Absent on a verse
 	// that is up.
 	Restoring []string `tony:"field=restoring,omitzero"`
+}
+
+// Firings counts what has gone wrong at the rules' firings, over every charter installed.
+//
+// A count that climbs is a rule doing less than it says. Which rule, where in it, about what
+// and why are on the rule in `verse charter`, under `trouble`.
+//
+//tony:schemagen=verse-firings,notag
+type Firings struct {
+	// Failed is actions that did not do what their rule says: a reference that did not
+	// resolve, a patch or a derive that failed, a spawn refused, a pose that did not expand.
+	Failed int `tony:"field=failed,omitzero"`
+	// Unread is commits a rule could not read, and so did not evaluate.
+	Unread int `tony:"field=unread,omitzero"`
 }
 
 // Group is a named set of principals (`verse group add`): as a grantee, `group:<name>` admits its

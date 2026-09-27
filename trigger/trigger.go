@@ -839,7 +839,10 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 			if first == nil {
 				first = err
 			}
-			continue // already traced; this subject does not advance
+			// Kept on the rule, for its author: this is the one place every action passes
+			// through, a rule's own and a hook's and a gate's onDenied alike.
+			e.failed(chain, subj, err)
+			continue // this subject does not advance
 		}
 		// A sequence starts once the carrier's own write has landed. It cannot also have
 		// spawned (validate rejects spawn+seq), so there is nothing in flight to race.

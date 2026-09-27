@@ -1573,6 +1573,44 @@ long time, and a retained snapshot per live sequence is a retention floor the st
 compact past. Refusing to continue needs detection rather than reconstruction, so the error can say
 that the shape changed and name the trigger, but not what changed.
 
+## When a rule does nothing
+
+A rule that did nothing looks the same from outside in four cases. Three are ordinary: it
+selected nothing, its condition did not hold, or a gate denied it. The fourth is a fault, and
+verse keeps it on the rule.
+
+`verse charter` marks a rule whose firings have gone wrong with `trouble`. This is what it
+prints, and `trouble` is verse's to write, not a field of a rule:
+
+```
+- name: copies
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action: {patch: {stage: seen, reviewer: $assignee}}
+  trouble:
+  - kind: failed
+    chain: copies
+    subject: 'demo.pr."1"'
+    why: ...
+    at: "2026-09-28T09:14:03Z"
+    count: 3
+```
+
+There are two kinds.
+
+| `kind` | What happened | What the entry says |
+|---|---|---|
+| `failed` | An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, a spawn was refused, a gate's `pose` did not expand. | `chain`, the place in the rule (`copies`, `copies.onDone`, `copies.approval.onDenied`), and `subject` |
+| `unread` | The rule could not read the verse at a commit. It did not evaluate that commit, and it does not look at it again. | `rev`, the commit |
+
+Each entry is the latest of its kind. `count` is how many times it has happened since the rule
+was installed or the daemon started, and `at` is the last time. Installing the rule again
+clears it.
+
+`verse status` counts both over every charter, as `firings: {failed, unread}`. The line is
+absent when nothing has gone wrong.
+
+A completion hook that fails is also written on its task's record, under `hook`.
+
 ## Flow — a subject-match over live tasks
 
 A flow is not a stored key. It is a match evaluated over the subjects of *live* tasks:

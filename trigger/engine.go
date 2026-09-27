@@ -107,6 +107,8 @@ type Engine struct {
 
 	mu    sync.Mutex
 	fired int // entities acted on, for the trace and for tests; see countFire
+	// troubles is what went wrong at each rule's firings, the latest of each kind (trouble.go).
+	troubles map[string]Trouble
 
 	// seen is the highest commit each trigger has been evaluated at — the watermark that
 	// makes one verdict per (trigger, commit). See firstSight.
@@ -844,9 +846,9 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 // reach of a charter, because nothing here runs the tool that would register them.
 //
 // A sentence that will not expand does not stop the question. The words are dropped and the
-// failure is carried beside them, so whoever reads the docket sees that the charter is broken
+// failure is kept on the rule (trouble.go), so its author sees that the charter is broken
 // while the people it waits on are still asked, in the terms `reason` has always given.
-func (e *Engine) pose(g Gate, oc occasion, subj entity.Ref) string {
+func (e *Engine) pose(rule string, g Gate, oc occasion, subj entity.Ref) string {
 	if g.Pose == "" {
 		return ""
 	}
@@ -857,6 +859,7 @@ func (e *Engine) pose(g Gate, oc occasion, subj entity.Ref) string {
 	said, err := tonyeval.ExpandString(g.Pose, env)
 	if err != nil {
 		e.tracef("%s: gate %s: its pose did not expand: %v", g.Name, subj, err)
+		e.failed(rule+"."+g.Name+".pose", subj, fmt.Errorf("the pose did not expand: %w", err))
 		return ""
 	}
 	return said
@@ -918,7 +921,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
 			// And the same thing in words, when the gate wrote any. `reason` says which rule
 			// asked; `pose` says what is being decided, which is the half a person needs.
-			Pose: e.pose(gate, oc, subj),
+			Pose: e.pose(t.Name, gate, oc, subj),
 			// What the approver is deciding about, and what saying yes starts. One subject,
 			// named exactly: the question is about this entity and no other.
 			Subject: subj.String(),
@@ -1002,6 +1005,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			}
 			// Addressed as its place in the charter, like a completion hook's chain: the
 			// id it writes or spawns under is where a reader can go and find the words.
+			// What fails in it is kept on the rule by apply, per subject.
 			if err := g.OnDenied.apply(t.Name+"."+gname+".onDenied", oc, subjects, e, fromSubject); err != nil {
 				e.tracef("gate %s/%s onDenied: %v", t.Name, gname, err)
 			}
@@ -1017,7 +1021,10 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	//
 	// A trigger firing has no privileged cause: the change that dispatched it is a doorbell,
 	// so the action's references read the subject (see refSource).
-	t.Action.apply(t.Name, oc, subjects, e, fromSubject)
+	//
+	// What fails in it is kept on the rule by apply, per subject (trouble.go): the firing has no
+	// task to write a failure on, and its author is who can mend it.
+	_ = t.Action.apply(t.Name, oc, subjects, e, fromSubject)
 }
 
 // untilMoot derives the context a firing waits on: cancelled, with the reason as its cause,

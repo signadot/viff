@@ -177,6 +177,9 @@ with it — and a scope may not name a package's charter, which is baseline's.
   the distinct subjects they are about — and, when anything is suspended, `suspensions: {count,
   tasks, subjects, questions, launches}` — how many are in force, and the tasks, their subjects,
   the questions withdrawn and the launches parked that they hold, each counted once. The charter census marks a rule suspended about every subject.
+- `verse status` counts what has gone wrong at the rules' firings, as `firings: {failed,
+  unread}`, and `verse charter` marks the rule with `trouble`
+  ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)).
 - `verse flow show <subject>` puts at the top of the tree what holds the subject's work — what
   would hold an installed rule whose subject could select it, and what holds its live tasks — and
   marks `heldBy` on a live task and `suspended` on each position whose work is held. A subject

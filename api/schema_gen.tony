@@ -36,6 +36,14 @@ signature:
 context:
 - tony-format/context
 define:
+  failed: .[int]
+  unread: .[int]
+signature:
+  name: verse-firings
+---
+context:
+- tony-format/context
+define:
   subjects: .[int]
   tasks: .[int]
 signature:
@@ -323,6 +331,7 @@ define:
   charter: .[tony-base:ir]
   docd: .[nullable(verse-docd)]
   fired: .[int]
+  firings: .[nullable(verse-firings)]
   flows: !verse-flow-count null
   gates: .[int]
   io: .[array(string)]

@@ -2897,6 +2897,15 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Fired
 	irMap["fired"] = ir.FromInt(int64(s.Fired))
 
+	// Field: Firings (optional)
+	if s.Firings != nil {
+		node, err = s.Firings.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["firings"] = node
+	}
+
 	// Field: Runners
 	if len(s.Runners) > 0 {
 		slice := make([]*ir.Node, len(s.Runners))
@@ -3042,6 +3051,12 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "fired", fieldNodeUnwrapped.Type)
 			}
 			s.Fired = int(*fieldNodeUnwrapped.Int64)
+		case "firings":
+			// Field: Firings
+			s.Firings = &Firings{}
+			if err := s.Firings.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
 		case "runners":
 			// Field: Runners
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -3154,6 +3169,101 @@ func (s *Status) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates Status.
 func (s *Status) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts Firings to a Tony IR node.
+func (s *Firings) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Failed
+	if s.Failed != 0 {
+		irMap["failed"] = ir.FromInt(int64(s.Failed))
+	}
+
+	// Field: Unread
+	if s.Unread != 0 {
+		irMap["unread"] = ir.FromInt(int64(s.Unread))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Firings from a Tony IR node.
+func (s *Firings) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Firings, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "failed":
+			// Field: Failed
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "failed", fieldNodeUnwrapped.Type)
+			}
+			s.Failed = int(*fieldNodeUnwrapped.Int64)
+		case "unread":
+			// Field: Unread
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "unread", fieldNodeUnwrapped.Type)
+			}
+			s.Unread = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Firings", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Firings to Tony format bytes.
+func (s *Firings) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Firings.
+func (s *Firings) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

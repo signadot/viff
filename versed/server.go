@@ -4139,6 +4139,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Suspensions: s.suspensionCount(r.URL.Query().Get("scope")),
 		Tasks:       taskCount(s.scopedStore(r)),
 		Fired:       s.firedTotal(),
+		Firings:     s.firingsStatus(),
 		Runners:     runnerRefs(s.scopedStore(r)),
 		IOs:         ioRefs(s.scopedStore(r)),
 		Charter:     s.charterTop(),
@@ -4237,6 +4238,21 @@ func (s *Server) installAsSystem(what string, data []byte) {
 //
 // Scopes are left out for the reason the census leaves them out: a federation is one dev's
 // overlay, and status answers for this verse.
+// firingsStatus counts what has gone wrong at the rules' firings, over baseline and every
+// package, and is nil when nothing has: a status with no `firings` is one with none in trouble.
+func (s *Server) firingsStatus() *api.Firings {
+	var out api.Firings
+	for _, eng := range append([]*trigger.Engine{s.Eng}, s.packageEngines()...) {
+		failed, unread := eng.TroubleCounts()
+		out.Failed += failed
+		out.Unread += unread
+	}
+	if out == (api.Firings{}) {
+		return nil
+	}
+	return &out
+}
+
 func (s *Server) firedTotal() int {
 	n := s.Eng.Fired()
 	for _, eng := range s.packageEngines() {

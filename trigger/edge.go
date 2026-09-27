@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -76,7 +77,10 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	store := e.reader(t.Name)
 	now, err := store.AsOf(c.Rev, paths(reads)...)
 	if err != nil {
-		e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev, err)
+		// NOT EVALUATED, AND NOT LOOKED AT AGAIN: the commit is marked seen above. It is
+		// kept on the rule so that its author, and whoever counts how often the store does
+		// not answer, can see a commit went by.
+		e.unread(t.Name, c.Rev, err)
 		return
 	}
 	if t.Condition.On != nil {
@@ -89,7 +93,7 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 		// replayed commit (a catch-up, a restart) reach the same verdict as the live one.
 		before, err := store.AsOf(c.Rev-1, paths(reads)...)
 		if err != nil {
-			e.tracef("%s: cannot read the verse at rev %d (%v); not firing", t.Name, c.Rev-1, err)
+			e.unread(t.Name, c.Rev, fmt.Errorf("reading the commit before it, rev %d: %w", c.Rev-1, err))
 			return
 		}
 		if ok, _ := t.Condition.On.Eval(before); ok {
@@ -107,7 +111,7 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	// one world. Ordinary conditions carry no read and this costs a nil check. See condread.go.
 	subject, err := e.conditionMatch(t.Condition.Subject, now)
 	if err != nil {
-		e.tracef("%s: subject read failed (%v); not firing", t.Name, err)
+		e.unread(t.Name, c.Rev, fmt.Errorf("reading what its condition reads: %w", err))
 		return
 	}
 	subjects := subject.Select(now)

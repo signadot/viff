@@ -371,6 +371,7 @@ func (e *Engine) unplace(name string) bool {
 	if found {
 		e.forgetShapes(name)
 		e.stopWatchers(name)
+		e.forgetTrouble(name)
 	}
 	// A HELD rule is removable too, and by the same name: it was written down, so leaving it
 	// behind would install it the moment its stratum arrived — a rule coming back to life
