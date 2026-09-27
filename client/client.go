@@ -197,24 +197,65 @@ func (c *Client) SetFormatHeaders(req *http.Request) {
 // a server that refused without saying anything.
 func StatusError(resp *http.Response, what string) error {
 	body, _ := io.ReadAll(resp.Body)
-	msg := strings.TrimSpace(string(body))
-	if msg == "" {
-		msg = resp.Status
-	}
-	return fmt.Errorf("%s: %s", what, msg)
+	return fmt.Errorf("%s: %w", what, answered(resp, body))
 }
 
 // OKBody reads a response body, turning a 4xx/5xx into the error it carries.
 func OKBody(resp *http.Response) ([]byte, error) {
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
-		msg := strings.TrimSpace(string(body))
-		if msg == "" {
-			msg = resp.Status
-		}
-		return nil, errors.New(msg)
+		return nil, answered(resp, body)
 	}
 	return body, nil
+}
+
+// Error is what a server answered in place of what was asked for: its status, and its words.
+//
+// It READS as the words alone, since the sentence is what a person acts on. The status is for
+// the program: the three answers a read of one thing has besides the thing are three different
+// next steps — look somewhere else, ask whoever owns it, ask again in a moment — and a caller
+// that has only the sentence can choose between them only by matching text.
+type Error struct {
+	Status  int
+	Message string
+}
+
+func (e *Error) Error() string { return e.Message }
+
+func answered(resp *http.Response, body []byte) *Error {
+	msg := strings.TrimSpace(string(body))
+	if msg == "" {
+		msg = resp.Status
+	}
+	return &Error{Status: resp.StatusCode, Message: msg}
+}
+
+// statusOf is the status err carries, and 0 for an error that is not a server's answer — a
+// connection refused, a body that did not decode.
+func statusOf(err error) int {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Status
+	}
+	return 0
+}
+
+// NotInView reports whether err is the answer for what the asker's view does not hold: it is
+// not there, or it is not theirs to read. One answer, which says neither (404).
+func NotInView(err error) bool { return statusOf(err) == http.StatusNotFound }
+
+// Refused reports whether err is the permission check turning the request away (403).
+func Refused(err error) bool { return statusOf(err) == http.StatusForbidden }
+
+// Unavailable reports whether err is a request that was not carried out because something
+// behind the server did not answer — its store, a runner (502, 503, 504). Nothing is known to
+// be missing, and asking again is the next step.
+func Unavailable(err error) bool {
+	switch statusOf(err) {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // ResponseFormat is the format a response declares: a fact about the server, read off the reply

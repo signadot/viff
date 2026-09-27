@@ -17,6 +17,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
@@ -161,19 +162,10 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 	}
 	cfg.As = as
 	id, name := args[0], args[1]
-	r, err := httpGet("/tasks/"+id, nil)
+	base, err := brokerOf(id)
 	if err != nil {
 		return fmt.Errorf("task do gate: %w", err)
 	}
-	var snap struct {
-		DialURL string `tony:"field=dialURL"`
-		Runner  string `tony:"field=runner"`
-	}
-	decodeClose(r, &snap)
-	if snap.DialURL == "" {
-		return fmt.Errorf("task do gate: %s is not a brokered task (runner %q)", id, snap.Runner)
-	}
-	base := strings.TrimRight(snap.DialURL, "/")
 	epoch, cCursor, err := brokerClaim(base, id, cfg.As)
 	if err != nil {
 		return fmt.Errorf("task do gate: claim %s: %w", id, err)
@@ -220,10 +212,12 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 		return nil
 	}
 
+	// UNTIL IT IS ANSWERED OR THE COMMAND IS INTERRUPTED, and no sooner: the question is put to
+	// a person, and a worker whose wait ended by itself goes on as if nobody answered while the
+	// question still stands on the docket.
 	fmt.Fprintln(cc.Out, "awaiting resolution…")
 	since := cCursor
-	deadline := time.Now().Add(2 * time.Minute)
-	for time.Now().Before(deadline) {
+	for {
 		items, max, err := brokerInbox(base, id, since, epoch)
 		if err != nil {
 			return fmt.Errorf("task do gate: inbox: %w", err)
@@ -251,9 +245,12 @@ func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
 				return nil
 			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		select {
+		case <-cc.Go.Done():
+			return fmt.Errorf("task do gate: interrupted while %s was still waiting for an answer", decision)
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
-	return fmt.Errorf("task do gate: %s not resolved in time", decision)
 }
 
 // shortID is a short random suffix that keeps generated decision ids unique. Hex, so the id
@@ -308,19 +305,10 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 	if err != nil {
 		return err
 	}
-	r, err := httpGet("/tasks/"+id, nil)
+	base, err := brokerOf(id)
 	if err != nil {
 		return fmt.Errorf("task do: %w", err)
 	}
-	var snap struct {
-		DialURL string `tony:"field=dialURL"`
-		Runner  string `tony:"field=runner"`
-	}
-	decodeClose(r, &snap)
-	if snap.DialURL == "" {
-		return fmt.Errorf("task do: %s is not a brokered task (runner %q) — no broker to dial in to", id, snap.Runner)
-	}
-	base := strings.TrimRight(snap.DialURL, "/")
 	epoch, _, err := brokerClaim(base, id, as)
 	if err != nil {
 		return fmt.Errorf("task do: claim %s: %w", id, err)
@@ -559,33 +547,85 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if !cfg.Wait {
 		return nil
 	}
-	return waitForResult(cc, sp.ID, 30*time.Second)
+	return waitForResult(cc, sp.ID)
 }
+
+// taskSnapshot reads a task's snapshot into v, for a command that goes on to act on what it
+// says. An answer that is not a snapshot — the task is not in the asker's view, the store did
+// not answer — is the server's own words as an error (client.Error), so no command describes a
+// task it did not read.
+func taskSnapshot(id string, v any) error {
+	r, err := httpGet("/tasks/"+id, nil)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	if r.StatusCode >= http.StatusBadRequest {
+		return client.StatusError(r, "reading task "+id)
+	}
+	return client.Decode(r, v)
+}
+
+// brokerOf is where a worker dials in for a task: the task's dialURL, which only a brokered
+// task carries.
+func brokerOf(id string) (string, error) {
+	var snap struct {
+		DialURL string `tony:"field=dialURL"`
+		Runner  string `tony:"field=runner"`
+	}
+	if err := taskSnapshot(id, &snap); err != nil {
+		return "", err
+	}
+	if snap.DialURL == "" {
+		return "", fmt.Errorf("%s is not a brokered task (runner %q) — no broker to dial in to", id, snap.Runner)
+	}
+	return strings.TrimRight(snap.DialURL, "/"), nil
+}
+
+// waitPoll is how often a wait asks again.
+const waitPoll = 50 * time.Millisecond
 
 // waitForResult polls a task until it leaves `running`, then prints its status and the
 // result it produced.
-func waitForResult(cc *cli.Context, id string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+//
+// IT WAITS UNTIL THE TASK ENDS OR THE COMMAND IS INTERRUPTED, and gives up at no time of its
+// own: a task waits on a model or on a person, and neither has a length this command knows.
+//
+// A read that did not happen is not the end of the wait — the store answers again in a moment,
+// and the task has gone on meanwhile — so it asks again, and says what failed if it is
+// interrupted before a read succeeds. A task that is not in the asker's view, or that they are
+// refused, is the end of it: asking again changes nothing.
+func waitForResult(cc *cli.Context, id string) error {
+	var last error
+	for {
 		var snap struct {
 			Status string `tony:"field=status"`
 			Result string `tony:"field=result"`
 		}
-		r, err := httpGet("/tasks/"+id, nil)
-		if err != nil {
+		switch err := taskSnapshot(id, &snap); {
+		case err == nil:
+			last = nil
+			if snap.Status != "" && snap.Status != "running" {
+				fmt.Fprintln(cc.Out, id, snap.Status)
+				if snap.Result != "" { // the agent's final answer
+					fmt.Fprintf(cc.Out, "\n%s\n", snap.Result)
+				}
+				return nil
+			}
+		case client.Unavailable(err):
+			last = err
+		default:
 			return fmt.Errorf("task run --wait: %w", err)
 		}
-		decodeClose(r, &snap)
-		if snap.Status != "" && snap.Status != "running" {
-			fmt.Fprintln(cc.Out, id, snap.Status)
-			if snap.Result != "" { // the agent's final answer
-				fmt.Fprintf(cc.Out, "\n%s\n", snap.Result)
+		select {
+		case <-cc.Go.Done():
+			if last != nil {
+				return fmt.Errorf("task run --wait: interrupted, and the last read failed: %w", last)
 			}
-			return nil
+			return fmt.Errorf("task run --wait: interrupted while %s was still running", id)
+		case <-time.After(waitPoll):
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("task run --wait: %s did not complete in %s", id, timeout)
 }
 
 // ── list / get ───────────────────────────────────────────────────────────────
