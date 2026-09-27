@@ -407,7 +407,10 @@ TONY
 v data demo motion 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
 QID=
 for _ in $(seq 1 100); do
-	QID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep smoke-quorum | head -1)
+	# `|| true`: under pipefail a poll that finds nothing yet is grep's exit 1, and set -e would end
+	# the script on it — the retry never ran, and the step failed silently whenever the question
+	# was not on the docket at the first poll.
+	QID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep smoke-quorum | head -1 || true)
 	[ -n "$QID" ] && break
 	sleep 0.2
 done
