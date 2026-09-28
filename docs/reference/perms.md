@@ -77,7 +77,7 @@ verse writes records, and only the system reads them. Anybody else reads and set
 |---|---|
 | `owner` | the principal who owns the node. It is absent on a record that only holds grants out (a seed row). |
 | `grants` | a list of lines. `[]` holds out nothing. |
-| `child-grants` | permission levels mapped to grantees. It is what a record made beneath this node starts out holding out. Verse copies it when that record is written. It is not a fallback: a change to it touches nothing that exists. The nearest `child-grants` up the tree applies, and the root's is the last. |
+| `child-grants` | permission levels mapped to grantees. It is what a record made beneath this node starts out holding out. Verse copies it when that record is written, unless the creation gives grants of its own. It is not a fallback: a change to it touches nothing that exists. The nearest `child-grants` up the tree applies, and the root's is the last. |
 | `under` | an address. Whoever co-owns that node co-owns this one. Verse writes it on a question (what asked it) and on a cover (its resolver). |
 
 A grant line:
@@ -117,10 +117,12 @@ there.
 
 - **Who owns a created node.** A writer may hold `owner` where they write, by owning above or by
   a `child-owner` line. That writer owns what they create. Verse writes a record if the writer
-  differs from the owner above. A writer who holds `read-write` creates the node too, but the
-  node belongs to the owner of the place, and verse writes no record.
+  differs from the owner above, or gives the node grants (`verse data … -put … -grants`). A
+  writer who holds `read-write` creates the node too, but the node belongs to the owner of the
+  place, verse writes no record, and it refuses grants on the write.
 - **Where the record goes.** At the topmost node that the write brought into being. The walk up
-  stops at anything already there, as a node or as a place somebody took.
+  stops at anything already there, as a node or as a place somebody took. A node created with
+  grants has its own record too, written in the same commit as the node.
 - **`child-owner` applies to a creation only.** Verse commits a write that only that line admits
   on one condition: nothing stands where the write lands. The condition holds at the node and at
   each node that its value reaches. Of two people who make one node at once, one owns it and

@@ -58,6 +58,12 @@ names the writer, and it stands at the topmost node that the write made. Write `
 an empty store, and `demo` is yours, with everything beneath it. You may create where you own
 the node above. You may also create where a grant says you may (`child-owner`, below).
 
+**A node's first grants are `child-grants`, or its creator's.** A node you create holds out what
+the nearest `child-grants` above it says. Or give it grants of your own as you create it:
+`verse data notes ana todo -put '{…}' -grants '[]'` makes a note that nobody else reads, from its
+first commit. The node and its record land together, so it is never readable more widely than
+you said ([entities.md](reference/entities.md#creating-with-grants)).
+
 **Owners above co-own.** Whoever owns `demo` may do anything to `demo.pr.1`, whoever made it.
 
 **Ownership moves only by creating and deleting.** Verse has no transfer. To hand something
@@ -94,7 +100,7 @@ Know three things about grants before the rest:
   beneath a node and own them. It gives them nothing over what already stands there. It never
   lets anybody take the node above a place that somebody else has made.
 - **`child-grants` is copied when a node is created.** It is what the new node's own record
-  starts with. A later change to `child-grants` changes what is created later. It changes
+  starts with, unless its creator gives grants of their own. A later change to `child-grants` changes what is created later. It changes
   nothing that exists.
 
 A **[group](glossary.md#group)** is a named set of grantees with an owner

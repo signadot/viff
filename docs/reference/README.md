@@ -126,6 +126,10 @@ verse
                                              slip that writes
           -put [-create|-update]             only if nothing is there yet · only if something is
           -put [-expect <pattern>]           only if what is there matches
+          -put -grants <list>                create it holding out this list, as
+                                             `perms -grants` takes it ([] for nothing), in
+                                             place of child-grants. Refused where it stands.
+                                             entities.md#creating-with-grants
           An address is one kinded path in two spellings. entities.md#addressing
   gate (gates)                               the docket: every question waiting on somebody —
                                              a gate's, one of a task's actions, a provider

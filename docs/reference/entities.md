@@ -291,7 +291,8 @@ itself, by the kind its name carries:
 - `agent` for an operator agent.
 
 `perms.node.<address>` is the [mirror of permissions](../glossary.md#mirror-of-permissions).
-It has a [record](../glossary.md#record) wherever ownership changes down the tree. The record is
+It has a [record](../glossary.md#record) wherever ownership changes down the tree, and on a node
+created with grants ([Creating with grants](#creating-with-grants)). The record is
 keyed by the node's own address, spelled as one segment. It holds:
 
 - `owner`;
@@ -609,6 +610,29 @@ the next commit tries again.
 
 The reason verse refuses a write through an array is under
 [Why it is this way](../design/reference-entities.md#a-write-through-an-array).
+
+### Creating with grants
+
+A node you create holds out what the nearest `child-grants` above it says
+([perms.md](../perms.md#grants)). To create it holding out something else, give `-grants` with
+the put. It takes the list `verse perms -grants` takes, and `[]` holds out nothing.
+
+```sh
+verse data notes ana todo -put '{todo: "buy milk"}' -grants '[]'   # nobody else reads it
+verse data notes ana plan -put '{due: friday}' -grants '[{read: [user:bo@example.com]}]'
+```
+
+The node and its [record](../glossary.md#record) land in one commit. So no reader, and no rule,
+ever sees the node holding out the default.
+
+A put with `-grants` is a create. Where the node stands already, verse refuses the write and
+leaves the node as it is: what a node that stands holds out is changed with `verse perms`. So
+`-grants` beside `-update` or `-expect` is a usage error. You may give only what an owner may set
+on the node's record, and only where the node will be yours: a writer who creates on
+`read-write` makes a node its owner above owns, and verse refuses their grants. Grants change
+nothing about who may create there. A `child-owner` line held out to a group makes the member
+who wrote the owner, never the group, and the line does not apply above somebody else's place
+([perms reference](perms.md#creating-and-taking-a-place)).
 
 ## Conditional writes
 

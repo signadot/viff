@@ -913,7 +913,8 @@ See [Permissions](perms.md#grants).
 ### child-grants
 
 `child-grants` is the field of a record that says which grants a node created beneath it
-starts with. Verse copies it when the node is created.
+starts with. Verse copies it when the node is created, unless its creator gives the node grants
+of their own (`verse data … -put … -grants`).
 
 See [Permissions](perms.md#grants).
 
