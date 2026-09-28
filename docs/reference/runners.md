@@ -1,19 +1,20 @@
 # Runners
 
-The surface. For what a runner *is* and why it is shaped this way, see
-[../runners.md](../runners.md); for the contract a runner serves,
-[../task-control.md](../task-control.md). To build one, copy
-[examples/runner](examples/runner/main.go).
+This page lists the commands, routes and fields of runners. A
+[runner](../glossary.md#runner) is a place where verse runs a [task](../glossary.md#task).
+For what a runner is and why it has this shape, see [../runners.md](../runners.md). For the
+contract that a runner serves, see [../task-control.md](../task-control.md). To build a
+runner, copy [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `verse.runners.<name>` carrying its `name` and two fields:
+A runner is an entity at `verse.runners.<name>`. It carries its `name` and two fields:
 
-| | |
+| Field | What it holds |
 |---|---|
-| `url` | the verse-facing task-control base — what `runner.HTTP` drives and what a restart reconstructs from. Required |
-| `identity` | the principal the runner acts as: what a task's reports are written as, and what a spawn grants `read-write` and `control` on the task. A runner acts as itself, never as its installer or as whoever's work it runs. Default: the runner's name ([perms.md](../perms.md)) |
+| `url` | the base URL of task control that faces verse. `runner.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
+| `identity` | the [principal](../glossary.md#principal) that the runner acts as. Verse writes the reports of a task as this principal. A spawn grants this principal `read-write` and `control` on the task. A runner acts as itself. It never acts as its installer, or as the person whose work it runs. Default: the runner's name ([perms.md](../perms.md)). |
 
-`name` is the whole of the address. It may not contain `/`: it is a segment of the route that
-serves it.
+The `name` is the whole of the address. It may not contain `/`, because it is a segment of
+the route that serves it.
 
 ## Commands
 
@@ -31,10 +32,15 @@ verse runner add <name> <url>              install one, probing the url first
               [-leave]                     …the place stays: leave it running
 ```
 
-A `<ref>` is `verse.runners.gpu` or `gpu`: the whole address as it is listed and stored, or
-the name typed on a command line. The middle form, `runners.gpu`, is not accepted, because two
-ways to say one thing is one too many. A runner's address is its name and nothing else, so names
-are unique on their own, and adding one that stands replaces it.
+A `<ref>` has two forms:
+
+- `verse.runners.gpu`: the whole [address](../glossary.md#address), as verse lists and
+  stores it;
+- `gpu`: the name, as you type it on a command line.
+
+Verse does not accept the middle form, `runners.gpu`. The address of a runner is its name and
+nothing else, so each name is unique on its own. Adding a runner with a name that stands
+replaces the runner.
 
 On the task side:
 
@@ -45,81 +51,109 @@ verse task run -runner <ref> <prompt>     run this one there
 
 ## Routes
 
-| | |
+| Route | What it does |
 |---|---|
-| `GET /runners` | list; `?probe=true` adds a live `reach` per runner |
-| `POST /runners` | install; `?probe=false` skips the check. `201` with `{at, reach}`, plus `warning` when unreachable |
-| `GET /runners/{name}` | the entity |
-| `GET /runners/{name}/check` | `{at, url, reach}` and `why` when it is not a runner |
-| `DELETE /runners/{name}` | remove. `?cancel=<why>` or `?leave=true`; `409` with both named when work is running and neither is given |
-| `GET /tasks?runner=<ref>` | the work on one runner |
+| `GET /runners` | lists the runners. `?probe=true` adds a live `reach` for each runner. |
+| `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` with `{at, reach}`, plus `warning` when the runner is unreachable. |
+| `GET /runners/{name}` | returns the entity |
+| `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner |
+| `DELETE /runners/{name}` | removes the runner. Pass `?cancel=<why>` or `?leave=true`. When work is running and you give neither, the answer is `409` and names both. |
+| `GET /tasks?runner=<ref>` | lists the work on one runner |
 
-`reach` is one of `a runner`, `not a runner`, `unreachable`. Nothing about it is written to the
-store — it is answered live and discarded, so a reachability column is always as of now.
+`reach` is one of `a runner`, `not a runner` or `unreachable`. Verse writes nothing about
+`reach` to the store. Verse answers it live and then discards it, so a column of reachability
+is always as of now.
 
-A route that names one runner has two answers when it does not find it:
+A route that names one runner has two answers when it does not find the runner:
 
-| | |
+| Status | Answer |
 |---|---|
-| `404` | `in your view, no runner "<name>" is installed`. The runner is not installed, or it is not yours to read. The answer is the same for both. |
-| `503` | `runner "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
+| `404` | `in your view, no runner "<name>" is installed`. The runner is not installed, or you may not read it. The answer is the same for both. |
+| `503` | `runner "<name>" could not be read: …`. The store did not answer. Verse knows of nothing missing, so ask again. |
 
-The listing leaves out the runners you may not read, and answers `503` when the store could
-not be read.
+The listing leaves out the runners that you may not read. It answers `503` when verse could
+not read the store.
 
 ## On a spawn
 
-`runner:` on a charter's `spawn:`, and `-runner` / `runner` on the ad-hoc face. Empty means the
-verse's default runner, which `verse up -runner` sets. `verse up -broker` serves a broker beside
-it, which a spawn reaches by the name `broker`.
+A spawn names its runner in one of two places:
 
-A spawn naming a runner that is not installed is **refused** on both paths — an ad-hoc run with
-`400` and the name in the message, a charter spawn as a failed spawn whose reason travels onto
-the flow. It is never quietly run somewhere else.
+- `runner:` on the `spawn:` of a charter;
+- `-runner` or `runner` on the ad-hoc path.
 
-The runner is looked up in the spawner's view: for a rule, that is the view of the rule's
-owner. A runner the spawner may not read is refused in the same words as one that is not
-installed, `in the view of <spawner>, no runner "<name>" is installed`, followed by the runners
-the spawner may read. When the store could not be read the refusal says so, and says nothing
-about what is installed.
+An empty runner means the default runner of this verse, which `verse up -runner` sets.
+`verse up -broker` serves a broker beside the default runner. A spawn reaches that broker by
+the name `broker`.
+
+Verse **refuses a spawn that names a runner that is not installed**, on both paths:
+
+- an ad-hoc run gets `400`, with the name in the message;
+- a charter spawn becomes a failed spawn, and its reason goes onto the flow.
+
+Verse never runs the task somewhere else without saying so.
+
+Verse looks up the runner in the view of the spawner. For a rule, that is the view of the
+rule's owner. Verse refuses a runner that the spawner may not read in the same words as a
+runner that is not installed: `in the view of <spawner>, no runner "<name>" is installed`.
+The runners that the spawner may read follow. When verse could not read the store, the refusal
+says so, and says nothing about what is installed.
 
 ## On the task
 
-`verse.task.instance` carries both:
+`verse.task.instance` carries both the URL and the name of the runner:
 
-| | |
+| Field | What it holds |
 |---|---|
-| `runner` | the resolved url (or `local`) — what a restart re-attaches with |
-| `runnerName` | the `verse.runners.<name>` the spawn named, when it named one |
-| `startedAt` | when the task began; carried across a re-attach rather than re-stamped |
+| `runner` | the resolved URL, or `local`. A restart attaches again with it. |
+| `runnerName` | the `verse.runners.<name>` that the spawn named, when it named one |
+| `startedAt` | when the task began. Verse carries it across a new attach, and does not stamp it again. |
 
-Both, deliberately: the url is what a restart can act on with nothing else present, so removing
-a runner entity cannot strand running work; the name is what a person reads and what
-`verse ps -runner` selects on, which keeps answering after the entity is gone.
+A restart can act on the URL with nothing else present. So removing a runner entity cannot
+leave running work stranded. A person reads the name, and `verse ps -runner` selects on the
+name. The name keeps working after the entity is gone.
 
 ## What a caller can tell about a control call
 
-A control call that fails says which failure it was, because a caller that cannot tell them
-apart either retries what was already applied or abandons what never arrived (`task/runner.go`):
+A control call that fails says which failure it is (`task/runner.go`):
 
-| | |
+| Error | Meaning |
 |---|---|
-| `ErrUnreachable` | the far side did not answer, and nothing is known about whether it acted |
-| `ErrNoSuchTask` / `ErrNoSuchDecision` | it answered, and has never heard of this — look for the typo |
-| `ErrAlreadyAnswered` | somebody beat you to it |
-| `ErrTaskEnded` | the gate was real, the task is over, and nobody answered it |
-| `ErrFenced` | a stale claim: the caller's generation was displaced |
-| `ErrUnsupported` | this runner has no such face at all |
+| `ErrUnreachable` | the far side did not answer. Nothing is known about whether it acted. |
+| `ErrNoSuchTask` / `ErrNoSuchDecision` | the far side answered, and has never heard of this task or decision. Look for a typo. |
+| `ErrAlreadyAnswered` | somebody else answered first |
+| `ErrTaskEnded` | the gate was real, the task is over, and nobody answered the gate |
+| `ErrFenced` | a stale claim: a newer claim displaced the caller's generation |
+| `ErrUnsupported` | this runner has no such route at all |
+
+A caller that cannot tell these failures apart does one of two wrong things. It retries a call
+that the far side already applied, or it gives up on a call that never arrived.
 
 ## What a reader gets after a gap
 
-A stream reader resumes with `since=<cursor>` rather than from the top, and the resume replays
-the questions still open, so a reader that missed a gate does not have to learn about it from
-the store.
+A reader of the stream resumes with `since=<cursor>`, not from the start. The resume replays
+the questions that are still open. So a reader that missed a gate does not have to learn about
+it from the store.
 
-Two things keep a dial-in worker honest without a clock on its side. Its inbox poll **is** its
-acknowledgement — asking for what came after `N` is only possible having taken what came before
-— so the broker knows how far it has read without being told. And a claim carries a lease
-(`broker.ClaimLease`, two minutes), renewed by any poll or report, so a worker that closed its
-laptop stops holding a task and its gate forever. The lease is one clock comparing two readings
-of itself, never a timestamp written on another machine.
+Two mechanisms keep a [worker](../glossary.md#worker) that dials in honest, with no clock on
+the worker's side:
+
+- **The inbox poll is the acknowledgement.** A worker can ask for what came after `N` only
+  when it has taken what came before. So the broker knows how far the worker has read without
+  being told.
+- **A claim carries a lease** (`broker.ClaimLease`, two minutes). Any poll or report renews
+  it. So a worker whose laptop closed stops holding a task and its gate forever.
+
+The lease is one clock that compares two of its own readings. It is never a timestamp that
+another machine wrote.
+
+## Why it is this way
+
+### Why the task carries both the URL and the name
+
+A restart must be able to act with nothing else present, and the URL is enough for that. A
+person needs a name to read, and a selection needs a name to match after the entity is gone.
+One field cannot do both jobs, so the task carries both.
+
+### Why a ref has no middle form
+
+Verse does not accept `runners.gpu` because two ways to say one thing is one too many.

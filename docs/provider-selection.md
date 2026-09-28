@@ -1,21 +1,33 @@
 # Provider selection
 
-Every `spawn` answers two questions. *What* is the work: the prompt, the frame, the contract.
-*Who* does it. This is the second one.
+Every `spawn` answers two questions:
 
-A spawn can answer it outright by naming a `driver`, or it can leave the answer to the verse.
-Declare a **provider selection** and the engine picks a doer at fire time from a registry of
-entities, through the same question a gate poses. The doer that wins contributes what it
-*is* — its driver, its standing instructions, the tools it works with, the authority it runs
-under — overlaid onto the spawn that selected it.
+- *What* is the work? This is the prompt, the frame and the contract.
+- *Who* does it?
 
-For the walk, see [tutorial §5](tutorial.md#the-same-machinery-answers-who). For where `spawn`
-sits inside a rule, see [the trigger model](trigger-model.md).
+This page is about the second question.
+
+A [spawn](glossary.md#spawn) can answer it directly: it names a `driver`. Or it can leave the
+answer to verse. For that, the spawn declares a **provider selection**. A
+[provider selection](glossary.md#provider-selection) makes verse pick a
+[doer](glossary.md#doer) when the rule fires. Verse picks from a registry of entities, and it
+uses the same [question](glossary.md#question) that a gate poses. The doer that wins gives the
+spawn what the doer *is*:
+
+- its [driver](glossary.md#driver);
+- its standing instructions;
+- the tools it works with;
+- the authority it runs under.
+
+Verse lays these over the spawn that selected the doer.
+
+For a walk through an example, see [tutorial §5](tutorial.md#the-same-machinery-answers-who).
+For the place of `spawn` inside a rule, see [the trigger model](trigger-model.md).
 
 ## The registry
 
-A doer is an entity: `provider.<capability>.<id>`. The capability is what it can do; the id is
-which one it is.
+A doer in the registry is a [provider](glossary.md#provider). A provider is an entity at
+`provider.<capability>.<id>`. The capability says what it can do. The id says which one it is.
 
 ```sh
 verse data provider treat fixer -put '{
@@ -28,14 +40,18 @@ verse provider
 # treat      fixer          driver=llm risk=low grant=no-delegate tools=[read_file …]
 ```
 
-Its payload is one namespace holding two kinds of key, and they are deliberately not separated:
+The payload of a provider is one namespace. It holds two kinds of key, and verse does not
+separate them:
 
-- **attributes** — `risk`, `tier`, `cost`, anything: what a selection *matches on*;
-- **fragment fields** — `driver`, `frame`, `tools`, `grant`, `virtualKey`: what the winner
-  *contributes*.
+| Kind | Keys | What it is for |
+|---|---|---|
+| **attributes** | `risk`, `tier`, `cost`, or any other key | what a selection *matches on* |
+| **fragment fields** | `driver`, `frame`, `tools`, `grant`, `virtualKey` | what the winner *gives* to the spawn |
 
-`driver` is both, matchable and bound. Splitting the two would make a provider entity a schema
-rather than the free-form thing that lets a new attribute be invented without a code change.
+`driver` is both kinds. A selection can match on it, and the winner gives it.
+
+Keeping one namespace means a provider entity is free-form, not a schema. So you can invent a
+new attribute without a change to the code.
 
 ## Selecting
 
@@ -47,44 +63,52 @@ action:
     provider: { capability: treat, match: { risk: low }, select: auto }
 ```
 
-`capability` names the subtree; `match` is a real verse match pattern over each provider's
-attributes, so "premium reviewers" or "anything under $5" is just a pattern. The eligible set
-is derived at fire time, so doers are added and retired by writing and deleting entities, with
-no charter change. An inline `eligible: [gpt, claude]` is the simpler form: a list of names,
-where the name is the driver and contributes nothing else, because a name has no attributes.
+The fields of a provider selection:
 
-`select` is the who-dial, and it is the same dial a gate has:
+| Field | What it does |
+|---|---|
+| `capability` | names the subtree of providers |
+| `match` | a verse match pattern over the attributes of each provider. "Premium reviewers" or "anything under $5" is a pattern. |
+| `select` | says who chooses (see the table below) |
+| `within` | the deadline of the question, for `ask` and `vote` |
 
-| `select` | who decides | surface |
+Verse finds the eligible doers when the rule fires. So you add and retire doers by writing and
+deleting entities. The charter does not change.
+
+An inline `eligible: [gpt, claude]` is the simpler form. It is a list of names. Each name is
+the driver, and it gives nothing else, because a name has no attributes.
+
+`select` says who chooses. It is the same setting that a gate has:
+
+| `select` | Who decides | What appears |
 |---|---|---|
-| `auto` (default) | a rule — the first eligible, by id | none |
-| `ask` | one party | a question on the docket, every option at one |
+| `auto` (default) | a rule: the first eligible doer, by id | nothing |
+| `ask` | one party | a question on the [docket](glossary.md#docket), every option at one |
 | `vote` | the group, at `need` | a question on the docket, every option at `need` |
 
-`within` is the question's deadline on `ask`/`vote`, with no default: no pick by then settles it
-on `none` and nothing spawns.
+`within` has no default. If nobody picks by the deadline, the question settles on `none` and
+nothing is spawned.
 
-`auto` poses no question at all, which is deliberate rather than an optimisation. The docket is
-the answerable, attributable surface. An auto pick has no answerer and casts no ballot, so a
-record for it would put a decision on the docket reported as the group's that nobody made. A
-gate is the same rule from the other side: a question is posed for `ask`, never for `mode: auto`.
+`auto` poses no question at all. A gate follows the same rule from the other side: verse poses
+a question for `ask`, and never for `mode: auto`.
 
-A vote under an `exclusive` resolver is refused at install: an exclusive resolver answers alone,
-and a vote is a room. `ask` composes with it.
+Verse refuses a `vote` under an `exclusive` resolver at install. An exclusive resolver answers
+alone, and a vote needs a group. `ask` works with an exclusive resolver.
 
-Nor is an auto pick latched. Re-deriving per firing is deterministic given the same registry, since
-the eligible set sorts, and it follows the registry when that changes, where a committed pick would
-outlive the doer it named.
+Verse does not store an `auto` pick. It picks again at each firing. The pick is deterministic
+for the same registry, because the eligible set is sorted. When the registry changes, the pick
+follows it.
 
 ## What the winner contributes
 
-The winner is bound as a `launch.Fragment` — `driver`, `frame`, `tools`, `grant`, `virtualKey`,
-plus its own id — and the spawn is the base it overlays. That is the shape that matters: the charter's
-spawn block is what a doer varies *from*, not a set of fields every doer must satisfy. One
-trigger can route to a fixer and a memo-writer that share `driver: llm` and differ in
-everything else.
+Verse binds the winner as a `launch.Fragment`: `driver`, `frame`, `tools`, `grant`,
+`virtualKey`, and the id of the doer. The spawn is the base, and the fragment lies over it.
 
-The overlay only ever narrows.
+**The spawn block of the charter is what a doer varies from.** It is not a set of fields that
+every doer must satisfy. So one rule can route to a fixer and to a memo-writer. The two share
+`driver: llm` and differ in everything else.
+
+The overlay only narrows the spawn.
 
 | field | rule |
 |---|---|
@@ -95,27 +119,32 @@ The overlay only ever narrows.
 | `virtualKey` | replaces when set; absent inherits the spawn's |
 | `prompt`, `vector`, everything else | the charter's, untouched |
 
-Two of those need their reasons stated, because the obvious rule is the wrong one.
+Two of these rules are not the obvious ones.
 
-**A doer that sets `tools` and not `grant` keeps the spawn's grant.** Absent and empty are
-different values on both sides, which is why `task.NamedGrant` returns an `ok` rather than a zero
-`Grant`: the zero envelope permits nothing, and would refuse every action of a task that never
-mentioned one.
+**A doer that sets `tools` and not `grant` keeps the grant of the spawn.** Absent and empty are
+different values, on both sides. For this reason `task.NamedGrant` returns an `ok`, not a zero
+`Grant`. The zero grant permits nothing. It would refuse every action of a task that never
+named a grant.
 
-**`tools` intersects because an empty list means *all* of the driver's tools.** A replace would let
-a doer offering `[read_file, run_bash]` add `run_bash` to a spawn that offered only `[read_file]`.
-"Narrows by construction" is true of a tool list read on its own and false of one overlaid onto
-another.
+**`tools` intersects, because an empty list means *all* the tools of the driver.** Suppose the
+spawn offers only `[read_file]` and a doer offers `[read_file, run_bash]`. A replace would add
+`run_bash`. A tool list narrows when you read it alone. It does not narrow when you lay it over
+another list.
 
-That sentinel has one consequence. Two tool lists that share nothing cannot be composed: the
-intersection is the empty set, the empty set is spelled by an empty list, and an empty list means
-all of them, so the silent answer to "these two agree on nothing" would be "have everything". Such
-a pair is refused instead. It is a contradiction anyway, since a doer that can use no tool the
+The empty list has one more effect. Verse cannot combine two tool lists that share no tool:
+
+1. The intersection is the empty set.
+2. The empty set is written as an empty list.
+3. An empty list means all the tools.
+
+So the answer to "these two agree on nothing" would be "have everything". Verse refuses such a
+pair instead. The pair is a contradiction in any case: a doer that may use no tool that the
 spawn permits cannot do the work.
 
 ## Which credential it runs under
 
-`virtualKey` is the ADDRESS of the model credential the work runs under:
+`virtualKey` is the address of the model credential that the work runs under. This credential
+is the [virtual key](glossary.md#virtual-key).
 
 ```sh
 verse data acme keys review -put '{key: "vk-abc123"}'      # the node IS the credential
@@ -128,89 +157,88 @@ verse data provider review careful -put '{
 }'
 ```
 
-An address rather than a name, because verse already has one namespace and it is the tree. A name
-would want a registry beside it — per runtime, agreeing across deployments, carrying no
-permissions of its own.
+The field holds an address, not a name. Verse has one namespace, and it is the tree.
 
-**The read is the authority.** Spending a credential has a cost, so who may spend it is a
-permission, and the one verse already has answers it: versed resolves the address **as whoever
-named it** before the task starts, so a charter naming a node its own owner may not read is
-refused rather than run. There is no group, flag or list invented for keys — put the perms you
-want on the node, and where credentials live is your convention, not verse's.
+**The read is the authority.** Before the task starts, versed reads the address **as whoever
+named it**. If the owner of a charter may not read the node that the charter names, verse
+refuses the spawn and does not run it. Verse has no group, flag or list for keys. Put the
+permissions you want on the node. Where credentials live is your convention, not verse's.
 
-That is also why a provider entity may set this field at all. A provider is an ordinary entity,
-writable by anyone who can write entities; the address it carries is not authority, and the read
-of it is checked against the namer regardless of who wrote the provider.
+For the same reason, a provider entity may set this field. A provider is an ordinary entity.
+Anyone who can write entities can write one. The address in it is not authority. Verse checks
+the read against the namer, whoever wrote the provider.
 
-**The node holds the key**, so rotating one is a write — `verse data acme keys review -put …` —
-and every charter and provider naming that address follows without being touched. Nothing is
-declared twice and no config is redeployed.
+**The node holds the key.** So a rotation is one write: `verse data acme keys review -put …`.
+Every charter and every provider that names the address follows it, and none of them changes.
+Nothing is declared twice, and no config is deployed again.
 
-That means the store holds bearer strings, which is a real cost and was taken deliberately. The
-alternative was a reference to a name each runtime allowlists, and it bought less than it looked:
-whoever may read a credential can already SPEND it by naming it in a spawn, so the indirection
-only moved where the key was typed — at the price of a third name, a list per runtime to keep in
-step, and a deploy to rotate. What is left is a smaller difference: a permitted reader can also
-copy the key OUT. A Portkey virtual key is bounded by its own budget and route, which is what
-makes that payable. **A provider key is not, and does not belong here.**
+As a result, the store holds bearer strings. This is a real cost, and verse accepts it. A
+permitted reader can copy the key out of the store. A Portkey virtual key is limited by its own
+budget and route, so that risk is acceptable. **A provider key is not limited, and does not
+belong here.**
 
 ### What protects a key here, and what does not
 
-**A credential in the verse is protected by permissions and by nothing else.** It is stored as
-written — there is no encryption at rest in the store, no envelope, no key management — so the
-protection is a convention the permissions model enforces: who may read the node is who may use
-the key, and who may read the node is whatever its record says.
+**Permissions protect a credential in verse, and nothing else does.** The store keeps the
+credential as written. The store has no encryption at rest, no envelope and no key management.
+So the protection is a convention that the permissions model enforces. Whoever may read the
+node may use the key. Whoever may read the node is set by the record of the node.
 
-That has two edges worth knowing before you put a real key in.
+This has two consequences to know before you put a real key in.
 
-**You must fence the place.** A verse with an open root holds out `read` to everyone, so a
-credential written into it is readable by everyone the moment it exists, including by every rule.
-Set the place up once and everything created under it is fenced, including nodes that are already
-there:
+**You must fence the place.** A verse with an open root grants `read` to everyone. So everyone
+can read a credential written into it, as soon as it exists, and so can every rule. Set up the
+place once. Then everything under it is fenced, including nodes that are already there:
 
 ```sh
 verse perms acme keys --grants '[]' --child-grants '{}'
 ```
 
-Both halves are needed. `--child-grants '{}'` alone hands nothing down but leaves the place itself
-readable, and a child inherits that.
+Both halves are needed. `--child-grants '{}'` alone passes nothing down, but the place itself
+stays readable, and a child inherits that.
 
-**A rule that may read a key may also copy it.** Fencing decides *who*; it cannot decide what they
-do next. A rule runs as its owner, so a rule owned by somebody who may read a credential can derive
-that node's contents anywhere it may write — into an io's place, where a connector will say it out
-loud. There is no check against this and there is not going to be one: the same read that lets a
-spawn spend the key lets a rule copy it, and refusing the second while allowing the first would be
-a distinction the model cannot draw.
+**A rule that may read a key may also copy it.** Fencing decides *who* reads. It cannot decide
+what they do next. A rule runs as its owner. Suppose the owner of a rule may read a credential.
+Then the rule can derive the contents of that node to any place where it may write. That
+includes the place of an [io](glossary.md#io), where the sink sends it out of verse. Verse has
+no check against this, and will not have one.
 
-So the honest statement of the guarantee: **verse keeps a key from people the record excludes, and
-keeps nothing from people the record admits.** That is enough for a Portkey virtual key, which is
-bounded by its own budget and route — the worst case is spend, inside a limit somebody set. It is
-not enough for a provider key, which is unbounded, and one does not belong here at all.
+So the guarantee is this: **verse keeps a key from people the record excludes, and keeps
+nothing from people the record admits.** That is enough for a Portkey virtual key. Its own
+budget and route limit it, so the worst case is spending inside a limit that somebody set. It
+is not enough for a provider key. A provider key has no limit, and does not belong in verse at
+all.
 
-If you need more than permissions, verse is not where the secret should live: keep it in the
-runtime's own environment and let a spawn name no credential at all, or store something verse can
-hold safely — an encrypted value your runner can open, a reference into a secret manager — and
-accept that rotation then happens wherever that lives rather than in a write.
+If you need more than permissions, do not keep the secret in verse. You have two choices:
 
-So two things are separated that one mechanism would have run together: **who may spend** (perms
-on the node) and **what it costs** (Portkey, which hangs budget, rate and routing off the virtual
-key). The second is why spend gets an owner without verse growing an accounting system, and why
-cheap-model triage and expensive review are one line rather than two runner deployments.
+- Keep the secret in the environment of the runtime, and let the spawn name no credential.
+- Store something that verse can hold safely: an encrypted value that your runner can open, or
+  a reference into a secret manager. Rotation then happens where that value lives, not in a
+  write.
+
+So verse separates two things that one mechanism would join:
+
+| Question | Who answers it |
+|---|---|
+| **who may spend** | the permissions on the node |
+| **what it costs** | Portkey, which attaches budget, rate and routing to the virtual key |
+
+Because Portkey answers the second question, spending has an owner and verse needs no
+accounting system. For the same reason, cheap-model triage and expensive review are one line
+in a charter, not two runner deployments.
 
 ## The ceiling
 
-A `provider.*` entity is an ordinary entity. **Anyone who can write one can create a doer** —
-so if a doer's `grant` were taken as-is, writing an entity would be a privilege escalation,
-and the charter that spawned the task never said so.
+A `provider.*` entity is an ordinary entity. **Anyone who can write one can create a doer.**
 
-The rule is the one delegation already uses (`task.Grant.Subset`, the check `NewChild`
-makes at a call_agent boundary): the charter sets a ceiling, a doer may only narrow.
+So verse applies the rule that delegation uses. That rule is `task.Grant.Subset`, the check
+that `NewChild` makes at a call_agent boundary. The charter sets a ceiling, and a doer may only
+narrow it.
 
-**A spawn that declares `provider:` must declare `grant:`, or it will not install.** An omitted
-grant is not a small ceiling but an unbounded one, since `task.Launch` treats a nil grant as
-unbounded, so without the requirement "a doer may only narrow" would be a check against everything
-in the common case. `grant: all` is spellable for exactly this: say unbounded rather than
-defaulting into it.
+**A spawn that declares `provider:` must declare `grant:`, or verse does not install it.**
+`task.Launch` treats a missing grant as unbounded. So without this requirement, "a doer may
+only narrow" would check against everything, in the common case. You can write `grant: all`.
+Then the spawn says "unbounded" and does not fall into it by default.
 
 ```
 spawn declares `provider:` but no `grant:`: a selected doer may carry its own grant, and
@@ -220,17 +248,12 @@ that is only checkable against a ceiling the charter states. Add one (`grant: re
 
 ### Refused at eligibility, not at the bind
 
-A doer that would widen is not trimmed and not failed at launch. It is **ineligible**: it
-never enters the option set, so it cannot be picked and cannot be voted for.
+Verse does not trim a doer that would widen the grant, and it does not fail it at launch. The
+doer is **ineligible**. It never enters the set of options, so nobody can pick it and nobody
+can vote for it.
 
-Both halves matter. Trimming, meaning quietly dropping the offending field and running the doer
-anyway, would put a task under an envelope different from the one its own entity states, which is
-the defect the named-grant vocabulary exists to prevent. Checking after the pick would let a group
-deliberate, reach a threshold, and elect a doer that then cannot be seated: a decision with no
-seat, which no voter could have known they were making.
-
-An empty option set is explained rather than silent, because the causes are fixed in different
-places:
+An empty set of options comes with a reason, because each cause has its fix in a different
+place:
 
 | why nothing is eligible | where the fix is |
 |---|---|
@@ -239,7 +262,8 @@ places:
 | all registered were excluded by `match` | loosen the match |
 | they matched and may not run under this spawn | narrow the doer, **or** widen the spawn |
 
-The last one names both sides, since which is right is a judgement the message cannot make:
+When no doer is eligible, verse spawns nothing. The last cause names both sides, because the
+message cannot judge which side is right:
 
 ```
 provider selection has no eligible doer … why="1 matching doer(s) may not run under this
@@ -247,40 +271,43 @@ spawn: greedy: its grant \"all\" is not within the spawn's \"no-delegate\" — a
 narrow authority, never widen it"
 ```
 
-That line is in the log of `verse up`. The same reason is on the rule, under `trouble`
-([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)).
+That line is in the log of `verse up`. Verse also puts the same reason on the rule, under
+[`trouble`](glossary.md#trouble) (see
+[when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)).
 
-A doer whose `grant` names something outside the vocabulary is refused too, rather than
-resolving to nothing. A typo must not be a route to running un-enveloped.
+Verse also refuses a doer whose `grant` names something outside the vocabulary. It does not
+read the name as nothing. A typo must not let a task run without a grant.
 
 ### What a doer may not set
 
-`vector`, `resolver` and `environment` on a provider entity make it ineligible — refused,
-again, rather than ignored, so a doer's entity and the task it produces cannot disagree.
+A provider entity that sets `vector`, `resolver` or `environment` is ineligible. Verse refuses
+the doer and does not ignore the field. So the entity of a doer and the task it produces cannot
+disagree.
 
-`vector` is the sharp one, and the reason it is not in the fragment. It is the one axis that widens
-without touching authority: `vector: auto` means "this firing already answered its gates", so a doer
-that set it would take every action boundary off the docket while its grant looked untouched.
-Whether a person sees an action is the charter's call. An ordering over `auto|ask|park` that would
-let a doer *tighten* autonomy is a live question. `resolver` and `environment` are excluded too:
-a spawn may set either, and a provider's fragment that sets one is refused.
+`vector` is not in the fragment. It is the one axis that widens without a change to authority.
+`vector: auto` means "this firing has already answered its gates". A doer that set it would
+take every action boundary off the docket, and its grant would look unchanged. Whether a
+person sees an action is for the charter to decide.
+
+An ordering over `auto|ask|park` that would let a doer *tighten* autonomy is an open question.
+A spawn may set `resolver` or `environment`. Verse refuses the fragment of a provider that sets
+either.
 
 ## What you can see
 
-Because a selection changes what a task may do, three surfaces say what it did.
+A selection changes what a task may do. So three places show what the selection did.
 
-**The task entity** carries `doer`, `grant` and `tools` for every spawn, including `auto`, which
-poses no question and therefore has no other surface. `doer` is separate from `driver` because a
-driver does not identify a doer: two doers on one driver is the case this feature serves, so a task
-showing only `llm` would report quite different work as the same agent.
+**The task entity** carries `doer`, `grant` and `tools` for every spawn. This includes `auto`,
+which poses no question and so shows in no other place. `doer` is separate from `driver`,
+because a driver does not identify a doer.
 
 ```sh
 verse data verse task instance <id>
 # doer: provider.treat.fixer   driver: llm   grant: no-delegate   tools: [read_file, …]
 ```
 
-**The docket** carries each option's envelope, so what an answer would authorise is beside the
-name it is cast for:
+**The docket** carries the grant and tools of each option. So the authority that an answer
+would give is beside the name that the answer names:
 
 ```sh
 verse gate
@@ -309,50 +336,136 @@ verse gate
 verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as alice@example.com     # 1 of 2 for fixer
 ```
 
-A doer that adds nothing to the spawn writes neither field, so a ballot between doers that vary by
-nothing but model reads as a plain list of names. This is not decoration. Once options differ in
-what they may *do*, a voter picking between two names is picking between two authorities, and a
-listing that showed only names would have the group authorise a capability nobody put in front of
-them.
+A doer that adds nothing to the spawn writes neither field. So a [ballot](glossary.md#ballot)
+between doers that differ only by model reads as a plain list of names.
 
-**`verse provider`** lists the registry with every attribute beside the driver, which is where
-an operator answers "what would this doer be allowed to do" before voting.
+**`verse provider`** lists the registry, with every attribute beside the driver. An operator
+reads it to answer "what would this doer be allowed to do" before voting.
 
 ## Across a restart
 
-A `vote` or `ask` selection without `within` is a question with no deadline: the spawn waits
-until somebody picks. So it has to survive verse going down, and it is the harder of the two
-kinds of question to bring back — it opens from *inside* the action, after that action has
-written its latch, so the subject no longer matches its rule and nothing re-fires it.
+A `vote` or `ask` selection without `within` is a question with no deadline. The spawn waits
+until somebody picks. So the question must survive a restart of verse.
 
-What makes it resumable is the `chain` its question carries: the address of the action the
-answer is holding up (`review`, `review.onDone`, `review.seq[2]`). A start navigates that chain
-back into the charter and re-enters the selection, which re-poses the same question over the
-ballots already cast and against the deadline already stamped, so the pick made afterwards
-decides who runs, exactly as it would have. It is on the docket entry too, because a selection
-names a subject and a capability, and neither of those answers "which rule is waiting on this".
+This kind of question is the harder of the two kinds to restore. It opens *inside* the action,
+after the action has written its [latch](glossary.md#latch). So the subject no longer matches
+its rule, and nothing fires the rule again.
 
-Two things the resumed spawn cannot recover, both deliberate. `$references` resolve against the
-subject as it stands *now*, a re-read rather than a guess, and the run names no `occurrence`,
-because a restart is the world coming back rather than a commit causing something. A selection
-whose rule or action has left the charter, or whose subject is gone, is settled `orphaned` with a
-`why` instead: a ballot nobody reads is worse than an empty docket. See
+The `chain` of the question makes it possible to resume. The chain is the address of the
+action that the answer holds up: `review`, `review.onDone` or `review.seq[2]`. At start, verse
+follows the chain back into the charter and enters the selection again. The selection poses
+the same question again, with the ballots already cast and the deadline already set. So the
+pick made after the restart decides who runs, exactly as it would have before.
+
+The chain is on the docket entry too. A selection names a subject and a capability, and
+neither says "which rule is waiting on this".
+
+The resumed spawn cannot recover two things:
+
+- `$references` resolve against the subject as it stands *now*. This is a new read, not a
+  guess.
+- The run names no `occurrence`. A restart is the world coming back, not a commit that causes
+  something.
+
+Verse settles a selection as `orphaned`, with a `why`, in two cases: its rule or action has
+left the charter, or its subject is gone. See
 [a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it).
 
 ## Corners
 
-- **A human cannot be selected.** A brokered doer is not a driver name — the runner is a
-  property of the verse, not of a spawn — so "this needs a person" is still a gate or a
-  separate rule rather than a selection whose winner happens to be human. This is the largest
-  missing piece.
-- **`tools` is one flat allow-list.** There is no way to say "whatever this driver normally
-  offers, minus `run_bash`", or "this work requires `write_file`, so a doer without it is not
-  eligible".
-- **`Grant.Subset` is sound but incomplete**: predicate-for-predicate identity, or a wildcard
-  parent. That costs nothing, because the grant vocabulary is four names built from the same
-  per-verb atoms, so identity finds the real subset relations, and
-  `trigger/providerceiling_test.go` pins all sixteen pairs. The incompleteness is also unreachable
-  to test, since a doer's grant is a *name* and a structured one cannot be written. Both change
-  together.
-- **A grant name is resolved twice**: once by the engine to check the ceiling, once by
-  `versed.launchOf` to build the launch. Harmless, and worth consolidating.
+- **A person cannot be selected.** A brokered doer is not a driver name. A spawn names its
+  runner in its own `runner` field (see [runners](runners.md)), and a provider cannot set that
+  field. So "this needs a person" is still a gate or a separate rule. It is not a selection
+  whose winner is a person. This is the largest missing piece.
+- **`tools` is one flat allow-list.** You cannot say "whatever this driver normally offers,
+  minus `run_bash`". You cannot say "this work requires `write_file`, so a doer without it is
+  not eligible".
+- **`Grant.Subset` is sound but incomplete.** It accepts identity, predicate for predicate, or
+  a wildcard parent. This costs nothing. The grant vocabulary is four names, built from the
+  same atoms for each verb, so identity finds the real subset relations.
+  `trigger/providerceiling_test.go` tests all sixteen pairs. No test can reach the gap either,
+  because the grant of a doer is a *name*, and nobody can write a structured one. Both facts
+  change together.
+- **A grant name is resolved twice**: once by the engine, to check the ceiling, and once by
+  `versed.launchOf`, to build the launch. This does no harm, and the two could be combined.
+
+## Why it is this way
+
+### Why attributes and fragment fields share one namespace
+
+Splitting the two would make a provider entity a schema. The free-form payload is what lets a
+new attribute exist without a change to the code.
+
+### Why `auto` poses no question
+
+The docket is the place where a decision can be answered and has an author. An `auto` pick has
+no answerer and casts no ballot. A record of it would put a decision on the docket, reported as
+the group's, that nobody made. This is not an optimisation.
+
+### Why an `auto` pick is not stored
+
+A stored pick would outlive the doer it named. Picking again at each firing is deterministic
+for the same registry, and it follows the registry when the registry changes.
+
+### Why a credential is an address
+
+A name would need a registry beside it. That registry would exist once per runtime, would have
+to agree across deployments, and would carry no permissions of its own. An address uses the one
+namespace verse already has.
+
+Spending a credential has a cost. So who may spend it is a permission, and the permission
+model that verse already has answers the question.
+
+### Why the store holds the key
+
+The other design is a reference to a name that each runtime allows. It gives less than it
+seems to. Whoever may read a credential can already spend it, by naming it in a spawn. So the
+reference only moves the place where the key is typed. It costs a third name, a list per
+runtime to keep in step, and a deploy to rotate a key.
+
+What remains is a smaller difference: a permitted reader can also copy the key out. The budget
+and route of a Portkey virtual key limit what that copy can do.
+
+### Why a copy by a rule is not checked
+
+The read that lets a spawn spend a key is the same read that lets a rule copy it. A check that
+refused the copy and allowed the spend would draw a line that the permissions model cannot
+draw.
+
+### Why a doer's grant has a ceiling
+
+If verse took the `grant` of a doer as it is, writing an entity would be a privilege
+escalation. The charter that spawned the task never allowed it.
+
+An omitted grant is not a small ceiling. It is an unbounded one. That is why a spawn with
+`provider:` must state its `grant:`.
+
+### Why a widening doer is ineligible
+
+Trimming a doer means dropping the field that widens and running the doer anyway. The task would
+then run under a grant different from the one its own entity states. The named-grant vocabulary
+exists to prevent exactly that.
+
+A check after the pick would let a group deliberate, reach its threshold, and elect a doer that
+then cannot run. That is a decision that cannot take effect, and no voter could know it was
+making one.
+
+An unknown grant name that resolved to nothing would let a typo run a task with no grant.
+
+### Why a task records `doer`
+
+Two doers on one driver is the case that provider selection serves. A task that showed only
+`llm` would report very different work as the same agent.
+
+### Why the docket shows each option's grant and tools
+
+When options differ in what they may *do*, a voter who picks between two names picks between
+two authorities. A listing that showed only names would have the group authorise a capability
+that nobody showed them.
+
+### Why a resumed spawn cannot recover everything
+
+Both limits are deliberate. `$references` read the subject again rather than guess at the old
+one. A restart is not a commit, so the run names no `occurrence`. A selection whose rule or
+subject is gone is settled `orphaned`, because a ballot that nobody reads is worse than an
+empty docket.

@@ -1,54 +1,66 @@
 # Ios
 
-The surface. For what an io *is* — one program, two halves, and which side dials each — see
-[../io.md](../io.md). To build one, copy
+This page is the surface of an io. For what an io *is* (one program, two halves, and which side
+dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-An io is an entity at `verse.io.<name>`:
+An [io](../glossary.md#io) is an entity at `verse.io.<name>`:
 
 | | |
 |---|---|
 | `name` | its name, and the whole of its address under `verse.io`. Required |
-| `root` | the root of the tree this io writes and is the single writer of — the first segment of every address it writes (`git`, `github`, …). Required |
+| `root` | the root of the tree this io writes, and is the single writer of. It is the first segment of every address it writes (`git`, `github`, …). Required |
 | `url` | verse dials this base for the reflection contract |
-| `dir` | a local git repository, reflected in task — no network |
-| `dial-in` | the io dials verse. Designed, refused at install until it is built |
-| `owns` | the places this io claims to be the single writer of (see below) |
-| `out` | its out half: where it reads what is asked of it, who it acts as, who may ask (see below) |
-| `scope` | the copy-on-write scope it reflects into; empty is baseline |
-| `lastReflect` | when verse last *wrote* from this io. Written by verse |
-| `lastError` | the last failure of the reflection, cleared by the next success. Written by verse |
+| `dir` | a local git repository, reflected in task, with no network |
+| `dial-in` | the io dials verse. It is designed, and refused at install until it is built |
+| `owns` | the addresses this io claims to be the single writer of (see below) |
+| `out` | its out half: where it reads what is asked of it, whom it acts as, and who may ask (see below) |
+| `scope` | the copy-on-write scope it reflects into. Empty is baseline |
+| `lastReflect` | when verse last *wrote* from this io. Verse writes it |
+| `lastError` | the last failure of the reflection. The next success clears it. Verse writes it |
 
-The first four columns and `lastReflect` are the IN half — the reflection verse dials. `out` is the
-other half, which dials verse.
+The first four rows and `lastReflect` belong to the in half, the
+[source](../glossary.md#source): the reflection that verse dials. `out` belongs to the other
+half, the [sink](../glossary.md#sink), which dials verse.
 
-**Exactly one of `url`/`dir`/`dial-in`.** They differ only in where the connection comes from;
-`Reflect` is the same call down all three. Unlike a runner, absence means nothing here — the
-field present says which it is.
+**A registration has exactly one of `url`/`dir`/`dial-in`.** The three differ only in where the
+connection comes from. `Reflect` is the same call on all three. For a runner, absence means
+something. Here it does not: the field that is present says which way it is.
 
-The address is the name and nothing else (`verse.io.<name>`, under the reserved root like
-everything verse keeps about its own running), so two ios of one connector are told apart by what
-an operator called them. `root` answers the question verse asks of a registration — who writes
-`git.*` — and is one segment of an address, so it may not contain `:`, `/` or `.`; a name may not
-contain `/`, since it is a segment of the route that serves it.
+The address of an io is its name and nothing else: `verse.io.<name>`. It is under the reserved
+root, like everything verse keeps about its own running. So an operator tells two ios of one
+connector apart by the names the operator gave them.
 
-**The convention is to name an io after its connector** — `git`, `git-issue`, `slack` — since most
-verses run one of each and a name that says no more than `root` does is a second vocabulary for one
-fact. It is only a convention: the name is free, and a second io on one connector is exactly where
-spending a word on it pays (`git` beside `git-buildhost`).
+`root` answers the question that verse asks of a registration: who writes `git.*`? The root is
+one segment of an address. So it may not contain `:`, `/` or `.`. A name may not contain `/`,
+because a name is a segment of the route that serves the io.
 
-An io reflects what the world is about and never what verse keeps under `verse`: a reflection
-naming an address under `verse.` is refused, a claim that names it is refused at install, and no
-claim reaches there however wide it is written — `*` claims every place but `verse`.
+**The convention is to name an io after its connector**, such as `git`, `git-issue` or `slack`.
+Most verses run one io of each kind. A name that says no more than `root` says would be a second
+word for one fact. The name is still free. A second io on one connector is where a name of its
+own is useful (`git` beside `git-buildhost`).
+
+An io reflects the world outside verse. It never reflects what verse keeps under `verse`:
+
+- Verse refuses a reflection that names an address under `verse.`.
+- Verse refuses, at install, a claim that names such an address.
+- No claim reaches there, however wide it is written. `*` claims every address but `verse`.
 
 ## Ownership
 
-`owns` is a list of claims, and it is what an install proves disjointness against, what a
-`-forget` removal may tombstone, and what names the nodes the io owns. A claim's node is its
-levels up to the first glob; installing takes each for the installer, so what the io reflects
-beneath is theirs with no owner record per entity, and an install over a node somebody else owns
-is refused ([perms.md](../perms.md#ownership)). An ownership claim is an **address**, not a payload predicate,
-because an install compares declarations with no entities in hand.
+`owns` is a list of [claims](../glossary.md#claim-of-an-io). The claims do three things:
+
+- An install proves them disjoint from the claims of other ios.
+- They bound what a `-forget` removal may tombstone.
+- They name the nodes the io owns.
+
+The node of a claim is its levels up to the first glob. Installing takes each such node for the
+installer. So what the io reflects beneath the node belongs to the installer, with no owner
+record per entity. Verse refuses an install over a node that somebody else owns
+([perms.md](../perms.md#ownership)).
+
+An ownership claim is an **address**, not a payload predicate. An install compares declarations,
+and it has no entities in hand.
 
 ```tony
 {at: "git.verse.head"}         one entity
@@ -58,42 +70,50 @@ because an install compares declarations with no entities in hand.
 {at: "linear.project.*.owners.ENG"}   one place inside a node several ios share
 ```
 
-A claim is **one pattern per level, at whatever depth** — the same shape an address is. It owns
-the node it names and everything under it, so `git` owns every repository and
-`verse-dev.drift` owns the tree a package keeps there.
+A claim is **one pattern per level, at any depth**. This is the same shape as an address. A
+claim owns the node it names and everything under it. So `git` owns every repository, and
+`verse-dev.drift` owns the tree that a package keeps there.
 
-**Sharing is a deeper address.** Two ios that share a thing do not share a node: they own
-two nodes beneath it — `linear.project.p1.owners.ENG` and `…owners.OPS` — which are two
-addresses, proved apart by the same level-by-level comparison as any other pair. Sharing is not
-an exception to single-writership; it is single-writership one level down, and the level is
-free because an address has no fixed depth.
+**Sharing is a deeper address.** Two ios that share a thing do not share a node. They own two
+nodes beneath it, such as `linear.project.p1.owners.ENG` and `…owners.OPS`. These are two
+addresses, and verse proves them apart with the same comparison, level by level, as any other
+pair. Sharing is not an exception to single-writership. It is single-writership one level down.
+The extra level costs nothing, because an address has no fixed depth.
 
-Two claims are **disjoint** when any level is: two literal names that differ, or two prefixes
-neither of which prefixes the other. Where neither parts company first, the shorter claim
-contains the longer — `git` overlaps `git.verse.ref.x` rather than being disjoint from it — which is
-the same rule the payload path already followed, asked once of the address and once inside the
-payload. A `*` level is disjoint from nothing, so `git.*.*` can be proved apart from nothing in
-its system. A `*` anywhere but the end of a level is a parse error, not an approximation.
-Levels and paths both compare **segment-wise**, so `owners.ENG` and `owners.ENGINE` are
-disjoint, while `owners` contains `owners.ENG` and an absent path contains every path there is.
+Two claims are **disjoint** when any level is disjoint. Two levels are disjoint when they are:
 
-Git claims **one place per repo**, because a repository is a level of every address it writes:
+- two literal names that differ, or
+- two prefixes, where neither is a prefix of the other.
+
+If no level separates the claims, the shorter claim contains the longer. For example, `git`
+overlaps `git.verse.ref.x`, and it is not disjoint from it. The path in a payload follows the
+same rule. Verse asks it once of the address and once inside the payload.
+
+- A `*` level is disjoint from nothing. So verse can prove `git.*.*` apart from nothing under
+  the same root.
+- A `*` anywhere but at the end of a level is a parse error. It is not an approximation.
+- Levels and paths both compare **segment by segment**. So `owners.ENG` and `owners.ENGINE` are
+  disjoint. `owners` contains `owners.ENG`, and an absent path contains every path.
+
+Git claims **one address per repository**, because a repository is a level of every address that
+git writes:
 
 ```tony
 owns: [{at: "git.verse"}]
 ```
 
-A place is the claim to prefer. It is disjoint from `git.verse-extras` on a literal comparison,
-where a glob such as `git.verse*` would overclaim it, and it is a node the install can take an
-owner record at, where a claim that globs at its second level names only its first segment.
+Prefer a claim of this kind, with no glob. It is disjoint from `git.verse-extras` by a literal
+comparison, where a glob such as `git.verse*` would claim too much. It is also a node where the
+install can write an owner record. A claim that globs at its second level names only its first
+segment as a node.
 
-**A claim is a document rather than a string**, and the ids are what forced it: `@` — the
-separator a terse `git.*."verse/*@owners.ENG"` would need — already appears inside ids (a task's
-is `<chain>@<subject>`), so nothing could parse one back. A grammar with two forms would have to
-be read twice everywhere, so there is one.
+**A claim is a document, not a string.** The ids of tasks make this necessary. A terse
+`git.*."verse/*@owners.ENG"` would need `@` as a separator. But `@` already appears inside ids
+(the id of a task is `<chain>@<subject>`), so no parser could read such a claim back. A grammar
+with two forms would have to be read two ways everywhere, so a claim has one form.
 
-An install with no `owns` takes what the probe reported. A registration carrying none can be
-proved apart from nothing, so it is refused beside anything else in its system.
+An install with no `owns` takes what the probe reported. Verse can prove a registration with no
+claims apart from nothing. So verse refuses it beside any other registration in its scope.
 
 ## Commands
 
@@ -112,56 +132,62 @@ verse io add <name> <url> -root <root>       install one, probing the url first
               [-keep]                        …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.io.laptop` or `laptop` — the whole address or the bare name; the
-middle form (`io.laptop`) is not accepted.
+A `<ref>` is `verse.io.laptop` or `laptop`: the whole address or the bare name. The middle form
+(`io.laptop`) is not accepted.
 
-`verse status` names the installed ios under `io:` — refs only, health left to `verse io`. It is
-there because it is the one line of a status that says anything is *arriving*: every counter
-beside it moves on what verse was already given, so a verse whose last io was removed reads
-exactly like a healthy quiet one until that list is empty.
+`verse status` names the installed ios under `io:`. It shows the refs only. `verse io` shows
+their health.
 
-Every command takes the global `-scope`, and a scoped io is installed, listed, and removed
-in the scope it reflects into.
+The list is in `verse status` because it is the one line that says whether anything is
+*arriving*. Every other counter moves on what verse already has. So a verse whose last io was
+removed looks the same as a healthy, quiet verse, until that list is empty.
+
+Every command takes the global `-scope`. A scoped io is installed, listed and removed in the
+scope it reflects into.
 
 ## Routes
 
 | | |
 |---|---|
 | `GET /io` | list; `?probe=true` adds a live `reach` per io |
-| `POST /io` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{ref, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
+| `POST /io` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{at, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
 | `GET /io/{name}` | the entity |
-| `GET /io/{name}/check` | `{ref, reach}`, plus `says: {root, owns}` when it answered |
+| `GET /io/{name}/check` | `{at, reach}`, plus `url` when the io has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
 | `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
-| `POST /io/{name}/hint` | `?at=<address>` (repeatable) — reconcile those places; none means a full resync. `204` |
+| `POST /io/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
 
-A route that names one io has two answers when it does not find it:
+A route that names one io has two answers when it does not find the io:
 
 | | |
 |---|---|
 | `404` | `in your view, no io "<name>" is installed`. The io is not installed, or it is not yours to read. The answer is the same for both. |
 | `503` | `io "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
 
-The listing leaves out the ios you may not read, and answers `503` when the store could not
-be read.
+The listing leaves out the ios you may not read. It answers `503` when verse could not read the
+store.
 
-`reach` is one of `a source`, `not a source`, `unreachable`, and nothing about it is written to
-the store. A `500` from an io is *unreachable* rather than *not a source*: something is
-speaking HTTP and failing, which is an io having a bad day at least as often as it is the
-wrong url, and refusing an install on it would refuse a fact that fixes itself.
+`reach` is one of `a source`, `not a source` and `unreachable`. Verse writes nothing about it to
+the store.
 
-The listing reports `lastPass` from the live reflector — when a pass last *completed*, whatever
-it did — and `running: false` for a registration with no reflector. Neither is stored.
+A `500` from an io is *unreachable*, not *not a source*. Something speaks HTTP and fails. That is
+at least as often an io with a temporary fault as a wrong url. Refusing the install would refuse
+a fault that fixes itself.
 
-**A hint carries no data.** It names which place went stale and nothing else, which is what lets
-the route stay unauthenticated in a wide-open dogfood verse: a delivery that is duplicated,
-reordered or forged costs at most a reconcile of a place its sender does not choose the contents
-of. A malformed ref is `400` rather than a silent full resync, and a hint at a registration that
-is installed but not running is `503` rather than a quiet `204` — a swallowed hint looks exactly
-like one that worked.
+The listing reports `lastPass` from the live reflector: when a pass last *completed*, whatever
+it did. It reports `running: false` for a registration with no reflector. Verse stores neither.
+
+**A [hint](../glossary.md#hint) carries no data.** It names which address went stale, and
+nothing else. So the route can stay unauthenticated in a wide-open dogfood verse. A delivery
+that is duplicated, reordered or forged costs at most a reconcile of an address whose contents
+its sender does not choose.
+
+A malformed ref is `400`, not a silent full resync. A hint to a registration that is installed
+but not running is `503`, not a quiet `204`. A hint that verse drops must not look like one that
+worked.
 
 ## The contract an io serves
 
-Two routes, no state, no write face:
+The contract has two routes, no state and no way to write:
 
 | | |
 |---|---|
@@ -179,58 +205,81 @@ entities:
   payload: {repo: verse, ref: main, sha: "82bd107…", dirty: false}
 ```
 
-`covers` is what the answer is **complete for**: an entity under a covered pattern and absent
-from `entities` is tombstoned. An entity under no cover is written and never tombstoned — which
-is how git keeps history, since it covers `ref` and `head` and not `commit`.
+`covers` says what the [reflection](../glossary.md#reflection) is **complete for**:
 
-A cover's `path` is a pattern, one segment per level with `*` any one segment, and it is also
-what converge **reads**: the refs under `git.verse.ref` and the node `git.verse.head`, rather than
-all of `git`. Its first segment is a literal, and it is this io's `root` — a cover that
-begins with `*` would claim every place it is compared against, and is refused. A cover may add `value`, a payload predicate, where a place alone cannot say what
-the answer is complete for — GitHub covers a repository's open issues and its recent closed
-ones as two halves of `github.<org>.<name>.issue.*`.
+- An entity under a covered pattern and absent from `entities` is tombstoned.
+- An entity under no cover is written, and never tombstoned.
 
-**A cover goes as deep as the answer does.** An io that owns one place inside a shared thing
-covers that place — `linear.project.*.owners.ENG` — and converge writes, compares and tombstones
-there and nowhere else. Two ios can be the single writers of two nodes under one project,
-each proved apart by its `owns`, neither able to reach the other. Removing the last one empties
-`owners`, which empties the project, and each step up is a conditional delete — the only
-contended write in the design, and it stops the moment something else is still standing.
+This is how git keeps history. Git covers `ref` and `head`, and it does not cover `commit`.
 
-A cover is an `entity.Pattern` — the same selector a charter's `when` becomes — so the payload
-predicate is spelled `value`, as it is in a charter. On the wire each cover also carries an
-empty `op: ""`, which means nothing here and is upstream's doing: codegen honours `omitzero` on
-every field of that struct except the one whose type implements `MarshalText`
-(go-tony `f69agjyeh12ksa25cnn0` item 19). Ignore it; a cover has no op, and verse refuses one
-that carries a non-empty value.
+The `path` of a [cover](../glossary.md#cover-of-a-reflection) is a pattern. It has one segment
+per level, and `*` matches any one segment. The path is also what converge **reads**: the refs
+under `git.verse.ref` and the node `git.verse.head`, not all of `git`.
+
+The first segment of a cover is a literal, and it is the `root` of this io. A cover that begins
+with `*` would claim every address it is compared against, so verse refuses it.
+
+A cover may add `value`, a payload predicate. Use it where an address alone cannot say what the
+answer is complete for. GitHub covers the open issues of a repository and its recent closed
+issues as two halves of `github.<org>.<name>.issue.*`.
+
+**A cover goes as deep as the answer does.** An io that owns one address inside a shared thing
+covers that address, such as `linear.project.*.owners.ENG`. Converge writes, compares and
+tombstones there, and nowhere else. Two ios can be the single writers of two nodes under one
+project. Each is proved apart by its `owns`, and neither can reach the other.
+
+Removing the last owner empties `owners`, and that empties the project. Each step up is a
+conditional delete. It is the only contended write in the design, and it stops as soon as
+something else still stands.
+
+A cover is an `entity.Pattern`. That is the same selector that the `when` of a charter becomes.
+So the payload predicate is spelled `value`, as it is in a charter.
+
+On the wire, each cover also carries an empty `op: ""`. It means nothing here, and it comes from
+upstream: the code generator honours `omitzero` on every field of that struct except the field
+whose type implements `MarshalText`. Ignore it. A cover has no op, and verse refuses a cover
+whose op is not empty.
 
 **A failed reflect must fail loudly**: `500`, never `200` with an empty body. An empty answer
-carrying covers is an instruction to tombstone everything under them, and verse will believe it.
+that carries covers is an instruction to tombstone everything under them, and verse will believe
+it.
 
 ## The reflector
 
-One per installed registration, started at install, stopped at removal, restored at restart
-after the charter — a reflection is a write triggers react to, and a level-triggered pass does
-not repeat itself, so a rule restored late misses what it missed for good.
+Verse runs one [reflector](../glossary.md#reflector) per installed registration.
 
-A restart whose listing of the registrations did not happen — the store busy, the read past
-its deadline — restores them when it does: the listing is asked for again until it answers,
-after the charter is back, and `verse status` lists `restored sources` under `restoring` until
-then. Each registration shows `running: false` meanwhile, and a hint to it is refused; neither
-needs anything done.
+| When | What happens |
+|---|---|
+| install | verse starts it |
+| removal | verse stops it |
+| restart | verse restores it, after the charter |
 
-Each runs an initial full pass, a periodic full pass every `versed.ResyncEvery` (one minute),
-and a targeted pass per hint.
+A reflector restores after the charter because a reflection is a write that rules react to. A
+level-triggered pass does not repeat itself. A rule restored late would miss what it missed, for
+good.
 
-Scoped registrations are **not** restored on restart: `entity.Store` has no way to enumerate
-scopes, and a scoped store reads baseline layered underneath, so nothing can find them. It is
-the gap scoped charters have — a scope is created on demand by whatever owns it, so the thing
-that made the scope can install into it again.
+A restart may fail to list the registrations: the store is busy, or the read passes its
+deadline. Then verse restores them when the listing does happen. After the charter is back,
+verse asks for the listing again until it answers. Until then, `verse status` lists
+`restored sources` under `restoring`, each registration shows `running: false`, and verse
+refuses a hint to it. None of this needs any action.
+
+Each reflector runs three kinds of pass:
+
+- an initial full pass;
+- a periodic full pass every `versed.ResyncEvery` (one minute);
+- a targeted pass for each hint.
+
+Verse does **not** restore scoped registrations on restart. `entity.Store` has no way to list
+scopes, and a scoped store reads baseline layered underneath, so nothing can find them. Scoped
+charters have the same gap. Whatever owns a scope creates it on demand, so the thing that made
+the scope can install into it again.
 
 
 ## The out half
 
-An io that acts back says so on its registration, and the install writes the grants that describes:
+An io that acts back says so on its registration. The install writes the grants that the
+registration describes:
 
 ```tony
 out:
@@ -241,10 +290,10 @@ out:
 
 | | |
 |---|---|
-| `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this io claims, and outside what its reflection covers. A LIST, because one io may serve several — a Linear io reads a place per team, since a claim per team is what keeps two installs apart |
-| `as` | the principal it acts as. Every status it writes is owned by this, so nobody else can forge one |
-| `requesters` | who may ask, as grantees. Empty asks for nobody, which is how an operator says the grants are managed by hand |
-| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. Written by the IO (see below) |
+| `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this io claims, and outside what its reflection covers. It is a list, because one io may serve several. A Linear io reads one address per team, since a claim per team is what keeps two installs apart |
+| `as` | the principal it acts as. This principal owns every status the io writes, so nobody else can forge one |
+| `requesters` | who may ask, as grantees. Empty asks for nobody. That is how an operator says that the grants are managed by hand |
+| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. The io writes these (see below) |
 
 ```sh
 verse io add slack http://slack-io:9801 --root slack \
@@ -260,19 +309,24 @@ child-owner  <as>                                  and OWNS each status it creat
 child-grants {read: ["*"]}                         which everyone may read
 ```
 
-The requesters' line is *below* rather than a child grant on purpose: a child grant is copied onto
-every record created beneath, statuses included, and would hand the askers write on the answers.
-That distinction is invisible until somebody edits a status, which is why it is written from the
-record rather than explained in a runbook.
+The grant to the requesters is *below*, and not a child grant, on purpose. A child grant is
+copied onto every record created beneath, statuses included. So it would let the askers write
+the answers. Nobody sees that difference until somebody edits a status. For this reason verse
+writes the grants from the record, and does not leave them to a runbook.
 
-What is checked at install, where the operator is present: `places` and `as` are required, `as`
-parses as a principal, every requester parses as a grantee, and each place lies inside what this io
-claims — an io asked for things outside its own slice would seed grants in somebody else's tree.
-Whether a place is outside the reflection's COVERS stays the connector's to arrange, since covers
-come with an answer rather than with a claim.
+The install checks these things, while the operator is present:
 
-`--forget` takes the grants back with everything else the io left; `--keep` keeps them, since a
-place whose grants stand is one a re-install lands back on.
+- `places` and `as` are required.
+- `as` parses as a principal.
+- Every requester parses as a grantee.
+- Each place lies inside what this io claims. An io asked for things outside its own slice would
+  seed grants in the tree of somebody else.
+
+The install does not check whether a place is outside the COVERS of the reflection. The connector
+must arrange that, because covers come with an answer and not with a claim.
+
+`--forget` takes the grants back, with everything else the io left. `--keep` keeps them, because
+a re-install lands back on a place whose grants stand.
 
 ### What is asked, and what became of it
 
@@ -281,50 +335,59 @@ place whose grants stand is one a re-install lands back on.
 | input | anywhere under `<place>` | whoever asks | `to` — whom or what it is about — and whatever the connector reads (`text`, Slack's `asks`) |
 | status | the sibling `<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands |
 
-**An input is a node carrying `to`, at any depth.** Where it stands is whatever wrote it: a person
-types one under the place, and a charter's fan-out lands one per person under (rule, subject, key)
-— seven levels down for one message per answerer of a question. A contract that read the target
-off a fixed level could be written by hand and by nothing else, so the address says where a
-request came from and the payload says who it is for.
+**An input is a node that carries `to`, at any depth.** Whatever writes an input decides where it
+stands. A person types one under the place. The fan-out of a charter writes one per person under
+(rule, subject, key). For one message per answerer of a question, that is seven levels down.
 
-A name ending in `~status` is never read as an input — a status would otherwise ask for what it is
-the answer to. A pass is **level-triggered**: every input is offered to the connector on every
-pass, with what the last pass recorded beside it, and the connector answers what to record now or
-nothing at all when the world already matches. A failure is written once, with the instant it
-began, and cleared by the success that ends it.
+A contract that read the target from a fixed level could be written by hand, and by nothing
+else. So the address says where a request came from, and the payload says whom it is for.
+
+The sink never reads a name that ends in `~status` as an input. Otherwise a status would ask for
+the thing it answers.
+
+A pass is **level-triggered**. Every pass offers every input to the connector, with what the last
+pass recorded beside it. The connector answers what to record now, or nothing when the external
+system already matches.
+
+A failure is written once, with the instant it began. The success that ends it clears it.
 
 ### Health: verse is told
 
-Verse dials a reflection and therefore knows how it is doing. It never dials an out half, so the
-out half says:
+Verse dials a reflection, so it knows how the reflection is doing. Verse never dials an out half,
+so the out half reports:
 
 ```
 POST /io/<name>/pass   {delivered, failed, error?}
 ```
 
-which lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`, and shows in
-`verse io` beside the reflection's columns — so an io whose reflection is healthy and whose out
-half has been refused for an hour does not read as healthy. The counts are the last pass's rather
-than totals: "the last pass delivered nothing and failed twice" is the sentence somebody can act
-on. Unattributed, like the hint beside it, and for the same reason — it is a fact about the io's
-own half of the world, and a forged one costs a misleading timestamp.
+The report lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`.
+`verse io` shows them beside the columns of the reflection. So an io with a healthy reflection
+and an out half refused for an hour does not look healthy.
+
+The counts are those of the last pass, not totals. Somebody can act on "the last pass delivered
+nothing and failed twice".
+
+The report is unattributed, like the hint beside it, and for the same reason. It is a fact about
+the io's own half of the world. A forged report costs a misleading timestamp.
 
 ## Control: what people do over there
 
-A press, a reply, a mention is neither a reflection nor a delivery. It is a control request, and
-an intervention is never a store write ([control.md](../control.md)), so a connector that hears
-one asks verse for it through the ordinary route rather than writing the record.
+A press, a reply or a mention is not a reflection and not a delivery. It is a control request,
+and an intervention is never a store write ([control.md](../control.md)). So a connector that
+hears one asks verse for it through the ordinary route. It does not write the record.
 
-`io.Controller` is that seam, and it is handed `func(principal string) *client.Client` — a factory
-rather than a client, so a request is made as whoever the external system says did the thing.
-Three invariants hold whatever the connector is:
+`io.Controller` is that seam. It gets `func(principal string) *client.Client`: a factory, not a
+client. So the connector makes each request as whoever the external system says did the thing.
 
-- **which** request is decided without reading prose (the Slack io knows which question a reply
-  answers because it posted the message that reply is under);
-- **what** it may ask for is bounded by what the record already offers — the options on a question
-  — and never invented;
-- **who** it is made as is the person, never the io's own principal: an answer recorded as
-  `agent:slack-io` is an answer nobody gave.
+Three invariants hold for every connector:
 
-That person is asserted to verse the way the CLI asserts its own user, and verse trusts it as it
-trusts the CLI's. A principal verse verifies for itself is the fix, and it is not this seam's.
+- **Which** request it is, is decided without reading prose. The Slack io knows which question a
+  reply answers, because it posted the message that the reply is under.
+- **What** it may ask for is bounded by what the record already offers, such as the options on a
+  question. It never invents one.
+- **Who** it is made as is the person, never the io's own principal. An answer recorded as
+  `agent:slack-io` is an answer that nobody gave.
+
+The connector asserts that person to verse in the way the CLI asserts its own user. Verse trusts
+the assertion as it trusts the CLI's. The fix is a principal that verse verifies for itself, and
+that fix does not belong to this seam.

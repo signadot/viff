@@ -1,55 +1,74 @@
 # Task control
 
-The contract behind `verse up -runner <url>` and `verse up -broker`. Walk it first in
-[reference/tasks.md](reference/tasks.md#executing-one-by-hand), where a human executes a task by
-dialing in; this is the seam that makes that work. It builds on
-[external tasks](external-tasks.md), where it is design D, and makes its "wrapping and enforcing
-the verse invariants" concrete.
+This page is the contract behind `verse up -runner <url>` and `verse up -broker`. Walk through it
+first in [reference/tasks.md](reference/tasks.md#executing-one-by-hand), where a person dials in
+and executes a task by hand. This page is the [seam](glossary.md#seam) that makes that work. It
+builds on [external tasks](external-tasks.md), where it is design D, and it makes concrete what
+that page calls "wrapping and enforcing the verse invariants".
 
-In one line: the task-control interface is the `taskd` HTTP contract, made resumable and
-claim-aware, behind a base URL. Verse is its client and mirrors it into the durable
-`verse.task.instance` entity. The local supervisor is one built-in implementation of the same URL
-contract with no privileged shortcut, and anyone else — k8s, AWS Lambda, a human-workflow service,
-a custom runtime — plugs in a URL, completely outside verse.
+In short, the task-control interface is the `taskd` HTTP contract behind a base URL, made
+resumable and aware of claims.
 
-See [what is built](#what-is-built) at the end for the parts that are not.
+- Verse is its client. Verse mirrors it into the durable `verse.task.instance` entity, the
+  [instance record](glossary.md#instance-record).
+- The local supervisor is one built-in implementation of the same URL contract. It has no
+  privileged shortcut.
+- Anyone else plugs in a URL, completely outside verse: k8s, AWS Lambda, a service for work done
+  by people, or a custom runtime.
+
+[What is built](#what-is-built), at the end, lists the parts that are not built.
 
 ## The two names
 
-This interface governs how one *task* runs. It is not a general control policy: nothing here has
-an opinion about the engine, its charter, or how a firing is gated. Keeping those distinct matters,
-because a policy layer over the engine is a plausible thing to want later and would collide
-head-on.
+This interface governs how one [task](glossary.md#task) runs. It is not a general control
+policy. Nothing here decides anything about the engine, its charter, or how a
+[firing](glossary.md#firing) passes its gates.
 
-So the two dials each carry their own name, and neither is "policy". What runs a task is its
-*runner*, and the autonomy dial is its *vector*.
+Each of the two settings has its own name, and neither name is "policy". What runs a task is its
+[runner](glossary.md#runner). How much it may do without asking is its
+[vector](glossary.md#vector).
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
 | what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up -runner <url>` |
 | how much it may do unasked | `task.Vector` | `vector` on a launch spec | `verse task vector <id>` |
 
+A policy layer over the engine is a plausible thing to want later. A name "policy" here would
+collide with it.
+
 ## What the interface is
 
-Verse defines a task not as "an LLM loop" but as a contract: a driver proposes, an executor
-performs, effects are gated by a vector at boundaries, a read plane streams events, a control plane
-steers at boundaries, and the whole thing is mirrored to a `verse.task.instance` entity and ends
-with a terminal. Task control is the durable generalization of the in-process `Supervisor` that
-enforces that contract.
+Verse defines a task as a contract, not as "an LLM loop":
 
-In-process, enforcement is interception. The loop cannot `Execute` an action until
-`Supervisor.Check` — derive `Effect`, `Vector.Evaluate`, `Resolver.Resolve` — returns proceed, and
-verse is trusted by construction.
+1. A [driver](glossary.md#driver) proposes an action.
+2. An [executor](glossary.md#executor) performs it.
+3. A vector gates each effect at a [boundary](glossary.md#boundary).
+4. A read plane streams events.
+5. A control plane steers the task at boundaries.
+6. Verse mirrors the whole task to a `verse.task.instance` entity, and the task ends with a
+   terminal.
 
-Out-of-task, enforcement becomes authorize, checkpoint, attest and CAS-invariants. Verse cannot
-intercept a remote or human worker's every action, so it authorizes the claim, records what the
-worker reports as audited attestations, and CAS-enforces the structural invariants on the entity:
-terminal-once, claim-holder-only writes, gate-before-the-effect. A vector slide is relayed to the
-worker's inbox and the worker honours it or does not — nothing out here derives an effect or
-evaluates a vector, and the broker deliberately records no envelope it cannot check.
+Task control is the durable form of the in-process `Supervisor`, which enforces that contract.
 
-So it is one control contract with three enforcement modes, and what they guarantee differs along
-with the mechanism:
+In process, verse enforces the contract by interception. The loop cannot `Execute` an action
+until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the `Effect`, calls
+`Vector.Evaluate`, and calls `Resolver.Resolve`. Verse is trusted because it runs the loop
+itself.
+
+Outside the process, verse cannot intercept every action of a remote worker or of a person.
+Enforcement becomes four things: authorize, checkpoint, attest, and CAS-enforce invariants.
+
+- Verse authorizes the [claim](glossary.md#claim-of-a-worker).
+- Verse records what the [worker](glossary.md#worker) reports, as audited attestations.
+- Verse CAS-enforces the structural invariants on the entity: terminal-once, writes by the claim
+  holder only, and gate-before-the-effect.
+
+Verse relays a change of vector to the inbox of the worker. The worker honours it or does not.
+Nothing outside the process derives an effect or evaluates a vector. The broker records no
+envelope that it cannot check.
+
+So there is one control contract with three modes of enforcement. What each mode guarantees
+differs, with the mechanism:
 
 | | who performs the step | what holds |
 |---|---|---|
@@ -57,92 +76,139 @@ with the mechanism:
 | a spawned worker on k8s, lambda or a host | the worker | **attested** — verse holds the worker's account of what it did |
 | a human, by surfaced attestation | a person | **attested**, and the person is answerable for the account |
 
-Gates, resolver, boundaries and terminal are the same throughout; the vector is the part that does
-not travel. Takeover falls out for free: `cancel` the agent, a human re-claims by CAS claim
-transfer plus identity, reads the journal, and continues on the same subject under the same runner.
+Gates, the resolver, boundaries and the terminal are the same in all three modes. The vector is
+the part that does not travel.
+
+Takeover needs nothing extra. You `cancel` the agent. A person claims the task again, by a CAS
+transfer of the claim with an identity. The person reads the journal and continues on the same
+subject under the same runner.
 
 ## The loop is a state machine
 
-In-process the loop is a pure transition — `step(state, input) → (state, []effect)`
-(`task/machine.go`) — with the shell doing the I/O around it. Two things about it are worth
-knowing without reading it.
+In process, the loop is a pure transition, `step(state, input) → (state, []effect)`
+(`task/machine.go`). The shell around it does the I/O. You need to know two things about it
+without reading it.
 
-**The contract is five properties** (`task/contract.go`): a task reaches a terminal at most once
-and nothing is emitted after it; it does not terminate while a child is outstanding; every child
-that starts ends exactly once, with an outcome; the closing action is proposed at most once per
-quiescence and never while the input is open; and every wait names its discharge. The first four
-are safety and are checked by enumerating interleavings of the transition; the fifth is liveness
-and is an argument instead, because no enumeration establishes that an event arrives.
+**The contract is five properties** (`task/contract.go`):
 
-**Inputs have a precedence, and it is a policy rather than a taxonomy.** An *intervention* —
-cancel, pause, resume, say — is an operator redirecting this run, and it preempts, including a
-pending gate. A *policy change* — sliding the vector — is prospective and does not preempt:
-sliding a running task to `auto` says "stop asking me about actions like this", not "approve the
-one already in front of me", and dissolving the pending question would turn a policy change into
-approval of a specific action nobody looked at. *Work the task produced for itself* — a child's
-result — folds at the hinge and never overtakes an action already proposed. Preemption is for
-people.
+1. A task reaches a terminal at most once, and emits nothing after it.
+2. A task does not terminate while a child is outstanding.
+3. Every child that starts ends exactly once, with an outcome.
+4. The task proposes the closing action at most once per quiescence, and never while the input
+   is open.
+5. Every wait names what discharges it.
 
-A task-control backend is a reconciler over the `verse.task.instance` resource rather than a gated
-task itself, which stops the regress: governing a task must not require another governed task. It
-is the dual of a [Source](io.md). A Source reflects external state *into* the verse; a
-task-control backend runs and governs *work* on a substrate. Both reconcile a resource and both
-must be idempotent, but only one of them is a controller, and this is the one
-(see [io.md](io.md#a-source-is-not-a-controller-and-cannot-be)). k8s sits on both sides:
-`k8s.*` as a Source reflecting the cluster in, and k8s as a task-control backend running tasks as
-Jobs out.
+The first four are safety properties. Tests check them by enumerating interleavings of the
+transition. The fifth is liveness, and an argument supports it instead. No enumeration can show
+that an event arrives.
+
+**Inputs have a precedence, and the precedence is a policy, not a taxonomy.**
+
+| Input | Examples | What it does |
+|---|---|---|
+| an *intervention* | cancel, pause, resume, say | An operator redirects this run. It preempts, and it preempts a pending gate too. |
+| a *policy change* | a change of vector | It applies to later actions and does not preempt. |
+| *work the task produced for itself* | the result of a child | It folds in at the hinge. It never overtakes an action that is already proposed. |
+
+Preemption is for people.
+
+Suppose you change a running task to `auto`. That means "stop asking me about actions like
+this". It does not mean "approve the action already in front of me". If the change dissolved the
+pending question, a policy change would approve one specific action that nobody looked at.
+
+A task-control backend is a reconciler over the `verse.task.instance` resource. It is not itself
+a gated task. Governing a task must not require another governed task, or the regress never
+stops.
+
+A backend is the dual of the [source](glossary.md#source) of an [io](io.md). A source reflects
+external state *into* the [store](glossary.md#store). A task-control backend runs and governs
+*work* on a substrate. Both reconcile a resource, and both must be idempotent. Only one of them
+is a controller, and it is the backend (see
+[io.md](io.md#a-source-is-not-a-controller-and-cannot-be)). k8s is on both sides:
+
+- `k8s.*` as a source that reflects the cluster in;
+- k8s as a task-control backend that runs tasks as Jobs out.
 
 ## Idempotency ⇒ the restart discipline (`verse down; up`)
 
-Because it is a reconciler, a backend must be level-triggered and reconstructable from the durable
-entity, under the same `Observe:Since` and `webhook:reconcile` law verse runs everywhere. Two rules
-follow.
+A backend is a reconciler. So it must be level-triggered, and verse must be able to rebuild it
+from the durable entity. The same `Observe:Since` and `webhook:reconcile` law holds here as
+everywhere in verse. Two rules follow.
 
-No task control-state lives only in memory. Pending gates, the claim, control fields and the event
-cursor all sit on the `verse.task.instance` entity, and a restart re-reads them.
+**No control state of a task lives only in memory.** Pending gates, the claim, the control
+fields and the event cursor are all on the `verse.task.instance` entity. A restart reads them
+again.
 
-`verse up` reconciles, and resume is not orphan. An in-process agent whose runtime died is orphaned,
-because the loop is gone. A detached or claimed task — a human still merging, a k8s Job still
-running — resumes: the work continued in the world while verse was down, so on `up` verse
-re-attaches to its bound runner and reconciles from current status. Resume where the work outlived
-the daemon; orphan only what died with it.
+**`verse up` reconciles, and a resumed task is not an orphan.**
 
-Open questions follow their asker rather than being judged on their own. A resumed task keeps its
-pending gates on the docket under the same ids, and answering one still reaches the worker. An
-orphaned task's go with it: settled `orphaned`, off the docket, still readable, because a question
-listed as answerable when nothing will read the answer asks a person to decide into a void.
+| Task | What `up` does |
+|---|---|
+| an in-process agent whose runtime died | orphans it, because the loop is gone |
+| a detached or claimed task, such as a person still merging or a k8s Job still running | resumes it. Verse attaches again to the bound runner, and reconciles from the current status. |
 
-A gate a *firing* raised is settled unconditionally, because what waited on it was a goroutine
-in the verse. If its rule still matches, the reinstalled charter replays and poses the same
-question under the same id, and it is answerable again within milliseconds — which is what a
-deterministic gate id is for. If the rule no longer matches, the question was about a world
-that has moved on.
+The work of a detached task went on in the world while verse was down. Verse resumes where the
+work outlived the daemon, and orphans only what died with it.
+
+An open question follows the task that asks it.
+
+- A resumed task keeps its pending gates on the [docket](glossary.md#docket), under the same
+  ids. An answer to one still reaches the worker.
+- The questions of an orphaned task end with it. Verse settles them `orphaned`. They leave the
+  docket, and you can still read them.
+
+A question listed as answerable, when nothing will read the answer, asks a person to decide for
+nobody.
+
+Verse settles a gate that a *firing* raised, whatever its state. What waited on it was a
+goroutine in the verse process.
+
+- If the [rule](glossary.md#rule) still matches, the reinstalled charter replays. It poses the
+  same question under the same id, and the question is answerable again within milliseconds.
+  This is why a gate id is deterministic.
+- If the rule no longer matches, the question was about a world that has changed.
 
 ## Everything through the base URL — no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
-mirrors the stream into the `verse.task.instance` entity, so durability lives in verse rather than
-the runner. Which runner runs a given task is a per-spawn binding — `runner: <name>` in the charter
-or spec, the name of an installed runner, like `-driver` — and there is deliberately no in-memory shortcut: `verse task
-cancel|say` and `verse flow suspend -task` go through the same dispatch as a remote one, which
-forces the contract to be complete and keeps local equivalent to remote. The dispatch is per scope: with `-scope` it reaches
-a task that scope spawned and refuses one it inherited, naming the scope that holds it (see [what a
-scope owns](reference/connect.md#what-a-scope-owns)).
+mirrors the stream into the `verse.task.instance` entity. Durability is in verse, and not in the
+runner.
 
-Verse can mint that URL on its own broker face rather than requiring every runner to stand up a
-service (see "Hosting"). The built-in local supervisor lives at the well-known
-`<broker>/broker/local`, an in-process handler, and dynamically registered brokers get
-`<broker>/broker/<nonce>`. So "no privileged local path" costs no separate loopback server: local
-is the broker at a fixed nonce.
+Each spawn binds its runner. The binding is `runner: <name>` in the charter or spec, and names
+an installed runner, as `-driver` names a driver. There is no in-memory shortcut:
+`verse task cancel|say` and `verse flow suspend -task` go through the same dispatch as for a
+remote task.
+
+The dispatch is per [scope](glossary.md#scope). With `-scope`, it reaches a task that the scope
+spawned. It refuses a task that the scope inherited, and names the scope that holds it (see
+[what a scope owns](reference/connect.md#what-a-scope-owns)).
+
+One dispatch for every task forces the contract to be complete. It keeps local tasks equivalent
+to remote tasks.
+
+Verse can mint that URL on its own broker face, so a runner need not stand up a service (see
+"Hosting").
+
+| Runner | URL | What serves it |
+|---|---|---|
+| the built-in local supervisor | the well-known `<broker>/broker/local` | an in-process handler |
+| a broker registered at runtime | `<broker>/broker/<nonce>` | the registered backend |
+
+So "no privileged local path" needs no separate loopback server. Local is the broker at a fixed
+nonce.
 
 ## The verse-facing contract
 
-Two endpoints, which are `Observe : Since` once more, plus out-of-band control.
+This contract has two endpoints, which are `Observe : Since` again, and control out of band.
 
-Every control call reports which of three things became of it: it was applied, the far side refused
-it, or the far side was never reached. Only the third is worth retrying, and a caller that cannot
-tell them apart either retries what already happened or abandons what never arrived. The
-distinction is carried in the status, and across the Go seam as `task.ErrUnreachable` and friends.
+Every control call reports which of three things happened to it:
+
+1. it was applied;
+2. the far side refused it;
+3. the far side was never reached.
+
+Only the third is worth a retry. A caller that cannot tell them apart either retries what already
+happened, or gives up on what never arrived. The status carries the distinction. Across the Go
+seam, `task.ErrUnreachable` and the errors like it carry it.
 
 ```
 GET    /tasks                      every task the runner hosts, as snapshots
@@ -203,15 +269,18 @@ with the task that is running. A spawn of an id whose task has ended is a new ru
 
 ### The event envelope and the cursor
 
-Every event carries a timestamp and a per-task, gapless, monotonic cursor: a plain sequence number
-assigned by the runner, which need not be a global logd commit.
+Every event carries a timestamp and a cursor. The cursor is per task, gapless and monotonic. It
+is a plain sequence number that the runner assigns, and it need not be a global logd commit.
 
 ```json
 { "cursor": 42, "task": "review@demo.pr.1", "at": "…",
   "kind": "exec", "tool": "run_tests", "text": "2 failed" }
 ```
 
-Verse persists its high-water cursor on the entity, so on restart it knows where to resume.
+The timestamp `at` is not built: an event carries a cursor and no time (see
+[what is built](#what-is-built)).
+
+Verse keeps its high-water cursor on the entity. On a restart, it knows where to resume.
 
 ### The canonical kinds → what verse mirrors
 
@@ -227,77 +296,103 @@ Verse persists its high-water cursor on the entity, so on restart it knows where
 | `vector` | `by` | records an autonomy slide (the new vector is observable) |
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (CAS-once) |
 
-That table is the durable contract: `mirror.Reflect`, plus `claim` and `vector`, minus the `gap`
-marker, which says something about the *reading* rather than about the task.
+The `claim` kind is not built. Verse writes a claim on the record of the task, and not as an
+event on the stream (see [what is built](#what-is-built)).
+
+That table is the durable contract. It is `mirror.Reflect`, plus `claim` and `vector`, minus the
+`gap` marker. The `gap` marker says something about the *reading*, and not about the task.
 
 ### `since` semantics and the two restarts
 
-With N at or above the current cursor there is nothing to replay, so the stream goes live.
+What the runner does depends on where N is.
 
-With N inside the retained window, the runner replays `cursor > N` in order and then goes
-live. This is the verse-restart path: verse reconnects with its last mirrored cursor, the
-still-running runner replays the gap, and the worker noticed nothing.
+| N | What the runner does |
+|---|---|
+| at or above the current cursor | nothing to replay: the stream goes live |
+| inside the kept window | replays `cursor > N` in order, then goes live |
+| below the low-watermark of the runner | answers a single `{"kind":"gap","cursor":C}` frame |
 
-With N below the runner's low-watermark — compaction, or the runner-restart path where it lost its
-log — the runner answers a single `{"kind":"gap","cursor":C}` frame. The reader re-reads
-`GET /tasks/{id}` for level truth, adopts cursor `C`, and streams from there. Fine-grained journal
-between N and C may be lost, but current state is exact.
+N inside the window is the path of a verse restart. Verse connects again with its last mirrored
+cursor. The runner is still running, and replays the gap. The worker notices nothing.
 
-Resync-to-snapshot is the universal safety net whenever a cursor cannot be served: verse restarts,
-runner restarts, slow consumers, compaction. The same `gap` frame carries both reasons a reader can
-be behind, a cursor below the window and events dropped because the reader could not keep up.
+N below the low-watermark comes from compaction, or from a runner restart in which the runner
+lost its log. After a `gap` frame, the reader reads `GET /tasks/{id}` again for level truth,
+adopts cursor `C`, and streams from there. The detailed journal between N and C may be lost,
+but the current state is exact.
 
-`?since=` means this on every runner. `GET /tasks/{id}/events` hands the cursor to whichever
-runtime holds the work — the local one, a broker, a remote taskd — so a client that resumes gets
-the frames after its cursor and no others, wherever the task runs.
+A resync to the snapshot is the general safety net whenever a runner cannot serve a cursor:
 
-A resume that falls below the window also replays the gates still open below it. The gap says a
-reader missed something; this says what. It matters because an answering service is a client of this endpoint
-and nothing else, so without it a reconnecting answerer learns it is behind and cannot see the
-question it exists to answer. Only in the gap case: inside the window the replay already carries
-them.
+- a verse restart;
+- a runner restart;
+- a slow consumer;
+- compaction.
 
-**A stream that ends without a terminal did not end because the task did.** The terminal is always
-the last frame, so its absence means the connection broke, and the answer is to resume from the
-last cursor rather than to conclude anything about the work. `mirror.Reflect` does exactly that,
-backing off between attempts and publishing `observed: false` on the entity while it is
-disconnected, because an index that reads as confident while it is merely stale is worse than one
-that admits it.
+The same `gap` frame carries both reasons that a reader can be behind: a cursor below the window,
+and events dropped because the reader could not keep up.
 
-The terminal is a `status` event — `done|failed|cancelled` plus `result` — that verse CAS-writes
-once, and `?since=<terminal cursor>` replays it and closes. A finished task's `/events` is a
-finite, replayable record, so a verse that restarts *after* completion still learns the outcome. A
-reader that has seen the terminal should stop reconnecting, because there is nothing left to
-reconnect to.
+`?since=` means the same on every runner. `GET /tasks/{id}/events` hands the cursor to the
+runtime that holds the work: the local one, a broker, or a remote taskd. A client that resumes
+gets the frames after its cursor and no others, wherever the task runs.
 
-The terminal is the one frame a reader never loses. Everything else may be dropped to a
-subscriber that cannot keep up — the loop is never stalled by an observer — and the `gap`
-marker rides the next event to say so. Nothing rides after the terminal, so it is delivered
-out of a slot reserved for it, and it reaches a reader that missed everything before it.
+A resume below the window also replays the gates still open below it. The gap says that a reader
+missed something, and this replay says what it missed. The replay happens only in the gap case.
+Inside the window, the ordinary replay already carries those gates.
+
+An answering service is a client of this endpoint and of nothing else. Without this replay, an
+answerer that connects again learns that it is behind, and cannot see the question it exists to
+answer.
+
+**A stream that ends without a terminal did not end because the task ended.** The terminal is
+always the last frame. If it is absent, the connection broke. Resume from the last cursor, and
+conclude nothing about the work. `mirror.Reflect` does exactly that. It backs off between
+attempts, and publishes `observed: false` on the entity while it is disconnected.
+
+An index that looks confident while it is only stale is worse than one that says it is stale.
+
+The terminal is a `status` event: `done|failed|cancelled` plus `result`. Verse CAS-writes it
+once. `?since=<terminal cursor>` replays it and closes. The `/events` of a finished task is a
+finite record that a reader can replay. So a verse that restarts *after* completion still learns
+the outcome. A reader that has seen the terminal should stop connecting again, because there is
+nothing left to connect to.
+
+The terminal is the one frame that a reader never loses. The runner may drop any other frame for
+a subscriber that cannot keep up, because an observer never stalls the loop. The `gap` marker
+then comes with the next event to say so. Nothing comes after the terminal, so the runner
+delivers it from a slot kept for it. It reaches a reader that missed everything before it.
 
 ### The control⇄events interlock
 
-Control ingress is a distinct, out-of-band `POST`, never a store write — the rule from
-[deployment and steering](deployment-and-steering.md) — but its application is emitted as an event
-on the one ordered stream. The POST is the request; the event is the truth.
+Control arrives as a distinct `POST`, out of band, and never as a write to the store. That is
+the rule of [deployment and steering](deployment-and-steering.md). The runner emits the
+application of the control as an event on the one ordered stream. **The POST is the request,
+and the event is the truth.**
 
-The POST return is `204 No Content`, and verse never assumes control took hold until the
-corresponding event appears at a new cursor. That dissolves races: a `cancel` POSTed after
-completion never yields a `cancelled` event, and a `resolve` for an already-timed-out gate comes
-back as a `decision` marked stale, a recorded no-op rather than a silent drop. The POST does not
-block on the effect, since a human's next boundary may be hours away.
+The POST returns `204 No Content`. Verse never assumes that control took hold until the
+matching event appears at a new cursor. This removes races:
 
-One ordered stream interleaves reports and control-effects by cursor, giving a single total
-order verse replays with nothing else to reconcile. Priority is that ordering: "steering
-outranks observation" means the runner drains control at the boundary before the next action,
-so a control-effect event precedes the action it gated in cursor order.
+- A `cancel` POSTed after completion never yields a `cancelled` event.
+- A `resolve` for a gate that already timed out comes back as a `decision` marked stale. It is a
+  recorded no-op, and not a silent drop.
 
-A control POST carries no idempotency key. A `cancel` of a task that has ended changes nothing,
-and an answer to a decision that is already answered is refused `404`. A `say` sent twice is
-said twice. verse dedups events by cursor.
+The POST does not wait for the effect. The next boundary of a person may be hours away.
 
-The gate lifecycle, end to end, is entirely on the stream and fully resumable (a say-to is a
-`say` event with `by` set — the operator's side of the conversation):
+One ordered stream interleaves reports and control effects by cursor. That gives a single total
+order, which verse replays with nothing else to reconcile. Priority is this ordering. "Steering
+outranks observation" means that the runner drains control at the boundary before the next
+action. So a control-effect event comes before the action it gated, in cursor order.
+
+A control POST carries no idempotency key.
+
+| Control | Sent again |
+|---|---|
+| `cancel` of a task that has ended | changes nothing |
+| an answer to a question that is already answered | refused `404` |
+| `say` | said twice |
+
+Verse dedups events by cursor.
+
+The lifecycle of a gate, from end to end, is all on the stream, and a reader can resume it. A
+say-to is a `say` event with `by` set: it is the operator's side of the conversation.
 
 ```
 pending  @40 {id:G, gate:"deploy", mode:ask, tool:merge}   → verse mirrors pending[G]
@@ -308,110 +403,160 @@ say      @42 {by:"user:scott@example.com", text:"squash first"}                 
 exec     @43 {tool:merge, text:"merged"}                    → worker proceeded
 ```
 
-Restart between @40 and @41 → verse replays `pending@40`, re-routes, and re-POSTs `resolve`. If
-the first answer landed, the runner refuses the second as already answered and the replay
-carries `decision@41`; verse dedups by cursor. Either way there is one decision — no lost gate,
-no double-merge.
+Suppose verse restarts between @40 and @41. Verse replays `pending@40`, routes it again, and
+POSTs `resolve` again. If the first answer landed, the runner refuses the second as already
+answered, and the replay carries `decision@41`. Verse dedups by cursor. In either case there is
+one decision: no gate is lost, and nothing merges twice.
 
 ## Invariants verse CAS-enforces on the entity
 
-Regardless of a misbehaving runner or worker, three things hold on the `verse.task.instance`
-entity: terminal-once (monotonic status), claim-holder-only writes, and
-gate-before-the-effect — which for a detached or human worker is an attestation verse
-timestamps and audits, since it cannot intercept the merge itself. External autonomy is
-coarser by nature; that is stated, not hidden.
+Three things hold on the `verse.task.instance` entity, even when a runner or a worker misbehaves:
+
+- terminal-once (the status is monotonic);
+- writes by the claim holder only;
+- gate-before-the-effect.
+
+For a detached worker or a person, gate-before-the-effect is an attestation that verse
+timestamps and audits. Verse cannot intercept the merge itself. Autonomy outside verse is
+coarser by nature, and this page says so.
 
 ## Brokering: firewalled workers and humans, without inverting verse
 
-A worker that cannot accept inbound connections — a laptop agent, a pod in a private cluster, a
-person — does not force verse to invert. The broker, itself a backend, is the one reachable
-rendezvous, and both verse and the worker dial out to it:
+Some workers cannot accept inbound connections: an agent on a laptop, a pod in a private cluster,
+a person. Such a worker does not force verse to invert. The [broker](glossary.md#broker) is
+itself a backend, and it is the one reachable meeting point. Verse and the worker both dial out
+to it:
 
 ```
  verse ──POST/GET(events)/POST(control)──▶  broker (base URL)  ◀──claim/inbox/report── worker
  mirror → task.instance (durable truth)   per-task relay log       dials OUT (NAT-friendly)
 ```
 
-The broker has two faces: the verse-facing contract above, where verse is a plain client, and a
-worker-facing dial-in protocol it owns — claim, then inbox long-poll for spec and control, then
-report. Its job is to glue a task's two halves. Worker reports become the events verse streams,
-verse control becomes items the worker pulls, and a checkpoint the worker reports becomes an
-`EvPending` verse routes to a resolver whose verdict flows back down the worker's inbox. Verse's
-spawner does the same three things — spawn, stream, control — whether behind the URL is the
-in-process loop, a reachable k8s runner, or a broker relaying to a laptop. Reachability is an
-implementation detail behind the URL.
+The broker has two faces:
 
-The two legs carry independent, resumable cursors — one on the verse leg, two on the worker leg,
-see [the worker-facing dial-in protocol](#the-worker-facing-dial-in-protocol) below — each with the
-same replay and resync discipline. The broker keeps a bounded per-task log to serve them, but the
-entity remains verse's durable system of record. The broker is a relay, which is what lets a third
-party run a cheap one.
+| Face | Who is the client | What it serves |
+|---|---|---|
+| the verse-facing contract, above | verse, as a plain client | spawn, events, control |
+| a worker-facing dial-in protocol that the broker owns | the worker | claim, then an inbox long-poll for the spec and control, then report |
 
-The human is a broker whose worker is a person. The inbox long-poll is "check notifications, run
-`verse task inbox`", `report` is their progress `say`, and pushed control is a notification or a PR
-comment. That is why the human and the NAT'd agent are the same mechanism, and why designing the
-human case first gets the agent for free.
+The inbox long-poll is not built: a worker polls (see [what is built](#what-is-built)).
+
+The job of the broker is to join the two halves of a task:
+
+- The reports of the worker become the events that verse streams.
+- The control of verse becomes items that the worker pulls.
+- A checkpoint that the worker reports becomes an `EvPending`. Verse routes it to a resolver, and
+  the verdict goes back down the [inbox](glossary.md#inbox) of the worker.
+
+The spawner of verse does the same three things: spawn, stream and control. It does them
+whatever is behind the URL: the in-process loop, a reachable k8s runner, or a broker that relays
+to a laptop.
+Reachability is a detail of the implementation behind the URL.
+
+The two legs have independent cursors that a reader can resume. The verse leg has one, and the
+worker leg has two (see [the worker-facing dial-in protocol](#the-worker-facing-dial-in-protocol)
+below). Each follows the same discipline of replay and resync. The broker keeps a bounded log per
+task to serve them. The entity stays the durable system of record of verse. The broker is a
+relay, so a third party can run a cheap one.
+
+A person is a worker of a broker. For a person:
+
+- the inbox long-poll is "check notifications, run `verse task inbox`";
+- `report` is the person's progress `say`;
+- pushed control is a notification or a PR comment.
+
+So a person and an agent behind NAT use the same mechanism. A design for the person first gives
+the agent at no extra cost.
 
 ## Hosting: verse's broker face (`/broker/<nonce>`)
 
-A base URL does not have to be a new service. Verse can host a broker the way docd hosts a
-controller: docd forwards a subtree's ops to a registered controller under a mount, and verse
-forwards a task's worker and engine ops to a registered backend under `/broker/<nonce>`, the same
-capability-URL trick `connect` uses for `dir-content-<nonce>`. A runner
-binding is then uniformly a URL: `<broker>/broker/local`, `<broker>/broker/<nonce>`, or an external
-one. Verse consumes the verse-facing contract from it — as an in-process or forwarded call for a
-hosted broker, over HTTP for an external one.
+A base URL need not be a new service. Verse can host a broker in the way docd hosts a
+controller.
 
-Two listeners, one deployment. `verse up` exposes the operator API on `-addr` — CLI,
-entities, gates, task control, and broker registration (`POST /broker` mints a nonce),
-trusted and internal — and the broker face on a sibling port, serving `/broker/<nonce>/...`
-and the worker-facing dial-in (`claim`, `inbox`, `report`), nonce-guarded and reachable by
-workers.
+| Host | What it forwards | To what | Under |
+|---|---|---|---|
+| docd | the ops of a subtree | a registered controller | a mount |
+| verse | the worker ops and engine ops of a task | a registered backend | `/broker/<nonce>` |
 
-The sibling port keeps the operator-to-worker trust boundary crisp. Sharing verse's deployment for
-brokering does not expose the operator API to the workers, because a worker only ever reaches its
-nonce'd path, never the entity or gate surface.
+This is the same capability-URL method that `connect` uses for `dir-content-<nonce>`. A runner
+binding is then always a URL: `<broker>/broker/local`, `<broker>/broker/<nonce>`, or an external
+one. Verse consumes the verse-facing contract from it. For a hosted broker the call is in process
+or forwarded. For an external broker the call is HTTP.
 
-The built-in local supervisor lives at the well-known `/broker/local`, a fixed nonce and an
-in-process handler, so a default spawn binds to it with no config and the binding is stable across
-restarts. Dynamically registered brokers get a random nonce, which is the capability: an in-process
-plugin, or, in the docd-controller inversion, a dial-in registrant that connects out to verse's
-registration, gets a nonce, and has its worker and engine ops forwarded to it. So a runtime that can
-only dial out — a firewalled pod, a vendor behind NAT — still hosts a broker without a face of its
-own.
+One deployment has two listeners.
 
-Lifecycle follows the daemon-reaping and restart discipline already in place: `up` binds both
-listeners and re-mints `/broker/local`, brokers register at runtime, `down` reaps them, and
-`up` reconciles each non-terminal task from the runner binding on its entity — re-minting
-the local, re-attaching an external, orphaning only a dead in-process handler.
+| Listener | What it serves | Trust |
+|---|---|---|
+| the operator API, on `-addr` | the CLI, entities, gates, task control, and broker registration (`POST /broker` mints a nonce) | trusted and internal |
+| the broker face, on a sibling port | `/broker/<nonce>/...` and the worker-facing dial-in (`claim`, `inbox`, `report`) | guarded by the nonce, and reachable by workers |
 
-The two topologies compose. A hosted nonce-broker can relay out to an external runtime: a
-firewalled k8s pod dials `<broker>/broker/<nonce>`, and verse's registered handler drives the
-Job, so the pod needs no face and neither does the vendor. A third party who wants their own
+`POST /broker` is not built: a verse hosts the broker it was started with (see
+[what is built](#what-is-built)).
+
+The sibling port keeps a clear trust boundary between operators and workers. Brokering shares
+the deployment of verse, but it does not expose the operator API to workers. A worker only
+reaches its own path under a nonce, and never the surface of entities or gates.
+
+The built-in local supervisor is at the well-known `/broker/local`. It has a fixed nonce and an
+in-process handler. So a default spawn binds to it with no config, and the binding stays the
+same across restarts.
+
+A broker registered at runtime gets a random nonce, and the nonce is the capability. It may be
+an in-process plugin. It may also be a registrant that dials in, as in the docd-controller
+inversion. Such a registrant connects out to the registration of verse and gets a nonce. Verse
+then forwards the worker ops and engine ops to it. So a runtime that can only dial out, such as a pod behind a
+firewall or a vendor behind NAT, still hosts a broker without a face of its own.
+
+The lifecycle follows the existing discipline of reaping daemons and restarting:
+
+1. `up` binds both listeners and mints `/broker/local` again.
+2. Brokers register at runtime.
+3. `down` reaps them.
+4. `up` reconciles each task that is not terminal, from the runner binding on its entity. It
+   mints the local broker again, attaches an external one again, and orphans only an in-process
+   handler that died.
+
+The two topologies combine. A hosted nonce-broker can relay out to an external runtime. A k8s
+pod behind a firewall dials `<broker>/broker/<nonce>`, and the handler that verse registered
+drives the Job. Neither the pod nor the vendor needs a face. A third party that wants its own
 front door still binds an external URL directly.
 
 ## What a 3rd-party implementer must satisfy
 
-Per task: assign gapless per-task cursors; serve `GET /tasks/{id}` as current truth; serve
-`GET /events?since=` with replay-then-live and a `gap` frame below its watermark; emit the kinds
-above; read the bodies as [the contract](#the-bodies) declares them, refusing one that does not
-parse; echo the application of every control POST as an ordered event;
-make the terminal a stable, replayable last event. Nothing about *how* it runs the work leaks
-through, which is what makes local, k8s, lambda and a NAT'd broker interchangeable behind the
-URL.
+For each task, an implementation must:
+
+- assign gapless cursors per task;
+- serve `GET /tasks/{id}` as current truth;
+- serve `GET /events?since=` with replay-then-live, and a `gap` frame below its watermark;
+- emit the kinds above;
+- read the bodies as [the contract](#the-bodies) declares them, and refuse a body that does not
+  parse;
+- echo the application of every control POST as an ordered event;
+- make the terminal a stable last event that a reader can replay.
+
+Nothing about *how* it runs the work shows through. For this reason local, k8s, lambda and a
+broker behind NAT can replace one another behind the URL.
 
 ## The worker-facing dial-in protocol
 
-The verse-facing contract stands on its own, and local, k8s and lambda policies need nothing below.
-But a runner working through a party that cannot accept inbound connections — a laptop agent, a pod
-in a private cluster, a person — needs a way for that worker to dial out and still be driven. The
-worker leg is the verse leg inverted: verse pulls reports and pushes control, the worker pushes
-reports and pulls control. Both only ever dial out, and the broker is the one reachable rendezvous.
-This is the standard worker protocol, so a write-once worker codes against it and runs under any
-broker. A broker may also offer a private optimized transport over WebSocket or gRPC, with this
-HTTP form as the interop baseline.
+The verse-facing contract stands on its own. The local, k8s and lambda backends need nothing in
+this section.
 
-Three endpoints, worker as client:
+A runner may work through a party that cannot accept inbound connections: an agent on a laptop,
+a pod in a private cluster, a person. That worker needs a way to dial out and still be driven.
+
+The worker leg is the verse leg inverted:
+
+| Leg | Reports | Control |
+|---|---|---|
+| verse | verse pulls them | verse pushes it |
+| worker | the worker pushes them | the worker pulls it |
+
+Both sides only dial out, and the broker is the one reachable meeting point. This is the standard
+worker protocol, so a worker written once runs under any broker. A broker may also offer a
+private, faster transport over WebSocket or gRPC. This HTTP form is the baseline for interop.
+
+Three endpoints, with the worker as the client:
 
 ```
 POST /tasks/{id}/claim   {identity}                      → {spec, cCursor, rCursor}
@@ -419,100 +564,141 @@ GET  /tasks/{id}/inbox?since={cCursor}   (long-poll/SSE)  → control directed a
 POST /tasks/{id}/report  {events:[…], key?, epoch}        → {rCursor, applied}
 ```
 
-`inbox` is the dual of verse's `/events`: a resumable stream of control directed at the worker —
-`spec` once, `say {text, by}`, `resolve {decision, choice, proceed, say?, by}`, `cancel|pause|resume`, `vector`.
+The long-poll on `inbox` is not built: a worker polls (see [what is built](#what-is-built)).
+
+`inbox` is the dual of verse's `/events`. It is a stream of control directed at the worker, and
+the worker can resume it. It carries these items:
+
+- `spec`, once;
+- `say {text, by}`;
+- `resolve {decision, choice, proceed, say?, by}`;
+- `cancel|pause|resume`;
+- `vector`.
+
 Each item carries a control cursor, and the worker resumes with `?since=cCursor`.
 
-An answer is a decision when the worker has taken it, not when it was queued. `resolve` closes the
-gate at once — a second answerer is told somebody was here first, because two answers to one
-question is a race with one winner however slowly the answer travels — and the `decision` event is
-emitted when the worker's inbox poll acknowledges the item carrying it. The acknowledging poll is
-the one that asks for what comes *after* the item rather than the one that returns it: receiving is
-not taking, since that response is exactly what a lost one looks like. Until then the question is
-answered-and-undelivered, and if the claim expires first the answer was never delivered at all.
+**An answer is a decision when the worker has taken it, not when the broker queued it.**
 
-A claim is a lease. It survives `broker.ClaimLease` without the holder being heard from, and
-the renewal is the work itself — every inbox poll and every report says the holder is alive,
-so a worker that talks to the broker at all is already keeping it. An expired claim is
-released when somebody next asks for the work, and the silent holder is fenced: if it comes
-back it comes back as a stranger. The task is not made terminal, because a broker that
-cannot hear a worker knows nothing about whether the work is running — only that nobody may
-claim to speak for it.
+- `resolve` closes the gate at once. A second answerer is told that somebody answered first.
+  Two answers to one question are a race with one winner, however slowly the answer travels.
+- The broker emits the `decision` event when the inbox poll of the worker acknowledges the item
+  that carries it.
+- The acknowledging poll is the one that asks for what comes *after* the item. It is not the poll
+  that returns the item. A received response is not proof that the worker took the item, because
+  a lost response looks the same.
+- Until the acknowledgement, the question is answered and not delivered. If the claim expires
+  first, the answer was never delivered at all.
 
-This is the only place in the task-control seams where a clock decides anything. One clock,
-the broker's, comparing two readings of its own; timestamps written elsewhere are records and
-never inputs.
+**A claim is a lease.** It survives for `broker.ClaimLease` without the broker hearing from the
+holder. The work itself renews the lease: every inbox poll and every report says that the holder
+is alive. So a worker that talks to the broker at all already keeps its lease.
 
-`cCursor` is what this worker last acknowledged, not where the broker has got to: a poll for
-`since=N` is the acknowledgement of everything at or below N, because a worker could only ask
-for what came after having taken what came before. So a reconnecting worker is handed the
-place it actually reached, and control issued during its outage is still waiting for it.
+The broker releases an expired claim when somebody next asks for the work, and it fences the
+silent holder. If the holder comes back, it comes back as a stranger. The broker does not make
+the task terminal. A broker that cannot hear a worker knows nothing about whether the work is
+running. It knows only that nobody may claim to speak for the work.
 
-A worker that asks to go backwards is served from where it got to rather than from where it
-asked. The broker knows what this claim acknowledged, so a worker that lost its cursor does
-not have to remember — what it has not taken is still waiting, and what it has is not handed
-back to be applied twice. A takeover resets that mark: what a different worker acknowledged
-says nothing about what this one has done, and an acknowledgement was never a promise that
-the work was carried out.
+This is the only place in the task-control seams where a clock decides anything. There is one
+clock, the broker's, and the broker compares two readings of its own clock. A timestamp written
+elsewhere is a record, and never an input.
 
-What remains the worker's own half is the window between receiving control and acknowledging
-it. A worker that pulled an item, acted on it, and died before its next poll will be handed
-that item again — so control a worker cannot afford to apply twice should be applied
-idempotently by the worker, which is the only party that can.
+`cCursor` is what this worker last acknowledged. It is not how far the broker has got. A poll for
+`since=N` acknowledges everything at or below N, because a worker asks for what comes next only
+after it has taken what came before. So a worker that connects again gets the place it actually
+reached, and control issued while it was away is still waiting for it.
 
-`key` makes a report retryable. A worker whose response was lost cannot know whether its events
-landed, and without one its only choices are to drop what it observed or to report it twice, one
-deploy becoming two events at two cursors, afterwards indistinguishable from the work having been
-done twice. A repeat of a key already applied is answered with what the first one was answered
-with, not applied again. It is optional, and necessarily so: only the worker knows a retry is a
-retry, and one that sends no key gets a fresh report every time.
+A worker that asks to go backwards gets items from where it got to, and not from where it asked.
+The broker knows what this claim acknowledged, so a worker that lost its cursor need not remember
+it. What the worker has not taken is still waiting. What it has taken is not handed back to be
+applied twice.
 
-`applied` is how many of the reported events were taken, which is not always all of them:
-nothing follows a terminal, so a batch whose terminal is not its last entry has the remainder
-dropped. A worker computes its retry from this rather than assuming a 200 means everything
-landed.
+A takeover resets that mark. What a different worker acknowledged says nothing about what this
+worker has done. An acknowledgement is not a promise that the work was done.
 
-`report` is the dual of verse's control POSTs: the worker appends `pending`, its own `say`,
-`exec`, `status` transitions, and `boundary`. Each gets a report cursor, and `from: rCursor`
-makes a re-POST idempotent — the broker appends only past its high-water and re-acks.
+One window stays the worker's own: the time between receiving control and acknowledging it. A
+worker may pull an item, act on it, and die before its next poll. The broker then hands it that
+item again. So the worker should apply idempotently any control that it cannot afford to apply
+twice. The worker is the only party that can.
+
+**`key` makes a report retryable.** A worker whose response was lost cannot know whether its
+events landed. Without a key it has two choices, and both are bad:
+
+- drop what it observed;
+- report it twice. One deploy then becomes two events at two cursors, and afterwards nobody can
+  tell it from work done twice.
+
+The broker answers a repeat of a key already applied with the answer to the first, and does not
+apply it again. The key is optional, and must be. Only the worker knows that a retry is a retry.
+A worker that sends no key gets a new report every time.
+
+**`applied` is how many of the reported events the broker took.** It is not always all of them.
+Nothing follows a terminal, so if a batch has its terminal before its last entry, the broker
+drops the rest. A worker computes its retry from `applied`. It does not assume that a 200 means
+everything landed.
+
+`report` is the dual of the control POSTs of verse. The worker appends:
+
+- `pending`;
+- its own `say`;
+- `exec`;
+- `status` transitions;
+- `boundary`.
+
+Each gets a report cursor. `from: rCursor` makes a re-POST idempotent: the broker appends only
+what is past its high-water, and acknowledges again.
+
+`report {from: rCursor}` is not built. A report carries `epoch`, `events`, and optionally `key`
+and `result` (see [what is built](#what-is-built)).
 
 ### The two cursors on this leg
 
-The verse leg has one cursor, verse's read position on the event log. The worker leg has two,
-because the worker both reads and writes: `cCursor` is its position in the inbox (control
-pulled), so it reconnects with `inbox?since=cCursor`, and `rCursor` is its high-water in what
-it has reported and the broker acked, so it reconnects with `report {from: rCursor}`.
+The verse leg has one cursor: the read position of verse on the event log. The worker leg has
+two, because the worker both reads and writes.
 
-Each is independently resumable, so there are three resume points — verse's read, the worker's
-read, the worker's write — over one durable truth, the `verse.task.instance` entity. A worker that
-sleeps and reconnects resumes both of its cursors without verse noticing, and a verse that restarts
-re-reads `/events` without the worker noticing. All three use the same
-replay-then-live-with-resync-below-watermark discipline.
+| Cursor | What it is | How the worker connects again |
+|---|---|---|
+| `cCursor` | its position in the inbox, the control it pulled | `inbox?since=cCursor` |
+| `rCursor` | its high-water in what it reported and the broker acknowledged | `report {from: rCursor}` |
+
+Each cursor resumes independently. So there are three resume points over one durable truth, the
+`verse.task.instance` entity:
+
+1. the read of verse;
+2. the read of the worker;
+3. the write of the worker.
+
+A worker that sleeps and connects again resumes both its cursors, and verse does not notice. A
+verse that restarts reads `/events` again, and the worker does not notice. All three follow the
+same discipline: replay, then live, with a resync below the watermark.
 
 ### How the broker maps the worker leg onto the verse leg
 
-The broker keeps one ordered event log per task — what `/events` streams — and sequences
-into it from two interleaved, cursored sources.
+The broker keeps one ordered event log for each task. `/events` streams this log. The broker
+sequences two interleaved sources into it, each with a cursor.
 
-Worker reports (`POST /report`) are sequenced into the log, and verse's next `/events?since`
-delivers them. A report at `rCursor=R` becomes a merged-log entry at a broker-assigned
-`cursor=V`; the axes relate only through the broker's sequencer.
+**Worker reports.** The broker sequences each `POST /report` into the log, and the next
+`/events?since` of verse delivers it. A report at `rCursor=R` becomes an entry of the merged log
+at a `cursor=V` that the broker assigns. The two axes relate only through the sequencer of the
+broker.
 
-Control-origin events arrive when verse POSTs control: the broker both records the ordered
-event and relays the item to the worker's inbox at a new `cCursor`. One fact, two readers.
+**Control-origin events.** These arrive when verse POSTs control. The broker records the ordered
+event, and relays the item to the inbox of the worker at a new `cCursor`. One fact has two
+readers.
 
-Who authors an effect event follows the interlock rule: truth is what was applied.
-Operator-authored events — a `decision` from `/resolve`, a `vector` from set-vector, an operator
-`say` — are emitted by the broker on the POST, because the operator or answerer acted, and the item
-is relayed for the worker to act on. There is no duplication: the `say` is the operator speaking,
-and the worker's resulting action is a separate `exec`.
+Who writes an effect event follows the interlock rule: the truth is what was applied.
 
-Worker-confirmed events — `cancelled`, `paused`, `resumed` — work the other way. The broker
-only relays `cancel` and `pause`; the effect event is the worker's report when it stops at its
-boundary. Until then verse sees "cancel requested" in the snapshot, and `status:cancelled`
-lands on confirmation. That coarse latency is stated rather than hidden.
+| Event | Who emits it | When |
+|---|---|---|
+| operator-authored: a `decision` from `/resolve`, a `vector` from set-vector, an operator `say` | the broker | on the POST, because the operator or the answerer acted. The broker relays the item for the worker to act on. |
+| worker-confirmed: `cancelled`, `paused`, `resumed` | the worker, in a report | when it stops at its boundary. The broker only relays `cancel` and `pause`. |
 
-A gate round-trips across both legs:
+There is no duplication. The `say` is the operator speaking, and the action that the worker then
+takes is a separate `exec`.
+
+Until the worker confirms, verse sees "cancel requested" in the snapshot. `status:cancelled`
+lands on confirmation. This latency is coarse, and this page says so.
+
+A gate goes across both legs and back:
 
 ```
 worker POST /report pending@R7      → broker seq → events@V40 → verse mirrors pending[G]
@@ -525,34 +711,58 @@ worker GET /inbox?since=C2 → C3 → proceeds → POST /report exec@R8  (→ ev
 
 ### Claim, identity, takeover
 
-The identity on a claim is the principal the worker acts as from then on: verse lists it as a
-runner, grants it `read-write` and `control` on the task and on this run, and the mirror writes
-every report as it ([perms.md](perms.md)). It holds nothing on the questions the task raises.
+The identity on a claim is the [principal](glossary.md#principal) that the worker acts as from
+then on. Verse lists it as a runner. Verse grants it `read-write` and `control` on the task and on
+this run. The mirror writes every report as that principal ([perms.md](perms.md)). The identity
+holds nothing on the questions that the task raises.
 
-`POST /tasks/{id}/claim {identity}` is a CAS on the claim, and on success it returns the `spec` and
-resume cursors. Claimed by another gives `409` unless this is a takeover: the prior claim is
-revoked, its inbox getting a `revoked` item so a still-connected old worker stops, and the new
-identity claims, reads the journal — already durable, and the handoff context — and continues on
-the same subject. The claim is mirrored on the entity, so who holds it is observable, which makes a
-human taking over a runaway agent a plain claim transfer. A pool variant,
-`POST /claim {identity, kinds}`, long-polls for the next eligible unclaimed task and CAS-assigns
-one, so N workers drain a queue without stepping on each other.
+`POST /tasks/{id}/claim {identity}` is a CAS on the claim. On success, it returns the `spec` and
+the resume cursors. A task claimed by another worker gives `409`, unless this is a takeover.
 
-The human is this protocol at human pace: `claim` is "I'll take it" from a CLI or bot, the `inbox`
-pull is "check notifications", and `report` is progress `say` plus checkpoints. Three identical
-endpoints at a person's cadence.
+In a takeover:
+
+1. The broker revokes the prior claim. Its inbox gets a `revoked` item, so an old worker that is
+   still connected stops.
+2. The new identity claims.
+3. The new identity reads the journal, which is already durable and is the context of the
+   handoff.
+4. It continues on the same subject.
+
+Verse mirrors the claim on the entity, so anyone can see who holds it. A person who takes over a
+runaway agent does a plain transfer of the claim.
+
+A pool variant, `POST /claim {identity, kinds}`, long-polls for the next eligible unclaimed task
+and CAS-assigns one. N workers can then drain a queue without getting in each other's way.
+
+Takeover by a `revoked` item and the pool claim are not built. A worker claims one task by its
+id. A displaced worker learns that it was displaced from a `409` on its next call (see
+[what is built](#what-is-built)).
+
+A person uses this protocol at the pace of a person:
+
+| Endpoint | For a person |
+|---|---|
+| `claim` | "I'll take it", from a CLI or a bot |
+| the `inbox` pull | "check notifications" |
+| `report` | a progress `say`, and checkpoints |
+
+The three endpoints are the same. Only the pace differs.
 
 ## What is built
 
-Everything above is built except where noted here. The seam itself, `task.Runner` and
-`task.Handle`, carries every task, so the engine holds a handle and never a concrete `*Task`.
-Events carry a per-task cursor with a bounded ring, `GET /events?since=N` replays and then goes
-live, and verse persists its high-water cursor on the entity. `runner.HTTP(baseURL)` drives a
-remote verse over the verse-facing contract. Startup reconcile resumes rather than orphans where
-the work outlived the daemon. The dial-in broker is hosted under `/broker/<nonce>`, publishes each
-task's `dialURL` on its entity, and is guarded by the terminal-once latch and the claim fence.
-`verse task do` is the executor vantage, and every operator verb works across local, remote and
-brokered tasks alike.
+Everything above is built, except what this section names.
+
+- The seam itself, `task.Runner` and `task.Handle`, carries every task. The engine holds a
+  handle, and never a concrete `*Task`.
+- Events carry a per-task cursor with a bounded ring. `GET /events?since=N` replays and then goes
+  live. Verse keeps its high-water cursor on the entity.
+- `runner.HTTP(baseURL)` drives a remote verse over the verse-facing contract.
+- The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
+  it.
+- The dial-in broker is hosted under `/broker/<nonce>`. It publishes the `dialURL` of each task
+  on the entity of the task. The terminal-once latch and the claim fence guard it.
+- `verse task do` is the view of the executor. Every operator verb works on local, remote and
+  brokered tasks alike.
 
 Not built, though the sections above describe them:
 
@@ -567,7 +777,9 @@ Not built, though the sections above describe them:
 - `report {from: rCursor}`. A report carries `epoch`, `events`, and optionally `key` and
   `result`.
 
-Two larger tracks sit outside this document:
-a human surfacer and identity-projected inbox, with `owner`, `claimant` and `resolver` stamps,
-and a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as a
-[Source](controllers.md).
+Two larger tracks are outside this page:
+
+- a human surfacer and an inbox projected by identity, with `owner`, `claimant` and `resolver`
+  stamps;
+- a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as a
+  [Source](controllers.md).

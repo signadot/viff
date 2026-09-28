@@ -1,22 +1,26 @@
 # The gates of a rule
 
-This page holds the `gates` field of a rule. It says what a gate asks, who answers it, and
-what a refusal, a deadline and a restart do to the question. The model that gates belong to
-is in [the trigger model](../trigger-model.md).
+This page describes the `gates` field of a [rule](../glossary.md#rule). It says what a gate
+asks, who answers it, and what a refusal, a deadline and a restart do to the question. The
+model that gates belong to is in [the trigger model](../trigger-model.md).
 
 ## `gates` — whether it proceeds
 
-A list of gates, all of which must resolve before the action fires. Gates are per *firing*, and a
-firing is about one entity, so a rule selecting twelve PRs asks twelve questions. Each is
-`{ name: …, mode: auto|ask|park }`. An empty list fires with no approval.
+`gates` is a list of [gates](../glossary.md#gate-of-a-rule). Every gate must resolve before the
+action fires. An empty list fires with no approval. Each gate is
+`{ name: …, mode: auto|ask|park }`.
 
-The question's id is a function of (trigger, gate, subject), which is what makes a re-evaluated
-rule ask once. A firing that finds its question already standing joins it rather than posting a
-copy, and one answer releases everyone waiting. A rule waiting on a human is therefore not a rule
-filling the docket.
+Gates are per *firing*. A [firing](../glossary.md#firing) is about one entity, so a rule that
+selects twelve PRs asks twelve [questions](../glossary.md#question).
 
-Multiple gates model multi-approval: a deploy needing both a security and a release-manager sign-off
-is two `ask` gates. One gate that takes more than one voice says so on the question it poses:
+The id of a question is a function of (rule, gate, subject). So a rule that is evaluated again
+asks once. A firing that finds its question already standing joins it, and does not post a copy.
+One answer releases every firing that waits on it. So a rule that waits on a person does not
+fill the [docket](../glossary.md#docket).
+
+Several gates model several approvals. A deploy that needs a sign-off from security and from a
+release manager is two `ask` gates. A single gate that takes more than one voice says so on the
+question it poses:
 
 ```tony
   gates:
@@ -32,62 +36,94 @@ is two `ask` gates. One gate that takes more than one voice says so on the quest
     - {id: drop, need: 1}
 ```
 
-Beside it on the record stands `about`: the one line the SUBJECT says about itself, which verse
-copies onto the question when it poses it — a convention an entity opts into by carrying a `says`
-([the docket has shown it since `06476112`](resolvers.md#the-question-record)). Between
-them, a question says what is being asked and what it is about without a reader holding any grant
-on the subject at all.
+### What a question says
 
-`pose` is the question in WORDS, and the only thing on a gate written for a person rather than for
-the engine: everything else says who asked and how it settles, and a rule name beside an address is
-not what somebody deciding needs to read. It is expanded at the firing, against the subject that
-firing settled on — `$[…]` is [go-tony's expression](https://github.com/signadot/tony-format), with
-`subject.name` and `subject.value` in scope and nothing else — and it rides the question as words.
+The record of a question holds `about` beside the gate's own fields. `about` is the one line
+that the subject says about itself. Verse copies it onto the question when it poses the question.
+An entity opts in to this by carrying a `says`
+([the question record](resolvers.md#the-question-record)). With `pose` and `about`, a question
+says what is asked and what it is about. A reader needs no grant on the subject to read either.
 
-Expanded there rather than where it is shown, for three reasons in order of weight: a presenter may
-hold no grant on the subject, while the engine is already reading it to fire; the sentence then
-says what the rule SAW, rather than what the subject looks like by the time somebody reads it; and
-it is read once rather than once per presenter. A sentence that will not expand does not stop the
-question — the words are dropped and `reason` is what a reader falls back to, because a gate nobody
-is asked because its prose broke is worse than a bare one.
+`pose` is the question in words. It is the only field of a gate written for a person, and not
+for the engine. The other fields say who asked and how the question settles.
 
-Every gate poses the same record: the options it can settle on, each with the number of ballots
-that settles it, and a deadline with the option it falls to. A gate that says nothing poses
-`proceed` and `deny` at one each, which is the question a gate has always asked. An option's
-`says` is what choosing it MEANS, for whoever is being asked: an id is what an answer is spelled
-with and a name the rule reads, and a question whose options are three ids is one answered by
-guessing. `need` is the
-short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`, and the two are not
-written together. `options` are ordered: the first to reach its threshold settles the question.
-A gate that carries any of these, or a `pose`, and no `mode` is `ask`; with `mode: auto` it is
-refused, since auto asks nobody.
+Verse expands `pose` at the firing, against the subject that the firing settled on. `$[…]` is
+[go-tony's expression](https://github.com/signadot/tony-format). Only `subject.name` and
+`subject.value` are in scope. The question carries the result as words.
 
-`answerers` is who the question is held out to: grantees in the
-[grammar](../perms.md#principals-and-grantees) a grant names them in — a person (`user:<email>`, or
-the bare email), a whole kind (`user:*`), `*`, a group (`group:<name>`), a resolver
-(`via:verse.resolvers.<name>`). It is written as the question's
-`read-write` grant when the question is posed, in place of the docket's default, and `need` over
-it is what one-or-many means: one ballot per answerer, `need: 1` a race, `need` equal to their
-number all of them. The charter's owner co-owns what their rule asked and answers it without
-being named. A gate nobody could settle is refused at install: a threshold above the answerers
-named, an answerer the grammar does not read, or a group or a resolver that does not stand. [perms.md](../perms.md) has the record it becomes.
+A sentence that does not expand does not stop the question. Verse drops the words, and a reader
+falls back to `reason`.
 
-The tally is whoever answers' to keep, not the engine's: an answer is a ballot on the record,
-the question settles in the same write as the ballot that reaches a threshold, and one answerer
-casting twice replaces their own ballot rather than counting twice. What the engine owes is to
-ask exactly what was written, and to act on the one answer that comes back.
+### Options and their thresholds
+
+Every gate poses the same record:
+
+- the options it can settle on;
+- for each option, the number of ballots that settles it;
+- a deadline, with the option that the question falls to.
+
+A gate that says none of these poses `proceed` and `deny`, at one ballot each.
+
+| Field | What it says |
+|---|---|
+| `says` of an option | what choosing the option *means*, for whoever is asked. The `id` is how an answer spells the option, and the name the rule reads. |
+| `need` | the short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`. Do not write `need` and `options` together. |
+| `options` | an ordered list. The first option to reach its threshold settles the question. |
+
+A gate that carries any of these, or a `pose`, and no `mode` has the mode `ask`. Verse refuses
+such a gate with `mode: auto`, because `auto` asks nobody.
+
+### Who may answer
+
+`answerers` names who the question is held out to. It holds grantees, in the
+[grammar](../perms.md#principals-and-grantees) that a grant uses:
+
+| Grantee | Who |
+|---|---|
+| `user:<email>`, or the bare email | a person |
+| `user:*` | a whole kind |
+| `*` | everyone |
+| `group:<name>` | a group |
+| `via:verse.resolvers.<name>` | a resolver |
+
+Verse writes `answerers` as the `read-write` grant of the question when it poses the question.
+It replaces the default of the docket. Each answerer has one ballot. `need` over the answerers
+says how many must answer:
+
+- `need: 1` is a race;
+- `need` equal to the number of answerers is all of them.
+
+The owner of the charter co-owns what its rule asked, and answers it without being named.
+
+Verse refuses at install a gate that nobody could settle:
+
+- a threshold above the number of answerers named;
+- an answerer that the grammar does not read;
+- a group or a resolver that does not stand.
+
+[perms.md](../perms.md) has the record that `answerers` becomes.
+
+### The tally
+
+The answerers keep the tally, and the engine does not.
+
+- An answer is a ballot on the record.
+- The question settles in the same write as the ballot that reaches a threshold.
+- An answerer who casts twice replaces their own ballot. The ballot does not count twice.
+
+The engine asks exactly what was written, and acts on the one answer that comes back.
 
 Waiting for a fact is not a gate. A rule that acts once CI is green says so in `when:`.
 
 ### `onDenied` — what a no means
 
-A denied firing writes nothing: a firing that did not happen leaves no trace of having
-happened. The consequence is that the subject is left in the exact state that asked the
-question, so the next commit that touches it re-selects it, the rule fires again, and the gate
-is re-posed under the same id — to somebody who already answered it.
+A denied firing writes nothing. A firing that did not happen leaves no trace. So the subject
+stays in the exact state that asked the question. The next commit that touches the subject
+selects it again, and the rule fires again. The gate poses the question again, under the same id,
+to somebody who already answered it.
 
-The latch a well-formed rule carries cannot help, because it lives in the action and on a deny
-the action never runs. So the gate says what its own refusal means:
+The [latch](../glossary.md#latch) of a well-formed rule cannot help. The latch is in the action,
+and on a deny the action never runs. So the gate says what its own refusal means:
 
 ```tony
   gates:
@@ -96,20 +132,24 @@ the action never runs. So the gate says what its own refusal means:
     onDenied: { patch: { stage: rejected } }
 ```
 
-It is an ordinary action — `patch`, `derive`, `spawn`, its own completion hooks — applied about the
-same subjects the firing was about. It hangs off the *gate* rather than the action, because a no is
-the gate's outcome: two gates refuse for different reasons, and each says what its own refusal
-means. It is not a completion hook and needs no spawn of its own.
+`onDenied` is an ordinary action: `patch`, `derive`, `spawn`, its own completion hooks. Verse
+applies it about the same subjects that the firing was about. It is a field of the *gate*, not of
+the action. It is not a completion hook, and it needs no spawn of its own.
 
-Only a committed refusal runs it. An answerer that could not be reached, or a question withdrawn
-because its subject left the selection, said nothing at all, and writing a rejection on their
-behalf would put a decision in the store that nobody made. It applies to a no however it arrives:
-one person's, a threshold of them, or the clock's default.
+Only a committed refusal runs `onDenied`. It applies to a no however the no arrives: from one
+person, from a threshold of people, or from the default of the clock. It does not run when:
 
-Omitting it is legitimate — "ask again next time somebody touches it" is a real policy — so a
-gate without one earns an advisory at install rather than a refusal. The install prints it
-under the line that says what was installed, as `note: rule <name>: …`. To say a no is final
-without changing the subject's own state, the vanishing-marker shape works:
+- an answerer could not be reached;
+- a question was withdrawn because its subject left the selection.
+
+In those cases nobody said anything. A rejection written for them would put a decision in the
+store that nobody made.
+
+A gate may omit `onDenied`. "Ask again the next time somebody touches it" is a real policy. So a
+gate without `onDenied` gets an advisory at install, and not a refusal. The install prints the
+advisory under the line that says what was installed, as `note: rule <name>: …`.
+
+To make a no final without changing the state of the subject itself, use a marker:
 
 ```tony
   condition:
@@ -118,88 +158,98 @@ without changing the subject's own state, the vanishing-marker shape works:
   - { name: approval, mode: ask, onDenied: { patch: { blocked: true } } }
 ```
 
-Removing the marker is then what re-opens the question.
+Removing the marker then opens the question again.
 
 ### A deadline settles
 
-`deadline: {within: "24h", default: deny}` settles the question on `deny` when the clock passes
-with no option at its threshold, as `by: deadline`, and the firing sees it as a refusal. The
-instant is stamped on the record once, when the question is first posed, and honoured by every
-later posing: a restart arms against the instant the question was given, not against a fresh
-duration, so a deadline that passed while the verse was down fires on the way back up.
+`deadline: {within: "24h", default: deny}` settles the question on `deny` when the time passes
+and no option is at its threshold. The question records `by: deadline`, and the firing sees a
+refusal.
 
-The default is an ordinary option. A ballot for it counts toward its own threshold like any
-other, so a `deny` that needs one settles on one deny, before the clock. A default left empty
-settles on nothing (`verdict: none`), which the firing reads as a refusal nobody made.
+Verse stamps the instant on the record once, when it first poses the question. Every later
+posing uses that instant. A restart arms the clock against the stamped instant, and not against a
+new duration. So a deadline that passed while verse was down fires as verse starts again.
+
+The default is an ordinary option. A ballot for it counts toward its own threshold, like any
+other ballot. So a `deny` that needs one ballot settles on one deny, before the clock.
+
+A default left empty settles on nothing (`verdict: none`). The firing reads that as a refusal
+that nobody made.
 
 ### A question outlives the verse that asked it
 
-The record, its options and every ballot cast into it are entities, so a restart finds the
-question exactly where it stood. What does not survive is the *awaiter*, which lives inside the
-firing. A question with no awaiter is the worst kind of docket entry: it lists a decision,
-somebody makes it, and nothing moves.
+The record, its options and every ballot cast into it are entities. So a restart finds the
+question exactly where it stood.
 
-Startup gives the awaiter back, by the route the axis makes available:
+The *awaiter* does not survive a restart. The awaiter is the part of the firing that waits for
+the answer. A question with no awaiter is the worst kind of entry on the docket: it lists a
+decision, somebody makes it, and nothing moves.
 
-- A **gate's** question blocks the firing itself, and the firing comes back by being
-  *evaluated again*: its action never ran — that is what the gate is holding — so a rule that
-  still selects the subject re-poses the same question, joins the record already standing, and
-  the ballots already cast still count. Re-evaluated, not resumed, which is the distinction the
-  next paragraph turns on.
-- A **selection's** question (a `spawn` with a `provider`) opens *after* the action has
-  written its latch, so nothing re-fires it. It records the `chain` of the action it is
-  blocking, and startup navigates that chain back into the charter and re-enters the
-  selection, which re-poses the same question — the same lookup key a resumed task's hooks
-  are rehydrated from.
+Startup gives the awaiter back. The route depends on what asked the question:
 
-A question nothing can answer any more is *settled* rather than left standing: its rule left the
-charter, its action moved, its subject is gone — or, the case that is easy to miss, **the
-subject moved out of what the rule selects**. A merge proposal swept to `state: stale` is no
-longer picked by a rule that reads `!not.has-path state`, so that rule will never look at its
-gate again however healthy the rule is. The record is stamped `status: orphaned` with a `why`,
-keeping the trail while taking it off the list of things a person can act on. That is not a
-verdict — nobody decided anything — so a rule that selects the subject again re-poses the same
-question over the same ballots.
+| Question of | How startup gives the awaiter back |
+|---|---|
+| a **gate** | The question blocks the firing itself, and the action never ran. So the firing comes back by being *evaluated again*. A rule that still selects the subject poses the same question again, and joins the record already standing. The ballots already cast still count. The firing is evaluated again, not resumed. |
+| a **selection** (a `spawn` with a `provider`) | The question opens *after* the action has written its latch, so nothing fires it again. The question records the `chain` of the action it blocks. Startup follows that chain back into the charter, and enters the selection again. The selection poses the same question again. A resumed task restores its hooks from the same lookup key. |
 
-The re-pose is idempotent by construction, which is what lets it run beside a rule that also
-re-fires: the question id is derived from the rule, the gate and the subject, the settle is
-terminal-once, and the spawn id is deterministic per (chain, subject). One question, one task,
-however many paths reach it.
+Verse *settles* a question that nothing can answer any more, and does not leave it standing.
+This happens when:
 
-**A scoped verse (`verse connect`) is not covered.** Its questions live in the scope's own store,
-which nothing enumerates at startup — the same gap scoped charters and scoped claims have.
+- its rule left the charter;
+- its action moved;
+- its subject is gone;
+- **the subject moved out of what the rule selects.** This case is easy to miss.
 
-**A verse that dies between settling a question and starting the work it decided loses that
-spawn.** The record is answered, so nothing re-poses it. The resume does not introduce this: it
-is the window `patch` then `spawn` already has inside one action. An action is not atomic, and
-a crash in the middle of one leaves the half that landed.
+For example, a merge proposal set to `state: stale` is not selected by a rule that reads
+`!not.has-path state`. That rule never looks at its gate again, however healthy the rule is.
+
+Verse stamps the record `status: orphaned`, with a `why`. The record keeps the trail, and leaves
+the list of things a person can act on. This is not a verdict, because nobody decided anything.
+So a rule that selects the subject again poses the same question again, over the same ballots.
+
+Posing again is idempotent by construction, so it can run beside a rule that also fires again:
+
+- the question id is derived from the rule, the gate and the subject;
+- a question settles once;
+- the spawn id is deterministic per (chain, subject).
+
+One question, and one task, however many paths reach it.
+
+**A scope (`verse connect`) is not covered.** Its questions are in the scope's own store,
+and nothing lists them at startup. Scoped charters and scoped claims have the same gap.
+
+**When verse stops between settling a question and starting the work it decided, the spawn
+is lost.** The record is answered, so nothing poses it again. The same window exists between
+`patch` and `spawn` inside one action. An action is not atomic. A crash in the middle of one
+leaves the half that landed.
 
 ### A gate's answer applies to the world it was asked in
 
-A question is not answered in a vacuum. While it stands, the firing watches the subject's own
-subtree beside it, and asks at every change whether the rule would still select the subject. When
-it would not, the question is moot: it is **withdrawn** — `status: orphaned` with a `why`, no
-verdict, no action, and no `onDenied`, because a moot question is not a refusal. The ballots stay
-on the record, and a rule that selects that subject again re-poses the same question over them.
-An answer that arrives after the subject left the selection is the same case from the other
-side: the firing withdraws rather than acts.
+While a question stands, the firing watches the subtree of the subject. At every change it asks
+whether the rule would still select the subject. When the rule would not, the question is moot,
+and verse **withdraws** it:
 
-This is not hypothetical tidiness. Without it, a merge proposal swept to `state: stale` while its
-gate stands open leaves a question that watches only its ballots: it reaches its threshold on the
-approval already cast, settles `proceed`, and merges a branch the sweep retired, losing the work
-on it. A gate that can only be
-answered about a world that has moved on is a gate answered by reflex, which is the failure gates
-exist to prevent.
+- the record says `status: orphaned`, with a `why`;
+- there is no verdict and no action;
+- `onDenied` does not run, because a moot question is not a refusal.
 
-**The withdrawal is prompt.** The firing watches the subject's own subtree while it waits, so a
-question goes moot at the change that made it moot, with nobody having to answer and nothing
-having to restart.
+The ballots stay on the record. A rule that selects that subject again poses the same question
+again, over them.
 
-One limit is worth knowing. It asks only about the *subject*, not the cause: a rule fired by an
-`on` edge may still select its subject and never see that edge again, so a question that stands is
-not a promise the rule will re-fire. And when it cannot tell — an unreadable store, a predicate
-whose read fails — it lets the question stand, because a stale docket entry costs a reader a
-moment while a wrongly withdrawn one takes a live question away from the people it is in front of.
+An answer that arrives after the subject left the selection is the same case. The firing
+withdraws, and does not act.
+
+**The withdrawal is prompt.** The firing watches the subtree of the subject while it waits. So a
+question goes moot at the change that made it moot. Nobody has to answer, and nothing has to
+restart.
+
+The check has two limits.
+
+- It asks only about the *subject*, not the cause. A rule fired by an `on` edge may still select
+  its subject and never see that edge again. So a question that stands does not promise that the
+  rule will fire again.
+- When it cannot tell, it lets the question stand. It cannot tell when the store is unreadable,
+  or when a read of the predicate fails.
 
 ### Who answers a rule's own gates
 
@@ -209,13 +259,63 @@ gating:
   gates:    [{name: ship, mode: ask}]
 ```
 
-`gating` groups the two facts about a rule's gates: which they are, and who answers them. `gates:`
-at the top level means `gating: {gates: …}`, one field read two ways rather than two that can
-disagree, and writing both is refused rather than merged, because a rule that says which gates it
-has twice has said it twice.
+`gating` groups the two facts about the gates of a rule: which gates they are, and who answers
+them. `gates:` at the top level means `gating: {gates: …}`. Verse refuses a rule that writes
+both, and does not merge them.
 
-`resolver` names an installed resolver (`verse resolver add`). It is the same word a spawn uses for
-the same act: a spawn names who answers the run it starts, a rule names who answers the gates it
-raises itself. Empty leaves the question to whatever standing resolver matches its subject, and then
-to the docket a person reads. A resolver that is not installed is refused here rather than left to
-own a question nothing can answer; see [attached resolvers](../attached-resolvers.md).
+`resolver` names an installed [resolver](../glossary.md#resolver) (`verse resolver add`). A spawn
+uses the same word for the same act. A spawn names who answers the run it starts. A rule names
+who answers the gates it raises itself.
+
+With `resolver` empty, the question goes to whatever standing resolver matches its subject, and
+then to the docket that a person reads. Verse refuses a resolver that is not installed. It does
+not leave the question to a resolver that cannot answer it. See
+[attached resolvers](../attached-resolvers.md).
+
+## Why it is this way
+
+### `pose` is expanded at the firing
+
+Verse expands `pose` at the firing, and not where the question is shown. There are three
+reasons, in order of weight.
+
+1. A presenter may hold no grant on the subject. The engine already reads the subject to fire.
+2. The sentence says what the rule *saw*, and not what the subject looks like when somebody
+   reads it.
+3. Verse reads the subject once, and not once for each presenter.
+
+A rule name beside an address is not what a person who decides needs to read. So `pose` holds
+the question in words.
+
+A sentence that does not expand does not stop the question. A gate that nobody is asked because
+its prose broke is worse than a gate with no prose.
+
+### Options say what they mean
+
+An `id` is how an answer is spelled, and a name that the rule reads. A question whose options
+are three ids is answered by guessing. So an option carries `says`.
+
+### `onDenied` belongs to the gate
+
+A no is the outcome of the gate. Two gates refuse for different reasons, and each says what its
+own refusal means.
+
+### A moot question is withdrawn
+
+Suppose a merge proposal is set to `state: stale` while its gate stands open. Without the
+withdrawal, the question watches only its ballots. It reaches its threshold on the approval
+already cast, settles `proceed`, and merges a branch that the sweep retired. The work on that
+branch is lost. A gate that can only be answered about a world that has moved on is answered
+without thought. Gates exist to prevent exactly that.
+
+When the check cannot tell, it lets the question stand. A stale entry on the docket costs a
+reader a moment. A question withdrawn by mistake takes a live question away from the people it is
+in front of.
+
+### One field for the gates
+
+`gating` is one field read two ways, and not two fields that can disagree. A rule that says
+which gates it has twice has said it twice, so verse refuses it.
+
+A resolver that is not installed is refused, so that no question is owned by something that
+cannot answer it.

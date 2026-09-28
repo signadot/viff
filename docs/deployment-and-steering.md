@@ -1,84 +1,97 @@
 # Deployment and steering
 
-One invariant shapes verse's surface: *steering outranks observation*. An intervention that
-lands late is an intervention defeated. [Tutorial §3](tutorial.md#steering) drives it from the
-operator's side. This is why it is built that way.
+One rule shapes the surface of verse: *steering outranks observation*.
+[Steering](glossary.md#steering) is acting on work in progress. An intervention that arrives
+late has failed. [Tutorial §3](tutorial.md#steering) shows steering from the operator's side.
+This page explains why verse is built this way.
 
 ## Two planes
 
-Everything coordinates through the entity store, but not everything is coordination.
+Everything coordinates through the [store](glossary.md#store), but not everything is
+coordination. Verse separates two kinds of work:
 
-*Data coordination* is actions writing entities and triggers reacting to them. It flows through
-the store, and it is fine for it to lag: eventual, queued, recoverable.
+| Kind | What it is | How it travels |
+|---|---|---|
+| *Data coordination* | Actions write entities, and [rules](glossary.md#rule) react to them. | Through the store. It may lag: it is eventual, queued and recoverable. |
+| *Control* | Holding a run, cancelling it, answering a gate, changing the [vector](glossary.md#vector) (the autonomy of a task), or sending an instruction with `say`. | Not through the store at all. |
 
-*Control* is holding a run, cancelling it, answering a gate, sliding autonomy, injecting an
-instruction. It does not flow through the store at all. What an operator can stop, and for how
-long, is [control](control.md).
+What an operator can stop, and for how long, is in [control](control.md).
 
-"Coordinate through the store, no orchestrator" tempts you to model an intervention as a store
-write, a command entity that something reacts to. Then the intervention rides the one channel it
-is supposed to outrank: it queues behind the backlog, and under load the store's bounded buffer
-can drop it. The dial would not turn when you turned it.
+**Control is separate from observation of the store, and verse serves it first.** An
+intervention is never a store write. The surface shows the same split: the control endpoints
+are separate from the read endpoints, so an operator cannot steer by writing.
 
-So the split is explicit. Control is out-of-band from store observation, serviced ahead of it,
-and an intervention is never a store write. It shows in the surface too: control endpoints are
-distinct from read endpoints, so an operator cannot steer by writing.
+"Coordinate through the store, with no orchestrator" suggests a different design. In that
+design an intervention is a store write: a command entity that something reacts to. Then the
+intervention travels on the one channel that it must outrank. It waits in the queue behind the
+backlog. Under load, the bounded buffer of the store can drop it. The operator would act, and
+nothing would happen. For this reason verse makes the split explicit.
 
 ## A hold costs a cursor, not a buffer
 
-A flow parked at a gate nobody has answered, or a paused engine, must not accumulate a growing
-backlog of unread changes. It does not, because observation is revision-cursored. Every change
-carries a monotonic `Rev`, and a consumer keeps only the highest one it has processed, catching
-up with `Since(cursor)` rather than holding a buffer. A hold costs an int, however long it lasts.
+A flow that waits at a gate nobody has answered must not collect a growing backlog of unread
+changes. An engine that is paused must not either. Neither does, because observation follows a
+revision cursor. Every change carries a `Rev` that only increases. A consumer keeps only the
+highest `Rev` that it has processed. It catches up with `Since(cursor)`, and it holds no
+buffer. A [hold](glossary.md#hold) costs one int, however long it lasts.
 
-That is what makes dropping safe. `Observe` is a low-latency hint that may drop under
-backpressure; `Since` is the source of truth, so a drop becomes a cursor gap to replay rather
-than a silent loss, and pause, resume, a long gate and dropped events all heal the same way. It
-is also the only model that works once the store is across a network, where you cannot hold a
-buffer on the far side. `TestDropRecoveryViaReplay` pins it: a pause that outlasts the live
+The revision cursor makes a dropped event safe:
+
+- `Observe` is a hint with low latency. It may drop events under backpressure.
+- `Since` is the source of truth. A drop becomes a gap in the cursor that verse replays. It is
+  not a silent loss.
+- A hold and a resume, a long gate and dropped events all recover in the same way.
+
+`TestDropRecoveryViaReplay` checks this. In the test, a pause that lasts longer than the live
 buffer drops events, and all 300 changes still dispatch on resume.
+
+The cursor is also the only model that works when the store is across a network. A client
+cannot hold a buffer on the far side of a network.
 
 ## Where it is enforced
 
-In the task runtime, a boundary services control before the next action, cancel beats pause beats
-say, and the read plane is fire-and-forget so it can never block control.
+| Where | What verse does |
+|---|---|
+| The task runtime | A [boundary](glossary.md#boundary) serves control before the next action. Cancel beats pause, and pause beats say. The read plane sends and does not wait, so it can never block control. |
+| Gate resolution | Verse *observes* a pending gate through the store, because `mirror` projects it. Verse *answers* the gate out of band, through the [resolver](glossary.md#resolver). Firing runs off the observe goroutine, so a gate that waits for a person does not stall observation. |
+| The engine | The engine drains a control channel at the top of every loop iteration, before any dispatch. While paused, the loop serves only control and consumes no observations. So an operator can halt a runaway flow, however far behind the change stream is. Control closures run on the loop goroutine, so they run in order with dispatch and do not race it. `TestControlOutranksObservation` checks this. |
 
-In gate resolution, a pending gate is *observed* through the store, because `mirror` projects it,
-but *answered* out-of-band through the resolver. Firing runs off the observe goroutine, so a gate
-blocking on a human does not stall observation.
+At the surface, control is per [scope](glossary.md#scope). A live thing runs in one engine.
+The engine of a scope holds only what that scope created. So a steer with `-scope` reaches the
+scope's own work and nothing inherited. When it cannot reach the work, it says which scope holds
+the work. It does not steer baseline from a scope, or a scope from baseline. What a scope owns
+is in [connect](reference/connect.md#what-a-scope-owns). That page also says why a control
+write cannot be copy-on-write, as a write to the world is.
 
-In the engine, a control channel is drained at the top of every loop iteration, ahead of any
-dispatch. While paused the loop services control only and consumes no observations at all, so a
-runaway flow can be halted no matter how backed up the change stream is. Control closures run on
-the loop goroutine, so they serialize with dispatch instead of racing it.
-`TestControlOutranksObservation` pins that one.
+A [suspension](glossary.md#suspension) is the one intervention with a durable record. Even so,
+it does not take effect by being observed:
 
-At the surface, control is per scope. A live thing runs in one engine, and a scope's engine
-holds only what the scope created, so a steer made with `-scope` reaches the scope's own work
-and nothing inherited — and says which scope holds the work when it cannot, rather than steering
-baseline from a scope or a scope from baseline. What a scope owns, and why a control write
-cannot be copy-on-write the way a world write is, is in
-[connect](reference/connect.md#what-a-scope-owns).
+- The suspensions of each scope are one table in memory.
+- Only the route that writes their records writes the table. It writes both under one lock and
+  in the same order.
+- No watch races the route. So a suspension holds without waiting for an answer from the store.
+- Verse refuses, at install, a rule that writes a suspension record, because no table would see
+  that write.
+- The table loads in the first phase of a restart. That is before verse attaches tasks again or
+  restores the charter. Until the table loads, it holds everything.
 
-A suspension is the one intervention with a durable record, and it still does not take effect by
-being observed. Each scope's suspensions are one table in memory, written only by the route that
-writes their records, under one lock and in the same order: there is no watch to race the route,
-so nothing waits on the store answering for a suspension to hold, and a rule writing the record
-is refused at install because no table would see it. The table loads in the first phase of a
-restart, before tasks are re-attached or the charter restored, and until it has it holds
-everything — a suspension that failed open on a restart would resume what somebody stopped on
-purpose ([control](control.md), [the trigger model](control.md#suspending)).
+The reason for the last point: a suspension that failed open on a restart would resume work
+that somebody stopped on purpose ([control](control.md),
+[the trigger model](control.md#suspending)).
 
 ## What runs where
 
-`verse up` runs the engine, the task runtime, and the HTTP surface in one process, and either
-brings up logd and docd as children or attaches to a running docd. Everything else is a client of
-it.
+`verse up` runs the engine, the task runtime and the HTTP surface in one process. It either
+starts logd and docd as child processes or attaches to a docd that is already running.
+Everything else is a client of that process.
 
-The pieces are separable services behind the interfaces they already use: the store is reached
-through a client rather than embedded, the task runtime is already an HTTP control and read
-plane, and [task control](task-control.md) already runs a task off-box. Splitting them is a
-deployment change, not a redesign.
+The pieces can be split into separate services behind the interfaces that they use today:
 
-Next: [the reference](reference/README.md#commands) for the commands this shape produces, and
+- The store is reached through a client. It is not embedded.
+- The task runtime is an HTTP control plane and read plane.
+- [Task control](task-control.md) runs a task on another machine.
+
+So a split is a change of deployment, not a new design.
+
+Next: [the reference](reference/README.md#commands) for the commands of this design, and
 [connect](reference/connect.md) for how a developer's working tree joins a running verse.

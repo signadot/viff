@@ -1,131 +1,180 @@
 # Convergence
 
-A trigger is evaluated at every commit that touches what it reads. That is one rule for
-everything ([the trigger model](trigger-model.md#the-rule)), and it moves the burden: nothing in
-the dispatcher decides when a rule stops, so the charter has to. This note is the argument that
-it does — what makes a firing end, what makes the settled store a function of (charter, inputs)
-rather than of how firings interleave, and what per-commit evaluation costs to run.
+Verse evaluates a [rule](glossary.md#rule) at every [commit](glossary.md#commit) that touches
+what the rule reads. That is one rule for everything
+([the trigger model](trigger-model.md#the-rule)). Nothing in the dispatcher decides when a rule
+stops, so the [charter](glossary.md#charter) has to decide it.
 
-Of the sources of ambiguity below, two are checked at install, one is warned about, one is caught
-at runtime, and one is neither. The unchecked one is named rather than hidden. A charter may also
-declare a [level ordering](strata.md), which adds install-time checks of its own over what an
+This page shows that a charter does stop. It covers three things:
+
+- what makes a [firing](glossary.md#firing) end;
+- what makes the settled [store](glossary.md#store) a function of (charter, inputs), and not of
+  the order in which firings interleave;
+- what it costs to evaluate at every commit.
+
+The page names five sources of ambiguity:
+
+| How many | How verse handles them |
+|---|---|
+| two | checked at install |
+| one | a warning at install |
+| one | caught at runtime |
+| one | neither checked nor caught |
+
+The page names the unchecked source and does not hide it. A charter may also declare a
+[level ordering](strata.md). A level ordering adds its own checks at install, over what an
 action writes and what it may read.
 
 ## The cost of asking: a read per commit
 
-`Engine.evaluate` takes a snapshot per commit, and a snapshot is a store read. **What it costs
-depends on how much of the verse it names**, and the difference is the largest constant in the
-engine: a read narrowed to the places a rule reads is flat in the tens of milliseconds, while a
-read of the whole root grows with the store — measured at ~1.2ms per commit past two thousand, so
-seconds once a few thousand have landed, and past the store's own read budget at around nine and
-a half thousand.
+`Engine.evaluate` takes a snapshot at each commit, and a snapshot is a read of the store.
+**The cost of a snapshot depends on how much of the store it names.** This difference is the
+largest constant in the engine.
 
-So every read the engine makes names its places. `evaluate` narrows to the subtrees the rule
-reads, and a firing's snapshot narrows to those plus the literal prefix of every path read in the
-rule (`firingWithin`). The one case that cannot be narrowed is a read whose address is not
-settled until the firing resolves it — `!get-path {at: "$subject.value.where"}` — and there the
-whole verse is read rather than a place that would answer nothing.
+| Read | Cost |
+|---|---|
+| narrowed to the places a rule reads | flat, in the tens of milliseconds |
+| the whole root | grows with the store |
 
-Absolute figures are deliberately not asserted as a promise: they belong to the substrate and
-move with it. What holds across those changes is the shape — a read is four layers (client,
-server, docd, logd), an index lookup and a disk read, in the same order as a loopback SQL query,
-and it is bounded by logd's snapshots every `MaxCommits` (default 1000), so a read costs
-distance-from-snapshot rather than distance-from-genesis. What the measurement above pins down is
-the other axis: whatever the substrate's constants, asking for everything costs more than asking
-for what you read, and it costs more as the verse fills.
+A read of the whole root costs about 1.2ms more for each commit past two thousand. So it takes
+seconds once a few thousand commits have landed. At around nine and a half thousand commits, it
+passes the store's own read budget.
 
-**What keeps this affordable in practice is not asking.** A trigger is skipped at a commit that
-touched none of the subtrees it reads, and the skip is exact rather than a heuristic. See
-[the commit is the unit](trigger-model.md#the-commit-is-the-unit) for why it is indistinguishable
-from evaluating. A charter of rules over quiet subtrees costs nothing at all. What costs is a rule
-over the subtree a burst is landing in.
+So every read that the engine makes names its places:
 
-The standing improvement is to carry the rolled-forward document rather than re-read it, the shape
-`Since` already uses, which reads once at its floor and rolls forward with the deltas it is
-replaying. It is not built, and nothing above depends on it: the model is correct as it stands,
-and this is a constant factor on observation.
+- `evaluate` narrows to the subtrees that the rule reads.
+- The snapshot of a firing narrows to those subtrees and to the literal prefix of every
+  [path read](glossary.md#path-read) in the rule (`firingWithin`).
+
+One case cannot be narrowed. It is a read whose address the firing settles only when it
+resolves it: `!get-path {at: "$subject.value.where"}`. There, the engine reads the whole store.
+A narrower read would read a place that answers nothing.
+
+The page does not promise absolute figures. They belong to the substrate and change with it.
+The shape holds across those changes:
+
+- A read passes four layers (client, server, docd, logd), an index lookup and a disk read. That
+  is the same order of cost as a SQL query over loopback.
+- logd takes a snapshot every `MaxCommits` commits (default 1000). So a read costs the distance
+  from the last snapshot, not the distance from the first commit.
+
+The measurement above fixes the other axis. Whatever the constants of the substrate are, a read
+of everything costs more than a read of what the rule reads. The difference grows as the store
+fills.
+
+**In practice, a rule stays affordable because the engine often does not ask.** The engine skips
+a rule at a commit that touched none of the subtrees the rule reads. The skip is exact, not a
+heuristic. See [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for why a skip
+gives the same result as an evaluation. A charter of rules over quiet subtrees costs nothing. A
+rule over the subtree where a burst of writes lands costs something.
+
+A possible improvement is to keep the document and roll it forward, and not read it again.
+`Since` works this way: it reads once at its floor and rolls forward with the deltas it replays.
+This improvement is not built. Nothing above depends on it. The model is correct as it stands,
+and the improvement is a constant factor on observation.
 
 ## One snapshot, so two reads cannot disagree
 
-`when` and the subject selection come from the same `AsOf(C)`, one `MatchAt` over the root, which
-docd answers across base and every mount at that commit. Both evaluations are then pure functions
-of that document. So a firing cannot act on a member under a condition that stopped holding
-between two reads, and which members it sees does not depend on when a `Select` ran.
+`when` and the selection of the subject come from the same `AsOf(C)`. That is one `MatchAt`
+over the root. docd answers it across the base and every mount at commit C. Both evaluations
+are then pure functions of that one document.
 
-The edge is `AsOf(C-1)` against `AsOf(C)` rather than against what the engine remembers seeing,
-which is what makes a replayed commit — a catch-up, a restart — reach the same verdict as the live
-one.
+So a firing cannot act on a member under a condition that stopped holding between two reads.
+The members a firing sees do not depend on when a `Select` ran.
 
-An action's reads are pinned to C too, and the ones that are say so in their spelling.
-`$subject.value`, the subject's payload, and the two path reads
-([`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity))
-are all answered from **one snapshot per firing, taken at the causing commit**. So a firing held at
-a gate for a day writes from the state its rule was evaluated against, not from whatever the store
-reached while a human thought about it, and a fan-out cannot mix one member's state at C with
-another's at some later commit.
+The engine finds an edge by comparing `AsOf(C-1)` with `AsOf(C)`. It does not compare with
+what the engine remembers it saw. So a replayed commit, after a catch-up or a restart, reaches
+the same verdict as the live commit.
 
-One looseness is left, and it is named rather than hidden. The **flat bindings** — `$stage` and the
-subject payload's other fields by name — read the payload as it stands when the action runs
-(`Engine.refPayload`). Which entity a firing is about cannot slide, since the subject ref is
-settled before any gate, but `$stage` is current where `$subject.value.stage` is as-of-C, and those
-are the same datum under two spellings.
+The reads of an [action](glossary.md#action) are pinned to C too, and their spelling says so.
+These reads are answered from **one snapshot per firing, taken at the commit that caused it**:
 
-The reason is cost rather than principle. `refPayload` runs for every firing, so pinning it means a
-snapshot for every firing, where the as-of-C references above are taken only when a charter
-actually asks for one. Closing it properly is the same work as the roll-forward above,
-holding the evaluated document through the firing, and tightens for free with it.
+- `$subject.value`, the payload of the subject;
+- the two path reads,
+  [`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity).
+
+A firing may wait at a gate for a day. It then writes from the state its rule was evaluated
+against. It does not write from the state the store reached while a person decided. A fan-out
+cannot mix the state of one member at C with the state of another member at a later commit.
+
+One inexactness remains, and the page names it. The **flat bindings** read the payload as it
+stands when the action runs (`Engine.refPayload`). A flat binding is `$stage`, or another field
+of the subject's payload by its name. The entity a firing is about cannot change, because verse
+settles the subject ref before any gate. But `$stage` is current, and `$subject.value.stage` is
+as of C. They are the same datum under two spellings.
+
+The reason for this inexactness is cost. `refPayload` runs for every firing. To pin it, verse
+would take a snapshot for every firing. The as-of-C references above take a snapshot only when
+a charter asks for one. The proper fix is the same work as the roll-forward above: keep the
+evaluated document through the firing. When that is built, this inexactness closes with it.
 
 ## What ends a firing
 
-Four things, in the order they carry weight.
+Four things end a firing. They are listed here in order of importance.
 
-**A store write ends itself.** Rewriting the same value produces no commit
-([change events](change-events.md#the-decision), edge-on-real-change), so an action that has
-reached its fixpoint raises no next evaluation. That is what makes an idempotent rule converge even
-with nothing latching it, and it is pinned by `entity.TestSameValueWriteRaisesNoCommit`. Note what
-it is not: `entity.Modify` retries on a failed precondition, so it prevents lost updates rather
-than repeated work.
+**A store write ends itself.** A write of the same value makes no commit
+([change events](change-events.md#the-decision): an edge only on a real change). So an action
+that has reached its fixed point raises no next evaluation. For this reason an idempotent rule
+converges even when nothing latches it. `entity.TestSameValueWriteRaisesNoCommit` tests this.
 
-**A latch takes the subject out of the selection.** Write a value the subject's predicate refuses
-and the next evaluation does not select it. This is the ordinary shape, and for a spawn it is the
-only one: a spawn is not a store write, nothing about it is inert on repetition, and the engine's
-dedupe holds only while the task is live. Once reaped, the next commit spawns again. So a
-**spawning action whose subject can still match after it runs is refused at install**, with a
-diagnostic naming the paths it could latch on.
+Note what this is not. `entity.Modify` retries on a failed precondition. So it prevents lost
+updates. It does not prevent repeated work.
 
-The check decides whether the predicate and the action's post-state are *unsatisfiable*, and it
-needs no solver: at fire time the predicate was true, so the only thing that can falsify it is a
-path the action writes. That makes it a three-valued fold over the predicate's own structure —
-`and`/`or`/`not` in Kleene logic, `tony.Match` at the leaves — so a nested predicate, a whole-value
-replace and a root operator are each decided as what they are rather than as their top-level key
-names. Values that are only knowable at fire time (`$result`, an operator the fold does not model)
-come out *undecided*, and undecided is a pass. The refusal rests on what the check can see: a rule
-that writes nothing its subject reads, or one whose write leaves the predicate satisfied. Writing
-the same value back latches a store write, and never a spawn.
+**A [latch](glossary.md#latch) takes the subject out of the selection.** Write a value that the
+predicate of the subject refuses. The next evaluation then does not select the subject. This is
+the ordinary shape, and for a spawn it is the only shape. A spawn is not a store write, and
+nothing about it is inert when it repeats. The engine removes duplicates only while the task is
+live. Once verse reaps the task, the next commit spawns again. So verse **refuses at install a
+spawning action whose subject can still match after it runs.** The diagnostic names the paths it
+could latch on.
 
-**A sequence bounds itself.** `startSeq` refuses to re-run a sequence that has already run to a
-conclusion for a subject at a shape — `done` if it finished, `ended` if an off-ramp stopped it —
-and that is a fact in the store rather than a live-task check, so unlike a bare spawn it survives
-the reap. Demanding a subject latch of a `seq` as well would be demanding the same guarantee twice,
-so the check excludes it, as it does a completion hook's spawn, which is bounded by the completion
-above it.
+The check decides whether the predicate and the state after the action are *unsatisfiable*
+together. It needs no solver. At fire time the predicate was true, so only a path that the
+action writes can make it false. So the check is a three-valued fold over the structure of the
+predicate:
 
-**In-flight guards cover the gap before the latch lands.** Every commit re-selects a subject whose
-latch write has not happened yet, so a firing is held for as long as its work lasts. That is two
-things: `claimFlight` covers the firing itself, gates being answered and the action applied, and
-`working` covers what it started, a spawned task still running. Neither changes what runs, since
-`spawnHooked` already refuses a second task under a live id, but together they stop a firing for
-work already under way from posing a question or spending budget on its way to being told no. Both
-key on (trigger, subject), the same identity the spawn id, the gate question and the motion channel
-use.
+- `and`, `or` and `not` follow Kleene logic;
+- `tony.Match` decides the leaves.
+
+So the check decides a nested predicate, a replace of the whole value and a root operator each
+as what it is, and not by the name of its top-level key.
+
+Some values are known only at fire time: `$result`, or an operator that the fold does not model.
+These come out *undecided*, and undecided passes. The check refuses only what it can see:
+
+- a rule that writes nothing that its subject reads;
+- a rule whose write leaves the predicate satisfied.
+
+A write of the same value latches a store write. It never latches a spawn.
+
+**A sequence bounds itself.** `startSeq` refuses to run a sequence again when it has already run
+to a conclusion for a subject at a shape. The conclusion is `done` if the sequence finished, or
+`ended` if an off-ramp stopped it. This is a fact in the store, not a check of live tasks. So,
+unlike a bare spawn, it lasts after the reap. A subject latch on a `seq` would demand the same
+guarantee a second time, so the check does not apply to a `seq`. It also does not apply to the
+spawn of a completion hook, which the completion above it bounds.
+
+**In-flight guards cover the time before the latch lands.** Every commit selects again a subject
+whose latch write has not happened yet. So verse holds a firing for as long as its work lasts.
+Two guards do this:
+
+| Guard | What it covers |
+|---|---|
+| `claimFlight` | the firing itself: its gates being answered and its action applied |
+| `working` | what the firing started: a spawned task that still runs |
+
+Neither guard changes what runs, because `spawnHooked` already refuses a second task under a
+live id. Together they stop a firing for work already under way from posing a question, or from
+using budget, before verse tells it no. Both guards key on (rule, subject). The spawn id, the
+gate question and the motion channel use the same identity.
 
 ## A narrow `on` samples; a vacuous `on` reconciles
 
-With no `on`, every commit touching what the rule reads re-evaluates it, so nothing that could make
-the predicate true goes unobserved.
+With no `on`, every commit that touches what the rule reads evaluates the rule again. So verse
+observes everything that could make the predicate true.
 
-With an `on`, the rising edge fires once, over the subject set *as it stood at that commit*. A
-member arriving afterwards is not acted on until the cause falls and rises again:
+With an `on`, the rising edge fires once, over the set of subjects *as it stood at that commit*.
+Verse does not act on a member that arrives later, until the cause falls and rises again:
 
 ```tony
 - name: ship-at-green
@@ -136,21 +185,26 @@ member arriving afterwards is not acted on until the cause falls and rises again
     patch: { stage: shipped }
 ```
 
-C1 turns CI green and the edge fires over the PRs reviewed at C1. C2 adds a PR at `reviewed`; `on`
-was already true, so there is no edge, and that PR is never shipped.
+At commit C1, CI turns green. The edge fires over the PRs that are at `reviewed` at C1. At C2, a
+PR arrives at `reviewed`. `on` was already true, so there is no edge, and verse never ships that
+PR.
 
-That is deterministic, and it is what an edge means. But it is the difference between *"ship
-everything reviewed at the moment CI went green"* and *"ship everything reviewed while CI is
-green"*, and only the first is what this charter says. So the engine **warns at install** when `on`
-does not cover a subtree the rule also reads, naming which of the two sentences was written and how
-to get the other: drop the `on`, keep the condition as a `when`. It is a warning rather than an
-error because both sentences are legitimate, and it is decidable because `Formula.Subtrees` already
-computes those sets.
+That is deterministic, and it is what an edge means. But these are two different sentences:
+
+- *"ship everything reviewed at the moment CI went green"*
+- *"ship everything reviewed while CI is green"*
+
+This charter says only the first. So the engine **warns at install** when `on` does not cover a
+subtree that the rule also reads. The warning names which of the two sentences the charter says,
+and how to get the other: drop the `on`, and keep the condition as a `when`.
+
+It is a warning and not an error, because both sentences are legitimate. It is decidable because
+`Formula.Subtrees` already computes those sets.
 
 ## The cycle, and how it is caught
 
-A single rule failing to settle is easy to spot. The reachable failure is a cycle across rules,
-which every protection described above misses:
+A single rule that does not settle is easy to see. The failure that can happen is a cycle across
+rules, and every protection above misses it:
 
 ```tony
 - name: fwd
@@ -165,35 +219,54 @@ which every protection described above misses:
     patch: { stage: a }
 ```
 
-Each writes exactly what the other selects on, and each protection above misses it correctly: every
-write is a real change, every firing genuinely completes, and both rules do advance their subject
-out of their own selection — into each other's.
+Each rule writes exactly what the other selects on. Each protection above misses the cycle, and
+is correct to miss it:
 
-It is caught at runtime, by [the cycle throttle](cycle-throttle.md), which bounds the causal depth
-of a chain rather than analysing the charter. The pair above stops after three firings and names
-both rules in the log. The check is dynamic precisely so that it can tell a runaway from a control
-loop instead of refusing both: a cycle paced by a task, the world, or a decision somebody answers
-never trips.
+- every write is a real change;
+- every firing completes;
+- each rule moves its subject out of its own selection, and into the other rule's selection.
+
+Verse catches the cycle at runtime, with [the cycle throttle](cycle-throttle.md). The throttle
+bounds the causal depth of a chain. It does not analyse the charter. For the pair above, the
+throttle trips after a few firings and names both rules in the log. By default a trip delays
+the firing and does not stop it. The firing waits for `tripDuration` (default 1s) and then
+proceeds. So the pair goes on firing at a slow, steady rate. A `tripDuration` of `0` refuses the firing
+instead.
+
+The check is dynamic, so that it can tell a runaway from a control loop and does not refuse
+both. A cycle paced by a task, by the world, or by a question somebody answers never trips.
 
 ## Two triggers, one field
 
-Two triggers whose subject selections can intersect, writing the same payload path with different
-values, settle wherever the last write lands. This is reachable under any dispatch rather than
-introduced by per-commit evaluation, but a vacuous `on` multiplies the interleavings.
+Two rules may have subject selections that can intersect, and may write the same payload path
+with different values. They settle wherever the last write lands. This can happen under any
+dispatch. Evaluation at every commit does not introduce it, but a vacuous `on` multiplies the
+interleavings.
 
-It is decidable for literal patches — subject paths that overlap segment by segment, plus comparable
-predicates, then same-path-different-value — and undecidable through templates, so it could be a
-warning at install. It is not built. The cycle throttle does not subsume it: two rules disagreeing
-about a field settle wherever the last write lands, without any chain growing, so nothing trips.
+For literal patches, this conflict is decidable:
 
-This is the one source with no principled fix even once detected. Two rules disagreeing about a
-field is a charter that means two things, and only its author can say which.
+1. subject paths overlap segment by segment;
+2. their predicates are comparable;
+3. they write the same path with different values.
+
+Through templates it is undecidable. So it could be a warning at install, but that warning is
+not built.
+
+The cycle throttle does not cover this case. Two rules that disagree about a field settle
+wherever the last write lands, and no chain grows, so nothing trips.
+
+This is the one source with no principled fix, even once verse detects it. Two rules that
+disagree about a field make a charter that means two things. Only its author can say which.
 
 ## The claim
 
-With one snapshot per commit, and every action's effect either a store write or a spawn the
-install-time check has bounded, **the settled store is a function of (charter, inputs)** rather than
-of how firings interleave. There are two named exceptions, and both are properties of a charter
-rather than of the model: a cycle across rules, which does not settle at all and is detected and
-stopped by causal depth at runtime, and two rules writing one field, which settles arbitrarily and
-is undetected.
+Verse takes one snapshot per commit. The effect of every action is either a store write or a
+spawn that the install-time check has bounded. So **the settled store is a function of
+(charter, inputs)**, and not of the order in which firings interleave.
+
+There are two named exceptions. Both are properties of a charter, not of the model:
+
+| Exception | What happens |
+|---|---|
+| a cycle across rules | It does not settle. Verse detects it by causal depth at runtime and paces it. |
+| two rules writing one field | It settles arbitrarily. Verse does not detect it. |

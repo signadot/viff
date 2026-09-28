@@ -1,79 +1,88 @@
 # Deploying the coderunner and driving Claude Code with it
 
-A start-to-finish walkthrough for setting this up on your own Linux workstation, or pointing at
-staging. Your own Claude credential throughout — there is no shared one to inherit.
+This page sets up the coderunner from start to finish. You set it up on your own Linux
+workstation, or you point it at staging. Every step uses your own Claude credential. There is
+no shared credential.
 
 ## What you are actually standing up
 
-Three separate things, and keeping them separate is what makes the rest legible.
+You set up three separate things.
 
-**The coderunner** is a place work runs — one HTTP process, a workspace per task, a child process
-per task, bubblewrap around the process. It is not a source and not the engine. verse reaches it by
-url and knows nothing else about it.
+| Thing | What it is |
+|---|---|
+| **The coderunner** | a place where work runs |
+| **An environment** | a named workspace in the config file of the runner |
+| **The claude driver** | an entry under `agents:` in that same config file. It is not code. |
 
-**An environment** is a named workspace in the runner's own config file: which repositories get
-checked out, from which base, which tools and binaries exist, which hosts are reachable, and where
-work may be pushed. A spawn names an environment by string; verse carries the name without
-resolving it.
+**The coderunner** is a [runner](../../../glossary.md#runner). It is one HTTP process. It makes
+a workspace for each task and starts a child process for each task, and bubblewrap confines
+that process. The coderunner is not an [io](../../../glossary.md#io), and it is not the engine.
+Verse reaches it by URL and knows nothing else about it.
 
-**The claude driver** is not code. It is an entry under `agents:` in that same config — an argv, a
-way to resume a session, and how to read what the program printed. [`command.go`](command.go) is
-explicit that nothing in the runner knows what a coding agent is; a shell script in the same slot
-would work identically.
+**An [environment](../../../glossary.md#environment)** says which repositories are checked out
+and from which base. It says which tools and binaries exist, which hosts the task can reach,
+and where the task may push work. A spawn names an environment by a string. Verse carries the
+name and does not resolve it.
 
-> **The trade you are choosing.** With `driver: llm`, every file read, every write, every shell
-> command is an action the vector sees, gates and narrates. With `driver: claude` as it is
-> configured below, verse gates *the invocation* and nothing inside it. [`taskproc.go`](taskproc.go)
-> says it where the default vector is built:
+**The claude driver** is an argv, a way to resume a session, and a way to read what the program
+printed. [`command.go`](command.go) states that nothing in the runner knows what a coding agent
+is. A shell script in the same entry works in the same way.
+
+> **The trade you are choosing.** With `driver: llm`, every file read, every write and every
+> shell command is an action. The [vector](../../../glossary.md#vector) sees each action, gates
+> it and narrates it. With `driver: claude`, configured as below, verse gates *the invocation*
+> and nothing inside it. [`taskproc.go`](taskproc.go) says so where it builds the default
+> vector:
 >
 > > One action per turn, and that action hands the work to another program. ASK is the honest
 > > default for it — verse cannot see inside a subprocess, so the invocation is the only thing
 > > there is to decide about, which is the whole difference from the `llm` driver and the reason
 > > both exist.
 >
-> That is a property of this runner and the argv below, not of foreign agents. Claude Code stops
-> to decide before each tool runs — its permission rules, a `PreToolUse` hook, and in a headless
-> run `--permission-prompt-tool`, which hands the decision to an MCP tool — and that is where a
-> vector would be asked for verse to gate inside the run. This runner starts a subprocess and
-> reads what it printed, and the argv passes `--permission-mode bypassPermissions`, which switches
-> that decision point off. So here the invocation is all there is to decide about; nothing asks
-> the vector from inside.
+> This limit belongs to this runner and the argv below. It does not belong to foreign agents
+> in general. Claude Code stops to decide before each tool runs. It decides with its permission
+> rules, with a `PreToolUse` hook, and, in a headless run, with `--permission-prompt-tool`,
+> which hands the decision to an MCP tool. That decision point is where verse could ask a
+> vector, and gate inside the run. This runner starts a subprocess and reads what it printed.
+> Its argv passes `--permission-mode bypassPermissions`, which turns that decision point off.
+> So here the invocation is the only thing to decide about, and nothing asks the vector from
+> inside the run.
 >
-> Pick `claude` when you want the agent's own quality and are content with containment doing the
-> supervising. It is why the `verse-dev` drive itself moved to `llm`, and why
-> [task-control.md](../../../task-control.md) calls the two guarantees *enforced* and *attested*
-> rather than one thing.
+> Choose `claude` when you want the quality of the agent itself, and containment is enough
+> supervision for you. [task-control.md](../../../task-control.md) calls the two guarantees
+> *enforced* and *attested* for this reason. They are not one thing.
 
-Two paths below:
+The page has two paths:
 
 | | |
 |---|---|
-| **Path A — Linux workstation** | Runner, verse and CLI all local, your own `claude` login. Fastest to a first run, and the only path where the credential-by-OS-user shortcut works. |
-| **Path B — staging** | The deployed coderunner on EKS. Needs a rebuilt image, a ConfigMap edit and your credential as a Secret — the shipped image carries no `claude` and the shipped config declares no agents. |
+| **Path A — Linux workstation** | The runner, verse and the CLI all run locally, with your own `claude` login. This is the fastest path to a first run. It is the only path where the credential of your OS user works. |
+| **Path B — staging** | The deployed coderunner on EKS. It needs a rebuilt image, an edit to the ConfigMap, and your credential as a Secret. The shipped image has no `claude`, and the shipped config declares no agents. |
 
 ## Before either path: your Claude credential
 
-You need one of two forms, and *which one* is decided by the containment, not by preference.
+You need the credential in one of two forms. The containment decides which form, not your
+preference.
 
 | form | where it lives | works under |
 |---|---|---|
-| interactive login | `~/.claude`, keyed by OS user — `claude` then `/login` | `-confine host` only |
+| interactive login | `~/.claude`, keyed by the OS user. Run `claude`, then `/login`. | `-confine host` only |
 | environment variable | `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`), or an `ANTHROPIC_API_KEY` from your own console account | `-confine host` **and** `-confine bwrap` |
 
-**Why the containment decides this.** The bwrap confiner binds `/usr /bin /sbin /lib /lib64 /etc
-/opt` read-only plus the workspace writable, and nothing else — the list is
-[`confine.go:282`](confine.go). Your home directory is not among them, so a credential file under
-`~/.claude` is simply not present inside the sandbox. Under bwrap the credential has to arrive as a
-variable on the environment's `env:` allowlist.
+The bwrap confiner binds `/usr /bin /sbin /lib /lib64 /etc /opt` read-only, and the workspace
+writable. It binds nothing else. The list is at [`confine.go:282`](confine.go). Your home
+directory is not in the list, so a credential file under `~/.claude` does not exist inside the
+sandbox. Under bwrap, the credential must arrive as a variable that is on the `env:` allowlist
+of the environment.
 
-⚠️ The environment-variable half of that table is inference from how the sandbox is built, not
-something this tree has run. The only recorded claude-driver runs were `-confine host` with a
-`~/.claude` login. Treat the first bwrap run as the experiment it is.
+⚠️ The environment-variable row of the table follows from how the sandbox is built. Nobody has
+run it in this tree. The claude-driver runs on record use `-confine host` with a `~/.claude`
+login. Treat the first bwrap run as a test.
 
 ## Path A — Linux workstation
 
-Start under `-confine host`, get a green run, then turn bwrap on as a separate step. Two variables
-at once is how an afternoon disappears.
+Start under `-confine host` and get a run that succeeds. Then turn bwrap on as a separate step.
+If you change both at once, a failure does not tell you which change caused it.
 
 ### 1. Build the CLI and the runner
 
@@ -85,22 +94,22 @@ go build -o ./coderunner ./docs/reference/examples/coderunner
 
 ### 2. Log in as yourself
 
-Install Claude Code however you normally do, then authenticate. This writes under your own
-`~/.claude` and is the credential every run below uses.
+Install Claude Code in your usual way, then log in. The login writes under your own
+`~/.claude`. Every run below uses this credential.
 
 ```sh
 claude                                              # then /login in the session
 claude -p "say ok" --output-format json | head -c 200
 ```
 
-That second line is worth running on its own: it is exactly the shape the driver invokes, and it
-proves the credential works before any of verse is in the picture.
+Run the second line on its own. It has exactly the shape that the driver invokes, so it shows
+that the credential works before verse is involved.
 
 ### 3. Write the runner's config
 
-Copy [`coderunner.tony`](coderunner.tony) — which already carries the `agents:` block — and change
-the repo path to your own clone. The two pieces that make this the *claude* driver rather than the
-llm one are that block and `driver: claude` on the environment.
+Copy [`coderunner.tony`](coderunner.tony), which already has the `agents:` block. Change the
+repository path to your own clone. Two parts make this the *claude* driver and not the llm
+driver: that block, and `driver: claude` on the environment.
 
 ```tony
 # ~/coderunner.tony
@@ -125,23 +134,24 @@ environments:
   env: [PATH, HOME, USER, LANG, TERM]
 ```
 
-`bypassPermissions` is not a shrug: inside the sandbox the confinement is what says no, and asking
-the CLI to also prompt would park the run on a question nobody is watching for. It is also the
-choice that leaves verse nothing inside the run to gate, since the CLI's own stop-and-decide point
-is what it bypasses. `resume:` is what
-makes a second turn possible at all — without it the program gets exactly one turn, so a steer has
-nowhere to go and an answer that misses its contract cannot be repaired.
+`bypassPermissions` turns off the prompts of the CLI. Inside the sandbox, the confinement
+refuses what is not allowed. It also leaves verse nothing inside the run to gate, because it
+turns off the point where the CLI stops to decide.
 
-Worth knowing even though this environment does not use it: `tools:` is the **floor** an
-environment can put under an `llm`-driver task, checked when the runner starts rather than at the
-first firing. `read_file`, `list_dir` and `write_file` are confined to the workspace by
-construction, while `run_bash` gets the root as a working directory and nothing else — so the shell
-is the one tool that can leave, and withholding it is a stronger statement than any prompt. A
-`claude` environment gets none of that protection, because the agent is not using verse's tools.
+`resume:` makes a second turn possible. Without it the program gets exactly one turn. A steer
+then has no turn to reach, and an answer that does not match its contract cannot be repaired.
+
+This environment does not use `tools:`, but the field matters for an `llm`-driver task.
+`tools:` is the **floor** that an environment puts under an `llm`-driver task. The runner
+checks it when it starts, not at the first firing. The workspace confines `read_file`,
+`list_dir` and `write_file` by construction. `run_bash` gets the root as its working directory
+and nothing else. So the shell is the one tool that can leave the workspace, and to withhold it
+is a stronger limit than any prompt. A `claude` environment gets none of this protection,
+because the agent does not use the tools of verse.
 
 ### 4. Start the runner
 
-`-confine host` claims almost nothing, which is the point for the first run: your `HOME` passes
+`-confine host` confines almost nothing. For the first run you want that: your `HOME` passes
 through and `claude` finds its login.
 
 ```sh
@@ -149,9 +159,9 @@ through and `claude` finds its login.
   -addr :9802 -confine host
 ```
 
-It prints its environments and their drivers at startup. If it says the environment wants a driver
-that is *"neither llm nor calls nor an agent this runner declares"*, the `agents:` block did not
-parse.
+At startup the runner prints its environments and their drivers. It may say that the
+environment wants a driver that is *"neither llm nor calls nor an agent this runner declares"*.
+Then the `agents:` block did not parse.
 
 ### 5. Start a verse and point the CLI at it
 
@@ -160,26 +170,29 @@ parse.
 export VERSE_ADDR=localhost:19797
 ```
 
-`VERSE_ADDR` is host:port, not a url. Without it the CLI talks to `:9797` — which on the tailnet is
-*staging*, not your laptop, so the failure is a surprise rather than a refused connection.
+`VERSE_ADDR` is host:port, not a URL. Without it the CLI talks to `:9797`. On the tailnet that
+is *staging*, not your laptop. So the command reaches the wrong verse, and no connection is
+refused to warn you.
 
 ### 6. Install the runner, then check it
 
-`runner add` registers; `runner check` is the acceptance test, and prints a live verdict.
+`runner add` registers the runner. `runner check` is the acceptance test, and it prints a live
+verdict.
 
 ```sh
 ./verse runner add code http://localhost:9802
 ./verse runner check code
 ```
 
-The name is one word, and the address it lands at is `verse.runners.code`. A later command
-takes either. `verse runners --probe` adds the
-same liveness column to the list; the bare list deliberately says nothing about health.
+The name is one word, and the runner is installed at the
+[address](../../../glossary.md#address) `verse.runners.code`. A later command takes either
+form. `verse runners --probe` adds the same liveness column to the list. The bare list says
+nothing about health, by design.
 
 ### 7. Run a task
 
-One file per task. A task scoped to one document answers in minutes and produces a diff small
-enough to judge; the same prompt against the largest doc in the tree does not converge.
+Give each task one file. A task about one document answers in minutes, and its diff is small
+enough to judge. The same prompt against the largest document in the tree does not converge.
 
 ```sh
 ./verse task run \
@@ -191,45 +204,51 @@ enough to judge; the same prompt against the largest doc in the tree does not co
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 ```
 
-`--driver claude` is redundant if the environment already defaults to it, and harmless either way —
-a spawn's own driver wins. `task run --help` advertises `scripted|calls|llm`, which are the drivers
-*the local supervisor* builds; verse carries any other string without validating it, and the runner
-is what resolves it against `agents:`.
+`--driver claude` is redundant when the environment already defaults to it, and it does no
+harm: the driver of a spawn wins. `task run --help` lists `scripted|calls|llm`. These are the
+drivers that *the local supervisor* builds. Verse carries any other string without checking it,
+and the runner resolves the string against `agents:`.
 
-**`--answer-contract` is not optional.** Without a contract, the loop's only definition of finished is the
-model declining to call another tool — which is also what a model narrating its next step looks
-like. Observed twice: a run ended mid-verification with a page of ✓ marks as its result and `done`
-on the read plane. [`docs-drift.answer`](docs-drift.answer) is two lines and says in its own header
-why each of them is there.
+**`--answer-contract` is not optional.** Without a contract, the loop has one definition of
+finished: the model does not call another tool. A model that narrates its next step looks the
+same. Such a run ends in the middle of its checks, with a page of ✓ marks as its result and
+`done` on the [event stream](../../../glossary.md#event-stream).
+[`docs-drift.answer`](docs-drift.answer) has two lines, and its header says why each line is
+there.
 
 ### 8. Answer the gate
 
-It parks immediately. That is the design: with no `vector:` on the spawn the runner supplies
-`default: auto` and a single `ask` gate named `agent`, matching the `call_agent` verb.
+The task stops at once to ask. This is the design. With no `vector:` on the spawn, the runner
+supplies `default: auto` and one `ask` [gate](../../../glossary.md#gate-of-a-task) named
+`agent`, which matches the `call_agent` verb.
 
 ```sh
 ./verse gate                            # what is waiting
 ./verse gate approve <id> --as you@example.com
 ```
 
-`--vector auto` on the spawn skips the asking entirely. Watch the first few instead.
+`--vector auto` on the spawn skips the question. Watch the first few runs before you use it.
 
-Worth seeing once: the `llm` driver's default vector ([`harness.Vector()`](https://github.com/signadot/verse/blob/main/task/harness/build.go))
-has *three* ask gates — write, shell and delegate. For a foreign agent run this way only `delegate`
-can fire, because the writes and the shell commands happen inside a subprocess that reports none
-of them to verse. That difference is the whole argument for the two drivers, in two vectors.
+Compare the default vector of the `llm` driver,
+[`harness.Vector()`](https://github.com/signadot/verse/blob/main/task/harness/build.go). It has
+*three* ask gates: write, shell and delegate. For a foreign agent run this way, only `delegate`
+can fire. The writes and the shell commands happen inside a subprocess, and the subprocess
+reports none of them to verse. The two vectors show the whole difference between the two
+drivers.
 
 ### 9. Read what it produced
 
-Nothing has left the machine — `push:` above targets a local ref in the very clone the task read.
+Nothing has left the machine. `push:` above targets a local ref in the same clone that the task
+read.
 
 ```sh
 git -C ~/src/verse log --format='%B' -1 verse/auto/<sha>/<task>
 git -C ~/src/verse diff main..verse/auto/<sha>/<task>
 ```
 
-If nothing is there, ask the runner rather than hunting for a workspace — work is staged into the
-mirror before any push is attempted, and each undelivered entry carries a pasteable fetch command:
+If the branch is not there, ask the runner. Do not search for a workspace. The runner stages
+work into the mirror before it tries a push, and each entry that was not delivered carries a
+fetch command that you can paste:
 
 ```sh
 curl -s localhost:9802/runner
@@ -237,42 +256,46 @@ curl -s localhost:9802/runner
 
 ### 10. Then turn bubblewrap on
 
-Restart with `-confine bwrap`. On a Linux workstation this is the first time the containment is
-real: read-only system, workspace-only writes, pid/ipc/uts namespaces, and — if the environment
-declares `egress:` — no route out except the allowlist.
+Restart with `-confine bwrap`. On a Linux workstation the containment is then real:
+
+- the system is read-only;
+- the task writes only to the workspace;
+- the task runs in its own pid, ipc and uts namespaces;
+- if the environment declares `egress:`, the task has no route out except the allowlist.
 
 ```sh
 ./coderunner -config ~/coderunner.tony -data ~/.verse-coderunner \
   -addr :9802 -confine bwrap
 ```
 
-Two things change at once, and both are the sandbox doing its job:
+Two things change at once. Both are the sandbox doing its job.
 
-- **Your `~/.claude` login stops being visible.** Switch to `CLAUDE_CODE_OAUTH_TOKEN` (or
-  `ANTHROPIC_API_KEY`), export it for the runner process, and add the variable name to the
-  environment's `env:` list — that list is the whole of what the task inherits.
-- **If you add an `egress:` allowlist, `api.anthropic.com` has to be on it**, alongside `github.com`
-  if the environment pushes to a remote and the module proxy if the task builds. Declaring `egress:`
-  *is* declaring restricted networking; a confiner that cannot unshare the network refuses the
-  launch rather than running with a proxy the task is free to ignore.
+- **Your `~/.claude` login is no longer visible.** Switch to `CLAUDE_CODE_OAUTH_TOKEN` (or
+  `ANTHROPIC_API_KEY`), and export it for the runner process. Add the variable name to the
+  `env:` list of the environment. That list is all that the task inherits.
+- **If you add an `egress:` allowlist, `api.anthropic.com` must be on it.** Add `github.com`
+  too if the environment pushes to a remote, and the module proxy if the task builds. To
+  declare `egress:` is to declare restricted networking. A confiner that cannot unshare the
+  network refuses the launch. It does not run with a proxy that the task could ignore.
 
-⚠️ Expect the second turn to be the rough one. Each turn is a fresh bwrap invocation with a fresh
-`/tmp` tmpfs, so wherever the CLI keeps session state it is gone by the time `--resume $session`
-runs. A single-turn task is unaffected; a steer or a contract repair is where this would show up.
-There is no per-task way to hand it a durable HOME today.
+⚠️ Expect problems on the second turn. Each turn is a new bwrap invocation with a new `/tmp`
+tmpfs. The session state of the CLI is gone by the time `--resume $session` runs. A task with
+one turn is not affected. A steer or a repair of the contract is where the problem shows. There
+is no way, for each task, to give the CLI a durable HOME.
 
 ## Path B — staging
 
 The staging profile already deploys a coderunner (`coderunner: true`, image
-`example/verse-coderunner:staging`). What it does not have is a `claude` binary or an `agents:`
-entry — [`deploy/coderunner/coderunner.yaml`](https://github.com/signadot/verse/blob/main/deploy/coderunner/coderunner.yaml)
-declares five environments and every one of them is `driver: llm`. So this path is three edits and
-a ship.
+`example/verse-coderunner:staging`). It has no `claude` binary and no `agents:` entry.
+[`deploy/coderunner/coderunner.yaml`](https://github.com/signadot/verse/blob/main/deploy/coderunner/coderunner.yaml)
+declares five environments, and every one is `driver: llm`. So this path is three edits and a
+ship.
 
 ### 1. Put `claude` in the coderunner image
 
-Add it to [`Dockerfile`](Dockerfile), alongside the Go toolchain that is already there. It must land
-under one of the paths bwrap binds — the installer's default `~/.local/bin` is not one of them.
+Add it to the [`Dockerfile`](Dockerfile), next to the Go toolchain that is already there. It
+must land under one of the paths that bwrap binds. The default of the installer,
+`~/.local/bin`, is not one of them.
 
 ```dockerfile
 # after the Go install block
@@ -281,29 +304,32 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
  && chmod 0755 /usr/local/bin/claude
 ```
 
-Pin the version rather than tracking latest — this image's whole job is to be the same toolchain
-twice. *(Not built or run from here.)*
+Pin the version. Do not track the latest version: this image must give the same toolchain on
+every build. *(Not built or run from here.)*
 
 ### 2. Put your credential in the cluster
 
-Your own token, in its own Secret, revocable without touching anything else. The `verse-llm` Secret
-is Portkey's and is not this.
+Put your own token in its own Secret, so you can revoke it without touching anything else. The
+`verse-llm` Secret belongs to Portkey. It is not this Secret.
 
 ```sh
 kubectl -n verse create secret generic verse-claude \
   --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<your token>
 ```
 
-On a cluster with External Secrets, the same value belongs in an entry under
-`staging/verse/claude` with its own knob — a credential held by a different process and revoked on
-a different day is a separate entry, which is the rule the git PAT and the coderunner PAT already
-follow.
+On a cluster with External Secrets, the same value goes in an entry under
+`staging/verse/claude`, with its own setting. A credential that a different process holds, and
+that is revoked on a different day, is a separate entry. The git PAT and the coderunner PAT
+follow the same rule.
 
 ### 3. Teach the deployed runner about the agent
 
-Two edits in `deploy/coderunner/coderunner.yaml`. First the ConfigMap: an `agents:` block, an
-environment that names it, the credential variable on `env:`, and `api.anthropic.com` on the egress
-allowlist.
+Make two edits in `deploy/coderunner/coderunner.yaml`. First edit the ConfigMap. It needs:
+
+- an `agents:` block;
+- an environment that names it;
+- the credential variable on `env:`;
+- `api.anthropic.com` on the egress allowlist.
 
 ```tony
 agents:
@@ -330,8 +356,8 @@ environments:
   - github.com
 ```
 
-Then the Deployment, so the runner process actually holds that variable — `env:` above is an
-allowlist over what the runner has, not a source of values:
+Then edit the Deployment, so that the runner process holds that variable. `env:` above is an
+allowlist over what the runner has. It does not supply values.
 
 ```yaml
         envFrom:
@@ -342,18 +368,19 @@ allowlist over what the runner has, not a source of values:
           value: /tmp                                       # writable tmpfs in-sandbox
 ```
 
-⚠️ Three things nothing checks. `commands:` is a claim about the image and nothing verifies the
-image agrees — naming a binary that is not there produces a task whose commands are not found and no
-better diagnosis than the agent's confusion. The egress list must name the host the driver *dials*.
-And the pod already needs `hostUsers: false`, `procMount: Unmasked` and `seccompProfile:
-Unconfined`, in that order of dependency — they are in the manifest, don't drop them while editing
-near them.
+⚠️ Nothing checks these three things:
+
+| What | What goes wrong |
+|---|---|
+| `commands:` | It is a claim about the image, and nothing verifies that the image agrees. A binary that is not there gives a task whose commands are not found. The only diagnosis is the confusion of the agent. |
+| the egress list | It must name the host that the driver *dials*. |
+| the pod settings | The pod needs `hostUsers: false`, `procMount: Unmasked` and `seccompProfile: Unconfined`, each one needed by the next. They are in the manifest. Do not drop them when you edit near them. |
 
 ### 4. Ship it
 
-`make ship` refuses a dirty tree on purpose — the tag names a commit somebody can check out — so
-commit the three edits first. It builds and pushes both images at the current commit and deploys
-staging at that ref.
+`make ship` refuses a dirty tree, because the tag must name a commit that somebody can check
+out. So commit the three edits first. `make ship` builds and pushes both images at the current
+commit, and deploys staging at that ref.
 
 ```sh
 make ship
@@ -361,13 +388,13 @@ kubectl -n verse rollout status deploy/coderunner
 kubectl -n verse logs deploy/coderunner | head -40
 ```
 
-The startup log lists the environments and their drivers, and warns about credentials it was told
-to expect and cannot see. Read it before spawning anything.
+The startup log lists the environments and their drivers. It warns about credentials that the
+runner expects and cannot see. Read it before you spawn anything.
 
 ### 5. Install and run against staging
 
-The url is the in-cluster Service name, because *versed* dials the runner. Your CLI only needs to
-reach the API, which staging publishes on the tailnet.
+The URL is the name of the in-cluster Service, because *versed* dials the runner. Your CLI only
+needs to reach the API, which staging publishes on the tailnet.
 
 ```sh
 export VERSE_ADDR=verse:9797
@@ -386,43 +413,42 @@ verse gate
 verse gate approve <id> --as you@example.com
 ```
 
-This environment pushes to the real GitHub remote, so a delivered task leaves
-`refs/heads/verse/auto/<sha>/<task>` on `signadot/verse`. That is a proposal and nothing more:
-`main` is deliberately not a destination here, and `receive.denyNonFastForwards` at the far end is
-what makes that structural rather than a matter of everyone remembering.
+This environment pushes to the real GitHub remote. A delivered task leaves
+`refs/heads/verse/auto/<sha>/<task>` on `signadot/verse`. That branch is only a proposal. `main`
+is not a destination here, by design. `receive.denyNonFastForwards` at the remote enforces
+this, so nobody has to remember it.
 
 ## Sharp edges, and where each was found
 
-Each of these was found by a run that hit it, during the `verse-dev` coderunner drive. The ones
-that are fixed are noted as such; the two that are not are tracked as issues.
+These problems are open, or are pitfalls that a run can still hit.
 
 | symptom | cause | state |
 |---|---|---|
-| `Not logged in · Please run /login` | The passthrough list is missing `USER`. The agent looks its credential up by OS user, so `PATH` and `HOME` are not enough. Found by bisecting the allowlist. | put `USER` on `env:` |
-| The read plane is blank for the whole run | `--output-format json` returns one document when the turn ends, so there is nothing to emit until it is over. A ten-minute task looks dead. Since verse gates only the invocation, narration is the entire compensating mechanism — and `stream-json` is not wired. | **open**, `1qdmzhac` |
-| A finished run's record cannot say what it was held to | `task:instance` has no field for the answer contract, and the ad-hoc path records no envelope at all — not vector, not grant, not tools. So "was this run governed, and by what?" is unanswerable afterwards. | **open**, `e3b4qmac` |
-| Task parks the instant it starts | Designed. The runner's default vector asks on `call_agent`, because this runner sees nothing inside the subprocess it starts. | working as intended |
-| A finished run left no branch at all | Cleanup ran unconditionally, and `deliver` tested for a dirty tree rather than for work — so an agent that committed its own edits read as nothing to deliver. | fixed; both now check the branch moved |
-| Prompts that say "look in `docs/`" go wrong | The workspace layout is the runner's convention and holds one directory per repository. `Workspace.Brief` tells the agent what is there; write prompts against that, not against a single-repo tree. | write to the brief |
-| `open pool:code: no such file or directory` from `runner add` | A pasted command with a trailing `#` comment: interactive zsh does not strip those, so the extra words arrive as arguments and `args[0]` was read as a filename. | fixed; the error now names the arguments and says `zsh` |
-| Login file invisible under bwrap | Only `/usr /bin /sbin /lib /lib64 /etc /opt` and the workspace are bound. | read it in [`confine.go`](confine.go) *(from the code, not a run)* |
-| `--resume` across turns | Fresh sandbox and fresh `/tmp` per turn, so session state does not survive between them. | untested; single-turn runs unaffected *(inferred)* |
+| `Not logged in · Please run /login` | The passthrough list lacks `USER`. The agent looks up its credential by OS user, so `PATH` and `HOME` are not enough. | put `USER` on `env:` |
+| The event stream is blank for the whole run | `--output-format json` returns one document when the turn ends, so there is nothing to emit before then. A ten-minute task looks dead. Verse gates only the invocation, so narration is the only way to see the run, and `stream-json` is not wired. | **open**, `1qdmzhac` |
+| The record of a finished run cannot say what the run was held to | `task:instance` has no field for the answer contract. The ad-hoc path records no envelope: no vector, no grant, no tools. So nobody can tell afterwards whether the run was governed, and by what. | **open**, `e3b4qmac` |
+| Prompts that say "look in `docs/`" go wrong | The workspace layout is a convention of the runner, with one directory for each repository. `Workspace.Brief` tells the agent what is there. Write prompts against the brief, not against a tree with one repository. | write to the brief |
+| The login file is invisible under bwrap | Only `/usr /bin /sbin /lib /lib64 /etc /opt` and the workspace are bound. | read it in [`confine.go`](confine.go) *(from the code, not a run)* |
+| `--resume` across turns | Each turn has a new sandbox and a new `/tmp`, so session state does not survive between turns. | untested; runs with one turn are not affected *(inferred)* |
 
-One file is also not a unit of work. Three runs of the same prompt: `docs/runners.md` (240 lines)
-came back clean; the same prompt against a 1126-line document died on a model timeout once and
-stopped mid-verification the second time, answering `status: clean` having checked a third of the
-file. The contract makes `done` mean something; it does not make the checking complete.
+One file is also not a unit of work. The same prompt comes back clean against
+`docs/runners.md`, a page of 240 lines. Against a document of 1126 lines, it can end on a model
+timeout. It can also stop in the middle of its checks and answer `status: clean` after it has
+checked a third of the file. The contract makes `done` mean something. It does not make the
+checking complete.
 
 ## Which path to send first
 
-Path A under `-confine host` reaches a working run with one credential they already have and no
-cluster in the way, and every failure along it is theirs to see in a terminal. Path B adds an image
-build, a Secret, a ConfigMap and a rollout on top of a driver they have not yet watched work — and
-its first failure arrives as an agent's confusion in a pod log.
+Send Path A under `-confine host` first. It reaches a working run with a credential the reader
+already has, and no cluster is in the way. Every failure on it appears in their terminal.
 
-The step worth their attention is 10, not 1. Everything before it is plumbing that either works or
-says why; turning bubblewrap on is where the credential story genuinely changes and where this tree
-has the least evidence.
+Path B adds an image build, a Secret, a ConfigMap and a rollout, on top of a driver that the
+reader has not yet seen work. Its first failure appears as the confusion of an agent in a pod
+log.
+
+Step 10 needs the most attention, not step 1. Every step before it either works or says why it
+failed. Step 10, turning bubblewrap on, changes how the credential reaches the agent, and this
+tree has the least evidence for it.
 
 ---
 

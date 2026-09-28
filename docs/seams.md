@@ -1,45 +1,25 @@
 # Seams that can be a network
 
-Every seam in verse is an interface first. This note is about the subset that can also be a *wire*,
-where the two sides may sit in different processes, on different hosts, in different networks, and
-about the one property that decides what each of them is good for:
+A [seam](glossary.md#seam) is an interface between two parts of verse. Every seam is a Go
+interface first. This page is about the seams that can also be a *wire*: the two sides may run
+in different processes, on different hosts, or in different networks.
+
+One property decides what each of these seams is good for:
 
 **which side opens the connection.**
 
-That is not a deployment detail. It says whether a runtime can live on a laptop, a source inside
-somebody else's cloud, or an executor behind a firewall that permits no inbound traffic at all. Two
-seams here carry almost the same payload in opposite directions, and the difference between them is
-the whole reason both exist.
+The direction decides where a part can run:
 
-## Why the seams have the shape they do
+- a runtime on a laptop;
+- an [io](glossary.md#io) inside the cloud of another organization;
+- an [executor](glossary.md#executor) behind a firewall that accepts no inbound connection.
 
-Verse governs systems it does not own. Everything across these boundaries is one of exactly two
-moves. **Observe**: a source reflects external truth in, a run reports frames back. Or **request a
-change**: a spawn, a patch, a control POST. Nothing here can *hold* the state it governs. A
-repository, a Slack workspace, somebody's laptop and somebody's afternoon all move without asking,
-and a seam is precisely the admission that they do.
+Two of the seams carry almost the same payload in opposite directions. The direction is the
+difference between them, and it is the reason that both exist.
 
-An orchestrator needs the opposite. To sequence steps it has to hold a position in a plan, and that
-position is a second claim about state it does not own, wrong the moment the world moves between two
-steps. So the absence of an orchestrator is not a stylistic choice about workflows. **It is what is
-left once you accept that every one of these boundaries is observe-and-request.** Level-triggered
-reaction to what was observed is the only model that stays true when the far side changes without
-telling you.
-
-Which is why a flow is *derived and never stored*. `verse flow show <subject>` assembles a subject's
-shape per request by joining three sources, and no one of them is sufficient. The **charter** knows
-the future, so a hook that has not fired yet is shown pending rather than missing. The **mirror**
-holds the history, since a finished task leaves the live registry and survives only as
-`verse.task.instance` entities. The **registry** has the present. Materializing that tree would be
-the stored per-subject index a query stands in for.
-
-The consequence is that the model is in the addressing rather than in a structure somebody
-maintains. A task id is a function of (rule, subject). A resolver's cover is `resolver@stream`,
-minted per subject and per run. Parent and child in a flow tree *are* prefix and extension of the
-chain kpath, so nesting needs no parent pointer to keep correct. There is no orchestrator to remove
-because there is nowhere for one to live.
-
-For what the components *are*, read [the overview](overview.md) first. This note assumes it.
+Read [the overview](overview.md) first. It says what the components are, and this page assumes
+it. [Why the seams have the shape they do](#why-the-seams-have-the-shape-they-do), at the end,
+gives the reasons for the design.
 
 ## The map
 
@@ -81,16 +61,20 @@ flowchart LR
   class remote,llm,docd dialsOut
 ```
 
-Blue dials *into* verse. Green is dialled *by* verse. `iod` is both, and that is the point
-of [seam 6](#6-ios--read-one-way-hint-and-act-the-other).
+A blue box dials *into* verse. Verse dials a green box. `iod` is both, and
+[seam 6](#6-ios--read-one-way-hint-and-act-the-other) is about that.
 
-The two paths into a hint are not a choice between routes. They are different systems, and which
-one a source takes is decided by what its external system will let you install. Slack and Linear
-will only *call* you, so `iod` has to be there to receive the delivery, verify its signature,
-and turn it into a hint. Git will run a script for you, so `Git.InstallHook` writes a four-line
-`reference-transaction` hook that curls the hint route itself, and `iod git` serves **no
-delivery routes at all** and is not in that path. That is the shape every source would have if
-every external system let you install a four-line shell script.
+A [hint](glossary.md#hint) reaches verse by one of two paths. The two paths are not two routes
+to choose from. They belong to different systems. What the external system lets you install
+decides which path an io takes.
+
+| External system | What it allows | The path of a hint |
+|---|---|---|
+| Slack, Linear | it only *calls* you | `iod` receives the delivery, verifies its signature, and turns it into a hint |
+| Git | it runs a script for you | `Git.InstallHook` writes a four-line `reference-transaction` hook, and the hook curls the hint route itself |
+
+`iod git` serves **no delivery routes at all**, and it is not in the path of a hint. Every io
+would have this shape if every external system let you install a four-line shell script.
 
 ## The seams at a glance
 
@@ -108,28 +92,41 @@ every external system let you install a four-line shell script.
 
 ## 1. The operator API
 
-The `verse` CLI, a script, or `curl` dials versed. Everything an operator does crosses here,
-and the surface keeps two planes apart on purpose: **observation** — `watch`, `entities`,
-`gates`, `flows` — may lag, while **control** — `gate resolve`, `flow` steering,
-task `cancel`/`say` — is serviced ahead of it. An intervention that queues behind a backlog
-of observations is an intervention defeated ([deployment and steering](deployment-and-steering.md)).
+The `verse` CLI, a script or `curl` dials versed. Everything an operator does goes through this
+seam. The API keeps two planes apart.
 
-Representation is negotiated rather than fixed: tony by default, JSON or YAML on request
-([representation](reference/representation.md)). Errors are the deliberate exception — always
-plain text, because a caller reads a non-2xx body as a message and a person running `curl` is
-better served by a sentence than a document.
+| Plane | Routes | How verse serves it |
+|---|---|---|
+| **observation** | `watch`, `entities`, `gates`, `flows` | it may be late |
+| **control** | `gate resolve`, `flow` steering, task `cancel`/`say` | verse serves it before observation |
 
-This is the **trusted** side. There is no authentication on it. The default bind is
-`localhost:9797`, and in the Kubernetes deploy its Service is cluster-internal with no Ingress.
+An intervention that waits behind many observations does not help
+([deployment and steering](deployment-and-steering.md)).
+
+The client chooses the representation. The default is tony, and a client may ask for JSON or
+YAML ([representation](reference/representation.md)). Errors are the one exception: an error
+is always plain text.
+
+A caller reads the body of a non-2xx answer as a message. A person who runs `curl` reads a
+sentence more easily than a document.
+
+This side is **trusted**. It has no authentication. The default bind is `localhost:9797`. In the
+Kubernetes deploy, its Service is internal to the cluster and has no Ingress.
 
 ## 2. The store: two faces, not one
 
-Verse holds one logd session to docd and does everything through it: reads, conditional writes,
-per-subtree watches, and `since=<rev>` replays. That is the **client** face.
+Verse holds one logd session to docd, and does everything through it:
 
-docd serves a second, separate **mount** face for controllers: the way a program declares
-itself the server of some region of the document. Nothing about verse's own traffic goes there,
-which is why the two are distinct addresses rather than one.
+- reads;
+- conditional writes;
+- watches of one subtree;
+- replays with `since=<rev>`.
+
+This is the **client** face of docd.
+
+docd serves a second, separate **mount** face for [controllers](glossary.md#controller). On the
+mount face, a program declares that it serves one region of the document. None of verse's own
+traffic goes to the mount face. For this reason the two faces have distinct addresses.
 
 ```mermaid
 flowchart LR
@@ -138,30 +135,38 @@ flowchart LR
   docd --- logd["logd<br/>the durable log"]
 ```
 
-Both addresses are published on `GET /status`, and that is load-bearing rather than
-decorative: `verse up` chooses ephemeral ports for the daemons it spawns, so a controller
-started as its own process has no way to guess them. It asks.
+`GET /status` publishes both addresses, and a controller needs them. `verse up` chooses
+ephemeral ports for the daemons it starts. A controller that runs as its own process cannot
+guess those ports, so it asks `GET /status`.
 
 ## 3. Content federation: a read that follows the reference out
 
-`verse connect` writes a working tree's *file metadata* into a scope as entities, and serves the
-*bytes* from a controller it runs itself against docd's mount face. The contents are never
-stored.
+`verse connect` [federates](glossary.md#federation) a working tree. It writes the *file
+metadata* of the tree into a [scope](glossary.md#scope) as entities. It serves the *bytes* from
+a controller that it runs itself, on the mount face of docd. Verse never stores the contents.
 
-What makes this a seam rather than a cache is that the indirection is invisible from above. An
-agent's `read_file` becomes an ordinary `Get` at `local.dir-content-<scope>.<path>`, and docd
-resolves that path to the mounted controller, which stats and reads the file *at request time*,
-confined to its root and capped in size, answering null for a traversal attempt or a non-regular
-file. It looks like a store read the whole way down, and is a live filesystem read at the bottom.
+This is a seam and not a cache, because a reader above cannot see the indirection:
 
-So the tree stays where it is, under its owner's lifetime, and only the entities describing it
-are what a charter reacts to. The write half — an agent changing a federated file — is
-not built, because a write is an outbound effect rather than
-a read run backwards, and it needs a definite target that a read does not.
+1. An agent's `read_file` becomes an ordinary `Get` at `local.dir-content-<scope>.<path>`.
+2. docd resolves that address to the mounted controller.
+3. The controller stats and reads the file *at request time*. It stays inside its root, and it
+   caps the size.
+4. The controller answers null for a traversal attempt, or for a file that is not a regular file.
+
+From above, it is a read of the store. At the bottom, it is a read of the live filesystem.
+
+The tree stays where it is, and its owner decides how long it lives. A charter reacts only to
+the entities that describe the tree.
+
+The write half is not built. In the write half, an agent would change a federated file.
+
+A write is an effect that goes out. It is not a read in the other direction, and it needs a
+definite target, which a read does not.
 
 ## 4. Task control, dialled out
 
-`runner.HTTP(base)` drives another verse, a `taskd`, or anything speaking the same contract:
+`runner.HTTP(base)` drives another verse, a `taskd`, or any program that serves the same
+contract:
 
 ```
 POST   {base}/tasks                        spawn
@@ -172,18 +177,18 @@ POST   {base}/tasks/{id}/cancel|say|resolve
 PUT    {base}/tasks/{id}/vector
 ```
 
-`?since=` is handed to the *remote's* own cursor, so the decision about what is still retained is
-made by the side that knows. A reader that has fallen below the window is told, with a resync
-marker, rather than silently handed a stream that starts mid-story.
+Verse hands `?since=` to the cursor of the *remote*. The remote knows what it still keeps, so
+the remote decides. A reader whose cursor is below the kept window gets a resync marker. It does
+not get a stream that starts in the middle without notice.
 
-The cost of this direction is the ordinary one: **verse must be able to reach the runner.** A
-runtime on a private network, a laptop, or a cluster that permits no inbound connection cannot
-be a remote runner. That constraint is what seam 5 exists to remove.
+This direction has the usual cost: **verse must be able to reach the runner.** A runtime on a
+private network, on a laptop, or in a cluster that accepts no inbound connection cannot be a
+remote runner. Seam 5 removes that limit.
 
 ## 5. Task control, dialled in
 
-The broker is seam 4 turned inside out. Verse hosts a worker-facing handler under
-`/broker/<nonce>`, and the *worker* opens the connection:
+The [broker](glossary.md#broker) is seam 4 in the other direction. Verse serves a handler for
+[workers](glossary.md#worker) under `/broker/<nonce>`, and the *worker* opens the connection:
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +199,7 @@ sequenceDiagram
 
   V->>B: spawn — in task, because the broker IS verse's runner here
   Note over B: status: unclaimed
-  W->>B: POST /tasks/{id}/claim  (-as runner:<who>)
+  W->>B: POST /tasks/{id}/claim  (-as runner:#lt;who#gt;)
   B-->>W: claim accepted — an epoch is minted
   Note over B: a later claim fences this one
   loop while running
@@ -207,37 +212,41 @@ sequenceDiagram
   Note over B: first terminal report wins — later ones are frozen no-ops
 ```
 
-Three things make this more than a polling loop. The **nonce is the capability**: 128 bits of
-`crypto/rand`, where knowing the URL is the grant to act as that runner's worker, which is why the
-broker face is meant for a *sibling* port kept distinct from the trusted operator API. The **claim
-mints an epoch**, so a displaced or zombie worker is fenced rather than allowed to corrupt the log.
-And the **terminal is once**: the first terminal writer wins and later reports are idempotent
-no-ops.
+Three properties make this more than a polling loop.
 
-The well-known nonce `local` is the built-in supervisor, so the in-process runtime is reached
-through the same shape as everything else. There is no privileged local path.
+| Property | What it means |
+|---|---|
+| **The nonce is the capability.** | The nonce is 128 bits from `crypto/rand`. Whoever knows the URL may act as the worker of that runner. |
+| **The claim mints an epoch.** | The broker fences a displaced or zombie worker, so that worker cannot corrupt the log. |
+| **The terminal is once.** | The first terminal report wins. Later reports are idempotent no-ops. |
 
-Because the seam is uniform, a **human is a runner**. `verse task do <verb> -as <who>`
-is the executor's leg of exactly this protocol, and `-as` is required because a claim must be
-attributable. Every `verse task` verb works the same whether the work is local, remote, or
-in somebody's terminal.
+Because the nonce is the grant, the broker face is meant for a *sibling* port. That port is
+separate from the trusted operator API.
+
+The well-known nonce `local` is the built-in supervisor. Verse reaches the in-process runtime
+through the same shape as every other runtime. There is no privileged local path.
+
+The seam is the same for every worker, so a person can do a task: **the broker is the
+[runner](glossary.md#runner), and the person is its worker.** `verse task do <verb> -as <who>`
+is the worker's side of this protocol. `-as` is required, because a claim must name who made
+it. Every `verse task` verb works in the same way, whether the work is local, remote, or in the
+terminal of a person.
 
 ## 6. Ios — read one way, hint and act the other
 
-This is the seam whose direction splits by *question*, and it is worth reading closely — it is
-also the one the io generalises from: one program, two halves, distinguished by nothing except
-which side dials.
+In this seam, the direction depends on the *question*. The io is built on this seam: one
+program with two halves, and the only difference between the halves is which side dials.
 
-Verse dials the source to **read**. Two routes are the whole contract: one question about what the
-program is, one about what it sees.
+Verse dials the [source](glossary.md#source) to **read**. Two routes are the whole contract.
+One asks what the program is, and one asks what the program sees.
 
 ```
 GET {url}/io                  → Descriptor  { root, owns }
 GET {url}/reflect[?at=<address>] → Reflection  { covers, entities }
 ```
 
-The source dials verse to **hint** — `POST /io/{name}/hint` — and a hint carries
-which place went stale and nothing else.
+The source dials verse to **hint**, with `POST /io/{name}/hint`. A hint says which address went
+stale, and nothing else.
 
 ```mermaid
 sequenceDiagram
@@ -259,32 +268,43 @@ sequenceDiagram
   V->>V: converge
 ```
 
-**A hint only schedules; the reconcile is the authority.** A dropped hint costs latency and never
-correctness, because the periodic pass catches it, which is why a full hint queue drops rather than
-blocks. That is the same level-triggered discipline the whole engine runs on, and it is what lets
-this seam be unreliable without being wrong.
+**A hint only schedules. The reconcile is the authority.** A hint that is lost makes verse
+slower, and never makes it wrong: the periodic pass reads the change anyway. For this reason a
+full hint queue drops a hint rather than blocks. The whole engine is level-triggered in the same
+way, so this seam may be unreliable and still correct.
 
-**The OUT half is the same seam pointed the other way, and it is the io that dials.** It reads what
-is asked of it under the place it owns, makes the external system match, and writes a status per
-request; it reports each pass (`POST /io/{name}/pass`), because verse cannot see a half it does not
-dial. Nothing here is pushed to it and nothing is delivered exactly once — which is what makes the
-two halves one discipline rather than two, and why a connector that could only be reached would
-need an Ingress while one that dials needs nothing
-([io.md](io.md#the-out-half-verse-asks-the-io-does-it)).
+**The out half is the same seam in the other direction, and the io dials.** The
+[sink](glossary.md#sink) does these things:
 
-A third direction rides the same connection where the external system offers one: what people DO
-over there — a reply, a mention — reaching verse as a control request made as the person who did
-it, never as the io ([io.md](io.md#control-what-people-do-over-there)). Slack's Socket Mode is the
-worked example: the io dials out, so clicks and replies arrive with no public url anywhere.
+1. It reads what is asked of it under the address it owns.
+2. It makes the external system match.
+3. It writes a status for each request.
+4. It reports each pass with `POST /io/{name}/pass`, because verse cannot see a half that verse
+   does not dial.
 
-The direction split matters in deployment: in the Kubernetes build, verse reaches the source at
-`http://<source>:9801/reflect`, and the source is configured with
-`http://verse:9797/io/<name>/hint` to call back. Neither is simply the other's
-client.
+Nothing is pushed to the sink, and nothing is delivered exactly once. For this reason the two
+halves follow one discipline. An io that verse had to reach would need an Ingress. An io that
+dials needs nothing ([io.md](io.md#the-out-half-verse-asks-the-io-does-it)).
 
-Two variants avoid the network entirely or do not exist yet. `-dir` reflects a local git
-repository **in task** — no `iod`, no port. And `dial-in`, for a source verse must not
-dial, is designed and **refused at install** until it is built ([ios](reference/io.md)).
+Some external systems offer a connection of their own, and an io can use it for a third
+direction. What people do in the external system, such as a reply or a mention, reaches verse
+as a control request. Verse makes the request as the person who acted, and never as the io
+([io.md](io.md#control-what-people-do-over-there)). Slack's Socket Mode is the worked example.
+The io dials out, so clicks and replies arrive with no public URL anywhere.
+
+The direction matters in a deployment. In the Kubernetes build:
+
+- verse reaches the source at `http://<source>:9801/reflect`;
+- the source calls back at `http://verse:9797/io/<name>/hint`.
+
+Neither side is only the client of the other.
+
+Two variants use no network, or do not exist yet.
+
+| Variant | What it is |
+|---|---|
+| `-dir` | reflects a local git repository **in task**, with no `iod` and no port |
+| `dial-in` | for a source that verse must not dial. It is designed, and verse **refuses it at install** until it is built ([ios](reference/io.md)). |
 
 ## 7. Webhooks: the only seam facing the internet
 
@@ -296,18 +316,21 @@ A source may accept deliveries from the system it reflects. Three ship:
 | `POST /linear/webhook` | HMAC-SHA256 over the body, constant-time |
 | `POST /github/webhook` | HMAC-SHA256 over the body, `sha256=`-prefixed, constant-time |
 
-This is the only seam meant to be reachable from the public internet. In the deploy it is the only
-one that gets an Ingress, and an absent webhook host *drops* the Ingress rather than emitting one
-pointed at nothing. It is also the only seam that authenticates, which is not a coincidence: it is
-the only one whose caller is a stranger.
+This is the only seam that is meant to be reachable from the public internet. In the deploy, it
+is the only seam that gets an Ingress. When no webhook host is set, the deploy *drops* the
+Ingress, and does not make one that points at nothing.
 
-A delivery is converted to a hint and nothing more. Nothing a webhook says is trusted as truth;
-it is trusted only as a reason to go and look.
+It is also the only seam that authenticates. The reason is that it is the only seam whose
+caller is a stranger.
+
+The source turns a delivery into a hint and nothing more. Verse does not trust what a webhook
+says as truth. It trusts a webhook only as a reason to go and look.
 
 ## 8. Resolvers: answering from the run's own stream
 
-An answerer is a party that answers a run's gates through a resolver. It dials verse at a
-**cover**, one resolver reading one gate stream:
+An [answerer](glossary.md#answerer) is a party that answers the gates of a run through a
+[resolver](glossary.md#resolver). It dials verse at a [cover](glossary.md#cover-of-a-resolver).
+A cover is one resolver that reads one stream of gates.
 
 ```
 GET  /resolvers/cover/{id}/events     the frames — SSE
@@ -315,24 +338,26 @@ POST /resolvers/cover/{id}/verdicts   approve · deny · escalate
 POST /resolvers/cover/{id}/position   how far it has read
 ```
 
-The events route serves **the same stream an attached observer sees**, not a projection of it. That
-is a design requirement rather than an implementation convenience: the moment it is a different
-stream there are two orders to reconcile, and a supervised run reads differently depending on who is
-looking.
+The events route serves **the same stream that an attached observer sees**. It is not a
+projection of that stream. This is a requirement of the design.
 
-An answerer that falls below the retained window is told, and only in that case is also sent the
-gates still open, because the replay it missed is exactly where they were.
+A different stream would be a second order of events to reconcile. A supervised run would then
+read differently, depending on who looks at it.
+
+An answerer that falls below the kept window is told so. Only in that case does verse also send
+the gates that are still open. The replay that the answerer missed is where those gates were.
 
 ## 9. The model provider
 
-The `llm` driver dials a provider from wherever the task actually runs, which is not
-necessarily where the charter was installed. That is the common gotcha, so `GET /status`
-publishes a secrets-safe summary of the LLM configuration of *this* server — the one hosting
-the runtime — with the keys elided.
+The `llm` [driver](glossary.md#driver) dials a model provider from the place where the task
+runs. That place is not always where the charter was installed, and this often surprises
+people. For this reason `GET /status` publishes a summary of the LLM configuration of *this*
+server, which is the server that hosts the runtime. The summary is safe to show: it leaves out
+the keys.
 
 ## Direction, and what it buys
 
-Read the whole note as this table.
+This table is the summary of the page.
 
 | If it must live… | Use | Because |
 |---|---|---|
@@ -345,10 +370,59 @@ Read the whole note as this table.
 
 ## What is not a seam
 
-Worth naming, so the map is not read as bigger than it is. The **driver** — `scripted`, `calls`,
-`llm`, your own `Next` — is a Go interface and never a wire. A `-dir` **source** runs in task. The
-**local runner** is a Go call. The `Store` interface admits a memory implementation with no daemon
-behind it, which is what the tests run on.
+These parts are not wires. They are named here so that the map does not look bigger than it is.
 
-Each of those can *become* a wire without the callers changing, which is what makes it a seam in the
-first place, but none of them is one.
+| Part | What it is |
+|---|---|
+| the **driver**: `scripted`, `calls`, `llm`, or your own `Next` | a Go interface, and never a wire |
+| a `-dir` **source** | runs in task |
+| the **local runner** | a Go call |
+| the `Store` interface | admits an implementation in memory, with no daemon behind it. The tests run on it. |
+
+Each of these parts can *become* a wire, and its callers do not change. That makes each one a
+seam, but none of them is a wire.
+
+## Why it is this way
+
+### Why the seams have the shape they do
+
+Verse governs systems that it does not own. Everything across these boundaries is one of two
+moves:
+
+| Move | Examples |
+|---|---|
+| **Observe** | a source reflects external truth in; a run reports frames back |
+| **Request a change** | a spawn, a patch, a control POST |
+
+Nothing here can *hold* the state it governs. A repository, a Slack workspace, the laptop of a
+person and the time of a person all change without asking. A seam states that they do.
+
+An orchestrator needs the opposite. To sequence steps, it must hold a position in a plan. That
+position is a second claim about state that the orchestrator does not own. It is wrong as soon
+as the world changes between two steps.
+
+For this reason verse has no orchestrator, and the reason is not a question of style.
+**Accept that every one of these boundaries is observe-and-request, and no orchestrator is
+left.** A level-triggered reaction to what verse observed is the only model that stays true
+when the far side changes without notice.
+
+For the same reason, verse derives a [flow](glossary.md#flow) and never stores it.
+`verse flow show <subject>` builds the shape of a subject for each request. It joins three
+sources, and no one of them is enough:
+
+| Source | What it knows |
+|---|---|
+| the **charter** | the future. A hook that has not fired yet shows as pending, and not as missing. |
+| the **mirror** | the history. A finished task leaves the live registry, and only its `verse.task.instance` entities remain. |
+| the **registry** | the present |
+
+A stored tree would be an index for each subject, and a query does the same work.
+
+The model is in the addresses, and not in a structure that somebody maintains:
+
+- A task id is a function of (rule, subject).
+- The cover of a resolver is `resolver@stream`. Verse mints one for each subject and each run.
+- A parent and a child in a flow tree *are* a prefix and an extension of the chain kpath. Nesting
+  needs no parent pointer to keep correct.
+
+There is no orchestrator to remove, because there is no place for one to live.

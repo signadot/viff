@@ -1,8 +1,10 @@
 # Tasks
 
-A task is a governed unit of work: an agent, a shell command, a worker behind a firewall,
-or a person. [Tutorial §3](../tutorial.md#3-tasks) drives one; this is the whole surface,
-including the two vantages and the seam that makes them the same commands.
+A [task](../glossary.md#task) is a unit of work that verse governs. An agent, a shell
+command, a [worker](../glossary.md#worker) behind a firewall or a person does the work.
+[Tutorial §3](../tutorial.md#3-tasks) runs one task. This page is the whole surface. It
+includes the two views of a task, and the [seam](../glossary.md#seam) that lets the same
+commands serve both.
 
 ## Running one
 
@@ -22,14 +24,19 @@ verse task vector <id> -file vector.tony
 verse task cancel <id>
 ```
 
-`say` and `vector` are different levers. `say` re-prompts the agent — new instructions.
-`vector` re-vectors it, swapping the gate vector that governs its autonomy, applied at the
-next boundary with no restart. `-as` attributes the slide. Both work wherever the task
-runs: the local runtime applies them directly, and a brokered or remote worker gets them
-relayed through its inbox.
+`say` and `vector` do different things:
 
-A trigger's `spawn` runs a task the same way, from the same `launch.Spec`; what a charter
-may say about one is in [the trigger model](action.md#action--what-fires).
+| Command | What it does |
+|---|---|
+| `say` | prompts the agent again, with new instructions |
+| `vector` | replaces the [vector](../glossary.md#vector) that governs how much the task decides alone. Verse applies it at the next [boundary](../glossary.md#boundary), with no restart. |
+
+`-as` names who made the change. Both commands work wherever the task runs. The local runtime
+applies them directly. A brokered or remote worker gets them through its inbox.
+
+The `spawn` of a [rule](../glossary.md#rule) runs a task in the same way, from the same
+`launch.Spec`. What a charter may say about a spawn is in
+[the trigger model](action.md#action--what-fires).
 
 ### `-answer-contract`: what finished means
 
@@ -37,33 +44,45 @@ may say about one is in [the trigger model](action.md#action--what-fires).
 verse task run -answer-contract shape.tony "check every reference in docs/runners.md"
 ```
 
-The file is a tony match pattern — the ad-hoc face of a charter's `answer:` — and it is the
-run's definition of **done**.
+`-answer-contract <file>` names the contract file. The file is a tony match pattern. It is
+the ad-hoc form of a charter's `answer:`, and it is the run's definition of **done**.
 
-Without one, finished means only that the model stopped calling tools. That is also what a model
-narrating its next step looks like, and the two are indistinguishable from outside: a run has ended
-mid-investigation, with a page of working notes as its `result` and `done` on its read plane.
-With a contract, the final message is checked the moment the model stops, a mismatch is fed back
-naming what is wrong, and a run that never satisfies it **fails** — which is a branch every rule
-already declares, unlike a charter that could not deref what it got.
+Without a contract, finished means only that the model stopped calling tools. A model that
+describes its next step also stops calling tools, and from outside you cannot tell the two
+apart. A run can end in the middle of an investigation, with a page of working notes as its
+`result` and `done` on its event stream.
 
-It does a second job worth stating separately: it tells *nothing to do* from *something went
-wrong*. Those are identical on disk and identical in an exit status, and a runner cannot infer
-which it was.
+With a contract, verse does three things:
 
-Keep it small and let it govern only what will be matched on. A `summary: !irtype string` field
-looks harmless and is a trap — a model writes `summary: nothing was wrong`, which is not valid
-tony, and the run fails for a reason that has nothing to do with the work. The prose account belongs
-outside the governed document; `answer.Extract` lifts a fenced block out of the final message, so
-the writing can be writing.
+- it checks the final message as soon as the model stops;
+- on a mismatch, it sends the model a message that names what is wrong;
+- when the run never satisfies the contract, the run **fails**.
+
+Every rule already declares a branch for a failure. A charter that cannot read the fields of
+what it got has no such branch.
+
+A contract also does a second job: it tells *nothing to do* from *something went wrong*.
+Those two are the same on disk and the same in an exit status, and a runner cannot tell which
+one happened.
+
+Keep the contract small, and let it govern only what a rule will match on. A
+`summary: !irtype string` field looks harmless, and it is a trap. A model writes
+`summary: nothing was wrong`, which is not valid tony. The run then fails for a reason that
+has nothing to do with the work.
+
+Put the prose account outside the governed document. `answer.Extract` lifts a fenced block
+out of the final message, so the rest of the message can be free prose.
 
 ## The drivers
 
-Three, and the third is the one to reach for when the work has a right answer.
+A task has one of three [drivers](../glossary.md#driver). Use `calls` when the work has a
+right answer.
 
-`scripted` runs its prompt as a shell command. `llm` gives the prompt to a model that decides
-what to do a turn at a time. `calls` takes the actions themselves — the charter wrote them, and
-nothing decides anything at run time:
+| Driver | What it does |
+|---|---|
+| `scripted` | runs its prompt as a shell command |
+| `llm` | gives the prompt to a model, which decides what to do one turn at a time |
+| `calls` | takes the actions themselves. The charter wrote them, and nothing decides anything at run time. |
 
 ```tony
 spawn:
@@ -75,16 +94,26 @@ spawn:
     input: {destination: main}
 ```
 
-The list is a field, so the engine checks it when the trigger fires, `verse c rules <name>` prints it,
-and each argument is expanded on its own — a `$branch` with a quote in it is an argument rather
-than text spliced into a document. Its presence selects the driver; `driver: calls` may be
-written and must not contradict it.
+The list is a field. So:
 
-Each entry is an ordinary action — derived, gated, narrated on the read plane — so a gate
-written for an agent's push holds a list's push, and nothing downstream can tell which driver
-proposed it. What a list does not get is the half that belongs to a model: no answer contract
-(there is nobody to repair one, so a spawn carrying one fails), no delegation, and no re-planning
-after a result.
+- the engine checks the list when the rule fires;
+- `verse c rules <name>` prints it;
+- verse expands each argument on its own. A `$branch` with a quote in it is one argument, and
+  not text joined into a document.
+
+The presence of `calls` selects the driver. You may write `driver: calls`, and it must not
+contradict the list.
+
+Each entry is an ordinary action. Verse derives it, gates it and reports it on the event
+stream. So a gate written for an agent's push also holds a push in a list, and nothing later
+can tell which driver proposed the action.
+
+A list does not get the parts that belong to a model:
+
+- no answer contract. Nobody is there to repair an answer, so a spawn that carries a contract
+  fails.
+- no delegation;
+- no new plan after a result.
 
 An entry may say which of its outcomes end the list:
 
@@ -94,51 +123,65 @@ An entry may say which of its outcomes end the list:
   fatal: [err]        # a remote declining ONE ref is not a reason to stop
 ```
 
-out of `err` (the step failed), `blocked` (refused, by a gate or by the far side) and `nonzero`
-(a command exited non-zero). The field has three states, and the empty one is not the default:
+The outcomes are:
+
+| Outcome | Meaning |
+|---|---|
+| `err` | the step failed |
+| `blocked` | a gate or the far side refused the step |
+| `nonzero` | a command exited non-zero |
+
+The field has three states, and the empty one is not the default:
 
 | written | means |
 |---|---|
-| *(absent)* | all three end the list — a list is ordered because its calls depend on each other |
-| `fatal: []` | nothing ends it; the list runs to the end whatever happens to this call |
+| *(absent)* | all three end the list. A list is ordered because its calls depend on each other. |
+| `fatal: []` | nothing ends it. The list runs to the end, whatever happens to this call. |
 | `fatal: [err]` | these |
 
-`scripted` is this driver with a one-command list built for it. Typed by hand,
-`verse task run -driver calls "$(cat merge.tony)"` reads the same document the charter grammar
-does and sends the field, so a list that will not read is a message on your terminal.
+`scripted` is this driver, with a list of one command that verse builds for it. When you type
+`verse task run -driver calls "$(cat merge.tony)"`, the CLI reads the document with the same
+grammar that a charter uses, and sends the field. So a list that does not parse is a message
+on your terminal.
 
 ## The dial
 
-The drivers carry different vectors, and the difference is the whole point of a gate: it
-asks about what you have **not** already authorized.
+The drivers have different default vectors. The difference is the purpose of a
+[gate](../glossary.md#gate-of-a-task): a gate asks about what you have **not** already
+authorized.
 
-`scripted` **as you type it** runs ungated: `verse task run -driver scripted` sends `auto` on
-your behalf, because the prompt *is* the shell command, and asking "run a shell command?" after
-`verse task run "go test ./..."` would be asking you to confirm the sentence you just wrote.
+**`scripted` as you type it runs with no gate.** `verse task run -driver scripted` sends
+`auto` for you, because the prompt *is* the shell command. After
+`verse task run "go test ./..."`, a question "run a shell command?" would ask you to confirm
+the sentence you just wrote.
 
-That argument is about who addressed the request, so it stops where the typing does. **A charter
-that spawns `driver: scripted` is asked**, per command, like anything else — it typed nothing,
-and the reader of a charter is not the person who wrote it. A charter that means to run
-unattended says so, in the same line an `llm` spawn uses:
+That reason is about who made the request, so it applies only to what you type. **A charter
+that spawns `driver: scripted` is asked**, for each command, like any other action. The
+charter typed nothing, and the reader of a charter is not the person who wrote it. A charter
+that means to run with nobody watching says so, on the same line that an `llm` spawn uses:
 
 ```tony
 spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
 ```
 
-which is also how it says "the firing already decided this": a trigger's own `gates:` run per
-firing, before the action, and `vector: auto` is what stops the same decision being taken twice. A
-driver that ignored the spawn's `vector:` would disobey a charter asking to be asked, in silence.
+`vector: auto` is also how a charter says "the firing already decided this". The rule's own
+`gates:` run for each firing, before the action. `vector: auto` stops the same decision from
+being made twice. A driver that ignored the `vector:` of the spawn would disobey, without a
+word, a charter that asks to be asked.
 
-`llm` asks before effects, because the agent *chose* them. Its reads run freely; writing a
-file, running a shell command, and delegating to a sub-agent block until approved. Approving
-a command the agent thought up is a real decision.
+`llm` asks before an action with an effect, because the agent *chose* the action. Its reads
+run freely. These block until somebody approves them:
 
-The set is not fixed at four. A **runtime may add an action of its own** — the coding runner adds
-`push`, which sends work to a destination its environment declares — and what arrives at the gate
-is an ordinary action with an ordinary typed effect, so a vector decides it the same way and
-`verse gate` shows it the same way. That is what keeps a runtime's own capability inside the dial
-rather than beside it: the one action with an effect outside the verse should not be the one
-action nobody can gate.
+- writing a file;
+- running a shell command;
+- delegating to a sub-agent.
+
+Approving a command that the agent made up is a real decision.
+
+The set of actions is not fixed at four. **A runtime may add an action of its own.** The
+coding runner adds `push`, which sends work to a destination that its environment declares.
+What arrives at the gate is an ordinary action with an ordinary typed effect. So a vector
+decides it in the same way, and `verse gate` shows it in the same way.
 
 ```sh
 verse gate                                  # task gates, and engine gates that ASK
@@ -152,43 +195,61 @@ verse gate                                  # task gates, and engine gates that 
 verse gate approve run-f3e31ed0390f~d1 -as you@example.com    # or: task approve run-… run-…~d1
 ```
 
-**Who may answer is asked before the answer is delivered.** The task's owner, or the charter's,
-answers what their own work asked; a gate's `answerers`, or the resolver a question is held out
-to, answer it; and a person answers a question held out to no resolver by the docket's
-default. The runner working the task holds nothing on the question it raised, and is refused. A
-refusal is a 403 naming who holds what and which record decided ([perms.md](../perms.md)).
-Whoever may answer may also hand the question on — `verse gate escalate <id> -as <who> [-say <why>]` — to the
-next resolver matching its subject, and to the docket when there is none.
+**Verse checks who may answer before it delivers the answer.** These may answer:
 
-**A charter gate is here whatever it takes to settle.** A gate with `need: 2` lists with its
-`options` and, as answers arrive, its `ballots`; `verse gate approve <id> -as <who>` casts one, and
-the record settles in the same write as the ballot that reaches a threshold. A gate with a
-`deadline` lists it, and settles on its default when the clock passes.
+- the owner of the task, or the owner of the charter, for what their own work asked;
+- a gate's `answerers`, or the resolver that a question is held out to;
+- a person, through the docket's default, for a question held out to no resolver.
 
-**A provider selection is here too.** A `spawn` with a `provider` and `select: ask|vote` poses
-a question whose options are the eligible doers, each carrying the envelope it would run under,
-and `chain` naming the action it holds up. It is answered by option:
+The worker that works the task holds nothing on the question that it raised, and verse
+refuses its answer. A refusal is a 403 that names who holds what, and which record decided
+([perms.md](../perms.md)).
+
+Whoever may answer may also pass the question on, with
+`verse gate escalate <id> -as <who> [-say <why>]`. The question goes to the next resolver that
+matches its subject, or to the docket when there is none.
+
+**A charter gate is listed here, whatever it takes to settle it.**
+
+- A gate with `need: 2` lists with its `options`, and with its `ballots` as answers arrive.
+  `verse gate approve <id> -as <who>` casts one ballot. The record settles in the same write as
+  the ballot that reaches the threshold.
+- A gate with a `deadline` lists the deadline. It settles on its default when the clock
+  passes.
+
+**A provider selection is listed here too.** A `spawn` with a `provider` and
+`select: ask|vote` poses a question. Its options are the eligible doers. Each option carries
+the envelope that the doer would run under, and `chain` names the action that the question
+holds up. You answer it by option:
 
 ```sh
 verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as you@example.com
 ```
 
-`within` is its deadline with no default: the clock passing with no pick settles it on `none`,
-and nothing spawns.
+`within` is the deadline of the selection, and it has no default. When the clock passes with
+no pick, the question settles on `none`, and nothing spawns.
 
-The `~` that separates the gate from its task needs no quoting and no escaping, in a shell
-or in a URL. On a terminal, `run -attach` prompts inline instead
-(`⏸ gate "write" (write_file) — approve? [y/N]`); answer `y` to allow, anything else to deny,
-and a denied gate comes back to the agent as an error it re-plans around. Piped (non-tty),
-`attach` just streams. The gate is the same question either way — it stays in `verse gate`
-and stays resolvable by id from anywhere.
+The `~` that separates the gate from its task needs no quotes and no escape, in a shell or in
+a URL.
+
+On a terminal, `run -attach` asks inline instead
+(`⏸ gate "write" (write_file) — approve? [y/N]`). Answer `y` to allow, and anything else to
+deny. A denied gate comes back to the agent as an error, and the agent makes a new plan. When
+the output is piped (not a tty), `attach` only streams. The gate is the same question in both
+cases. It stays in `verse gate`, and anybody can resolve it by id from anywhere.
 
 ### A gate's question
 
-A task's own gate poses the same record a charter gate does, and says the same things about
-it: how many ballots settle it, what it settles on, and how long it stands. A named vector is
-a bare default — `auto`, `ask`, `park` — so a run that wants gates of its own writes them,
-as a spawn's `gates:` or a file handed to `-gates`, in the shape `task vector -file` reads:
+A task's own gate poses the same record that a charter gate poses, and says the same things
+about it:
+
+- how many ballots settle it;
+- what it settles on;
+- how long it stands.
+
+A named vector is only a default: `auto`, `ask` or `park`. A run that wants gates of its own
+writes them, as the `gates:` of a spawn or as a file given to `-gates`. The shape is the one
+that `task vector -file` reads:
 
 ```tony
 - name: shell
@@ -201,18 +262,24 @@ as a spawn's `gates:` or a file handed to `-gates`, in the shape `task vector -f
   match: {verbs: [call-agent]}
 ```
 
-`match` is over what the action does rather than what the tool is called: `verbs` (`read`,
-`write`, `create`, `delete`, `exec`, `network`, `call-agent`, `resolve`, `push`), `tools` for
-the name itself, and `paths`, `resources`, `branches` and `onPush` for what it touches. Every dimension a
-gate writes has to hold, and one it leaves out holds for anything.
+`match` is over what the action does, not over the name of the tool:
+
+| Dimension | What it matches |
+|---|---|
+| `verbs` | `read`, `write`, `create`, `delete`, `exec`, `network`, `call-agent`, `resolve`, `push` |
+| `tools` | the name of the tool |
+| `paths`, `resources`, `branches`, `onPush` | what the action touches |
+
+Every dimension that a gate writes must hold. A dimension that the gate leaves out holds for
+anything.
 
 `need`, `options` and `deadline` mean what they mean on a
-[charter gate](gates.md#gates--whether-it-proceeds), and are refused the same way
-when they cannot be posed as written — at the spawn, or at `task vector`, never at the boundary
-a running task reaches.
+[charter gate](gates.md#gates--whether-it-proceeds). Verse refuses them in the same way when
+they cannot be posed as written. It refuses them at the spawn or at `task vector`, and never
+at the boundary that a running task reaches.
 
-**A run that asks before its one command**, with no credentials needed. A scripted run is a
-single shell command, which is `exec`, so a gate over `exec` stops it before it runs:
+**A run that asks before its one command** needs no credentials. A scripted run is one shell
+command, which is `exec`. So a gate over `exec` stops it before it runs:
 
 ```sh
 cat > gates.tony <<'EOF'
@@ -242,65 +309,89 @@ verse gate approve run-4e919ce01f99~d1 -as ana@example.com       # the command r
 verse task get run-4e919ce01f99                                   # status: done
 ```
 
-Without `-gates` the same command runs straight through, since `-driver scripted` as you type it
-is `auto`. Leave the question alone and the deadline settles it on `deny` after ten minutes: the
-command never runs, the question's record says `by: deadline` and `verdict: deny`, and the run
-ends `failed`, since a refused call ends a list.
+Without `-gates`, the same command runs straight through, because `-driver scripted` as you
+type it is `auto`.
 
-**The gates ride over `-vector`'s default, and the strictest that matches wins** — `auto`, then
-`ask`, then `park`. So a gate makes an action stricter than the default and never looser: under
-`-vector ask`, a `mode: auto` gate over `exec` changes nothing, and the command is asked about
-with `reason: "no gate matched"`. With `-gates` and no `-vector` the default is `auto`, since the
-gates are what asks.
+If nobody answers the question, the deadline settles it on `deny` after ten minutes:
 
-**The deadline is the question's own clock, and it settles.** `default: deny` is how an
-unattended run stops parking on a question nobody will find: when the clock passes, the action
-is refused as `by: deadline` and comes back to the agent as a refusal it re-plans around, the
-same one a person's no would be. `default: proceed` lets the action through; no default settles
-on `none`, which the loop also reads as a refusal — nobody made it, and the record says so. A
-resolver's own `deadline` is a different clock: it hands the question up to the layer
-above rather than settling it. Both instants sit on the record, and the earlier fires first.
+- the command never runs;
+- the question's record says `by: deadline` and `verdict: deny`;
+- the run ends `failed`, because a refused call ends a list.
 
-**A delegation's question offers the child modes.** A gate over `call_agent` asks how the
-child is supervised, so its options are the modes rather than a yes and a no: `proceed` runs
-the child under the parent's gates and resolver, `careful` re-asks every action the child
-takes, `autonomous` lets the child and its subtree answer their own gates within the granted
-scope, and `deny` spawns nothing. Answer by option, as any question with options is answered:
+**The gates apply on top of the default of `-vector`, and the strictest gate that matches
+wins.** The order is `auto`, then `ask`, then `park`. So a gate makes an action stricter than
+the default, and never looser. Under `-vector ask`, a `mode: auto` gate over `exec` changes
+nothing, and verse asks about the command with `reason: "no gate matched"`. With `-gates` and
+no `-vector`, the default is `auto`, because the gates do the asking.
+
+**The deadline is the question's own clock, and it settles the question.** With
+`default: deny`, a run with nobody watching does not stay held on a question that nobody will
+find. When the clock passes, verse refuses the action as `by: deadline`. The refusal comes
+back to the agent, and the agent makes a new plan, as it does after a person's no.
+
+| Default | When the clock passes |
+|---|---|
+| `default: deny` | verse refuses the action |
+| `default: proceed` | the action goes through |
+| no default | the question settles on `none`. The loop also reads this as a refusal: nobody made it, and the record says so. |
+
+A resolver's own `deadline` is a different clock. It passes the question up to the layer
+above, and does not settle it. Both instants are on the record, and the earlier one fires
+first.
+
+**A delegation's question offers the child modes.** A gate over `call_agent` asks how verse
+supervises the child. So its options are modes, not a yes and a no:
+
+| Option | What happens |
+|---|---|
+| `proceed` | the child runs under the parent's gates and resolver |
+| `careful` | verse asks again about every action the child takes |
+| `autonomous` | the child and its subtree answer their own gates, within the granted scope |
+| `deny` | nothing spawns |
+
+Answer by option, as for any question with options:
 
 ```sh
 verse gate run-f3e31ed0390f~d2 -answer careful -as you@example.com
 ```
 
-A gate that wrote `options` of its own over a delegation keeps them; `need` on one is the
-threshold every mode takes.
+A gate that wrote `options` of its own over a delegation keeps them. A `need` on such a gate
+is the threshold for every mode.
 
 <a id="who-you-addressed"></a>
 ### The rough edge: who you addressed
 
-Which rule applies depends on how you addressed the runtime, and today the runtime cannot
-tell.
+Which rule applies depends on how you addressed the runtime, and the runtime cannot tell.
 
-Ask an *agent* to do something and being asked before the write is the convention you expect:
-you opted into a loop and you are watching it. Hand it a *command* —
-`verse task run "go test ./..."` — and you addressed a runner, not an agent; but with
-creds configured the default driver is llm, so the command you just typed comes back as
-`⏸ gate "shell" (run_bash) — approve?`. Nothing was decided that you had not already decided.
-The prompt only reveals that verse chose to satisfy your command with an agent.
+When you ask an *agent* to do something, you expect it to ask before a write. You chose a
+loop, and you watch it.
 
-The driver picks the vector unless the spawn says otherwise, and what verse cannot read is
-which of the two things you meant by the prompt. So today you say it: pass `-driver scripted`
-when your prompt *is* a command — that is exactly what it is for — pass `-vector auto` to keep
-the agent and drop the asking, or slide the vector once it starts (`task vector <id> auto`).
-A trigger hits the same edge from the other side: its gates approve *the firing*, not the
-actions the spawned agent then chooses. It can say it already decided — `vector: auto` on
-the spawn — but that is a charter asserting the equivalence rather than the runtime deriving it,
-and it is all-or-nothing where the firing may have authorized one action and not another.
+When you give it a *command*, such as `verse task run "go test ./..."`, you addressed a
+runner, not an agent. But with credentials configured, the default driver is llm. So the
+command that you just typed comes back as `⏸ gate "shell" (run_bash) — approve?`. The
+question asks nothing that you had not already decided. It shows only that verse chose an
+agent to carry out your command.
+
+The driver picks the vector, unless the spawn says otherwise. Verse cannot read which of the
+two things you meant by the prompt, so you say it:
+
+| You want | You pass |
+|---|---|
+| to run the prompt as a command | `-driver scripted`. This is its purpose. |
+| to keep the agent and not be asked | `-vector auto` |
+| to change after the task starts | `task vector <id> auto` |
+
+A rule meets the same problem from the other side. Its gates approve *the firing*. They do
+not approve the actions that the spawned agent then chooses. The rule can say that it already
+decided, with `vector: auto` on the spawn. But then the charter asserts the equivalence; the
+runtime does not derive it. And `vector: auto` covers all actions or none, while the firing may
+have authorized one action and not another.
 
 ## The mirror
 
-Every task is reflected into the store as `verse.task.instance.<id>`, so observing the fleet
-is observing entities — and a completion is an entity change, which is what lets a rule react
-to it.
+The [mirror](../glossary.md#mirror-of-tasks) writes every task into the store as
+`verse.task.instance.<id>`. So you observe the fleet of tasks by observing entities. A
+completion is an entity change, and a rule can react to it.
 
 ```sh
 verse watch verse task instance '*'
@@ -317,44 +408,52 @@ payload:
   vectorBy: user:walter@example.com
 ```
 
-`observed: false` appears while the mirror cannot reach the runner holding the task. The
-entity's other fields are then the last thing it heard rather than the current truth.
+`observed: false` appears while the mirror cannot reach the runner that holds the task. The
+other fields of the entity are then the last thing the mirror heard, not the current truth.
 
-It outlives the task: the result, the last `say`, the last tool output and the terminal
-`status` are all still there after the live registry has retired it, which is what
-`verse flow show` reads for history. The mirror is an index, not a warehouse — it publishes
-what an observer needs, not the transcript.
+The instance record outlives the task. These stay after the live registry retires the task:
+
+- the result;
+- the last `say`;
+- the last tool output;
+- the terminal `status`.
+
+`verse flow show` reads them for history. The mirror is an index, not a store of everything.
+It publishes what an observer needs, not the transcript.
 
 ### One id, many runs
 
-A task id names the *work* rather than the run: it is derived from the spawning action and the subject,
-so a rule that fires twice about one subject spawns the same id twice — which is what makes a
-re-fire idempotent and what `verse flow show demo.pr.1` addresses.
+A task id names the *work*, not the run. Verse derives the id from the action that spawns and
+from the subject. So a rule that fires twice about one subject spawns the same id twice. This
+makes a second firing idempotent, and it is what `verse flow show demo.pr.1` addresses.
 
-`verse.task.instance.<id>` is therefore the latest run, and each run has a record of its own:
+`verse.task.instance.<id>` is therefore the latest [run](../glossary.md#run). Each run has a
+record of its own:
 
 ```sh
 verse data verse task run '<id>@<occurrence>'
 verse data verse task run '*' -if '{flow: "demo.pr.1"}'
 ```
 
-`occurrence` is the store revision the run is about — the commit that woke the firing, or the
-revision the record was created at when a person spawned it by hand. It is on both records, and
-it is what tells one run from the next.
+The `occurrence` is the store revision that the run is about. For a firing, it is the commit
+that caused the firing. For a task that a person spawned by hand, it is the revision at which
+verse created the record. The occurrence is on both records, and it tells one run from the
+next.
 
-Read the instance to ask what this work is doing now; read the runs to ask what happened the
-other times. A failed run followed by a successful one leaves both, which the instance alone
-cannot do — it holds whatever the newest run has written and nothing of the one before.
+Read the instance to learn what this work is doing now. Read the runs to learn what happened
+the other times. A failed run followed by a successful one leaves both run records. The
+instance alone cannot show both: it holds what the newest run wrote, and nothing of the run
+before.
 
-Run records are written twice, at the run's start and at its end, so a run that never finishes
-still leaves one. **Nothing prunes them.** They are small and bounded by runs rather than by events,
-and removing them is `verse data -rm`, or a charter that marks the stale ones
-[vanishing](../change-events.md) and acts on the edge.
+Verse writes a run record twice, at the start of the run and at its end. So a run that never
+finishes still leaves a record. **Nothing prunes run records.** They are small, and their
+number grows with runs, not with events. To remove them, use `verse data -rm`, or a charter
+that marks the stale ones [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record
 
-A gate that stops for an answer is published as its own entity, `verse.gate.question.<id>`, and
-the task points at it (`pending: verse.gate.question.<id>`).
+Verse publishes a gate that stops for an answer as an entity of its own,
+`verse.gate.question.<id>`. The task points at it (`pending: verse.gate.question.<id>`).
 
 ```tony
 payload:
@@ -368,64 +467,82 @@ payload:
   effects: {verbs: [write], paths: [cfg/app.tony]}
 ```
 
-`effects` is what the action *would do*, derived before the gate was posed, so a rule can
-select the questions it cares about without reading prose:
+`effects` is what the action *would do*. Verse derives it before it poses the gate. So a rule
+can select the questions it cares about without reading prose:
 
 ```sh
 verse data verse gate question '*' -if '{status: pending, effects: {verbs: [write]}}'
 ```
 
-It is a record, not a mailbox: answering happens over the resolve API, and the entity settles
-afterwards to `status: answered` with the verdict and who gave it. A question outlives its
-answer, because a docket that forgets is one nobody can audit.
+The question record is a record, not a mailbox. Answers go through the resolve API. After an
+answer, the entity settles to `status: answered`, with the verdict and who gave it. A question
+outlives its answer.
 
-`resolver` names the resolver the question is held out to — what a spawn or a rule named, else
-the standing resolver matching its subject, else absent, which is the docket a person reads.
-`reownedFrom` appears when a question changed hands, with `reownedWhy` saying what moved it —
-`escalated` when its owner declined, `removed` when its owner was uninstalled. Either way it
-went to the layer above: the standing resolver matching its subject, else the docket a person
-reads. The question itself is unchanged, because escalating changes who answers and not what
-is being answered.
+`resolver` names the resolver that the question is held out to. Verse picks it in this
+order:
 
-`delivered: false` appears while an answer has been accepted but not yet taken by the worker
-it is for — a brokered task, where the answer waits on the inbox until somebody dials in.
-The gate is closed to further answers the moment one is accepted; what is still in doubt is
-whether the party who must act on it knows. It clears on the worker's acknowledgement.
+1. the resolver that a spawn or a rule named;
+2. else the standing resolver that matches the subject;
+3. else none. The field is absent, and the question is on the docket that a person reads.
+
+`reownedFrom` appears when a question changes hands. `reownedWhy` says what moved it:
+
+| `reownedWhy` | What moved the question |
+|---|---|
+| `escalated` | its owner declined it |
+| `overdue` | the resolver's deadline passed |
+| `removed` | its owner was uninstalled |
+
+In each case the question goes to the layer above: the standing resolver that matches its
+subject, or else the docket that a person reads. The question itself does not change. An
+escalation changes who answers, not what is being answered.
+
+`delivered: false` appears when verse has accepted an answer, and the worker that the answer
+is for has not yet taken it. This happens with a brokered task, where the answer waits on the
+inbox until a worker dials in. The gate closes to other answers as soon as verse accepts one.
+What is still in doubt is whether the party that must act on the answer knows it. The field
+clears when the worker acknowledges the answer.
 
 ```sh
 verse data verse gate question '*' -if '{delivered: false}'   # answers still in flight
 ```
 
-Every answer names its answerer — `verse gate approve <id> -as you@example.com` — and two people
-answering at once is normal rather than exceptional. Exactly one applies; the other is
-recorded under `stale` and told so (`409`, naming who won), because a docket that keeps only
-the winner cannot show that a question was contested. Answering an id nobody asked about is a
-different error (`404`), and worth telling apart: one means look for your typo, the other
-means somebody beat you to it.
+Every answer names its answerer: `verse gate approve <id> -as you@example.com`. Two people
+who answer at once is a normal case.
 
-The record is its own entity rather than a field because a gate is not always a task's. A
-trigger gate is posed by a firing, before anything spawns — and if it is denied, nothing ever
-does.
+| Case | What verse answers |
+|---|---|
+| two answers at once | exactly one applies. Verse records the other under `stale` and tells its sender (`409`, naming who won). |
+| an answer to an id that nobody asked about | `404` |
 
-A restart settles what nobody is waiting on: a question survives it exactly as its task
-does, and one a firing raised is settled outright, since what waited on that answer was a
-goroutine in the verse. See [task control](../task-control.md).
+A `404` means: look for your typo. A `409` means: somebody else answered first.
 
-A completion hook (`onDone` and friends) reads that task's own payload: `$status`,
-`$result`, `$data`, `$err`, `$chain`. The task's flow is its subject, so the hook's
-`$subject` already names it. Note that `status: done` means the task
-*stopped*, not that the work succeeded — a hook that advances state should name evidence
-(`patch: {stage: reviewed, severity: $data.severity}`) rather than trust a bare claim. See
-[bindings](action.md#bindings) and
+A restart settles what nobody waits on:
+
+- a question that a task raised survives the restart exactly as its task does;
+- verse settles a question that a firing raised, because what waited on the answer was a
+  goroutine in the verse process.
+
+See [task control](../task-control.md).
+
+A completion hook (`onDone` and the others) reads the task's own payload: `$status`,
+`$result`, `$data`, `$err`, `$chain`. The task's flow is its subject, so the hook's `$subject`
+already names it.
+
+**`status: done` means that the task *stopped*, not that the work succeeded.** A hook that
+advances state should name evidence (`patch: {stage: reviewed, severity: $data.severity}`),
+and not trust a bare claim. See [bindings](action.md#bindings) and
 [the answer contract](action.md#the-answer-contract).
 
 ## Steering
 
-A *flow* is not a stored thing: it is a query over live tasks, which is why steering takes a
-selection rather than a ref, and why steering a whole set needs no new machinery — it is the same
-selector at a wider setting. A task run by hand is a flow too: of its `-subject`, or of its own
-id when it names none. The verbs, their flags, and how a run's hold differs from a suspension are
-[control](../control.md); this is what they do to a task.
+A [flow](../glossary.md#flow) is not stored. It is a query over live tasks. So steering
+takes a selection, not a ref. Steering a whole set needs no new mechanism: it is the same
+selector with a wider setting. A task that you run by hand is a flow too. It is the flow of
+its `-subject`, or of its own id when it names none.
+
+The verbs, their flags, and how a hold on a run differs from a suspension are in
+[control](../control.md). This section says what the verbs do to a task.
 
 ```sh
 verse flow                                     # live tasks and suspensions
@@ -436,8 +553,9 @@ verse flow say     -subject demo.pr.2 "hurry" # to every live task about it
 verse flow cancel  -task review@demo.pr.2      # end that run (destructive)
 ```
 
-`say` and `cancel` report how many tasks they reached, echo the selection they reached them by,
-and name the verb; `suspend` and `resume` answer the row they held or lifted:
+`say` and `cancel` answer with three things: how many tasks they reached, the selection they
+reached them by, and the verb. `suspend` and `resume` answer with the row that they held or
+lifted.
 
 ```tony
 affected: 1
@@ -445,21 +563,32 @@ subject: demo.pr.2
 verb: say
 ```
 
-They land at each task's next boundary, so a run can be held, redirected or stopped mid-flight
-while every *other* flow keeps reacting. A scripted task is a single command, so `cancel` stops it
-at once by killing the command while a hold and a `say` land at its next boundary — which for a
-one-command task is when it ends. They take hold mid-run on a multi-step task: the `llm` driver,
-whose every tool call is a boundary.
+The verbs land at each task's next boundary. So you can hold, redirect or stop a run while
+it runs, and every *other* flow keeps reacting.
 
-A run's hold is the operator's ad-hoc freeze — "hold this, I want to look" — distinct from
-`cancel`, which ends the work, and from a `park` gate, which is a hold the *charter* declares per
-action. The runtime's `POST /tasks/{id}/pause|resume` are the same hold. Why out-of-band matters,
-and the engine's priority servicing, are in [deployment and
-steering](../deployment-and-steering.md).
+A scripted task is one command:
 
-A run's hold is also forgetful: it holds that task, and the rules go on firing beside it. To stop
-the work about something and keep it stopped — no new firings, questions withdrawn from the
-docket, hooks recording and starting nothing — suspend it instead:
+- `cancel` stops it at once, by killing the command;
+- a hold and a `say` land at its next boundary, which for a task of one command is when the
+  task ends.
+
+The verbs take effect during the run of a task with many steps, such as one with the `llm`
+driver, where every tool call is a boundary.
+
+A [hold](../glossary.md#hold) on a run is the operator's ad-hoc stop: "hold this, I want to
+look". It differs from two other things:
+
+- `cancel` ends the work;
+- a `park` gate is a hold that the *charter* declares for each action.
+
+The runtime's `POST /tasks/{id}/pause|resume` are the same hold. Why a separate channel
+matters, and how the engine serves it first, are in
+[deployment and steering](../deployment-and-steering.md).
+
+A hold on a run is also forgetful. It holds that task, and the rules go on firing beside it.
+To stop the work about something, and keep it stopped, suspend it instead. A suspension stops
+new firings, withdraws the questions from the docket, and makes hooks record and start
+nothing.
 
 ```sh
 verse flow suspend -subject demo.pr.2 -why "a person is reviewing it by hand"
@@ -468,46 +597,49 @@ verse flow resume -task review@demo.pr.2       # refused, 409: a suspension hold
 verse flow resume -subject demo.pr.2
 ```
 
-A task knows whose hold it is under — `heldBy` on its record and in `flow show` — so the two do
-not undo each other: a lift resumes only what nothing else holds, and an operator's hold
-outlives it whichever came first.
+A task knows whose hold it is under: `heldBy` on its record and in `flow show`. So a hold and
+a suspension do not undo each other. Lifting one resumes only what nothing else holds. An
+operator's hold outlives a suspension, whichever came first.
 
-Every verb here asks `control` of each task it reaches, as `task cancel` does: the task's owner
-holds it, and so does the runner its claim granted. A `say` refused for any one of its tasks is
-refused whole, naming that task.
+Every verb here asks for `control` of each task that it reaches, as `task cancel` does. The
+task's owner holds `control`, and so does the worker that its claim granted. When verse
+refuses a `say` for any one of its tasks, it refuses the whole `say`, and names that task.
 
-With `-scope`, every verb here — `verse flow suspend|resume|say|cancel`, `task cancel|say|vector`
-and the runtime's `/tasks/{id}/pause|resume` — reaches the tasks that scope started and none it
-merely sees. Addressed at baseline's work it refuses and says so, so `verse flow cancel -scope me
--task review@demo.pr.2` never stops baseline's review of that PR by accident; drop the flag to
-address baseline. See [what a scope owns](connect.md#what-a-scope-owns).
+With `-scope`, every verb here reaches the tasks that the scope started, and none that the
+scope only sees. The verbs are `verse flow suspend|resume|say|cancel`,
+`task cancel|say|vector` and the runtime's `/tasks/{id}/pause|resume`. Aimed at the work of
+baseline, a verb with `-scope` refuses and says so. So
+`verse flow cancel -scope me -task review@demo.pr.2` never stops baseline's review of that PR
+by accident. Drop the flag to address baseline. See
+[what a scope owns](connect.md#what-a-scope-owns).
 
 ## Where a task runs is a seam
 
-Three backends, one handle. `verse task` and
+There are three backends and one handle. `verse task` and
 `task get`/`attach`/`cancel`/`say`/`vector`/`approve`/`deny` work across all of them.
 
-| | |
+| Backend | What it is |
 |---|---|
-| local | the in-process supervisor — the default |
-| remote | `verse up -runner <url>` hosts tasks on another verse's task-control face, and makes that the default |
-| broker | `verse up -broker -broker-addr :9090` serves a dial-in face a firewalled worker or a human claims. A spawn reaches it by name, `runner: broker`; the default does not change |
+| local | the supervisor in the verse process. It is the default. |
+| remote | `verse up -runner <url>` runs tasks on the task-control routes of another verse, and makes that the default |
+| broker | `verse up -broker -broker-addr :9090` serves routes where a worker behind a firewall, or a person, dials in and claims. A spawn reaches it by name, `runner: broker`. The default does not change. |
 
-The default is set at startup, by `-runner`. A spawn can also name its own place —
-`runner: verse.runners.gpu` on a charter, `-runner` on `verse task run` — so a drive can
-run part of the work somewhere the rest of the deployment knows nothing about. See
-[runners.md](runners.md) for that surface and [../runners.md](../runners.md) for what it is.
+`-runner` sets the default at startup. A spawn can also name its own place:
+`runner: verse.runners.gpu` on a charter, or `-runner` on `verse task run`. So a drive can run
+part of its work in a place that the rest of the deployment knows nothing about. See
+[runners.md](runners.md) for that surface, and [../runners.md](../runners.md) for what a
+runner is.
 
-Nothing inverts under a broker: both verse and the worker are clients of it, so a laptop or a
-pod behind a firewall works without verse reaching in. The contract and the protocol are in
-[task control](../task-control.md); why the seam was cut there is
-[external tasks](../external-tasks.md).
+Nothing is inverted under a broker. Verse and the worker are both clients of the broker. So a
+laptop or a pod behind a firewall works, and verse never reaches in. The contract and the
+protocol are in [task control](../task-control.md). The reason for the seam at this point is
+in [external tasks](../external-tasks.md).
 
 ### Executing one by hand
 
-A task spawned onto the broker lands there awaiting an executor instead of running itself,
-and `verse task` shows its runner and where to dial in. You never type that URL; verse resolves
-it from the task for you.
+A task spawned onto the broker waits there for a worker, and does not run by itself.
+`verse task` shows its runner and the URL where a worker dials in. You never type that URL;
+verse resolves it from the task.
 
 ```sh
 verse up -broker -broker-addr :9090
@@ -520,16 +652,16 @@ verse task
 #   prompt: "review the auth change"
 ```
 
-You are the executor. Every action takes `-as runner:<identity>`, because a claim must be
-attributable, and the first act claims it (`task get` then reads `status: running`):
+You are the worker. Every action takes `-as runner:<identity>`, because a claim must name who
+made it. The first action claims the task, and `task get` then reads `status: running`:
 
 ```sh
 verse task do note "$ID" "reviewing the auth change" -as runner:scott
 ```
 
-Mid-work you reach a decision you should not make alone. Raise it *up* to verse rather than
-deciding — the verse governs who resolves it, and the executor never resolves its own gate.
-`-wait` blocks for the outcome:
+During the work, you reach a decision that you should not make alone. Raise it *up* to verse,
+and do not decide it. Verse governs who resolves it, and a worker never resolves its own gate.
+`-wait` waits until the gate has an outcome:
 
 ```sh
 verse task do gate "$ID" deploy-approval -as runner:scott -reason prod -wait
@@ -540,13 +672,13 @@ verse task approve "$ID" deploy-approval-a1b2c3d4 -as lead@example.com    # …f
 verse task do complete "$ID" "LGTM — one nit on the token TTL" -as runner:scott
 ```
 
-`-to` is who a worker-raised question is held out to — a person, a group's address, a kind —
-since a worker asking somebody is what raising a gate is for. Where the spawn's own gates carry
-a gate of that name with `answerers`, the spawn's stand and `-to` is ignored: that gate is the
-charter's policy, and the runner does not get to soften it.
+`-to` names who a question raised by a worker is held out to: a person, the address of a
+group, or a kind. A worker that asks somebody is what raising a gate is for. The spawn's own
+gates may carry a gate of the same name with `answerers`. Then the spawn's gate stands, and
+verse ignores `-to`. That gate is the charter's policy, and the worker cannot make it weaker.
 
-A gate raised this way is the same record a charter gate poses, so it can take outcomes of its
-own, a threshold per outcome, and a clock:
+A gate raised this way is the same record that a charter gate poses. So it can take outcomes
+of its own, a threshold for each outcome, and a clock:
 
 ```sh
 verse task do gate "$ID" rollout -as runner:scott -options canary,full:2,abort -deadline 4h:abort -wait
@@ -554,13 +686,42 @@ verse gate <id> -answer canary -as lead@example.com
 # rollout-… settled on canary
 ```
 
-The task is now `done`, with your result on its `verse.task.instance` entity, so a completion
-hook or a rule reacts to it exactly as if an agent had finished. A *human* did the work; the
-flow moves on.
+The task is now `done`, and your result is on its `verse.task.instance` entity. So a
+completion hook or a rule reacts to it exactly as if an agent had finished. A *person* did
+the work, and the flow moves on.
 
-So a task has two vantages, and every verb works whether it runs locally or behind a
-broker. From outside, the operator drives and watches: bare `verse task` lists, then `get`, `attach`, `cancel`,
-`say`, `vector`, `approve`/`deny`. From inside, on the worker leg, the executor acts:
-`do complete|fail|note|gate`, plus `inbox` to see the control queued for the worker.
+So a task has two views, and every verb works whether the task runs locally or behind a
+broker:
+
+- **From outside**, the operator drives and watches: bare `verse task` lists, then `get`,
+  `attach`, `cancel`, `say`, `vector`, `approve`/`deny`.
+- **From inside**, on the worker side, the worker acts: `do complete|fail|note|gate`, plus
+  `inbox` to see the control queued for the worker.
 
 *Left to do: the inbox long-poll.*
+
+## Why it is this way
+
+### Why a list of calls is a field
+
+A field can be checked when the rule fires, and printed. Verse expands each argument on its
+own, so a value with a quote in it cannot change the shape of the document.
+
+### Why a runtime's own action goes through the gate
+
+A runtime's own capability stays inside the dial, not beside it. The one action with an effect
+outside verse should not be the one action that nobody can gate.
+
+### Why a question outlives its answer
+
+A docket that forgets cannot be audited.
+
+### Why a losing answer is recorded
+
+A docket that keeps only the winner cannot show that a question was contested. The `409` and
+the `404` differ so that a caller can tell a typo from a race.
+
+### Why the question is its own entity
+
+A gate does not always belong to a task. A firing poses a rule's gate before anything spawns.
+If somebody denies that gate, nothing ever spawns.

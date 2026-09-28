@@ -1,71 +1,91 @@
 # Starting a verse
 
-`verse up` runs the engine and the task runtime and brings up its store; every other
-subcommand is a client of it. [Tutorial §1](../tutorial.md#1-start) starts one with no flags
-at all — this is what those defaults are, and what to say instead.
+`verse up` runs the engine and the task runtime, and it brings up the
+[store](../glossary.md#store). Every other subcommand is a client of `verse up`.
+[Tutorial §1](../tutorial.md#1-start) starts one with no flags. This page says what those
+defaults are, and what to give instead.
 
 ```sh
 export VERSE_ADDR=localhost:9797   # where clients reach the verse (this is the default)
 verse up
 ```
 
-To point a client at a non-default address, `export VERSE_ADDR=host:port` or pass
-`-addr host:port` to any command. `verse down` stops the verse on `-addr`, and it reaps the
-daemons it spawned.
+To point a client at another address, `export VERSE_ADDR=host:port`, or pass
+`-addr host:port` to any command. `verse down` stops the verse on `-addr`, and it stops the
+daemons that the verse started.
 
 ```sh
 VERSE_LOG=debug verse up            # the engine's trace: which rule fired, on what, and why not
 ```
 
-**`VERSE_LOG` is what to reach for when a rule does not fire.** At `debug` the engine says which
-rules it evaluated at which commit, which subjects each selected, and — the useful half — why a
-firing stopped: a read that did not resolve, a write that was refused, a cycle it threw. Nothing
-else tells you the difference between a rule that is not selecting and a rule that is selecting
-and failing. It takes any slog level (`debug`, `info`, `warn`, `error`); anything else is refused
-at startup rather than ignored.
+**Use `VERSE_LOG` when a [rule](../glossary.md#rule) does not fire.** At `debug`, the engine
+logs these things:
 
-`up` decides three things for the whole runtime, because it hosts the task runtime and the
-clients do not.
+- which rules it evaluated, at which [commit](../glossary.md#commit);
+- which [subjects](../glossary.md#subject) each rule selected;
+- why a [firing](../glossary.md#firing) stopped: a read that did not resolve, a write that
+  verse refused, or a cycle that the engine threw.
+
+No other output tells a rule that selects nothing from a rule that selects and fails.
+`VERSE_LOG` takes any slog level: `debug`, `info`, `warn` or `error`. Verse refuses any other
+value at startup. It does not ignore it.
+
+`up` decides three things for the whole runtime: the store, the driver and the agent root.
+`up` decides them because it hosts the task runtime, and the clients do not.
 
 ## The store
 
-By default `up` is docd-backed: it brings up logd and docd on a **fresh temp data dir**
-(printed, and kept) via `o sys up`, and points the store at
+By default, `up` uses docd. It brings up logd and docd on a **fresh temporary data
+directory**, through `o sys up`. It prints the directory, and it keeps it. The store is then
 [docd](https://signadot.github.io/tony-format/docd/), the tony-format document store.
 
-You do not need to know anything about docd to *play* with verse, since `up` stands it up for
-you, but it is where verse's deeper properties come from — copy-on-write scopes, conditional
-and coordinated writes, edge-faithful watches, compactions. See [store.md](store.md).
+You need to know nothing about docd to try verse, because `up` starts it for you. docd gives
+verse its deeper properties:
+
+- copy-on-write [scopes](../glossary.md#scope);
+- conditional and coordinated writes;
+- watches that report every edge;
+- compactions.
+
+See [store.md](store.md).
 
 ```sh
 verse up -data ~/.verse/data                        # a durable dir rather than a fresh temp one
 verse up -docd-addr host:port -docd-mount-addr host:port     # attach to an already-running docd
 ```
 
-**A store call is bounded, and the two kinds are bounded differently.** A read runs beside
-logd's request loop and spends its own patience; a write is dispatched on that loop and waits
-behind every other write on the session, so it gets its own number. Both are constants in
-`entity/logdstore.go`, and the session re-establishes itself rather than failing the caller
-when the wire goes quiet.
+**A store call has a time limit, and reads and writes have different limits.**
 
-**Readiness answers from this process alone.** `/healthz` reports `ok`, whether the engine is
-restored, and the head this process has — reading nothing, because the load that makes you ask
-is the load that would keep a store-reading answer from arriving. It is `503` until the engine
-is restored, which is not the same as wedged: versed serves before restore finishes, and
-staging has spent 93 seconds in it. So the probe that says "no traffic yet" also says which of
-the two it is, where a refused connection said neither. `/status` is the one that reads the
-store, and it is not a probe.
+| Call | How it runs | Its limit |
+|---|---|---|
+| a read | beside the request loop of logd | a limit of its own |
+| a write | on the request loop of logd, behind every other write of the session | a separate number |
+
+Both limits are constants in `entity/logdstore.go`. When the connection goes quiet, the
+session connects again. It does not fail the caller.
+
+**The readiness probe answers from this process alone.** `/healthz` reports three things:
+`ok`, whether the engine is restored, and the head revision this process has. It reads
+nothing from the store. `/healthz` answers `503` until the engine is restored. A verse that is
+restoring is not stuck: versed serves requests before the restore finishes. So the probe that
+says "no traffic yet" also says which of the two cases it is. `/status` reads the store, and it
+is not a probe.
+
+The reason `/healthz` reads nothing: a question about readiness comes under load, and that
+load would delay an answer that reads the store.
 
 ### When a client cannot reach docd where verse does
 
-`up` publishes both docd addresses on `GET /status`, because a controller is its own process
-and has to find the faces itself — that is how [`verse connect`](connect.md) reaches the mount
-face. It reads them from wherever *it* runs, which is not always where verse runs. In a
-cluster verse reaches docd by a Service name that resolves nowhere else, so a laptop handed
-that name has been told something true and useless.
+`up` publishes both addresses of docd on `GET /status`. A
+[controller](../glossary.md#controller) is its own process, and it must find these addresses
+itself. [`verse connect`](connect.md) finds the mount address of docd in this way.
 
-`-docd-advertise-addr` and `-docd-mount-advertise-addr` say what to publish. Verse keeps
-dialling `-docd-addr`; only the answer changes:
+The client reads the addresses from where the client runs. That is not always where verse
+runs. In a cluster, verse reaches docd by the name of a Service, and that name resolves only
+inside the cluster. A laptop that gets that name gets a true address that it cannot use.
+
+`-docd-advertise-addr` and `-docd-mount-advertise-addr` say what to publish. Verse still
+connects to `-docd-addr`. Only the published answer changes:
 
 ```sh
 verse up -docd-addr docd:7071 -docd-mount-addr docd-mount:7072 \
@@ -73,50 +93,59 @@ verse up -docd-addr docd:7071 -docd-mount-addr docd-mount:7072 \
          -docd-mount-advertise-addr verse-docd-mount:7072
 ```
 
-Each needs the face it re-addresses — `-docd-advertise-addr` without `-docd-addr` is
-refused, since the faces of a docd verse spawned itself are ephemeral ports, and publishing
-some other address for them is a promise nothing keeps. There is one published address, so
-this is a choice about *which* client matters; a deployment reachable both ways publishes the
-one its controllers use. `deploy/README.md` is a worked example, where the pair is the
-tailnet names of the two Services verse dials internally.
+Each advertise flag needs the address flag that it replaces. Verse refuses
+`-docd-advertise-addr` without `-docd-addr`. When verse starts docd itself, docd listens on
+temporary ports, and a published address for them would not stay true.
+
+Verse publishes one address for each face of docd. So you choose which clients the address is
+for. A deployment that clients reach in two ways publishes the address that its controllers
+use. `deploy/README.md` is a worked example. There, the pair is the tailnet names of the two
+Services that verse connects to inside the cluster.
 
 ## The driver
 
-Which driver runs a task when nothing says otherwise. With LLM creds configured — an `llm`
-block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment — the
-default is a real llm agent; with no creds it is `scripted`, which runs a prompt as a shell
-command.
+The [driver](../glossary.md#driver) runs a task when nothing names another. The default
+depends on the model credentials.
 
-The creds are read by the **server**, so set them before `up`, not in the client's
-environment. `verse status` shows an `llm` block with `available` and a masked key.
+| Credentials | Default driver |
+|---|---|
+| configured: an `llm` block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment | a real `llm` agent |
+| none | `scripted`, which runs a prompt as a shell command |
 
-The driver is chosen per spawn, so a trigger's `spawn.driver`, `connect -driver` and
-`task run -driver` each select `scripted`, `calls` or `llm` for that one task. Requesting `llm`
-with no configured creds fails that one task — status `failed`, with a message telling you
-to set the creds — and the engine keeps running. What each driver implies for gates is in
-[tasks.md](tasks.md#the-dial).
+The **server** reads the credentials. So set them before `up`, and not in the environment of
+the client. `verse status` shows an `llm` block with `available` and a masked key.
+
+Each spawn chooses its driver. A rule's `spawn.driver`, `connect -driver` and
+`task run -driver` each select `scripted`, `calls` or `llm` for that one task. If a task asks
+for `llm` and no credentials are configured, that one task fails. Its status is `failed`, and
+its message tells you to set the credentials. The engine keeps running. What each driver
+means for gates is in [tasks.md](tasks.md#the-dial).
 
 ## The agent root
 
-Where an llm agent acts. `verse up -root <dir>` names it, `-root .` is your tree, and with
-no flag `up` makes an isolated temp dir and prints it at start (`agents rooted at …`, when
-the llm driver is available) — which is why a file an agent writes is *not* in your cwd.
+The agent root is the directory where an llm agent acts. `verse up -root <dir>` names it, and
+`-root .` is your own tree. With no flag, `up` makes an isolated temporary directory. When the
+llm driver is available, `up` prints it at start (`agents rooted at …`). For this reason, a
+file that an agent writes is *not* in your working directory.
 
-To let an agent read a tree *through* the verse instead — no shared filesystem, wherever it
-runs — use [`verse connect`](connect.md). `-root` remains for a non-federated,
-single-machine agent.
+An agent can also read a tree *through* the verse, with no shared filesystem, wherever the
+agent runs. For that, use [`verse connect`](connect.md). `-root` is for an agent on a single
+machine, without federation.
 
 ## Where tasks run
 
-Off by default: the local in-process supervisor runs them.
+By default, the local supervisor in the verse process runs tasks.
 
 ```sh
 verse up -runner http://other-verse:9797      # send unnamed work to a remote verse
 verse up -broker -broker-addr :9090           # …and/or serve a dial-in broker
 ```
 
-They answer different questions and compose. `-runner` sets the DEFAULT — where a spawn that
-names nobody runs. `-broker` SERVES a broker, which a spawn reaches by name:
+The two flags answer different questions, and you can use both.
+
+- `-runner` sets the **default**: where a spawn that names no [runner](../glossary.md#runner)
+  runs.
+- `-broker` serves a [broker](../glossary.md#broker). A spawn reaches it by name.
 
 | a spawn names | where it runs |
 |---|---|
@@ -124,43 +153,45 @@ names nobody runs. `-broker` SERVES a broker, which a spawn reaches by name:
 | `broker` | the dial-in broker: it lands `unclaimed` and waits for a worker |
 | an installed runner | wherever that runner's url says ([runners.md](runners.md)) |
 
-Serving a broker therefore adds a name and takes none away — a charter that never mentioned a
-runner goes on running rather than waiting for somebody. A spawn naming `broker` where none is
-served is refused by name, like any other runner that is not installed.
+A broker adds a name, and it takes no name away. A charter that never names a runner still
+runs its tasks, and they do not wait for a [worker](../glossary.md#worker). Verse refuses a
+spawn that names `broker` when no broker is served. It refuses it by name, as it refuses any
+runner that is not installed.
 
-All of it is the same seam, and every `verse task` verb works across all three. See also
+All three places use the same seam, and every `verse task` verb works on all three. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
-A brokered task carries a `dialURL`, which is what its worker dials in on, and it is built
-from `-broker-addr`. Where a worker reaches the broker by a name the process cannot bind —
-a pod behind a Service, anything on a tailnet — `-broker-advertise-addr` is what gets
-published instead:
+A task on a broker carries a `dialURL`. The worker connects to that URL. Verse builds it from
+`-broker-addr`. A worker may reach the broker by a name that the process cannot bind, such as
+a pod behind a Service, or a device on a tailnet. Then `-broker-advertise-addr` is what verse
+publishes instead:
 
 ```sh
 verse up -broker -broker-addr :9090 -broker-advertise-addr verse-broker:9090
 ```
 
-Without it a wildcard bind advertises `localhost:9090`, which every worker resolves and none
-of them reaches. This is the same split as `-docd-advertise-addr` above: where a face is
-bound and where it is reached are two facts, and neither implies the other.
+Without the flag, a bind to all interfaces advertises `localhost:9090`. Every worker resolves
+that name, and no worker reaches the broker by it. `-docd-advertise-addr` above makes the
+same split. Where a face is bound and where clients reach it are two separate facts.
 
 ## Configuration
 
-Defaults are resolved through layers, each overriding the one before:
+Defaults come from layers. Each layer overrides the one before it:
 
 1. `/etc/verse.{tony,json,yaml}` — system base
-2. `~/.config/verse.{tony,json,yaml}` — per-user; it patches the system file (a merge,
-   so you set only the keys you want to change; everything else falls through)
+2. `~/.config/verse.{tony,json,yaml}` — per user. It patches the system file. The patch is a
+   merge, so you set only the keys that you want to change, and the other keys come from the
+   layer below.
 3. environment variables
 4. CLI flags
 
-A config layer's format comes from its file name — `.tony`, `.json`, `.yaml` or `.yml` —
-and the two layers need not agree: `/etc/verse.json` patched by `~/.config/verse.tony`
-merges fine, because both are parsed to the same tree before the merge. A config file
-cannot declare its own format, so its name declares it. Two files for one layer is an error
-rather than a silent precedence rule. `VERSE_CONFIG=<file>` replaces both layers outright.
+The file name of a layer gives its format: `.tony`, `.json`, `.yaml` or `.yml`. The two layers
+may use different formats. `/etc/verse.json` patched by `~/.config/verse.tony` merges
+correctly, because verse parses both to the same tree before the merge. A config file cannot
+declare its own format, so its name declares it. Two files for one layer are an error. Verse
+does not pick one by a hidden rule. `VERSE_CONFIG=<file>` replaces both file layers.
 
-A missing file is simply an absent layer. Example `~/.config/verse.tony`:
+A missing file is a layer that is absent. An example `~/.config/verse.tony`:
 
 ```tony
 addr:  "localhost:9797"
@@ -173,38 +204,63 @@ llm: {
 }
 ```
 
-`addr` and `scope` are read by every command (they say which verse to talk to). `user` is who
-every command acts as: it rides each request (`Verse-Principal`), the server stamps it on every
-write the request makes, checks each write and read against what its place permits, and what
-the request creates is owned by them. It is a principal in the
-[grammar](../perms.md#principals-and-grantees): a bare email goes on the wire as `user:<email>`,
-a worker sets `runner:<identity>`, and a bare word is refused. It is self-asserted — there is no
-login — and `-as` overrides it on the commands that take one, which is also why those commands
-no longer insist on the flag when the config names a user. Env: `VERSE_USER`. With no `user`
-and no `agent`, the CLI acts as the local user, `user:<login>@localhost`, toward a verse on
-this machine (`localhost`, `127.0.0.1`, `::1`), and names nobody toward any other. `agent` names an
-operator agent instead — a harness driving verse through the api, which is a principal of its
-own kind rather than the person whose terminal it runs in; when set, every request is
-`agent:<name>` and `-as` still names somebody else. Env: `VERSE_AGENT`. `systemCharter` is
-server-side: the path of a charter file `verse up` installs at start as `system:charter`, the rules
-the deployment itself stands behind, since a request cannot be made as the system. Env: `VERSE_SYSTEM_CHARTER`. `perms: {child-grants: {…}}` is server-side too:
-the root's `child-grants`, what a node created with none above it holds out — `{read: ["*"]}`
-when unset, and `{}` for a verse where what anybody creates is theirs alone. `perms: {admins:
-[…]}` beside it is who may take a TOP-LEVEL place: grantees (a bare email reads as `user:`),
-seeded into the `admin` group, which the root names in its `child-owner` line. Unset is the open verse
-— anybody takes one. Both are written into the root's record at start, under an absence
-precondition, so an operator's later edit of that record is what stands — and so is the
-config's FIRST value: the record is what a check reads, so a `child-grants` or an `admins` changed
-afterwards changes nothing, and every start that finds the record differing from the config
-says so in the log (`perms: the root's record is not what this config would write`).
-`--reseed-perms` (or `VERSE_RESEED_PERMS`) is the one start that writes them over it. `--unmigrate-perms`
-rewrites the perms mirror in the spelling a binary from before `child-owner` reads and exits
-without serving — the step before rolling an image back past it. See [perms.md](../perms.md). The `llm`
-block, however, is read by the server (`verse up`) — it hosts the task runtime, so
-that is whose config and environment the agent driver reads for its model + creds; setting it for
-a `task run` *client* does nothing. The equivalent env is `OPENAI_MODEL`,
-`PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `PORTKEY_BASE_URL` (which override the file).
-Precedence for any value is, low → high:
+The table below lists every key. The paragraphs that follow say what the table does not.
+
+**`addr` and `scope`** say which verse to talk to, so every command reads them.
+
+**`user`** is sent with each request, as `Verse-Principal`. The server writes it on every write
+that the request makes. It checks each write and each read against what the
+[address](../glossary.md#address) permits. The user owns what the request creates.
+
+`user` is a [principal](../glossary.md#principal) in the
+[grammar](../perms.md#principals-and-grantees). A bare email goes on the wire as
+`user:<email>`. A worker sets `runner:<identity>`. Verse refuses a bare word.
+
+Verse takes `user` as given. There is no login. `-as` overrides it on the commands that take
+`-as`. When the config names a user, those commands do not require `-as`.
+
+With no `user` and no `agent`, the CLI acts as the local user, `user:<login>@localhost`,
+toward a verse on this machine (`localhost`, `127.0.0.1`, `::1`). Toward any other verse, it
+names nobody.
+
+**`agent`** names an operator agent instead of a user. An operator agent is a harness that
+drives verse through the API. It is a principal of its own kind, and not the person whose
+terminal it runs in. When `agent` is set, every request is `agent:<name>`, and `-as` still
+names somebody else.
+
+**`systemCharter`** is read by the server. It is the path of a charter file that `verse up`
+installs at start as `system:charter`. These are the rules that the deployment itself stands
+behind. A request cannot be made as the system, so this key is the way to install them.
+
+**`perms: {child-grants: {…}}`** is read by the server. It is the `child-grants` of the
+[root](../glossary.md#root-of-the-store): what a node that is created with no record above it
+holds out. Unset, it is `{read: ["*"]}`. Set it to `{}` for a verse where what anybody creates
+belongs to that creator alone.
+
+**`perms: {admins: […]}`** lists who may take a **top-level** address. Its entries are
+[grantees](../glossary.md#grantee), and a bare email reads as `user:`. Verse puts them in the
+`admin` group, and the root names that group in its `child-owner` line. Unset, the verse is
+open: anybody may take a top-level address.
+
+Verse writes `child-grants` and `admins` into the root's record at start, under a precondition
+that the record is absent. So an operator's later edit of that record stands. The **first**
+value of the config stands too. A check reads the record, so a later change to `child-grants`
+or `admins` in the config changes nothing. At every start where the record differs from the
+config, verse logs `perms: the root's record is not what this config would write`.
+
+`--reseed-perms` (or `VERSE_RESEED_PERMS`) is the one start that writes the config over the
+record.
+
+`--unmigrate-perms` rewrites the perms mirror in the spelling that a binary from before
+`child-owner` reads. Then it exits, and it serves nothing. Run it before you roll an image
+back past `child-owner`. See [perms.md](../perms.md).
+
+**The `llm` block** is read by the server (`verse up`). The server hosts the task runtime, so
+the agent driver reads its model and credentials from the config and the environment of the
+server. Setting it for a `task run` *client* does nothing. The variables `OPENAI_MODEL`,
+`PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` and `PORTKEY_BASE_URL` override the file.
+
+The precedence for any value, from low to high, is
 `/etc/verse.tony` → `~/.config/verse.tony` → environment → CLI flag.
 
 Every key, and the variable that sets it:
@@ -222,27 +278,35 @@ Every key, and the variable that sets it:
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
 | `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the agent driver uses |
 
-`VERSE_CONFIG=<file>` names one config file in place of both layers. `VERSE_RESEED_PERMS` is
-`-reseed-perms`. `VERSE_LOG` sets how much `verse up` logs: `debug`, `info`, `warn` or `error`.
+`VERSE_CONFIG=<file>` names one config file in place of both file layers. `VERSE_RESEED_PERMS`
+is `-reseed-perms`. `VERSE_LOG` sets how much `verse up` logs: `debug`, `info`, `warn` or
+`error`.
 
 ## The o binary
 
-`verse up` brings logd and docd up by running `o sys up`, so it needs an `o` — the
-[go-tony](https://signadot.github.io/tony-format/) CLI — and it finds one itself. In order:
+`verse up` brings up logd and docd by running `o sys up`. So it needs `o`, the
+[go-tony](https://signadot.github.io/tony-format/) CLI. `up` finds one itself, in this order:
 
-1. `-o-bin <path>`, which is an answer rather than a hint.
-2. `~/.verse/bin/<version>/o`, an `o` verse installed earlier at the version it pins.
-3. `o` on your `PATH`, **if** it was built from the pinned go-tony (verse reads that out of
-   the binary; nothing is run to ask it).
-4. otherwise `go install <pinned cmd/o>` into `~/.verse/bin/<version>/`, once per version.
+1. `-o-bin <path>`. Verse uses this path, and looks nowhere else.
+2. `~/.verse/bin/<version>/o`, an `o` that verse installed before, at the version that verse
+   pins.
+3. `o` on your `PATH`, **if** it was built from the pinned go-tony. Verse reads the version
+   from the binary. It runs nothing to ask.
+4. Otherwise, verse runs `go install <pinned cmd/o>` into `~/.verse/bin/<version>/`, once for
+   each version.
 
 So `up` works from any directory, not only from a checkout.
 
-The version check at (3) is why an `o` you already have may be ignored: verse and `o` share
-the logd session protocol, and a skew does not fail cleanly — it reads as a store that will
-not talk, or as `o sys up` refusing a flag. With no `go` and no matching `o`, verse uses a
-skewed one and says so; with neither, it says what to do rather than spawning and waiting.
+Because of the version check at step 3, verse may ignore an `o` that you already have. Verse
+and `o` share the logd session protocol. A difference in version does not fail with a clear
+error. It looks like a store that does not answer, or like `o sys up` refusing a flag.
 
-The version verse pins is the one it was *built* against, read from its own build info, so
-an installed `verse` resolves the same way as one run out of a checkout. If you are working
-on go-tony itself, point `-o-bin` at your build — that flag exists to mean "this one".
+| What verse finds | What it does |
+|---|---|
+| no `go`, and an `o` of another version | uses that `o`, and says so |
+| no `go`, and no `o` | says what to do. It does not start daemons and wait. |
+
+The version that verse pins is the one it was *built* against. Verse reads it from its own
+build info. So an installed `verse` resolves `o` in the same way as one run from a checkout.
+If you work on go-tony itself, point `-o-bin` at your build. The flag exists to mean "use this
+one".

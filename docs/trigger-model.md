@@ -376,12 +376,6 @@ pattern of that stratum, and any `derive` must land strictly above it. To declar
 complete answer: a charter with no `stratum:` anywhere is unconstrained. See
 [strata](strata.md).
 
-**Verse catches a cycle across rules at run time, and not at install.** Two rules that each
-write what the other selects on pass every check that an install makes.
-[The cycle throttle](cycle-throttle.md) bounds them by causal depth.
-[Convergence](convergence.md) holds everything else about whether a charter settles. That
-includes the one ambiguity between rules that verse warns about and does not refuse.
-
 **A guard about nothing existing has no spelling.** A match asks what is there.
 
 | Statement | Can a match say it? |

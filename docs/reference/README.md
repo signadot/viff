@@ -1,9 +1,9 @@
 # Reference
 
-The flat version of everything the [tutorial](../tutorial.md) walks, plus the detail it
-deliberately skips. For the model of a rule, see
-[the trigger model](../trigger-model.md). For the map of everything, see
-[the docs index](../README.md).
+This section is the flat version of what the [tutorial](../tutorial.md) walks through. It also
+holds the detail that the tutorial leaves out on purpose. For the model of a
+[rule](../glossary.md#rule), see [the trigger model](../trigger-model.md). For the map of all
+the docs, see [the docs index](../README.md).
 
 | | |
 |---|---|
@@ -13,17 +13,17 @@ deliberately skips. For the model of a rule, see
 | [gates.md](gates.md) | the gates of a rule: what a gate asks, who answers it, and how it settles |
 | [charter.md](charter.md) | the charter: packages, `reads:`, `verse charter`, and how a charter is stored |
 | [schedules.md](schedules.md) | schedules: time as a cause |
-| [entities.md](entities.md) | refs, payloads, merging writes, conditional writes, selection, and watching |
-| [tasks.md](tasks.md) | the task surface end to end: drivers and vectors, gates, attaching, the mirror, and executing one by hand |
+| [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
+| [tasks.md](tasks.md) | the task surface from end to end: drivers and vectors, gates, attaching, the mirror, and executing a task by hand |
 | [connect.md](connect.md) | federating a working tree, and scopes |
-| [resolvers.md](resolvers.md) | the resolver surface: the resolver, its two entities, the routes an answering service lives on, and the verbs |
-| [runners.md](runners.md) | the runner surface: where work runs — the entity, the verbs, the routes, and what a task records |
-| [perms.md](perms.md) | permissions in detail: the grammar, a record's fields, what is checked on a write and a read, installed things, questions, the seed, `verse perms` — the model itself is [../perms.md](../perms.md) |
-| [io.md](io.md) | the io surface: a connector that reflects an external system in and acts out — the entity, ownership globs, the verbs, the routes, the out half's place and status, and the contract an io serves |
-| [iod.md](iod.md) | the five sources verse ships: git (and mirrors), git-issue, Slack, Linear, GitHub — the flags, the credentials, the delivery endpoints, and what each reflects |
+| [resolvers.md](resolvers.md) | the resolver surface: the resolver, its two entities, the routes where an answering service runs, and the verbs |
+| [runners.md](runners.md) | the runner surface, which is where work runs: the entity, the verbs, the routes, and what a task records |
+| [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
+| [io.md](io.md) | the [io](../glossary.md#io) surface. An io reflects an external system into the store, and acts out on it. The page covers the entity, ownership patterns, the verbs, the routes, the address and status of the out half, and the contract an io serves. |
+| [iod.md](iod.md) | the five ios that verse ships: git (and mirrors), git-issue, Slack, Linear and GitHub. The page covers the flags, the credentials, the delivery endpoints, and what each io reflects. |
 | [examples/](examples/README.md) | working programs to copy and change: a runner, a coding runner, a worker, and an io |
-| [store.md](store.md) | what the store guarantees, and the entity grain the engine reacts at |
-| [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why that is asymmetric |
+| [store.md](store.md) | what the store guarantees, and the entity grain that the engine reacts at |
+| [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why the two differ |
 
 ## Commands
 
@@ -337,7 +337,7 @@ verse
                                              a held subject with no work too; -active only
                                              those with a live task, -no-active only the rest
   schedule (schedules)                       the schedules the verse ticks on: period, next, the
-                                             tick standing (hourly, daily, weekly come with it)
+                                             tick standing (minutely, hourly, daily, weekly come with it)
           tick <name> -due <instant> [-at <address>]
                                              write the tick for a past instant, as the schedule
                                              would have; a rule about it fires as it would have
@@ -355,16 +355,21 @@ verse
            -color auto|always|never    colorize (auto = a terminal only)
 ```
 
-Flags may appear before or after positionals (`gate approve <id> -as you@example.com -say ok`
-works). A `<who>` is a principal in the [grammar](../perms.md#principals-and-grantees):
-`user:<email>` or the bare email, `agent:<name>`, `runner:<identity>`.
+Flags may come before or after positionals: `gate approve <id> -as you@example.com -say ok`
+works. A `<who>` is a [principal](../glossary.md#principal) in the
+[grammar](../perms.md#principals-and-grantees). It is one of these:
+
+- `user:<email>`, or the bare email;
+- `agent:<name>`;
+- `runner:<identity>`.
 
 ## Selecting by what an entity says
 
-The path narrows by where an entity lives. `-if` narrows by what it says: a tony match
-against the payload, which is the same predicate a charter carries in `value` — in its
-`subject`, its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule
-with the subject `{path: "demo.pr.*", value: X}` would select.
+The [address](../glossary.md#address) narrows by where an entity lives. `-if` narrows by what
+the entity says. `-if` is a tony match against the [payload](../glossary.md#payload). It is the
+same [predicate](../glossary.md#predicate) that a charter carries in `value`, in its `subject`,
+its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule with the
+subject `{path: "demo.pr.*", value: X}` would select.
 
 ```sh
 verse data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality
@@ -373,37 +378,45 @@ verse watch -if '{stage: open}' demo pr '*'     # the same selector, as it happe
 verse watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them merges, then stop
 ```
 
-`-until` is the exception to that symmetry, and the shape of its pattern says so. `-if` is
-answered at the SERVER, over entities, before there is a frame — so it takes the payload
-pattern bare. `-until` is answered at the client, over the frames that arrive, because only
-the client knows when it has seen enough — so it is written in the frame's coordinates, with
-the payload under `to`. Writing it the other way round (`-until '{stage: merged}'`) matches
-nothing, and a watch matching nothing looks exactly like a watch waiting, so it is refused
-where it is typed.
+`-until` is the exception, and the shape of its pattern shows it.
 
-`-if-at` takes a dot-separated field path and roots `-if` there, so a predicate about a
-subtree need not restate the shape above it — `-if-at labels -if '{urgent: true}'` is
-`-if '{labels: {urgent: true}}'`. It also reaches a subtree that is not an object, where the
-predicate is a bare scalar match. A path that leads nowhere — an absent field, or a scalar in
-the way — does not match, and neither does a delete on `watch`, which has no payload left to
-ask about. The pattern is read in `-ifmt` and sent as tony, so operators and tags survive.
+| Flag | Where it is answered | How its pattern is written |
+|---|---|---|
+| `-if` | at the **server**, over entities, before there is a frame | the payload pattern, bare |
+| `-until` | at the client, over the frames that arrive | in the fields of the frame, with the payload under `to` |
+
+Only the client knows when it has seen enough, so the client answers `-until`. A pattern
+written the other way round, such as `-until '{stage: merged}'`, matches nothing. A watch
+that matches nothing looks exactly like a watch that waits. So verse refuses that pattern
+where you type it.
+
+`-if-at` takes a field path separated by dots, and roots `-if` there. So a predicate about a
+subtree need not repeat the shape above it. `-if-at labels -if '{urgent: true}'` is
+`-if '{labels: {urgent: true}}'`. `-if-at` also reaches a subtree that is not an object. There
+the predicate is a bare scalar match.
+
+These do not match:
+
+- a path that leads nowhere, such as an absent field, or a scalar in the way;
+- a delete on `watch`, which has no payload left to test.
+
+Verse reads the pattern in `-ifmt` and sends it as tony, so operators and tags are kept.
 
 A precondition on a write is a different flag: `-create`, `-update` or `-expect` on
 `verse data -put`. See [entities.md](entities.md#conditional-writes).
 
 ## The scripts
 
-Four scripts write into a verse you are already running, and each one prints what to type
-next. They are for reading as much as for running: each is a worked example of the surface it
-seeds.
+Four scripts write into a verse that you already run. Each one prints what to type next. They
+are for reading as much as for running: each is a worked example of the surface it seeds.
 
 | | |
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
 | `./scripts/seed-entities.sh` | a dozen entities across three systems, and nothing that reacts to them ([tutorial §2](../tutorial.md#2-entities)) |
-| `./scripts/charter-shapes.sh` | the coarse shapes a rule comes in, one command each — and `suspend`/`resume` one to watch it hold and act on the world as it stands ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
-| `./scripts/lineage.sh` | a commit becomes a PR becomes a release: how ids from three systems correlate without a fourth being minted, and the two edges of doing it that way |
+| `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
+| `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
-All four take `--scope <name>` and undo themselves (`--clean`, or `clean`). `./smoke.sh` is
-a different thing: it builds its own binaries and runs its own isolated server, and touches
-nothing of yours.
+All four take `--scope <name>`, and each one removes what it wrote (`--clean`, or `clean`).
+`./smoke.sh` is a different thing. It builds its own binaries and runs its own isolated
+server, and it touches nothing of yours.

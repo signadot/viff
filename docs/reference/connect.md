@@ -1,47 +1,46 @@
 # Federating a working tree, and scopes
 
-`verse connect` federates your working tree into the verse under a private, per-session
-*scope*, and wires a validator to every file — the local-dev loop. It is its own process, so
-give it a terminal and leave it running.
+`verse connect` federates your working tree into the [store](../glossary.md#store). To
+[federate](../glossary.md#federation) a tree is to make its files readable through the store.
+`verse connect` does this under a private [scope](../glossary.md#scope) for this session, and it
+connects a validator to every file. This is the loop for local development. `verse connect` is
+a process of its own, so give it a terminal and leave it running.
 
-How a tree is split into an index and served bytes is
-[content federation](../content-federation.md).
+[Content federation](../content-federation.md) says how verse splits a tree into an index and
+the bytes that it serves.
 
 ## What one command does
 
-Three things.
+`verse connect` does three things.
 
-It writes each file's rich metadata — full fstat plus a content hash — to the store as
-`local.dir-status-<scope>.<path>` entities. That is an index, not a warehouse: the stat and
-the hash, not the bytes.
+| What | Where | What it holds |
+|---|---|---|
+| writes the metadata of each file | `local.dir-status-<scope>.<path>` entities | the full fstat and a hash of the content. It is an index: the stat and the hash, and not the bytes. |
+| serves the contents of files on request, through docd | a content [controller](../glossary.md#controller) at `local.dir-content-<scope>.*` | the bytes. A validator reads them through the verse, and needs no shared filesystem. |
+| installs a scoped [rule](../glossary.md#rule) | the scope | a rule that spawns a validator for each file |
 
-It serves file contents on demand through docd, from a content controller at
-`local.dir-content-<scope>.*`, so a validator reads them through the verse with no shared
-filesystem required.
-
-And it installs a scoped trigger that spawns a validator per file.
-
-It all lives in a nonce scope, isolated from baseline and from other devs, and on exit
-`connect` drops it.
+All of it lives in a scope with a random name. The scope is isolated from
+[baseline](../glossary.md#baseline) and from other developers. When `connect` exits, it drops
+the scope.
 
 ## Driving it
 
-Configure LLM creds first ([up.md](up.md#the-driver)) so the validators run as real agents.
-In one terminal:
+First configure the model credentials ([up.md](up.md#the-driver)), so that the validators run
+as real agents. In one terminal:
 
 ```sh
 verse up
 ```
 
-In another, connect your tree and give the validator a prompt — `$path` binds to each file's
-relative path. `connect` prints the scope it chose (e.g. `scope "a1b2c3"`):
+In a second terminal, connect your tree and give the validator a prompt. `$path` binds to the
+relative path of each file. `connect` prints the scope that it chose, such as `scope "a1b2c3"`:
 
 ```sh
 verse connect . -driver llm \
   -prompt 'Read the file at path "$path" and report any problems in one sentence.'
 ```
 
-In a third (using the scope `connect` printed):
+In a third terminal, use the scope that `connect` printed:
 
 ```sh
 verse task                                           # a validator per file
@@ -50,23 +49,27 @@ verse -scope <scope> data local                    # your files, as dir-status e
 verse data local dir-content-<scope> README.md # a file's bytes, served on demand
 ```
 
-Touch or add a file and its validator fires, reading the file through the verse. Ctrl-c
-`connect`, or run `verse disconnect -scope <scope>`, to tear the scope down: trigger,
-overlay and content mount all go.
+Touch or add a file, and its validator fires. The validator reads the file through the verse.
+To remove the scope, press Ctrl-c in `connect`, or run `verse disconnect -scope <scope>`. The
+rule, the overlay and the content mount all go.
 
-For a credential-free smoke test, drop the creds and `-driver llm` — a validator still fires
-per file, on the scripted driver; it simply does not read.
+For a test without credentials, leave out the credentials and `-driver llm`. A validator still
+fires for each file, on the scripted driver. It does not read the file.
 
-Because contents flow through docd rather than a server-side `-root`, the runtime need not
-share a filesystem with your tree, so the validator can run elsewhere. *File reads are still
-truncated today, so an agent validates a large file from a partial view.*
+The contents pass through docd, and not through a `-root` on the server. So the runtime need
+not share a filesystem with your tree, and the validator can run on another machine.
+*Verse truncates file reads, so an agent validates a large file from a partial view.*
 
 <a id="scopes"></a>
 ## Scopes
 
-Every client command takes `-scope <name>`, with baseline as the default. A scope is a
-copy-on-write overlay: reads see the scope layered on the shared baseline, and writes land in
-the scope without touching baseline, so your local changes and flows stay isolated.
+Every client command takes `-scope <name>`. The default is baseline. A scope is a
+copy-on-write overlay:
+
+- a read sees the scope on top of the shared baseline;
+- a write lands in the scope, and does not touch baseline.
+
+So your local changes and your flows stay isolated.
 
 ```sh
 verse connect . -scope me
@@ -76,97 +79,137 @@ verse data demo x 1                          # baseline: not there
 verse disconnect -scope me                         # drop the whole overlay
 ```
 
-`disconnect -scope me` tears the overlay down in one shot — every scope write, not just
-`local.*` files — via logd's `DeleteScope`. What the scope started goes first: its sources stop,
-its engine stops, and every live task it owns ([below](#what-a-scope-owns)) is cancelled, those
-its rules started without their `onCancelled`, which would act inside the scope being dropped.
+`disconnect -scope me` removes the overlay in one step, through the `DeleteScope` of logd. It
+removes every write of the scope, not only the `local.*` files. First, what the scope started
+stops:
 
-Scopes are the store's, not the surface's: a copy-on-write overlay is something logd/docd
-does, and `disconnect -scope` asks it to drop one. A store without real scopes would answer
-501 and the client would fall back to removing `local.*` entities one at a time.
+1. its sources stop;
+2. its engine stops;
+3. verse cancels every live task that the scope owns ([below](#what-a-scope-owns)). For the
+   tasks that its rules started, verse skips `onCancelled`, because that hook would act
+   inside the scope that is being dropped.
 
-The scope's engine observes via per-trigger subtree watches, each watching exactly the literal
-prefix of the path its rule matches rather than the whole tree.
+The store provides scopes, and the surface of verse does not. logd and docd make the
+copy-on-write overlay, and `disconnect -scope` asks the store to drop one. A store without
+real scopes would answer 501. The client would then remove the `local.*` entities one at a
+time.
+
+The engine of a scope watches subtrees, one watch for each rule. Each watch covers exactly the
+literal prefix of the [pattern](../glossary.md#pattern) that its rule matches. It does not
+watch the whole tree.
 
 ## The charter a scope runs
 
-A scope runs **the rules installed into it**, and only those. `verse c -a -scope me`
-writes the rule into the scope's own layer, where it is durable and addressable (`verse data
-verse trigger rule x -scope me`); the record carries `scope: me`, which is what says whose
-it is.
+A scope runs **the rules installed into it**, and only those. `verse c -a -scope me` writes
+the rule into the layer of the scope. There it is durable, and you can read it at its address
+(`verse data verse trigger rule x -scope me`). The record carries `scope: me`, and that field
+says whose rule it is.
 
-Baseline's rules are **not** run in a scope, even though a scoped read sees them: the store
-layers baseline underneath, so `verse data verse trigger rule x -scope me` answers for a
-rule the scope never installed, and the `scope` field on the record is what tells the two
-apart. Whether a federation *should* inherit baseline's program is open, and the reason it is
-open is cost rather than taste — a scoped subtree watch is seeded
-with the entities the scope inherits, so installing baseline's charter into a scope would
-replay all of it over everything the scope can see, privately, per connected dev, and then
-fire again in every scope on every baseline change.
+A scope does **not** run the rules of baseline, although a scoped read sees them. The store
+puts baseline under the scope. So `verse data verse trigger rule x -scope me` answers for a
+rule that the scope never installed. The `scope` field on the record tells the two apart.
 
-The listing is the same set: `verse charter -scope me` answers from the scope's engine rather
-than from the layered store, so it shows what runs here and nothing else — the rules you
-installed, without baseline's underneath them.
+`verse charter -scope me` lists the same set. It answers from the engine of the scope, and not
+from the layered store. So it shows what runs in the scope and nothing else: the rules that
+you installed, without the rules of baseline.
 
-To run a baseline rule's behaviour in your scope, install it there. To **replace** one, install
-yours under baseline's name: a scoped install lands in your layer, where it is the only rule of
-that name the scope's engine holds, and baseline is untouched. Nothing has to be removed first,
-and nothing can be: `verse c -r rules <a baseline rule> -scope me` is a write to baseline's
-charter made from a scope, and is refused as one (see [what a scope owns](#what-a-scope-owns)).
-A rule that never ran here needs no hiding.
+To run the behaviour of a baseline rule in your scope, install the rule there. To
+**replace** a baseline rule, install yours under the same name. A scoped install lands in your
+layer. There it is the only rule of that name in the engine of the scope, and baseline does
+not change. You do not need to remove anything first, and you cannot:
+`verse c -r rules <a baseline rule> -scope me` is a write to the charter of baseline from a
+scope, and verse refuses it as one (see [what a scope owns](#what-a-scope-owns)). A rule that
+never ran in the scope needs no hiding.
 
-A scope's charter comes back after a verse restart when the scope's engine is next built —
-that is, when you reconnect. Until something asks for the scope, its engine does not exist and
-its rules are not running, because a restart cannot enumerate the scopes that have a charter:
-a scope's layer is invisible from baseline and nothing registers one.
+After a restart of verse, the charter of a scope comes back when verse next builds the engine
+of the scope. That happens when you connect again. Until something asks for the scope, its
+engine does not exist and its rules do not run. A restart cannot list the scopes that have a
+charter. The layer of a scope is not visible from baseline, and nothing registers a scope.
 
-*Left to do: a scope is not yet a first-class, listable, durable thing. That is the missing piece above: a registry
-would let a restart bring every scope's charter back without waiting for a reconnect.*
+*Left to do: a scope is not a first-class, listable, durable thing. A registry of scopes would
+let a restart bring back the charter of every scope without a new connection.*
+
+Whether a scope should also run the rules of baseline is an open question. See
+[Why it is this way](#why-it-is-this-way).
 
 <a id="what-a-scope-owns"></a>
 ## What a scope owns
 
 A scope has two halves, and they layer differently.
 
-**The world is copied.** Entities under `demo`, `git`, `notes` — whatever the charter is
-about — are logd's copy-on-write: a scoped write lands in the overlay, a scoped read sees the
-overlay on baseline, and baseline never sees the overlay.
+**The world is copied.** The entities under `demo`, `git`, `notes`, or whatever the charter is
+about, use the copy-on-write of logd:
 
-**The program is referenced.** Rules, tasks, gates and flows are records in the store, but each
-is also a live thing: a rule is a watch, a task is a handle, a gate is an awaiter, a flow is the
-set of handles about a subject. A live thing runs in exactly one engine, and every scope's engine
-shares one task runtime and one gate registry with baseline. The scope's engine holds what the
-scope created — the rules installed into it, the tasks those rules and `task run -scope` spawned,
-the gates those raised. Everything else it can see is baseline's, read through the overlay: the
-record is there, the live thing is not.
+- a scoped write lands in the overlay;
+- a scoped read sees the overlay on top of baseline;
+- baseline never sees the overlay.
 
-So a control-plane write in a scope — `flow suspend|resume|say|cancel`, `task cancel|say|vector`,
-`gate answer|escalate`, `charter -r` — reaches only what the scope created. A
-suspension made with `-scope me` covers the rules the scope installed, the tasks and questions
-they started and the tasks run in the scope, and nothing baseline's; one made without covers
-baseline's and every package's, and nothing any scope's. Addressed at an
-inherited object it is **refused**, and the refusal names the scope that holds it, baseline being
-the unnamed one:
+**The program is referenced.** Rules, tasks, gates and flows are records in the store. Each one
+is also a live thing:
+
+| Record | Its live thing |
+|---|---|
+| a rule | a watch |
+| a task | a handle |
+| a gate | an awaiter, which waits for the answer |
+| a flow | the set of handles about a subject |
+
+A live thing runs in exactly one engine. The engine of every scope shares one task runtime and
+one gate registry with baseline. The engine of a scope holds what the scope created:
+
+- the rules installed into it;
+- the tasks that those rules and `task run -scope` spawned;
+- the gates that those tasks raised.
+
+Everything else that the scope can see belongs to baseline, and the scope reads it through
+the overlay. The record is there. The live thing is not.
+
+So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
+scope created. These are the writes of the control plane:
+`flow suspend|resume|say|cancel`, `task cancel|say|vector`, `gate answer|escalate`
+and `charter -r`.
+
+| A suspension made | What it covers |
+|---|---|
+| with `-scope me` | the rules that the scope installed, the tasks and questions they started, and the tasks run in the scope. Nothing of baseline. |
+| without `-scope` | the work of baseline and of every package. Nothing of any scope. |
+
+Verse **refuses** such a write aimed at an inherited object. The refusal names the scope
+that holds the object. Baseline is the scope with no name:
 
 ```
 task review@demo.pr.1 is baseline's; scope me did not create it — act on it without --scope
 ```
 
-Refused rather than passed through or copied, because the two halves would part ways: the act
-can only land on the live thing, which is baseline's, while the record it leaves would land in
-the overlay. A gate answered that way would be delivered in baseline and recorded as answered in
-the scope alone, with baseline's record still pending. The rule reads the same from baseline: a
-task a scope spawned is that scope's, and baseline is told which scope to say rather than allowed
-to cancel it unaware.
+The rule is the same from baseline. A task that a scope spawned belongs to that scope.
+Baseline is told which scope to name, and it cannot cancel the task without knowing.
 
-Creating is what "the scope's own" means, so creation is never refused: `charter -a -scope me`,
-`task run -scope me`, and everything a scoped rule fires. To replace a baseline rule in a scope,
-install yours under its name (above); removing baseline's from the scope is a write to baseline's
-program, and is refused as one.
+Creating is what "the scope's own" means, so verse never refuses a creation:
+`charter -a -scope me`, `task run -scope me`, and everything that a scoped rule fires. To
+replace a baseline rule in a scope, install yours under its name (above). Removing the rule of
+baseline from the scope is a write to the program of baseline, and verse refuses it as one.
 
-**Grants are copied, like the world.** A grant is live too — the check reads a mirror rather
-than the store — and a scope is governed by baseline's grants: opening one is not a way around
-them. But a grant has no live half that runs anywhere; the mirror is a cache of records, and it
-layers as records do. A grant made with `-scope me` lands in the overlay and governs the scope's
-writes on top of baseline's, and baseline's checks never see it. [Permissions](../perms.md#scopes)
-has the detail.
+**Grants are copied, like the world.** A grant is live too, because the check reads a mirror
+of the records and not the store. Baseline's grants govern a scope: opening a scope does not
+get around them. But a grant has no live half that runs anywhere. The mirror is a cache of
+records, and it layers as records do. A grant made with `-scope me` lands in the overlay. It
+governs the writes of the scope, on top of the grants of baseline, and the checks of baseline
+never see it. [Permissions](../perms.md#scopes) has the detail.
+
+## Why it is this way
+
+### A scope does not run the rules of baseline
+
+Whether a scope should inherit the program of baseline is open. The reason is cost, and not
+taste. A scoped subtree watch starts with the entities that the scope inherits. So installing
+the charter of baseline into a scope would replay all of it over everything that the scope can
+see. It would do this privately, for each connected developer. Then it would fire again in
+every scope, on every change to baseline.
+
+### A write to an inherited object is refused
+
+Verse refuses the write. It does not pass the write through to baseline, and it does not copy
+the object into the scope. Either way, the two halves of the scope would disagree. The act can
+land only on the live thing, which belongs to baseline. The record that the act leaves would
+land in the overlay. A gate answered in this way would be delivered in baseline, and recorded
+as answered in the scope alone. The record of baseline would still say pending.
