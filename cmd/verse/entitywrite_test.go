@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -262,5 +264,53 @@ func TestStateRmStillRemoves(t *testing.T) {
 	}
 	if out, err := runCLI(t, "data", "demo", "rmme", "404", "--rm"); err != nil || !strings.Contains(out, "removed") {
 		t.Fatalf("rm of an absent entity: %q %v", out, err)
+	}
+}
+
+// --grants ON A --put CREATES THE NODE HOLDING OUT WHAT IT SAYS, in the list `verse perms
+// --grants` takes: bob, whom the open verse would admit, reads nothing of alice's note, carol
+// whom it names reads it, and a node that stands is refused and told where its grants change.
+// Beside a condition about a node that stands, or with no --put, it is a usage error and nothing
+// is sent.
+func TestEntityPutWithGrantsCreatesTheNodeHeldOut(t *testing.T) {
+	store := serve(t)
+	note := entity.RefAt("spaces", "alice", "note")
+	t.Setenv("VERSE_USER", "alice@example.com")
+	if _, err := runCLI(t, "data", "spaces", "alice", "note", "--put", `{n: 1}`, "--grants", `[{read: [carol@example.com]}]`); err != nil {
+		t.Fatalf("put --grants: %v", err)
+	}
+	t.Setenv("VERSE_USER", "bob@example.com")
+	if _, err := runCLI(t, "data", "spaces", "alice", "note"); err == nil {
+		t.Error("bob read a note held out to carol alone")
+	}
+	if out, err := runCLI(t, "data", "spaces", "alice"); err != nil || strings.Contains(out, "note") {
+		t.Errorf("bob's read of the place above answered the note: %v\n%s", err, out)
+	}
+	t.Setenv("VERSE_USER", "carol@example.com")
+	if out, err := runCLI(t, "data", "spaces", "alice", "note"); err != nil || !strings.Contains(out, "n: 1") {
+		t.Errorf("carol cannot read the note held out to her: %v\n%s", err, out)
+	}
+
+	t.Setenv("VERSE_USER", "alice@example.com")
+	_, err := runCLI(t, "data", "spaces", "alice", "note", "--put", `{n: 2}`, "--grants", `[]`)
+	if err == nil || !strings.Contains(err.Error(), "verse perms") {
+		t.Errorf("--grants on a note that stands: %v, want a refusal naming verse perms", err)
+	}
+	if got := payloadOf(t, store, note); fmt.Sprint(got["n"]) != "1" {
+		t.Errorf("the refused write changed the note: %+v", got)
+	}
+
+	for _, args := range [][]string{
+		{"data", "spaces", "alice", "other", "--put", `{n: 1}`, "--grants", `[]`, "--update"},
+		{"data", "spaces", "alice", "other", "--put", `{n: 1}`, "--grants", `[]`, "--expect", `{n: 1}`},
+		{"data", "spaces", "alice", "other", "--rm", "--grants", `[]`},
+		{"data", "spaces", "alice", "other", "--grants", `[]`},
+	} {
+		if _, err := runCLI(t, args...); !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("%q: %v, want a usage error", args, err)
+		}
+	}
+	if got := payloadOf(t, store, entity.RefAt("spaces", "alice", "other")); got != nil {
+		t.Errorf("a usage error wrote: %+v", got)
 	}
 }

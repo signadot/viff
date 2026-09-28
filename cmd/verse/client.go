@@ -985,6 +985,10 @@ type stateConfig struct {
 	Create bool   `cli:"name=create desc='with --put: only if nothing is there yet — the write loses a race rather than clobbering'"`
 	Update bool   `cli:"name=update desc='with --put: only if something is already there'"`
 	Expect string `cli:"name=expect desc='with --put: only if what is there matches this tony pattern'"`
+	// Grants is what the node --put CREATES holds out, in the list `verse perms --grants` takes,
+	// in place of the default above it. A write carrying it is a create, so it sits beside
+	// --create and refuses --update and --expect, which are about a node that stands.
+	Grants string `cli:"name=grants desc='with --put: create the node holding out this list, as verse perms --grants takes it ([{read: [ana@example.com]}]; [] for nothing), in place of the default above it; refused where the node stands'"`
 }
 
 // dataCmd is `verse data`: the verse's data at a path.
@@ -1054,6 +1058,9 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	switch {
 	case cfg.Put != "" && cfg.Rm:
 		return fmt.Errorf("%w: data does one thing at a time: --put writes, --rm removes",
+			cli.ErrUsage)
+	case cfg.Grants != "" && cfg.Put == "":
+		return fmt.Errorf("%w: --grants is what a node created by --put holds out; add --put <payload>",
 			cli.ErrUsage)
 	case cfg.Put != "" || cfg.Rm:
 		segs, err := addressOf(addr, cfg.At)
@@ -1161,6 +1168,19 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	if err != nil {
 		return fmt.Errorf("data --put: %w", err)
 	}
+	// GRANTS ARE GIVEN AT A CREATION, so a write that says something stands is not one: what a
+	// node that stands holds out is changed with `verse perms`.
+	var grants entity.Payload
+	if cfg.Grants != "" {
+		if cfg.Update || cfg.Expect != "" {
+			return fmt.Errorf("%w: data --put --grants creates the node, and --update and --expect "+
+				"are about one that stands; change what a node holds out with verse perms --grants",
+				cli.ErrUsage)
+		}
+		if grants, err = codec.ParseNode([]byte(cfg.Grants), codec.Tony); err != nil {
+			return fmt.Errorf("data --put --grants: %w", err)
+		}
+	}
 	// THE WHOLE ADDRESS IS THE PLACE. `verse data verse-dev drift head abc --put '{…}'` writes
 	// there, and so does `verse data demo.pr.1.labels.urgent --put true` — a write is a value
 	// at a path, and where the entity "ends" is a question this command does not answer. The
@@ -1171,6 +1191,7 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 		Sub:     at.Access,
 		Payload: payload,
 		When:    when,
+		Grants:  grants,
 	})
 	if err != nil {
 		return fmt.Errorf("data --put: %w", err)

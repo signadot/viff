@@ -163,6 +163,16 @@ haskv "$(v data demo pr 1)" stage open || die "the ref spelling did not reach th
 has "$(v data demo pr 1 stage)" open || die "a path into the payload did not reach the field"
 ok "one address: put/get/rm reach inside a payload, by ref or by path"
 
+# ── grants on create: a node that holds out what its creator says from its first commit ──
+step "data --put --grants (a node created private)"
+VERSE_USER=user:alice@example.com v data notes alice todo --put '{todo: "buy milk"}' --grants '[]' >/dev/null ||
+	die "data --put --grants failed"
+has "$(VERSE_USER=user:alice@example.com v data notes alice todo)" 'buy milk' ||
+	die "alice cannot read the note she created"
+VERSE_USER=user:bob@example.com v data notes alice todo >/dev/null 2>&1 &&
+	die "bob read a note created holding out nothing"
+ok "alice's note, created with --grants '[]', is refused to bob"
+
 # ── the representation: verse READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because
 # valid JSON is valid tony, but nothing renders JSON — a tagged charter has no faithful
