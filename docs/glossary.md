@@ -281,18 +281,11 @@ See [The action of a rule](reference/action.md#seq-sequence-along-the-chain-para
 
 ### hook
 
-A hook is an action that fires when the task of a `spawn`, or a `seq`, ends.
+A hook is an action that fires when the task of a `spawn`, or a `seq`, ends, such as
+`onDone`. `onDenied` is a field of a gate: it fires when somebody answers no.
 
-| Hook | When it fires |
-|---|---|
-| `onDone` | the task ends with the status `done` |
-| `onFailed` | the task ends with the status `failed` |
-| `onCancelled` | the task ends with the status `cancelled` |
-| `onDenied` | somebody answers no to a gate. It is a field of the gate, not of the action, and it needs no task. |
-
-An action also takes `onOrphaned`, which does not fire.
-
-See [The action of a rule](reference/action.md#completion-hooks-one-trigger-chaining-visible).
+See [The action of a rule](reference/action.md#completion-hooks-one-trigger-chaining-visible)
+and [The gates of a rule](reference/gates.md#ondenied--what-a-no-means).
 
 ### latch
 
@@ -305,15 +298,7 @@ See [Convergence](convergence.md#what-ends-a-firing).
 ### binding
 
 A binding is a name that begins with `$`, inside an action. Verse replaces it with a value
-when the rule fires.
-
-| Binding | Value |
-|---|---|
-| `$subject` | the address of the subject |
-| `$subject.name` | the last segment of that address |
-| `$subject.value` | the payload of the subject |
-| `$stage` | the field `stage` of the payload. Every top-level field binds in this way. |
-| `$status`, `$result`, `$data`, `$err`, `$chain` | in a hook, the fields of the task that ended |
+when the rule fires, such as `$subject` for the address of the subject.
 
 See [The action of a rule](reference/action.md#bindings).
 
@@ -377,12 +362,8 @@ See [Strata](strata.md#installing-and-the-order-it-does-not-depend-on).
 
 ### trouble
 
-`trouble` is what `verse charter` prints on a rule whose firings went wrong.
-
-| Kind | What went wrong |
-|---|---|
-| `failed` | an action did not do what the rule says |
-| `unread` | the rule could not read a commit, and did not evaluate it |
+`trouble` is what `verse charter` prints on a rule whose firings went wrong. Its kinds are
+`failed` and `unread`.
 
 See [The trigger model](trigger-model.md#when-a-rule-does-nothing).
 
@@ -434,16 +415,8 @@ See [Tasks](reference/tasks.md#executing-one-by-hand).
 
 ### mode
 
-A mode is one of three values on a gate.
-
-| Mode | What happens |
-|---|---|
-| `auto` | the action runs, and nobody is asked |
-| `ask` | the gate poses a question, and the action waits for the answer |
-| `park` | the action is held |
-
-Where several gates of a task match one action, the strictest mode applies: `park`, then
-`ask`, then `auto`.
+A mode is one of three values on a gate. `auto` runs the action, `ask` poses a question and
+waits for the answer, and `park` holds the action.
 
 See [Tasks](reference/tasks.md#the-dial).
 
@@ -502,13 +475,8 @@ See [Resolvers](reference/resolvers.md#the-question-record).
 
 ### reason
 
-`reason` is the field of a question that says where the question comes from.
-
-| Gate | What `reason` holds |
-|---|---|
-| of a task | what matched, such as `verb write`, or `no gate matched` |
-| of a rule | the names of the rule, the gate and the subject |
-| raised by a worker | the text that the worker gave with `-reason` |
+`reason` is the field of a question that says where the question comes from, such as
+`verb write` for a gate of a task.
 
 See [Tasks](reference/tasks.md#the-dial).
 
@@ -637,13 +605,7 @@ See [Tasks](reference/tasks.md#the-mirror).
 
 ### driver
 
-The driver of a task decides what the task does next.
-
-| Driver | What it does |
-|---|---|
-| `scripted` | runs the prompt as one shell command |
-| `calls` | runs a list of actions that the charter wrote |
-| `llm` | gives the prompt to a model, which chooses each action |
+The driver of a task decides what the task does next. It is `scripted`, `calls` or `llm`.
 
 See [Tasks](reference/tasks.md#the-drivers).
 
@@ -708,9 +670,12 @@ See [Task control](task-control.md#the-event-envelope-and-the-cursor).
 
 ### seam
 
-A seam is an interface between two parts of verse that can become a network connection.
+A seam is a place where what does the work can change and the commands stay the same. Where a
+task runs is a seam: in the verse process, on a runner, or with a person who runs
+`verse task do`, and every `verse task` command works on all of them.
 
-See [Seams](seams.md).
+See [where a task runs is a seam](reference/tasks.md#where-a-task-runs-is-a-seam). How the
+seams are built is in [Seams](seams.md), in the repository.
 
 ### runner
 
@@ -861,15 +826,8 @@ See [Permissions](perms.md#principals-and-grantees).
 
 ### kinds of principal
 
-| Kind | Who it is |
-|---|---|
-| `user:<email>` | a person |
-| `agent:<name>` | an agent that drives verse through the API |
-| `runner:<identity>` | a runner, or a worker that claimed a task |
-| `system:<part>` | verse itself. The part says which part of verse wrote, such as `system:mirror`. |
-| `via:<address>` | an installed thing that acts: a rule, an io or a resolver. It acts as whoever installed it. |
-
-A request presents `user:`, `agent:` or `runner:`. Verse makes the other two.
+A principal is of one of five kinds: `user:`, `agent:`, `runner:`, `system:` and `via:`. A
+request presents the first three, and verse makes the other two.
 
 See [Permissions reference](reference/perms.md#the-grammar).
 
@@ -882,14 +840,8 @@ See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
 
 ### grantee
 
-A grantee is who a grant is to. It is a principal, or a set of principals.
-
-| Grantee | Who it admits |
-|---|---|
-| `user:ana@example.com` | that principal |
-| `user:*` | every principal of the kind |
-| `group:payments` | the members of the group |
-| `*` | everyone |
+A grantee is who a grant is to: a principal, every principal of a kind (`user:*`), a
+[group](#group), or everyone (`*`).
 
 See [Permissions reference](reference/perms.md#the-grammar).
 
@@ -936,14 +888,8 @@ See [Permissions](perms.md#grants).
 
 ### level (of a permission)
 
-A level is what a principal may do at a node.
-
-| Level | What it admits |
-|---|---|
-| `read` | to read the node and what is beneath it |
-| `read-write` | `read`, and to write into the node |
-| `owner` | `read-write`, and to delete the node, replace it and set its record |
-| `control` | see [control (permission level)](#control-permission-level) |
+A level is what a principal may do at a node: `read`, `read-write`, `owner` or
+[`control`](#control-permission-level).
 
 See [Permissions reference](reference/perms.md#levels).
 
@@ -952,9 +898,6 @@ See [Permissions reference](reference/perms.md#levels).
 `control` is the level that admits steering work: run, cancel, pause, resume, `say`, a change
 of vector, and suspend. No other level includes it. The owner of a task holds it, and so does
 the worker that claimed the task.
-
-A spawn carries the identity of whoever runs it, and verse writes the record of the task as
-that identity. That write is the check for `run`.
 
 Written as code, `control` is this level.
 

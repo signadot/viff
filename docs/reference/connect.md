@@ -131,11 +131,7 @@ Whether a scope should also run the rules of baseline is an open question. See
 A scope has two halves, and they layer differently.
 
 **The world is copied.** The entities under `demo`, `git`, `notes`, or whatever the charter is
-about, use the copy-on-write of logd:
-
-- a scoped write lands in the overlay;
-- a scoped read sees the overlay on top of baseline;
-- baseline never sees the overlay.
+about, use the copy-on-write overlay of [scopes](#scopes).
 
 **The program is referenced.** Rules, tasks, gates and flows are records in the store. A scope
 owns what it created:
@@ -151,12 +147,7 @@ through the overlay. How the runtime keeps each one is in
 So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
 scope created. These are the writes of the control plane:
 `flow suspend|resume|say|cancel`, `task cancel|say|vector`, `gate answer|escalate`
-and `charter -r`.
-
-| A suspension made | What it covers |
-|---|---|
-| with `-scope me` | the rules that the scope installed, the tasks and questions they started, and the tasks run in the scope. Nothing of baseline. |
-| without `-scope` | the work of baseline and of every package. Nothing of any scope. |
+and `charter -r`. What a suspension covers in a scope is in [control](../control.md#scopes).
 
 Verse **refuses** such a write aimed at an inherited object. The refusal names the scope
 that holds the object. Baseline is the scope with no name:
@@ -170,13 +161,10 @@ Baseline is told which scope to name, and it cannot cancel the task without know
 
 Creating is what "the scope's own" means, so verse never refuses a creation:
 `charter -a -scope me`, `task run -scope me`, and everything that a scoped rule fires. To
-replace a baseline rule in a scope, install yours under its name (above). Removing the rule of
-baseline from the scope is a write to the program of baseline, and verse refuses it as one.
+replace a baseline rule in a scope, install yours under its name
+([above](#the-charter-a-scope-runs)).
 
-**Grants are copied, like the world.** Baseline's grants govern a scope: opening a scope does
-not get around them. A grant made with `-scope me` lands in the overlay. It governs the writes
-of the scope, on top of the grants of baseline, and the checks of baseline never see it.
-[Permissions](../perms.md#scopes) has the detail.
+**Grants are copied, like the world** ([permissions](../perms.md#scopes)).
 
 ## Why it is this way
 

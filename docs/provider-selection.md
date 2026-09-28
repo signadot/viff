@@ -78,7 +78,7 @@ deleting entities. The charter does not change.
 An inline `eligible: [gpt, claude]` is the simpler form. It is a list of names. Each name is
 the driver, and it gives nothing else, because a name has no attributes.
 
-`select` says who chooses. It is the same setting that a gate has:
+`select` is the same setting that a gate has:
 
 | `select` | Who decides | What appears |
 |---|---|---|
@@ -89,8 +89,7 @@ the driver, and it gives nothing else, because a name has no attributes.
 `within` has no default. If nobody picks by the deadline, the question settles on `none` and
 nothing is spawned.
 
-`auto` poses no question at all. A gate follows the same rule from the other side: verse poses
-a question for `ask`, and never for `mode: auto`.
+A gate follows the same rule: verse poses a question for `ask`, and never for `mode: auto`.
 
 Verse refuses a `vote` under an `exclusive` resolver at install. An exclusive resolver answers
 alone, and a vote needs a group. `ask` works with an exclusive resolver.
@@ -173,9 +172,7 @@ Every charter and every provider that names the address follows it, and none of 
 Nothing is declared twice, and no config is deployed again.
 
 As a result, the store holds bearer strings. This is a real cost, and verse accepts it. A
-permitted reader can copy the key out of the store. A Portkey virtual key is limited by its own
-budget and route, so that risk is acceptable. **A provider key is not limited, and does not
-belong here.**
+permitted reader can copy the key out of the store.
 
 ### What protects a key here, and what does not
 
@@ -347,15 +344,11 @@ reads it to answer "what would this doer be allowed to do" before voting.
 A `vote` or `ask` selection without `within` is a question with no deadline. The spawn waits
 until somebody picks. So the question must survive a restart of verse.
 
-This kind of question is the harder of the two kinds to restore. It opens *inside* the action,
-after the action has written its [latch](glossary.md#latch). So the subject no longer matches
-its rule, and nothing fires the rule again.
-
-The `chain` of the question makes it possible to resume. The chain is the address of the
-action that the answer holds up: `review`, `review.onDone` or `review.seq[2]`. At start, verse
-follows the chain back into the charter and enters the selection again. The selection poses
-the same question again, with the ballots already cast and the deadline already set. So the
-pick made after the restart decides who runs, exactly as it would have before.
+At start, verse follows the `chain` of the question back into the charter and poses the same
+question again, with the ballots already cast
+([a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it)).
+The chain is the address of the action that the answer holds up: `review`, `review.onDone` or
+`review.seq[2]`.
 
 The chain is on the docket entry too. A selection names a subject and a capability, and
 neither says "which rule is waiting on this".
@@ -368,8 +361,7 @@ The resumed spawn cannot recover two things:
   something.
 
 Verse settles a selection as `orphaned`, with a `why`, in two cases: its rule or action has
-left the charter, or its subject is gone. See
-[a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it).
+left the charter, or its subject is gone.
 
 ## Corners
 

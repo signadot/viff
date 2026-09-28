@@ -39,9 +39,6 @@ different:
 | `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go code, per runtime. Or an [attached resolver](attached-resolvers.md), which is what the `resolver` field of a spawn names. |
 | the supervisor here | whether *a firing* proceeds. This is the question at the level of the charter that a gate would put to a person. | a rule of a charter, which you can install over the wire |
 
-The first kind acts inside a [task](glossary.md#task): `write_file` on a path, a `call_agent`,
-a `run_bash`. The second kind acts outside the task: it decides whether this change lands.
-
 An automatic supervisor of the second kind needs no new machinery. A charter can already do each
 step:
 
@@ -168,8 +165,7 @@ writes only one of them:
 | `review.risk` | the supervisor: it is the supervisor's own claim |
 | `tests: green` | a source that reflects CI ([ios](io.md)). The supervisor has no authority to write it. |
 
-So `review.decision: approve` alone does not land a change. The supervisor can say `approve`,
-and the change can still not land. That is the property you want, and it is the reason `remit`
+So `review.decision: approve` alone does not land a change. That is the property you want, and it is the reason `remit`
 is a rule of its own. `remit` is the complement of `land-auto`, written once, in one place. For
 any assessed change that the supervisor approved, either `land-auto` matches or `remit` matches.
 Never both match, and never neither. `remit` rewrites `decision` and leaves `why` as it is. So

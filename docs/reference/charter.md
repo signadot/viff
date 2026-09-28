@@ -55,7 +55,6 @@ reads: [git]                   # …and what it may read besides
 ```
 
 Two packages that both react to `git.*` are the ordinary arrangement, and not an unusual one.
-Each package may write only in its own address.
 
 **Reads are declared**, in the `reads:` line of the example. A package reads inside its own
 address, and what it names in `reads:`, and nothing else. An undeclared read does not install,
@@ -302,11 +301,7 @@ first rule belongs to the file. To attach the comment to the rule, write it insi
 
 **Restoring a rule is an ordinary install**, so it **replays**. A subtree watch is
 level-triggered at the open, so a restored rule acts on what already matches it. That includes
-what arrived while verse was down.
-
-A restart is an install over a store that has moved on.
-[Installing a rule fires it on what already matches](condition.md#the-backlog) describes the
-same property. It is also the same reason to write a latch and not an edge.
+what arrived while verse was down ([the backlog](condition.md#the-backlog)).
 
 A **scoped charter** (`verse c -a -scope`) is restored in the same way, when the engine of the
 scope is next built. Verse builds that engine on demand, which in practice is when the

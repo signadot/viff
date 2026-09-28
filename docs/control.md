@@ -8,9 +8,6 @@ reach.
 | **a hold on a run** | one task, at its next boundary | until somebody resumes it, or verse restarts |
 | **a suspension** | all the work about a charter and a subject: firings, tasks, questions, and what a hook would start | until somebody lifts it. It lasts across restarts. |
 
-Under a hold on a run, the rule that started the task goes on firing. It may start another
-task when this one has ended.
-
 Both acts are verbs of `verse flow`, and both use the same flags. A *flow* is a query over the
 work in progress. A *suspension* is a query over the work from now on, and it names the same
 coordinates that a live task carries. So the listing and the acts share their flags:
@@ -26,8 +23,8 @@ Cancelling ends the work. It is a verb of `verse flow` too.
 | `-charter <address>[:<rule>]` | the address of an installed charter, and one rule of it after the colon |
 | `-subject <address>` | an address, with `*` for any segment. It covers what stands at the address and beneath it. |
 
-**`-task`** cannot be combined with the others, so the flags alone say whether an act is about
-one run or is durable.
+**`-task`**. Because it combines with no other flag, the flags alone say whether an act is
+about one run or is durable.
 
 **`-charter`**. The charter of baseline has no address, so a rule of it is `:<rule>`, and all
 its rules are `:`. Every charter is `'*'`. With `-r` (`-recursive`) the flag names the charter
@@ -220,12 +217,8 @@ and so does the runner that its claim granted.
 A `say` over many tasks asks for `control` of each task before it says anything. If one is
 refused, the whole act is refused, and the refusal names that task.
 
-A suspension is asked twice: when it is written, and every time it would apply. Each time, its
-holder must hold `control` over the charter or at the subject. A selector is asked at its
-literal head, which is `demo` for `demo.*.1`. So a wildcard stops covering a subject as soon as
-somebody else owns the subject. Only the system may suspend a rule that the system installed.
-[Suspending](reference/perms.md#suspending) in the permissions reference has the rule in full
-([perms](perms.md#suspending)).
+A suspension needs `control` over the charter or at the subject, both when it is written and
+every time it would apply ([suspending](reference/perms.md#suspending)).
 
 ## Scopes
 
@@ -275,8 +268,6 @@ scope may not name the charter of a package, because a package belongs to baseli
 | `suspensions: {count, tasks, subjects, questions, launches}` | how many suspensions are in force, and what they hold: tasks, their subjects, questions withdrawn, launches parked. Each is counted once. The field is absent when nothing is suspended. |
 | `firings: {failed, unread}` | what has gone wrong at the firings of the rules ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)) |
 
-**`verse charter`** marks a rule in trouble with `trouble`.
-
 **`verse flow show <subject>`** puts what holds the work of the subject at the top of the
 tree. That is what would hold an installed rule whose subject could select it, and what holds
 its live tasks. The tree marks `heldBy` on a live task, and `suspended` on each position whose
@@ -295,6 +286,4 @@ stream of changes.
 
 ## Suspending
 
-A suspension holds the work about its subject in every form until it is lifted. What you do
-with one is in [a suspension](#a-suspension), above. How a suspension acts on rules, rule by
-rule, is in [control.md](platform/control.md#suspending), in the repository.
+See [a suspension](#a-suspension).

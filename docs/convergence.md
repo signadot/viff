@@ -77,14 +77,8 @@ and the improvement is a constant factor on observation.
 
 `when` and the selection of the subject come from the same `AsOf(C)`. That is one `MatchAt`
 over the root. docd answers it across the base and every mount at commit C. Both evaluations
-are then pure functions of that one document.
-
-So a firing cannot act on a member under a condition that stopped holding between two reads.
-The members a firing sees do not depend on when a `Select` ran.
-
-The engine finds an edge by comparing `AsOf(C-1)` with `AsOf(C)`. It does not compare with
-what the engine remembers it saw. So a replayed commit, after a catch-up or a restart, reaches
-the same verdict as the live commit.
+are then pure functions of that one document. What follows for a condition and for an edge is
+in [the rule](trigger-model.md#the-rule).
 
 The reads of an [action](glossary.md#action) are pinned to C too, and their spelling says so.
 These reads are answered from **one snapshot per firing, taken at the commit that caused it**:
@@ -264,9 +258,6 @@ Verse takes one snapshot per commit. The effect of every action is either a stor
 spawn that the install-time check has bounded. So **the settled store is a function of
 (charter, inputs)**, and not of the order in which firings interleave.
 
-There are two named exceptions. Both are properties of a charter, not of the model:
-
-| Exception | What happens |
-|---|---|
-| a cycle across rules | It does not settle. Verse detects it by causal depth at runtime and paces it. |
-| two rules writing one field | It settles arbitrarily. Verse does not detect it. |
+The two exceptions are properties of a charter, not of the model:
+[a cycle across rules](#the-cycle-and-how-it-is-caught) and
+[two rules that write one field](#two-triggers-one-field).

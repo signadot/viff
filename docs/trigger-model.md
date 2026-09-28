@@ -22,7 +22,7 @@ writer makes it.
 
 ## Where the rest is
 
-This page is the model. These pages hold the fields of a rule, and the other things that a
+These pages hold the fields of a rule, and the other things that a
 charter author looks up.
 
 | Page | What it holds |
@@ -135,10 +135,8 @@ reflected as an entity. The engine interprets the rule directly. There is no com
   "action":    { "patch": { "stage": "shipped" } } }
 ```
 
-`review` reads as *while a PR is open, review it*. The rule names no cause, so verse considers
-it at every commit that touches `demo.pr`. Its patch moves each PR past `open`, so the rule
-settles. Verse allows the spawn only *because* of that patch: it refuses a spawning action
-that has nothing to latch on.
+`review` reads as *while a PR is open, review it*. Its patch moves each PR past `open`, so the rule
+settles.
 
 `ship-green` reads as *at the moment CI goes green, ship everything reviewed*. It fires once,
 at the edge, over the set as it stood at that commit. With `when` in place of `on`, the rule
@@ -153,8 +151,7 @@ A *[match](glossary.md#match)* is a tony selector over the store at one point in
 which entities satisfy it now. A match holds no time.
 
 A *formula* is a match that verse asks of the store as the store changes. For a cause, verse
-asks it at two revisions. For a condition, verse asks it at one. Nothing composes a formula: a
-condition has no `until`, no `quorum` and no `deadline`. The whole content of a formula is its
+asks it at two revisions. For a condition, verse asks it at one. The whole content of a formula is its
 match.
 
 | concept | grammar | what it expresses |
@@ -165,25 +162,12 @@ match.
 | `when` | formula, a match at one revision | the **condition**: this must hold at that commit for the firing to proceed |
 | gate | neither. It is a question posed to somebody. | proceed when whoever answers settles it: one yes, a threshold of them, or a clock's default |
 
-Every concept of a rule is one of the two grammars: `when`, `subject` and flows. A
-[gate](glossary.md#gate-of-a-rule) is neither, because it asks somebody. For each concept,
-know which of the two it is.
-
-The choice is simple. To name entities at an instant, write a match. To ask whether a match
-holds as the store changes, write a formula.
-
-`subject` and the addressing of a flow are point-in-time, so they are plain matches. Verse
-selects a subject at the commit of the firing, and never accumulates it.
-
 `on` and `when` are asked of the store as it changes, so they are formulas. They are the same
 predicate asked at different moments. For this reason they share a grammar and a type.
+[The condition of a rule](reference/condition.md#on-and-when--the-cause-and-the-condition)
+has the detail.
 
-| Field | Asked at | What it does |
-|---|---|---|
-| `on` | C-1 and C | fires on ¬P → P. It is the cause, and it is an edge. |
-| `when` | C | gates. It is the condition, and it is a level. |
-
-A gate is neither grammar. A gate asks somebody, and what the gate says is how the answer
+A [gate](glossary.md#gate-of-a-rule) is neither grammar. A gate asks somebody, and what the gate says is how the answer
 settles ([gates](reference/gates.md#gates--whether-it-proceeds)).
 
 The vocabulary of a match is that of [tony](https://signadot.github.io/tony-format/), and not
@@ -324,8 +308,7 @@ Without this, a rule that reacts to a departure acts on the departing entity. A 
 absent entity creates it. So if the removal lands first, the rule creates the entity again. It
 comes back as an ordinary live entity, holding only what the rule wrote, with no marker on it.
 
-To react to a departure, write somewhere else: to an audit record or to an archive. The entity
-that is leaving is not a subject.
+To react to a departure, write somewhere else: to an audit record or to an archive.
 
 The raw read (`verse data`) still shows a vanishing entity, because the purpose of the marker
 is to make the intent visible. Only the selection of a rule hides it.
@@ -346,7 +329,7 @@ removes it. `!delete null` is the removal. It is the same at the root as at a fi
 ```
 
 A bare `patch: null` writes the payload `null`. The entity then stands at its address and
-holds nothing. It is not gone. Removal is `!delete`, and it is one operator at any depth.
+holds nothing. It is not gone.
 
 | Patch | What it removes |
 |---|---|
@@ -370,11 +353,6 @@ charter.
 | a deadline | on the question of a gate, as `deadline:` |
 | to wait for a fact | in the match of the condition |
 | a time | as a written fact: a [schedule's tick](reference/schedules.md#schedules-time-as-a-cause), or the calendar derived from it |
-
-**A rule may declare the stratum that it lives in.** Then its subject must lie inside the
-pattern of that stratum, and any `derive` must land strictly above it. To declare nothing is a
-complete answer: a charter with no `stratum:` anywhere is unconstrained. See
-[strata](strata.md).
 
 **A guard about nothing existing has no spelling.** A match asks what is there.
 

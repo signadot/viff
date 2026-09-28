@@ -128,16 +128,9 @@ install `triage`, the install triages it.
 
 ### When it does nothing
 
-A rule that does nothing looks the same from outside in four cases.
-
-| Case | Is it a fault |
-|---|---|
-| the subject selects nothing | no |
-| the condition does not hold | no |
-| a gate denies the firing | no |
-| the action fails | yes |
-
-Verse keeps the fourth case on the rule. To see it, save this rule as `assign.tony`. A
+A rule that does nothing looks the same from outside in four cases, and only a failed action
+is a fault ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)). Verse
+keeps that case on the rule. To see it, save this rule as `assign.tony`. A
 reference such as `$subject.value.reporter` reads a field of the subject, and this rule
 spells `value` wrongly.
 
@@ -189,9 +182,8 @@ firings:
   failed: 1
 ```
 
-When you install the rule again, verse clears its `trouble`.
 [When a rule does nothing](trigger-model.md#when-a-rule-does-nothing) describes both kinds of
-trouble.
+trouble, and how to clear them.
 
 ### Three things to add next
 

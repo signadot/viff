@@ -26,8 +26,6 @@ The rest of this page says what those words mean, in the order you need them.
 On this page, "level" means a permission level. It does not mean the level of a
 [stratum](glossary.md#level-of-a-stratum).
 
-`control` includes run ([reference/perms.md](reference/perms.md#levels)).
-
 A refusal may say that somebody *holds* `read` at a node. This means that `read` is the most
 the records admit them to at that node, as owner or by grant. The word *holds* says nothing
 more.
@@ -71,10 +69,8 @@ Whoever creates there next starts with no record.
 no flag, the command only reads the record. A node that already stands belongs to its owner,
 and the command does not take it from them.
 
-Places go to whoever takes them first. A grant says who may create beneath a node. It does not
-say which name belongs to whom. Suppose `spaces` is open to everyone. Then anybody may take
-`spaces.sally` before sally does. The owner of `spaces` corrects this by removing
-`spaces.sally` (`b737wbpb`).
+Places go to whoever takes them first
+([reference/perms.md](reference/perms.md#creating-and-taking-a-place)).
 
 ## Grants
 
@@ -184,11 +180,7 @@ the nearest owner on record is user:alice@example.com at demo
 Verse refuses a `get` of something you may not read. A listing, a watch or a replay leaves it
 out. So you see the same set whichever way you ask.
 
-| Command | What it does |
-|---|---|
-| `verse perms` | lists the records of every node you can read |
-| `verse perms <path>` | shows one record. Its owner sets it with `-grant`, `-revoke`, `-grants` and `-child-grants`. |
-| `verse status` | counts refusals under `perms` |
+You read and set records with [`verse perms`](reference/perms.md#verse-perms).
 
 <a id="suspending"></a>
 ## Suspending
@@ -209,8 +201,5 @@ in that scope, baseline never sees it, and it goes when the scope goes.
 
 ## Where the rest is
 
-| | |
-|---|---|
-| [perms-guide.md](perms-guide.md) | the model by example, in the order a person meets it |
-| [reference/perms.md](reference/perms.md) | the grammar and how a grantee matches; a record's fields; what each level admits; creating and taking a place; what is checked on a write and on a read; installed things; questions; what each verb writes; the root; `verse perms`; suspending; scopes |
-| [platform/perms.md](platform/perms.md) | in the repository: the `system:` parts, the root and the config, the seed, and how installed things get their records |
+[platform/perms.md](platform/perms.md), in the repository, has the `system:` parts, the root
+and the config, the seed, and how installed things get their records.

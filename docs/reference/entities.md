@@ -232,27 +232,6 @@ verse data -at verse.task.instance.run-a1b2   # …the same address copied out o
 verse data verse task instance '*'            # …and every task record under it
 ```
 
-The address parses, and verse refuses the write. `verse data verse task instance x -put '{…}'`
-is a well-formed address and gets a 403. What verse writes about itself is written by the verbs
-that own it: `charter -a`, `runner add`, `io add`, `gate approve`. Reading is unrestricted.
-
-In a charter, an address is a kinded path. It stands on its own, or as the `path` of a match
-that also carries a predicate:
-
-```tony
-subject: {path: "verse-dev.drift.head.*", value: {reviewed: pending}}
-subject: {path: "verse.task.instance.*"}
-subject: demo.pr.1
-```
-
-**A path in a rule takes no operator.** Write `!glob "hot-*"`, `!or [hot, cold]` and the other
-operators in the `value` of the match, over what each node holds:
-`{path: "demo.pr.*", value: {branch: !glob "hot-*"}}`. Nothing in verse lists the operators.
-`tony.Match` owns them, and verse refuses at install a tag that names no operator.
-
-A `*` is a position, so the length of the address is the depth at which it selects. `demo.pr.*`
-picks the nodes under `demo.pr`. `demo.pr` is the node `demo.pr` itself.
-
 **What takes what:**
 
 | Command | What it takes |
@@ -319,20 +298,8 @@ keyed by the node's own address, spelled as one segment. It holds:
 - the `grants` that its owner holds out;
 - for a question, `under`: the address of what posed the question.
 
-The owner of any node is the nearest record up its address. The root has a record (owned by
-`user:admin@verse` as seeded). So a node that is owned by the owner of the node above it has no
-record of its own.
-
-Every write carries a principal:
-
-- for a request, the request's principal, from the `user:` of the CLI;
-- for a firing, the rule's own address;
-- for what verse writes unasked, the system.
-
-Verse admits the write by what its place permits, or refuses it with a 403 that says why. The
-owner of an entity is whoever first wrote it holding `owner` there. The owner stays fixed until
-the entity is deleted. A read answers only what its reader may read. Only versed writes the
-mirror, and only the system reads it. [perms.md](../perms.md) is the whole of it.
+Only versed writes the mirror, and only the system reads it. Who owns a node, and what a write
+or a read is checked against, is in [perms.md](../perms.md).
 
 One thing is deliberately not under `verse`: `provider.*`. Whoever runs the verse writes this
 registry of doers.
@@ -347,15 +314,8 @@ io overlaps another. Under every verb, the store itself checks the write against
 permits ([perms.md](../perms.md)). So nothing that reaches the store may install a rule, stamp a
 task record or answer a question on behalf of somebody else.
 
-A charter that reacts to the state of verse names it by its address, with `verse` first:
-
-```tony
-condition:
-  subject: {path: "verse.gate.question.*", value: {status: pending}}
-```
-
-An address that does not start with `verse` does not reach under it. So a rule about
-`demo.pr.*` cannot select, without saying so, the task records of the runs that review them.
+A charter that reacts to the state of verse names `verse` first
+([what a match can say](condition.md#what-a-match-can-say)).
 
 A rule reads the half of verse under `verse`, and does not write it. A `patch` of a subject under
 `verse`, or a `derive` into it, is the generic write that the api refuses, arriving by another
@@ -485,14 +445,6 @@ is a 200 with `{}`, and the two answers cannot be spelled the same way. The stor
 absence. A read reports null only where somebody wrote a null. Absence is absence at every
 length.
 
-A read, a `-put` and a `-rm` all take the same address, at any length. `demo pr 1` typed and
-`demo.pr."1"` written down are one grammar. The shell separates the segments of the first, and
-the quoting separates the segments of the second.
-
-```sh
-verse data demo pr 1
-```
-
 `-if` narrows which of the nodes that the path reached the document holds. It works per node,
 and it never prunes inside a node it keeps. **`-if` asks about what the path names.** A path of
 N segments asks about the nodes N segments down, for a name and a `*` alike. So the question
@@ -611,11 +563,8 @@ verse data demo pr 1 labels urgent -rm          # remove one field
 verse data demo pr 1 -rm                        # the whole entity
 ```
 
-The payload follows `-put`. A payload typed on the command line names no file, so verse reads
-it in the default input format. That is tony, unless `-ifmt` or the config says otherwise. In
-tony, `{stage: open}` needs no quotes on either half, and commas are optional. So
-`{stage: open, id: 7}` and `{stage: open id: 7}` are the same document. The same command reads
-a payload in a `.json` or `.yaml` file; see [representation.md](representation.md).
+The payload follows `-put`. Verse reads it as tony, unless `-ifmt` or the config says
+otherwise. [representation.md](representation.md) has the formats verse reads.
 
 A write is a tony *patch*. So the
 [mergeop](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop) operators apply to

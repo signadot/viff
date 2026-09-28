@@ -44,32 +44,16 @@ verse
                                              asked for rather than assumed, because the
                                              address came from a person and a typo held open
                                              for ever looks exactly like a quiet verse
-         -init                               …open with what already stands at the path, a
-                                             `set` per node at the revision the watch opened
-                                             at, then the changes. The default, so `-until`
-                                             over a state already reached ends at once;
-                                             `-no-init` streams from now. Not with -since/-ago,
-                                             which replay history instead, nor at a path with
-                                             no literal prefix (`verse watch`, `'*' …`), which
-                                             joins the verse-wide stream and has no opening state
-         -ago <n>                            …the last <n> COMMITS, resolved by the store
-                                             against its watermark and clamped to the history
-                                             it retains — so a deep one answers with what is
-                                             left rather than refusing. A narrowed watch sees
-                                             only the changes under its path, so the span holds
-                                             however many events it holds. Absent streams from
-                                             now; `-since 0` is the whole retained log.
-                                             The relative cursor is its own flag because
-                                             `-since -<n>` reads as a flag named `-<n>`
+         -init                               …open with what already stands at the path, then
+                                             the changes. The default. `-no-init` streams
+                                             from now. entities.md#watching
+         -ago <n>                            …the last <n> commits that the store retains.
+                                             entities.md#watching
          [-if <pat>] [-if-at <field.path>] … only those whose payload matches (see below)
-         -until <pat>                        …and STOP at the first FRAME matching <pat>, which
-                                             is printed before the stream ends. A frame is
-                                             `{at op to rev gap}` — the document `-trim` names
-                                             — so a payload match is `{to: {stage: merged}}`,
-                                             and a bare payload pattern is refused rather than
-                                             left to wait for ever. Exit 0 whether or not it
-                                             matched: what happened is the output, not the
-                                             status
+         -until <pat>                        …and stop at the first frame matching <pat>, which
+                                             is printed before the stream ends. The pattern is
+                                             over the frame (see below). Exit 0 whether or not
+                                             it matched
          -nowire                             print each frame as a BLOCK, opened by `---`,
                                              rather than on one line. The default is one frame
                                              per line, which is what lets `grep` see a whole
@@ -106,9 +90,7 @@ verse
   nothing, so the answer to that one is empty rather than wrong-and-plausible.
 
   On `data` and `watch`, `-if` is the server's selector — it says which entities the read is
-  about, before any of them cross the wire — so those two take `-trim` alone. A write's
-  precondition is `-expect`, a different flag for a different question: what a read selects on
-  and what a write insists on are not the same question, so they are not the same flag.
+  about, before any of them cross the wire — so those two take `-trim` alone.
 
   Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
 
@@ -124,46 +106,27 @@ verse
                                              demo pr 1 '"[0]"'       (the FIELD named [0])
                                              demo pr '"*"'           (the name that is `*`)
                                              (none) = the whole verse.
-                                             A path NOTHING STANDS AT is a non-zero exit,
-                                             at every depth: `{}` is a document somebody
-                                             wrote, not what a read says about a path
-                                             nobody wrote. An empty `{}` with exit 0 means
-                                             the path stands and a -if kept none of it
-          [-at <path>]                       …or whole, as a kinded path — which is how one is
-                                             copied out of a document:
+                                             A path nothing stands at is a non-zero exit.
+                                             An empty `{}` with exit 0 means the path stands
+                                             and a -if kept none of it
+          [-at <path>]                       …or whole, as a kinded path:
                                              demo.pr.1 · 'demo.pr.*.stage'
-                                             An address is given ONCE, in one of the two
           [-if <pat>] [-if-at <path>]        … only entities whose payload matches (see below)
-          [-paths] [-depth <n>]              … one address per line, as STEPS, instead of the
-                                             document: EVERY address under the one asked for,
-                                             since a document cannot say where its entities end.
-                                             The line hands straight back —
-                                             `data -paths demo pr | xargs -L1 verse data`.
-                                             -depth bounds the walk to addresses of at most
-                                             <n> segments (default: no bound)
-                                             flags go on either side of the path
-          [-kpaths]                          … the same listing as one KINDED PATH per line,
-                                             which is the spelling that survives a shell
-                                             variable as one argument:
-                                             `r=$(data -kpaths … | head -1); data -at "$r"`
-          -put <payload>                     write it there: an object field, or an array element
-                                             addressed as a step. A put MERGES — fields it does
-                                             not name are left alone, and -rm is how one goes away.
-                                             It descends only through an object: naming a field
-                                             under an array or a scalar is REFUSED rather than
-                                             replacing it. entities.md#what-a-write-descends-through
+          [-paths] [-depth <n>]              … every address under the one asked for, one per
+                                             line, as steps. -depth bounds the walk to
+                                             addresses of at most <n> segments (default: no
+                                             bound)
+          [-kpaths]                          … the same listing as one kinded path per line.
+                                             entities.md#addressing
+          -put <payload>                     write it there. A put merges.
+                                             entities.md#writing
           -rm (-r)                           remove what stands there: an entity, or one field.
                                              `-r` is `verse c -r`'s letter: removal is the same
                                              act. `-put` has none — `-p` beside `-paths` is a
                                              slip that writes
           -put [-create|-update]             only if nothing is there yet · only if something is
-          -put [-expect <pattern>]           only if what is there matches. `-expect` rather
-                                             than `-if`, which is the read's filter: a write's
-                                             precondition is a different question
-          An address is one kinded path in two spellings — `demo.pr.1.labels` as one
-          token, `demo pr 1 labels` as separate words, where a word may hold a dot — and a
-          colon is an ordinary character in a name. entities.md#addressing is the whole of
-          it, including which commands take which spelling.
+          -put [-expect <pattern>]           only if what is there matches
+          An address is one kinded path in two spellings. entities.md#addressing
   gate (gates)                               the docket: every question waiting on somebody —
                                              a gate's, one of a task's actions, a provider
                                              selection's — with its options and ballots
@@ -181,17 +144,9 @@ verse
           approve: y, yes · deny: n, no · -say: -s — the two default options, as verbs
           escalate <id> [-as <who>] [-say <why>]     hand it on to the next resolver matching
                                              its subject, or to the docket
-  charter (charters, c) [<path>]             THE INSTALLED CHARTER, at a path: what may
-                                             be written there, what it reads, its rules
-                                             and strata in full, and the same at every
-                                             address under it. Bare, that is all of it —
-                                             baseline at the root, each package under the
-                                             address it writes in (`c drift`,
-                                             `c verse-dev drift`). A PLACE — an address that
-                                             exists because charters are under it — answers
-                                             with `children:` alone: every other key is a
-                                             fact about a charter, and `rules: []` where
-                                             there is none reads as one with no rules
+  charter (charters, c) [<path>]             the installed charter at a path, and at every
+                                             address under it. Bare, that is all of it.
+                                             charter.md
           [-depth <n>]                       how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [-scope <name>]                    …a federation's own charter instead
@@ -210,32 +165,22 @@ verse
                                              address. A name that is elsewhere is named in
                                              the refusal, with the path that reaches it
           -a [<address>] -f <f>|-            INSTALL: rules, strata and `reads:` from one file,
-                                             in the order that works, and as ONE STEP — a
-                                             refusal anywhere puts back what stood before it,
-                                             across every package the file holds. The address
-                                             is the positional, and a file may name its own
-                                             (`at:` below). Re-applying an edited file is how a
-                                             charter changes: a rule is replaced, and so is a
-                                             level (every rule faces the ordering again, and one
-                                             that no longer fits refuses the change)
+                                             as one step. Re-applying an edited file is how a
+                                             charter changes. charter.md
           -a -scope <name>                   …into a federation's own charter instead
           -r <path>                          REMOVE what the path names: a package at an
                                              address, or one rule or level in it
                                              (`c -r verse-dev.drift rules watcher`)
-          -R <address>                       …the charter there AND every charter under it.
-                                             What a removal leaves is what the charter WROTE —
-                                             a charter's writes are the world's
+          -R <address>                       …the charter there AND every charter under it
                                              (-R is not `rm -r`'s recursion: -r is the removal)
           <address> -- rules|strata|schedules
                                              where the address ENDS, for a package whose own
                                              address ends in `rules` or `strata` and would
                                              otherwise shadow that key
-          A charter file may open a package with a `---` document of its own — `at: drift`
-          is where its rules write, `reads: [git, demo.pr]` what they may read besides, each
-          a kinded path naming a place. A package reads inside its
-          own address and what it declares it reads and NOWHERE else; an undeclared read does not install,
-          and the graph over packages must be acyclic (a cycle is refused, showing the loop).
+          A charter file may open a package with a `---` document of its own: `at: drift`
+          is where its rules write, `reads: [git, demo.pr]` what they may read besides.
           Several `at:` documents in one file install several packages.
+          charter.md#a-charter-can-be-installed-at-an-address
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
           run <prompt…> [-attach] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
           run [-runner <ref>]                …on an installed runner, not the verse default

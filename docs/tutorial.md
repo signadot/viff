@@ -108,20 +108,9 @@ verse data -at demo.pr.1                           # …an address copied out of
 verse data demo '..' -if '{stage: open}'           # every node that says so, at any depth
 ```
 
-The store is one document. `verse data` reads it at an address and prints the node at that
-address. For this reason, the same address works at every depth.
-
-| Step | What it selects |
-|---|---|
-| `*` | any name at one position |
-| `..` | every depth beneath |
-
-A question states its depth with these steps. It does not take a depth from somewhere else.
-
-A name is a key in the document, not a token inside a rendered `at:`. `-paths` prints the
-names. A read, a `-put` and a `-rm` all take the same address. The address has two spellings
-of one grammar, steps and a kinded path.
-[reference/entities §Addressing](reference/entities.md#addressing) describes both.
+The store is one document, and `verse data` prints the node at an address, at any depth.
+[Reading](reference/entities.md#reading) gives the steps `*` and `..`, `-if-at`, and the rest of
+the read surface.
 
 **An address is typed as steps.** Each step is its own shell word, so nothing needs escaping.
 `-paths` prints addresses as steps too, so you can pass a listing straight back:
@@ -132,37 +121,16 @@ verse data -paths demo pr '*'                  # demo pr a.b
 verse data -paths demo pr '*' | xargs -L1 verse data
 ```
 
-Verse uses one spelling for input and output. A step is a whole word, so a dot inside a step is
-part of the name. The shell's own quoting appears only where a segment holds a space or a `*`.
-That quoting is single quotes, which `xargs` understands.
-
-A name that would read as something else is also printed inside double quotes. The quoted form
-reads back as that name:
-
-| Name | Printed as |
-|---|---|
-| a field called `[0]` | `'"[0]"'` |
-| a name that is an asterisk | `'"*"'` |
-
-The asterisk is quoted because a `*` step on its own selects every field there.
-
 **A positional is a step and nothing else.** `verse data demo.pr.1` names one segment called
-`demo.pr.1`, because a word cannot be both one segment and several. Verse takes a whole address
-in one token only where a flag *marks* it. The flag says which grammar applies, so verse does
-not guess:
+`demo.pr.1`. A whole address in one token goes after `-at`:
 
 ```sh
 verse data -at demo.pr.1            # an address copied out of a document
 verse data -at 'demo.pr.*.stage'    # …wildcards and all, the same as: demo pr '*' stage
 ```
 
-Flags go on either side of the address. `verse data -paths demo pr '*'` and
-`verse data demo pr '*' -paths` are the same command.
-
-`-if-at` takes a dot-separated field path and roots `-if` there. A predicate about a subtree
-then does not repeat the shape above it. `-if-at labels -if '{urgent: true}'` is the same as
-`-if '{labels: {urgent: true}}'`. `-if-at` also reaches a subtree that is not an object. A path
-that leads nowhere does not match.
+[Addressing](reference/entities.md#addressing) gives the quoting of names that would read as
+something else.
 
 The pattern language belongs to tony, not to verse. `!or`, `!glob`, `!not`, `!and` and the
 others are [tony match operators](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop).
@@ -182,10 +150,8 @@ verse data demo pr 1 labels urgent -rm          # and gone again
 verse data demo scratch 1 -rm                   # the whole entity
 ```
 
-Verse reads a payload typed on the command line as tony. For this reason, `{stage: open}` needs
-no quotes around either half, and commas are optional. If you save the payload as `.json` or
-`.yaml`, the same command reads that format. The three are dialects of one document model, not
-three separate formats ([representation](reference/representation.md)).
+Verse reads a payload typed on the command line as tony, so `{stage: open}` needs no quotes
+([Writing](reference/entities.md#writing)).
 
 A write can also carry a condition. The store checks each condition *with* the write, in one
 step, so nothing can change in between:
@@ -198,11 +164,8 @@ verse data demo pr 99 -put '{stage: open}' -update     # only if something is   
 verse data demo pr 4 -put '{owner: dee}' -expect '{stage: merged}'     # only if it still looks like this
 ```
 
-With these conditions, two writers can advance one entity and keep each other's fields. This is
-CAS written as a predicate: you say what you believe about the entity, not which revision you
-read. `-expect` uses the same predicate language as `-if`. It has a different flag because `-if`
-on this command is the filter of the read. When verse refuses a write, the entity stays as it
-was, and the command exits non-zero.
+This is CAS written as a predicate
+([Conditional writes](reference/entities.md#conditional-writes)).
 
 ### Watch
 
@@ -348,14 +311,8 @@ A [flow](glossary.md#flow) is not a stored thing. It is a query over live tasks.
 `verse flow` lists nothing until something runs, and a `say` reports how many tasks it reached.
 §4 gives you a task to steer.
 
-Every verb takes flags to say what it acts on. A verb with no flags does not mean "everything":
-`verse flow suspend` alone prints its usage and does nothing. [Control](control.md) gives all the
-flags. [Deployment and steering](deployment-and-steering.md) explains why control never travels
-on the change stream.
-
-A [hold](glossary.md#hold) acts on one task only. The rule that started the task goes on firing.
-To stop a rule, or all the work about a subject, and keep it stopped, use a
-[suspension](glossary.md#suspension).
+Every verb takes flags to say what it acts on. [Control](control.md) gives the flags, and the
+difference between a [hold](glossary.md#hold) and a [suspension](glossary.md#suspension).
 
 The next commands use [the seeded demo](#1-start), where `demo-review` holds `demo.pr.1` at a
 gate. §2 removed the demo and seeded other entities at `demo.pr.*`, so first set the demo up
@@ -374,10 +331,8 @@ verse flow -charter :demo-review             # held by you, why, since when, wha
 verse flow resume -charter :demo-review     # both PRs are asked about, once, as they stand now
 ```
 
-Verse does not replay what happened during the suspension. When you lift it, the rule is armed
-again and acts on the world as it is then. While its work is suspended, a task holds at its next
-boundary and says whose hold it is under. For this reason, `verse flow resume -task` does not
-run a task past a suspension.
+Verse does not replay what happened during the suspension. [A suspension](control.md#a-suspension)
+says what a lift does.
 
 ### Where a task runs is a seam
 
@@ -394,11 +349,8 @@ matching entity changes and the gates resolve, act on the entity. The action can
 a task about it, or react to what that task did. Rules relate entities and tasks by declaration.
 Nothing else in verse authors a flow.
 
-Every rule has the same four parts, and one sentence gives the whole firing rule:
-
-> At each commit, if the cause has risen and the condition holds, fire once for **every
-> entity `subject` selects** — one firing per entity, each with its own gate, its own task
-> id, its own budget.
+Every rule has the same four parts, and one sentence gives the whole firing rule
+([the rule](trigger-model.md#the-rule)).
 
 Rules differ in which parts are present. One command shows each variation:
 
@@ -442,9 +394,7 @@ verse data demo patch 2                    # stage: open — nobody reacted
 verse data demo patch 2                    # stage: triaged — installing it acted
 ```
 
-When a rule opens its observation, it replays what it reads. So a rule is a statement about the
-world, not a subscription to future changes. You never need to touch an entity again to announce
-a state it already holds. After a restart, verse reaches the same verdicts.
+A rule is a statement about the world, not a subscription to future changes.
 
 ### latch — spawn a task, and react to it finishing
 
@@ -459,19 +409,12 @@ a state it already holds. After a restart, verse reaches the same verdicts.
 ```
 
 The action binds `$subject` and every field of the subject's payload. `onDone` is a completion
-[hook](glossary.md#hook). When *that* task reaches `done`, the engine fires the hook about the
-same subject. So the task step and its next step read top to bottom in one rule. `onFailed`,
-`onCancelled` and `onOrphaned` are the other branches.
+[hook](glossary.md#hook): when *that* task reaches `done`, the engine fires the hook about the
+same subject ([completion hooks](reference/action.md#completion-hooks-one-trigger-chaining-visible)).
 
 The important shape here is the **[latch](glossary.md#latch)**. The action moves `stage` past
-`open`, so the rule does not select an entity again after it has acted on it. Verse considers a
-rule with no latch at every commit that touches what the rule reads. Verse *refuses at install*
-a spawning rule that cannot latch, because that rule is an infinite loop that costs money.
-
-Two facts make the latch robust:
-
-- Writing the same value twice produces no commit, so a write of the same value has no effect.
-- A new firing about a subject that already has work running is not a second firing.
+`open`, so the rule does not select an entity again after it has acted on it. Verse refuses at
+install a spawning rule that cannot latch ([the rule](trigger-model.md#the-rule)).
 
 ### ask — a human decides
 
@@ -502,15 +445,12 @@ The fields of a [question](glossary.md#question) in the listing:
 | `subject` | what the question is about |
 | `spawns` | what a "yes" will start. Verse settles this before it asks, even though nothing runs yet. |
 
-The id is a function of (trigger, gate, subject). Verse evaluates a rule again at every commit,
-but the rule asks **once**. A firing that finds its question already standing joins it. It
-does not post a copy. [§5](#5-gates-and-the-docket) covers the rest of gates.
+The rule asks **once**, however often verse evaluates it
+([gates](reference/gates.md#gates--whether-it-proceeds)). [§5](#5-gates-and-the-docket) covers
+the rest of gates.
 
-`onDenied` is the other half of the answer, and it is easy to leave out. A denied firing writes
-nothing. Without `onDenied`, the subject stays in the state that asked. The next commit that
-touches the subject then asks the same question again, over the answer you already gave. The
-`onDenied` action says what a "no" means, and that stops the repeat. Verse warns at install if a
-gate has no `onDenied`.
+`onDenied` says what a "no" means. Without it, the next commit that touches the subject asks the
+same question again ([`onDenied`](reference/gates.md#ondenied--what-a-no-means)).
 
 ### seq — steps in order
 
@@ -524,13 +464,8 @@ gate has no `onDenied`.
       patch: { stage: built }
 ```
 
-`seq` sets the order of steps.
-
-- Each element starts when the previous one completes.
-- `onDone` on the action that carries the `seq` runs after the whole sequence.
-- An `onFailed` on one element is an exit from the sequence.
-
-There is no `par`. Independent rules that match the same condition already run in parallel.
+Each element starts when the previous one completes, and the outer `onDone` runs after the whole
+sequence ([`seq`](reference/action.md#seq-sequence-along-the-chain-parallel-across-triggers)).
 
 Ask what happened. The command reads the charter and the runtime through one address:
 
@@ -644,25 +579,10 @@ verse charter                                                  # the ordering
 verse data derived feature shape-derive demo derive 1
 ```
 
-Verse checks two rules at install. Neither check reads the store.
-
-1. A rule's **subject** must be inside the rule's own stratum.
-2. A **derive** must land in a strictly higher stratum.
-
-A charter file may hold both strata and rules. `verse c -a` installs the strata first.
-
-The *engine* chooses the address of the derived entity. The address is the address that the
-derive names, then the rule, then the subject's own segments:
-`derived.feature.shape-derive.demo.derive.1`. No two rules can address the same derived entity,
-and a new firing writes the same address, not a second entity. An `id:` or `key:` beside `path:`
-in the entry chooses the name under that address instead. A `!each` fan-out adds the key of the
-element to the address and changes nothing else here. See
-[strata](strata.md#each--when-one-answer-holds-many-facts). The engine also records what the
-entity is about, at `verse.meta.derivedFrom`.
-
-A charter that declares no strata is complete. Every other shape here has no `stratum:`, and
-verse checks it against nothing. The one thing a rule with no stratum may not do is `derive`,
-because "strictly above" has no answer for a rule with no level. See [strata](strata.md).
+A rule's subject must be inside its own stratum, and a derive must land in a strictly higher
+one. The engine chooses the address of the derived entity:
+`derived.feature.shape-derive.demo.derive.1`. [Strata](strata.md) gives both install checks,
+the address, and why a rule with no stratum may not `derive`.
 
 ### Reading something the rule is not about
 
@@ -676,17 +596,9 @@ action:
     branches: !list-paths {at: "git.repo.*", path: branch}
 ```
 
-The two tags are one grammar, split by how many nodes they return:
-
-| Tag | Answer |
-|---|---|
-| `!get-path` | one node. It refuses an address that could name several. |
-| `!list-paths` | a list. Globs belong here. |
-
-Verse reads both at the commit that caused the firing. So a rule held at a gate for a day still
-writes what verse evaluated it against. Both **copy and do not track**. Add an `on` if you want
-to follow what you read. See
-[the trigger model](reference/action.md#get-path-and-list-paths--reaching-another-entity).
+`!get-path` answers with one node, and `!list-paths` with a list. Both **copy and do not
+track**
+([`!get-path` and `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity)).
 
 ### The rest of the grammar
 
@@ -701,9 +613,8 @@ verse c -r rules shape-latch
 verse charter                     # and `verse c rules <name>` for one of them
 ```
 
-A charter is durable. Each rule is an entity (`verse.trigger.rule.<name>`), and so is each
-stratum (`verse.trigger.strata.<name>`). So when a verse starts again, it runs the program it
-ran before it stopped. [The trigger model](trigger-model.md) describes the model. The reference
+A charter is durable, because each rule and each stratum is an entity
+([the charter is durable](reference/charter.md#the-charter-is-durable)). [The trigger model](trigger-model.md) describes the model. The reference
 describes the fields:
 
 - [the condition](reference/condition.md), with what a match can say;
@@ -723,8 +634,7 @@ A gate is the autonomy dial for one action. Three settings answer immediately:
 | `ask` | one person is asked ([§4](#ask--a-human-decides)) |
 | `park` | the action is held |
 
-A rule's gates are conjunctive. A deploy that needs a sign-off from security and from the
-release manager has two `ask` gates.
+A rule's gates are conjunctive.
 
 Some questions need more than one person and more than one click. A gate can say how many
 answers it needs:
@@ -772,8 +682,7 @@ verse data demo vote 1              # stage: merged
 ```
 
 The record then reads `status: answered` and `verdict: proceed`. Its `ballots` field names who
-chose what, and when. The audit trail is on the entity, not in a line that scrolled past. An
-answerer who changes their mind replaces their own ballot and does not cast a second one.
+chose what, and when.
 
 The question itself says who may cast a ballot. The owner of the charter answers what their rule
 asked, and so does anyone the gate names:
@@ -783,30 +692,13 @@ asked, and so does anyone the gate names:
   - { name: approvals, need: 2, answerers: [oscar@example.com, group:payments] }
 ```
 
-Verse refuses Ana, who is not named, and tells her so. Other cases:
+Verse refuses Ana, who is not named, and tells her so.
+[Who may answer](reference/gates.md#who-may-answer) gives the rest, and
+[permissions](perms.md) covers who may do what.
 
-- A gate that names nobody is open to every person. That is the default of an open verse.
-- A worker that raises a gate of its own says who the gate is for with `task do gate -to`.
-- Anyone who may answer may pass the question on instead, with `verse gate escalate <id>`. The
-  question goes to the next [resolver](glossary.md#resolver) that matches its subject. A resolver
-  holds questions out to a service or a person;
-  [a service that answers them](#a-service-that-answers-them) shows one.
-
-`need` over the answerers says whether one answer or many settle the question. Each answerer has
-one ballot. `need: 1` is a race, and a `need` equal to the number of answerers needs all of them.
-[Permissions](perms.md) covers who may do what.
-
-A question is an ordinary entity (`verse.gate.question.<id>`). So the docket is a view of the
-store, and a rule can react to a question like anything else. Verse checks the question against
-the world while it stands. If the subject moves out of what the rule selects, the question is
-moot. Verse withdraws it and writes the reason on the record.
-
-A question also lasts when verse goes down. The record and its ballots are entities. The firing
-that waits on them ends, and the next start gives it back. Verse evaluates the rule again. The
-rule poses the same question again and finds the ballots already cast. A question that nothing
-can answer any more is settled `orphaned`, with a `why`. Its rule left the charter, or its
-subject is gone. Verse does not leave it on the docket as if it could be answered. See
-[a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it).
+A question is an ordinary entity (`verse.gate.question.<id>`), so a rule can react to a question
+like anything else. The question also lasts when verse goes down
+([a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it)).
 
 ### A service that answers them
 
@@ -815,16 +707,6 @@ out to an **[answerer](glossary.md#answerer)**. It holds the questions of one ru
 of subjects. An answerer is a service that reads the run's own stream and answers its gates.
 It answers through the same path as `verse gate approve`, and `by` names the resolver instead of
 a person.
-
-A resolver can:
-
-- pass a question up to the layer above;
-- carry a deadline, which passes the question up when time runs out;
-- be made the only answer that counts.
-
-The same resolver can put a person, or a group, at that level instead of a service
-(`method: {driver: person, who: oscar@example.com}`). A person passes a question up the ladder
-with `verse gate escalate`.
 
 ```sh
 ./scripts/attached-resolver.sh              # five acts, one command each
@@ -848,9 +730,6 @@ options: [{id: ship, need: 1}, {id: hold, need: 1}, {id: drop, need: 2}]   # not
 Quote the duration. A tony literal may not start with a digit, and commas are optional. So
 `within: 4h` reads as the number `4` beside a separate literal `h`. That is well-formed, and it
 is not what you wrote. Verse refuses it at install and says so.
-
-Waiting for a *fact* is not a gate. A rule that should act once CI is green says so in `when:`,
-because that is what a condition is for.
 
 ### The same machinery answers *who*
 
@@ -882,9 +761,8 @@ disciplines — ranked, weighted, secret.*
 
 **Isolation** — [reference/connect.md](reference/connect.md#scopes). Every command takes
 `-scope`. A [scope](glossary.md#scope) is a real copy-on-write overlay, and
-`verse disconnect -scope` drops the whole scope. The writes of a scope to the world are copies.
-Its steers, answers and removals reach what the scope created. Verse refuses them at what the
-scope only sees ([what a scope owns](reference/connect.md#what-a-scope-owns)).
+`verse disconnect -scope` drops the whole scope
+([what a scope owns](reference/connect.md#what-a-scope-owns)).
 *Left to do: scopes as first-class, listable, durable things.*
 
 **Your working tree, in the verse** — [reference/connect.md](reference/connect.md) and

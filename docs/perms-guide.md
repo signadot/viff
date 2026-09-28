@@ -70,11 +70,11 @@ A name carries its kind before the colon. A request presents one of three kinds:
 | `runner:<identity>` | a [worker](glossary.md#worker) | it claims work as `-as runner:<identity>`. A runner reached by url acts as the `-identity` on its entity. |
 
 Verse refuses a bare word such as `-as coderunner`, and the refusal gives the grammar.
-[reference/perms.md](reference/perms.md#the-grammar) has the whole grammar. The name is self-asserted:
-verse has no login. Everything below is about what a name may do. It is not about proof of who
-holds the name.
+[reference/perms.md](reference/perms.md#the-grammar) has the whole grammar. The name is
+[self-asserted](perms.md#principals-and-grantees): everything below is about what a name may do,
+not about who holds it.
 
-Know three things before the first step. Each is a reasonable guess that is wrong:
+Know two things before the first step. Each is a reasonable guess that is wrong:
 
 - **A group is not a principal.** `group:<name>` is a [grantee](glossary.md#grantee). It
   appears on a grant line, in a gate's `answerers`, or behind a resolver. It admits the group's
@@ -84,9 +84,6 @@ Know three things before the first step. Each is a reasonable guess that is wron
   outside can present itself as an agent (`agent:` in the CLI's config). Verse lists it under
   its own kind, and grants it exactly what a person is granted. The name lets later grants
   narrow against it. Until they do, read `[user:*, agent:*]` as "people".
-- **Identity is self-asserted.** A request is whoever the config, `VERSE_USER` or `-as` says,
-  and the server trusts that. The check holds every write to what its place permits *for that
-  name*. Who is behind the name is a different question, and verse does not ask it.
 
 ## Step 1: your own entities, and who wrote them
 
@@ -105,13 +102,8 @@ grants:
 owner: user:walter@example.com
 ```
 
-Two rules made that record:
-
-- Outside `verse`, the tree is open to *create* until a record says otherwise. So a write where
-  nothing stood makes the writer the owner. `spaces.scott.notes` is scott's because scott wrote
-  it first.
-- A new node holds out what the nearest `child-grants:` above it says. At the root that is
-  `read: ["*"]`: everyone may read the node, and only its owner may write it.
+`spaces.scott.notes` is scott's because scott created it, and it holds out the root's
+`child-grants`, `read: ["*"]` ([perms.md](perms.md#ownership)).
 
 Verse refuses the write of another user, and says why:
 
@@ -127,14 +119,8 @@ The refusal is the check's own words. It always says the three things that
 When verse refuses something you expected to pass, look at the record that decided.
 
 **Take a place.** `verse perms` on a node you may create under gives the node a record of its
-own. What you set there governs what is made beneath it. In the world's half, you take a place
-before anything goes in it. A node that already stands has an owner: the nearest record above
-it. Nobody takes the node from that owner by arriving. To hold `child-owner` somewhere is the
-right to create there. It says nothing about what stands there.
-
-Under `verse`, a place is taken only where something stands, and only by its owner. The verb
-that owns a thing makes it (`charter -a`, `io add`, `task run`), and the thing belongs to its
-maker.
+own. What you set there governs what is made beneath it. [reference/perms.md](reference/perms.md#creating-and-taking-a-place)
+says where a place can be taken.
 
 ```sh
 verse perms spaces scott -child-grants '{}' -grants '[]'  # nothing held out beneath, nothing on it
@@ -143,16 +129,9 @@ verse perms spaces scott -grant '{read: [ana@example.com]}'
 verse perms spaces scott -revoke '{read: [ana@example.com]}'
 ```
 
-| Flag | What it does |
-|---|---|
-| `-child-grants` | sets what a node created *beneath* starts out holding out. Verse copies it onto each new record at creation. |
-| `-grants` | replaces what the node itself holds out |
-| `-grant` | adds a line |
-| `-revoke` | takes a line off |
+[reference/perms.md](reference/perms.md#verse-perms) lists the flags.
 
-A withdrawn grant stops future acts. It changes nothing that exists. Ownership changes only by
-create and delete. Verse has no transfer. To hand something over, make it under a place that the
-other party owns.
+A withdrawn grant stops future acts. It changes nothing that exists.
 
 The store also knows who wrote every commit. How it keeps the author is in
 [perms.md](platform/perms.md#the-author-of-a-commit), in the repository.
@@ -163,8 +142,7 @@ hold. You write `verse` through the verbs that own it (`verse c -a`, `verse task
 place. So nothing that reaches the store can stamp a task or answer a question for you.
 
 Verse refuses `verse data verse perms` too. A person reads records with `verse perms`, never
-from the mirror. With no argument, `verse perms` lists the records of every node you may read.
-With a path, it reads one.
+from the mirror ([perms.md](perms.md#verses-own-half)).
 
 ## Step 2: a task you run, and what it may do for its gates
 
@@ -198,8 +176,7 @@ record.
 
 A [question](glossary.md#question) that the task raises stands at its own address,
 `verse.gate.question.<id>`. A grant on the task does not reach through the task's record to the
-question. So the executor may not answer its own gate. No special case does this. It is what
-"a grant does not reach through an owner record" means.
+question. So the executor may not answer its own gate ([perms.md](perms.md#grants)).
 
 **What you may say about its gates.** You may say four things, and they answer different
 questions:
@@ -232,11 +209,8 @@ The runtime refuses anything outside it. It is not a line on a record. A manual 
 runtime's default, and a charter's spawn names one. The two kinds of grant do not meet. A
 permissions grant says who may touch an entity. A spawn's grant says what a task may attempt.
 
-**Answering.** Three rules decide who answers your task's questions:
-
-- you answer them, because you co-own them, whether or not you are named;
-- whoever is named on the line answers too;
-- verse refuses the runner.
+**Answering.** You answer your task's questions as their co-owner, and so does whoever the line
+names. Verse refuses the runner ([perms.md](perms.md#tasks-and-gates)).
 
 Try it as somebody else, and read the refusal:
 
@@ -256,11 +230,8 @@ answerers, that gate stands over what the worker says.
 
 ## Step 3: a charter, and what it owns
 
-A rule acts as whoever installed its charter. Its writes, what it spawns and what it reads are
-the installer's. The installer co-owns every question that its rules pose, and answers them
-without being named on any line. Installing a charter at an address takes that address for the
-installer. A rule may not watch the records under `verse.perms`, and verse refuses such a rule at
-install.
+A rule acts as whoever installed its charter. So the installer co-owns every question that its
+rules pose, and answers them without being named on any line.
 
 [perms.md](perms.md#what-acts-on-its-own) states the rule, and
 [reference/perms.md](reference/perms.md#installed-things) has the detail. How this step reads on
@@ -319,11 +290,8 @@ the resolver:
 
 The default `[user:*, agent:*]` line goes with it. So nobody outside the resolver answers any
 more, except the co-owners. They hold the right by ownership, not by the line. `read` stays as
-the default gave it.
-
-Verse releases the question when the resolver is removed or the ladder runs out. The release
-gives the line back to whoever the gate named in `answerers`. Where the gate named nobody, it
-gives the line back to the default.
+the default gave it. How the line comes back when the question is released is in
+[reference/perms.md](reference/perms.md#questions).
 
 **The ladder.** Escalation walks the standing resolvers that match the subject, **by name**. It
 goes from the resolver the question is on to the next, and past the last one to the open docket.
@@ -348,26 +316,10 @@ security boundary. The line is the boundary.
 verse group add release walter@example.com group:qa 'runner:*'   # stored at verse.principal.group.release
 ```
 
-A member is any grantee:
-
-- a person (`user:<email>`, or the bare email);
-- an agent;
-- a runner;
-- a place that acts (`via:<address>`);
-- a whole kind (`user:*`);
-- everyone (`*`);
-- another group (`group:qa`).
-
+A member is any [grantee](reference/perms.md#the-grammar), another group included.
 `verse group add` refuses a member it cannot read, such as a group's address or a bare word, and
-gives the grammar. The group is its maker's to change.
-
-Verse reads the membership of a group when it checks the group. It never copies the membership.
-So a group is the one grantee whose meaning changes after the grant is made. This is
-deliberate: change who is in the group, and every line that names the group follows.
-
-Verse walks the members exactly. It skips a group that it already met on the walk. So a group
-nested in a group nested in a group admits its members at any depth. A cycle admits nobody,
-because the walk ends.
+gives the grammar. The group is its maker's to change. How verse reads the members when it
+checks a grant is in [perms.md](perms.md#grants).
 
 A group resolver, `method: {driver: group, group: group:release}`, and a gate's
 `answerers: [group:release]` hold a question out to the same people. The difference: the
@@ -384,5 +336,3 @@ resolver is a rung on the ladder, and the gate's line is not.
 - **`verse status` counts.** `perms: {refused, unreadable, hidden, unparsed}` is the check's
   count since the process started. [reference/perms.md](reference/perms.md#verse-perms) says
   what each field counts.
-- **`[user:*, agent:*]` means people.** Until the agent principal has grants of its own, a line
-  that holds both is the docket's openness, and no more.

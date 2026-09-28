@@ -233,14 +233,10 @@ and verse **withdraws** it:
 - there is no verdict and no action;
 - `onDenied` does not run, because a moot question is not a refusal.
 
-The ballots stay on the record. A rule that selects that subject again poses the same question
-again, over them.
-
 An answer that arrives after the subject left the selection is the same case. The firing
 withdraws, and does not act.
 
-**The withdrawal is prompt.** The firing watches the subtree of the subject while it waits. So a
-question goes moot at the change that made it moot. Nobody has to answer, and nothing has to
+**The withdrawal is prompt.** A question goes moot at the change that made it moot. Nobody has to answer, and nothing has to
 restart.
 
 The check has two limits.

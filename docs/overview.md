@@ -55,7 +55,7 @@ An **entity** has an address, such as `demo.pr.1`, `github.signadot.verse.pr.42`
 `verse.task.instance.review-1`. Its payload is any value.
 
 A **trigger** has a `condition`, a list of `gates`, and an `action`. The condition names the
-`subject`: the entity the firing is about. The subject is required. The condition may also
+`subject`, which is required. The condition may also
 carry a `when`, for the case where the cause is not the subject itself. A `when` is a match at
 one point in time, over an address and a predicate on the payload. All the gates must pass.
 See [the trigger model](trigger-model.md).
@@ -81,7 +81,7 @@ An action acts on the subject of its condition, and names no other target. It ma
 bindings: `$subject`, and every field of the changed payload.
 
 A **task** runs in a runtime. You can observe it and steer it. A task is also an entity,
-`verse.task.instance.<id>`, so you see every task by watching the store.
+`verse.task.instance.<id>` ([tasks are entities](#tasks-are-entities)).
 
 A **principal** is a person by email, a runner under its own name, an operator agent, or the
 system, which is versed itself. Every request and every firing writes as a principal.
@@ -97,11 +97,9 @@ the owner of what asked it, and by whoever the question was held out to. See
 
 A **subject** and a **flow** are derived. Verse keeps no record of either.
 
-- A subject is the entity a piece of work is about, such as a pull request moving through its
-  lifecycle. The condition of a rule selects it. It is half of nearly every identity verse
-  keeps: the id of a spawn, the question of a gate, the cover of a resolver.
-- A flow is the tasks in progress about one subject, or about the subjects that a pattern
-  names. You steer them as one unit. Verse builds the flow each time you ask.
+- A subject, such as a pull request moving through its lifecycle, is half of nearly every
+  identity verse keeps: the id of a spawn, the question of a gate, the cover of a resolver.
+- You steer a flow as one unit. Verse builds the flow each time you ask.
 
 ## How verse is built
 

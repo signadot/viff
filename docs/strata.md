@@ -131,36 +131,17 @@ A derive that writes something new on every firing wakes the level above, and th
 rule again. That is a cycle across a level, which is the one thing the ordering exists to rule
 out. For the same reason, the linkage that the engine writes holds no commit.
 
-The parts:
-
-| reference | resolves to |
-|---|---|
-| `$subject` | the whole address, `"gh.issue.1"`, as a [kinded path](glossary.md#kinded-path) |
-| `$subject.ref` `.name` | the address, and its last segment: the key it stands at |
-| `$subject.value` | the payload of the subject **at the commit that caused the firing** |
-| `$subject.commit` | the revision of that commit. Not in a derive. |
-
-`$subject.value` reads at the causing [commit](glossary.md#commit), not at the moment the
-action runs. The difference matters when a gate holds the firing for an approval. The firing
-acts whenever the answer comes, and a late read would write from a state that nobody
-evaluated.
+`$subject` and its parts are the [bindings](reference/action.md#bindings) of an action.
+`$subject.value` reads at the [commit](glossary.md#commit) that caused the firing.
 
 The read at the causing commit costs nothing when that commit changed the subject. That is the
 ordinary case: a rule about the entity that changed. A member of a fan-out that the commit did
 not touch is read at that [revision](glossary.md#revision). The store answers that read by
 replaying its log.
 
-A completion [hook](glossary.md#hook) reads at the commit at which **its rule fired**. A task
-that finishes wakes the hook, not a write, so the chain of the hook starts again for the cycle
-throttle. But the hook reads at the revision of the firing, which the record of the task
-carries. So a `derive` in an `onDone` can name what the firing was about. "Derive a release
-note from what shipped" needs this. A task that the charter did not start has no such commit.
-For such a task, both parts fail by name, and do not resolve to a silent zero.
-
-The identity parts work in the strings of a spawn too (`prompt: "approve $subject.name"`),
-because verse publishes them as flat bindings. `.value` does not work there, because a payload
-has no text form. The top-level fields of the subject are already flat bindings there
-(`$stage`).
+A completion [hook](glossary.md#hook) reads at the commit at which **its rule fired**. So a
+`derive` in an `onDone` can name what the firing was about. "Derive a release note from what
+shipped" needs this.
 
 **The identity is the engine's.** The id of the derived entity is a function of
 (rule, subject). For a [fan-out](#each--when-one-answer-holds-many-facts) it is a function of
@@ -178,24 +159,15 @@ verse:
       subject: gh.issue.1
 ```
 
-The address reads `<target>.<rule>.<subject…>`. It has three parts:
-
-1. the address that the rule derives into;
-2. the name of the rule, as one segment;
-3. the segments of the subject.
-
-The rule is in the address because the identity is (rule, subject), not the subject alone.
+The address reads `<target>.<rule>.<subject…>`
+([derive](reference/action.md#derive)). The rule is in the address because the identity is (rule, subject), not the subject alone.
 Without the rule, two rules that derive into one address about one subject would write the same
 entity. Single-writer exists to remove that race.
 
 The derived address is an address, not an id, so it carries the subject exactly.
 `derived.feature.raise.gh.issue.1` is the entity that `raise` derived about `gh.issue.1`. It
-reads back as exactly those segments. Two things follow:
-
-- `verse data derived feature raise -paths` lists everything that this rule has derived.
-- **A derived path is as long as what it is about.** A rule that reads one must say how long.
-  The length follows from the subjects that the producing rule selects:
-  `{path: "derived.feature.*.*.*.*"}` for a rule that derives about `gh.issue.*`.
+reads back as exactly those segments. So `verse data derived feature raise -paths` lists
+everything that this rule has derived.
 
 The linkage follows the rule for a spawn, for the same reason. A derivation is about exactly
 one subject. The condition decides which subject, and a charter should not have to interpolate
@@ -247,21 +219,8 @@ The key is part of the invariant, not a hole in it. A re-fire about the same sub
 the same key, and writes the same bytes to the same address. That write is a no-op, and the
 no-op is what lets a rule read a higher level safely.
 
-### An `id` instead of a key
-
-`id:` takes the same single reference, but does not compose it with the rule and the subject.
-The derived entity is the address plus that value, as written. So `id: $subject.value.sha`
-under `[verse-dev, merge, train]` is `verse-dev.merge.train.<sha>`, an address that another
-rule can spell.
-
-The two fields differ in what the value identifies:
-
-| Field | Two subjects of one rule that compute the same value | The value identifies the record |
-|---|---|---|
-| `key` | get one entity each | only within one subject |
-| `id` | share one entity | across subjects |
-
-An entry names one of the two, never both. `!each` takes `id` in place of `key` in the same way.
+`id:` takes the same single reference, but puts the entity at the address plus that value,
+with no rule and no subject. [derive](reference/action.md#derive) compares `id:` and `key:`.
 
 ## `!each` — when one answer holds many facts
 

@@ -68,8 +68,7 @@ patch:
   votes: {bo: yes}      # refused: the patch merges an object into votes, where an array stands
 ```
 
-The refusal fails the firing, as any patch does that could not be established. The subject is
-left exactly as it was. So the rule still selects it, and the next commit tries again.
+The refusal fails the firing, as any patch does that could not be established.
 
 To replace a container on purpose, write the whole value at that key (`patch: {votes: [...]}`).
 That is a value and not a merge, and it says so.
@@ -99,10 +98,9 @@ subject. No two rules can address the same entity.
 **So a reader of a derivation says how deep one is.** The depth follows from the depth of the
 subjects that the producing rule selects. `[verse-dev, merge, proposal, "*"]` has four segments.
 It selects the *rule* level, whose payload is the whole subtree of the derivations of that rule,
-and not any one of them. A selection of N segments identifies entities at depth N, exactly.
-
-A rule that selects the wrong depth here does not fail. It selects a node that exists, reads
-fields that are not there, and writes its patches onto that node.
+and not any one of them.
+[The pattern says how deep its subjects are](condition.md#the-pattern-says-how-deep-its-subjects-are)
+says what a wrong depth does.
 
 **Naming one is how a derive stays shallow.** `id:` puts the entity at the place plus that one
 segment: `verse-dev.merge.proposal."verse/auto/…"`, which has four segments. A reader already
@@ -152,7 +150,8 @@ A derive merges at depth, so the mark lands beside the facts, and not over them.
 
 ### An install re-fires, so a derive must own what it writes
 
-Installing a charter evaluates its rules against what is already in the store. So an install
+Installing a charter evaluates its rules against what is already in the store
+([the backlog](condition.md#the-backlog)). So an install
 acts on the world, and not only on what happens next. A `derive` is a patch merged at depth, so
 it overwrites exactly the fields it names.
 
@@ -315,10 +314,6 @@ A call list does not get what belongs to a model:
 The last one is the trade. It is right for four git commands, and wrong for anything that
 branches.
 
-`seq` runs a list of actions in order. Each one starts when the one before it completes. It is
-the depth axis, and it has its own section:
-[`seq`](#seq-sequence-along-the-chain-parallel-across-triggers).
-
 ### Bindings
 
 A [binding](../glossary.md#binding) is a name that begins with `$`. Every field of **the payload
@@ -415,9 +410,6 @@ commit. So verse evaluates a predicate against the same world that the rule saw.
 
 The dots of the string form are its segments. A `$reference` has dots of its own, so it cannot
 be written inside one. Write an address that expands a reference with `at:`.
-
-**Verse reads at the commit that caused the firing.** `$subject.value` follows the same rule, for
-the same reason: a gate may wait.
 
 **In an action, they copy and do not track.** Verse reads the value once. If it changes
 afterwards, nothing runs again. This rule fires again only when its own subject changes, or when

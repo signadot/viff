@@ -51,7 +51,7 @@ for a person does not ask again at every commit.
 
 For this reason `subject` is bounded, where a `when` formula ranges freely. `subject` pins a
 place, and its predicate is over the [payload](../glossary.md#payload) of the single entity.
-It does not compose over time. "All open PRs" is
+"All open PRs" is
 `{path: "demo.pr.*", value: {stage: open}}`. The same thing one level deeper is
 `{path: "verse-dev.drift.head.*", value: {reviewed: pending}}`.
 
@@ -76,8 +76,7 @@ A pattern that names the wrong depth does not fail. It selects the node at the d
 for. That node exists, and its payload is the subtree beneath it. The rule reads the fields
 that it wanted, does not find them, and writes its patches at that node.
 
-Check the depth wherever a rule reads what another rule derived. The depth of a derive follows
-from the subjects that the producing rule selects. See
+Check the depth wherever a rule reads what another rule derived. See
 [`action`](action.md#action--what-fires).
 
 A write names the place that it writes. A listing walks: `verse data -paths` lists every
@@ -119,8 +118,7 @@ A `flow` field on the changed payload does not change this.
 the reason.
 
 [Completion hooks](action.md#completion-hooks-one-trigger-chaining-visible) advance exactly
-the subject that a finished task was about. The engine scopes a hook to the task of *that*
-spawn. The store cannot fake this correlation, because the engine spawned the task.
+the subject that a finished task was about. The store cannot fake this correlation, because the engine spawned the task.
 
 | You mean | Use |
 |---|---|
@@ -131,14 +129,6 @@ spawn. The store cannot fake this correlation, because the engine spawned the ta
 task. The flow query reads it. A rule whose subject carries the field reads it as
 `$subject.value.flow`. The field is distinct from the reserved `$subject` binding, which is
 the resolved subject of the firing itself.
-
-The address form has one distinction, between naming and selecting. It is the one place where
-existence does not matter.
-
-| Address | What it does |
-|---|---|
-| with no wildcard | It *names* its entity. It is a set of one whether or not that entity is there, and an action's `patch` may create the entity. This is how a rule publishes a fact that nothing has written yet. |
-| with a wildcard anywhere | It *selects* over what exists. It acts only on entities that are there. |
 
 ### Acting on a set
 
@@ -160,17 +150,16 @@ Every reviewed PR advances, while CI is green. Each PR is a firing of its own, w
 each PR is a [flow](../glossary.md#flow) of its own.
 
 **There is one gate for each member**, and not one gate for the whole set. A firing is about
-one entity, so twelve reviewed PRs are twelve questions. One question for the set would be a
-summary in place of twelve. An operator gives twelve answers, because `verse gate approve` has
+one entity, so twelve reviewed PRs are twelve questions
+([gates](gates.md#gates--whether-it-proceeds)). An operator gives twelve answers, because `verse gate approve` has
 no bulk form.
 
 **The `when` is the condition**: while CI is green. Verse evaluates the rule again at every
 commit that touches either subtree. So the rule also acts on a PR that reaches `reviewed`
 later.
 
-With `on` in place of `when`, the rule says another thing: fire once, at the moment CI goes
-green, over what was reviewed *at that moment*. Both are useful, and they are different rules.
-The engine warns at install when a narrow `on` leaves uncovered a part of what the rule reads.
+[Two rules, read out loud](../trigger-model.md#two-rules-read-out-loud) says what an `on` in
+place of `when` means. The engine warns at install when a narrow `on` leaves uncovered a part of what the rule reads.
 
 ## `on` and `when` — the cause and the condition
 
@@ -212,15 +201,13 @@ explains why. It does not say "unknown key". A match says a create and a delete 
 
 [A match has no `op` key](../design/reference-condition.md#a-match-has-no-op-key) gives the reason.
 
-The address string is the path written as one kinded path. So `demo.pr.*` means
-`{path: "demo.pr.*"}`. A match that is only a path of names and `*` reads back from `verse c`
+A match that is only a path of names and `*` reads back from `verse c`
 in the string form: `demo.pr.*`. It is the same match in a shorter spelling.
 
 **Keep a condition small.** Complexity hides in a condition. To act "only the first time",
 match a state field that your action then advances. That field is a
-**[latch](../glossary.md#latch)**. A rule with no latch is considered at every commit that
-touches what it reads. So the latch gives the rule an end state. Verse refuses at install a
-spawning action that has no latch.
+**[latch](../glossary.md#latch)**. [The rule](../trigger-model.md#the-rule) says why a rule
+needs one.
 
 <a id="the-backlog"></a>
 **Installing a rule fires it on what already matches.** When a rule opens, its observation
@@ -235,9 +222,8 @@ The latch also stops an action from running again when the engine restarts over 
 is still in the matching state. See
 [change events](../change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open).
 
-**Neither `on` nor `when` composes over time.** A condition is a match asked at a revision.
-Verse refuses the temporal operators `!until`, `!quorum` and `!deadline` by name wherever it
-reads a charter. See [Limits today](../trigger-model.md#limits-today).
+**Neither `on` nor `when` composes over time.** See
+[Limits today](../trigger-model.md#limits-today).
 
 ## What a match can say
 
@@ -332,7 +318,7 @@ string `stage=open`. It is not an expression language. There is one name for the
 and no assertion about its shape. [`value` asserts no shape](../design/reference-condition.md#value-asserts-no-shape) gives
 the reason.
 
-Know four things about a predicate before you rely on one.
+Know three things about a predicate before you rely on one.
 
 **`!glob` is `filepath.Match`.** So `*` does not cross `/`, and `?` and `[…]` are
 metacharacters: `!glob "a*"` does not match `a/b`. This is intended. A name that holds a `/`
@@ -359,9 +345,6 @@ written.
 **Numbers are type-exact.** `2` and `2.0` are different values, so a predicate written
 `{n: 2}` does not match a payload of `{n: 2.0}`. Integer widths do not matter. A width comes
 from whoever wrote the value, and not from the value.
-
-**Operators are tags, so they are written in tony.** A JSON charter writes paths and plain
-equality predicates.
 
 ## Why it is this way
 

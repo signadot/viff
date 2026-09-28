@@ -194,39 +194,23 @@ verse gate                                  # task gates, and engine gates that 
 verse gate approve run-f3e31ed0390f~d1 -as you@example.com    # or: task approve run-… run-…~d1
 ```
 
-**Verse checks who may answer before it delivers the answer.** These may answer:
-
-- the owner of the task, or the owner of the charter, for what their own work asked;
-- a gate's `answerers`, or the resolver that a question is held out to;
-- a person, through the docket's default, for a question held out to no resolver.
-
-The worker that works the task holds nothing on the question that it raised, and verse
-refuses its answer. A refusal is a 403 that names who holds what, and which record decided
-([perms.md](../perms.md)).
+**Verse checks who may answer before it delivers the answer.** Who may answer is in
+[tasks and gates](../perms.md#tasks-and-gates). The worker that works the task may not answer
+the question that it raised.
 
 Whoever may answer may also pass the question on, with
 `verse gate escalate <id> -as <who> [-say <why>]`. The question goes to the next resolver that
 matches its subject, or to the docket when there is none.
 
-**A charter gate is listed here, whatever it takes to settle it.**
+**A charter gate is listed here, whatever it takes to settle it**, with its `options`,
+`ballots` and `deadline` ([the tally](gates.md#the-tally)).
 
-- A gate with `need: 2` lists with its `options`, and with its `ballots` as answers arrive.
-  `verse gate approve <id> -as <who>` casts one ballot. The record settles in the same write as
-  the ballot that reaches the threshold.
-- A gate with a `deadline` lists the deadline. It settles on its default when the clock
-  passes.
-
-**A provider selection is listed here too.** A `spawn` with a `provider` and
-`select: ask|vote` poses a question. Its options are the eligible doers. Each option carries
-the envelope that the doer would run under, and `chain` names the action that the question
-holds up. You answer it by option:
+**A provider selection is listed here too.** Its options are the eligible doers
+([what you can see](../provider-selection.md#what-you-can-see)). You answer it by option:
 
 ```sh
 verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as you@example.com
 ```
-
-`within` is the deadline of the selection, and it has no default. When the clock passes with
-no pick, the question settles on `none`, and nothing spawns.
 
 The `~` that separates the gate from its task needs no quotes and no escape, in a shell or in
 a URL.
@@ -323,16 +307,10 @@ the default, and never looser. Under `-vector ask`, a `mode: auto` gate over `ex
 nothing, and verse asks about the command with `reason: "no gate matched"`. With `-gates` and
 no `-vector`, the default is `auto`, because the gates do the asking.
 
-**The deadline is the question's own clock, and it settles the question.** With
-`default: deny`, a run with nobody watching does not stay held on a question that nobody will
-find. When the clock passes, verse refuses the action as `by: deadline`. The refusal comes
-back to the agent, and the agent makes a new plan, as it does after a person's no.
-
-| Default | When the clock passes |
-|---|---|
-| `default: deny` | verse refuses the action |
-| `default: proceed` | the action goes through |
-| no default | the question settles on `none`. The loop also reads this as a refusal: nobody made it, and the record says so. |
+**The deadline is the question's own clock, and it settles the question**
+([a deadline settles](gates.md#a-deadline-settles)). With `default: deny`, a run with nobody
+watching does not stay held on a question that nobody will find. A refusal comes back to the
+agent, and the agent makes a new plan, as it does after a person's no.
 
 A resolver's own `deadline` is a different clock. It passes the question up to the layer
 above, and does not settle it. Both instants are on the record, and the earlier one fires
@@ -524,10 +502,6 @@ A restart settles what nobody waits on:
 
 See [task control](../task-control.md).
 
-A completion hook (`onDone` and the others) reads the task's own payload: `$status`,
-`$result`, `$data`, `$err`, `$chain`. The task's flow is its subject, so the hook's `$subject`
-already names it.
-
 **`status: done` means that the task *stopped*, not that the work succeeded.** A hook that
 advances state should name evidence (`patch: {stage: reviewed, severity: $data.severity}`),
 and not trust a bare claim. See [bindings](action.md#bindings) and
@@ -535,9 +509,8 @@ and not trust a bare claim. See [bindings](action.md#bindings) and
 
 ## Steering
 
-A [flow](../glossary.md#flow) is not stored. It is a query over live tasks. So steering
-takes a selection, not a ref. Steering a whole set needs no new mechanism: it is the same
-selector with a wider setting. A task that you run by hand is a flow too. It is the flow of
+A [flow](../glossary.md#flow) is a query over live tasks, so steering takes a selection, not
+a ref. A task that you run by hand is a flow too. It is the flow of
 its `-subject`, or of its own id when it names none.
 
 The verbs, their flags, and how a hold on a run differs from a suspension are in
@@ -563,27 +536,9 @@ verb: say
 ```
 
 The verbs land at each task's next boundary. So you can hold, redirect or stop a run while
-it runs, and every *other* flow keeps reacting.
-
-A scripted task is one command:
-
-- `cancel` stops it at once, by killing the command;
-- a hold and a `say` land at its next boundary, which for a task of one command is when the
-  task ends.
-
-The verbs take effect during the run of a task with many steps, such as one with the `llm`
-driver, where every tool call is a boundary.
-
-A [hold](../glossary.md#hold) on a run is the operator's ad-hoc stop: "hold this, I want to
-look". It differs from two other things:
-
-- `cancel` ends the work;
-- a `park` gate is a hold that the *charter* declares for each action.
-
-A hold on a run is also forgetful. It holds that task, and the rules go on firing beside it.
-To stop the work about something, and keep it stopped, suspend it instead. A suspension stops
-new firings, withdraws the questions from the docket, and makes hooks record and start
-nothing.
+it runs, and every *other* flow keeps reacting. Where a hold lands on a scripted task, how a
+hold differs from a suspension, and whose hold a task is under are in
+[control](../control.md#a-hold-on-a-run).
 
 ```sh
 verse flow suspend -subject demo.pr.2 -why "a person is reviewing it by hand"
@@ -592,21 +547,11 @@ verse flow resume -task review@demo.pr.2       # refused, 409: a suspension hold
 verse flow resume -subject demo.pr.2
 ```
 
-A task knows whose hold it is under: `heldBy` on its record and in `flow show`. So a hold and
-a suspension do not undo each other. Lifting one resumes only what nothing else holds. An
-operator's hold outlives a suspension, whichever came first.
-
-Every verb here asks for `control` of each task that it reaches, as `task cancel` does. The
-task's owner holds `control`, and so does the worker that its claim granted. When verse
-refuses a `say` for any one of its tasks, it refuses the whole `say`, and names that task.
-
-With `-scope`, every verb here reaches the tasks that the scope started, and none that the
-scope only sees. The verbs are `verse flow suspend|resume|say|cancel`,
-`task cancel|say|vector` and the runtime's `/tasks/{id}/pause|resume`. Aimed at the work of
-baseline, a verb with `-scope` refuses and says so. So
+Every verb here asks for `control` of each task that it reaches
+([who may](../control.md#who-may)). With `-scope`, a verb here, and the runtime's
+`/tasks/{id}/pause|resume`, reaches only the tasks that the scope started ([what a scope owns](connect.md#what-a-scope-owns)). So
 `verse flow cancel -scope me -task review@demo.pr.2` never stops baseline's review of that PR
-by accident. Drop the flag to address baseline. See
-[what a scope owns](connect.md#what-a-scope-owns).
+by accident. Drop the flag to address baseline.
 
 ## Where a task runs is a seam
 
