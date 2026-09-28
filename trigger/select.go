@@ -37,9 +37,14 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		// no question, and no error. Every other exit from this function traces; this one is
 		// the likeliest to be hit (a capability whose registry is empty, or a match that
 		// excludes everyone) and was the only one silent.
+		why := e.whyNoEligible(spawn)
 		e.logger.Warn("provider selection has no eligible doer; no question posed and nothing spawned",
 			"subject", subject.String(), "capability", p.Capability,
-			"select", p.Select, "why", e.whyNoEligible(spawn))
+			"select", p.Select, "why", why)
+		// Kept on the rule: no task starts and no question is posed, so nothing else the
+		// rule's author reads would say the spawn did not happen.
+		e.failed(spawn.Chain, subject, fmt.Errorf("no doer is eligible for capability %q, so "+
+			"nothing was spawned: %s", p.Capability, why))
 		return launch.Fragment{}, false
 	}
 	// auto: a rule picks the first eligible doer immediately — and poses NOTHING. The docket

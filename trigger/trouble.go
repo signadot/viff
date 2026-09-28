@@ -26,8 +26,12 @@ import (
 // The kinds of trouble.
 const (
 	// TroubleFailed is an action that did not do what the rule says: a reference that did not
-	// resolve, a patch that would land on a value, a derive that failed, a spawn refused, a
-	// gate's pose that did not expand.
+	// resolve, a patch that would land on a value, a derive that failed, a spawn no doer is
+	// eligible for or whose doer cannot be launched under it, a gate's pose that did not expand.
+	//
+	// A SPAWN THAT STARTED AND FAILED IS NOT HERE. A runner that is not installed, or a driver
+	// the runtime does not have, is a task that failed: its record says so, and the rule's
+	// `onFailed` hook fires. What is kept here is what leaves no task to say it.
 	TroubleFailed = "failed"
 	// TroubleUnread is a commit the rule could not read, and so did not evaluate. The commit
 	// is marked seen before it is read (firstSight), so the rule does not look at it again.

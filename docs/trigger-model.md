@@ -149,7 +149,7 @@ There are two kinds.
 
 | `kind` | What happened | What the entry says |
 |---|---|---|
-| `failed` | An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, a spawn was refused, a gate's `pose` did not expand. | `chain`, the place in the rule (`copies`, `copies.onDone`, `copies.approval.onDenied`), and `subject` |
+| `failed` | An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, no doer was eligible for a spawn, a gate's `pose` did not expand. | `chain`, the place in the rule (`copies`, `copies.onDone`, `copies.approval.onDenied`), and `subject` |
 | `unread` | The rule could not read the verse at a commit. It did not evaluate that commit, and it does not look at it again. | `rev`, the commit |
 
 Each entry is the latest of its kind. `count` is how many times it has happened since the rule
@@ -160,6 +160,10 @@ clears it.
 absent when nothing has gone wrong.
 
 A completion hook that fails is also written on its task's record, under `hook`.
+
+A spawn that starts and then fails is not the rule's trouble. A spawn that names a runner
+that is not installed, or a driver the runtime does not have, is a task that failed. The
+task's record says so (`verse task`), and the rule's `onFailed` hook fires.
 
 ## Flow — a subject-match over live tasks
 

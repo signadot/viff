@@ -247,6 +247,9 @@ spawn: greedy: its grant \"all\" is not within the spawn's \"no-delegate\" — a
 narrow authority, never widen it"
 ```
 
+That line is in the log of `verse up`. The same reason is on the rule, under `trouble`
+([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)).
+
 A doer whose `grant` names something outside the vocabulary is refused too, rather than
 resolving to nothing. A typo must not be a route to running un-enveloped.
 
