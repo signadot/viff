@@ -21,7 +21,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
 	"github.com/signadot/verse/versed"
 )
 
@@ -215,59 +214,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if len(shellEnv) == 0 {
 		shellEnv = task.DefaultShellEnv
 	}
-	build := func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
-		driver := l.Driver
-		if driver == "" {
-			driver = defaultDriver
-		}
-		switch driver {
-		case "scripted":
-			// A contract the driver cannot enforce fails the spawn — there is no model to
-			// ask again, so honouring the field would mean dropping it, and a dropped
-			// contract is worse than none. The refusal lives in NewCallsTaskFrom now, so
-			// both runtimes state it once and neither can forget it.
-			return versed.NewScriptedTask(l, root, shellEnv, reg)
-		case "llm":
-			if !appCfg.LLM.Available() {
-				return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
-			}
-			// WHICH CREDENTIAL: the one the spawn named, else this verse's own. The spawn's is
-			// already the key — versed read it from the address the spawn named, as whoever
-			// named it, and refused there if that read was not theirs to make.
-			virtualKey := appCfg.LLM.VirtualKeyOr(l.VirtualKey)
-			// content (non-nil for a scoped federation) routes read_file through the
-			// verse; otherwise the agent reads the server-side --root tree.
-			//
-			// Frame/Tools/Vector come from the spawn. The vector is handed to Build rather
-			// than left for the daemon to install afterwards because the DEFAULT FRAME is
-			// derived from it: describing each tool as it will actually behave only works
-			// if the vector is known while the frame is being written. The daemon installs
-			// it again after Build, which is idempotent and is also what bounds the
-			// scripted driver, so neither path depends on a builder remembering.
-			p, _ := harness.Build(harness.Config{
-				ID: l.ID, Prompt: l.Prompt, Root: root, Resolver: reg, Log: cc.Err, Content: content,
-				Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: shellEnv,
-				LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
-				LLMVirtualKey: virtualKey, LLMModel: appCfg.LLM.Model,
-			})
-			return p
-		case task.DriverCalls:
-			// A list of calls the charter wrote, with the harness's own executor and NO model —
-			// which is why it is here rather than under the llm case: `calls` needs the four
-			// tools and none of the credentials, so a verse with no keys configured can still
-			// run the mechanical work. `scripted` above is the same driver with a
-			// one-shell-command list built for it.
-			if err := task.CheckCalls(l.Calls); err != nil {
-				return task.NewFailed(l.ID, reg, task.DriverCalls+": "+err.Error())
-			}
-			return harness.Calls(harness.Config{
-				ID: l.ID, Root: root, Resolver: reg, Log: cc.Err, Content: content,
-				Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: shellEnv,
-			}, l.Calls)
-		default:
-			return task.NewFailed(l.ID, reg,
-				"unknown driver "+driver+" (want scripted, calls or llm)")
-		}
+	h := &versed.Harness{
+		Root: root, Env: shellEnv, Log: cc.Err, Default: defaultDriver,
+		LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
+		LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
+		VirtualKeyOr: appCfg.LLM.VirtualKeyOr,
 	}
 
 	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up
@@ -319,7 +270,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		perms.Reseed = perms.Reseed || on
 	}
-	srv := versed.NewWithStore(build, store, versed.WithPerms(perms))
+	srv := versed.NewWithStore(h.Build, store, versed.WithPerms(perms))
 	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
 	// that could not write it would refuse every request from every person — which reads as a
 	// verse that lost its data, and is worth failing loudly at the start instead.
