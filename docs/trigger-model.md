@@ -56,16 +56,25 @@ A rule in a charter:
 - name: review
   # what it is about
   condition:
-    subject: {path: "demo.pr.*", value: { stage: open }}
+    subject:
+      path: "demo.pr.*"
+      value:
+        stage: open
   # the guard
   gates:
-  - { name: approval, mode: ask }
+  - name: approval
+    mode: ask
   # the consequence
   action:
-    patch: { stage: reviewing }
-    spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
+    patch:
+      stage: reviewing
+    spawn:
+      driver: scripted
+      vector: auto
+      prompt: "echo reviewing $subject"
     onDone:
-      patch: { stage: reviewed }
+      patch:
+        stage: reviewed
 ```
 
 The same parts as Go types:
@@ -282,10 +291,16 @@ a positive, and a departure becomes an ordinary rising edge:
 ```tony
 - name: note-departures
   condition:
-    on:      {path: "demo.pr.*", value: { verse: { meta: { vanishing: null } } }}
+    on:
+      path: "demo.pr.*"
+      value:
+        verse:
+          meta:
+            vanishing: null
     subject: audit.record.latest
   action:
-    patch: { saw: "a departure" }
+    patch:
+      saw: "a departure"
 ```
 
 Match the *presence* of the marker, and not its value. `vanishing: null` is how tony writes
@@ -323,7 +338,12 @@ removes it. `!delete null` is the removal. It is the same at the root as at a fi
 ```tony
 - name: reap
   condition:
-    subject: {path: "demo.pr.*", value: { verse: { meta: { vanishing: null } } }}
+    subject:
+      path: "demo.pr.*"
+      value:
+        verse:
+          meta:
+            vanishing: null
   action:
     patch: !delete null
 ```
