@@ -31,6 +31,8 @@ nav:
   - Overview: overview.md
   - tutorial.md
   - Control: control.md
+  - build.md
+  - glossary.md
 - Run a verse:
   - reference/up.md
   - reference/README.md

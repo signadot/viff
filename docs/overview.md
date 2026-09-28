@@ -7,7 +7,8 @@ You install a *charter*, which is a list of rules. Verse reacts to changes in a 
 of entities and does the work with agent tasks. Every reaction passes a gate: `auto`, `ask`
 or `park`. You set the gate for each action.
 
-Read this page first, then [the tutorial](tutorial.md). The page assumes you know Go, HTTP,
+Read this page first, then [the tutorial](tutorial.md). [The glossary](glossary.md) defines
+each term once. The page assumes you know Go, HTTP,
 and three ideas from distributed systems: a cursor into a log, compare-and-swap, and
 at-least-once delivery.
 
@@ -45,10 +46,10 @@ through the store, and not through a scheduler.
 | **trigger**, or **rule** | one rule of a charter: when the condition holds and the gates resolve, the action fires. |
 | **gate** | what a firing must pass: `auto`, `ask` or `park`. |
 | **action** | what a rule does. It is data, not code. |
-| **task** | a unit of agent work that verse governs and that you can steer. |
+| **task** | a unit of work that verse governs and that you can steer. An agent, a shell command, a worker or a person does it. |
 | **principal** | who acts: a person, a runner, an agent, or the system. |
 | **subject** | the entity a piece of work is about. |
-| **flow** | the tasks in progress about one subject. |
+| **flow** | the tasks in progress about one subject, or about the subjects that a pattern names. |
 
 An **entity** has an address, such as `demo.pr.1`, `github.signadot.verse.pr.42` or
 `verse.task.instance.review-1`. Its payload is any value.
@@ -65,7 +66,7 @@ A **gate** has one of three modes.
 |---|---|
 | `auto` | the action fires |
 | `ask` | a person or an agent must approve first |
-| `park` | the action is held |
+| `park` | the action is held. Its question stands on the docket until somebody answers it. |
 
 An **action** can do four things, and one action may do several of them.
 
@@ -99,8 +100,8 @@ A **subject** and a **flow** are derived. Verse keeps no record of either.
 - A subject is the entity a piece of work is about, such as a pull request moving through its
   lifecycle. The condition of a rule selects it. It is half of nearly every identity verse
   keeps: the id of a spawn, the question of a gate, the cover of a resolver.
-- A flow is the tasks in progress about one subject. You steer them as one unit. Verse builds
-  the flow each time you ask.
+- A flow is the tasks in progress about one subject, or about the subjects that a pattern
+  names. You steer them as one unit. Verse builds the flow each time you ask.
 
 ## Components
 
@@ -156,8 +157,8 @@ subtree its match names. No watch covers the whole store. A spawn goes through t
 `Spawner`, which hosts the task through task control and mirrors it back into the store.
 
 **`task`** and **`task/taskd`** are the task runtime. A `Task` runs a *driver*: `scripted`,
-`calls` or `llm`. A `Supervisor` governs it, under a `Vector`, which is the task's default
-gates. The task emits a stream of events. The stream has a cursor, keeps a bounded number of
+`calls` or `llm`. A `Supervisor` governs it, under a `Vector`: the gates of the task, and
+the mode for an action that no gate matches. The task emits a stream of events. The stream has a cursor, keeps a bounded number of
 events, and can be resumed. The task posts its gate decisions to a registry. `taskd` serves
 the runtime over HTTP.
 

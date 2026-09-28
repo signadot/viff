@@ -17,6 +17,11 @@ Read these in order.
    seeds itself with one command. It runs on your own machine and needs no credentials.
 3. [Control](control.md) — how to stop work without ending it. Read it before you let verse
    act on anything that matters.
+4. [Build on verse](build.md) — three recipes: write a charter, write a runner, write an io.
+   Each is the smallest thing that works, with every step.
+
+[The glossary](glossary.md) defines each term once. Use it whenever a page uses a word you do
+not know.
 
 ## Run a verse
 

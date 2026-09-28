@@ -13,7 +13,7 @@ Every reaction passes a *gate*. A gate has one of three modes:
 |---|---|
 | `auto` | the action runs |
 | `ask` | a person or an agent must approve first |
-| `park` | the action is held |
+| `park` | the action is held. Its question waits until somebody answers it. |
 
 You set the mode for each action. The agents that do the work stay observable, and you can
 steer them while they run.
@@ -95,8 +95,8 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   of a rule are asked at the same time, and all must pass. An action is data, not code. A new
   rule acts on what already stands in the store. The engine watches only the subtrees that
   its rules read.
-- `task/` and `task/taskd/` — a *task* is a unit of agent work that verse governs and that you
-  can steer. Its driver is a script or an LLM agent. It serves HTTP, for control and for
+- `task/` and `task/taskd/` — a *task* is a unit of work that verse governs and that you
+  can steer. An agent, a shell command, a worker or a person does it. It serves HTTP, for control and for
   reading.
 - `runner/` and `broker/` — where a task runs. There are three ways: local, in the verse
   process; remote, on another verse over HTTP; and a broker, where a worker behind a firewall,
