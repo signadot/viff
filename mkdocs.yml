@@ -15,6 +15,7 @@ edit_uri: ""
 # the hook rewrites that link to the file on GitHub when the site is built.
 exclude_docs: |
   /articles/
+  /design/
   /platform.md
   /seams.md
   /task-control.md

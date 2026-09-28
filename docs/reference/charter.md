@@ -32,7 +32,7 @@ installed in it. The engine confines a package in two ways:
 - Verse refuses a write that resolves outside the address when the rule fires.
 
 The second way matters more, because the address of a derive can be a template.
-[Confinement belongs to the engine](#confinement-belongs-to-the-engine) gives the reason.
+[Confinement belongs to the engine](../design/reference-charter.md#confinement-belongs-to-the-engine) gives the reason.
 
 **A rule may select anywhere it only reads.** The subject is a write when the action patches
 it, and a read otherwise. So a rule of a package can select the place of an
@@ -231,7 +231,7 @@ installs cannot lose each other, and a rule has an address
 **A rule is stored as structure, under the `!raw` escape.** `!raw` says *this tag is data*.
 The store keeps the subtree verbatim, and interprets nothing beneath it at any depth. The
 store consumes the escape itself, so the rule lands with its own tags.
-[A rule is stored under `!raw`](#a-rule-is-stored-under-raw) gives the reason.
+[A rule is stored under `!raw`](../design/reference-charter.md#a-rule-is-stored-under-raw) gives the reason.
 
 | Function | What it does |
 |---|---|
@@ -334,22 +334,4 @@ nothing ([perms.md](../perms.md)). A rule reads as its owner, all the way down.
 
 ## Why it is this way
 
-### Confinement belongs to the engine
-
-Isolation by convention holds until somebody edits a rule.
-
-The isolation of a package holds after that edit too. The confinement is a property of the
-engine, and not of the rules that are installed in the engine at one moment.
-
-### A rule is stored under `!raw`
-
-A write to the store is a tony *patch*. This property makes the store good at everything else.
-It also means that the store *executes* the operator tags in a payload, and does not store
-them.
-
-A charter is full of operator tags: `value: {branch: !glob "hotfix-*"}`,
-`patch: {tmp: !delete null}`.
-
-A rule stored as bare structure does not read back wrong. It cannot be read back at all. The
-write leaves an entity whose own patch log does not apply
-(`glob patching "null" gave cannot patch with glob operation`).
+The reasons for this design are in [reference-charter.md](../design/reference-charter.md), in the repository.

@@ -86,7 +86,7 @@ something else also carries the quoted clause inside the single quotes.
 
 **A positional argument is one step and nothing else.** There is no delimiter scan on the
 command line. So `verse data demo.pr.1` names the one segment `demo.pr.1`. The reason is under
-[Why it is this way](#a-positional-argument-is-one-step).
+[Why it is this way](../design/reference-entities.md#a-positional-argument-is-one-step).
 
 A step names one place, and its first character says which kind of place. There are four
 clauses, and none of them splits a word:
@@ -560,7 +560,7 @@ The substrate guards such a write, so the CLI does not:
 
 `entity/arraywrite_test.go` tests all three answers. So each go-tony upgrade checks the
 reasoning again. The reason the CLI relies on the third row is under
-[Why it is this way](#the-cli-and-array-writes).
+[Why it is this way](../design/reference-entities.md#the-cli-and-array-writes).
 
 A precondition applies to an element write like any other write. It is about the *element* that
 the write names, not about the entity that holds the element:
@@ -659,7 +659,7 @@ the firing fails and the subject is left unchanged. So the rule still selects th
 the next commit tries again.
 
 The reason verse refuses a write through an array is under
-[Why it is this way](#a-write-through-an-array).
+[Why it is this way](../design/reference-entities.md#a-write-through-an-array).
 
 ## Conditional writes
 
@@ -690,7 +690,7 @@ verse watch -since 0                               # replay everything the store
 ```
 
 With no cursor, a watch starts from now. A cursor asks for history, and asking for history is a
-different act from watching. The reason is under [Why it is this way](#no-history-without-a-cursor).
+different act from watching. The reason is under [Why it is this way](../design/reference-entities.md#no-history-without-a-cursor).
 
 A watch at an address opens with what stands now, which is not history. It sends a `set` for
 each node that the address reaches, at the revision where the watch opened. Then it sends the
@@ -777,37 +777,4 @@ from acting on something that is leaving, and so bringing it back; see
 
 ## Why it is this way
 
-### A positional argument is one step
-
-A single word `w` has two legal readings: the one segment `w`, and `split(w, delim)`. If verse
-chose either reading, the other would be impossible to say. A positional argument cannot be
-both, so it is a step and nothing else.
-
-A flag is different. It is a different *place* on the line, not a second reading of the same
-word. So a whole address in one token is unambiguous where a flag marks it, for the same reason
-that the positional argument is not. Verse declares which grammar applies, and does not guess.
-
-The bracketed step clauses do not break this rule. What separates them from reading a delimiter
-out of a word is the count: a delimiter changes how many segments a word is, and a bracketed
-clause does not.
-
-### The CLI and array writes
-
-The third row of the table in [Reaching into an array](#reaching-into-an-array) makes the other
-two rows safe to offer. An accepted patch past the end of an array would leave the log
-unreadable from then on. It would be a bad write that succeeds and breaks every later read of
-the whole store, with no repair. So the CLI can stay silent only because logd refuses such a
-write at the patch.
-
-### A write through an array
-
-Without the refusal, the loss would be silent. `bo` is not a field of an array, and there is
-nothing to merge into. So the array would be replaced by `{bo: yes}`. Both ballots would be
-gone, and the command would exit 0. The answer echoes the value written, not the entity. So
-nothing in the output would say that anything was lost.
-
-### No history without a cursor
-
-A replay of a long-lived store is many lines that nobody asked for with a flag. On a store that
-cannot replay from the beginning, it would be a refusal, not a stream. So history is asked for
-with a cursor, and a watch without one starts from now.
+The reasons for this design are in [reference-entities.md](../design/reference-entities.md), in the repository.

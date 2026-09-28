@@ -13,7 +13,7 @@ time, and never a formula. Verse selects the subject once, from the
 `deadline`: verse *selects* a subject, and does not *await* it.
 
 `subject` is the one field that a condition cannot leave out. Everything else in the rule is
-read relative to it. [The subject is required](#the-subject-is-required) gives the reason.
+read relative to it. [The subject is required](../design/reference-condition.md#the-subject-is-required) gives the reason.
 
 A subject resolves in one of two ways. Both use the same match grammar.
 
@@ -23,7 +23,7 @@ A subject resolves in one of two ways. Both use the same match grammar.
 | a [pattern](../glossary.md#pattern), which is a path with `*` or `..` in it (`demo.pr.*`), with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
 
 A subject is always a *selection*. It is never "the entity that changed".
-[A subject is a selection](#a-subject-is-a-selection) gives the reason.
+[A subject is a selection](../design/reference-condition.md#a-subject-is-a-selection) gives the reason.
 
 "When a PR opens, review it" and "review all of them" therefore settle in the same state. The
 action moves each PR out of the selection, so both end with every open PR reviewed. The two
@@ -31,7 +31,7 @@ differ in the number of firings, and not in the state they end in.
 
 An address with no wildcard is a set of one, *whether or not the entity exists*. To name an
 entity is to address it by identity. It is not to select from what is there.
-[A name is a set of one](#a-name-is-a-set-of-one) gives the reason.
+[A name is a set of one](../design/reference-condition.md#a-name-is-a-set-of-one) gives the reason.
 
 A subject that selects must begin with a literal segment, so that it selects out of a place.
 Or the subject names one entity outright. The engine selects and spawns for these two shapes.
@@ -115,7 +115,7 @@ PRs that its own `subject` selects, every one of them. It does not act on the on
 completed task names.
 
 A `flow` field on the changed payload does not change this.
-[A `flow` field does not redirect a subject](#a-flow-field-does-not-redirect-a-subject) gives
+[A `flow` field does not redirect a subject](../design/reference-condition.md#a-flow-field-does-not-redirect-a-subject) gives
 the reason.
 
 [Completion hooks](action.md#completion-hooks-one-trigger-chaining-visible) advance exactly
@@ -210,7 +210,7 @@ explains why. It does not say "unknown key". A match says a create and a delete 
 | a create | the rising edge of "this exists" |
 | a delete | the rising edge of the [vanishing marker](../trigger-model.md#lifecycle-how-an-entity-leaves) that precedes removal |
 
-[A match has no `op` key](#a-match-has-no-op-key) gives the reason.
+[A match has no `op` key](../design/reference-condition.md#a-match-has-no-op-key) gives the reason.
 
 The address string is the path written as one kinded path. So `demo.pr.*` means
 `{path: "demo.pr.*"}`. A match that is only a path of names and `*` reads back from `verse c`
@@ -329,7 +329,7 @@ key is not called `fields`.
 
 `value: "stage=open"` is a legal predicate. It matches an entity whose whole payload is the
 string `stage=open`. It is not an expression language. There is one name for the predicate,
-and no assertion about its shape. [`value` asserts no shape](#value-asserts-no-shape) gives
+and no assertion about its shape. [`value` asserts no shape](../design/reference-condition.md#value-asserts-no-shape) gives
 the reason.
 
 Know four things about a predicate before you rely on one.
@@ -365,52 +365,4 @@ equality predicates.
 
 ## Why it is this way
 
-### The subject is required
-
-Nothing else in a rule can answer for the subject.
-
-The action has no target of its own. A `when` need not pin one place: `{path: "demo.*.*"}`
-spans everything two segments under `demo`.
-
-"The entity the `when` matched" answers *which entity fired*. The question is *what is this
-rule about*. A rule that acts on whichever entity made the `when` hold is not a rule that
-anybody wrote down.
-
-The subject is therefore always stated.
-
-### A subject is a selection
-
-A rule is a statement about the world. So the entities that a rule is about cannot depend on
-which entity was written last.
-
-There is also no changed entity to inherit from. Verse asks the rule once for each commit, and
-not once for each change.
-
-### A name is a set of one
-
-Suppose "every entity this selects" were read literally for a name. Then no rule could create
-an entity: to create one, the rule would already need it.
-
-### A `flow` field does not redirect a subject
-
-Suppose the `flow` field resolved the firing onto the address that the field holds. The firing
-would then advance the single PR that a completed task was about.
-
-The price is this. Whether a firing acts on one entity or on a whole set would depend on
-whether some entity carries a key with that name. No charter says that, and no reader of a
-charter could predict it.
-
-### A match has no `op` key
-
-An `op` key would classify a *change*, as `set` or `delete`. Verse asks a match only of
-*state*, at a revision. State has no such class.
-
-The refusal explains this, and does not say "unknown key". The author wants a distinction that
-the model leaves out on purpose, and "unknown key" would not say so.
-
-### `value` asserts no shape
-
-A separate key that asserted an object would make `value: "stage=open"` an install error.
-
-Such a key would still catch only the wrong *shape*. It would never catch `{stge: open}`. A
-misspelled key is the mistake that people make.
+The reasons for this design are in [reference-condition.md](../design/reference-condition.md), in the repository.

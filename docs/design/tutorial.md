@@ -1,0 +1,27 @@
+# Why: Tutorial
+
+The reasons behind [Tutorial](../tutorial.md). They are for somebody changing verse; the page itself says what verse does.
+
+## Why a scripted task you type runs ungated
+
+A gate asks about what you have not already authorized. The ungated `scripted` default is an
+argument about **who addressed the request**. When you type a shell command, you authorized that
+command. So the argument holds for what you type and nothing else. An `llm` task asks before
+effects because the agent *chose* them.
+
+## Why a spawning rule must latch
+
+A rule with no latch is considered at every commit that touches what it reads. If that rule
+spawns, it spawns again and again, and every task costs money. So verse refuses it at install.
+
+## Why derive exists
+
+A rule that acts only on its `subject` has firings that verse can check. But without `derive`,
+a charter has one way to bring an entity into being at another address: spawn an agent and let
+the agent write. That puts the write outside anything that analysis at install can see. `derive`
+states that write in the charter, where install can check it against the strata.
+
+## Why there is no par
+
+A `seq` gives order. Parallel work needs no construct of its own, because independent rules that
+match the same condition already run in parallel.
