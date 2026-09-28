@@ -99,7 +99,8 @@ Git claims **one address per repository**, because a repository is a level of ev
 git writes:
 
 ```tony
-owns: [{at: "git.verse"}]
+owns:
+- at: "git.verse"
 ```
 
 Prefer a claim of this kind, with no glob. It is disjoint from `git.verse-extras` by a literal
@@ -196,8 +197,8 @@ The contract has two routes, no state and no way to write:
 
 ```tony
 covers:
-- {path: "git.verse.ref.*"}
-- {path: "git.verse.head"}
+- path: "git.verse.ref.*"
+- path: "git.verse.head"
 entities:
 - at: git.verse.ref.main
   payload: {repo: verse, name: main, sha: "82bd107…", type: commit}

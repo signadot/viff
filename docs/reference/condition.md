@@ -137,10 +137,15 @@ A subject that selects advances a whole set:
 ```tony
 - name: ship-reviewed
   condition:
-    when:    {path: "ci.status.*", value: { state: green }}
-    subject: {path: "demo.pr.*", value: { stage: reviewed }}
+    when:
+      path: "ci.status.*"
+      value: { state: green }
+    subject:
+      path: "demo.pr.*"
+      value: { stage: reviewed }
   gates:
-  - { name: ship, mode: ask }
+  - name: ship
+    mode: ask
   action:
     patch: { stage: shipped }
 ```
@@ -235,9 +240,13 @@ what the node holds. Both deployed charters write it there:
 
 ```tony
 # every pr whose branch is a hotfix
-subject: {path: "demo.pr.*", value: {branch: !glob "hotfix-*"}}
+subject:
+  path: "demo.pr.*"
+  value: {branch: !glob "hotfix-*"}
 # everything but one
-subject: {path: "demo.pr.*", value: {id: !not "1"}}
+subject:
+  path: "demo.pr.*"
+  value: {id: !not "1"}
 ```
 
 **An [operator](../glossary.md#operator) is a tag**, and nothing else acts as one. Inside
@@ -268,7 +277,9 @@ prefix, and a watch cannot open on a wildcard at the top.
 # a rule about PRs — the ordinary case, and it cannot see verse's own records
 subject: {path: "demo.pr.*"}
 # a rule about what verse writes: a posed question, a task's mirror, an installed rule
-subject: {path: "verse.gate.question.*", value: {status: pending}}
+subject:
+  path: "verse.gate.question.*"
+  value: {status: pending}
 ```
 
 Nothing is excluded by default to make this hold. A path begins with the place that it is
@@ -281,7 +292,9 @@ are such things:
 
 ```tony
 # every finding beneath verse-dev, wherever the rule that derived it put one
-subject: {path: "verse-dev..finding", value: {stage: open}}
+subject:
+  path: "verse-dev..finding"
+  value: {stage: open}
 subject: "verse-dev..finding"   # the same, as a kinded path
 ```
 
@@ -297,10 +310,16 @@ against the payload.
 
 ```tony
 # a record's fields
-when: {path: "demo.pr.*", value: { stage: !or [open, merged] }}
-on:   {path: "demo.pr.*", value: { branch: !glob "hotfix-*" }}
+when:
+  path: "demo.pr.*"
+  value: { stage: !or [open, merged] }
+on:
+  path: "demo.pr.*"
+  value: { branch: !glob "hotfix-*" }
 # the payload root
-when: {path: "demo.count.*", value: !or [10, 100]}
+when:
+  path: "demo.count.*"
+  value: !or [10, 100]
 ```
 
 `value` is open in shape because a payload is. The payload of an entity is any tony value: a

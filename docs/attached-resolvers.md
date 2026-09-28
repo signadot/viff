@@ -41,7 +41,10 @@ limits on the answering, and its two settings.
 ```tony
 name:      security-review                       # verse.resolvers.security-review
 condition:                                       # optional — the standing door
-  subject: {path: "change.pr.*", value: { area: payments }}
+  subject:
+    path: "change.pr.*"
+    value:
+      area: payments
 byRef:     true                                  # optional — the named door
 method:
   driver:  url
@@ -80,10 +83,15 @@ make a resolver able to answer.
 ```tony
 name: validate
 condition:
-  subject: {path: "change.pr.*", value: { stage: proposed }}
+  subject:
+    path: "change.pr.*"
+    value:
+      stage: proposed
 gating:
   resolver: verse.resolvers.security-review   # answers this RULE's own gates
-  gates:  [{ name: ship, mode: ask }]
+  gates:
+  - name: ship
+    mode: ask
 action:
   spawn:
     driver:   llm

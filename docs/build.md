@@ -45,7 +45,9 @@ Save this rule as `triage.tony`.
 ```tony
 - name: triage
   condition:
-    subject: {path: "demo.ticket.*", value: { stage: open }}
+    subject:
+      path: "demo.ticket.*"
+      value: { stage: open }
   action:
     patch: { stage: triaged }
 ```
@@ -137,7 +139,9 @@ spells `value` wrongly.
 ```tony
 - name: assign
   condition:
-    subject: {path: "demo.bug.*", value: { stage: open }}
+    subject:
+      path: "demo.bug.*"
+      value: { stage: open }
   action:
     patch: { stage: assigned, owner: $subject.valeu.reporter }
 ```
@@ -196,9 +200,14 @@ answers. `onDenied` is the action that fires when the answer is no. Save this as
 ```tony
 - name: approve-change
   condition:
-    subject: {path: "demo.change.*", value: { stage: open }}
+    subject:
+      path: "demo.change.*"
+      value: { stage: open }
   gates:
-  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
+  - name: approval
+    mode: ask
+    onDenied:
+      patch: { stage: rejected }
   action:
     patch: { stage: approved }
 ```
@@ -244,11 +253,17 @@ verse governs. The driver `scripted` runs the prompt as a shell command. `onDone
 ```tony
 - name: review
   condition:
-    subject: {path: "demo.review.*", value: { stage: open }}
+    subject:
+      path: "demo.review.*"
+      value: { stage: open }
   action:
-    patch:  { stage: reviewing }
-    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewed $subject" }
-    onDone: { patch: { stage: reviewed } }
+    patch: { stage: reviewing }
+    spawn:
+      driver: scripted
+      vector: auto
+      prompt: "echo reviewed $subject"
+    onDone:
+      patch: { stage: reviewed }
 ```
 
 ```sh
@@ -295,7 +310,9 @@ in a stratum of a higher level. One file may hold strata and rules. Save this as
 - name: flag
   stratum: requests
   condition:
-    subject: {path: "demo.request.*", value: { stage: open }}
+    subject:
+      path: "demo.request.*"
+      value: { stage: open }
   action:
     patch: { stage: flagged }
     derive:

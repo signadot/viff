@@ -31,9 +31,14 @@ question it poses:
     answerers: [oscar@example.com, group:payments]   # and whose ballots
   - name: route
     options:
-    - {id: ship, need: 1, says: "merge it now"}
-    - {id: hold, need: 2, says: "wait for the release call"}
-    - {id: drop, need: 1}
+    - id: ship
+      need: 1
+      says: "merge it now"
+    - id: hold
+      need: 2
+      says: "wait for the release call"
+    - id: drop
+      need: 1
 ```
 
 ### What a question says
@@ -129,7 +134,8 @@ and on a deny the action never runs. So the gate says what its own refusal means
   gates:
   - name: approval
     mode: ask
-    onDenied: { patch: { stage: rejected } }
+    onDenied:
+      patch: { stage: rejected }
 ```
 
 `onDenied` is an ordinary action: `patch`, `derive`, `spawn`, its own completion hooks. Verse
@@ -153,9 +159,16 @@ To make a no final without changing the state of the subject itself, use a marke
 
 ```tony
   condition:
-    subject: {path: "demo.pr.*", value: !and [ { stage: open }, !not { blocked: true } ]}
+    subject:
+      path: "demo.pr.*"
+      value: !and
+      - { stage: open }
+      - !not { blocked: true }
   gates:
-  - { name: approval, mode: ask, onDenied: { patch: { blocked: true } } }
+  - name: approval
+    mode: ask
+    onDenied:
+      patch: { blocked: true }
 ```
 
 Removing the marker then opens the question again.
@@ -252,7 +265,9 @@ The check has two limits.
 ```tony
 gating:
   resolver: verse.resolvers.security-review
-  gates:    [{name: ship, mode: ask}]
+  gates:
+  - name: ship
+    mode: ask
 ```
 
 `gating` groups the two facts about the gates of a rule: which gates they are, and who answers

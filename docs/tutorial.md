@@ -371,7 +371,9 @@ can install several shapes at once, and they do not conflict over an entity.
 ```tony
 - name: shape-patch
   condition:
-    subject: {path: "demo.patch.*", value: { stage: open }}
+    subject:
+      path: "demo.patch.*"
+      value: { stage: open }
   action:
     patch: { stage: triaged }
 ```
@@ -401,11 +403,17 @@ A rule is a statement about the world, not a subscription to future changes.
 ```tony
 - name: shape-latch
   condition:
-    subject: {path: "demo.latch.*", value: { stage: open }}
+    subject:
+      path: "demo.latch.*"
+      value: { stage: open }
   action:
-    patch:  { stage: reviewing }
-    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
-    onDone: { patch: { stage: reviewed } }
+    patch: { stage: reviewing }
+    spawn:
+      driver: scripted
+      vector: auto
+      prompt: "echo reviewing $subject; sleep 2"
+    onDone:
+      patch: { stage: reviewed }
 ```
 
 The action binds `$subject` and every field of the subject's payload. `onDone` is a completion
@@ -420,7 +428,10 @@ install a spawning rule that cannot latch ([the rule](trigger-model.md#the-rule)
 
 ```tony
   gates:
-  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
+  - name: approval
+    mode: ask
+    onDenied:
+      patch: { stage: rejected }
 ```
 
 ```sh
@@ -457,9 +468,16 @@ same question again ([`onDenied`](reference/gates.md#ondenied--what-a-no-means))
 ```tony
   action:
     seq:
-    - spawn: { driver: scripted, vector: auto, prompt: "echo lint $subject" }
-    - spawn:    { driver: scripted, vector: auto, prompt: "echo test $subject" }
-      onFailed: { patch: { stage: broken } }
+    - spawn:
+        driver: scripted
+        vector: auto
+        prompt: "echo lint $subject"
+    - spawn:
+        driver: scripted
+        vector: auto
+        prompt: "echo test $subject"
+      onFailed:
+        patch: { stage: broken }
     onDone:
       patch: { stage: built }
 ```
@@ -510,8 +528,12 @@ Some statuses come from no task, and they are the point of the tree:
 
 ```tony
   condition:
-    subject: {path: "demo.when.*", value: { stage: ready }}
-    when:    {path: "ci.status.shapes", value: { state: green }}
+    subject:
+      path: "demo.when.*"
+      value: { stage: ready }
+    when:
+      path: "ci.status.shapes"
+      value: { state: green }
 ```
 
 The subject says what to act on. `when` says whether this is a moment to act. *While* CI is
@@ -521,7 +543,9 @@ verse evaluates the rule again at every commit that touches either subtree.
 ### on — a cause, not a condition
 
 ```tony
-    on: {path: "ci.status.release", value: { state: green }}
+    on:
+      path: "ci.status.release"
+      value: { state: green }
 ```
 
 The entities are the same, but the rule says something different: fire **at the moment** CI
@@ -563,7 +587,9 @@ comes with a bound: a [**stratum**](glossary.md#stratum), a declared level.
 - name: shape-derive
   stratum: shapes-source
   condition:
-    subject: {path: "demo.derive.*", value: { stage: open }}
+    subject:
+      path: "demo.derive.*"
+      value: { stage: open }
   action:
     patch: { stage: raised }
     derive:
@@ -641,7 +667,8 @@ answers it needs:
 
 ```tony
   gates:
-  - { name: approvals, need: 2 }
+  - name: approvals
+    need: 2
 ```
 
 ```sh
@@ -689,7 +716,9 @@ asked, and so does anyone the gate names:
 
 ```tony
   gates:
-  - { name: approvals, need: 2, answerers: [oscar@example.com, group:payments] }
+  - name: approvals
+    need: 2
+    answerers: [oscar@example.com, group:payments]
 ```
 
 Verse refuses Ana, who is not named, and tells her so.

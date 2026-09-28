@@ -29,7 +29,9 @@ A rule takes the tick as its subject:
   condition:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:
-    spawn: {driver: scripted, prompt: "refresh the drift report for the hour ending $subject.name"}
+    spawn:
+      driver: scripted
+      prompt: "refresh the drift report for the hour ending $subject.name"
 ```
 
 A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. The store
@@ -70,7 +72,9 @@ and the derive. Those commits wake nothing unless a charter reads there.
 A rule whose `on` names a calendar fact rises when the fact becomes true:
 
 ```tony
-    on: {path: "verse.schedule.time", value: {time: "09:05"}}      # daily at five past nine
+    on:                        # daily at five past nine
+      path: "verse.schedule.time"
+      value: {time: "09:05"}
 ```
 
 **Downtime has two readings.** A rule says which reading it means by what it reads.

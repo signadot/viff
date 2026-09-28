@@ -164,9 +164,14 @@ So a derive states the facts it owns. The rule that follows it starts from an **
 
 ```tony
 # the derive says what it knows, and nothing about the flow's state
-derive: [{path: "notes.row", value: {sha: $subject.name}}]
+derive:
+- path: "notes.row"
+  value: {sha: $subject.name}
 # …and the next rule latches on the absence, which is nobody's to overwrite
-condition: { subject: {path: "notes.row.*", value: !not.has-path reviewed} }
+condition:
+  subject:
+    path: "notes.row.*"
+    value: !not.has-path reviewed
 ```
 
 For a charter that does it the other way, the install prints a note that names both rules and
@@ -365,16 +370,29 @@ finished. A [path read](../glossary.md#path-read) reaches an entity that is neit
 ```tony
 action:
   patch:
-    repo:     !get-path {at: [git, repo, $subject.value.head]}
-    branch:   !get-path {at: [git, repo, $subject.value.head], path: branch}
-    branches: !list-paths {at: "git.repo.*", path: branch}
+    repo: !get-path
+      at: [git, repo, $subject.value.head]
+    branch: !get-path
+      at: [git, repo, $subject.value.head]
+      path: branch
+    branches: !list-paths
+      at: "git.repo.*"
+      path: branch
     # …and a predicate narrows the walk to the ones that look like this (list only)
-    green:    !list-paths {at: "git.repo.*", value: {state: green}, path: branch}
+    green: !list-paths
+      at: "git.repo.*"
+      value: {state: green}
+      path: branch
     # the string form is the kinded path, for an address with nothing to expand in it
     head:     !get-path git.verse.head
     # and `at:` names the address as a path, at whatever depth the tree is
-    says:     !get-path { at: "verse-dev.drift.head.aaaa1111", path: result.report }
-    open:     !list-paths { at: "verse-dev.drift.finding.*", value: {status: open}, path: says }
+    says: !get-path
+      at: "verse-dev.drift.head.aaaa1111"
+      path: result.report
+    open: !list-paths
+      at: "verse-dev.drift.finding.*"
+      value: {status: open}
+      path: says
 ```
 
 The address is `at:` in a read, and `path:` in a condition. In a read, `path:` is the field path
@@ -429,8 +447,13 @@ elsewhere. `!let` binds the read, and the body compares:
     subject:
       path: "merge.proposal.*"
       value: !let
-        let: [{tip: !get-path {at: "git.verse.head", path: sha}}]
-        in:  {state: open, base: !not .[tip]}
+        let:
+        - tip: !get-path
+            at: "git.verse.head"
+            path: sha
+        in:
+          state: open
+          base: !not .[tip]
   action:
     patch: { state: stale }
 ```
@@ -536,7 +559,9 @@ A result patched onto the subject is an ordinary fact, and an ordinary condition
 condition needs no knowledge of tasks. This closes the loop:
 
 ```tony
-subject: {path: "demo.pr.*", value: { stage: reviewed, severity: high }}
+subject:
+  path: "demo.pr.*"
+  value: { stage: reviewed, severity: high }
 ```
 
 References in a patch follow four rules.
@@ -606,8 +631,12 @@ of live tasks, keyed by task id. So a hook needs no `flow` match and no separate
 ```tony
 action:
   patch:  { stage: reviewing }
-  spawn:  { driver: scripted, vector: auto, prompt: "review $subject" }
-  onDone: { patch: { stage: reviewed } }
+  spawn:
+    driver: scripted
+    vector: auto
+    prompt: "review $subject"
+  onDone:
+    patch: { stage: reviewed }
 ```
 
 The alternative is a *decoupled* completion rule. That is a separate rule that fires on the
@@ -632,14 +661,24 @@ orphaned, and never tracked. So no tracked task reaches that status.
 ```tony
 - name: review
   condition:
-    subject: {path: "demo.pr.*", value: { stage: open }}
+    subject:
+      path: "demo.pr.*"
+      value: { stage: open }
   gates:
-  - { name: review, mode: ask }
+  - name: review
+    mode: ask
   action:
     seq:
-    - spawn: { driver: scripted, vector: auto, prompt: "lint $subject" }
-    - spawn:    { driver: scripted, vector: auto, prompt: "review $subject" }
-      onFailed: { patch: { stage: rejected } }
+    - spawn:
+        driver: scripted
+        vector: auto
+        prompt: "lint $subject"
+    - spawn:
+        driver: scripted
+        vector: auto
+        prompt: "review $subject"
+      onFailed:
+        patch: { stage: rejected }
     - patch: { stage: reviewed }
     onDone:
       patch: { stage: ready }
@@ -735,7 +774,12 @@ verse:
 A join reads the position at whatever depth it needs:
 
 ```tony
-subject: {path: "demo.pr.*", value: { verse: { charter: { review: { done: true } } } }}
+subject:
+  path: "demo.pr.*"
+  value:
+    verse:
+      charter:
+        review: { done: true }
 ```
 
 `value` matches structurally, so it matches a payload that carries any amount of other content.

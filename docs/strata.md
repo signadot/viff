@@ -26,7 +26,9 @@ to a higher level.
 - name: urgent-label
   stratum: observe
   condition:
-    subject: {path: "gh.issue.*", value: { label: urgent }}
+    subject:
+      path: "gh.issue.*"
+      value: { label: urgent }
   action:
     patch: { triaged: true }
     derive:
@@ -38,7 +40,9 @@ to a higher level.
 - name: request-approval
   stratum: sdlc
   condition:
-    subject: {path: "signadot.feature.*", value: { priority: urgent }}
+    subject:
+      path: "signadot.feature.*"
+      value: { priority: urgent }
   action:
     patch: { stage: awaiting-approval }
     derive:
@@ -74,8 +78,14 @@ what derivations the stratum accepts from below. One declaration is read from tw
 below it:
 
 ```tony
-- {name: tip,    level: 10, match: {path: "verse-dev.drift.head"}}
-- {name: ledger, level: 20, match: {path: "verse-dev.drift.finding"}}
+- name: tip
+  level: 10
+  match:
+    path: "verse-dev.drift.head"
+- name: ledger
+  level: 20
+  match:
+    path: "verse-dev.drift.finding"
 ```
 
 `[verse-dev, drift, head]` is the address under which derivations land. A rule whose subject is

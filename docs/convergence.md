@@ -173,8 +173,12 @@ Verse does not act on a member that arrives later, until the cause falls and ris
 ```tony
 - name: ship-at-green
   condition:
-    on:      {path: "ci.status.*", value: { state: green }}
-    subject: {path: "demo.pr.*", value: { stage: reviewed }}
+    on:
+      path: "ci.status.*"
+      value: { state: green }
+    subject:
+      path: "demo.pr.*"
+      value: { stage: reviewed }
   action:
     patch: { stage: shipped }
 ```
@@ -203,12 +207,16 @@ rules, and every protection above misses it:
 ```tony
 - name: fwd
   condition:
-    subject: {path: "demo.pr.*", value: { stage: a }}
+    subject:
+      path: "demo.pr.*"
+      value: { stage: a }
   action:
     patch: { stage: b }
 - name: back
   condition:
-    subject: {path: "demo.pr.*", value: { stage: b }}
+    subject:
+      path: "demo.pr.*"
+      value: { stage: b }
   action:
     patch: { stage: a }
 ```

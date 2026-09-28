@@ -127,14 +127,18 @@ destination, and never a ref. `auto` is where the task's own work lands, and `pu
 
 ```tony
 credentials:
-- {name: gh-verse, env: GITHUB_TOKEN}     # the NAME of a variable; this file carries no secret
+- name: gh-verse
+  env: GITHUB_TOKEN     # the NAME of a variable; this file carries no secret
 repos:
 - name: verse
   repo: "https://github.com/signadot/verse"
   base: main
   destinations:
-  - {name: auto, ref: "refs/heads/verse/auto/$sha/$task"}
-  - {name: main, ref: "refs/heads/main", credential: gh-verse}
+  - name: auto
+    ref: "refs/heads/verse/auto/$sha/$task"
+  - name: main
+    ref: "refs/heads/main"
+    credential: gh-verse
 ```
 
 A credential is **supplied by the operator and never minted**. The credentials are tokens that
@@ -153,9 +157,17 @@ vector:
   default: auto
   gates:
   # anything leaving at all
-  - {name: delivery, mode: ask, match: {verbs: [push]}}
+  - name: delivery
+    mode: ask
+    match:
+      verbs: [push]
   # or just the one that matters, by the ref it will actually touch
-  - {name: to-main, mode: ask, match: {resources: [{kind: gitref, pattern: "refs/heads/main"}]}}
+  - name: to-main
+    mode: ask
+    match:
+      resources:
+      - kind: gitref
+        pattern: "refs/heads/main"
 ```
 
 **Approval releases the credential**, and nothing else does. The task holds no git credential
@@ -219,7 +231,8 @@ spawn:
   vector: auto
   calls:
   - tool: run_bash
-    input: {command: "git -C verse fetch origin $branch && git -C verse merge --ff-only FETCH_HEAD"}
+    input:
+      command: "git -C verse fetch origin $branch && git -C verse merge --ff-only FETCH_HEAD"
   - tool: push
     input: {destination: main}
 ```

@@ -51,7 +51,10 @@ reads: [git]                   # …and what it may read besides
 - name: head-moved          # in the `drift` package
   stratum: reflected
   condition: {subject: git.verse.head}    # a source: read, never written
-  action: {derive: [{path: "drift.head", value: {repo: $subject.value.repo}}]}
+  action:
+    derive:
+    - path: "drift.head"
+      value: {repo: $subject.value.repo}
 ```
 
 Two packages that both react to `git.*` are the ordinary arrangement, and not an unusual one.
@@ -286,9 +289,11 @@ text survives in both cases, and only its carrier changes.
 ```tony
 gates:
 # both of these merge onto the list…
-- { name: approval, mode: ask }
+- name: approval
+  mode: ask
 # …while this one stays with its entry
-- { name: security, mode: ask }
+- name: security
+  mode: ask
 ```
 
 The same holds one level out, for a charter file that is a list of rules: a comment above the

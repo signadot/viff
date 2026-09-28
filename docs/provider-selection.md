@@ -60,7 +60,10 @@ action:
   spawn:
     prompt: "treat $subject"
     grant: no-delegate
-    provider: { capability: treat, match: { risk: low }, select: auto }
+    provider:
+      capability: treat
+      match: { risk: low }
+      select: auto
 ```
 
 The fields of a provider selection:

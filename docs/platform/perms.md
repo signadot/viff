@@ -33,8 +33,11 @@ record:
 ```tony
 # the root's record in an open verse
 owner:        user:admin@verse
-grants:       [{child-owner: ["*"]}, {read: ["*"]}]
-child-grants: {read: ["*"]}
+grants:
+- child-owner: ["*"]
+- read: ["*"]
+child-grants:
+  read: ["*"]
 ```
 
 | Deployment | Who makes a top-level place | Who reads what is created |

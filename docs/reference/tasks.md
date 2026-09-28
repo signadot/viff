@@ -160,7 +160,10 @@ charter typed nothing, and the reader of a charter is not the person who wrote i
 that means to run with nobody watching says so, on the same line that an `llm` spawn uses:
 
 ```tony
-spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject" }
+spawn:
+  driver: scripted
+  vector: auto
+  prompt: "echo reviewing $subject"
 ```
 
 `vector: auto` is also how a charter says "the firing already decided this". The rule's own

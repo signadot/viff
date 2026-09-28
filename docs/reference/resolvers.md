@@ -21,7 +21,10 @@ The service, person or group that it names is its
 ```tony
 name:      security-review
 condition:                                       # the STANDING door
-  subject: {path: "change.pr.*", value: { area: payments }}
+  subject:
+    path: "change.pr.*"
+    value:
+      area: payments
 byRef:     true                                  # the NAMED door
 method:
   driver:  url
@@ -243,7 +246,9 @@ A charter has the same two doors:
 ```tony
 gating:
   resolver: verse.resolvers.review    # answers this rule's own gates
-  gates: [{ name: ship, mode: ask }]
+  gates:
+  - name: ship
+    mode: ask
 action:
   spawn:
     resolver: verse.resolvers.review  # answers this run's gates

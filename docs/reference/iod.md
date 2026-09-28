@@ -165,7 +165,11 @@ it, a charter tests what a commit *declared*, and does not search the text of th
 
 ```tony
 condition:
-  subject: {path: "git.verse.commit.*", value: {trailers: {Tier: change}}}
+  subject:
+    path: "git.verse.commit.*"
+    value:
+      trailers:
+        Tier: change
 ```
 
 `!glob "*"` in place of a value matches any commit that declared the key at all. A charter
@@ -243,7 +247,11 @@ first `=`, and a key holds one value. So `git-issue-phase=planned` is
 
 ```tony
 condition:
-  subject: {path: "git-issue.verse.issue.*", value: {keys: {git-issue-phase: planned}}}
+  subject:
+    path: "git-issue.verse.issue.*"
+    value:
+      keys:
+        git-issue-phase: planned
 ```
 
 `labels` holds the plain labels only, so a label with a key appears once.
