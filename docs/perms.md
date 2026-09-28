@@ -26,8 +26,7 @@ The rest of this page says what those words mean, in the order you need them.
 On this page, "level" means a permission level. It does not mean the level of a
 [stratum](glossary.md#level-of-a-stratum).
 
-`control` includes run. A spawn carries the identity of whoever runs it, and verse writes the
-task's record as that identity. That write is the check for run.
+`control` includes run ([reference/perms.md](reference/perms.md#levels)).
 
 A refusal may say that somebody *holds* `read` at a node. This means that `read` is the most
 the records admit them to at that node, as owner or by grant. The word *holds* says nothing
@@ -35,22 +34,13 @@ more.
 
 ## Principals and grantees
 
-A [principal](glossary.md#principal) is a name with its kind in front. A
-[grantee](glossary.md#grantee) is who a grant is to. A grantee is a principal, or a set of
-principals.
+A [principal](glossary.md#principal) is a name with its kind in front, such as
+`user:ana@example.com`. A person is `user:`, an agent is `agent:`, and a runner is `runner:`.
+Verse itself is `system:`, and something installed that acts is `via:<address>` (see below).
 
-```
-principal ::= user:<email>          # a person
-            | agent:<name>          # an agent driving verse through the api
-            | runner:<identity>     # a runner doing work
-            | system:<part>         # verse itself
-            | via:<address>         # something installed, acting: see below
-grantee   ::= principal
-            | *                     # everyone
-            | <kind>:*              # every principal of a kind
-            | group:<name>          # a group's members
-            | <email>               # shorthand for user:<email>
-```
+A [grantee](glossary.md#grantee) is who a grant is to. A grantee is a principal, or a set of
+principals: `*` for everyone, `<kind>:*` for every principal of a kind, or `group:<name>` for a
+group's members. [The grammar](reference/perms.md#the-grammar) is in the reference.
 
 Every request names who makes it. The CLI sends the `user:` or `agent:` in its config, and
 `-as` names somebody else. Verse refuses a request that writes and names nobody.
@@ -134,27 +124,19 @@ refuses an install over somebody else's place. Verse also refuses an install tha
 no owner on record. A thing with no owner acts as nobody, so it would stand there and do
 nothing.
 
-The charter a deployment ships (`systemCharter`, and verse's built-in clock and calendar) is
-installed as the system and acts as the system.
+The charter a deployment ships is installed as the system and acts as the system. How
+that works is in [perms.md](platform/perms.md#installed-things-and-their-records), in the
+repository.
 
 ## The top of the tree
 
-The root is a node with a record, like any other node. A deployment says how open it is in that
-record:
+The root is a node with a record, like any other node. `verse perms --root` shows it. In an
+open verse, anybody may make a top-level place and owns what they make, and everyone may read
+it. A deployment may allow only admins to make a top-level place. Then everybody else works in
+places that an admin opens to them.
 
-```tony
-# the root's record in an open verse
-owner:        user:admin@verse
-grants:       [{child-owner: ["*"]}, {read: ["*"]}]
-child-grants: {read: ["*"]}
-```
-
-| Deployment | Who makes a top-level place | Who reads what is created |
-|---|---|---|
-| open | anybody, and they own what they make | everyone, until its owner says otherwise |
-| `perms: {admins: […]}` in the config | only an admin: the first line reads `child-owner: [group:admin]`. Everybody else works in places that an admin opens to them. | as in an open verse |
-
-In both, `user:admin@verse` owns the root, and so co-owns everything.
+How a deployment sets the root is in [perms.md](platform/perms.md#the-root-and-the-config), in
+the repository.
 
 ## Verse's own half
 
@@ -230,5 +212,5 @@ in that scope, baseline never sees it, and it goes when the scope goes.
 | | |
 |---|---|
 | [perms-guide.md](perms-guide.md) | the model by example, in the order a person meets it |
-| [reference/perms.md](reference/perms.md) | the grammar and how a grantee matches; a record's fields; what each level admits; creating and taking a place; what is checked on a write and on a read; installed things; questions; what each verb writes; the root and the config; the seed; `verse perms`; suspending; scopes |
-| [reference/up.md](reference/up.md#configuration) | `perms.admins`, `perms.child-grants`, `--reseed-perms` |
+| [reference/perms.md](reference/perms.md) | the grammar and how a grantee matches; a record's fields; what each level admits; creating and taking a place; what is checked on a write and on a read; installed things; questions; what each verb writes; the root; `verse perms`; suspending; scopes |
+| [platform/perms.md](platform/perms.md) | in the repository: the `system:` parts, the root and the config, the seed, and how installed things get their records |

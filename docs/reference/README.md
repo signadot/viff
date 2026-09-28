@@ -3,62 +3,26 @@
 This section is the flat version of what the [tutorial](../tutorial.md) walks through. It also
 holds the detail that the tutorial leaves out on purpose. For the model of a
 [rule](../glossary.md#rule), see [the trigger model](../trigger-model.md). For the map of all
-the docs, see [the docs index](../README.md).
+the docs, see [the docs index](../README.md). Running a verse, runners, ios and resolvers are
+in [the platform docs](../platform.md), in the repository.
 
 | | |
 |---|---|
-| [up.md](up.md) | starting a verse: the store, the driver, the agent root, runners and brokers, the config layers, and the `o` binary |
 | [condition.md](condition.md) | the condition of a rule: `subject`, `on` and `when`, and what a match can say |
 | [action.md](action.md) | the action of a rule: `patch`, `derive`, `spawn`, `calls` and `seq`, what an action reads, the answer contract, hooks, and ids |
 | [gates.md](gates.md) | the gates of a rule: what a gate asks, who answers it, and how it settles |
 | [charter.md](charter.md) | the charter: packages, `reads:`, `verse charter`, and how a charter is stored |
 | [schedules.md](schedules.md) | schedules: time as a cause |
 | [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
-| [tasks.md](tasks.md) | the task surface from end to end: drivers and vectors, gates, attaching, the mirror, and executing a task by hand |
+| [tasks.md](tasks.md) | the task surface: drivers and vectors, gates, attaching, the mirror, and steering |
 | [connect.md](connect.md) | federating a working tree, and scopes |
-| [resolvers.md](resolvers.md) | the resolver surface: the resolver, its two entities, the routes where an answering service runs, and the verbs |
-| [runners.md](runners.md) | the runner surface, which is where work runs: the entity, the verbs, the routes, and what a task records |
 | [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
-| [io.md](io.md) | the [io](../glossary.md#io) surface. An io reflects an external system into the store, and acts out on it. The page covers the entity, ownership patterns, the verbs, the routes, the address and status of the out half, and the contract an io serves. |
-| [iod.md](iod.md) | the five ios that verse ships: git (and mirrors), git-issue, Slack, Linear and GitHub. The page covers the flags, the credentials, the delivery endpoints, and what each io reflects. |
-| [examples/](examples/README.md) | working programs to copy and change: a runner, a coding runner, a worker, and an io |
-| [store.md](store.md) | what the store guarantees, and the entity grain that the engine reacts at |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why the two differ |
 
 ## Commands
 
 ```
 verse
-  up   [-root <dir>]                         start the monolith (engine + store + tasks)
-                                             the dir an llm agent reads/acts in; default: an
-                                             isolated temp dir, printed at start when model
-                                             credentials are configured
-       [-data <dir>]                         bring logd+docd up on <dir> (default: fresh temp dir)
-       [-logd-config <file>]                 a logd configuration for the daemons it spawns,
-                                             in place of the one verse writes
-       [-admin-addr host:port|off]           the admin and pprof face (default: the -addr port + 1)
-       [-reseed-perms]                       write the root, verse and admin-group records from
-                                             config OVER what stands (see up.md)
-       [-unmigrate-perms]                    rewrite the perms mirror for an older binary, and
-                                             EXIT without serving (see up.md)
-       [-docd-addr host:port]                attach to a running docd (client face) …
-       [-docd-mount-addr host:port]          … and its controller/MOUNT face
-       [-docd-advertise-addr host:port]      publish THESE on /status instead, when a client
-       [-docd-mount-advertise-addr h:p]      reaches docd by a different address than verse does
-       [-o-bin path]                         the o binary to spawn daemons with (default: resolved —
-                                             see up.md)
-       [-runner <url>]                       run tasks on a remote task-control base URL …
-       [-broker       ]                      … and/or SERVE an in-process dial-in broker, which a
-                                             spawn reaches as `-runner broker` (needs -broker-addr;
-                                             publishes each task's dialURL from it). It adds a name
-                                             rather than replacing the default: a spawn naming
-                                             nobody still runs here …
-       [-broker-addr host:port]              … the sibling port serving this verse's broker face
-                                             (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See ../task-control.md.
-       [-broker-advertise-addr host:port]    publish THIS in each task's dialURL instead, when a
-                                             worker dials the broker by a name the process cannot
-                                             bind (a Service, a tailnet device)
   status                                     engine/store snapshot. `restoring:` names the
                                              phases of a start still being asked again — each
                                              read the store, the store did not answer, and what
@@ -68,7 +32,6 @@ verse
   schema [<name>]                            the whole schema: the root — what a verse looks like,
                                              by top-level path — then every shape it names.
                                              A name prints just that one definition
-  down                                       stop the verse on -addr (it reaps its spawned daemons)
 
   watch  [-since <rev>] [<path>]             stream store changes (cursored) — the same path
                                              a read takes, naming the same entities, and
@@ -287,16 +250,6 @@ verse
           cancel <id> · say <id> <text…>
           vector <id> auto|ask|park [-as <who>] · vector <id> -file <f>
           approve|deny <id> <decision> [-say <text>]     (also y|yes, n|no)
-          do complete|fail|note <id> [text] -as runner:<identity>    executor vantage (dial in):
-          do gate <id> <name> -as runner:<identity> [-to <who>,…] [-reason <t>] [-wait]       raise a gate up
-                  [-options id[:need],…] [-deadline within[:default]]    …with outcomes
-                                             of its own and a clock, as a charter gate has
-  runner (runners) [-probe]                  where work can run
-          add <name> <url> [-identity <id>] [-no-probe] · add [-file <f>|-] [file] · show <ref>
-                                             -identity: who the runner acts as, runner:<id>
-                                             (default: its name)
-          check <ref>                        ask a runner what it is, right now
-          remove <ref> [-cancel "<why>" | -leave]     what becomes of the work still on it
   group (groups)                             named sets of grantees, granted as group:<name>
           add <name> <member>… · show <name> · remove <name>
   perms [-if <pattern>] [-trim <match>]      the records of every node you may read: who
@@ -306,16 +259,6 @@ verse
                                              flags; take the place and set what it and what
                                              is created beneath it hold out
   perms -root [the same flags]               the ROOT's record, whose address is the empty path
-  io (ios) [-probe]                          a connector between the verse and an external
-                                             system: it reflects in, and it acts out
-          add <name> <url> -root <root> [-out <place>] [-requesters <who>]
-                                            [-as <principal>] [-no-probe] [-allow-overlap]
-          add -dir <d> <name>               a local git repo, reflected in task
-          add [-file <f>|-] [file] · show <ref>
-          check <ref>                        ask it what it is and what it claims, right now
-          remove <ref> [-forget | -keep]     what becomes of what it reflected
-  resolver (resolvers)                       who answers questions
-          add [-file <f>|-] [file] · show <ref> · remove <ref>
   flow (flows)                               live tasks and suspensions, narrowed by the flags
           [-task <id>]                       that run only; combines with neither of the others
           [-charter <address>[:<rule>]]      a charter, and one rule of it: verse-dev.drift:claim,
@@ -362,6 +305,10 @@ works. A `<who>` is a [principal](../glossary.md#principal) in the
 - `user:<email>`, or the bare email;
 - `agent:<name>`;
 - `runner:<identity>`.
+
+The commands that start and stop a verse, and the ones that install runners, ios and
+resolvers, are for somebody who runs verse. So are the `verse task do` commands that a worker
+types. They are in [commands.md](../platform/commands.md), in the repository.
 
 ## Selecting by what an entity says
 
@@ -418,5 +365,3 @@ are for reading as much as for running: each is a worked example of the surface 
 | `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
 All four take `--scope <name>`, and each one removes what it wrote (`--clean`, or `clean`).
-`./smoke.sh` is a different thing. It builds its own binaries and runs its own isolated
-server, and it touches nothing of yours.

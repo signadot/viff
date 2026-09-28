@@ -8,8 +8,7 @@ This page has these parts:
 - the grammar;
 - a record's fields;
 - what verse checks, and when;
-- what each verb writes;
-- the seed.
+- what each verb writes.
 
 The reasons for each rule are in the source, beside the code that enforces the rule
 (`entity/attribution.go`, `versed/perms.go`, `versed/place.go`).
@@ -46,24 +45,14 @@ The rules of the grammar:
 - **A request presents `user:`, `agent:` or `runner:`.** `via:` and `system:` are names that
   verse makes. Verse refuses a request that carries one of them with 400. It refuses a request
   that carries a name the grammar does not read in the same way.
-- **A request that is not a read presents one.** Verse refuses every method but GET and HEAD
-  with 400 when it has no `Verse-Principal`. Four routes are registered in another way. Each of
-  them acts for a party that the route itself names: an io's `hint` and `pass`, and a cover's
-  `verdicts` and `position`.
+- **A request that is not a read presents one.** Verse refuses it with 400 when it names
+  nobody. The routes that name their own party are in
+  [perms.md](../platform/perms.md#routes-that-name-their-own-party), in the repository.
 - Verse lists a [principal](../glossary.md#principal) the first time it presents itself, under
   `verse.principal.<kind>.<name>`.
-- `system:<part>` names the part of verse that wrote. The parts are in the table below. The parts
-  are attribution, not authority. They are one owner, any of them owns the root, and nothing
-  grants to one part and not another.
-
-| Part | What it writes |
-|---|---|
-| `docket` | questions |
-| `mirror` | the task projection, and a worker's grant |
-| `perms` | records |
-| `seed` | the seed |
-| `charter` | the deployment's charter |
-| `default` | everything else |
+- `system:<part>` names the part of verse that wrote, such as `system:docket` for questions.
+  The parts are one owner. They are in [perms.md](../platform/perms.md#the-system-parts), in the
+  repository.
 
 **How a grantee matches.**
 
@@ -187,13 +176,10 @@ site does not need to know. A refusal is a 403 with the check's words, and a cou
   true inside a payload: a node that stands under a record the reader may not read is left out of
   what holds it. Verse counts what it withholds under `perms.hidden`.
 - Verse refuses whole a listing or a watch *at* an address that the reader may not read into.
-- **A task is read as its record is.** `GET /tasks/{id}`, its `/events` and its `/inbox` hold
-  the task's prompt, its transcript, its result and the answers queued for its worker. Each asks
-  for `read` on the task's record, `verse.task.instance.<id>`. Verse refuses each without it.
-- **Where to dial is not checked.** `GET /tasks/{id}/dial` answers a brokered task's dial
-  address and nothing else. A worker reads it before it has claimed the task, so before it holds
-  anything on the record. The claim is what grants it. The route gives the same answer for a
-  task that is not brokered and for a task that is not there.
+- **A task is read as its record is.** The task's prompt, its transcript, its result and the
+  answers queued for its worker each need `read` on the task's record,
+  `verse.task.instance.<id>`. The routes, and the one read that is not checked, are in
+  [perms.md](../platform/perms.md#reads-by-a-worker-and-by-a-tasks-routes), in the repository.
 - One window is real, and it is one commit wide. The record follows the write that it records.
   So the commit that creates a node reaches a live watch before the record that would hide it.
 - **A rule reads as its owner.** Verse narrows three things to what the rule's owner may read:
@@ -208,26 +194,18 @@ owner on the record **at that address**. Where the address has no record, it res
 It does not fall back to the owner above, because above is verse's own half, which is the
 system's.
 
-- **An install leaves its installer's record, or verse refuses it.** Each of those four installs
-  ends by asking who the place acts as. The answer may be nobody, or somebody whose record stood
-  at the name first. Then verse takes the install back out and answers 409.
-- **A store can hold one with no record**, for example one written by hand. At start, verse
-  names each in its log. Remove it and install it again.
+- **An install leaves its installer's record, or verse refuses it** with 409.
 - **Whose a rule is, is said on its record and nowhere else.** A rule's own entity carries no
   installer.
-- **The deployment's charter** (`systemCharter`, and the base charter in the binary) is installed
-  as `system:charter`, with the system's record on each rule. It fires as the system.
-- **What the system makes under `verse` carries the system's record.** Examples are a task that
-  a system rule spawns, and the clock and calendar that the base charter derives. The record
-  stops the row's `child-owner` line from reaching inside the node.
+- **The deployment's charter** is installed as the system, and fires as the system.
 - **No rule but the system's writes under `verse`.** Verse refuses a `patch` of a subject there,
   or a `derive` into it, with 403. It refuses at install where the rule names the address, and at
   the write. A rule may select a subject there and spawn about it.
-- **An io takes the nodes its claims name** for its installer, at install. A claim names its
-  levels up to its first glob. What the io reflects beneath is owned through those nodes. Verse
-  refuses an io over a node that somebody else owns. So two ios that share a node share an
-  installer.
-- **A charter package takes the address it is installed at** for its installer, in the same way.
+- **A charter package takes the address it is installed at** for its installer. An io takes
+  the nodes that its claims name in the same way.
+
+How each installed thing gets its record, and what the system makes under `verse`, is in
+[perms.md](../platform/perms.md#installed-things-and-their-records), in the repository.
 
 ## Questions
 
@@ -255,19 +233,9 @@ docket's record. Its `under` is what asked it.
   and a record names that principal. This holds for an answer, an escalation, a `say`, a cancel,
   a change of vector, and the `principal` a spawn is answerable to. `need` counts one ballot for
   each.
-- **A relayed task's frames are not evidence of who did what.** A *frame* is an event that a
-  running task streams back: a status, a pending gate, a decision, a `say`, a vector change. For
-  a task that verse hosts, verse makes the frames. For a task that verse relays to, such as a
-  broker's worker or a remote runner, the frames are whatever the worker sent. So for a relayed
-  task:
-  - who is working the task is who claimed it;
-  - an answer that the route accepted is already on the question, and the worker's decision
-    frame only acknowledges that it arrived;
-  - a gate that nobody was asked about is settled with the frame's verdict, by the worker of
-    record (or the runtime's `auto`, `deadline`, `cancelled`), and casts no ballot;
-  - only the question that the task is waiting on is the task's to settle;
-  - a vector change is by whoever the control route relayed that mode for, or else by the
-    worker.
+- **What a worker reports is not evidence of who answered.** For a task that runs on a broker
+  or a remote runner, who is working the task is who claimed it. How verse reads what such a
+  worker sends is in [perms.md](../platform/perms.md#a-relayed-tasks-frames), in the repository.
 
 ## What each act writes
 
@@ -275,11 +243,10 @@ docket's record. Its `under` is what asked it.
 |---|---|
 | a raw put | what it names, as the requester |
 | a spawn | the task, as the requester. For a firing, the task is written `via:` the rule, which is the charter's owner. |
-| a worker's claim | `read-write` and `control` for the claimant on the task's record and the run's, as `system:mirror`. Every report after that is written as the claimant. A runner reached by url gets the same at the first reflection, as `runner:` its `identity`. |
+| a worker's claim | `read-write` and `control` for the claimant on the task and the run |
 | posing, settling, escalating, handing on a question | as `system:docket`, in the request's scope, whoever is working the task |
 | holding a question out to a resolver | its `read-write` line, to whoever answers as the resolver |
 | an install | the thing, as its installer, with their record |
-| the deployment's charter | as `system:charter`, at start, after the restore |
 | a suspension | as the system, naming who holds it under `held` |
 
 ## The root, and the config
@@ -287,47 +254,11 @@ docket's record. Its `under` is what asked it.
 The root's record stands at `verse.perms.root`. Its `child-grants` is what a node created with
 no record above it holds out. It is `{read: ["*"]}` unless the config says otherwise.
 
-The root's owner is `user:admin@verse`. It is an identity of the deployment, not of a person. It
-co-owns everything, and it is what restores the top. `below` holds out what is beneath the root
-and not the root itself. Nobody owns the root itself, and everybody may read it.
-
-`perms: {admins: […]}` puts the named grantees into the `admin` group at the seed. It also makes
-the root's line `child-owner: [group:admin]`. What an admin creates is recorded as the person
-who acted.
-
-The list **only seeds** the group. After the seed, `user:admin@verse` changes the membership
-live with `verse group`. So an edit to the list on a running verse changes nothing. At start,
-versed says when the root's record is not what the config would write.
-
-`--reseed-perms` is the one start that rewrites the top from the config. It replaces the root,
-`verse` and the admin group whole. `perms: {child-grants: {…}}` sets the root's `child-grants`
-in the same way. `{}` is a setting: it says that what anybody creates is theirs alone.
-([up.md](up.md#configuration).)
-
 `verse` has the system's record with no grants. That record keeps the root's grants out of
 verse's own half.
 
-## The seed
-
-`system:seed` writes the seed at start, each row once. A row that stands is left as it is, and
-this includes an operator's edit.
-
-| at | level | to |
-|---|---|---|
-| `verse.task.instance.*`, `verse.task.run.*`, `verse.task.claim.*` | child-owner, read | everyone |
-| `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | child-owner, read | everyone |
-| `verse.io.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
-| `verse.principal.group.*` | child-owner, read | everyone |
-| `verse.principal.*`, `verse.covers.*`, `verse.trigger.suspension.*` | read | everyone |
-| `verse.gate.question.*` | read | everyone |
-| `verse.gate.question.*` | read-write | `user:*`, `agent:*` |
-
-Two `child-grants` stand beside the rows:
-
-| at | `child-grants` | effect |
-|---|---|---|
-| `verse.gate.question` | `{read: ["*"], read-write: [user:*, agent:*]}` | copied onto each question at pose. A private verse narrows it to close the docket. |
-| `verse.schedule` | `{read: ["*"]}`, whatever the root's says | schedules, their ticks and the derived calendar are readable in a verse that holds out nothing else |
+Who owns the root, how the config sets it, and the rows that verse writes at start (the seed)
+are in [perms.md](../platform/perms.md#the-root-and-the-config), in the repository.
 
 ## `verse perms`
 
@@ -346,12 +277,14 @@ Setting a record on a node that has none takes the place first
 created under. The row is its owner's through the place, so closing the place closes what is
 already in it.
 
-`verse status` counts these:
+`verse status` counts these under `perms`, since the process started:
 
-- `perms.refused`, by level;
-- `perms.hidden`;
-- `perms.unparsed`;
-- checks that the mirror could not answer.
+| Field | What it counts |
+|---|---|
+| `refused` | refusals, by level |
+| `unreadable` | checks that the mirror could not answer |
+| `hidden` | what listings withheld |
+| `unparsed` | grantee names on a record that the grammar does not read. Each admits nobody, and versed logs each once per record. On a verse whose records were all written under the grammar, `unparsed` is zero. |
 
 <a id="suspending"></a>
 ## Suspending

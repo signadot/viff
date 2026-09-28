@@ -16,6 +16,7 @@ edit_uri: ""
 exclude_docs: |
   /articles/
   /design/
+  /platform/
   /platform.md
   /seams.md
   /task-control.md

@@ -7,14 +7,22 @@ tasks, answers gates) starts at [the docs index](README.md).
 ## Run a verse
 
 - [Starting a verse](reference/up.md) — `verse up`, its flags, and the config file.
+- [Platform commands](platform/commands.md) — `up`, `down`, `runner`, `io`, `resolver` and
+  `task do`, and the smoke test.
 - [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
   The surface is [reference/runners.md](reference/runners.md).
+- [Where a task runs, walked](platform/runners-walk.md) — a remote verse, a broker, a person,
+  and a runner you install, one command each.
 - [Kubernetes deploy](../deploy/README.md) — build the image and run verse on a cluster.
+- [Permissions on the platform](platform/perms.md) — the `system:` parts, the root and the
+  config, the seed, and how installed things get their records.
 
 ## Build a runner, a resolver or an io
 
-- [Build on verse](build.md#write-a-runner) — the smallest runner and the smallest io, with
-  every step.
+- [Build a runner and an io](platform/build-runner-and-io.md) — the smallest runner and the
+  smallest io, with every step.
+- [Tasks, from the worker side](platform/tasks-worker.md) — the task backends, the broker, and
+  working a task with `verse task do`.
 - [Seams](seams.md) — the nine places that can be a network, and which side opens each.
 - [Task control](task-control.md) — the contract a runner serves, and the protocol a worker
   dials in with.
@@ -34,6 +42,8 @@ tasks, answers gates) starts at [the docs index](README.md).
 
 These pages say why a part is shaped the way it is.
 
+- [Architecture](platform/architecture.md) — the parts of verse, the task seam, the data and
+  failure model, the extension points and the deployment.
 - [Change events](change-events.md) — why `Op` is `set`/`delete`, and what the entity grain
   costs.
 - [The store](reference/store.md) — what the store guarantees.
@@ -43,3 +53,9 @@ These pages say why a part is shaped the way it is.
 - [Content federation](content-federation.md) — how `connect` federates a tree, and what a
   task reads through.
 - [Writing a controller](controllers.md) — the `Handler` contract and its invariants.
+- [Platform glossary](platform/glossary.md) — the terms of running, extending and changing
+  verse.
+- [Control on the platform](platform/control.md) — the routes of a hold, and what a
+  suspension does to rules.
+- [Connect and scopes on the platform](platform/connect.md) — docd, logd and the engine of a
+  scope.

@@ -16,7 +16,7 @@ the bytes that it serves.
 | What | Where | What it holds |
 |---|---|---|
 | writes the metadata of each file | `local.dir-status-<scope>.<path>` entities | the full fstat and a hash of the content. It is an index: the stat and the hash, and not the bytes. |
-| serves the contents of files on request, through docd | a content [controller](../glossary.md#controller) at `local.dir-content-<scope>.*` | the bytes. A validator reads them through the verse, and needs no shared filesystem. |
+| serves the contents of files on request | `local.dir-content-<scope>.*` | the bytes. A validator reads them through the verse, and needs no shared filesystem. |
 | installs a scoped [rule](../glossary.md#rule) | the scope | a rule that spawns a validator for each file |
 
 All of it lives in a scope with a random name. The scope is isolated from
@@ -56,8 +56,8 @@ rule, the overlay and the content mount all go.
 For a test without credentials, leave out the credentials and `-driver llm`. A validator still
 fires for each file, on the scripted driver. It does not read the file.
 
-The contents pass through docd, and not through a `-root` on the server. So the runtime need
-not share a filesystem with your tree, and the validator can run on another machine.
+The runtime need not share a filesystem with your tree, and the validator can run on another
+machine.
 *Verse truncates file reads, so an agent validates a large file from a partial view.*
 
 <a id="scopes"></a>
@@ -79,8 +79,8 @@ verse data demo x 1                          # baseline: not there
 verse disconnect -scope me                         # drop the whole overlay
 ```
 
-`disconnect -scope me` removes the overlay in one step, through the `DeleteScope` of logd. It
-removes every write of the scope, not only the `local.*` files. First, what the scope started
+`disconnect -scope me` removes the overlay in one step. It removes every write of the scope,
+not only the `local.*` files. First, what the scope started
 stops:
 
 1. its sources stop;
@@ -89,14 +89,7 @@ stops:
    tasks that its rules started, verse skips `onCancelled`, because that hook would act
    inside the scope that is being dropped.
 
-The store provides scopes, and the surface of verse does not. logd and docd make the
-copy-on-write overlay, and `disconnect -scope` asks the store to drop one. A store without
-real scopes would answer 501. The client would then remove the `local.*` entities one at a
-time.
-
-The engine of a scope watches subtrees, one watch for each rule. Each watch covers exactly the
-literal prefix of the [pattern](../glossary.md#pattern) that its rule matches. It does not
-watch the whole tree.
+How the store makes a scope is in [connect.md](../platform/connect.md), in the repository.
 
 ## The charter a scope runs
 
@@ -144,25 +137,16 @@ about, use the copy-on-write of logd:
 - a scoped read sees the overlay on top of baseline;
 - baseline never sees the overlay.
 
-**The program is referenced.** Rules, tasks, gates and flows are records in the store. Each one
-is also a live thing:
-
-| Record | Its live thing |
-|---|---|
-| a rule | a watch |
-| a task | a handle |
-| a gate | an awaiter, which waits for the answer |
-| a flow | the set of handles about a subject |
-
-A live thing runs in exactly one engine. The engine of every scope shares one task runtime and
-one gate registry with baseline. The engine of a scope holds what the scope created:
+**The program is referenced.** Rules, tasks, gates and flows are records in the store. A scope
+owns what it created:
 
 - the rules installed into it;
 - the tasks that those rules and `task run -scope` spawned;
 - the gates that those tasks raised.
 
-Everything else that the scope can see belongs to baseline, and the scope reads it through
-the overlay. The record is there. The live thing is not.
+Everything else that the scope can see belongs to baseline, and the scope reads its record
+through the overlay. How the runtime keeps each one is in
+[connect.md](../platform/connect.md#the-program-of-a-scope), in the repository.
 
 So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
 scope created. These are the writes of the control plane:
@@ -189,12 +173,10 @@ Creating is what "the scope's own" means, so verse never refuses a creation:
 replace a baseline rule in a scope, install yours under its name (above). Removing the rule of
 baseline from the scope is a write to the program of baseline, and verse refuses it as one.
 
-**Grants are copied, like the world.** A grant is live too, because the check reads a mirror
-of the records and not the store. Baseline's grants govern a scope: opening a scope does not
-get around them. But a grant has no live half that runs anywhere. The mirror is a cache of
-records, and it layers as records do. A grant made with `-scope me` lands in the overlay. It
-governs the writes of the scope, on top of the grants of baseline, and the checks of baseline
-never see it. [Permissions](../perms.md#scopes) has the detail.
+**Grants are copied, like the world.** Baseline's grants govern a scope: opening a scope does
+not get around them. A grant made with `-scope me` lands in the overlay. It governs the writes
+of the scope, on top of the grants of baseline, and the checks of baseline never see it.
+[Permissions](../perms.md#scopes) has the detail.
 
 ## Why it is this way
 

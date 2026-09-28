@@ -70,7 +70,7 @@ A name carries its kind before the colon. A request presents one of three kinds:
 | `runner:<identity>` | a [worker](glossary.md#worker) | it claims work as `-as runner:<identity>`. A runner reached by url acts as the `-identity` on its entity. |
 
 Verse refuses a bare word such as `-as coderunner`, and the refusal gives the grammar.
-[perms.md](perms.md#principals-and-grantees) has the whole grammar. The name is self-asserted:
+[reference/perms.md](reference/perms.md#the-grammar) has the whole grammar. The name is self-asserted:
 verse has no login. Everything below is about what a name may do. It is not about proof of who
 holds the name.
 
@@ -121,11 +121,8 @@ VERSE_USER=ana@example.com verse data spaces scott notes -put '{todo: []}'
   read-write; the nearest owner on record is user:walter@example.com at spaces.scott.notes
 ```
 
-The refusal is the check's own words. It always says three things:
-
-- what the requester holds there;
-- what the act needed;
-- which record decided.
+The refusal is the check's own words. It always says the three things that
+[perms.md](perms.md#what-you-see) lists, and the last of them is which record decided.
 
 When verse refuses something you expected to pass, look at the record that decided.
 
@@ -157,10 +154,8 @@ A withdrawn grant stops future acts. It changes nothing that exists. Ownership c
 create and delete. Verse has no transfer. To hand something over, make it under a place that the
 other party owns.
 
-**The store knows who wrote every commit.** The principal on a write goes into the substrate as
-the commit's author. So the log itself says who wrote, without a second record. A delta that is
-replayed or watched from the store carries the author back. The CLI does not print the author.
-It prints the record that decided, which is the same fact seen from the other side.
+The store also knows who wrote every commit. How it keeps the author is in
+[perms.md](platform/perms.md#the-author-of-a-commit), in the repository.
 
 **What is not yours to write.** Verse refuses `verse data -put` under `verse.`, whatever you
 hold. You write `verse` through the verbs that own it (`verse c -a`, `verse task run`,
@@ -186,8 +181,8 @@ The task is yours. The record beneath `verse.task.instance` names you as owner f
 - the seed holds `child-owner` out to everyone there;
 - the spawn wrote as you.
 
-A spawn carries the identity of whoever runs it, and verse writes the task's record as that
-identity. That write is the check for run. The task's `run` and `claim` records follow it.
+Verse writes the task's record as whoever runs it, and that write is the check for run
+([reference/perms.md](reference/perms.md#levels)). The task's `run` and `claim` records follow it.
 Reads of the task follow the default the task was created with: everyone. Writes to the task
 are yours and the runtime's.
 
@@ -261,130 +256,33 @@ answerers, that gate stands over what the worker says.
 
 ## Step 3: a charter, and what it owns
 
-The commands in this step read a deployed verse, where walter@example.com installed the charter
-`verse-dev.merge`.
+A rule acts as whoever installed its charter. Its writes, what it spawns and what it reads are
+the installer's. The installer co-owns every question that its rules pose, and answers them
+without being named on any line. Installing a charter at an address takes that address for the
+installer. A rule may not watch the records under `verse.perms`, and verse refuses such a rule at
+install.
 
-A rule has no identity of its own. It acts **via the address of its record**,
-`via:verse.trigger.rule.<package>:<name>`. The check resolves that principal to the record's
-owner: the person who installed the charter. Everything follows from that one resolution:
-
-- **Its writes are the installer's.** A `patch` or `derive` that a firing makes is written as
-  the rule. Verse admits or refuses it as it would the installer. Install a charter that patches
-  a place you may not write, and verse refuses the firing with your name in the 403. The terms
-  are the same as for a `verse data -put`.
-- **What it spawns is the installer's.** Whoever owns the rule owns a task that a firing
-  starts, as a task you ran by hand is yours. You co-own the task's questions.
-- **It reads as the installer.** Verse evaluates a rule's condition over what the rule's owner
-  may read. A change that the rule may not see does not wake the rule, and the rule does not
-  latch on it. Two people with different grants who install the same rule get two rules. The
-  two rules fire on different views of the store.
-- **It co-owns every question its rules pose.** A gate's question carries `under`, the rule's
-  address, and the check follows that link for ownership. The installer answers what their own
-  charter asked, without being named on any line.
-
-Installing is open in the seed: `verse.trigger.rule` says `child-owner: ["*"]`. So anybody may
-install. A rule's record holds out `read: ["*"]` by the root's default. So anybody may read what
-is installed.
-
-**A package takes its address.** Installing at `verse-dev.triage` writes an owner record there
-for the installer. So every row that the package's rules derive beneath that address is owned
-through that one record. The rows do not each carry their own record. Verse refuses somebody
-else who installs at the same address, and says who owns it.
-
-The one place a rule may not read is the perms mirror. `verse.perms` is the system's, with
-nothing held out on it. Verse refuses a rule that watches it at install, and says why. The
-charter that the system stands behind may watch it. That charter comes from `systemCharter:` in
-the deployment's config.
-
-A package's `reads:` declaration is a separate question. It says what the package's rules may
-reference *outside their own address*. Verse checks it at install, beside all of this.
-
-The installer of `verse-dev.merge` owns its rule:
-
-```sh
-verse perms verse trigger rule 'verse-dev.merge:train-run'
-```
-
-```tony
-owner: user:walter@example.com
-grants:
-- read: ["*"]
-```
-
-Every train the rule cuts, every task it runs, and every `merge-to-main` question it poses is
-scott's to control and to answer. It is nobody else's unless a line says so.
+[perms.md](perms.md#what-acts-on-its-own) states the rule, and
+[reference/perms.md](reference/perms.md#installed-things) has the detail. How this step reads on
+a deployed verse is in [perms.md](platform/perms.md#step-3-a-charter-and-what-it-owns), in the
+repository.
 
 ## Step 4: a gate with nobody behind it
 
-The commands in this step read a deployed verse, and the question id is one that was posed
-there.
+A charter gate poses the same record as a task's gate, at `verse.gate.question.<id>`.
+`verse perms verse gate question <id>` shows who may see it, who may answer it, and who owns it.
+Where the gate names no `answerers:`, any person or agent may answer.
 
-A charter gate poses the same record as a task's gate. The record says everything about who may
-settle it. Take the gate from the previous step:
+- To narrow the questions posed later, name `answerers` on the gate in the charter, and install
+  the charter again. The install refuses a gate that nobody could settle.
+- To narrow a question that stands, write its record with `verse perms`. You co-own it through
+  the rule.
+- To hand a question on, run `verse gate escalate <id>`. It goes to the next rung of the
+  [ladder](glossary.md#ladder).
 
-```sh
-verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
-```
-
-```tony
-owner: system:docket
-grants:
-- read: ["*"]
-  read-write: [user:*, agent:*]
-```
-
-Read the record as three questions:
-
-| Question | Answer |
-|---|---|
-| **Who may see it?** | `read: ["*"]`: everyone, runners included. That is the docket's default, copied onto the record at pose. A line with no `at` is about the node the record is on. Nearly every line is. |
-| **Who may answer it?** | The `read-write` line. This gate named no `answerers:`, so it took the default too: any person, any agent. A runner is not on the line, and verse refuses it. |
-| **Who owns it?** | The system, `system:docket`, which posed it. Also the `train-run` rule's owner, through `under`. `verse perms` does not print `under`, but the check follows it. Owners answer. Only owners hold `control`: to cancel, or to escalate as the owner and not as an answerer. |
-
-**To narrow the next ones,** name the answerers on the gate in the charter, and re-install the
-file. The questions posed after that carry that line instead of the default:
-
-```tony
-  gates:
-  - name: merge-to-main
-    mode: ask
-    answerers: [walter@example.com, group:release]
-    need: 2
-    deadline: {within: "24h", default: deny}
-```
-
-`need` over the answerers decides whether one or many must answer. Each answerer has one
-[ballot](glossary.md#ballot). `need: 1` is a race. `need` equal to the number of answerers is
-all of them.
-
-The install refuses a gate that nobody could settle:
-
-- a threshold above the number of answerers named;
-- a name outside the grammar;
-- a group that does not stand.
-
-So verse catches a misspelling at install. Otherwise a question would stand unanswerable for a
-day. A re-install poses nothing again. A question already on the docket keeps the record it was
-posed with.
-
-**To narrow the one that stands,** write its record. You are a co-owner through the rule, and
-`verse perms` is the owner's verb:
-
-```sh
-verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
-  -grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
-```
-
-**To close the docket for a whole verse,** narrow the `child-grants` on `verse.gate.question`.
-Verse gives it to each question's record when the question is posed. A private verse sets it to
-`{read: ["*"]}` or less. After that, only co-owners, named answerers and resolvers answer
-anything.
-
-**Handing it on.** `verse gate escalate <id> -as <who> [-say <why>]` is open to whoever may
-answer, and it takes no `-to`. The question goes to the next rung of the
-[ladder](glossary.md#ladder) that matches its subject. The ladder is the standing resolvers. On a
-verse with no standing resolvers, an escalation puts the question back on the open docket, where
-it already was. [Step 5](#step-5-a-gate-with-a-resolver-behind-it) gives the ladder a rung.
+[reference/perms.md](reference/perms.md#questions) has the rules. How this step reads on a
+deployed verse is in [perms.md](platform/perms.md#step-4-a-gate-with-nobody-behind-it), in the
+repository.
 
 ## Step 5: a gate with a resolver behind it
 
@@ -435,15 +333,10 @@ question stands unanswered that long. So a person who is away does not hold a qu
 A question's own `deadline`, from the gate, is a different clock. It *settles* the question on
 its default. Both deadlines are on the record, and the earlier one fires first.
 
-**What a service holds.** A `url` resolver is answered through a
-[cover](glossary.md#cover-of-a-resolver): one resolver on one gate stream,
-`verse.covers.<name>@<stream>`. The cover acts as the resolver. Its verdict, its escalation and
-its position are written as `via:verse.resolvers.<name>`. That name is what the question's line
-holds.
-
-The service says what it decided, and never who it is. `by` on the decision frame is the
-resolver's name, and verse stamps it. A cover's own address is not a principal. As a grantee,
-verse refuses it, and never reads it as a person's email.
+**What a service holds.** A `url` resolver answers as `via:verse.resolvers.<name>`, and that
+name is what the question's line holds. How a service answers through a
+[cover](glossary.md#cover-of-a-resolver) is in
+[perms.md](platform/perms.md#what-a-resolver-service-holds), in the repository.
 
 `exclusive` on a resolver decides whose answer *counts* when several may answer. It is not a
 security boundary. The line is the boundary.
@@ -489,13 +382,7 @@ resolver is a rung on the ladder, and the gate's line is not.
 - **A rule acts as its installer.** A firing that verse refuses, or a rule that never wakes, is
   usually the installer's own grants seen through the rule.
 - **`verse status` counts.** `perms: {refused, unreadable, hidden, unparsed}` is the check's
-  count since the process started:
-
-  | Field | What it counts |
-  |---|---|
-  | `refused` | refusals |
-  | `unreadable` | checks that the mirror could not answer |
-  | `hidden` | what listings withheld |
-  | `unparsed` | grantee names on a record that the grammar does not read. Each admits nobody, and versed logs each once per record. On a verse whose records were all written under the grammar, `unparsed` is zero. |
+  count since the process started. [reference/perms.md](reference/perms.md#verse-perms) says
+  what each field counts.
 - **`[user:*, agent:*]` means people.** Until the agent principal has grants of its own, a line
   that holds both is the docket's openness, and no more.

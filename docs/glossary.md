@@ -697,13 +697,6 @@ A frame of this kind is a string in a `spawn` or on a provider.
 
 See [Provider selection](provider-selection.md#the-registry).
 
-### frame (of an event stream)
-
-A frame is one event in the event stream of a task: a status, a pending gate, a decision, a
-`say`. Each frame has a `kind` and a `cursor`.
-
-See [Task control](task-control.md#the-event-envelope-and-the-cursor).
-
 ### event stream
 
 The event stream of a task is the ordered list of the frames that the task emits. It keeps a
@@ -757,33 +750,12 @@ A claim of this kind is about one task.
 
 See [Task control](task-control.md#claim-identity-takeover).
 
-### epoch
-
-The epoch of a claim is a number that the broker makes at each claim. The broker rejects a
-report that carries an older epoch.
-
-See [Seams](seams.md#5-task-control-dialled-in).
-
 ### inbox
 
 The inbox of a task on a broker is the queue of control for its worker, such as a `say`, a
 cancel or the answer to a gate. `verse task inbox <id>` prints it.
 
 See [Task control](task-control.md#the-worker-facing-dial-in-protocol).
-
-### report
-
-A report is what a worker sends to the broker about its task: what it said, what it ran, a
-gate that it raised, its final status.
-
-See [Task control](task-control.md#the-worker-facing-dial-in-protocol).
-
-### dial URL
-
-The dial URL of a task on a broker is the URL where a worker connects to claim the task. It is
-the `dialURL` field of the instance record.
-
-See [Tasks](reference/tasks.md#executing-one-by-hand).
 
 ### doer
 
@@ -822,15 +794,6 @@ run against it, where the result may go. A `spawn` names one with `environment:`
 
 See [Examples](reference/examples/README.md#the-environment-is-the-unit-of-narrowing).
 
-### root (of verse up)
-
-`-root` on `verse up` names the directory in which the tasks of the verse process act. It is a
-directory on disk, and not an address.
-
-Also written: the agent root.
-
-See [Starting a verse](reference/up.md#the-agent-root).
-
 ## Ios
 
 ### io
@@ -862,55 +825,16 @@ See [Ios (reference)](reference/io.md#ownership).
 ### source
 
 A source is the in half of an io. Verse asks it what is true in the external system, and it
-answers with a [reflection](#reflection). It does not write to the store.
+answers with a [reflection](platform/glossary.md#reflection). It does not write to the store.
 
 See [Ios](io.md#the-seam-a-source-answers-verse-converges).
 
 ### reflect
 
 To reflect an external system is to keep its state in the store, as entities. The source
-reads the system, and the [reflector](#reflector) writes the store.
+reads the system, and the [reflector](platform/glossary.md#reflector) writes the store.
 
 See [Ios](io.md).
-
-### reflection
-
-A reflection is one answer of a source. Its `entities` are what the source read. Its `covers`
-say where the answer is complete.
-
-See [Ios (reference)](reference/io.md#the-contract-an-io-serves).
-
-### cover (of a reflection)
-
-A cover of a reflection is a pattern under which the reflection is complete, such as
-`git.verse.ref.*`. Verse removes a stored entity that a cover reaches and that the reflection
-does not hold.
-
-See [Ios (reference)](reference/io.md#the-contract-an-io-serves).
-
-### converge
-
-To converge is to make the store match a reflection. Verse writes what changed, and tombstones
-what a cover reaches and the reflection does not hold.
-
-The page [Convergence](convergence.md) is about how rules come to rest.
-
-See [Ios](io.md#the-seam-a-source-answers-verse-converges).
-
-### tombstone
-
-To tombstone an entity is to remove it from the store because its external system does not
-hold it any more.
-
-See [Ios](io.md#the-seam-a-source-answers-verse-converges).
-
-### reflector
-
-The reflector is the part of verse that drives one installed source. It asks for a full
-reflection every minute, and for a part of one when a hint arrives. It converges the store
-with each answer.
-
-See [Ios (reference)](reference/io.md#the-reflector).
 
 ### hint
 
@@ -925,22 +849,6 @@ A sink is the out half of an io. Somebody writes an input, which is a node with 
 The sink makes the external system match it, and writes the result at `<name>~status`.
 
 See [Ios (reference)](reference/io.md#the-out-half).
-
-### iod
-
-`iod` is the binary that holds the five ios that verse ships. Each is a subcommand: `git`,
-`git-issue`, `slack`, `linear` and `github`.
-
-See [iod](reference/iod.md).
-
-### mirror (of a git repository)
-
-A mirror of a git repository is a copy of a remote repository, kept fetched.
-`iod git -mirror <url>` reflects from one, and the coderunner example clones from one.
-
-In a page about git, "mirror" has this meaning.
-
-See [iod](reference/iod.md#git).
 
 ## Permissions
 
@@ -1068,13 +976,6 @@ See [Permissions](perms.md#grants).
 
 ## Steering
 
-### observation plane
-
-The observation plane is the part of verse that reads: `get`, `list` and `watch`. A read may be
-late.
-
-See [Deployment and steering](deployment-and-steering.md#two-planes).
-
 ### control plane
 
 The control plane is the part of verse that steers. Verse serves it before observation, and it
@@ -1114,6 +1015,62 @@ about them: firings, tasks and questions. It lasts across restarts, until somebo
 
 See [Control](control.md#a-suspension).
 
+## Terms of the platform
+
+These terms belong to running, extending or changing verse. Each is defined in
+[the platform glossary](platform/glossary.md), in the repository.
+
+### converge
+
+See [converge](platform/glossary.md#converge), in the repository.
+
+### cover (of a reflection)
+
+See [cover (of a reflection)](platform/glossary.md#cover-of-a-reflection), in the repository.
+
+### dial URL
+
+See [dial URL](platform/glossary.md#dial-url), in the repository.
+
+### epoch
+
+See [epoch](platform/glossary.md#epoch), in the repository.
+
+### frame (of an event stream)
+
+See [frame (of an event stream)](platform/glossary.md#frame-of-an-event-stream), in the repository.
+
+### iod
+
+See [iod](platform/glossary.md#iod), in the repository.
+
+### mirror (of a git repository)
+
+See [mirror (of a git repository)](platform/glossary.md#mirror-of-a-git-repository), in the repository.
+
+### observation plane
+
+See [observation plane](platform/glossary.md#observation-plane), in the repository.
+
+### reflection
+
+See [reflection](platform/glossary.md#reflection), in the repository.
+
+### reflector
+
+See [reflector](platform/glossary.md#reflector), in the repository.
+
+### report
+
+See [report](platform/glossary.md#report), in the repository.
+
+### root (of verse up)
+
+See [root (of verse up)](platform/glossary.md#root-of-verse-up), in the repository.
+
+### tombstone
+
+See [tombstone](platform/glossary.md#tombstone), in the repository.
 ## Index
 
 + [action](#action)
@@ -1162,10 +1119,6 @@ See [Control](control.md#a-suspension).
 
 + [controller](#controller)
 
-+ [converge](#converge)
-
-+ [cover (of a reflection)](#cover-of-a-reflection)
-
 + [cover (of a resolver)](#cover-of-a-resolver)
 
 + [deadline (of a gate)](#deadline-of-a-gate)
@@ -1173,8 +1126,6 @@ See [Control](control.md#a-suspension).
 + [deadline (of a resolver)](#deadline-of-a-resolver)
 
 + [derive](#derive)
-
-+ [dial URL](#dial-url)
 
 + [docket](#docket)
 
@@ -1185,8 +1136,6 @@ See [Control](control.md#a-suspension).
 + [entity](#entity)
 
 + [environment](#environment)
-
-+ [epoch](#epoch)
 
 + [event stream](#event-stream)
 
@@ -1201,8 +1150,6 @@ See [Control](control.md#a-suspension).
 + [flow](#flow)
 
 + [frame (of a spawn)](#frame-of-a-spawn)
-
-+ [frame (of an event stream)](#frame-of-an-event-stream)
 
 + [gate (of a rule)](#gate-of-a-rule)
 
@@ -1232,8 +1179,6 @@ See [Control](control.md#a-suspension).
 
 + [io](#io)
 
-+ [iod](#iod)
-
 + [kinded path](#kinded-path)
 
 + [kinds of principal](#kinds-of-principal)
@@ -1252,8 +1197,6 @@ See [Control](control.md#a-suspension).
 
 + [match](#match)
 
-+ [mirror (of a git repository)](#mirror-of-a-git-repository)
-
 + [mirror (of permissions)](#mirror-of-permissions)
 
 + [mirror (of tasks)](#mirror-of-tasks)
@@ -1263,8 +1206,6 @@ See [Control](control.md#a-suspension).
 + [need](#need)
 
 + [node](#node)
-
-+ [observation plane](#observation-plane)
 
 + [occurrence](#occurrence)
 
@@ -1306,12 +1247,6 @@ See [Control](control.md#a-suspension).
 
 + [reflect](#reflect)
 
-+ [reflection](#reflection)
-
-+ [reflector](#reflector)
-
-+ [report](#report)
-
 + [resolver](#resolver)
 
 + [revision](#revision)
@@ -1319,8 +1254,6 @@ See [Control](control.md#a-suspension).
 + [root (of an io)](#root-of-an-io)
 
 + [root (of the store)](#root-of-the-store)
-
-+ [root (of verse up)](#root-of-verse-up)
 
 + [rule](#rule)
 
@@ -1363,8 +1296,6 @@ See [Control](control.md#a-suspension).
 + [task](#task)
 
 + [tick](#tick)
-
-+ [tombstone](#tombstone)
 
 + [tool](#tool)
 
