@@ -1969,6 +1969,11 @@ func (s *SpawnRequest) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["retain"] = ir.FromInt(int64(s.Retain))
 	}
 
+	// Field: Converse
+	if s.Converse {
+		irMap["converse"] = ir.FromBool(bool(s.Converse))
+	}
+
 	// Field: VirtualKey
 	if s.VirtualKey != "" {
 		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
@@ -2109,6 +2114,12 @@ func (s *SpawnRequest) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 				return fmt.Errorf("field %q: expected number, got %v", "retain", fieldNodeUnwrapped.Type)
 			}
 			s.Retain = int(*fieldNodeUnwrapped.Int64)
+		case "converse":
+			// Field: Converse
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "converse", fieldNodeUnwrapped.Type)
+			}
+			s.Converse = bool(fieldNodeUnwrapped.Bool)
 		case "virtualKey":
 			// Field: VirtualKey
 			if fieldNodeUnwrapped.Type != ir.StringType {

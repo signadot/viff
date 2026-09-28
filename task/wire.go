@@ -37,6 +37,9 @@ type SpawnRequest struct {
 	Tools []string `tony:"field=tools,omitzero"`
 	// Retain is how many read-plane events to keep for a reader that resumes (Launch.Retain).
 	Retain int `tony:"field=retain,omitzero"`
+	// Converse makes the run a conversation, the person handed the turn when the driver goes
+	// quiet (Launch.Converse).
+	Converse bool `tony:"field=converse,omitzero"`
 	// VirtualKey is the model credential the task runs under: the key itself
 	// (Launch.VirtualKey). It is the one field here that carries a secret.
 	VirtualKey string `tony:"field=virtualKey,omitzero"`
@@ -119,7 +122,7 @@ type VectorRequest struct {
 func (l Launch) Wire() SpawnRequest {
 	r := SpawnRequest{
 		ID: l.ID, Prompt: l.Prompt, Driver: l.Driver, Frame: l.Frame, Tools: l.Tools,
-		Retain: l.Retain, VirtualKey: l.VirtualKey, Answer: l.Answer, Calls: l.Calls,
+		Retain: l.Retain, Converse: l.Converse, VirtualKey: l.VirtualKey, Answer: l.Answer, Calls: l.Calls,
 		Vector: l.Vector, Grant: l.Grant, Environment: l.Environment,
 		Occurrence: l.Occurrence,
 	}
@@ -134,7 +137,7 @@ func (l Launch) Wire() SpawnRequest {
 func (r SpawnRequest) Launch() Launch {
 	l := Launch{
 		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: r.Tools,
-		Retain: r.Retain, VirtualKey: r.VirtualKey, Answer: r.Answer, Calls: r.Calls,
+		Retain: r.Retain, Converse: r.Converse, VirtualKey: r.VirtualKey, Answer: r.Answer, Calls: r.Calls,
 		Vector: r.Vector, Grant: r.Grant, Environment: r.Environment,
 		Occurrence: r.Occurrence,
 	}

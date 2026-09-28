@@ -252,6 +252,7 @@ where a runner in another language reads it.
 | `frame` | the standing instructions the prompt is read in |
 | `tools` | the tools offered. Absent is all of them. A name no driver knows fails the spawn. |
 | `retain` | how many events to keep for a reader that resumes |
+| `converse` | the run is a conversation: when the driver goes quiet, the person gets the turn as a question, and the run ends when they end it |
 | `virtualKey` | the model credential the task runs under: the key itself. It is the one field that carries a secret. |
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the spawn. |
 | `calls` | the work itself, for the `calls` driver |

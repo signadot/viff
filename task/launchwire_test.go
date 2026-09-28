@@ -19,7 +19,7 @@ var staysHome = map[string]string{
 func fullLaunch() Launch {
 	return Launch{
 		ID: "review@demo.pr.1", Prompt: "review it", Driver: "llm",
-		Frame: "you are a reviewer", Resolver: "verse.resolvers.lead", Retain: 512,
+		Frame: "you are a reviewer", Resolver: "verse.resolvers.lead", Retain: 512, Converse: true,
 		Tools: []string{"read_file", "run_bash"}, VirtualKey: "vk-123",
 		Answer:      ir.FromMap(map[string]*ir.Node{"verdict": ir.FromString("ok")}),
 		Calls:       []Call{{Tool: "run_bash", Input: map[string]any{"cmd": "true"}}},

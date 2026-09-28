@@ -93,6 +93,7 @@ verse schema verse-runner-spawn
 verse-runner-spawn:
   answer: .[tony-base:ir]
   calls: .[array(verse-call)]
+  converse: .[bool]
   driver: .[string]
   environment: .[string]
   frame: .[string]
