@@ -66,7 +66,7 @@ A **gate** has one of three modes.
 |---|---|
 | `auto` | the action fires |
 | `ask` | a person or an agent must approve first |
-| `park` | the action is held. Its question stands on the docket until somebody answers it. |
+| `park` | the action is held |
 
 An **action** can do four things, and one action may do several of them.
 

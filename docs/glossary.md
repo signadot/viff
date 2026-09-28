@@ -440,7 +440,7 @@ A mode is one of three values on a gate.
 |---|---|
 | `auto` | the action runs, and nobody is asked |
 | `ask` | the gate poses a question, and the action waits for the answer |
-| `park` | the action is held. Its question stands on the docket, with `mode: PARK`, until somebody answers it. |
+| `park` | the action is held |
 
 Where several gates of a task match one action, the strictest mode applies: `park`, then
 `ask`, then `auto`.
@@ -1041,9 +1041,12 @@ See [Permissions reference](reference/perms.md#levels).
 
 ### control (permission level)
 
-`control` is the level that admits steering work: cancel, pause, resume, `say`, a change of
-vector, and suspend. No other level includes it. The owner of a task holds it, and so does
+`control` is the level that admits steering work: run, cancel, pause, resume, `say`, a change
+of vector, and suspend. No other level includes it. The owner of a task holds it, and so does
 the worker that claimed the task.
+
+A spawn carries the identity of whoever runs it, and verse writes the record of the task as
+that identity. That write is the check for `run`.
 
 Written as code, `control` is this level.
 

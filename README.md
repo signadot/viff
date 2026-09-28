@@ -13,7 +13,7 @@ Every reaction passes a *gate*. A gate has one of three modes:
 |---|---|
 | `auto` | the action runs |
 | `ask` | a person or an agent must approve first |
-| `park` | the action is held. Its question waits until somebody answers it. |
+| `park` | the action is held |
 
 You set the mode for each action. The agents that do the work stay observable, and you can
 steer them while they run.

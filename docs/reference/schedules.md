@@ -1,17 +1,26 @@
 # Schedules
 
-This page holds schedules, the records that make time a cause that a rule can fire on. It
-says what a schedule writes, how a rule reads it, and how a charter declares its own. The
-model of a rule is in [the trigger model](../trigger-model.md).
+This page describes schedules: the records that make time a cause that a
+[rule](../glossary.md#rule) can fire on. It says what a schedule writes, how a rule reads it,
+and how a [charter](../glossary.md#charter) declares its own.
+[The trigger model](../trigger-model.md) is the model of a rule.
 
 ## Schedules: time as a cause
 
-A rule fires on a commit, so for time to be a cause it has to be written down. A **schedule**
-is a record in verse's own half, `verse.schedule.<name>`, holding its period, its phase and
-`next`, the instant the daemon is armed against. When the timer fires, the daemon writes one
-commit as the schedule: `next` advances to the next point on the grid, and the schedule's
-standing **tick** is replaced by the one now due, at an address that is the schedule and the
-instant, `verse.schedule.hourly.tick.2026-09-18T03:00:00Z`. Nothing else ever writes there.
+A rule fires on a commit. So for time to be a cause, somebody must write it down.
+
+A **[schedule](../glossary.md#schedule)** is a record in
+[verse's own half](../glossary.md#verses-own-half), `verse.schedule.<name>`. It holds its
+period, its phase and `next`. `next` is the instant that the daemon is armed against.
+
+When the timer fires, the daemon writes one commit, and it writes as the schedule. The commit
+does two things:
+
+- `next` advances to the next point on the grid.
+- The tick that is due replaces the standing **[tick](../glossary.md#tick)** of the schedule.
+
+The address of a tick is the schedule and the instant:
+`verse.schedule.hourly.tick.2026-09-18T03:00:00Z`. Nothing else ever writes there.
 
 A rule takes the tick as its subject:
 
@@ -23,39 +32,61 @@ A rule takes the tick as its subject:
     spawn: {driver: scripted, prompt: "refresh the drift report for the hour ending $subject.name"}
 ```
 
-It needs no latch, and may not write one: the tick is consumed by the store, since only a
-replacement touches the place, so the rule fires once per tick, and every rule reading the
-schedule does. A spawn about a tick is once-ever rather than only while live — a tick's address
-never recurs, so a task record standing for the id is the spawn having happened, and a restart
-re-firing the standing tick starts nothing. A gate denied on one tick stands until the next
-replaces it, and is then withdrawn as moot. A completion hook records its outcome by `derive`
-into the charter's own place; it cannot patch the tick, which is the schedule's.
+A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. The store
+consumes the tick, because only a replacement touches the place. So the rule fires once for
+each tick, and so does every rule that reads the schedule.
 
-The tick carries `due`, `missed` (how many instants before it went unticked, so a verse that
-was down ticks once on the way up and says how late), and the calendar of its due instant in
-the daemon's zone (`TZ`): `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone`.
+| Part of the rule | How it behaves about a tick |
+|---|---|
+| a spawn | It is once-ever, and not only while live. The address of a tick never recurs. So a task record that stands for the id means that the spawn happened, and a restart that fires the standing tick again starts nothing. |
+| a gate that was denied | It stands on one tick until the next tick replaces that one. Then verse withdraws it as moot. |
+| a completion hook | It records its outcome by `derive` into the charter's own place. It cannot patch the tick, because the tick belongs to the schedule. |
 
-**The calendar is the cron line.** Every verse carries the base charter: four schedules,
-`minutely`, `hourly`, `daily` and `weekly`, phased on a Monday at midnight in the zone, and
-two rules deriving one entity per calendar fact — `verse.schedule.time`, to the minute, from
-the minutely tick, and `.date`, `.weekday` and the rest from the hourly one. The same date is
-the same bytes and a no-op, so `date` commits once a day and a rule reading it wakes once a
-day, while `time` costs two commits a minute, the tick and the derive, that wake nothing unless
-a charter reads there. A rule whose `on` names a fact rises when it becomes true:
+The tick carries these fields.
+
+| Field | What it holds |
+|---|---|
+| `due` | the instant at which the tick is due |
+| `missed` | how many instants before it went unticked. A verse that was down ticks once when it comes up, and `missed` says how late. |
+| `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone` | the calendar of the due instant, in the daemon's zone (`TZ`) |
+
+**The calendar is the cron line.** Every verse carries the base charter. The base charter has
+four schedules and two rules.
+
+The four schedules are `minutely`, `hourly`, `daily` and `weekly`. Their phase is a Monday at
+midnight in the zone.
+
+The two rules derive one entity for each calendar fact.
+
+| The rule reads | The rule derives |
+|---|---|
+| the minutely tick | `verse.schedule.time`, to the minute |
+| the hourly tick | `.date`, `.weekday` and the rest |
+
+A derive of the same date writes the same bytes, and it is a no-op. So `date` commits once a
+day, and a rule that reads it wakes once a day. `time` costs two commits a minute: the tick
+and the derive. Those commits wake nothing unless a charter reads there.
+
+A rule whose `on` names a calendar fact rises when the fact becomes true:
 
 ```tony
     on: {path: "verse.schedule.time", value: {time: "09:05"}}      # daily at five past nine
 ```
 
-Two readings of downtime, and a rule says which it means by what it reads. A verse down from
-08:30 to 10:30 writes the 10:00 hourly tick with `missed: 1` and the 10:30 minutely tick with
-`missed: 119`; `time` goes from `08:30` to `10:30` and `09:05` never rises. A rule on the
-calendar is strict cron: a missed instant is skipped. A rule on the tick is anacron: it fires
-late, once, and `missed` says by how much.
+**Downtime has two readings.** A rule says which reading it means by what it reads.
 
-A charter declares a schedule of its own in its head document, beside the strata, and it is
-the installer's — its ticks are written with the installer's grant, and removed with the
-charter:
+Take a verse that is down from 08:30 to 10:30. It writes the 10:00 hourly tick with
+`missed: 1`, and the 10:30 minutely tick with `missed: 119`. `time` goes from `08:30` to
+`10:30`, and `09:05` never rises.
+
+| A rule on | Behaves as | What it does about a missed instant |
+|---|---|---|
+| the calendar | strict cron | It skips the instant. |
+| the tick | anacron | It fires late, once, and `missed` says by how much. |
+
+**A charter declares a schedule of its own** in its head document, beside the strata. The
+schedule belongs to the installer. Verse writes its ticks with the grant of the installer, and
+removes them with the charter:
 
 ```tony
 - name: nightly
@@ -63,7 +94,10 @@ charter:
   from: 2026-01-01T02:00:00Z     # the phase: ticks stand at from + n*every; default is Monday 00:00
 ```
 
-A period of whole days steps by calendar days, so a nightly schedule keeps its wall-clock time
-across a DST change. `verse schedule` lists every schedule with its `next` and its standing
-tick; `verse schedule tick <name> --due <instant>` backfills one, writing the same entity the
-schedule would have, so a rule about it fires as it would have.
+A period of whole days steps by calendar days. So a nightly schedule keeps its wall-clock time
+across a DST change.
+
+| Command | What it does |
+|---|---|
+| `verse schedule` | lists every schedule, with its `next` and its standing tick |
+| `verse schedule tick <name> --due <instant>` | backfills one tick. It writes the same entity that the schedule writes, so a rule about the tick fires in the same way. |
