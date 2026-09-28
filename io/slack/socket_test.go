@@ -121,6 +121,23 @@ func newSocketRig(t *testing.T) *socketRig {
 // channel — so a test replies to the message the out half actually posted.
 func (r *socketRig) asking(t *testing.T) {
 	t.Helper()
+	r.raise(t)
+	r.ask(t, "C999", "review", entity.Obj{
+		"text": "the review is waiting on you", "asks": askedQuestion,
+	})
+	r.pass(t)
+	if len(r.fake.posted) != 1 {
+		t.Fatalf("posted %v, want the one message", r.fake.posted)
+	}
+	r.ts, _ = r.fake.posted[0]["ts"].(string)
+	if !strings.Contains(shown(t, r.fake.posted[0]), "Answer in this thread") {
+		t.Fatalf("the message does not say how to answer: %q", shown(t, r.fake.posted[0]))
+	}
+}
+
+// raise raises the gate a firing would, and waits until its question stands.
+func (r *socketRig) raise(t *testing.T) {
+	t.Helper()
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{ID: askedQuestion, Origin: "review", Gate: "review", Mode: task.Ask},
@@ -137,16 +154,33 @@ func (r *socketRig) asking(t *testing.T) {
 	if !stood {
 		t.Fatalf("question %s never stood", askedQuestion)
 	}
+}
+
+// A QUESTION ASKED IN SOMEBODY'S THREAD is a reply there, and a reply in that thread answers it —
+// "yes" included, the word everybody types.
+func TestAQuestionAskedInAThreadIsAnsweredThere(t *testing.T) {
+	r := newSocketRig(t)
+	r.raise(t)
+	const thread = "1790000050.000001" // a conversation somebody started, not one of the bot's
 	r.ask(t, "C999", "review", entity.Obj{
-		"text": "the review is waiting on you", "asks": askedQuestion,
+		"text": "Confirm:", "asks": askedQuestion, "thread": thread,
 	})
 	r.pass(t)
-	if len(r.fake.posted) != 1 {
-		t.Fatalf("posted %v, want the one message", r.fake.posted)
+	if len(r.fake.posted) != 0 || len(r.fake.inThread) != 1 || r.fake.inThread[0]["thread_ts"] != thread {
+		t.Fatalf("posted %v at channel level and %v in threads, want one reply in %s", r.fake.posted, r.fake.inThread, thread)
 	}
-	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	if !strings.Contains(shown(t, r.fake.posted[0]), "Answer in this thread") {
-		t.Fatalf("the message does not say how to answer: %q", shown(t, r.fake.posted[0]))
+	if st := r.status(t, "review"); st["thread"] != thread {
+		t.Errorf("the status does not say which thread it spoke in: %v", st)
+	}
+	r.ts = thread
+	r.reply(t, "e1", "U7", "yes")
+	select {
+	case <-r.kicked:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("yes in the thread answered nothing: %v", r.question(t))
+	}
+	if q := r.question(t); q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" {
+		t.Fatalf("yes in the thread answered %v by %v, want proceed by scott", q["verdict"], q["by"])
 	}
 }
 

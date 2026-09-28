@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -63,8 +64,11 @@ type Sink struct {
 	verse *client.Client
 	now   func() time.Time
 
-	mu    sync.Mutex
-	asked map[string][]Asked // (channel, ts) → the questions that message is asking
+	mu sync.Mutex
+	// (channel, where replies land) → input → the questions its message is asking. Where replies
+	// land is the message's own ts, or the thread it was posted into: several inputs can speak in
+	// one thread, and a reply there is about all of their questions.
+	asked map[string]map[string][]Asked
 }
 
 // Sink is this workspace's out half: what it says in Slack, and what it remembers of its own
@@ -96,6 +100,15 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	fp := fingerprint(body)
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
+	// A THREAD, when the input names one: the message is a reply there, and a reply to it lands in
+	// that thread rather than under the message itself.
+	thread := entity.Str(in.Value, "thread")
+	replies := func(ts string) string {
+		if thread != "" {
+			return thread
+		}
+		return ts
+	}
 
 	// NEVER CREATE A MESSAGE ABOUT A QUESTION THAT DOES NOT STAND.
 	//
@@ -115,7 +128,9 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 			"here — a message about a question nobody can read tells its reader nothing",
 			strings.Join(askedIDs(asked), ", "))
 	}
-	k.remember(channel, ts, asked)
+	if ts != "" {
+		k.remember(channel, replies(ts), in.At.String(), asked)
+	}
 	if ts != "" && entity.Str(in.Status, "posted") == fp {
 		return nil, nil // in step: the message shows this input
 	}
@@ -133,17 +148,20 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 			return nil, err
 		}
 	}
-	landed, ts, err := k.s.api.postMessage(ctx, channel, "", body)
+	landed, ts, err := k.s.api.postMessage(ctx, channel, thread, body)
 	if err != nil {
 		return nil, err
 	}
 	st := entity.Obj{"channel": landed, "ts": ts, "postedAt": now, "updatedAt": now, "posted": fp}
+	if thread != "" {
+		st["thread"] = thread
+	}
 	// A permalink is for a reader and not for this program, so failing to get one does not undo
 	// a post that happened.
 	if link, err := k.s.api.permalink(ctx, landed, ts); err == nil && link != "" {
 		st["permalink"] = link
 	}
-	k.remember(landed, ts, asked)
+	k.remember(landed, replies(ts), in.At.String(), asked)
 	return st, nil
 }
 
@@ -232,29 +250,48 @@ func askedIDs(asked []Asked) []string {
 	return out
 }
 
-// Asked is the questions the message at (channel, ts) is about, as the last pass read them, each
-// saying whether it still takes an answer. Nothing, for a message this program did not post.
+// Asked is the questions a reply at (channel, ts) is about — ts the thread it lands in — as the
+// last pass read them, each saying whether it still takes an answer: those of the message posted
+// there and of every input posted into that thread, by the inputs' addresses.
+// Nothing, for a thread this program asked nothing in.
 func (k *Sink) Asked(channel, ts string) []Asked {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	return k.asked[channel+"/"+ts]
+	by := k.asked[channel+"/"+ts]
+	names := make([]string, 0, len(by))
+	for name := range by {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []Asked
+	for _, name := range names {
+		out = append(out, by[name]...)
+	}
+	return out
 }
 
-// remember indexes one posted message by where it landed, for Asked.
-func (k *Sink) remember(channel, ts string, asked []Asked) {
-	if channel == "" || ts == "" {
+// remember indexes what one input's message asks, by where a reply to it lands, for Asked.
+func (k *Sink) remember(channel, replies, input string, asked []Asked) {
+	if channel == "" || replies == "" {
 		return
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	if k.asked == nil {
-		k.asked = map[string][]Asked{}
-	}
+	key := channel + "/" + replies
 	if len(asked) == 0 {
-		delete(k.asked, channel+"/"+ts)
+		delete(k.asked[key], input)
+		if len(k.asked[key]) == 0 {
+			delete(k.asked, key)
+		}
 		return
 	}
-	k.asked[channel+"/"+ts] = asked
+	if k.asked == nil {
+		k.asked = map[string]map[string][]Asked{}
+	}
+	if k.asked[key] == nil {
+		k.asked[key] = map[string][]Asked{}
+	}
+	k.asked[key][input] = asked
 }
 
 // code is a list as Slack renders code: `proceed`, `deny`.

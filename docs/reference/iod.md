@@ -399,8 +399,8 @@ a **status** beside the input.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `slack.<ws>.out` | whoever asks | `to`, `text`, and `asks` |
-| status | the sibling `<name>~status` | the io alone | `channel, ts, permalink, postedAt, updatedAt, posted`, and `error` while an error stands. `posted` is the fingerprint of the message. |
+| input | anywhere under `slack.<ws>.out` | whoever asks | `to`, `text`, `asks` and `thread` |
+| status | the sibling `<name>~status` | the io alone | `channel, ts, thread, permalink, postedAt, updatedAt, posted`, and `error` while an error stands. `posted` is the fingerprint of the message. |
 
 ```sh
 verse data slack acme out hello   -put '{to: "user:ana@acme.test", text: "the review is waiting on you"}'
@@ -418,6 +418,10 @@ verse data slack acme out 'hello~status'
 
 `<name>` is the choice of the writer. The out half needs the scopes `chat:write`, `im:write`
 and `users:read.email`, in addition to the scopes of the reflection.
+
+`thread` is the ts of a message. The io posts the input's message as a reply in that thread, and
+a reply in the thread is matched to the questions of the message. Several inputs can speak in
+one thread, and a reply there is about the questions of all of them.
 
 The spelling `user:<email>` lets a charter address the people that a
 [question](../glossary.md#question) waits on, because the `waitingOn` of a question holds
@@ -557,7 +561,7 @@ The io decides two things, and it decides them separately.
 
 | The reply is addressed | What the io reads |
 |---|---|
-| to the thread | One word. The reply must say an option: the word of the question itself, or `y`/`n`. |
+| to the thread | One word. The reply must say an option: the word of the question itself, or `y`/`yes` and `n`/`no` for the two options that every question has. |
 | to the bot by name, such as `@verse approve it pls` | A sentence. |
 
 Everyday words stand for the two options that every question has: `approve`, `yes`, `lgtm`,

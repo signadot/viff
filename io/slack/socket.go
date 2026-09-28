@@ -322,7 +322,7 @@ func choose(text string, asked []Asked, addressed bool) (id, option string, err 
 	}
 	if word := strings.Trim(said, ".!?,;:"); !strings.ContainsAny(word, " \t\n") {
 		id, option, err = matching(asked, func(opt string) bool {
-			return word == strings.ToLower(opt) || word == alias(opt)
+			return word == strings.ToLower(opt) || slices.Contains(aliases(opt), word)
 		})
 		if id != "" || err != nil || !addressed {
 			return id, option, err
@@ -406,15 +406,17 @@ func optionsOf(asked []Asked) []string {
 	return out
 }
 
-// alias is the short word for an option: the two a gate has unless it says otherwise.
-func alias(option string) string {
+// aliases are the other words that ARE an option, said alone: for the two a gate has unless it
+// says otherwise, the short one and the plain one. "yes" to "Ask ani to review it?" is the answer
+// everybody types, and a reply that has to be spelled `proceed` is a reply people get wrong.
+func aliases(option string) []string {
 	switch option {
 	case "proceed":
-		return "y"
+		return []string{"y", "yes"}
 	case "deny":
-		return "n"
+		return []string{"n", "no"}
 	}
-	return ""
+	return nil
 }
 
 // stripMentions drops `<@U123>` and the like, so that answering the bot by name is answering.
