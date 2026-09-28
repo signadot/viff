@@ -388,6 +388,17 @@ func (g Grant) check() error {
 	return nil
 }
 
+// checkGrants is check over a list: what an owner may set as the grants of their own node's
+// record, which is what a creator may give the node they create (Write.Grants).
+func checkGrants(gs []Grant) error {
+	for _, g := range gs {
+		if err := g.check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GrantsPayload spells a list of grants as the field's value on the record at node.
 func GrantsPayload(node []string, gs []Grant) Payload {
 	arr := &ir.Node{Type: ir.ArrayType}

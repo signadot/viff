@@ -77,6 +77,18 @@ func mirrorKey(ref Ref) (string, bool) {
 // not the world.
 var ErrForbidden = errors.New("refused")
 
+// ErrStands is a write carrying grants (Write.Grants) refused because the node it names stands
+// already, or its place is taken by a record: grants are given where a node is created, and
+// what a node that stands holds out is changed with `verse perms`. Like a refused condition it
+// is the world's answer, and like a refusal it says why.
+var ErrStands = errors.New("the node stands")
+
+// ErrBadGrants is grants on a write that no owner could give at the node, or given where the
+// write creates no node of its own to carry them: a delete, an array element, a place the
+// store's root cannot reach in one commit. It is the caller's to fix, and a retry changes
+// nothing.
+var ErrBadGrants = errors.New("grants refused")
+
 // Attribution is what an attributed store shares across the views derived from it: the perms
 // records this process has read, which nodes it has settled the owner of, what each place
 // acting resolves to, and what it has refused. One per underlying store AND PER SCOPE; As
@@ -415,7 +427,34 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 	if wholeDelete {
 		act = "deleting it"
 	}
+	if w.Grants != nil {
+		if err := grantsOnCreate(w, ref); err != nil {
+			return false, 0, err
+		}
+	}
 	return a.write(w, ref, need, act, !wholeDelete, 0)
+}
+
+// grantsOnCreate refuses grants on a write that creates no node to carry them, and grants no
+// owner could give: they are checked as `verse perms --grants` checks what an owner sets on
+// their own node's record (checkGrants), and a record is per node, so a delete, an array
+// element and a node whose own record stands beneath it (the root, the mirror) carry none. A
+// mount-owned place is not under the store's root, so the one commit cannot reach it.
+func grantsOnCreate(w Write, ref Ref) error {
+	switch {
+	case w.Value == nil && w.At.Access == "":
+		return fmt.Errorf("%w: a delete of %s creates nothing to hold them out", ErrBadGrants, ref)
+	case w.At.Access != "":
+		return fmt.Errorf("%w: %s%s is an element of an array, and grants are held out by a node", ErrBadGrants, ref, w.At.Access)
+	case ref.Under(VerseRoot, PermsSystem) || PermsRef(ref).Under(ref.Segs()...):
+		return fmt.Errorf("%w: %s holds the perms records, and is created with none of its own", ErrBadGrants, ref)
+	case IsMountOwned(ref.Segs()...):
+		return fmt.Errorf("%w: %s is a mounted place, which its source writes", ErrBadGrants, ref)
+	}
+	if err := checkGrants(w.Grants); err != nil {
+		return fmt.Errorf("%w: %w", ErrBadGrants, err)
+	}
+	return nil
 }
 
 // write is Write once the path is settled and what it needs is known. creating says whether the
@@ -436,6 +475,12 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 	acc, err := a.checkFor(w.Principal, need, ref, act, creating)
 	if err != nil {
 		return a.orUncommitted(again, ref, err)
+	}
+	// WHAT A NODE HOLDS OUT IS ITS OWNER'S TO SAY, and a creator is the owner only where they
+	// hold `owner`: one admitted on `read-write` makes a node its owner above owns.
+	if w.Grants != nil && acc.level != OwnerLevel {
+		a.attr.noteRefusal(OwnerLevel)
+		return false, 0, refusal(OwnerLevel, "giving it grants", w.Principal, ref, acc)
 	}
 	// AND WHAT IT ASKS ABOUT IS WHAT ITS WRITER MAY READ. A precondition is a match the store
 	// answers with committed-or-not, so one placed on a node the writer may not read is a read
@@ -491,14 +536,35 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 		aboveStood = true
 	}
 	sent := w
+	sent.Grants = nil
 	if len(absent) > 0 {
 		sent.When = append(append(make([]Require, 0, len(w.When)+len(absent)), w.When...), absent...)
 	}
+	// A NODE CREATED WITH GRANTS LANDS WITH ITS RECORD, in one commit anchored at the root
+	// (withRecord), conditional on neither standing: no reader of the store ever finds the node
+	// without the record that says who may read it. And the check finds it at once: its view of
+	// the mirror is kept by a watch that arrives when it arrives, and until then a new node
+	// would be judged by the grants above it. So the record is entered in that view BEFORE the
+	// write, owned by the system until the commit says whose it is — before the commit the node
+	// does not exist, or stands and is not this writer's to act on, so a record hiding it hides
+	// nothing anybody was owed. A write that does not land takes it out again (invalidate).
+	var rec *permsRecord
+	if w.Grants != nil {
+		rec = &permsRecord{owner: acc.who, grants: w.Grants}
+		sent = withRecord(sent, ref, rec)
+		a.attr.enter(ref.String(), &permsRecord{owner: SystemDefault, grants: w.Grants})
+	}
 	committed, rev, err := a.Store.Write(sent)
+	if rec != nil && (err != nil || !committed) {
+		a.invalidate(ref.String())
+	}
 	if err != nil {
 		return committed, rev, err
 	}
 	if !committed {
+		if rec != nil {
+			return a.notCreated(w, ref, need, act, asked, aboveStood)
+		}
 		if len(absent) > 0 {
 			// One of them stands, or the writer's own condition did not hold. Where the condition
 			// sat above the written node, what came to stand may be an ancestor alone, and the
@@ -525,6 +591,18 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 	}
 	if wholeDelete {
 		a.forget(ref)
+		return committed, rev, nil
+	}
+	if rec != nil {
+		// The node's record landed with it, WHOEVER owns the place above: a record carrying
+		// grants changes what the node holds out even where it does not change its owner. What
+		// the write made above the node is recorded as any creation's is.
+		a.decide(ref, rec)
+		for _, at := range made {
+			if a.record(at, acc.who) {
+				break
+			}
+		}
 		return committed, rev, nil
 	}
 	if w.Principal != "" && acc.level == OwnerLevel {
@@ -563,6 +641,129 @@ func (a *attributed) orUncommitted(again bool, ref Ref, refused error) (bool, in
 	stands, err := a.Store.StandsAt(ref.Segs())
 	if err != nil || stands {
 		return false, 0, refused
+	}
+	return false, 0, nil
+}
+
+// withRecord is a creating write with its node's perms record beside it: one write anchored at
+// the store's root, carrying the value at ref and the record at PermsRef(ref), conditional on
+// neither standing. logd commits one patch as one transaction, so both land or neither does, at
+// one revision on every watch.
+//
+// ANCHORED AT THE ROOT, the write descends through every node above ref, where the store would
+// ask only of ref's parent: so each is asked to be something a write may pass through, as that
+// parent would be. And a require that named no place of its own was about ref, and still is.
+func withRecord(w Write, ref Ref, rec *permsRecord) Write {
+	segs := ref.Segs()
+	value := graft{}
+	value.put(segs, clone(w.Value))
+	value.put(PermsRef(ref).Segs(), Obj{
+		OwnerField:  rec.owner,
+		GrantsField: GrantsPayload(SegsOf(ref), rec.grants),
+	}.Payload())
+	when := make([]Require, 0, len(w.When)+len(segs)+1)
+	for _, r := range w.When {
+		if r.atOwnPlace() {
+			r.At = w.At
+		}
+		when = append(when, r)
+	}
+	when = append(when, Require{At: ref.At(), Absent: true}, Require{At: PermsRef(ref).At(), Absent: true})
+	for i := 1; i < len(segs); i++ {
+		when = append(when, Require{At: RefAt(segs[:i]...).At(), descends: true})
+	}
+	w.At, w.Value, w.When = Path{}, value.node(), when
+	return w
+}
+
+// graft is a value being built from values at paths: a node per segment, the values at the
+// leaves.
+type graft map[string]any
+
+func (g graft) put(segs []string, v Payload) {
+	for _, s := range segs[:len(segs)-1] {
+		next, ok := g[s].(graft)
+		if !ok {
+			next = graft{}
+			g[s] = next
+		}
+		g = next
+	}
+	g[segs[len(segs)-1]] = v
+}
+
+func (g graft) node() Payload {
+	m := make(map[string]*ir.Node, len(g))
+	for k, v := range g {
+		switch v := v.(type) {
+		case graft:
+			m[k] = v.node()
+		case Payload:
+			m[k] = v
+		}
+	}
+	return ir.FromMap(m)
+}
+
+// enter puts a record in this view of the mirror, and in every scope's opened through it, ahead
+// of the write that will make it true (write): the one entry into the view that is not read from
+// the mirror, so whoever enters one takes it out again if the write does not land (invalidate).
+func (a *Attribution) enter(key string, rec *permsRecord) {
+	a.mu.Lock()
+	if a.records == nil {
+		a.records = map[string]*permsRecord{}
+	}
+	a.records[key] = rec
+	a.dropTaken()
+	kids := make([]*Attribution, 0, len(a.children))
+	for _, c := range a.children {
+		kids = append(kids, c)
+	}
+	a.mu.Unlock()
+	for _, c := range kids {
+		c.enter(key, rec)
+	}
+}
+
+// notCreated is why a write carrying grants did not land. The node standing, or a record
+// taking its place, is ErrStands: grants are given at a creation, and a write that would merge
+// into a node that stands is refused rather than turned into an update. An ancestor that came
+// to stand is asked once more as a creation beneath it, as any creating write is; a node above
+// that holds a value is ErrNotDescendable, as the store says of a write's own parent; and
+// anything else is the writer's own condition.
+func (a *attributed) notCreated(w Write, ref Ref, need Level, act string, asked int, aboveStood bool) (bool, int64, error) {
+	stands, err := a.Store.StandsAt(ref.Segs())
+	if err != nil {
+		return false, 0, err
+	}
+	if stands {
+		return false, 0, fmt.Errorf("%w: %s stands, and grants are given where a node is created; "+
+			"what it holds out is changed with `verse perms`", ErrStands, ref)
+	}
+	if _, taken, err := a.Store.Get(PermsRef(ref)); err != nil {
+		return false, 0, err
+	} else if taken {
+		return false, 0, fmt.Errorf("%w: %s is taken — a record stands for it — and what it holds "+
+			"out is set with `verse perms`", ErrStands, ref)
+	}
+	if aboveStood && asked < maxCreatingAsks {
+		return a.write(w, ref, need, act, true, asked+1)
+	}
+	segs := ref.Segs()
+	for i := len(segs) - 1; i >= 1; i-- {
+		n, ok, err := a.Store.ReadAt(segs[:i])
+		if err != nil {
+			return false, 0, err
+		}
+		if !ok {
+			continue
+		}
+		if n := ir.Uncomment(n); n.Type != ir.ObjectType && n.Type != ir.NullType {
+			where := JoinSegs(segs[:i])
+			return false, 0, fmt.Errorf("%w: %s holds %s, so %q is not a place in it", ErrNotDescendable,
+				where, standing(n), segs[i])
+		}
+		break
 	}
 	return false, 0, nil
 }
@@ -1079,12 +1280,17 @@ func dropPath(n *ir.Node, path []string) bool {
 // answer hides nothing here: a watch has no error to return, and a commit withheld would read
 // as a gap, so the check's own count is what says a read went unchecked.
 //
-// A CREATION IS SEEN ONCE by everyone the root's grants admit: the owner record follows the
-// write it records, so the commit that creates a node reaches a live watch before the record
-// that would hide it lands, and is judged by what stands then. Every commit after it is judged
-// by the record. Writing the record first would close that window and open a worse one — a
-// record standing for a node whose write then failed makes the next creator there not its
-// owner — so the window stays, and is one commit wide.
+// A CREATION IS SEEN ONCE by everyone the grants above it admit, where the node takes the
+// default: its owner record follows the write it records, so the commit that creates the node
+// reaches a live watch before the record that would hide it lands, and is judged by what stands
+// then. Every commit after it is judged by the record. Writing that record first would open a
+// worse window — a record standing for a node whose write then failed makes the next creator
+// there not its owner — so the window stays, and is one commit wide.
+//
+// A CREATION WITH GRANTS (Write.Grants) HAS NO WINDOW. Its record lands in the node's own
+// commit, and stands in this view before the commit does (attributed.write), so the commit that
+// creates the node is judged by what its creator said it holds out. A writer who means the node
+// never to be seen more widely than that says so on the write.
 //
 // A COMMIT IS JUDGED AT ITS OWN REVISION: the view is brought up to it first (servedAt). A view
 // that cannot be leaves the commit with nothing in it, as a mirror that did not answer leaves
@@ -2008,6 +2214,10 @@ func (a *Attribution) noteUnreadable() {
 // writer of a node is its owner and a later write by anybody cannot move that, which is the
 // "fixed when the node is created" half of the model with no read ahead of the write.
 //
+// A node CREATED WITH GRANTS is not recorded here: its record changes what the node holds out
+// whether or not it changes the owner, so it is written wherever the node is, in the node's own
+// commit (withRecord).
+//
 // It reports whether the node is the writer's — by this record, by one of theirs already
 // standing, or through the owner above — and false only where somebody else's record stands.
 func (a *attributed) record(ref Ref, owner string) bool {
@@ -2539,10 +2749,8 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	if !ok {
 		return nil
 	}
-	for _, g := range gs {
-		if err := g.check(); err != nil {
-			return err
-		}
+	if err := checkGrants(gs); err != nil {
+		return err
 	}
 	// THE LIST IS REPLACED, NOT MERGED, in one write guarded by what it read (GrantsOver): no
 	// moment stands between the old list and the new one, and a record that changed underneath

@@ -314,6 +314,16 @@ type Write struct {
 	// from the entity and applies the pattern where it lands (logdstore.elemPattern). A
 	// require naming no place of its own is about the write's own place, element included.
 	When []Require
+	// Grants is what the node the write CREATES holds out, in place of the default it would
+	// copy from the nearest `child-grants` above: the list an owner sets with `verse perms
+	// --grants`, and an empty one holds out nothing. nil is the default.
+	//
+	// A write carrying grants is a CREATE and nothing else: the node's absence is its
+	// precondition, and the node and its perms record land in one commit, so no reader ever
+	// sees the node held out as the default would hold it (attributed.write). Grants on a node
+	// that stands are changed with `verse perms`. Only an attributed store reads this field;
+	// the store beneath refuses a write that carries it.
+	Grants []Grant
 }
 
 // ErrNotDescendable is a write refused because the path it descends through holds a value that
@@ -411,6 +421,10 @@ type Require struct {
 	// standing at a path holding null would have read as nothing standing there at all, so a
 	// create would have committed straight over it.
 	Absent bool
+	// descends requires that what stands at At is something a write may descend through: an
+	// object, a null, or nothing (logdstore.descendablePath). The store asks it of a write's
+	// own parent by itself; a write anchored above its place asks it of each node between.
+	descends bool
 }
 
 // Present is the precondition pattern for "something is there, whatever it is". A null

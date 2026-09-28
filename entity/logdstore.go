@@ -641,6 +641,12 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 	if err := CheckPatchable(w.Value); err != nil {
 		return false, 0, fmt.Errorf("write %s: %w", w.At, err)
 	}
+	// GRANTS ARE THE ATTRIBUTED STORE'S, which writes them as a record beside the node in the
+	// same commit (Write.Grants). Here they would be dropped, and the node created held out as
+	// the default holds it — the one thing a writer who gave them meant not to happen.
+	if w.Grants != nil {
+		return false, 0, fmt.Errorf("write %s: %w: grants are written by an attributed store, beside the node", w.At, ErrBadGrants)
+	}
 	node := payloadToNode(w.Value)
 	if w.Value == nil {
 		node = deleteOp() // remove whatever stands there
@@ -693,7 +699,7 @@ func (s *LogdStore) Write(w Write) (bool, int64, error) {
 			}
 			sub = w.At.Access
 		}
-		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent})
+		pre = append(pre, pathPattern{at: at, sub: sub, pattern: r.Pattern, absent: r.Absent, object: r.descends})
 	}
 	res, err := s.sess.PatchWith(ctx, path, node, libctl.PatchOpts{Match: s.preconditionAt(pre), Author: w.Principal})
 	if errors.Is(err, libctl.ErrMatchFailed) {
