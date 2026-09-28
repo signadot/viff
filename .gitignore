@@ -17,3 +17,4 @@ scripts/mermaid/node_modules/
 # working space inside the repo: probes, one-off harnesses, throwaway mains.
 # In-tree so a Go file there can import the module; ignored so none of it is a commit.
 scratchpad/
+__pycache__/

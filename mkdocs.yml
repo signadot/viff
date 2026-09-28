@@ -6,21 +6,40 @@ repo_url: https://github.com/signadot/verse
 repo_name: GitHub
 edit_uri: ""
 
-# The site is what verse does. articles/ is prose written for somewhere else, read in the
-# repository, so the site does not publish it at all: a published page that points at one
-# links to it on GitHub, and `make check-docs` fails on a relative link into it, because that
-# link would 404 here.
+# The site is for somebody who USES verse: writes charters, runs tasks, answers gates. The pages
+# for running a verse, extending it and changing it stay in the repository, where a person and an
+# agent read them, and the site does not publish them (docs/platform.md indexes them). Nor does
+# it publish articles/, prose written for somewhere else.
+#
+# A published page links to an excluded one relatively, as a reader of the repository needs, and
+# the hook rewrites that link to the file on GitHub when the site is built.
 exclude_docs: |
   /articles/
+  /platform.md
+  /seams.md
+  /task-control.md
+  /attached-resolvers.md
+  /io.md
+  /runners.md
+  /change-events.md
+  /cycle-throttle.md
+  /external-tasks.md
+  /deployment-and-steering.md
+  /content-federation.md
+  /controllers.md
+  /reference/up.md
+  /reference/runners.md
+  /reference/resolvers.md
+  /reference/io.md
+  /reference/iod.md
+  /reference/store.md
+  /reference/examples/
 
-# The nav follows docs/README.md's groups rather than the directory layout, and the groups are
-# READERS: a person comes with a job, and the group says which pages are for it. Where the two
-# disagree, the index wins and this follows it.
-#
-# A page is listed once, under the reader who needs it most.
-#
-# Control is in the first group because it is what to know before letting verse act: how to
-# stop it. It follows the tutorial, which gives it its terms.
+hooks:
+  - scripts/mkdocs_repo_links.py
+
+# The nav follows docs/README.md's groups. Where the two disagree, the index wins and this
+# follows it. A page is listed once.
 #
 # The nav is one level deep under each heading. The mkdocs theme draws a nested section as
 # a submenu it positions with script and `position: fixed`, and that submenu does not open
@@ -33,13 +52,10 @@ nav:
   - Control: control.md
   - build.md
   - glossary.md
-- Run a verse:
-  - reference/up.md
+- Use verse:
   - reference/README.md
-  - perms-guide.md
   - reference/tasks.md
-  - runners.md
-  - reference/runners.md
+  - perms-guide.md
   - reference/connect.md
 - Write a charter:
   - trigger-model.md
@@ -56,24 +72,6 @@ nav:
   - reference/perms.md
   - auto-supervisor.md
   - reference/representation.md
-- Build a runner or an io:
-  - seams.md
-  - task-control.md
-  - attached-resolvers.md
-  - reference/resolvers.md
-  - io.md
-  - reference/io.md
-  - reference/iod.md
-  - reference/examples/README.md
-  - reference/examples/coderunner/walkthrough.md
-- How verse is built:
-  - change-events.md
-  - reference/store.md
-  - cycle-throttle.md
-  - external-tasks.md
-  - deployment-and-steering.md
-  - content-federation.md
-  - controllers.md
 
 theme:
   name: mkdocs
