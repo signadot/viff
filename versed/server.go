@@ -2261,10 +2261,27 @@ func (s *Server) putEntity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	var grants []entity.Grant
+	if body.Grants != nil {
+		if grants, err = grantsAt(ref, body.Grants); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	store := s.scopedStore(r)
 	committed, _, err := store.Write(entity.Write{
-		At: entity.Path{Ref: ref, Access: body.Sub}, Value: body.Payload, When: when,
+		At: entity.Path{Ref: ref, Access: body.Sub}, Value: body.Payload, When: when, Grants: grants,
 	})
+	// GRANTS ARE GIVEN AT A CREATION: a node that stands is 409 beside a refused condition, and
+	// grants nobody could give there are the caller's to fix.
+	if errors.Is(err, entity.ErrStands) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, entity.ErrBadGrants) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	// A WRITE THAT WOULD REPLACE WHAT IT DESCENDS THROUGH IS THE CALLER'S, not the gateway's:
 	// nothing failed downstream and a retry changes nothing, so it answers 409 beside the
 	// refused-precondition case rather than 502 (git-issue mbjpdr6sh12ksa5zgsn0).
@@ -2474,7 +2491,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.Grants != nil {
-		gs, err := entity.ParseGrants(entity.SegsOf(ref), entity.Obj{entity.GrantsField: body.Grants}.Payload())
+		gs, err := grantsAt(ref, body.Grants)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -2517,6 +2534,21 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.answerPerms(w, r, ref)
+}
+
+// grantsAt reads a `--grants` list as the grants of the record at ref: what an owner sets on
+// their node's record (putPerms), and what a creator gives the node they create (putEntity) —
+// one reading, so a creator may say exactly what an owner may. `[]` is a list holding nothing,
+// never the absence that would mean the default.
+func grantsAt(ref entity.Ref, list entity.Payload) ([]entity.Grant, error) {
+	gs, err := entity.ParseGrants(entity.SegsOf(ref), entity.Obj{entity.GrantsField: list}.Payload())
+	if err != nil {
+		return nil, err
+	}
+	if gs == nil {
+		gs = []entity.Grant{}
+	}
+	return gs, nil
 }
 
 // answerPerms writes a node's record back, read as the system since the mirror is not the

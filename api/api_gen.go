@@ -51,6 +51,11 @@ func (s *PutEntity) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["when"] = ir.FromSlice(slice)
 	}
 
+	// Field: Grants (optional)
+	if s.Grants != nil {
+		irMap["grants"] = s.Grants
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -116,6 +121,12 @@ func (s *PutEntity) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.When = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"when\"", fieldNodeUnwrapped.Type)
+			}
+		case "grants":
+			if gomap.GetUnmapComments(opts...) {
+				s.Grants = fieldNode
+			} else {
+				s.Grants = fieldNodeUnwrapped
 			}
 		default:
 			if gomap.IsStrict(opts...) {

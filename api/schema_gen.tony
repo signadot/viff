@@ -201,6 +201,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   at: .[string]
+  grants: .[tony-base:ir]
   payload: .[tony-base:ir]
   sub: .[string]
   when: .[array(verse-condition)]

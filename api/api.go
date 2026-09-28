@@ -71,6 +71,12 @@ type PutEntity struct {
 	// one step at the store, so there is no window between the check and the write for
 	// something to change underneath. An empty When is an unconditional write.
 	When []Condition `tony:"field=when,omitzero"`
+	// Grants is what the node the write CREATES holds out, in the list `verse perms --grants`
+	// sets on a record — `[{read: [ana@example.com]}]`, and `[]` for nothing — in place of the
+	// default it would copy from the nearest `child-grants` above. The write is then a create:
+	// the node lands with its record in one commit, or not at all, and a node that stands is
+	// refused (409); what it holds out is changed with `verse perms`.
+	Grants entity.Payload `tony:"field=grants,omitzero"`
 }
 
 // Condition is one precondition on a write: what must be true, and where.
