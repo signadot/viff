@@ -137,8 +137,9 @@ See [Connect and scopes](reference/connect.md#what-one-command-does).
 
 ### charter
 
-A charter is a list of [rules](#rule) that you install: `verse charter -a -f charter.tony`. It
-may also hold strata, schedules and the declaration of a package.
+A charter is the [rules](#rule) you install at one address, from one file: `verse charter -a
+-f charter.tony`. The file holds them under `rules:`, beside its `strata:` and `schedules:`,
+and a package's file says where it goes and what it reads with `at:` and `reads:`.
 
 See [The charter](reference/charter.md).
 

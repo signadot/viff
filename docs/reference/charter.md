@@ -12,8 +12,8 @@ A charter installed at an [address](../glossary.md#address) is a
 **[package](../glossary.md#package)**. A package runs in an engine of its own, and it may
 write only inside that address.
 
-The address is where the install points: the positional path, or the `at:` declaration of the
-file. The install takes the address:
+The address is where the install points: the positional path, or the file's `at:`. The
+install takes the address:
 
 - The address gets an owner record that names the installer.
 - What the package derives beneath the address is owned through that record.
@@ -125,46 +125,51 @@ of an io, and to read an io is not to depend on a package. So two packages that 
 is not a loop between packages, and the check cannot see it. Baseline is unconfined in what it
 writes for the same reason.
 
-`verse charter` reads the charter at an address, as `verse data` reads the store at one. The
-charter is one document with a place for every package. So "what is installed here" is the
-same question at every depth, and every node answers in the same shape.
+`verse charter` reads the charter at an address, as `verse data` reads the store at one. What
+it prints is **the file that installs that charter**: the same keys, and `at:` naming the
+address. So what you read is what you can keep, edit and install again:
 
 ```sh
-verse charter                  # the whole charter
-verse charter drift            # the `drift` package and anything under it
-verse charter demo pr          # …one deeper: the package at demo.pr
-verse charter drift -depth 0   # …that address alone, without what is under it
+verse charter drift > drift.tony        # the `drift` package, as its file
+verse charter -a -f drift.tony          # …installs it back where it came from
+verse charter                           # baseline's, which has no `at:`
+verse c drift rules merge-proposal      # one rule by name, which also installs as it stands
 ```
 
-```sh
-verse charter -depth 1
-# writes: anywhere            ← baseline: no address, so it may write anywhere
-# rules: []
-# children:
-#   drift:
-#     writes: drift.*
-#     reads: [git]
-#     rules: [ … the three rules, in full … ]
-#     strata: [ … ]
-#   merge:
-#     writes: merge.*
-#     reads: [git, drift]
-#     rules: [ … ]
+```tony
+at: drift
+reads: [git]
+rules: [ … the rules, in full, comments and all … ]
+strata: [ … ]
 ```
 
-The output is comment-drift installed: the review at `drift`, the gate at `merge` that reads
-it, and a baseline that holds nothing. A package at `demo.pr` nests under a `demo` that holds
-only `children:`, because nothing is installed at `demo` itself.
+Keys come out in alphabetical order, whatever order the file you installed wrote them in.
 
 `verse charter` prints the rules themselves, and not their names. The charter is the program
 that verse runs. A listing of names would need a second command for each rule to show what
-the rule *does*. `-depth 0` makes the output short. One rule by name is still one command:
+the rule *does*.
+
+**What a file cannot hold goes to stderr.** A rule that is held, suspended or has failed at a
+firing is marked there. Those are facts about the running rule, not part of the charter, and
+the install would refuse them. The charters under the address are named there too:
+
+```
+note: drift: rule head-moved is held: it waits for stratum reflected, which is not installed
+note: under here: drift, merge — `verse c -d <dir>` writes every charter to a file of its own
+```
+
+**A tree of charters is a directory**, one file per charter. `-d` writes every charter at or
+under an address, and `-a -d` installs every charter file under a directory in one step:
 
 ```sh
-verse charter merge             # that package alone, rules and all
-verse charter merge -depth 0    # …without whatever is installed under it
-verse c drift rules merge-proposal
+verse charter demo -d out/              # out/demo/pr/charter.tony, …
+verse charter -a -d out/                # each at its own `at:`, all of them or none
 ```
+
+The writer lays the files out by address. That layout is a default, not a rule: the `at:` in
+each file is what says where it goes, because the rules in it name absolute paths. A directory
+laid out any other way, by project and with READMEs beside the charters, installs the same.
+`--paths` lists every charter as one path per rule and level.
 
 A package is removed whole too: its rules, its levels, what it reads, and the engine that runs
 them. What the package *wrote* stays, because the writes of a charter belong to the world.

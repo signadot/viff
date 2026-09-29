@@ -414,8 +414,8 @@ checked against the level when they were installed, so they face the ordering ag
 that no longer fits refuses the *change*, and names itself. No rule stays at a level that verse
 did not check it against.
 
-**A file is applied as one step.** `verse c -a` sends the part of a file that belongs to one
-package in one request. A refusal anywhere restores what stood before it. The declaration, the
+**A file is applied as one step.** `verse c -a` sends a file, or a directory of them, in one
+request. A refusal anywhere restores what stood before it. The declaration, the
 levels and the rules all become the charter, or none of them do.
 
 A file sent one document at a time could leave the levels installed and a rule refused, while
