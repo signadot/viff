@@ -39,15 +39,16 @@ it, and a read otherwise. So a rule of a package can select the place of an
 [io](../glossary.md#io) and derive from it. Most rules of a package do this:
 
 ```tony
-at: drift                        # where this package writes — its engine is confined to it
-reads: [git]                   # …and what it may read besides
----
+at: drift                   # where this package writes — its engine is confined to it
+reads: [git]                # …and what it may read besides
+strata:
 - name: reflected           # the level the source sits at
   level: 0
   match: {path: "git"}
 - name: ours
   level: 10
   match: {path: "drift"}
+rules:
 - name: head-moved          # in the `drift` package
   stratum: reflected
   condition: {subject: git.verse.head}    # a source: read, never written

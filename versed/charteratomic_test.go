@@ -185,13 +185,11 @@ func TestARefusedFileLeavesAnExistingPackageRunning(t *testing.T) {
 	}
 }
 
-// A FILE IS ONE STEP, not one step per package.
+// A REQUEST IS ONE STEP, not one step per charter.
 //
-// A charter file may hold several packages — `---` separates documents and an `at:` declaration
-// opens each — and the CLI used to split the file and POST each group, so a file whose second
-// package was refused left the first installed while printing "nothing was installed, a charter
-// file is applied as one step". The guarantee was real per PACKAGE and the sentence claimed it
-// for the file.
+// A directory holds a charter per file, and `verse c -a -d` posts them all in one request, so a
+// request whose second charter is refused must leave the first uninstalled: the install prints
+// "nothing was installed", and that sentence is about what was sent.
 func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 	srv := testServer(t)
 	srv.Start(t.Context())
@@ -199,13 +197,9 @@ func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 	defer ts.Close()
 
 	// The second package's rule writes outside its own address, so it is refused.
-	file := `{at: one}
+	file := `{at: one, rules: [{name: ok-rule, condition: {subject: {path: "one.x.*"}}, action: {patch: {seen: true}}}]}
 ---
-{name: ok-rule, condition: {subject: {path: "one.x.*"}}, action: {patch: {seen: true}}}
----
-{at: two}
----
-{name: bad-rule, condition: {subject: {path: "elsewhere.y.*"}}, action: {patch: {seen: true}}}`
+{at: two, rules: [{name: bad-rule, condition: {subject: {path: "elsewhere.y.*"}}, action: {patch: {seen: true}}}]}`
 	code, msg := postCharterFile(t, ts.URL, file)
 	if code == 201 {
 		t.Fatal("a file with a refused package installed")
@@ -231,8 +225,9 @@ func TestAMultiPackageFileIsAppliedAsOneStep(t *testing.T) {
 	}
 }
 
-// postCharterFile posts a whole charter FILE — several `---` documents — as one request, which
-// is what a client does and what installAt's single-document helper cannot express.
+// postCharterFile posts several charters — `---` documents, a directory's worth — as one
+// request, which is what a client does and what installAt's single-document helper cannot
+// express.
 func postCharterFile(t *testing.T, base, file string) (int, string) {
 	t.Helper()
 	resp, err := httpPost(base+"/charter", "application/tony", strings.NewReader(file))

@@ -14,7 +14,7 @@ import (
 const ownedPackage = `
 at: notes
 reads: [demo]
----
+strata:
 - name: src
   level: 0
   match:
@@ -23,7 +23,7 @@ reads: [demo]
   level: 10
   match:
     path: "notes.row"
----
+rules:
 - name: copy
   stratum: src
   condition:

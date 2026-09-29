@@ -16,6 +16,7 @@
 # The strata are what a derive needs -- a level for the subject and a strictly higher one for
 # what it writes -- and sit far up the ordering so a charter of your own has the room below.
 
+schedules:
 - name: minutely
   every: 1m
 - name: hourly
@@ -25,6 +26,7 @@
 - name: weekly
   every: 168h
 
+strata:
 - name: ticks
   level: 100000
   match:
@@ -41,8 +43,7 @@
   - "verse.schedule.weekday"
   - "verse.schedule.timezone"
 
----
-
+rules:
 # The clock: `time` to the minute, from the minutely tick. Two commits a minute, the tick and
 # this derive, and nothing else in the verse reads either place unless a charter asks to.
 - name: clock

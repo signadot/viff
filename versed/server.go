@@ -4238,17 +4238,13 @@ func (s *Server) installAsSystem(what string, data []byte) {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 		return
 	}
-	defs := charterDocs(docs)
-	if len(defs) == 0 {
-		return
-	}
 	release, err := s.lockCharter(s.ctxOrBackground())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 		return
 	}
 	defer release()
-	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemCharter), "", "", defs); err != nil {
+	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemCharter), "", "", docs); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
 	}
 }

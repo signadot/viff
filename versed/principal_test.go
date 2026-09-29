@@ -230,7 +230,7 @@ func TestAnInstallThatNamesNobodyIsRefusedByTheInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, code, err := srv.installCharterAs(entity.As(srv.Store, ""), "", "", charterDocs(docs))
+	_, code, err := srv.installCharterAs(entity.As(srv.Store, ""), "", "", docs)
 	if err == nil || code != http.StatusBadRequest {
 		t.Fatalf("an install by nobody: %d %v, want 400", code, err)
 	}

@@ -7,13 +7,10 @@ import (
 	"testing"
 )
 
-// `verse c -a` IS ATOMIC ACROSS THE WHOLE FILE, end to end.
-//
-// It used to POST each document of the file on its own, so a file whose levels installed and whose
-// rule was refused left the levels standing — and told the operator the command failed. That is a
-// package nobody wrote down, and the one state `verse c -r` was needed to get out of. Then it
-// posted one PACKAGE per request, which left the same hole for a file spanning two addresses
-// (versed's TestAMultiPackageFileIsAppliedAsOneStep is that half).
+// `verse c -a` IS ATOMIC ACROSS THE WHOLE FILE, end to end: a file whose levels install and
+// whose rule is refused leaves nothing standing, and says so. Levels left behind would be a
+// package nobody wrote down (versed's TestAMultiPackageFileIsAppliedAsOneStep is the same
+// promise across several charters in one request).
 //
 // The file below is the shape the defect was found in: a declaration, a level, and a rule that
 // writes outside the address they are all installed at.
@@ -23,11 +20,11 @@ func TestCharterAddInstallsAFileOrNoneOfIt(t *testing.T) {
 	if err := os.WriteFile(f, []byte(`
 at: probe
 reads: [git]
----
+strata:
 - name: lvl
   level: 0
   match: {path: "git"}
----
+rules:
 - name: good
   condition:
     subject: {path: "elsewhere.thing.x"}
@@ -56,11 +53,11 @@ reads: [git]
 	if err := os.WriteFile(f, []byte(`
 at: probe
 reads: [git]
----
+strata:
 - name: lvl
   level: 0
   match: {path: "git"}
----
+rules:
 - name: good
   condition:
     when: {path: "git.head.*"}
@@ -82,42 +79,46 @@ reads: [git]
 	}
 }
 
-// A COMMENT IS PART OF THE RULE, and a file's worth of definitions now travels in ONE request
-// rather than one at a time — so the author's reasons have to survive the new trip. They are sent
-// `---` separated rather than as an array for exactly this: a definition stays a document, which is
-// what the file wrote, where an element of a list is re-rendered one indent in and a comment beside
-// a flow map is lost on the way back through the parser.
+// A COMMENT IS PART OF THE RULE, and it survives the trip a charter file makes: parsed here,
+// sent in one request, split there. The first rule's head comment is the one at risk — the
+// parser hangs the lines above a block list's first entry on the list — and a comment beside a
+// flow map is the other.
 func TestCharterAddKeepsCommentsInOneRequest(t *testing.T) {
 	serve(t)
 	f := filepath.Join(t.TempDir(), "charter.tony")
 	if err := os.WriteFile(f, []byte(`
+rules:
 # why this rule is here
-name: noted
-condition:
-  subject: {path: "demo.pr.*"}
-action:
-  patch:
-    saw: true # the flag it sets
----
-name: other
-condition:
-  subject: {path: "demo.issue.*"}
-action:
-  patch:
-    saw: true
+- name: noted
+  condition:
+    subject: {path: "demo.pr.*"}
+  action:
+    patch:
+      saw: true # the flag it sets
+# and why this one
+- name: other
+  condition:
+    subject: {path: "demo.issue.*"}
+  action:
+    patch: {saw: true} # beside a flow map
 `), 0o600); err != nil {
 		t.Fatalf("write charter: %v", err)
 	}
 	if out, err := runCLI(t, "charter", "-a", "-f", f); err != nil {
 		t.Fatalf("install: %v (%s)", err, out)
 	}
-	out, err := runCLI(t, "charter", "rules", "noted")
-	if err != nil {
-		t.Fatalf("charter path: %v", err)
-	}
-	for _, want := range []string{"# why this rule is here", "# the flag it sets"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("the installed rule came back without %q:\n%s", want, out)
+	for rule, wants := range map[string][]string{
+		"noted": {"# why this rule is here", "# the flag it sets"},
+		"other": {"# and why this one", "# beside a flow map"},
+	} {
+		out, err := runCLI(t, "charter", "rules", rule)
+		if err != nil {
+			t.Fatalf("charter path: %v", err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(out, want) {
+				t.Errorf("rule %s came back without %q:\n%s", rule, want, out)
+			}
 		}
 	}
 }

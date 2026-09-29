@@ -167,7 +167,7 @@ func TestAScheduleIsNotAScopes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, code, err := srv.installCharterAs(srv.Store, "me", "", charterDocs(docs)); err == nil || code != http.StatusBadRequest {
+	if _, code, err := srv.installCharterAs(srv.Store, "me", "", docs); err == nil || code != http.StatusBadRequest {
 		t.Fatalf("a scoped schedule: code %d err %v, want a refusal", code, err)
 	}
 }

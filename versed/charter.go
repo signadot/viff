@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -429,19 +430,17 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addCharter installs a charter — a rule, a level, a package's `reads:` declaration, or a whole
-// file of them — into the charter at an address. The classification is the SERVER's, so a client
-// posting a charter file does not have to know which of three things each document is, nor which
-// order the three have to be installed in.
+// addCharter installs charters: one fielded charter, several of them (a directory's worth), or
+// the shorthand — a bare definition or a list of them, installed at the query's address. The
+// classification is the SERVER's, so a client posting a charter does not have to know which kind
+// each definition is, nor which order the kinds have to be installed in.
 //
-// A REQUEST IS ONE STEP, and a request is a FILE — every package in it, or none. The client
-// posts the whole thing (cmd/verse/charter.go) and the grouping happens here, so a refusal
-// anywhere puts back what stood before it wherever it stood. Applied one document at a time, a
-// file whose first document installed and whose second was refused left the first standing — a
-// charter nobody wrote down, and (once the levels were in and the rules were not) a package an
-// operator could not remove by correcting the file. Applied one PACKAGE at a time, which is
-// what it did next, the same was true of a file that spans two addresses — while the refusal
-// printed "nothing was installed".
+// A REQUEST IS ONE STEP — every charter in it, or none. The client posts a whole file, or a whole
+// directory (cmd/verse/charter.go), and the split happens here, so a refusal anywhere puts back
+// what stood before it wherever it stood. Applied one document at a time, a request whose first
+// document installed and whose second was refused left the first standing — a charter nobody
+// wrote down, and (once the levels were in and the rules were not) a package an operator could
+// not remove by correcting the file.
 func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	release, ok := s.lockCharterHTTP(w, r)
 	if !ok {
@@ -453,13 +452,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	defs := charterDocs(docs)
-	if len(defs) == 0 {
-		http.Error(w, "there is no charter in the request: a rule, a level, an `reads:` "+
-			"declaration, or a `---` separated file of them", http.StatusBadRequest)
-		return
-	}
-	groups, code, err := s.installCharter(r, defs)
+	groups, code, err := s.installCharter(r, docs)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -467,50 +460,13 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusCreated, map[string]any{"installed": installedReport(groups)})
 }
 
-// charterDocs flattens a request's documents into the definitions they hold: one apiece, or a LIST
-// of them, which is how a charter file spells several rules under one `---`.
+// installCharter applies a whole request: every charter in it, or none of them.
 //
-// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO INSTALL: a comment wraps the definition it precedes, and
-// that comment is the author's reason for the rule — the record is meant to be the rule as they
-// left it (trigger.Trigger's Doc field). A `!key(name)` tag on a list is carried through and
-// ignored: it is an array either way, and the tag is what makes re-sending an edited file merge by
-// name rather than by position.
-func charterDocs(docs []*ir.Node) []*ir.Node {
-	var out []*ir.Node
-	for _, doc := range docs {
-		inner := codec.Unwrap(doc)
-		if inner == nil || inner.Type == ir.NullType {
-			continue // a trailing `---`, or an empty document
-		}
-		if inner.Type != ir.ArrayType {
-			out = append(out, doc)
-			continue
-		}
-		for _, v := range inner.Values {
-			if el := codec.Unwrap(v); el != nil && el.Type != ir.NullType {
-				out = append(out, v)
-			}
-		}
-	}
-	return out
-}
-
-// installCharter applies a whole charter FILE: every package in it, or none of them.
+// ONE charterTx SPANS THE REQUEST, whether it carries one charter or a directory's worth, so the
+// promise an install prints — that nothing was installed when anything was refused — is true of
+// what was sent, not of each charter in it.
 //
-// ONE FILE MAY HOLD SEVERAL PACKAGES — a `---` document carrying `at:` opens each, and
-// everything after it belongs to that package until the next one — and the file was applied one
-// package per REQUEST, which made the promise it printed false:
-//
-//	package one: installed 1 trigger(s)
-//	charter -a: 400 … subject elsewhere:y is outside two:*
-//	nothing was installed: a charter file is applied as one step …
-//
-// …with `one` installed. The guarantee was real per package and the sentence claimed it for the
-// file. So the grouping is HERE now, where the rest of the classification already lives — a
-// client posting a charter does not have to know which of three things each document is — and
-// one charterTx spans the request.
-//
-// FILE ORDER, for installing as well as for reporting. A rule's reads are checked against its
+// REQUEST ORDER, for installing as well as for reporting. A rule's reads are checked against its
 // own package's declaration, and a declared read of an address no package is installed at adds
 // no edge, so a package that reads another installs whichever comes first.
 //
@@ -519,16 +475,16 @@ func charterDocs(docs []*ir.Node) []*ir.Node {
 // installs; then the levels, because a rule naming a stratum that is not installed yet is HELD
 // rather than refused, and a file whose author wrote both should not leave half its rules
 // dormant because of how it was laid out; then the rules.
-func (s *Server) installCharter(r *http.Request, defs []*ir.Node) ([]charterGroup, int, error) {
+func (s *Server) installCharter(r *http.Request, docs []*ir.Node) ([]charterGroup, int, error) {
 	q := r.URL.Query()
-	return s.installCharterAs(s.scopedStore(r), q.Get("scope"), q.Get("at"), defs)
+	return s.installCharterAs(s.scopedStore(r), q.Get("scope"), q.Get("at"), docs)
 }
 
 // installCharterAs is the install with the request already read off: the store the installer
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
-func (s *Server) installCharterAs(store entity.Store, scope, at string, defs []*ir.Node) ([]charterGroup, int, error) {
-	groups, err := charterGroups(defs, at)
+func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
+	groups, err := charterFiles(docs, at)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
 	}
@@ -688,81 +644,207 @@ func (g charterGroup) empty() bool {
 	return len(g.reads) == 0 && len(g.strata) == 0 && len(g.schedules) == 0 && len(g.rules) == 0
 }
 
-// charterGroups splits a file into its packages. `at` is the query's, which is where a file
-// that declares no address of its own goes.
-func charterGroups(defs []*ir.Node, at string) ([]charterGroup, error) {
-	cur := charterGroup{at: at}
+// fileKeys are the keys of a fielded charter, and the only ones it may carry. The file is the
+// node `verse c` prints for one address, so what the install reads is what the listing wrote.
+var fileKeys = []string{"at", trigger.ReadsField, "rules", "schedules", "strata"}
+
+// charterFiles splits a request into the charters it installs, in request order.
+//
+// A DOCUMENT IS ONE OF TWO THINGS. A FIELDED CHARTER — an object whose keys are fileKeys — is a
+// whole charter: its `at:` says where (or the query's, when it says nothing), and it is a
+// package's declaration as well, so an `at:` with no `reads:` declares a package that reads
+// nothing outside itself. Anything else is the SHORTHAND: a rule, a level, a schedule, or a list
+// of them, installed at the query's address alongside what stands there. The shorthand declares
+// nothing; saying what a package reads is what the fielded form is for.
+//
+// ONE CHARTER PER ADDRESS PER REQUEST: two with no order between them have nothing to settle
+// which one stands.
+func charterFiles(docs []*ir.Node, at string) ([]charterGroup, error) {
 	var out []charterGroup
 	seen := map[string]bool{}
-	for _, def := range defs {
-		switch charterKind(def) {
-		case "stratum":
-			cur.strata = append(cur.strata, def)
-		case "schedule":
-			cur.schedules = append(cur.schedules, def)
-		case "reads":
-			declared, err := declaredAt(def)
+	claim := func(addr string) error {
+		if seen[addr] {
+			where := "baseline"
+			if addr != "" {
+				where = strconv.Quote(addr)
+			}
+			return fmt.Errorf("the request installs two charters at %s: one charter per address, "+
+				"since two have no order that would settle which one stands", where)
+		}
+		seen[addr] = true
+		return nil
+	}
+	bare := -1 // the shorthand's group, once one is open
+	some := false
+	for _, doc := range docs {
+		inner := codec.Unwrap(doc)
+		if inner == nil || inner.Type == ir.NullType {
+			continue // an empty document
+		}
+		some = true
+		if charterKind(doc) == "charter" {
+			g, err := fieldedCharter(doc, at)
 			if err != nil {
 				return nil, err
 			}
-			switch {
-			case declared == "" && at == "":
-				return nil, errors.New("a package declaration says what a package READS, so it " +
-					"needs to say which one: give it `at: <address>`, or install the file at a " +
-					"path (`verse c -a <address> -f …`)")
-			case declared == "":
-				declared = at
-			case at != "" && declared != at:
-				return nil, fmt.Errorf("the file installs a package at %q and the path says %q: "+
-					"the declaration is the one that travels with the charter, so drop the path",
-					declared, at)
+			if err := claim(g.at); err != nil {
+				return nil, err
 			}
-			if seen[declared] {
-				return nil, fmt.Errorf("the file declares %q twice: `reads:` is what the PACKAGE "+
-					"reads, and two declarations have no order that would settle which wins", declared)
+			out = append(out, g)
+			continue
+		}
+		defs := []*ir.Node{doc}
+		if inner.Type == ir.ArrayType {
+			defs = defs[:0]
+			for _, v := range inner.Values {
+				if el := codec.Unwrap(v); el != nil && el.Type != ir.NullType {
+					defs = append(defs, v)
+				}
 			}
-			seen[declared] = true
-			// A declaration before any definitions opens the FIRST group rather than a second
-			// one, so a file that starts with its declaration does not install an empty charter.
-			if !cur.empty() {
-				out = append(out, cur)
+		}
+		if bare < 0 {
+			if err := claim(at); err != nil {
+				return nil, err
 			}
-			cur = charterGroup{at: declared, reads: []*ir.Node{def}}
-		default:
-			cur.rules = append(cur.rules, def)
+			out = append(out, charterGroup{at: at})
+			bare = len(out) - 1
+		}
+		g := &out[bare]
+		for _, def := range defs {
+			switch charterKind(def) {
+			case "stratum":
+				g.strata = append(g.strata, def)
+			case "schedule":
+				g.schedules = append(g.schedules, def)
+			case "charter":
+				return nil, errors.New("a charter inside a list: a list installs rules, levels " +
+					"and schedules at the path, and a charter — `at:`, `reads:`, `rules:` … — " +
+					"is a document of its own (one file, or one file per charter in a directory)")
+			default:
+				g.rules = append(g.rules, def)
+			}
 		}
 	}
-	if !cur.empty() {
-		out = append(out, cur)
+	if !some {
+		return nil, errors.New("there is no charter in the request: a charter (`at:`, `reads:`, " +
+			"`strata:`, `schedules:`, `rules:`), or a rule, a level, or a list of them")
 	}
-	// A `reads:` with no address to belong to is caught above; one with no PACKAGE is caught
-	// here, since baseline may write anywhere and has no graph to be an edge in.
-	for _, g := range out {
-		if len(g.reads) > 0 && g.at == "" {
-			return nil, errors.New("reads: a charter with no address has nothing to read INTO " +
-				"— `reads:` belongs to a package, installed at a path")
-		}
+	// NOT BOTH IN ONE REQUEST. A charter beside bare definitions is how a file used to open a
+	// package — `at:` and `reads:`, then its rules in documents of their own — and read now it
+	// would put those rules at the path rather than in the package: unconfined, at baseline,
+	// when the path is empty. Which of the two its author meant is not the server's to guess.
+	if bare >= 0 && len(out) > 1 {
+		return nil, errors.New("a charter beside bare rules or levels: a charter holds its own, " +
+			"under `rules:`, `strata:` and `schedules:` — move them there, or install the bare " +
+			"ones on their own at the path they belong to")
 	}
 	return out, nil
 }
 
-// declaredAt reads a package declaration's `at:` — the address the file says this package goes.
-func declaredAt(def *ir.Node) (string, error) {
-	n := codec.Unwrap(def)
-	if n == nil || n.Type != ir.ObjectType {
-		return "", nil
-	}
+// fieldedCharter reads one fielded charter: where it goes, and what it installs there.
+func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
+	n := codec.Unwrap(doc)
+	lists := map[string][]*ir.Node{}
+	declared, hasReads := "", false
 	for i, key := range n.Fields {
-		if key == nil || key.Type != ir.StringType || key.String != "at" {
+		if key == nil || key.Type != ir.StringType {
 			continue
 		}
 		v := codec.Unwrap(n.Values[i])
-		if v == nil || v.Type != ir.StringType || v.String == "" {
-			return "", errors.New("a package declaration's `at:` is an address (`drift`, `demo.pr`)")
+		switch key.String {
+		case "at":
+			if v == nil || v.Type != ir.StringType || v.String == "" {
+				return charterGroup{}, errors.New("a charter's `at:` is an address (`drift`, `demo.pr`)")
+			}
+			declared = v.String
+		case trigger.ReadsField:
+			hasReads = true
+		case "rules", "schedules", "strata":
+			if v == nil || v.Type == ir.NullType {
+				continue
+			}
+			if v.Type != ir.ArrayType {
+				return charterGroup{}, fmt.Errorf("a charter's `%s:` is a list", key.String)
+			}
+			for _, el := range v.Values {
+				if e := codec.Unwrap(el); e != nil && e.Type != ir.NullType {
+					lists[key.String] = append(lists[key.String], el)
+				}
+			}
+			if defs := lists[key.String]; len(defs) > 0 {
+				defs[0] = headOnFirst(n.Values[i], defs[0])
+			}
+		default:
+			return charterGroup{}, fmt.Errorf("a charter's keys are %s; %q is none of them",
+				strings.Join(fileKeys, ", "), key.String)
 		}
-		return v.String, nil
 	}
-	return "", nil
+	switch {
+	case declared == "":
+		declared = at
+	case at != "" && declared != at:
+		return charterGroup{}, fmt.Errorf("the file installs a charter at %q and the path says %q: "+
+			"the `at:` is the one that travels with the charter, so drop the path", declared, at)
+	}
+	g := charterGroup{at: declared}
+	if declared == "" {
+		// A `reads:` belongs to a package; baseline may write anywhere and has no graph to be
+		// an edge in.
+		if hasReads {
+			return charterGroup{}, errors.New("reads: a charter with no address has nothing to " +
+				"read INTO — `reads:` belongs to a package: give it `at: <address>`, or install " +
+				"the file at a path (`verse c -a <address> -f …`)")
+		}
+	} else {
+		// THE DOCUMENT IS THE DECLARATION: trigger.ReadsFromNode reads its `reads:`, and one
+		// that has none declares a package that reads nothing outside itself.
+		g.reads = []*ir.Node{doc}
+	}
+	for _, kw := range [][2]string{{"strata", "stratum"}, {"schedules", "schedule"}, {"rules", "trigger"}} {
+		kind, want := kw[0], kw[1]
+		for _, def := range lists[kind] {
+			if got := charterKind(def); got != want {
+				return charterGroup{}, fmt.Errorf("a charter's `%s:` holds %s, and this one is %s",
+					kind, kindNoun(want), kindNoun(got))
+			}
+		}
+	}
+	g.strata, g.schedules, g.rules = lists["strata"], lists["schedules"], lists["rules"]
+	return g, nil
+}
+
+// headOnFirst gives a list's first entry the comment written above it.
+//
+// A BLOCK LIST BEGINS AT ITS FIRST ELEMENT, so the parser hangs the lines above `- name: first`
+// on the list rather than on the entry — the same lines as a comment above `rules:` itself. In a
+// charter those lines are the first rule's reason, and the record is meant to be the rule as its
+// author left it (trigger.Trigger's Doc), so they go onto the entry, ahead of any it has.
+func headOnFirst(list, first *ir.Node) *ir.Node {
+	var lines []string
+	for n := list; n != nil && n.Type == ir.CommentType && len(n.Values) > 0; n = n.Values[0] {
+		lines = append(lines, n.Lines...)
+	}
+	if len(lines) == 0 {
+		return first
+	}
+	if first.Type == ir.CommentType {
+		first.Lines = append(lines, first.Lines...)
+		return first
+	}
+	return &ir.Node{Type: ir.CommentType, Lines: lines, Values: []*ir.Node{first}}
+}
+
+// kindNoun is a definition's kind as the refusal names it.
+func kindNoun(kind string) string {
+	switch kind {
+	case "stratum":
+		return "levels"
+	case "schedule":
+		return "schedules"
+	case "charter":
+		return "a charter"
+	}
+	return "rules"
 }
 
 // charterEngineAt is the engine a group installs into: a scope's when one is asked for, else
@@ -1192,8 +1274,11 @@ func charterKind(node *ir.Node) string {
 		return "stratum"
 	case has["every"]:
 		return "schedule"
-	case has["reads"] || has["at"]:
-		return "reads"
+	}
+	for _, k := range fileKeys {
+		if has[k] {
+			return "charter"
+		}
 	}
 	return "trigger"
 }

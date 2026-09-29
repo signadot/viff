@@ -234,8 +234,8 @@ type pkgDecl struct {
 	reads []Subtree
 }
 
-// parseBlock reads a block as a charter, in either dialect: one definition, a list of them, or
-// several `---`-separated documents, mixing rules and strata as a real charter file does.
+// parseBlock reads a block as a charter, in either dialect: a fielded charter, or the shorthand —
+// one definition, a list of them, or several `---`-separated documents of them.
 //
 // It reports false for anything that is not a charter — which is most blocks, and is the point:
 // a fragment, an entity payload and a goal record all fail to be a trigger with a subject. A
@@ -247,12 +247,14 @@ func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool) {
 			continue
 		}
 		var flat []*ir.Node
+		charters, bare := 0, false
 		for _, doc := range defs {
 			doc = codec.Unwrap(doc)
 			if doc == nil || doc.Type == ir.NullType {
 				continue
 			}
 			if doc.Type == ir.ArrayType {
+				bare = true
 				for _, el := range doc.Values {
 					if el = codec.Unwrap(el); el != nil {
 						flat = append(flat, el)
@@ -260,7 +262,21 @@ func parseBlock(text string) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool) {
 				}
 				continue
 			}
+			if decl, lists, ok := fielded(doc); ok {
+				charters++
+				if decl {
+					flat = append(flat, doc)
+				}
+				flat = append(flat, lists...)
+				continue
+			}
+			bare = true
 			flat = append(flat, doc)
+		}
+		// One charter, or bare definitions — as the install takes them. A block that mixes the
+		// two is refused there, so it is no charter here.
+		if charters > 1 || (charters > 0 && bare) {
+			continue
 		}
 		trigs, nodes, strata, pkg, ok := classify(flat)
 		if ok {
@@ -302,6 +318,38 @@ func classify(defs []*ir.Node) ([]Trigger, []*ir.Node, []Stratum, pkgDecl, bool)
 		return nil, nil, nil, pkgDecl{}, false
 	}
 	return trigs, nodes, strata, pkg, len(trigs) > 0
+}
+
+// fielded reports whether a document is a fielded charter — `at:`, `reads:`, `strata:`,
+// `schedules:`, `rules:` — and if so, whether it declares a package and the levels and rules it
+// holds. Its schedules are not checked here: a block is checked against its rules and levels.
+func fielded(doc *ir.Node) (decl bool, defs []*ir.Node, ok bool) {
+	if doc.Type != ir.ObjectType {
+		return false, nil, false
+	}
+	for i, key := range doc.Fields {
+		if key == nil || key.Type != ir.StringType {
+			continue
+		}
+		switch key.String {
+		case "at", "reads":
+			decl, ok = true, true
+		case "schedules":
+			ok = true
+		case "rules", "strata":
+			ok = true
+			if v := codec.Unwrap(doc.Values[i]); v != nil && v.Type == ir.ArrayType {
+				for _, el := range v.Values {
+					if el = codec.Unwrap(el); el != nil {
+						defs = append(defs, el)
+					}
+				}
+			}
+		default:
+			return false, nil, false
+		}
+	}
+	return decl, defs, ok
 }
 
 // declaredAt reads a package declaration's address, and reports whether the document is one at
