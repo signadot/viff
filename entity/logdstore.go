@@ -536,19 +536,28 @@ func addRemovedNulls(node, old *ir.Node, p Payload) {
 // null gives — so verse asked the parent whether the key stood and read absence off that. It
 // cost a second round trip and it was verse guessing at a rule the store now states.
 func (s *LogdStore) Get(ref Ref) (Entity, bool, error) {
+	e, ok, _, err := s.GetCommit(ref)
+	return e, ok, err
+}
+
+// GetCommit is Get, and also the commit the read was served at (libctl's MatchCommit): the
+// revision a view that checks the read has to have caught its perms up to (Attribution.ensure).
+// Zero where the store said nothing — a path nothing stands at is answered by an error, which
+// carries no commit — and the caller then falls back to the latest one this process has seen.
+func (s *LogdStore) GetCommit(ref Ref) (Entity, bool, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	node, err := s.sess.Match(ctx, s.refPath(ref))
+	node, commit, err := s.sess.MatchCommit(ctx, s.refPath(ref))
 	if isNotFound(err) {
-		return Entity{}, false, nil // nothing stands there — an answer, not a failure
+		return Entity{}, false, 0, nil // nothing stands there — an answer, not a failure
 	}
 	if err != nil {
-		return Entity{}, false, fmt.Errorf("read %s: %w", ref, err)
+		return Entity{}, false, 0, fmt.Errorf("read %s: %w", ref, err)
 	}
 	if node == nil {
-		return Entity{}, false, nil
+		return Entity{}, false, commit, nil
 	}
-	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, nil
+	return Entity{Ref: ref, Payload: nodeToPayload(node)}, true, commit, nil
 }
 
 // isNotFound reports whether a read error is the substrate saying "nothing stands there"
@@ -1209,19 +1218,26 @@ func (s *LogdStore) List(pred func(Ref) bool) []Entity {
 // read of their own — a charter restore deciding whether "no rules" means no rules
 // (entity.ReadFailed, trigger/charter.go).
 func (s *LogdStore) ListErr(pred func(Ref) bool) ([]Entity, error) {
+	out, _, err := s.ListErrCommit(pred)
+	return out, err
+}
+
+// ListErrCommit is ListErr, and the commit the listing was served at — zero where the store
+// said none (GetCommit).
+func (s *LogdStore) ListErrCommit(pred func(Ref) bool) ([]Entity, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	node, err := s.sess.Match(ctx, seg(s.root))
+	node, commit, err := s.sess.MatchCommit(ctx, seg(s.root))
 	// A VERSE NOBODY HAS WRITTEN TO answers not_found here, since go-tony v0.0.201 — the root is
 	// a key like any other and nothing has put it there yet. It is absence, not an outage, and
 	// reporting it as one told an operator on their first read that the store was unavailable.
 	if isNotFound(err) {
 		s.noteRead(nil)
-		return nil, nil
+		return nil, 0, nil
 	}
 	s.noteRead(err)
 	if err != nil || node == nil {
-		return nil, err
+		return nil, commit, err
 	}
 	var out []Entity
 	for _, e := range walkEntityDoc(node) {
@@ -1229,7 +1245,7 @@ func (s *LogdStore) ListErr(pred func(Ref) bool) ([]Entity, error) {
 			out = append(out, e)
 		}
 	}
-	return out, nil
+	return out, commit, nil
 }
 
 // ListAt enumerates the nodes at a stated depth under a prefix — see Reader.ListAt for why the
@@ -1247,25 +1263,32 @@ func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 // conflicting ancestor are nothing standing (isNotFound); anything else that fails is the read
 // failing, and says so.
 func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
+	node, ok, _, err := s.ReadAtCommit(at)
+	return node, ok, err
+}
+
+// ReadAtCommit is ReadAt, and the commit the read was served at — zero where the store said
+// none (GetCommit).
+func (s *LogdStore) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
 	path := s.rootForAt(at)
 	for _, sg := range at {
 		path += "." + seg(sg)
 	}
-	node, err := s.sess.Match(ctx, path)
+	node, commit, err := s.sess.MatchCommit(ctx, path)
 	if isNotFound(err) {
 		s.noteRead(nil)
-		return nil, false, nil
+		return nil, false, 0, nil
 	}
 	s.noteRead(err)
 	if err != nil {
-		return nil, false, fmt.Errorf("read %s: %w", JoinSegs(at), err)
+		return nil, false, 0, fmt.Errorf("read %s: %w", JoinSegs(at), err)
 	}
 	if node == nil {
-		return nil, false, nil
+		return nil, false, commit, nil
 	}
-	return nodeToPayload(node), true, nil
+	return nodeToPayload(node), true, commit, nil
 }
 
 // PathsAt is every address beneath at, deepest last within each branch — the listing
@@ -1293,8 +1316,16 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 // element a name extends the ACCESS rather than the address (entity.Path). A mounted place is
 // the one exception to the descent, walked a level at a time (walkPathsAt).
 func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
+	out, _, err := s.PathsAtCommit(at, depth)
+	return out, err
+}
+
+// PathsAtCommit is PathsAt, and the commit the listing was served at: the one descent's, since
+// every page of it reads the commit its first did. Zero where the store said none (GetCommit) —
+// and for a mounted place, walked in a read per level, each at a commit of its own.
+func (s *LogdStore) PathsAtCommit(at []string, depth int) ([]Path, int64, error) {
 	if depth == 0 {
-		return nil, nil // the node alone, and a listing is what stands BENEATH it
+		return nil, 0, nil // the node alone, and a listing is what stands BENEATH it
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -1307,7 +1338,7 @@ func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
 	if IsMountOwned(at...) {
 		kind, err := s.iterTypeAt(ctx, path)
 		if err != nil || kind == "" {
-			return nil, err
+			return nil, 0, err
 		}
 		// The level walk prunes by how long an address is, so the bound is turned into the
 		// ceiling it counts against here — the one place left that adds the two.
@@ -1317,9 +1348,9 @@ func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
 		}
 		var out []Path
 		if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		return out, nil
+		return out, 0, nil
 	}
 	// ONE DESCENT, `<at>..`, answers every node beneath in document order — a node before what
 	// is under it, and at each level the store's order — which is the walk a listing prints,
@@ -1332,7 +1363,7 @@ func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
 		q.Depth = &d
 	}
 	var out []Path
-	_, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error {
+	commit, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error {
 		p, err := s.pathOfMember(m.Path)
 		if err != nil {
 			return err
@@ -1345,13 +1376,13 @@ func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
 	})
 	if isNotFound(err) {
 		s.noteRead(nil)
-		return nil, nil // nothing stands there, which is an answer (see iterTypeAt)
+		return nil, 0, nil // nothing stands there, which is an answer (see iterTypeAt)
 	}
 	s.noteRead(err)
 	if err != nil {
-		return nil, fmt.Errorf("list %s: %w", JoinSegs(at), err)
+		return nil, 0, fmt.Errorf("list %s: %w", JoinSegs(at), err)
 	}
-	return out, nil
+	return out, commit, nil
 }
 
 // pathOfMember is the address a member of a descent stands at, from the store's own spelling of
@@ -1451,14 +1482,32 @@ func (s *LogdStore) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, 
 		}
 		return q
 	}
+	// read gathers a read's members before handing them on, so that the view is told the commit
+	// the read was served at (Narrow.Served) before it is asked about any of them — and so that
+	// what it asks, which may read the store again (Keeps), is not asked from inside a set read
+	// that is still arriving.
 	read := func(q libctl.SetQuery, fn func(string) error) error {
-		_, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error { return fn(m.Path) })
+		var members []string
+		commit, err := s.sess.MatchEachQuery(ctx, q, func(m libctl.SetMember) error {
+			members = append(members, m.Path)
+			return nil
+		})
 		if isNotFound(err) {
 			err = nil // nothing stands there, which is an answer
 		}
 		s.noteRead(err)
 		if err != nil {
 			return fmt.Errorf("list %s: %w", at, err)
+		}
+		if len(members) > 0 && as != nil && as.Served != nil {
+			if err := as.Served(commit); err != nil {
+				return err
+			}
+		}
+		for _, m := range members {
+			if err := fn(m); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -1625,8 +1674,15 @@ func (s *LogdStore) memberAddress(segs []string, access, kind, id string) (below
 
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
 func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
+	out, _, err := s.ListAtErrCommit(at, depth, pred)
+	return out, err
+}
+
+// ListAtErrCommit is ListAtErr, and the commit the listing was served at — zero where the store
+// said none (GetCommit).
+func (s *LogdStore) ListAtErrCommit(at []string, depth int, pred func(Ref) bool) ([]Entity, int64, error) {
 	if depth < len(at) {
-		return nil, nil
+		return nil, 0, nil
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
@@ -1634,7 +1690,7 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 	for _, sg := range at {
 		path += "." + seg(sg)
 	}
-	node, err := s.sess.Match(ctx, path)
+	node, commit, err := s.sess.MatchCommit(ctx, path)
 	// NOT_FOUND IS AN ANSWER, not an outage: it says nothing stands at the path, and a read that
 	// FAILS says the store could not be read (libctl's own distinction). They are only ever
 	// confused upward: `unreadable` turns a recorded read error into a 503, so a read at a path
@@ -1646,11 +1702,11 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 	// nothing" is the read a person types an address into, and it reads the node (ReadAt).
 	if isNotFound(err) {
 		s.noteRead(nil)
-		return nil, nil
+		return nil, 0, nil
 	}
 	s.noteRead(err)
 	if err != nil || node == nil {
-		return nil, err
+		return nil, commit, err
 	}
 	// Match answers the content AT the path it was given — not a document wrapped in it — so the
 	// walk starts here and the remaining depth is what is left to descend. (List asks at the
@@ -1663,7 +1719,7 @@ func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]En
 				out = append(out, Entity{Ref: ref, Payload: nodeToPayload(v)})
 			}
 		})
-	return out, nil
+	return out, commit, nil
 }
 
 // WatchSubtree observes one (system,kind) slice — the kinded subtree
@@ -1739,12 +1795,30 @@ func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...strin
 // `git.head.verse` watches `git.head` — a watch AT the node would see that node's own changes
 // and never its appearance — and reports the one node its pattern names.
 func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
+	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit)
+	return ch, unsub, err
+}
+
+// WatchSubtreeProgress is WatchSubtree for a consumer that keeps a copy of the slice and has to
+// know how far it is current (Attribution.ensure). progress asks the watch standing now to say,
+// in its stream, when it is current through the head, and answers the head: the stream then
+// carries a commit marked as progress (Commit.progress) at that head or later, after every
+// commit at or below it. A watch that ends before it answers carries none; the stream goes on
+// with the re-established watch's State, marked as a resync. The error is the watch not being
+// asked — being re-established, or a store that cannot say (`unsupported`, for a watch docd
+// composes across mounts).
+func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
+	prefix = trimEmpty(prefix)
+	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false)
+}
+
+func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
 	// A MOUNTED PLACE IS NOT IN THE LOG, so a watch on the log's copy of its path would open on
 	// nothing and wait for ever; Since refuses it for the same reason, and this says so the same
 	// way rather than routing it somewhere a history-bearing watch must never span (MountRoot).
 	if IsMountOwned(prefix...) {
-		return nil, nil, fmt.Errorf("watching %s: a mounted place is served by a controller rather "+
+		return nil, nil, nil, fmt.Errorf("watching %s: a mounted place is served by a controller rather "+
 			"than the log, so it has no commits to watch", JoinSegs(prefix))
 	}
 	// The path as segments as well as a kpath: every event is rooted at the watched path
@@ -1759,7 +1833,25 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent, NoInit: noInit})
 	if err != nil {
 		cancel()
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	// standing is the watch progress is asked of: this one, then each that re-establishes it,
+	// and none while it is being re-established.
+	var standingMu sync.Mutex
+	standing := w
+	stand := func(nw *libctl.Watch) {
+		standingMu.Lock()
+		standing = nw
+		standingMu.Unlock()
+	}
+	progress := func(ctx context.Context) (int64, error) {
+		standingMu.Lock()
+		cur := standing
+		standingMu.Unlock()
+		if cur == nil {
+			return 0, fmt.Errorf("watching %s: the watch is being re-established", path)
+		}
+		return cur.Progress(ctx)
 	}
 	out := make(chan Commit, 256)
 	go func() {
@@ -1786,6 +1878,14 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		// Nothing downstream could then ask a question about a change at the commit it
 		// happened at, which is the whole affordance AsOf exists to offer.
 		var rev int64
+		// sent is the commit of the last commit sent, which a consumer that applied it holds the
+		// place as of — and as of every commit after it that changed nothing at the pattern — and
+		// resync says the event just applied was a State: the diff it makes is the net of every
+		// commit since, not the changes of the one it is stamped with. Both ride each commit as
+		// since and resync, for a consumer that keeps a copy of its own beside other reads of the
+		// same place (Attribution.follow).
+		var sent int64
+		var resync bool
 		send := func(c Commit) bool {
 			select {
 			case out <- c:
@@ -1795,6 +1895,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 			}
 		}
 		apply := func(ev *logdapi.WatchEvent) {
+			resync = ev.Patch == nil
 			if ev.Commit > rev {
 				rev = ev.Commit
 			}
@@ -1836,7 +1937,9 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 			if len(changes) == 0 {
 				return true
 			}
-			return send(Commit{Rev: rev, Changes: changes})
+			c := Commit{Rev: rev, Changes: changes, since: sent, resync: resync}
+			sent = rev
+			return send(c)
 		}
 		backoff := 100 * time.Millisecond
 		// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel
@@ -1885,6 +1988,20 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 					if ev.ReplayComplete {
 						continue // live watch: no replay phase to complete
 					}
+					if ev.Progress {
+						// Current through its commit: nothing is applied, and the consumer that
+						// asked is told, in order with every commit before it.
+						if ev.Commit > rev {
+							rev = ev.Commit
+						}
+						c := Commit{Rev: ev.Commit, since: sent, progress: true}
+						sent = ev.Commit
+						if !send(c) {
+							w.Close()
+							return
+						}
+						continue
+					}
 					// One event in, one diff out. There is no burst-coalescing here: see
 					// emitDiff on why a merged diff is exact for a level and lossy for an
 					// edge.
@@ -1899,6 +2016,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 			// re-composes against the CURRENT mount set — with backoff. The fresh
 			// State event replaces doc with current truth, and emitDiff closes any gap
 			// against the last snapshot.
+			stand(nil)
 			w.Close()
 			if ctx.Err() != nil {
 				return
@@ -1916,6 +2034,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 				if err == nil {
 					w = nw
+					stand(nw)
 					backoff = 100 * time.Millisecond
 					break
 				}
@@ -1928,7 +2047,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 			}
 		}
 	}()
-	return out, cancel, nil
+	return out, cancel, progress, nil
 }
 
 // nestAt puts a watch event's node under the segments of the path it is rooted at, which is

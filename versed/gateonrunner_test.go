@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/taskd"
 )
@@ -93,6 +94,9 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	if qid == "" {
 		t.Fatal("the runner never posed a gate; nothing to answer")
 	}
+	// And for verse to hold it, as the docket an operator answers from does: the question is
+	// written after the runner poses it, and an answer racing that write is answering nothing.
+	waitQuestionStatus(t, srv, qid, mirror.QuestionPending)
 
 	ans := postTony(t, ts.URL+"/gate/resolve", map[string]any{
 		"id": qid, "choice": "proceed", "by": tester,

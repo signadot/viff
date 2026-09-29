@@ -102,6 +102,21 @@ type Attribution struct {
 	// the whole mirror (Track), a key that is not here is absent and no read is made for it.
 	records map[string]*permsRecord
 	loaded  bool
+	// nodesAt and rootAt are the revisions the loaded mirror has applied every change through, on
+	// the records' half and on the root's — each half has its own watch — and the lower is what
+	// a read served at a revision waits on (ensure, watermark.go). pending is the barrier in
+	// flight, which every read waiting on the view shares.
+	nodesAt, rootAt int64
+	pending         *barrier
+	// progress asks each of the view's watches to say when it is current (Track); moved is
+	// closed when the watermark moves, for the reads waiting on it; lost says the stream could
+	// not be applied and the mirror is to be read whole instead (follow).
+	progress []func(context.Context) (int64, error)
+	moved    chan struct{}
+	lost     bool
+	// readAt is, for a mirror that is NOT loaded, the commit each record in records was read at
+	// or after: a check for what was served at a later revision reads it again (recordAt).
+	readAt map[string]int64
 	// decided is every node this process has settled the owner record of: written it, found
 	// it standing, or found nothing to write because the node above owns it already.
 	decided map[Ref]struct{}
@@ -356,6 +371,10 @@ type attributed struct {
 	Store
 	attr      *Attribution
 	principal string
+	// rev is the revision what this view is checking was served at, zero for a check that
+	// serves nothing (a write's): the view it is checked against has applied the mirror through
+	// it (servedAt).
+	rev int64
 }
 
 // Write stamps the principal where the write names none, checks it against what its place
@@ -666,10 +685,18 @@ func MayCreate(s Store, principal string, ref Ref) (bool, error) {
 // is answered with what stands beneath, though the node itself is nobody's to write; a place
 // somebody took and holds nothing out on is refused whole. The error is ErrForbidden, counted
 // once, or the store's own.
+//
+// It is asked ahead of what it admits, which has no revision yet, so it is asked of the view
+// brought up to the latest commit this process has seen; what is then served is checked again at
+// its own.
 func CheckInto(s Store, principal string, ref Ref) error {
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil
+	}
+	a, err := a.servedAt(a.Store.Head())
+	if err != nil {
+		return fmt.Errorf("checking %s at %s: %w", principal, ref, err)
 	}
 	acc, err := a.accessOf(principal, ref)
 	if err != nil {
@@ -1058,9 +1085,17 @@ func dropPath(n *ir.Node, path []string) bool {
 // by the record. Writing the record first would close that window and open a worse one — a
 // record standing for a node whose write then failed makes the next creator there not its
 // owner — so the window stays, and is one commit wide.
+//
+// A COMMIT IS JUDGED AT ITS OWN REVISION: the view is brought up to it first (servedAt). A view
+// that cannot be leaves the commit with nothing in it, as a mirror that did not answer leaves
+// out each event it could not check.
 func (a *attributed) narrow(c Commit) Commit {
-	if IsSystem(a.principal) {
-		return c
+	if IsSystem(a.principal) || c.progress {
+		return c // a progress answer carries no change
+	}
+	a, err := a.servedAt(c.Rev)
+	if err != nil {
+		return c.Only(func(Ref) bool { return false })
 	}
 	orig := c.Changes
 	c = c.Only(func(r Ref) bool { ok, _ := a.keep(r); return ok })
@@ -1110,14 +1145,37 @@ func (a *attributed) narrowing(in <-chan Commit) <-chan Commit {
 	return out
 }
 
+// Get READS FIRST AND CHECKS AFTER, at the revision the read was served at: a check made first
+// is made against the view as it stood before the read, and a record committed in between —
+// with the node, or a revoke — is one the read serves and the check never saw. A read that
+// failed serves nothing, so it is checked against the view as it stands, and a refusal still
+// comes before the store's failure.
 func (a *attributed) Get(ref Ref) (Entity, bool, error) {
+	e, ok, _, err := a.GetCommit(ref)
+	return e, ok, err
+}
+
+// GetCommit is Get, and the commit the read was served at.
+func (a *attributed) GetCommit(ref Ref) (Entity, bool, int64, error) {
+	e, ok, rev, err := servedGet(a.Store, ref)
 	if IsSystem(a.principal) {
-		return a.Store.Get(ref)
+		return e, ok, rev, err
 	}
-	if _, err := a.check(a.principal, Read, ref, "reading it"); err != nil {
-		return Entity{}, false, err
+	if err != nil {
+		if _, refused := a.check(a.principal, Read, ref, "reading it"); refused != nil {
+			return Entity{}, false, 0, refused
+		}
+		return Entity{}, false, 0, err
 	}
-	return a.withholdOne(a.Store.Get(ref))
+	v, err := a.servedAt(rev)
+	if err != nil {
+		return Entity{}, false, 0, err
+	}
+	if _, err := v.check(v.principal, Read, ref, "reading it"); err != nil {
+		return Entity{}, false, 0, err
+	}
+	e, ok, err = v.withholdOne(e, ok, nil)
+	return e, ok, rev, err
 }
 
 // withholdOne is withhold for a single read that has already been checked at its own address.
@@ -1141,11 +1199,22 @@ func (a *attributed) withholdOne(e Entity, ok bool, err error) (Entity, bool, er
 // Nothing of it theirs is a node holding nothing, `{}`: the node stands, and whether the reader
 // may ask about it at all is the route's check (CheckInto), made before the read.
 func (a *attributed) ReadAt(at []string) (*ir.Node, bool, error) {
-	node, ok, err := a.Store.ReadAt(at)
+	node, ok, _, err := a.ReadAtCommit(at)
+	return node, ok, err
+}
+
+// ReadAtCommit is ReadAt, and the commit the read was served at.
+func (a *attributed) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
+	node, ok, rev, err := servedReadAt(a.Store, at)
 	if err != nil || !ok || IsSystem(a.principal) {
-		return node, ok, err
+		return node, ok, rev, err
 	}
-	return a.readable(node, at)
+	v, err := a.servedAt(rev)
+	if err != nil {
+		return nil, false, 0, err
+	}
+	node, ok, err = v.readable(node, at)
+	return node, ok, rev, err
 }
 
 // PathsAt is the store's listing with every address the reader may not read left out — the
@@ -1161,11 +1230,22 @@ func (a *attributed) ReadAt(at []string) (*ir.Node, bool, error) {
 // holds it (Write). So the addresses beneath an array stand or fall with it, which is one
 // accessOf for the array rather than one per element.
 func (a *attributed) PathsAt(at []string, depth int) ([]Path, error) {
-	out, err := a.Store.PathsAt(at, depth)
+	out, _, err := a.PathsAtCommit(at, depth)
+	return out, err
+}
+
+// PathsAtCommit is PathsAt, and the commit the listing was served at.
+func (a *attributed) PathsAtCommit(at []string, depth int) ([]Path, int64, error) {
+	out, rev, err := servedPaths(a.Store, at, depth)
 	if err != nil || IsSystem(a.principal) {
-		return out, err
+		return out, rev, err
 	}
-	return a.keepPaths(out)
+	v, err := a.servedAt(rev)
+	if err != nil {
+		return nil, 0, err
+	}
+	out, err = v.keepPaths(out)
+	return out, rev, err
 }
 
 // PathsMatching is narrowed as PathsAt is — what the store listed, less what the reader may not
@@ -1175,30 +1255,48 @@ func (a *attributed) PathsAt(at []string, depth int) ([]Path, error) {
 // a right guess and nothing for a wrong one is a read of `secret` by whoever may not read it.
 // And a path reached something only if it reached something they may see, or a listing that
 // comes back empty rather than not-found says a withheld node stands.
+//
+// Each read the store makes for it is checked at the commit it was served at: the store says so
+// before it asks about anything that read answered (Narrow.Served), and the view the rest is
+// asked of is brought up to it then.
 func (a *attributed) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, _ *Narrow) ([]Path, bool, error) {
 	if IsSystem(a.principal) {
 		return a.Store.PathsMatching(at, depth, pattern, nil)
 	}
-	places, err := a.places()
-	if err != nil {
-		a.attr.noteUnreadable()
-		return nil, false, err
+	v := a
+	var places *placeTrie
+	served := func(rev int64) error {
+		if places != nil && rev <= v.rev {
+			return nil
+		}
+		w, err := a.servedAt(rev)
+		if err != nil {
+			return err
+		}
+		p, err := w.places()
+		if err != nil {
+			a.attr.noteUnreadable()
+			return err
+		}
+		v, places = w, p
+		return nil
 	}
 	sees := func(p Path) (bool, error) {
-		acc, err := a.accessOf(a.principal, p.Ref)
+		acc, err := v.accessOf(v.principal, p.Ref)
 		if err != nil {
 			a.attr.noteUnreadable()
 		}
 		return acc.level.Admits(Read), err
 	}
 	out, reached, err := a.Store.PathsMatching(at, depth, pattern, &Narrow{
-		Sees:  sees,
-		Keeps: func(p Path) (bool, error) { return a.matchesAsRead(p, pattern, places) },
+		Sees:   sees,
+		Keeps:  func(p Path) (bool, error) { return v.matchesAsRead(p, pattern, places) },
+		Served: served,
 	})
 	if err != nil {
 		return nil, false, err
 	}
-	kept, err := a.keepPaths(out)
+	kept, err := v.keepPaths(out)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1222,9 +1320,25 @@ func (a *attributed) matchesAsRead(p Path, pattern *ir.Node, places *placeTrie) 
 	if t == nil || (len(t.children) == 0 && !t.below) {
 		return readable, nil
 	}
-	node, ok, err := a.Store.ReadAt(segs)
+	// A read of its own, served at a commit of its own, and so checked at that one.
+	node, ok, rev, err := servedReadAt(a.Store, segs)
 	if err != nil || !ok {
 		return false, err
+	}
+	if rev > a.rev {
+		v, err := a.servedAt(rev)
+		if err != nil {
+			return false, err
+		}
+		if acc, err = v.accessOf(v.principal, p.Ref); err != nil {
+			a.attr.noteUnreadable()
+			return false, err
+		}
+		if places, err = v.places(); err != nil {
+			a.attr.noteUnreadable()
+			return false, err
+		}
+		a, readable, t = v, acc.level.Admits(Read), places.at(segs)
 	}
 	node, keep, err := a.prune(clone(node), segs, readable, t)
 	if err != nil || !keep {
@@ -1625,15 +1739,18 @@ func replaces(n *ir.Node) bool {
 }
 
 func (a *attributed) List(pred func(Ref) bool) []Entity {
-	out, _ := a.keepAll(a.Store.List(pred))
+	out, _ := a.ListErr(pred)
 	return out
 }
 
 func (a *attributed) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
-	out, _ := a.keepAll(a.Store.ListAt(at, depth, pred))
+	out, _ := a.ListAtErr(at, depth, pred)
 	return out
 }
 
+// Since narrows each commit at its own revision, as a live watch does (narrow): the view is
+// brought up to a commit before the commit is judged by it. A replay is judged by the view as it
+// stands — at or past every commit in it — and not by perms as they stood at each commit.
 func (a *attributed) Since(from int64, at ...*kpath.KPath) ([]Commit, error) {
 	commits, err := a.Store.Since(from, at...)
 	if IsSystem(a.principal) {
@@ -1671,7 +1788,11 @@ func (a *attributed) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	if err != nil || IsSystem(a.principal) {
 		return snap, err
 	}
-	return narrowed{Snapshot: snap, a: a}, nil
+	v, err := a.servedAt(snap.Rev())
+	if err != nil {
+		return nil, err
+	}
+	return narrowed{Snapshot: snap, a: v}, nil
 }
 
 // narrowed is a snapshot read through a view: what the principal may not read is not in it.
@@ -2070,20 +2191,26 @@ func (a *attributed) ownerAbove(ref Ref) (string, error) {
 // recordAt reads the perms record at an address, nil when the mirror holds none, through the
 // cache unless told to look again. The error is the store not answering, and nothing is
 // remembered from one.
+//
+// A MIRROR THAT IS NOT LOADED KEEPS WHAT IT READ, and the commit it read it at: a check for what
+// was served at a later revision than that reads the record again, since what it kept may be
+// from before the record moved. A loaded one has been brought up to the revision already
+// (servedAt).
 func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 	if !fresh {
 		a.attr.mu.Lock()
 		rec, ok := a.attr.records[key]
 		loaded := a.attr.loaded
+		current := loaded || a.attr.readAt[key] >= a.rev
 		a.attr.mu.Unlock()
-		if ok {
+		if ok && current {
 			return rec, nil
 		}
 		if loaded {
 			return nil, nil // the whole mirror is here, and this key is not in it
 		}
 	}
-	e, ok, err := a.Store.Get(permsRecordAt(key))
+	e, ok, rev, err := mirrorGet(a.Store, permsRecordAt(key))
 	if err != nil {
 		return nil, err
 	}
@@ -2102,6 +2229,12 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 		a.attr.records = map[string]*permsRecord{}
 	}
 	a.attr.records[key] = rec
+	if !a.attr.loaded {
+		if a.attr.readAt == nil {
+			a.attr.readAt = map[string]int64{}
+		}
+		a.attr.readAt[key] = rev
+	}
 	a.attr.dropTaken()
 	a.attr.mu.Unlock()
 	return rec, nil
@@ -2175,70 +2308,50 @@ func (a *attributed) forget(ref Ref) {
 // hit their deadline, and a check whose mirror did not answer refused the write. The mirror is
 // small — one record per change of ownership — so holding it is cheaper than asking for it.
 //
-// The watch is opened after the load, and its opening replay of what stands is applied over
-// the load, which is idempotent; what this process writes is read back by invalidate the moment
-// it is written, so the watch's copy of that write changes nothing. It stops when ctx does.
+// The watches are opened BEFORE the load, which is a barrier (refresh): the load is then at or
+// past the commit each watch opened at, and what they deliver is applied in order with it
+// (follow) — their opening replay of what stood is old news, and every commit after it is
+// applied or, where it cannot be applied exactly, waited past by another barrier. What this
+// process writes is read back by invalidate the moment it is written, for the writes that follow
+// it; a read is ordered by the watermark, not by that (watermark.go). It stops when ctx does.
 func Track(ctx context.Context, s Store) error {
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil
 	}
-	// Both failures are the store not answering, and both are marked so: a mirror that could
-	// not be loaded is not a mirror that is empty, and the caller asks again until it loads.
+	// Every failure is the store not answering, and is marked so: a mirror that could not be
+	// loaded is not a mirror that is empty, and the caller asks again until it loads.
 	mirror := []string{VerseRoot, PermsSystem, PermsKind}
-	ents, err := BelowErr(a.Store, nil, 1, mirror...)
-	if err != nil {
-		return Unread(fmt.Errorf("loading the perms mirror: %w", err))
-	}
 	// The watch wants the depth of the records themselves, which is the mirror's own length and
 	// the one level its records stand below it.
-	ch, unsub, err := a.Store.WatchSubtree(len(mirror)+1, mirror...)
+	ch, unsub, progress, err := watchAsking(a.Store, len(mirror)+1, mirror...)
 	if err != nil {
 		return Unread(fmt.Errorf("watching the perms mirror: %w", err))
 	}
 	// THE ROOT'S RECORD IS WATCHED APART, because it stands beside the mirror and not in it
 	// (PermsRootKind) and a watch reports at one depth. One record, at its own address, so the
 	// depth is that address's own.
-	rootCh, rootUnsub, err := a.Store.WatchSubtree(len(permsRoot.Segs()), permsRoot.Segs()...)
+	rootCh, rootUnsub, rootProgress, err := watchAsking(a.Store, len(permsRoot.Segs()), permsRoot.Segs()...)
 	if err != nil {
 		unsub()
 		return Unread(fmt.Errorf("watching the root's perms record: %w", err))
 	}
-	a.attr.mu.Lock()
-	if a.attr.records == nil {
-		a.attr.records = map[string]*permsRecord{}
-	}
-	for _, e := range ents {
-		a.attr.records[e.Ref.Name()] = parseRecord(e.Ref.Name(), e.Payload, a.attr.rootChildGrants)
-	}
-	a.attr.dropTaken()
-	// And the root's own, which the listing above cannot carry: it stands beside the mirror
-	// rather than in it. A loaded mirror answers every key from the map, so a root record left
-	// out here would read as absent — the one node whose record decides every other.
-	if e, ok, err := a.Store.Get(permsRoot); err != nil {
+	if progress != nil && rootProgress != nil {
+		a.attr.mu.Lock()
+		a.attr.progress = []func(context.Context) (int64, error){progress, rootProgress}
 		a.attr.mu.Unlock()
+	}
+	// The records and the root's together, in one read: the root's record stands beside the
+	// mirror rather than in it, and a loaded mirror answers every key from the map, so a root
+	// record left out would read as absent — the one node whose record decides every other.
+	if err := a.attr.refresh(a.Store); err != nil {
 		unsub()
 		rootUnsub()
-		return Unread(fmt.Errorf("loading the root's perms record: %w", err))
-	} else if ok {
-		a.attr.records[""] = parseRecord("", e.Payload, a.attr.rootChildGrants)
-		a.attr.dropTaken()
+		return Unread(fmt.Errorf("loading the perms mirror: %w", err))
 	}
-	a.attr.owners = nil
-	a.attr.loaded = true
-	a.attr.mu.Unlock()
 	go func() {
 		defer unsub()
 		defer rootUnsub()
-		apply := func(c Commit) {
-			for _, ev := range c.Changes {
-				key, ok := mirrorKey(ev.Ref)
-				if !ok {
-					continue
-				}
-				a.apply(key, ev)
-			}
-		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -2247,16 +2360,28 @@ func Track(ctx context.Context, s Store) error {
 				if !ok {
 					return
 				}
-				apply(c)
+				a.attr.follow(a.Store, false, c)
 			case c, ok := <-rootCh:
 				if !ok {
 					return
 				}
-				apply(c)
+				a.attr.follow(a.Store, true, c)
 			}
 		}
 	}()
 	return nil
+}
+
+// watchAsking is a watch on the mirror that can be asked how far it is current, where the store
+// has one (WatchSubtreeProgress), and a plain one with no progress to ask where it does not.
+func watchAsking(s Store, depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
+	if h, ok := s.(interface {
+		WatchSubtreeProgress(int, ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error)
+	}); ok {
+		return h.WatchSubtreeProgress(depth, prefix...)
+	}
+	ch, unsub, err := s.WatchSubtree(depth, prefix...)
+	return ch, unsub, nil, err
 }
 
 // Tracked reports whether the view holds the whole mirror.
@@ -2266,24 +2391,22 @@ func (a *Attribution) Tracked() bool {
 	return a.loaded
 }
 
-// apply is one change to the mirror, as the watch delivered it, at the node whose record moved
-// (mirrorKey: a child's name, or the empty path for the root's own).
-func (a *attributed) apply(key string, ev Event) {
-	defer a.attr.dropInScopes(a.Store, key) // after the lock below is released
-	a.attr.mu.Lock()
-	defer a.attr.mu.Unlock()
-	if a.attr.records == nil {
-		a.attr.records = map[string]*permsRecord{}
+// applyLocked is one change to the mirror, as a watch delivered it, at the node whose record
+// moved (mirrorKey: a child's name, or the empty path for the root's own). Called with the lock
+// held; the caller brings the scopes up to date once it is released (dropInScopes).
+func (a *Attribution) applyLocked(key string, ev Event) {
+	if a.records == nil {
+		a.records = map[string]*permsRecord{}
 	}
 	if ev.Op == Delete || ev.To == nil {
-		delete(a.attr.records, key)
+		delete(a.records, key)
 	} else {
-		a.attr.records[key] = parseRecord(key, ev.To, a.attr.rootChildGrants)
+		a.records[key] = parseRecord(key, ev.To, a.rootChildGrants)
 	}
-	a.attr.dropTaken()
-	a.attr.owners = nil
+	a.dropTaken()
+	a.owners = nil
 	if ref, err := ParseAddr(key); err == nil {
-		delete(a.attr.decided, ref)
+		delete(a.decided, ref)
 	}
 }
 
@@ -3125,19 +3248,57 @@ func (a *attributed) StandsAt(at []string) (bool, error) {
 }
 
 func (a *attributed) ListErr(pred func(Ref) bool) ([]Entity, error) {
-	ents, err := ListErr(a.Store, pred)
+	out, _, err := a.ListErrCommit(pred)
+	return out, err
+}
+
+// ListErrCommit is ListErr, and the commit the listing was served at.
+func (a *attributed) ListErrCommit(pred func(Ref) bool) ([]Entity, int64, error) {
+	ents, rev, err := servedList(a.Store, pred)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return a.keepAll(ents)
+	if IsSystem(a.principal) {
+		return ents, rev, nil
+	}
+	v, err := a.servedAt(rev)
+	if err != nil {
+		return nil, 0, err
+	}
+	ents, err = v.keepAll(ents)
+	return ents, rev, err
 }
 
 func (a *attributed) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
-	ents, err := ListAtErr(a.Store, at, depth, pred)
+	out, _, err := a.ListAtErrCommit(at, depth, pred)
+	return out, err
+}
+
+// ListAtErrCommit is ListAtErr, and the commit the listing was served at.
+func (a *attributed) ListAtErrCommit(at []string, depth int, pred func(Ref) bool) ([]Entity, int64, error) {
+	ents, rev, err := servedListAt(a.Store, at, depth, pred)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return a.keepAll(ents)
+	if IsSystem(a.principal) {
+		return ents, rev, nil
+	}
+	v, err := a.servedAt(rev)
+	if err != nil {
+		return nil, 0, err
+	}
+	ents, err = v.keepAll(ents)
+	return ents, rev, err
+}
+
+// WatchSubtreeProgress is the store's, narrowed as every watch through a view is; a progress
+// answer carries no change, and so nothing to narrow.
+func (a *attributed) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
+	ch, unsub, progress, err := watchAsking(a.Store, depth, prefix...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return a.narrowing(ch), unsub, progress, nil
 }
 
 func (a *attributed) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...string) (<-chan Commit, func(), error) {

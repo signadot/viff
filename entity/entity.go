@@ -329,6 +329,15 @@ type Commit struct {
 	// addresses out, as Only left them out of Changes, so a consumer asking either question
 	// gets the same view. See Only.
 	hidden func(Ref) bool
+	// since and resync are a subtree watch's account of what Changes were taken against
+	// (WatchPattern): the commit of the last commit it sent, which a consumer that applied it
+	// holds the place as of, and whether this one replaced its copy with a State — a
+	// re-established watch, whose Changes are the net of every commit in between rather than
+	// this commit's own. progress marks a commit carrying no change: the watch is current
+	// through Rev (WatchSubtreeProgress).
+	since    int64
+	resync   bool
+	progress bool
 }
 
 // Only is the commit as seen by a reader that may not see everything: Changes holds only the

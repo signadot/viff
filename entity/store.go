@@ -198,4 +198,9 @@ type Narrow struct {
 	// Keeps reports whether a node the store's pattern kept is kept as its READER reads it:
 	// readable, and still a match with what is withheld from them left out.
 	Keeps func(Path) (bool, error)
+	// Served is told the commit each read of the listing was served at, before Sees or Keeps is
+	// asked about anything that read answered and before the listing is returned: what the view
+	// checks it against has to have caught up to that commit first (Attribution.ensure). Its
+	// error ends the listing, unanswered.
+	Served func(rev int64) error
 }
