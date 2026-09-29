@@ -99,7 +99,7 @@ data:
     # leave it on a branch somebody can diff.
     #
     # It is the same repository as verse-docs and differs in two ways, both of which are the
-    # charter that uses it (deploy/charters/verse/repo/verse/comment-drift.tony) asking for something the
+    # charter that uses it (deploy/charters/verse/repo/verse/comment-drift/merge.tony) asking for something the
     # docs environment does not need.
     #
     # It PUSHES, which is the whole shape of the deliverable: a stale comment is cheap to read

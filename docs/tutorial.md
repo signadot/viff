@@ -577,13 +577,14 @@ entity at another address. A charter that can write anywhere can write in a circ
 comes with a bound: a [**stratum**](glossary.md#stratum), a declared level.
 
 ```tony
+strata:
 - name: shapes-source
   level: 0
   match: demo
 - name: shapes-derived
   level: 10
   match: derived
----
+rules:
 - name: shape-derive
   stratum: shapes-source
   condition:

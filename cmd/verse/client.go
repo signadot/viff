@@ -76,8 +76,8 @@ func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, e
 	return apiClient().PostNode(path, q, node)
 }
 
-// httpPostNodesTo posts several documents in one request, `---` separated, the spelling a charter
-// file is written in; see client.Client.PostNodes.
+// httpPostNodesTo posts several documents in one request, `---` separated — the definitions of
+// one charter, or the charters of a directory; see client.Client.PostNodes.
 func httpPostNodesTo(path string, q url.Values, nodes []*ir.Node) (*http.Response, error) {
 	return apiClient().PostNodes(path, q, nodes)
 }

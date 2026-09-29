@@ -273,8 +273,8 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 		// just decided (exit(Cancelled), emitted as its terminal frame).
 		//
 		// It is not cosmetic: verse distinguishes the two everywhere it matters. A charter's
-		// onCancelled and onFailed are different actions, and comment-drift.tony's merge train
-		// says why in its own words — a cancel decided nothing, so the gate is asked again,
+		// onCancelled and onFailed are different actions, and verse-dev's merge train says
+		// why in its own words — a cancel decided nothing, so the gate is asked again,
 		// where a failed run must not re-ask anybody anything. With this, a cancelled run fired
 		// onFailed and the question was never re-posed.
 		//

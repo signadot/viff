@@ -17,7 +17,7 @@ import (
 // A derive's address is a function of (rule, subject), and a gate's id is a function of (trigger,
 // gate, subject) — so a rule deriving a batch from a moving tip writes ONE entity, and the second
 // batch inherits the first one's answer without anybody being asked. That is the merge train in
-// deploy/charters/verse/repo/verse/comment-drift.tony: main moves, the proposals change, and the motion that decided
+// deploy/charters/verse/repo/verse/comment-drift/merge.tony: main moves, the proposals change, and the motion that decided
 // the previous batch is already settled at the address the new batch lands on.
 //
 // `key:` is the fix, and it is `!each`'s key without the fan-out: the address carries the value,

@@ -148,9 +148,13 @@ verse
           approve: y, yes · deny: n, no · -say: -s — the two default options, as verbs
           escalate <id> [-as <who>] [-say <why>]     hand it on to the next resolver matching
                                              its subject, or to the docket
-  charter (charters, c) [<path>]             the installed charter at a path, and at every
-                                             address under it. Bare, that is all of it.
+  charter (charters, c) [<path>]             the charter at a path, printed as the FILE that
+                                             installs it (`at:` and all); stderr names the
+                                             charters under it, and the marks on its rules
+                                             (held, suspended, in trouble). Bare, baseline's.
                                              charter.md
+          [<path>] -d <dir>                  every charter at or under the path, a file apiece:
+                                             <dir>/<address as directories>/charter.tony
           [-depth <n>]                       how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
           [-scope <name>]                    …a federation's own charter instead
@@ -168,9 +172,11 @@ verse
                                              `c rules watcher` is baseline's, which has no
                                              address. A name that is elsewhere is named in
                                              the refusal, with the path that reaches it
-          -a [<address>] -f <f>|-            INSTALL: rules, strata and `reads:` from one file,
-                                             as one step. Re-applying an edited file is how a
-                                             charter changes. charter.md
+          -a [<address>] -f <f>|-            INSTALL one charter from one file, as one step.
+                                             Re-applying an edited file is how a charter
+                                             changes. charter.md
+          -a -d <dir>                        …every charter file under the directory, each at
+                                             its own `at:`, all of them or none
           -a -scope <name>                   …into a federation's own charter instead
           -r <path>                          REMOVE what the path names: a package at an
                                              address, or one rule or level in it
@@ -181,10 +187,10 @@ verse
                                              where the address ENDS, for a package whose own
                                              address ends in `rules` or `strata` and would
                                              otherwise shadow that key
-          A charter file may open a package with a `---` document of its own: `at: drift`
-          is where its rules write, `reads: [git, demo.pr]` what they may read besides.
-          Several `at:` documents in one file install several packages.
-          charter.md#a-charter-can-be-installed-at-an-address
+          A charter file is one document: `at: drift` is where its rules write, `reads:
+          [git, demo.pr]` what they may read besides, and `strata:`, `schedules:` and `rules:`
+          what it holds. A bare rule or list of them installs at the path. A directory of
+          charter files is several packages. charter.md#a-charter-can-be-installed-at-an-address
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
           run <prompt…> [-attach] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
           run [-runner <ref>]                …on an installed runner, not the verse default

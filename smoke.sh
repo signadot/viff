@@ -635,13 +635,14 @@ ok "status reports engine counts"
 # fanned out by the CLI (strata first), installed over the wire, and firing across a level.
 step "strata + derive (a write that is not the subject)"
 cat >"$tmp/strata.tony" <<'TONY'
+strata:
 - name: smoke-observe
   level: 0
   match: "smokegh"
 - name: smoke-sdlc
   level: 10
   match: "smokesd"
----
+rules:
 - name: smoke-derive
   stratum: smoke-observe
   condition:

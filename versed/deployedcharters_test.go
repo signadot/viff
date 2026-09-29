@@ -11,10 +11,10 @@ import (
 )
 
 // deployOrder is the charters a deployment installs, in the order deploy/repopulate.sh installs
-// them. The order is part of what is tested: a charter may name a stratum the one before it
-// declared.
+// them: a file, or a directory whose files install as one step. The order is part of what is
+// tested: a package may read what the one before it writes.
 var deployOrder = []string{
-	"verse/repo/verse/comment-drift.tony",
+	"verse/repo/verse/comment-drift",
 	"signadot/repo/signadot/comment-drift.tony",
 	"signadot/repo/signadot/pr.tony",
 	"verse/workspace/Signadot/gate-ask.tony",
@@ -38,7 +38,16 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed := append([]string(nil), deployOrder...)
+	var listed []string
+	for _, name := range deployOrder {
+		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range files {
+			listed = append(listed, strings.TrimPrefix(f, "../deploy/charters/"))
+		}
+	}
 	sort.Strings(listed)
 	sort.Strings(inTree)
 	if strings.Join(listed, "\n") != strings.Join(inTree, "\n") {
@@ -50,11 +59,20 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	for _, name := range deployOrder {
-		doc, err := os.ReadFile(filepath.Join("../deploy/charters", name))
+		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
 		if err != nil {
 			t.Fatal(err)
 		}
-		req, err := http.NewRequest(http.MethodPost, ts.URL+"/charter", strings.NewReader(string(doc)))
+		// A directory is one request, as `verse c -a -d` sends it.
+		var docs []string
+		for _, f := range files {
+			doc, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			docs = append(docs, string(doc))
+		}
+		req, err := http.NewRequest(http.MethodPost, ts.URL+"/charter", strings.NewReader(strings.Join(docs, "\n---\n")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,4 +92,17 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 			t.Errorf("%s installed with rules held:\n%s", name, body)
 		}
 	}
+}
+
+// charterFilesUnder is a deployed charter's files: the file itself, or every .tony file under a
+// directory, in lexical order.
+func charterFilesUnder(path string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".tony") {
+			out = append(out, p)
+		}
+		return err
+	})
+	return out, err
 }

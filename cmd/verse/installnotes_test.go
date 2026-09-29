@@ -42,8 +42,13 @@ func TestCharterAddPrintsWhatTheInstallHasToSay(t *testing.T) {
 			t.Errorf("the install did not say %q:\n%s", want, out)
 		}
 	}
-	// The listing shows the held rule, marked.
-	if out, err = runCLI(t, "charter"); err != nil || !strings.Contains(out, "held: sdcl") {
-		t.Errorf("the charter does not list the held rule as held (%v):\n%s", err, out)
+	// The listing says the rule is held — on stderr, since the file on stdout is what installs,
+	// and a mark in it would be refused, or kept as the rule's comment.
+	out, errOut, err := runCLIStreams(t, "charter")
+	if err != nil || !strings.Contains(errOut, "rule waits is held: it waits for stratum sdcl") {
+		t.Errorf("the charter does not say the rule is held (%v):\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "name: waits") || strings.Contains(out, "held") {
+		t.Errorf("the file lists the held rule with its mark, or not at all:\n%s", out)
 	}
 }

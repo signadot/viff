@@ -516,7 +516,7 @@ func TestTheDeployedConfigLoads(t *testing.T) {
 		t.Fatalf("verse-merge: %v", err)
 	}
 	if _, ok := merge.Repos[0].Dest("main"); !ok {
-		t.Error("verse-merge declares no `main` destination, so comment-drift.tony cannot merge")
+		t.Error("verse-merge declares no `main` destination, so comment-drift's merge.tony cannot merge")
 	}
 	if !slices.Contains(merge.Tools, pushToolName) {
 		t.Errorf("verse-merge does not offer %q, so its destinations are inert", pushToolName)

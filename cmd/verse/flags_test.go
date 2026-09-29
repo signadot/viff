@@ -431,41 +431,38 @@ func TestOneTokenCommandsRefuseASecondPositional(t *testing.T) {
 	}
 }
 
-// `verse charter` answers the charter as a TREE — baseline at the root and each package under
-// the address it writes in — which is what makes an installed package visible at all. It listed
-// one engine's rules before, so installing comment-drift (two packages, eight rules) and typing
-// `verse charter` answered `[]`, which reads as a failed install and did, twice.
-func TestTheCharterListsAsATree(t *testing.T) {
+// `verse charter` PRINTS THE CHARTER AT AN ADDRESS AS THE FILE THAT INSTALLS IT, and says on
+// stderr what stands under it — which is what keeps an installed package visible from the root:
+// installing comment-drift (two packages) and seeing baseline's rules alone must not read as a
+// failed install.
+func TestTheCharterPrintsTheFileAndNamesWhatIsUnder(t *testing.T) {
 	serve(t)
 	if err := installPackageRule(t); err != nil {
 		t.Fatalf("installing a package: %v", err)
 	}
 
-	out, err := runCLI(t, "charter")
+	out, errOut, err := runCLIStreams(t, "charter")
 	if err != nil {
 		t.Fatalf("charter: %v", err)
 	}
-	for _, want := range []string{
-		"writes: anywhere", // baseline, at the root
-		"children:",
-		"notes:",         // the package, under the address it writes in
-		"writes: notes.", // …and what it may write
-		"name: note",     // its rule, in full
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("the tree does not show %q:\n%s", want, out)
+	for _, not := range []string{"writes:", "children:", "at:"} {
+		if strings.Contains(out, not) {
+			t.Errorf("baseline's file carries %q, which no install takes:\n%s", not, out)
 		}
 	}
+	if !strings.Contains(errOut, "under here: notes") {
+		t.Errorf("the root does not name the package under it:\n%s", errOut)
+	}
 
-	// The address reaches one charter, at any depth, and answers the same shape there.
+	// The address reaches one charter, at any depth, and prints its file: `at:` and all.
 	one, err := runCLI(t, "charter", "notes")
 	if err != nil {
 		t.Fatalf("charter notes: %v", err)
 	}
-	if !strings.Contains(one, "writes: notes.") || !strings.Contains(one, "name: note") {
+	if !strings.Contains(one, "at: notes") || !strings.Contains(one, "name: note") {
 		t.Errorf("the address did not reach the package: %s", one)
 	}
-	if strings.Contains(one, "anywhere") {
+	if strings.Contains(one, "clock") {
 		t.Errorf("the address answered about baseline too: %s", one)
 	}
 
@@ -568,7 +565,7 @@ func TestAPackageAtAVerbLikeAddressNeedsNoEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("charter rm (the package at `rm`): %v", err)
 	}
-	if !strings.Contains(out, "writes: rm.") {
+	if !strings.Contains(out, "at: rm") {
 		t.Errorf("the package at `rm` was not reached: %s", out)
 	}
 }
@@ -619,7 +616,7 @@ func TestADashDashSaysWhereTheAddressEnds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("charter shadow rules: %v", err)
 	}
-	if !strings.Contains(out, "writes: shadow.rules.") {
+	if !strings.Contains(out, "at: shadow.rules") {
 		t.Errorf("the package was not reached: %s", out)
 	}
 	// …and `--` reaches the KEY of the address above it instead.

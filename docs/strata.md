@@ -13,6 +13,7 @@ orders the strata of one charter. Each rule lives in one stratum, and a derivati
 to a higher level.
 
 ```tony
+strata:
 - name: observe
   level: 0
   match: [ "gh", "linear" ]
@@ -22,7 +23,7 @@ to a higher level.
 - name: effectuate
   level: 100
   match: "do"
----
+rules:
 - name: urgent-label
   stratum: observe
   condition:

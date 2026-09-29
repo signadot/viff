@@ -26,6 +26,7 @@
 # start-review's `when` — and the two chains link, share a root, and the deduplication
 # by chain root means only the lower cycle is ever reported at WARN.
 
+strata:
 - name: triage
   level: 0
   match: "gh"
@@ -33,7 +34,7 @@
   level: 10
   match: "signadot"
 
----
+rules:
 
 # ── level 0: the issue bounces between two stages ────────────────────────────
 - name: label-fwd

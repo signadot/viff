@@ -123,13 +123,14 @@ shape_tony() {
 			# and installs the ordering first. A rule's subject must be inside its own
 			# stratum, and a derive must land in a strictly higher one — both checked at
 			# install, neither reading the store.
+			strata:
 			- name: shapes-source
 			  level: 0
 			  match: demo
 			- name: shapes-derived
 			  level: 10
 			  match: derived
-			---
+			rules:
 			- name: shape-derive
 			  stratum: shapes-source
 			  condition:

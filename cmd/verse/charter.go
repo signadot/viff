@@ -19,13 +19,15 @@ import (
 // file, confined by one address, and they come and go together. `verse charter` and `verse
 // stratum` were two commands each answering a slice of it, and neither could show a charter.
 //
-//	verse c                                 the whole charter, at every address
-//	verse c verse-dev drift                 …the one installed there, and anything under it
+//	verse c                                 baseline's charter, as its file; stderr names the rest
+//	verse c verse-dev drift                 …the one installed there, as its file
+//	verse c verse-dev -d <dir>              …every charter at or under it, a file apiece
 //	verse c verse-dev.drift rules           …its rules
 //	verse c verse-dev.drift rules watcher   …one of them, and `… watcher action` reaches in
 //	verse c rules watcher                   baseline's, which has no address
 //	verse c --depth 0                       this address alone
 //	verse c -a demo.pr -f <file>            install a charter there (or baseline, with no path)
+//	verse c -a -d <dir>                     install every charter file in a directory, as one step
 //	verse c -r verse-dev.drift              take that package down whole
 //	verse c -r verse-dev.drift rules watcher   …or one rule out of it
 //	verse c -R verse-dev                    …or a place and everything under it
@@ -35,8 +37,9 @@ import (
 // SEARCH — it looked a name up in every charter — and that survives where it was useful, in the
 // refusal: the server names the charter that holds it and gives the path that reaches it.
 //
-// The tree it prints is the SERVER's (versed/charter.go); this end asks for an address and a
-// depth and renders what comes back, which is what keeps the two from disagreeing about shape.
+// The tree is the SERVER's (versed/charter.go); this end asks for an address and a depth and
+// renders what comes back as charter files (charterfile.go), which is what keeps the two from
+// disagreeing about shape.
 
 // WHAT TO DO IS A FLAG, and the positional is a path in every case. That is what retires the
 // verb/address collision rather than escaping it: `add`, `rm` and `uninstall` were ordinary
@@ -66,6 +69,9 @@ type charterFlags struct {
 	// File is what an install reads. `-f -` is stdin, which is also the default when nothing
 	// says otherwise.
 	File string `cli:"name=file aliases=f desc='install from FILE (- = stdin); with --add'"`
+	// Dir is a TREE of charters, a file apiece: with --add, every charter file under it is
+	// installed at its own `at:`; without, every charter at or under the path is written there.
+	Dir string `cli:"name=dir aliases=d desc='with --add, install every charter file under DIR; without, write each charter at or under the path to a file in DIR'"`
 	// Paths prints one path per line instead of the document, as `verse data --paths` does and
 	// for the same reason: a document cannot be piped back into the command that answered it.
 	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document, as steps'"`
@@ -115,10 +121,16 @@ func charterCmd() *cli.Command {
 				return fmt.Errorf("%w: charter does one thing at a time: --add installs, "+
 					"--rm removes, --rm-recursive removes what is under an address too",
 					cli.ErrUsage)
+			case trig.Add && trig.Dir != "" && trig.File != "":
+				return fmt.Errorf("%w: charter -a takes a file (-f) or a directory (-d), not both",
+					cli.ErrUsage)
 			case trig.Add:
 				at, err := charterPath(steps)
 				if err != nil {
 					return err
+				}
+				if trig.Dir != "" {
+					return charterAddDir(cc, at, trig.Dir)
 				}
 				return charterAdd(cc, at, trig.File)
 			case trig.Rm, trig.RmR:
@@ -185,7 +197,27 @@ func printCharter(cc *cli.Context, steps []string) error {
 		msg, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("charter: %s", strings.TrimSpace(string(msg)))
 	}
-	return printBody(cc, resp)
+	defer resp.Body.Close()
+	body, err := okBody(resp)
+	if err != nil {
+		return fmt.Errorf("charter: %w", err)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return fmt.Errorf("charter: decoding the response: %w", err)
+	}
+	if out, err := outFmt(); err == nil && out != respFmt(resp) {
+		node = codec.StripLayout(node) // see printBody
+	}
+	// A NODE OF THE TREE prints as the charter file it is (charterfile.go); a reach into one —
+	// a rule, the list of them — prints as it stands, which is already what installs it.
+	switch {
+	case !isCharterNode(node):
+		return printIR(cc, node)
+	case trig.Dir != "":
+		return writeCharterDir(cc, node, full, trig.Dir)
+	}
+	return printCharterFile(cc, node, full)
 }
 
 // charterPath is a charter path's steps as the one token the server reads back with
@@ -325,8 +357,8 @@ func cutAt(steps []string, sep string) (before, after []string, found bool) {
 	return steps, nil, false
 }
 
-// charterAdd installs a charter — one rule, a list, or a `---`-separated file of rules, levels
-// and package declarations — at a path.
+// charterAdd installs one file: a charter (`at:`, `reads:`, `strata:`, `schedules:`, `rules:`),
+// or the shorthand — a rule, a level, a list of them — at a path.
 //
 // THE PATH IS THE ADDRESS, which is what `--at` used to be. A charter installed at an address is
 // a PACKAGE: it runs in an engine of its own and may write only inside that address. An empty
@@ -342,40 +374,25 @@ func charterAdd(cc *cli.Context, at, file string) error {
 	if err != nil {
 		return fmt.Errorf("charter -a: %w", err)
 	}
-
-	// A charter file may hold one trigger, a list of them, or several documents separated
-	// by `---` — and, since rules declare the stratum they live in, the strata themselves.
-	defs, err := charterDefs(data, srcFmt)
+	name := file
+	if name == "" || name == "-" {
+		name = "stdin"
+	}
+	// ONE FILE, ONE CHARTER: a fielded document, or the shorthand — a rule, a level, a list of
+	// them — installed at the path. Several charters are a directory (-d).
+	doc, err := oneDocument(data, srcFmt, name)
 	if err != nil {
 		return fmt.Errorf("charter -a: %w", err)
+	}
+	defs := []*ir.Node{doc}
+	if !isCharterDoc(doc) {
+		defs = charterDefs(doc)
 	}
 	if len(defs) == 0 {
 		return fmt.Errorf("charter -a: no trigger found in the input")
 	}
-
-	// ONE FILE MAY HOLD SEVERAL PACKAGES, and a `---` document carrying `at:` is where each
-	// begins. That is what keeps a charter that spans two addresses ONE program in one file:
-	//
-	//	at: drift
-	//	reads: [git]
-	//	---
-	//	- name: head-moved …
-	//	---
-	//	at: merge
-	//	reads: [git, drift]
-	//	---
-	//	- name: proposal-appeared …
-	//
-	// Everything after a declaration belongs to it, until the next one. A file with no
-	// declaration is one charter, installed where `--at` says (or baseline, which is most of
-	// them), and that is the case this started as.
-	// ONE REQUEST FOR THE WHOLE FILE. It used to be one per package — the CLI split the file
-	// on its `at:` declarations and POSTed each group — so a file whose third package was
-	// refused left the first two installed while printing "nothing was installed", which is
-	// the promise the per-package guarantee makes and the file's own line claimed.
-	//
-	// The split is the server's now, and so is the report: two graders of one question is what
-	// this end was, and the one that printed was not the one that installed.
+	// ONE REQUEST, and the split is the server's, and so is the report: the one that prints is
+	// the one that installed.
 	q := url.Values{}
 	if at != "" {
 		q.Set("at", at)
@@ -384,6 +401,11 @@ func charterAdd(cc *cli.Context, at, file string) error {
 	if err != nil {
 		return fmt.Errorf("charter -a: %w", err)
 	}
+	return installReply(cc, resp)
+}
+
+// installReply reports an install's answer: what went where, or the refusal in the server's words.
+func installReply(cc *cli.Context, resp *http.Response) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated {
@@ -505,43 +527,30 @@ func defKind(n *ir.Node) string {
 	return defUnknown
 }
 
-// charterDefs flattens a charter source into its definitions: several documents, each holding
-// one definition or a list of them.
+// charterDefs flattens the shorthand into its definitions: one definition, or a list of them.
 //
-// Shape comes from the parsed document rather than from a leading character: tony writes a list
-// either as `[a, b]` or as a block `- a`, so a "starts with [" test would read a perfectly good
-// block list as a single definition. A `!key(name)` tag on the list is carried through and
-// ignored here — it is an ARRAY either way, and the tag is what makes re-sending an edited file
-// merge by name rather than by position.
-func charterDefs(data []byte, srcFmt codec.Format) ([]*ir.Node, error) {
-	docs, err := codec.ParseNodes(data, srcFmt)
-	if err != nil {
-		return nil, err
+// SENT ONE DOCUMENT APIECE rather than as the list: an element of a list is re-rendered one
+// indent in on the way out, and a comment beside a flow map is lost on the way back through the
+// parser. A definition sent as a document is what the file wrote.
+//
+// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO SEND: a comment wraps the value it precedes, and it is
+// the author's reason for the rule (trigger.Trigger's Doc field). A `!key(name)` tag on the list
+// is carried through and ignored — it is an array either way.
+func charterDefs(doc *ir.Node) []*ir.Node {
+	inner := codec.Unwrap(doc)
+	if inner == nil || inner.Type == ir.NullType {
+		return nil
 	}
-	// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO SEND. A comment wraps the value it precedes, so
-	// deciding what a document IS means stepping past the wrapper — and installing it means not
-	// throwing the wrapper away, because that comment is the author's reason for the rule and
-	// the record is meant to be the rule as they left it (trigger.Trigger's Doc field).
-	//
-	// Unwrap used to be applied to the value itself here, which was invisible for as long as
-	// nothing parsed comments and lossy the moment something did.
+	if inner.Type != ir.ArrayType {
+		return []*ir.Node{doc}
+	}
 	var defs []*ir.Node
-	for _, doc := range docs {
-		inner := codec.Unwrap(doc)
-		if inner == nil || inner.Type == ir.NullType {
-			continue // a trailing `---`, or an empty document
+	for _, elem := range inner.Values {
+		if in := codec.Unwrap(elem); in != nil && in.Type != ir.NullType {
+			defs = append(defs, elem)
 		}
-		if inner.Type == ir.ArrayType {
-			for _, elem := range inner.Values {
-				if in := codec.Unwrap(elem); in != nil && in.Type != ir.NullType {
-					defs = append(defs, elem)
-				}
-			}
-			continue
-		}
-		defs = append(defs, doc)
 	}
-	return defs, nil
+	return defs
 }
 
 // postGroup installs a package's worth of a charter in ONE request, which is what makes it one

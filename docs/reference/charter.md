@@ -77,12 +77,12 @@ This default is the safe one and the strict one. A package that reads nothing ou
 interfere with anybody. The default also makes the graph total, because every edge is written
 down.
 
-**One file may hold several packages.** A `---` document that carries `at:` opens a package.
-Everything after it belongs to that package, until the next declaration.
+**One file is one charter, and a directory holds several.** Each file says where its charter
+goes with its own `at:`, so the layout of the directory is free.
 
-`deploy/charters/verse/repo/verse/comment-drift.tony` holds two packages: a `drift` package
-that reviews, and a `merge` package that gates what the review delivers. One
-`verse c -a -file` installs them, all of them or none.
+`deploy/charters/verse/repo/verse/comment-drift/` holds two packages: a `drift` package that
+reviews, and a `merge` package that gates what the review delivers. One `verse c -a -d`
+installs them, all of them or none.
 
 Each package goes in **as one step**. Its declaration, its levels and its rules install
 together or not at all. So a refusal anywhere puts back what stood before it (see

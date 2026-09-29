@@ -300,13 +300,14 @@ in a stratum of a higher level. One file may hold strata and rules. Save this as
 `flag.tony`.
 
 ```tony
+strata:
 - name: requests
   level: 0
   match: demo
 - name: findings
   level: 10
   match: finding
----
+rules:
 - name: flag
   stratum: requests
   condition:

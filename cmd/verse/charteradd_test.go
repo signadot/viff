@@ -124,18 +124,19 @@ rules:
 }
 
 // A RE-APPLIED FILE IS THE ORDINARY WAY TO CHANGE A CHARTER, both halves of it: a rule is
-// replaced, and so is a level. Editing a level and re-applying used to be refused, with the
-// remedy being to uninstall the package — which takes the rules beside it down too.
+// replaced, and so is a level — without uninstalling the package, which would take the rules
+// beside it down too.
 func TestCharterAddReAppliesAnEditedFile(t *testing.T) {
 	serve(t)
 	f := filepath.Join(t.TempDir(), "charter.tony")
 	write := func(level, saw string) {
 		t.Helper()
 		if err := os.WriteFile(f, []byte(`
+strata:
 - name: lvl
   level: `+level+`
   match: {path: "demo"}
----
+rules:
 - name: note
   stratum: lvl
   condition:

@@ -221,6 +221,7 @@ step "the ordering, and the rules that cross it"
 for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 for s in "${STRATA[@]}"; do v charter -r strata "$s" >/dev/null 2>&1 || true; done
 v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
+strata:
 - name: lin-source
   level: 0
   match: "git"
@@ -230,7 +231,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "the charter did not install"
 - name: lin-trace
   level: 20
   match: "lineage"
----
+rules:
 # One correlation per merged PR. The derived ADDRESS is not chosen here — the engine writes
 # `lineage.trace.lin-pr-lineage.github.acme.widget.pr."42"`: the target, the rule, then the
 # subject's own segments — so re-firing about the same PR rewrites one address rather than
