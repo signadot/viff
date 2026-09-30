@@ -22,6 +22,7 @@ import (
 //
 //	verse c verse-dev -d out/       every charter at or under verse-dev, a file apiece
 //	verse c -a -d out/              …installs them all, each at its own `at:`, in one step
+//	verse c -a verse-dev -d out/ --prune   …and removes what out/ leaves out under verse-dev
 //
 // A FILE IS ONE CHARTER: a fielded document whose keys are `at`, `reads`, `rules`, `schedules`
 // and `strata` — the node the server's tree holds for one address, less what a file cannot
@@ -353,10 +354,17 @@ func oneDocument(data []byte, format codec.Format, name string) (*ir.Node, error
 // A FILE IS A CHARTER HERE, never the shorthand: a bare list says "at the path", and in a
 // directory there is no path — each file says where it goes. Two files at one address are
 // refused by name, before anything is sent.
-func charterAddDir(cc *cli.Context, at, dir string) error {
-	if at != "" {
-		return fmt.Errorf("%w: charter -a -d installs each file at its own `at:`; drop the path",
-			cli.ErrUsage)
+//
+// WITH --prune THE PATH IS BACK, as the address the directory stands for: what is at and under
+// it and not in the directory goes, in the same request, and a file outside it is refused.
+func charterAddDir(cc *cli.Context, at, dir string, prune bool) error {
+	switch {
+	case prune && at == "":
+		return fmt.Errorf("%w: --prune names the address it clears: "+
+			"`verse c -a <address> -d <dir> --prune`", cli.ErrUsage)
+	case !prune && at != "":
+		return fmt.Errorf("%w: charter -a -d installs each file at its own `at:`; drop the path "+
+			"(or add --prune, to remove what the directory leaves out under it)", cli.ErrUsage)
 	}
 	var docs []*ir.Node
 	byAt := map[string]string{}
@@ -399,7 +407,11 @@ func charterAddDir(cc *cli.Context, at, dir string) error {
 		return fmt.Errorf("charter -a -d: no charter file under %s (%s)", dir,
 			strings.Join(codec.Suffixes(), ", "))
 	}
-	resp, err := httpPostNodesTo("/charter", url.Values{}, docs)
+	q := url.Values{}
+	if prune {
+		q.Set("prune", at)
+	}
+	resp, err := httpPostNodesTo("/charter", q, docs)
 	if err != nil {
 		return fmt.Errorf("charter -a -d: %w", err)
 	}

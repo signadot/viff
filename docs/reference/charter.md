@@ -164,7 +164,15 @@ under an address, and `-a -d` installs every charter file under a directory in o
 ```sh
 verse charter demo -d out/              # out/demo/pr/charter.tony, …
 verse charter -a -d out/                # each at its own `at:`, all of them or none
+verse charter -a demo -d out/ --prune   # …and remove what out/ leaves out at and under demo
 ```
+
+An install adds and replaces by name, so a rule missing from the directory stays installed.
+`--prune` makes the directory the whole truth under an address. The result is the same as
+`verse c -R demo` followed by `verse c -a -d out/`, done as one step. A rule, level or schedule
+missing from a file is removed, and so is a package with no file. Rules the directory keeps go
+on running and are not stopped and restarted. Every file must be at or under the address. If
+anything is refused, the removals are put back along with the installs.
 
 The writer lays the files out by address. That layout is a default, not a rule: the `at:` in
 each file is what says where it goes, because the rules in it name absolute paths. A directory

@@ -177,6 +177,8 @@ verse
                                              changes. charter.md
           -a -d <dir>                        …every charter file under the directory, each at
                                              its own `at:`, all of them or none
+          -a <address> -d <dir> -prune       …and REMOVE what the directory leaves out at and
+                                             under the address: `-R` then `-a -d`, as one step
           -a -scope <name>                   …into a federation's own charter instead
           -r <path>                          REMOVE what the path names: a package at an
                                              address, or one rule or level in it

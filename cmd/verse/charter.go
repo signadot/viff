@@ -28,6 +28,7 @@ import (
 //	verse c --depth 0                       this address alone
 //	verse c -a demo.pr -f <file>            install a charter there (or baseline, with no path)
 //	verse c -a -d <dir>                     install every charter file in a directory, as one step
+//	verse c -a demo -d <dir> --prune        …and remove what it leaves out at and under demo
 //	verse c -r verse-dev.drift              take that package down whole
 //	verse c -r verse-dev.drift rules watcher   …or one rule out of it
 //	verse c -R verse-dev                    …or a place and everything under it
@@ -72,6 +73,9 @@ type charterFlags struct {
 	// Dir is a TREE of charters, a file apiece: with --add, every charter file under it is
 	// installed at its own `at:`; without, every charter at or under the path is written there.
 	Dir string `cli:"name=dir aliases=d desc='with --add, install every charter file under DIR; without, write each charter at or under the path to a file in DIR'"`
+	// Prune makes `-a -d` a sync: what stands at and under the path afterwards is what the
+	// directory holds. It is `-R <path>` then `-a -d`, as one step (versed/charterprune.go).
+	Prune bool `cli:"name=prune desc='with --add --dir, remove what the directory leaves out at and under the path'"`
 	// Paths prints one path per line instead of the document, as `verse data --paths` does and
 	// for the same reason: a document cannot be piped back into the command that answered it.
 	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document, as steps'"`
@@ -124,13 +128,16 @@ func charterCmd() *cli.Command {
 			case trig.Add && trig.Dir != "" && trig.File != "":
 				return fmt.Errorf("%w: charter -a takes a file (-f) or a directory (-d), not both",
 					cli.ErrUsage)
+			case trig.Prune && (!trig.Add || trig.Dir == ""):
+				return fmt.Errorf("%w: --prune syncs an address to a directory: "+
+					"`verse c -a <address> -d <dir> --prune`", cli.ErrUsage)
 			case trig.Add:
 				at, err := charterPath(steps)
 				if err != nil {
 					return err
 				}
 				if trig.Dir != "" {
-					return charterAddDir(cc, at, trig.Dir)
+					return charterAddDir(cc, at, trig.Dir, trig.Prune)
 				}
 				return charterAdd(cc, at, trig.File)
 			case trig.Rm, trig.RmR:
@@ -435,6 +442,30 @@ func reportNotes(cc *cli.Context, e *ir.Node) {
 	}
 }
 
+// reportPruned says what a prune took away: out of a package the directory kept, each thing by
+// name; a package it left out, whole.
+func reportPruned(cc *cli.Context, node *ir.Node) {
+	list := codec.Unwrap(nodeField(node, "pruned"))
+	if list == nil || list.Type != ir.ArrayType {
+		return
+	}
+	for _, el := range list.Values {
+		e := codec.Unwrap(el)
+		where := "package " + stepsOf(nodeStr(e, "at"))
+		if u := codec.Unwrap(nodeField(e, "uninstalled")); u != nil && u.Type == ir.BoolType && u.Bool {
+			fmt.Fprintf(cc.Out, "%s: uninstalled, not in the directory; what it wrote is still there\n", where)
+			continue
+		}
+		if removed := codec.Unwrap(nodeField(e, "removed")); removed != nil && removed.Type == ir.ArrayType {
+			for _, r := range removed.Values {
+				if r = codec.Unwrap(r); r != nil && r.Type == ir.StringType {
+					fmt.Fprintf(cc.Out, "%s: removed the %s, not in its file\n", where, r.String)
+				}
+			}
+		}
+	}
+}
+
 // reportInstalled says what went where, in both coordinates.
 //
 // "baseline" is the unpackaged charter — the one that may write anywhere — and it is also the
@@ -479,6 +510,7 @@ func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
 		}
 		reportNotes(cc, e)
 	}
+	reportPruned(cc, node)
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
 	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
 	// empty list. The listing says so too (elsewhereInPackages); saying it here as well is what

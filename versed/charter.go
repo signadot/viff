@@ -452,15 +452,21 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	groups, code, err := s.installCharter(r, docs)
+	q := r.URL.Query()
+	groups, pruned, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"),
+		q.Get("at"), q.Get("prune"), docs)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"installed": installedReport(groups)})
+	out := map[string]any{"installed": installedReport(groups)}
+	if len(pruned) > 0 {
+		out["pruned"] = pruned
+	}
+	writeOut(w, r, http.StatusCreated, out)
 }
 
-// installCharter applies a whole request: every charter in it, or none of them.
+// installCharterPruning applies a whole request: every charter in it, or none of them.
 //
 // ONE charterTx SPANS THE REQUEST, whether it carries one charter or a directory's worth, so the
 // promise an install prints — that nothing was installed when anything was refused — is true of
@@ -475,36 +481,67 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // installs; then the levels, because a rule naming a stratum that is not installed yet is HELD
 // rather than refused, and a file whose author wrote both should not leave half its rules
 // dormant because of how it was laid out; then the rules.
-func (s *Server) installCharter(r *http.Request, docs []*ir.Node) ([]charterGroup, int, error) {
-	q := r.URL.Query()
-	return s.installCharterAs(s.scopedStore(r), q.Get("scope"), q.Get("at"), docs)
+//
+// With a PRUNE ROOT it is also a removal: see charterprune.go.
+func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]charterGroup, []any, int, error) {
+	groups, err := charterFiles(docs, at)
+	if err != nil {
+		return nil, nil, http.StatusBadRequest, err
+	}
+	// AN INSTALL NAMES ITS INSTALLER. The engine persists a rule through its own store, which
+	// is the system's, and an empty name there means the engine's: a charter installed by
+	// nobody would be installed by the system, and fire as it. The door refuses the request
+	// (Server.principals); this refuses the call, whoever comes to make it — before a prune
+	// asks what nobody may remove, which an empty name would pass.
+	if entity.PrincipalOf(store) == "" {
+		return nil, nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
+	}
+	var gone []string
+	if prune != "" {
+		var code int
+		if gone, code, err = s.pruneTargets(store, scope, prune, groups); err != nil {
+			return nil, nil, code, err
+		}
+	}
+	tx := &charterTx{s: s, store: store, scope: scope, dropped: map[string][]string{}}
+	if code, err := tx.install(groups); err != nil {
+		return nil, nil, code, err
+	}
+	if prune != "" {
+		if code, err := tx.pruneKept(groups); err != nil {
+			code, err := tx.refuse(code, err)
+			return nil, nil, code, err
+		}
+	}
+	takePackageAddresses(store, entity.PrincipalOf(store), groups)
+	for i := range groups {
+		groups[i].said = tx.notes(groups[i].at)
+	}
+	if code, err := s.pruneGone(store, gone); err != nil {
+		return nil, nil, code, err
+	}
+	return groups, tx.prunedReport(gone), http.StatusCreated, nil
 }
 
 // installCharterAs is the install with the request already read off: the store the installer
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, err := charterFiles(docs, at)
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	tx := &charterTx{s: s, store: store, scope: scope}
+	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs)
+	return groups, code, err
+}
+
+// install applies every group, or refuses and puts back what it had applied.
+func (tx *charterTx) install(groups []charterGroup) (int, error) {
+	s, store, scope := tx.s, tx.store, tx.scope
 	installer := entity.PrincipalOf(store)
-	// AN INSTALL NAMES ITS INSTALLER. The engine persists a rule through its own store, which
-	// is the system's, and an empty name there means the engine's: a charter installed by
-	// nobody would be installed by the system, and fire as it. The door refuses the request
-	// (Server.principals); this refuses the call, whoever comes to make it.
-	if installer == "" {
-		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
-	}
 	for _, g := range groups {
 		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
 		// package writes beneath its address, and what it writes is owned through the address
 		// (takePackageAddresses), so installing at a place somebody else owns is refused here
 		// with the check's own words rather than at the first firing that writes there.
 		if code, err := checkPackageAddress(store, installer, g.at); err != nil {
-			code, err := tx.refuse(code, err)
-			return nil, code, err
+			return tx.refuse(code, err)
 		}
 		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
 		// refused must leave the address as it found it, and a package engine standing where
@@ -514,20 +551,17 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*
 		}
 		eng, err := s.charterEngineFor(scope, g.at)
 		if err != nil {
-			code, err := tx.refuse(http.StatusBadRequest, err)
-			return nil, code, err
+			return tx.refuse(http.StatusBadRequest, err)
 		}
 		tx.at, tx.eng = g.at, eng
 		for _, def := range g.reads {
 			if code, err := tx.imports(def); err != nil {
-				code, err := tx.refuse(code, err)
-				return nil, code, err
+				return tx.refuse(code, err)
 			}
 		}
 		for _, def := range g.strata {
 			if code, err := tx.stratum(def); err != nil {
-				code, err := tx.refuse(code, err)
-				return nil, code, err
+				return tx.refuse(code, err)
 			}
 		}
 		// The schedules after the levels and before the rules: a rule reads a schedule's
@@ -535,22 +569,16 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*
 		// replay picks up, so the order is a courtesy rather than a need.
 		for _, def := range g.schedules {
 			if code, err := tx.schedule(def); err != nil {
-				code, err := tx.refuse(code, err)
-				return nil, code, err
+				return tx.refuse(code, err)
 			}
 		}
 		for _, def := range g.rules {
 			if code, err := tx.rule(def); err != nil {
-				code, err := tx.refuse(code, err)
-				return nil, code, err
+				return tx.refuse(code, err)
 			}
 		}
 	}
-	takePackageAddresses(store, installer, groups)
-	for i := range groups {
-		groups[i].said = tx.notes(groups[i].at)
-	}
-	return groups, http.StatusCreated, nil
+	return http.StatusCreated, nil
 }
 
 // checkPackageAddress refuses an install at an address the installer does not hold `owner` at.
@@ -889,6 +917,10 @@ type charterTx struct {
 	// placed is every rule this request installed, in the order it did, with the engine that
 	// holds it: what each has to say is asked once the whole file is in (notes).
 	placed []placedRule
+	// kept is what each package's file holds, and dropped what a prune took out of the
+	// packages the request keeps (charterprune.go).
+	kept    map[string]map[string]bool
+	dropped map[string][]string
 }
 
 // placedRule is a rule a request installed, the package it went to, and the engine there.
@@ -960,6 +992,7 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 		return http.StatusBadRequest, err
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
+	tx.keep("strata", st.Name)
 	old, had := eng.Stratum(st.Name)
 	// WHOSE it stood as, kept beside what stood: see rule.
 	whose, err := entity.SnapshotRecord(tx.store, eng.StratumRef(st.Name))
@@ -998,6 +1031,7 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 		return http.StatusBadRequest, fmt.Errorf("rule %q: %w", t.Name, err)
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
+	tx.keep("rules", t.Name)
 	old, had := eng.Rule(t.Name)
 	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
 	// may move that — the system takes a name it installs at — so an undo that puts back content

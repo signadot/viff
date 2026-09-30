@@ -549,6 +549,15 @@ func (s *Server) packagesUnder(at string) []string {
 // uninstallOne takes down one package: its rules, then its levels, then its declaration, then
 // the engine that was running them.
 func (s *Server) uninstallOne(store entity.Store, at string) error {
+	if err := s.mayUninstall(store, at); err != nil {
+		return err
+	}
+	return s.takeDown(store, at)
+}
+
+// mayUninstall asks whether the requester may take down every part of the package at an address,
+// and changes nothing.
+func (s *Server) mayUninstall(store entity.Store, at string) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
@@ -591,6 +600,19 @@ func (s *Server) uninstallOne(store entity.Store, at string) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// takeDown removes the package at an address without asking (mayUninstall asks).
+func (s *Server) takeDown(store entity.Store, at string) error {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return err
+	}
+	eng, err := s.packageEngine(at)
+	if err != nil {
+		return err
 	}
 	for _, t := range eng.Triggers() {
 		eng.RemoveTrigger(t.Name)

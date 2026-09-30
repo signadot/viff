@@ -36,6 +36,7 @@ func (tx *charterTx) schedule(def *ir.Node) (int, error) {
 	}
 	at, store := tx.at, tx.store // captured: the transaction spans packages (see imports)
 	id := schedule.RecordID(at, decl.Name)
+	tx.keep("schedules", id)
 	old, had, err := tx.s.Store.Get(schedule.Ref(id))
 	if err != nil {
 		return http.StatusServiceUnavailable, err
