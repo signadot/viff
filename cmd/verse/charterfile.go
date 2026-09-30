@@ -13,6 +13,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/schedule"
 )
 
 // WHAT `verse c` PRINTS IS WHAT `verse c -a` INSTALLS, one charter at a time:
@@ -148,13 +149,20 @@ func strValues(n *ir.Node) []string {
 
 // scheduleDecl is a schedule as the charter declares it, from the row `verse schedule` lists:
 // its name, period and phase. When it last ticked, and by whose install, is `verse schedule`'s.
+//
+// The row's `id` is the record's, which carries a package's address (`drift:hourly`); the name
+// the file declares is its tail, and the `at:` beside it puts the address back.
 func scheduleDecl(row *ir.Node) *ir.Node {
 	var fields, values []*ir.Node
-	for _, k := range [][2]string{{"every", "every"}, {"from", "from"}, {"name", "id"}} {
-		if v := nodeField(row, k[1]); v != nil {
-			fields = append(fields, ir.FromString(k[0]))
+	for _, k := range []string{"every", "from"} {
+		if v := nodeField(row, k); v != nil {
+			fields = append(fields, ir.FromString(k))
 			values = append(values, v)
 		}
+	}
+	if id := nodeStr(row, "id"); id != "" {
+		fields = append(fields, ir.FromString("name"))
+		values = append(values, ir.FromString(schedule.NameOf(id)))
 	}
 	return &ir.Node{Type: ir.ObjectType, Fields: fields, Values: values}
 }

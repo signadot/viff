@@ -10,6 +10,9 @@ import (
 // packageFile is a charter with every part a file can hold, comments included.
 const packageFile = `at: roundtrip
 reads: [demo]
+schedules:
+- name: often
+  every: 1h
 strata:
 - name: src
   level: 0
@@ -47,7 +50,7 @@ func TestACharterPrintsAsTheFileThatInstallsIt(t *testing.T) {
 		t.Fatalf("charter roundtrip: %v", err)
 	}
 	for _, want := range []string{"at: roundtrip", "reads:", "- demo", "# why the copy exists",
-		"# the flag it sets", "name: rows"} {
+		"# the flag it sets", "name: rows", "name: often"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("the printed charter lacks %q:\n%s", want, first)
 		}
