@@ -1,0 +1,18 @@
+!issue
+blocked_by: []
+blocks:
+- j5vbwvjah12ksj1hqsn0
+branches: []
+commits: []
+created: "2026-10-01T12:48:05.325674+02:00"
+duplicates: []
+id: j9vbwvjah12krs9tqsn0
+labels:
+- charter
+- design
+- system-repo-charter
+related_issues:
+- jhvbwvjah12krt9tqsn0
+- x4pfb0zfh12ksv3nqnn0
+status: open
+updated: "2026-10-05T10:45:48.965546+02:00"
