@@ -320,6 +320,10 @@ on:
 when:
   path: "demo.count.*"
   value: !or [10, 100]
+# an order: one field against another in the same payload, scaled (!lt, !le, !gt, !ge)
+subject:
+  path: "quota.status.*"
+  value: { used: !ge(0.8).get-path(root) cap }
 ```
 
 `value` is open in shape because a payload is. The payload of an entity is any tony value: a
