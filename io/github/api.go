@@ -29,9 +29,9 @@ const APIBase = "https://api.github.com"
 const pageSize = 100
 
 type api struct {
-	token string
-	base  string
-	cl    *http.Client
+	cred credential // nil sends no Authorization, which only a test server accepts
+	base string
+	cl   *http.Client
 
 	mu     sync.Mutex
 	cached map[string]cachedResponse
@@ -48,19 +48,39 @@ type cachedResponse struct {
 	body []byte
 }
 
-func newAPI(token, base string, cl *http.Client) *api {
+func newAPI(token string, app *AppAuth, base string, cl *http.Client) (*api, error) {
 	if base == "" {
 		base = APIBase
 	}
 	if cl == nil {
 		cl = &http.Client{Timeout: 60 * time.Second}
 	}
-	return &api{
-		token:  token,
-		base:   strings.TrimRight(base, "/"),
-		cl:     cl,
-		cached: map[string]cachedResponse{},
+	a := &api{base: strings.TrimRight(base, "/"), cl: cl, cached: map[string]cachedResponse{}}
+	switch {
+	case app != nil:
+		inst, err := newInstallation(*app, a.base, cl)
+		if err != nil {
+			return nil, err
+		}
+		a.cred = inst
+	case token != "":
+		a.cred = bearer(token)
 	}
+	return a, nil
+}
+
+// authorize sets the request's Authorization, minting an installation token first where the one
+// held is about to expire.
+func (a *api) authorize(req *http.Request) error {
+	if a.cred == nil {
+		return nil
+	}
+	v, err := a.cred.authorization(req.Context())
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", v)
+	return nil
 }
 
 // get issues one conditional GET and decodes the answer into out.
@@ -94,8 +114,8 @@ func (a *api) get(ctx context.Context, path string, out any) error {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+	if err := a.authorize(req); err != nil {
+		return err
 	}
 	if hadPrev && prev.etag != "" {
 		req.Header.Set("If-None-Match", prev.etag)
@@ -176,8 +196,8 @@ func (a *api) send(ctx context.Context, method, path string, body, out any) erro
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("Content-Type", "application/json")
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+	if err := a.authorize(req); err != nil {
+		return err
 	}
 	resp, err := a.cl.Do(req)
 	if err != nil {
@@ -711,8 +731,8 @@ func (a *api) graphql(ctx context.Context, query string, vars map[string]any, ou
 		return fmt.Errorf("github: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+	if err := a.authorize(req); err != nil {
+		return err
 	}
 	resp, err := a.cl.Do(req)
 	if err != nil {

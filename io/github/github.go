@@ -47,6 +47,10 @@ type Config struct {
 	// Token is the credential, sent as a bearer. A fine-grained PAT with read access to the
 	// repositories' contents, issues and pull requests is what a dogfood deployment wants.
 	Token string
+	// App is a GitHub App's installation, which the source authenticates as instead of Token
+	// when both are given: what the out half does is then the app's (`<slug>[bot]`) and not a
+	// person's (app.go).
+	App *AppAuth
 	// Repos are the repositories to reflect, as `<org>/<name>`.
 	Repos []string
 	// Root is the slice this source writes, empty meaning DefaultRoot.
@@ -113,15 +117,19 @@ var _ verseio.Source = (*GitHub)(nil)
 // just deployed it, rather than a source that installs clean and writes a failure into
 // lastError once a minute forever.
 func New(ctx context.Context, cfg Config) (*GitHub, error) {
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("github: a token is required")
+	if cfg.Token == "" && cfg.App == nil {
+		return nil, fmt.Errorf("github: a token or an app is required")
 	}
 	if len(cfg.Repos) == 0 {
 		return nil, fmt.Errorf("github: at least one repository is required — a source that " +
 			"reflects nothing would install, claim nothing, and never write")
 	}
+	client, err := newAPI(cfg.Token, cfg.App, cfg.Base, cfg.HTTPClient)
+	if err != nil {
+		return nil, err
+	}
 	g := &GitHub{
-		api:      newAPI(cfg.Token, cfg.Base, cfg.HTTPClient),
+		api:      client,
 		root:     cfg.Root,
 		settled:  cfg.Settled,
 		maxOpen:  cfg.MaxOpen,

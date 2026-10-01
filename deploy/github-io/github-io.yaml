@@ -1,4 +1,4 @@
-# The GitHub Source: `iod github`, holding a token.
+# The GitHub Source: `iod github`, holding a token or a GitHub App's key.
 #
 # The credential first, as with Slack and Linear:
 #
@@ -10,6 +10,10 @@
 # metadata, issues, pull requests and Actions. A GitHub App is what an org-scale install wants,
 # and a measurement says when: a personal token covers about
 # forty repositories with discussions on, and effectively unbounded with `-discussions=false`.
+#
+# Or the app, which is what the out half wants, since what it does is then the app's and not a
+# person's: GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY (the PEM). Given
+# with GITHUB_TOKEN, the app is used. deploy/README.md, "The GitHub App", has signadot-verse's.
 #
 # Install it once the pods are up (the name must match `githubIOName`, because the hint url
 # below carries it):

@@ -706,7 +706,8 @@ default.
 
 | Environment | What it is |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, and on **Contents** to merge. Required. |
+| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, and on **Contents** to merge. Required, unless the app below is set. |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The io authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
 

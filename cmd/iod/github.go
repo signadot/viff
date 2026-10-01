@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -20,6 +21,12 @@ import (
 // higher ceiling and for not being tied to a person, and the measurement in
 // git-issue 3eskdzrq says when: a personal token covers about forty repositories
 // with discussions on, and effectively unbounded with `-discussions=false`.
+//
+// OR AN APP: GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY (the PEM) make
+// the io authenticate as the app's installation, and what the out half does is then the app's
+// rather than a person's (git-issue n69fce9dh12krpecqsn0). Given both, the app is used: a
+// deployment adds the app's keys to its secret first, and drops GITHUB_TOKEN once the build that
+// reads them runs.
 func githubMain(args []string) error {
 	fs := flag.NewFlagSet("github", flag.ExitOnError)
 	var c common
@@ -50,9 +57,22 @@ func githubMain(args []string) error {
 		return err
 	}
 
+	app, err := githubApp()
+	if err != nil {
+		return err
+	}
+	token := secret("GITHUB_TOKEN")
+	if app != nil {
+		log.Printf("github: authenticating as app %s, installation %s", app.AppID, app.InstallationID)
+		if token != "" {
+			log.Printf("github: GITHUB_TOKEN is set too, and ignored: the app is used")
+			token = ""
+		}
+	}
 	ctx := context.Background()
 	src, err := github.New(ctx, github.Config{
-		Token:           secret("GITHUB_TOKEN"),
+		Token:           token,
+		App:             app,
 		Repos:           repos,
 		Root:            c.root,
 		Settled:         *settled,
@@ -89,4 +109,29 @@ func githubMain(args []string) error {
 		}
 	}
 	return c.serve(src.Root(), src, routes)
+}
+
+// githubApp is the app the environment names, nil where it names none. Partly named is refused:
+// a deployment that set two of the three meant the app, and falling back to the token would hide
+// that the third is missing.
+func githubApp() (*github.AppAuth, error) {
+	a := github.AppAuth{
+		AppID:          secret("GITHUB_APP_ID"),
+		InstallationID: secret("GITHUB_APP_INSTALLATION_ID"),
+		PrivateKey:     []byte(secret("GITHUB_APP_PRIVATE_KEY")),
+	}
+	set := 0
+	for _, v := range []string{a.AppID, a.InstallationID, string(a.PrivateKey)} {
+		if v != "" {
+			set++
+		}
+	}
+	switch set {
+	case 0:
+		return nil, nil
+	case 3:
+		return &a, nil
+	}
+	return nil, errors.New("github: GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY " +
+		"name an app together, and only some are set")
 }

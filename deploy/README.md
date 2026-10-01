@@ -425,7 +425,7 @@ are the names each consumer reads:
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
 | `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start |
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
-| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
+| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `coderunnerSecretKey` | `verse-coderunner` | `gitToken` | env, in the runner and never in the sandbox |
 
 ### Creating the entries
@@ -516,9 +516,30 @@ request's own author.
 | installation | id **167005587**, on signadot, with selected repositories: **example/app, signadot/verse, example/infra** |
 | webhook | off: the io's events come from repository webhooks ([Webhooks](#webhooks)) |
 
-**`iod github` does not authenticate as the app yet.** It takes `GITHUB_TOKEN` only. Until it
-can mint installation tokens from the app id, the installation id and the app's private key, the
-app is installed and unused, and the private key is in no secret store.
+**`iod github` authenticates as the app when its entry carries the app.** That is three keys:
+`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY`, the PEM. Given with
+`GITHUB_TOKEN`, the app is used and the token is ignored. So the keys can be added to the entry
+before a build that reads them is deployed, and the token is removed once one runs. A build that
+predates app support ignores the three keys. To add them to staging's entry, keeping what it
+holds:
+
+```sh
+(umask 077
+ aws secretsmanager get-secret-value --region us-west-2 --secret-id staging/verse/github \
+   --query SecretString --output text \
+ | jq --arg id 5154941 --arg inst 167005587 \
+      --rawfile key ~/.config/signadot-verse/signadot-verse.private-key.pem \
+      '. + {GITHUB_APP_ID: $id, GITHUB_APP_INSTALLATION_ID: $inst, GITHUB_APP_PRIVATE_KEY: $key}' \
+   > /tmp/e.json)
+aws secretsmanager put-secret-value --region us-west-2 \
+  --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
+kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
+kubectl -n verse rollout restart deploy/github-io
+```
+
+The io's log says `authenticating as app 5154941, installation 167005587` when it starts. Once it
+does, `GITHUB_TOKEN` can be removed from the entry the same way, with `del(.GITHUB_TOKEN)` as the
+jq program.
 
 **A repository the io reflects must be in the installation.** Add it under the app's installation
 settings (signadot → Settings → GitHub Apps → signadot-verse → Configure → Repository access).

@@ -1,7 +1,10 @@
 package github_test
 
 import (
+	"crypto"
+	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeGitHub is as much of the REST API as this source reads, answering from fixtures.
@@ -34,6 +38,10 @@ type fakeGitHub struct {
 	merges      int      // pull requests the out half merged
 	closes      int      // issues and pull requests the out half closed
 	reviews     []string // the events of the reviews the out half posted, in order
+	// app is an app's public key, set when the source authenticates as an app: the fake then
+	// mints installation tokens for a JWT that key verifies, and accepts those tokens too.
+	app    *rsa.PublicKey
+	minted []string
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
 	failWith int
@@ -195,7 +203,11 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"API rate limit exceeded"}`, fail)
 		return
 	}
-	if r.Header.Get("Authorization") != "Bearer test-token" {
+	if r.Method == http.MethodPost && r.URL.Path == "/app/installations/"+fakeInstallation+"/access_tokens" {
+		f.mint(w, r)
+		return
+	}
+	if !f.authorized(r.Header.Get("Authorization")) {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 		return
 	}
@@ -681,6 +693,66 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 	default:
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 	}
+}
+
+// fakeInstallation is the installation id the fake mints for.
+const fakeInstallation = "167"
+
+// mint answers an installation token for an app's JWT, verifying it as GitHub does: signed by the
+// app's key, issued by the app, and not expired.
+func (f *fakeGitHub) mint(w http.ResponseWriter, r *http.Request) {
+	jwt, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	parts := strings.Split(jwt, ".")
+	f.mu.Lock()
+	key := f.app
+	f.mu.Unlock()
+	if !ok || len(parts) != 3 || key == nil {
+		http.Error(w, `{"message":"A JSON web token could not be decoded"}`, http.StatusUnauthorized)
+		return
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sum := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if err != nil || rsa.VerifyPKCS1v15(key, crypto.SHA256, sum[:], sig) != nil {
+		http.Error(w, `{"message":"A JSON web token could not be decoded"}`, http.StatusUnauthorized)
+		return
+	}
+	raw, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	var claims struct {
+		Iss string `json:"iss"`
+		Exp int64  `json:"exp"`
+	}
+	if json.Unmarshal(raw, &claims) != nil || claims.Iss != "5154941" || claims.Exp < time.Now().Unix() {
+		http.Error(w, `{"message":"'Issuer' claim ('iss') must be an Integer"}`, http.StatusUnauthorized)
+		return
+	}
+	f.mu.Lock()
+	tok := fmt.Sprintf("ghs_fake%d", len(f.minted)+1)
+	f.minted = append(f.minted, tok)
+	f.mu.Unlock()
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, map[string]any{"token": tok, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+}
+
+// authorized is whether a request carries the test token or a token the fake minted.
+func (f *fakeGitHub) authorized(h string) bool {
+	if h == "Bearer test-token" {
+		return true
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, tok := range f.minted {
+		if h == "Bearer "+tok {
+			return true
+		}
+	}
+	return false
+}
+
+// mintCount is how many installation tokens the fake minted.
+func (f *fakeGitHub) mintCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.minted)
 }
 
 // openedCount is how many pull requests the out half opened.
