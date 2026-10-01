@@ -503,6 +503,60 @@ mount, an anonymous clone, and a private repository answering 404.
 consumer needs `kubectl -n verse rollout restart deploy/<x>`. The `secrets/` dir renders ahead
 of the workloads so a first apply does not need that.
 
+### The GitHub App (`signadot-verse`)
+
+The github io's out half would act as an app rather than as a person's token: as
+`signadot-verse[bot]`, it can review pull requests that people open, and people can review the
+ones it opens. A person's token can do neither, since GitHub refuses a review from a pull
+request's own author.
+
+| | |
+|---|---|
+| app | `signadot-verse`, id **5154941**, owned by signadot, private: <https://github.com/apps/signadot-verse> |
+| installation | id **167005587**, on signadot, with selected repositories: **example/app, signadot/verse, example/infra** |
+| webhook | off: the io's events come from repository webhooks ([Webhooks](#webhooks)) |
+
+**`iod github` does not authenticate as the app yet.** It takes `GITHUB_TOKEN` only. Until it
+can mint installation tokens from the app id, the installation id and the app's private key, the
+app is installed and unused, and the private key is in no secret store.
+
+**A repository the io reflects must be in the installation.** Add it under the app's installation
+settings (signadot → Settings → GitHub Apps → signadot-verse → Configure → Repository access).
+
+It was created on 2026-10-01 from this manifest, through GitHub's
+[manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest).
+`redirect_url` was a one-off local server that exchanged GitHub's code for the app's credentials,
+and `hook_attributes.url` is a placeholder, since the webhook is inactive:
+
+```json
+{
+  "name": "signadot-verse",
+  "url": "https://github.com/signadot/verse",
+  "description": "verse's github io: reflects repositories into verse and acts back on them (comments, pull requests, merges, reviews, closes).",
+  "public": false,
+  "hook_attributes": {"url": "https://example.invalid/github/webhook", "active": false},
+  "redirect_url": "http://127.0.0.1:8765/done",
+  "default_permissions": {
+    "metadata": "read",
+    "actions": "read",
+    "contents": "write",
+    "issues": "write",
+    "pull_requests": "write"
+  },
+  "default_events": []
+}
+```
+
+These permissions are the token's ([above](#creating-the-entries)) plus the out half's writes:
+Issues and Pull requests to comment, open, review and close, and Contents to merge. Two are left
+off on purpose:
+
+- **Discussions.** Discussions stay off unless `githubDiscussions` is turned on.
+- **Workflows.** Without it, GitHub refuses the app a merge of a pull request that changes
+  `.github/workflows/*`, and the refusal lands on the input's status.
+
+Changing the app's permissions makes the org owner approve the installation again.
+
 ### The model credential (`llmSecretKey`)
 
 versed does `envFrom` a `verse-llm` Secret (`optional: true`), so it deploys and runs on the
