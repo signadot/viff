@@ -244,6 +244,10 @@ type flight struct {
 	next  int
 	// withdrawn is the suspensions its question stands withdrawn by, until it is asked again.
 	withdrawn []string
+	// again is the latest firing about this subject that arrived while this one ran and was woken
+	// by a change to something ELSE (a `when`, a condition read). It is fired when this
+	// one ends, if the rule still selects the subject then (endFlight). nil is none.
+	again *occasion
 }
 
 // setWithdrawn records what the firing's question stands withdrawn by; nil once asked again.
@@ -282,13 +286,36 @@ func (f *flight) withdraw(cause error) {
 // claimFlight reserves a (trigger, subject) firing, handing back its flight when it was free.
 // release gives it back when the firing ends.
 func (e *Engine) claimFlight(name string, subj entity.Ref) (*flight, bool) {
+	return e.claimOrDefer(name, subj, nil)
+}
+
+// claimOrDefer is claimFlight that, finding the subject already firing, keeps oc to fire when
+// that firing ends, where oc was woken by a change to something other than the subject.
+//
+// A FIRING ARRIVING DURING ANOTHER ABOUT ITS SUBJECT USED TO BE DROPPED, on the argument that the
+// running one's write re-selects the subject and the next commit asks again. That holds for a
+// change to the subject, which the running firing is usually the author of. It does not hold for
+// a change elsewhere — a `when`, or what a condition reads — since nothing commits after it and
+// the rule never sees it (git-issue 8z4azhtjh12krmmqqsn0).
+//
+// The subject's own changes are still dropped. Firing again on them would, for a gated rule,
+// ask its question a second time about the write its own answer caused.
+func (e *Engine) claimOrDefer(name string, subj entity.Ref, oc *occasion) (*flight, bool) {
 	key := name + "\x00" + subj.String()
 	e.flightMu.Lock()
 	defer e.flightMu.Unlock()
 	if e.inflight == nil {
 		e.inflight = map[string]*flight{}
 	}
-	if e.inflight[key] != nil {
+	if f := e.inflight[key]; f != nil {
+		if oc != nil && !changedIn(oc.commit, subj) {
+			f.mu.Lock()
+			if f.again == nil || f.again.commit.Rev < oc.commit.Rev {
+				later := *oc
+				f.again = &later
+			}
+			f.mu.Unlock()
+		}
 		return nil, false
 	}
 	f := &flight{rule: name, subj: subj}
@@ -307,8 +334,32 @@ func (e *Engine) flights() []*flight {
 	return out
 }
 
-func (e *Engine) releaseFlight(name string, subj entity.Ref) {
+func (e *Engine) releaseFlight(name string, subj entity.Ref) *occasion {
+	key := name + "\x00" + subj.String()
 	e.flightMu.Lock()
-	delete(e.inflight, name+"\x00"+subj.String())
+	f := e.inflight[key]
+	delete(e.inflight, key)
 	e.flightMu.Unlock()
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.again
+}
+
+// endFlight releases a firing and fires what arrived during it (claimOrDefer), with the rule as
+// it now stands and only if it still selects the subject — checked against the store as it is
+// now, so a firing whose own write moved the subject out of the selection is not followed by one
+// about the world before it.
+func (e *Engine) endFlight(ctx context.Context, name string, subj entity.Ref) {
+	again := e.releaseFlight(name, subj)
+	if again == nil || ctx.Err() != nil {
+		return
+	}
+	t, ok := e.triggerNamed(name)
+	if !ok || !e.selectsNow(t, subj) {
+		return
+	}
+	go e.fireOne(ctx, t, *again, subj)
 }

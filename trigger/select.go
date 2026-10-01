@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"slices"
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
@@ -330,6 +331,27 @@ func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
 		}
 	}
 	return false
+}
+
+// selectsNow is stillSelects for a firing about to happen: whether the rule's `when` holds and its
+// subject picks this entity out of the verse as it stands. It answers FALSE when it cannot tell,
+// where stillSelects answers true: here the cost of a wrong yes is an action applied, and the
+// next commit that touches what the rule reads asks again.
+func (e *Engine) selectsNow(t Trigger, subj entity.Ref) bool {
+	now, err := e.reader(t.Name).AsOf(e.store.Head(), paths(t.reads())...)
+	if err != nil {
+		return false
+	}
+	if t.Condition.When != nil {
+		if ok, _ := t.Condition.When.Eval(now); !ok {
+			return false
+		}
+	}
+	m, err := e.conditionMatch(t.Condition.Subject, now)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(m.Select(now), subj)
 }
 
 // Knows reports whether this engine's charter carries a rule by this name. It is knowsTrigger

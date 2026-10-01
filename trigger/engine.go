@@ -891,11 +891,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
 		return
 	}
-	fl, ok := e.claimFlight(t.Name, subj)
+	fl, ok := e.claimOrDefer(t.Name, subj, &oc)
 	if !ok {
 		return
 	}
-	defer e.releaseFlight(t.Name, subj)
+	defer e.endFlight(ctx, t.Name, subj)
 
 	subjects := []entity.Ref{subj} // the gate and motion identities are over the firing's set
 	var wg sync.WaitGroup
