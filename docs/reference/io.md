@@ -358,6 +358,11 @@ requesters' line, and no line for anybody else.
 
 The io does nothing to opt in. Any registered io's out place may be named in a `to`.
 
+The grant follows both sides. Removing the io takes back the grant on every outbox sending to
+it, whether the removal said `--forget` or `--keep`: an outbox is a package's arrangement with an
+io that is gone. Installing the io again grants the outboxes still declared for its places, so
+the packages need not be installed again.
+
 ### What is asked, and what became of it
 
 | | where | written by | holds |

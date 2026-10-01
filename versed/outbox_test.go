@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -133,5 +134,49 @@ func TestAnOutboxDeclarationIsChecked(t *testing.T) {
 	}
 	if resp := putAs(t, slackIO, ts.URL, "demo.y.out.m~status", entity.Obj{"posted": "x"}.Payload()); resp.StatusCode < 400 {
 		t.Errorf("a refused install left the io holding its outbox: %s", resp.Status)
+	}
+}
+
+// AN OUTBOX FOLLOWS ITS IO OUT AND BACK IN: the io's removal takes back the grant on every outbox
+// sending to it, and installing it again grants them, with the package left as it was.
+func TestAnOutboxFollowsItsIO(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	const ana = "user:ana@example.com"
+	io := map[string]any{
+		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"owns": []any{map[string]any{"at": "slack.ws"}},
+		"out":  map[string]any{"places": []any{slackOut}, "as": slackIO},
+	}
+	if resp := installIO(t, ts, ana, io); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("io install: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	if resp := installAs(t, alice, ts.URL, announce); resp.StatusCode >= 300 {
+		t.Fatalf("package install: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	// A FRESH NAME each time: the io owns a status it created, so rewriting one asks nothing of the
+	// outbox's grant.
+	n := 0
+	answers := func() bool {
+		n++
+		status := entity.RefAt("demo", "announce", "out", "slack", fmt.Sprintf("m%d%s", n, verseio.StatusSuffix))
+		return write(srv.Store, slackIO, status, entity.Obj{"posted": "x"}) == nil
+	}
+	if !answers() {
+		t.Fatal("the io could not answer in the outbox it was declared")
+	}
+	if resp := deleteAs(t, ana, ts.URL+"/io/workspace"); resp.StatusCode >= 300 {
+		t.Fatalf("io removal: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	if answers() {
+		t.Fatal("the io's grant in the outbox outlived the io")
+	}
+	if resp := installIO(t, ts, ana, io); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("io re-install: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	if !answers() {
+		t.Fatal("the io installed again cannot answer in the outbox still declared for it")
 	}
 }

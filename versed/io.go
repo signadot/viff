@@ -232,6 +232,10 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	if warn := seedOut(store, installer, e); warn != "" {
 		out["warning"] = warn
 	}
+	// And the outboxes packages already declared for its places, which it now reads (outbox.go).
+	if e.Out != nil {
+		s.grantOutboxesTo(e.Out.Places, e.Out.As)
+	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
 	// for.
@@ -591,6 +595,10 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	// Stopped BEFORE anything is written, so nothing is left writing a slice no registration
 	// claims — and so a pass in flight cannot re-reflect what --forget is about to tombstone.
 	s.stopSource(ref)
+	// The outboxes sending to it lose their grant, whichever way the removal goes (outbox.go).
+	if e.Out != nil {
+		s.releaseOutboxesTo(e.Out.Places)
+	}
 
 	out := map[string]any{"removed": ref.String()}
 	if forget {

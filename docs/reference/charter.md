@@ -97,7 +97,9 @@ sends:
   read each `~status` beside them, so a rule can see what became of what it asked.
 - A place is an outbox only because its package says so. A package that happens to have an
   `out.slack` place sends nothing.
-- Installing the package without the entry, or removing the package, takes the outbox back.
+- The grant stands while the package declares the outbox and an io reads the place it sends to.
+  Installing the package without the entry, removing the package, or removing the io takes it
+  back. Installing the io again grants the outboxes still declared for it.
 
 The install refuses a `to` no io reads, a `from` sent twice, and `sends:` on a charter with no
 address. See [The out half](io.md#the-out-half) for what an io does with an outbox.

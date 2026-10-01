@@ -91,11 +91,58 @@ func holdOutbox(store entity.Store, installer, from, as string) error {
 		return err
 	}
 	takePlace(store, installer, ref, "outbox")
+	return grantOutbox(store, ref, as)
+}
+
+// grantOutbox writes an outbox's grant lines for the io acting as `as`.
+func grantOutbox(store entity.Store, ref entity.Ref, as string) error {
 	grants := []entity.Grant{{At: entity.SegsOf(ref), Below: true, To: map[entity.Level][]string{
 		entity.Read:       {as},
 		entity.OwnerLevel: {as},
 	}}}
 	return entity.SetGrants(store, ref, grants)
+}
+
+// AN OUTBOX'S GRANT FOLLOWS BOTH SIDES: it stands while the package declares the outbox AND an io
+// reads the place it sends to. So an io's removal takes back the grants of every outbox sending
+// to its places, whatever the removal kept of its own (`--keep` keeps the io's place for a
+// re-install, but an outbox is a package's arrangement with an io that is gone), and an io's
+// install grants the outboxes already declared for its places — the package need not be
+// installed again to be heard. Written as the system: the outboxes are other people's places,
+// and this is the bookkeeping of a declaration they made, not an act of whoever moves the io.
+
+// releaseOutboxesTo takes back the grants of every outbox sending to one of places.
+func (s *Server) releaseOutboxesTo(places []string) {
+	sys := entity.As(s.Store, entity.SystemDefault)
+	for _, place := range places {
+		ref, err := entity.ParseAddr(place)
+		if err != nil {
+			continue
+		}
+		for _, send := range s.outboxesTo(ref.KPath()) {
+			releaseOutbox(sys, send.From)
+		}
+	}
+}
+
+// grantOutboxesTo grants the io acting as `as` every outbox already declared for one of places.
+func (s *Server) grantOutboxesTo(places []string, as string) {
+	sys := entity.As(s.Store, entity.SystemDefault)
+	for _, place := range places {
+		ref, err := entity.ParseAddr(place)
+		if err != nil {
+			continue
+		}
+		for _, send := range s.outboxesTo(ref.KPath()) {
+			from, err := entity.ParseAddr(send.From)
+			if err != nil {
+				continue
+			}
+			if err := grantOutbox(sys, from, as); err != nil {
+				fmt.Fprintf(os.Stderr, "verse: outbox %s: not held out to %s: %v\n", send.From, as, err)
+			}
+		}
+	}
 }
 
 // releaseOutbox takes back what holdOutbox held out, for an entry or a package that went. Said on
