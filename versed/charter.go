@@ -100,6 +100,9 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 	if at != "" {
 		node.writes = at + ".*"
 		node.reads = trigger.StampReads(eng.Reads())
+		if sends, err := s.packageSends(at); err == nil && len(sends) > 0 {
+			node.sends = relativeSends(sends, at)
+		}
 	}
 	// THE RULES THAT STAND, the held ones among them: a held rule is written down and occupies
 	// its name, so a listing without it shows a charter its author did not install, and the
@@ -160,6 +163,7 @@ type charterNode struct {
 	here      bool // a charter is installed AT this address, rather than only under it
 	writes    string
 	reads     []string
+	sends     []trigger.Send // `from` relative to the package's address, as the charter wrote it
 	triggers  *ir.Node
 	strata    *ir.Node
 	schedules *ir.Node // the schedules declared here, as `verse schedule` lists them; nil for none
@@ -216,6 +220,9 @@ func (n *charterNode) node() *ir.Node {
 	add("writes", ir.FromString(n.writes))
 	if n.reads != nil {
 		add("reads", strNodes(n.reads))
+	}
+	if len(n.sends) > 0 {
+		add(trigger.SendsField, sendNodes(n.sends))
 	}
 	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))
@@ -674,7 +681,7 @@ func (g charterGroup) empty() bool {
 
 // fileKeys are the keys of a fielded charter, and the only ones it may carry. The file is the
 // node `verse c` prints for one address, so what the install reads is what the listing wrote.
-var fileKeys = []string{"at", trigger.ReadsField, "rules", "schedules", "strata"}
+var fileKeys = []string{"at", trigger.ReadsField, trigger.SendsField, "rules", "schedules", "strata"}
 
 // charterFiles splits a request into the charters it installs, in request order.
 //
@@ -773,7 +780,7 @@ func charterFiles(docs []*ir.Node, at string) ([]charterGroup, error) {
 func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 	n := codec.Unwrap(doc)
 	lists := map[string][]*ir.Node{}
-	declared, hasReads := "", false
+	declared, hasReads, hasSends := "", false, false
 	for i, key := range n.Fields {
 		if key == nil || key.Type != ir.StringType {
 			continue
@@ -787,6 +794,8 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 			declared = v.String
 		case trigger.ReadsField:
 			hasReads = true
+		case trigger.SendsField:
+			hasSends = true
 		case "rules", "schedules", "strata":
 			if v == nil || v.Type == ir.NullType {
 				continue
@@ -821,6 +830,11 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 		if hasReads {
 			return charterGroup{}, errors.New("reads: a charter with no address has nothing to " +
 				"read INTO — `reads:` belongs to a package: give it `at: <address>`, or install " +
+				"the file at a path (`verse c -a <address> -f …`)")
+		}
+		if hasSends {
+			return charterGroup{}, errors.New("sends: a charter with no address has nothing to " +
+				"send FROM — `sends:` belongs to a package: give it `at: <address>`, or install " +
 				"the file at a path (`verse c -a <address> -f …`)")
 		}
 	} else {
@@ -975,12 +989,27 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
+	sends, err := trigger.SendsFromNode(def, at)
+	if err != nil {
+		return http.StatusBadRequest, err
+	}
+	was := trigger.SendsOf(prev)
 	if err := tx.s.setPackageImports(tx.store, at, subs); err != nil {
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
 		eng.SetReads(before)
 		return tx.s.putPackageDecl(tx.store, at, prev, had)
+	})
+	// The OUTBOXES with it, from the same document: what the package reads and where it asks ios
+	// for things are both its declaration (outbox.go). Undone before the record is put back, so
+	// the io is held out exactly the outboxes the restored record names.
+	installer := tx.as()
+	if err := tx.s.setPackageSends(tx.store, installer, at, sends, was); err != nil {
+		return http.StatusBadRequest, err
+	}
+	tx.push(func() error {
+		return tx.s.setPackageSends(tx.store, installer, at, was, sends)
 	})
 	return http.StatusCreated, nil
 }

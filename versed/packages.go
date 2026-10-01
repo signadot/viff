@@ -625,6 +625,12 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	if err := s.removePackageSchedules(store, at); err != nil {
 		return fmt.Errorf("%s: %w", at, err)
 	}
+	// Its outboxes go with it: the io stops being held out a place no package declares.
+	if sends, err := s.packageSends(at); err == nil {
+		for _, send := range sends {
+			releaseOutbox(store, send.From)
+		}
+	}
 	if err := s.removeDecl(store, trigger.PackageRef(confine.Stamp())); err != nil {
 		return fmt.Errorf("%s: removing the declaration: %w", at, err)
 	}

@@ -57,6 +57,9 @@ func charterFile(node *ir.Node, at string) (*ir.Node, []string) {
 	if reads := nodeField(node, "reads"); reads != nil {
 		add("reads", reads)
 	}
+	if sends := nodeField(node, "sends"); sends != nil {
+		add("sends", sends)
+	}
 	var notes []string
 	if rules := codec.Unwrap(nodeField(node, "rules")); rules != nil && rules.Type == ir.ArrayType && len(rules.Values) > 0 {
 		out := make([]*ir.Node, 0, len(rules.Values))
@@ -327,7 +330,7 @@ func isCharterDoc(n *ir.Node) bool {
 		switch key.String {
 		case "condition", "level", "every":
 			return false
-		case "at", "reads", "rules", "schedules", "strata":
+		case "at", "reads", "sends", "rules", "schedules", "strata":
 			charter = true
 		}
 	}

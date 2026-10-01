@@ -174,6 +174,14 @@ The `reads:` line of a package names what its rules read outside its own address
 
 See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
 
+### outbox
+
+An outbox is a place inside a package that an io reads what is asked of it, declared by the
+package's `sends:` line: `sends: [{from: out.slack, to: slack.Signadot.out}]`. The io reads the
+inputs there and writes each status beside them, inside the package.
+
+See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
+
 ### match
 
 A match selects nodes at one revision: `{path: "demo.pr.*", value: {stage: open}}`. The

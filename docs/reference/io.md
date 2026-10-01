@@ -156,6 +156,7 @@ scope it reflects into.
 | `GET /io/{name}/check` | `{at, reach}`, plus `url` when the io has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
 | `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
 | `POST /io/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
+| `GET /outboxes` | `?to=<out place>`: the outboxes packages declare sending there, as `[{from, to}]`. Only the io whose out half reads the place (its `as`) may ask; `403` for anybody else, `404` when no io reads it |
 
 A route that names one io has two answers when it does not find the io:
 
@@ -328,6 +329,34 @@ must arrange that, because covers come with an answer and not with a claim.
 
 `--forget` takes the grants back, with everything else the io left. `--keep` keeps them, because
 a re-install lands back on a place whose grants stand.
+
+### Outboxes: what a package sends
+
+A package asks an io for something through an outbox it declares
+([`sends:`](charter.md#a-charter-can-be-installed-at-an-address)): a place inside the package,
+named with the io's out place.
+
+```tony
+at: verse-dev.announce
+sends: [{from: out.slack, to: slack.Signadot.out}]
+```
+
+Each pass, the out half reads its own place and then every outbox sending to it, which it asks
+verse for (`GET /outboxes`). An input in an outbox is handed to the connector as one asked at the
+io's own place, so a connector serving several places treats it the same. Its status is written
+beside it, inside the package, where the package's rules can read it.
+
+The package's install writes the grants, at the outbox:
+
+```
+read         <as>               below the outbox   the io reads what is asked
+child-owner  <as>                                  and OWNS each status it creates
+```
+
+The package's own rules ask as its installer, who owns the outbox already. So there is no
+requesters' line, and no line for anybody else.
+
+The io does nothing to opt in. Any registered io's out place may be named in a `to`.
 
 ### What is asked, and what became of it
 

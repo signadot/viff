@@ -553,7 +553,7 @@ func defKind(n *ir.Node) string {
 	// `at:` alone is a declaration too — a package that reads nothing outside itself still says where it is,
 	// which is what lets one file open several packages and what makes "reads nothing outside
 	// itself" a thing somebody can write down rather than only a default.
-	case has("reads"), has("at"):
+	case has("reads"), has("sends"), has("at"):
 		return defReads
 	}
 	return defUnknown

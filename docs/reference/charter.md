@@ -77,6 +77,31 @@ This default is the safe one and the strict one. A package that reads nothing ou
 interfere with anybody. The default also makes the graph total, because every edge is written
 down.
 
+**Sends are declared too.** A package writes only inside its address, and an
+[io](../glossary.md#io) reads what it is asked only at its own out place. So a package asks an io
+for something through an [outbox](../glossary.md#outbox): a place inside the package that the
+package declares the io reads.
+
+```tony
+at: verse-dev.announce
+sends:
+- from: out.slack                # inside this package's address
+  to: slack.Signadot.out         # an io's out place, as its registration names it
+```
+
+- `from` is written relative to the package's address. `to` is an out place that a registered io
+  reads. One `from` sends to one io.
+- The install holds the outbox out to that io: it may read what is asked there and own each
+  status it writes beside an input. It may do nothing else in the package.
+- The package's rules derive inputs into the outbox like any other write inside the address, and
+  read each `~status` beside them, so a rule can see what became of what it asked.
+- A place is an outbox only because its package says so. A package that happens to have an
+  `out.slack` place sends nothing.
+- Installing the package without the entry, or removing the package, takes the outbox back.
+
+The install refuses a `to` no io reads, a `from` sent twice, and `sends:` on a charter with no
+address. See [The out half](io.md#the-out-half) for what an io does with an outbox.
+
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 

@@ -1330,6 +1330,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /io/{name}", s.getIO, "", nothing)
 	rt.handle("GET /io/{name}/check", s.checkIO, "", nothing)
 	rt.handle("DELETE /io/{name}", s.removeIO, "", nothing)
+	// What a package declared it sends to an io's out place (outbox.go), asked by that io.
+	rt.handle("GET /outboxes", s.listOutboxes, "", nothing)
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
 	rt.handleUnattributed("POST /io/{name}/hint", s.hintIO, "", nothing)

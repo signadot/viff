@@ -140,6 +140,11 @@ The addresses a sink reads must lie **inside the io's claim and outside its cove
 - Outside the [covers](glossary.md#cover-of-a-reflection), so that a reflection never
   tombstones a request.
 
+A sink also reads the [outboxes](glossary.md#outbox) that packages declare for it: places
+inside a package, outside the io's claim, that the package says this io reads. It reads them as
+it reads its own place, and writes each status inside the package
+([reference/io.md](reference/io.md#outboxes-what-a-package-sends)).
+
 The registration says three things: where the sink reads, whom the io acts as, and who may
 ask. The install writes the grants that the registration describes. So you set up a sink in one
 act, not with four `verse perms` lines and a flag

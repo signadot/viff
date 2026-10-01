@@ -224,8 +224,60 @@ func (o *Out) Pass(ctx context.Context) error {
 	}
 	var pass OutPass
 	o.walk(ctx, place, o.place.Segs(), &pass)
+	// AND EVERY OUTBOX SENDING HERE: a place inside a package that the package declared this io
+	// reads (`sends:`, git-issue 84a83gkwh12krst5phn0). Read the same way, and each status written
+	// beside its input — inside the package, where its rules can read what became of it. Asked
+	// each pass, so a package installed or removed changes what is read on the next one. A
+	// failure to ask is said and the own place still counts: it was read.
+	froms, err := o.outboxes()
+	if err != nil {
+		o.log("io out: listing outboxes: %v", err)
+		pass.Error = err.Error()
+	}
+	for _, from := range froms {
+		box, err := o.Read(from.KPath())
+		if err != nil {
+			o.log("io out: reading outbox %s: %v", from, err)
+			pass.Error = err.Error()
+			continue
+		}
+		o.walk(ctx, box, from.Segs(), &pass)
+	}
 	o.report(pass)
 	return nil
+}
+
+// outboxes is the places packages declared this io reads beside its own (GET /outboxes).
+func (o *Out) outboxes() ([]entity.Ref, error) {
+	resp, err := o.verse.Get("/outboxes", url.Values{"to": {o.place.KPath()}})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // no registration names this place: an out half run on its own
+	}
+	body, err := client.OKBody(resp)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := codec.ParseNode(body, client.ResponseFormat(resp))
+	if err != nil {
+		return nil, err
+	}
+	var out []entity.Ref
+	list := ir.Uncomment(doc)
+	if list == nil {
+		return nil, nil
+	}
+	for _, el := range list.Values {
+		ref, err := entity.ParseAddr(entity.Str(el, "from"))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ref)
+	}
+	return out, nil
 }
 
 // walk descends the place looking for inputs, which are the nodes carrying `to`.
