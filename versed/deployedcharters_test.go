@@ -58,6 +58,8 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	// The Slack io, as repopulate installs it before the charters that send through it.
+	withSlackIO(t, srv)
 	for _, name := range deployOrder {
 		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
 		if err != nil {

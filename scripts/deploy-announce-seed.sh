@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Seed the deploy announcement past the tags that already exist: one silent record per
-# `deploy/staging.*` tag on the remote, so only a tag pushed from here on is announced
+# `deploy/staging.*` tag on the remote, in the package's outbox (`verse-dev.announce.out.slack`),
+# so only a tag pushed from here on is announced
 # (deploy/charters/verse/workspace/Signadot/deploy-announce.tony, "The message is the latch").
 # Run BEFORE installing the charter.
 #
@@ -26,10 +27,10 @@ fi
 
 n=0
 while read -r tag; do
-  if v data slack Signadot out deploy "$tag" >/dev/null 2>&1; then
+  if v data verse-dev announce out slack "$tag" >/dev/null 2>&1; then
     echo "-- $tag already stands; left alone"
   else
-    v data slack Signadot out deploy "$tag" --put "{seen: {name: \"$tag\"}}" >/dev/null
+    v data verse-dev announce out slack "$tag" --put "{seen: {name: \"$tag\"}}" >/dev/null
     echo "-- $tag seeded"
   fi
   n=$((n + 1))

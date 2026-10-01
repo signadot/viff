@@ -164,10 +164,15 @@ func (t Trigger) outsideReads() []Subtree {
 // ParseReads reads the `reads:` declaration — a list of addresses in either spelling, the
 // dotted one an operator types (`drift`, `demo.pr`) or the steps one a path prints
 // (`!verse-path [demo pr]`), which trigger.Match already takes for the same reason.
+//
+// A READ MAY NAME VERSE'S OWN HALF (`verse.gate.question`), where a charter may not be INSTALLED:
+// installing there would let a charter write the records verse keeps about its own running, and a
+// read writes nothing. What a package's rules see there is still what their installer may read.
+// It used to be parsed as an install address and refused with that address's reason.
 func ParseReads(in []string) ([]Subtree, error) {
 	out := make([]Subtree, 0, len(in))
 	for _, s := range in {
-		st, err := ParseAt(s)
+		st, err := parseRead(s)
 		if err != nil {
 			return nil, fmt.Errorf("reads: %w", err)
 		}
@@ -179,6 +184,23 @@ func ParseReads(in []string) ([]Subtree, error) {
 		out = append(out, st)
 	}
 	return out, nil
+}
+
+// parseRead is ParseAt for an address a package reads: the same spelling, verse's half allowed.
+func parseRead(at string) (Subtree, error) {
+	if at == "" {
+		return Subtree{}, nil
+	}
+	segs, err := entity.PathSegs(at)
+	if err != nil {
+		return Subtree{}, fmt.Errorf("an address %q: %w", at, err)
+	}
+	for _, sg := range segs {
+		if sg == "" {
+			return Subtree{}, fmt.Errorf("an address has an empty segment: %q", at)
+		}
+	}
+	return SubtreeAt(segs...), nil
 }
 
 // StampReads renders the declaration the way a record stores them: the dotted address each, in the

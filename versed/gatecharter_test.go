@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
@@ -34,7 +36,20 @@ func gateCharter(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("reading the shipped charter: %v", err)
 	}
-	return strings.ReplaceAll(string(b), "slack.Signadot.out", "demo.out")
+	return string(b)
+}
+
+// gateOutbox is where the shipped gate charter asks, inside its own package.
+var gateOutbox = entity.RefAt("verse-dev", "gate-ask", "out", "slack")
+
+// withSlackIO registers an io reading slack.Signadot.out, which is what the shipped charters'
+// outboxes send to: a package declaring one is refused unless an io reads the place it names.
+func withSlackIO(t *testing.T, srv *Server) {
+	t.Helper()
+	entitytest.Set(t, srv.Store, verseio.Ref("slack"), entity.Obj{
+		"name": "slack", "root": "slack",
+		"out": entity.Obj{"places": []any{"slack.Signadot.out"}, "as": "agent:slack-io"},
+	}.Payload())
 }
 
 func installCharter(t *testing.T, ts *httptest.Server, at, doc string) {
@@ -65,6 +80,7 @@ func TestTheGateCharterAsksEachPersonAQuestionWaitsOn(t *testing.T) {
 	srv.Start(t.Context()) // the engine, which is what runs the rule
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~1"
@@ -116,6 +132,7 @@ func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
 	srv.Start(t.Context()) // the engine, which is what runs the rule
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~2"
@@ -156,7 +173,7 @@ func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
 func asksIn(t *testing.T, srv *Server) map[string]entity.Obj {
 	t.Helper()
 	out := map[string]entity.Obj{}
-	e, ok, err := srv.Store.Get(entity.RefAt("demo", "out"))
+	e, ok, err := srv.Store.Get(gateOutbox)
 	if err != nil || !ok {
 		return out
 	}
@@ -185,6 +202,7 @@ func TestTheGateCharterLeavesDocketQuestionsToTheDocket(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~3"
