@@ -943,7 +943,13 @@ func commonFloor(pre []pathPattern) []string {
 
 func patternUnder(pre []pathPattern, depth int) *ir.Node {
 	var branches []*ir.Node
-	present, any := patTree{}, false
+	// EVERY PATTERN HOLDS, each in a tree where it displaces nothing. Nested into one tree, a
+	// second require about the same place replaced the first, and one about a field under a
+	// place another require asked about replaced that one: `[!not {status: answered},
+	// !not {status: orphaned}]` reached logd as the orphaned half alone (git-issue
+	// 874azhtjh12krn1xqsn0). A pattern that would collide starts a tree of its own, and the
+	// trees are branches like any other, all of which must hold.
+	var present []patTree
 	for _, p := range pre {
 		segs := p.at.segments()[depth:]
 		switch {
@@ -954,12 +960,15 @@ func patternUnder(pre []pathPattern, depth int) *ir.Node {
 		case p.object:
 			branches = append(branches, descendablePath(segs))
 		default:
-			nestPattern(present, segs, p.pattern)
-			any = true
+			i := slices.IndexFunc(present, func(t patTree) bool { return t.fits(segs) })
+			if i < 0 {
+				present, i = append(present, patTree{}), len(present)
+			}
+			nestPattern(present[i], segs, p.pattern)
 		}
 	}
-	if any {
-		branches = append(branches, present.node())
+	for _, t := range present {
+		branches = append(branches, t.node())
 	}
 	switch len(branches) {
 	case 0:
@@ -1136,6 +1145,23 @@ func (t patTree) child(k string) patTree {
 	c := patTree{}
 	t[k] = c
 	return c
+}
+
+// fits reports whether a pattern nested at segs would displace nothing: no pattern stands there
+// already, and none stands at a place segs runs through.
+func (t patTree) fits(segs []string) bool {
+	for i, seg := range segs {
+		v, ok := t[seg]
+		if !ok {
+			return true
+		}
+		c, sub := v.(patTree)
+		if i == len(segs)-1 || !sub {
+			return false
+		}
+		t = c
+	}
+	return true
 }
 
 // node renders the tree, leaving node leaves exactly as they were given.

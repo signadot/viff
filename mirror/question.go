@@ -646,12 +646,12 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 	// window — measured, and it narrowed the flake without closing it — so the store is asked
 	// instead.
 	//
-	// IT DOES NOT CLOSE IT EITHER, and that is worth saying rather than leaving to be
-	// rediscovered. The two writers are concurrent and the precondition is evaluated against a
-	// view that can lag the answer by a few milliseconds, so a frame post can still be admitted
-	// against a record that has just been answered. What is left needs the two paths ordered
-	// rather than each checking, which is a question about the runtime and not about this
-	// function; it stays on git-issue nkptp9b3h12ksx3kg9n0.
+	// WHAT WAS MEASURED HERE WAS THE GUARD BROKEN. Until 874azhtjh12krn1xqsn0 the store kept only
+	// the last of two preconditions about one place, so this write went out as "not orphaned"
+	// alone and was admitted over an answer every time, serially, with no lag involved. The
+	// residual that was put down to a view lagging the answer was that. Whether the two writers
+	// still leave a window now that the guard holds has not been measured; ordering them, rather
+	// than each checking, stays on git-issue nkptp9b3h12ksx3kg9n0.
 	ref := QuestionRef(ev.ID)
 	posed := entity.Obj{"status": rec["status"], "posedAt": rec["posedAt"]}
 	delete(rec, "status")
@@ -709,9 +709,8 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 	// (reown, which stamps `reownedFrom`), and this write landing after that would name the old
 	// owner again — and hold the question out to it — stranding it on a resolver that no longer
 	// answers. So the owner, and the grant that goes with it, land only on a question not handed
-	// on since; the handover stands. The same caveat as `status` above: the store checks, against
-	// a view that can lag, so this narrows the window rather than closing it
-	// (git-issue nkptp9b3h12ksx3kg9n0).
+	// on since; the handover stands. Whether two concurrent writers still leave a window is the
+	// question left open for `status` above (git-issue nkptp9b3h12ksx3kg9n0).
 	if owner != "" {
 		named, _, _ := store.Write(entity.Write{
 			At:    ref.At(),

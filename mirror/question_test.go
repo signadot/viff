@@ -379,3 +379,35 @@ func TestASubjectThatSaysNothingLeavesTheQuestionBare(t *testing.T) {
 		t.Errorf("about %q, want nothing", got)
 	}
 }
+
+// AN ANSWERED QUESTION STAYS ANSWERED whatever reaches it after: a frame reporting the same asking
+// again does not make it pending, and a settling that read it pending a moment before does not
+// make it orphaned. Each write's precondition says "not answered and not orphaned"; with only the
+// second half reaching the store, both went through (git-issue 874azhtjh12krn1xqsn0).
+func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
+	const ann = "user:ann@example.com"
+	ev := task.Frame{Kind: task.EvPending, ID: "t1~d1", Gate: "ship"}
+	answered := func() entity.Store {
+		store := docket(t)
+		if !PostFrameQuestion(store, ev, "t1", "", "", []string{ann}) {
+			t.Fatal("not posed")
+		}
+		AnswerQuestion(store, ev.ID, task.Choose(task.Proceed, ann))
+		return store
+	}
+	status := func(store entity.Store) string {
+		e, _, _ := store.Get(QuestionRef(ev.ID))
+		return entity.Str(e.Payload, "status")
+	}
+
+	store := answered()
+	PostFrameQuestion(store, ev, "t1", "", "", []string{ann}) // late: the same asking, reported again
+	if s := status(store); s != QuestionAnswered {
+		t.Errorf("a late frame left the answered question %s", s)
+	}
+	store = answered()
+	settlePending(store, QuestionRef(ev.ID), entity.Obj{"status": QuestionOrphaned, "why": "the task ended"})
+	if s := status(store); s != QuestionAnswered {
+		t.Errorf("a settling after the answer left the question %s", s)
+	}
+}
