@@ -66,16 +66,19 @@ func (s *Server) setPackageSends(store entity.Store, installer, at string, sends
 	}); err != nil {
 		return fmt.Errorf("sends: recording the declaration: %w", err)
 	}
-	kept := map[string]bool{}
+	reader := map[string]string{}
 	for i, send := range sends {
-		kept[send.From] = true
+		reader[send.From] = readers[i]
 		if err := holdOutbox(store, installer, send.From, readers[i]); err != nil {
 			return fmt.Errorf("sends: %s: %w", send.From, err)
 		}
 	}
+	// What an entry that went, or now sends to another io, held out to the io it sent to. An io
+	// no longer registered took its grants back when it was removed (releaseOutboxesTo).
 	for _, old := range was {
-		if !kept[old.From] {
-			releaseOutbox(store, old.From)
+		e, ok := ioFor(s.Store, old.To)
+		if ok && reader[old.From] != e.Out.As {
+			releaseOutbox(store, old.From, e.Out.As)
 		}
 	}
 	return nil
@@ -94,13 +97,20 @@ func holdOutbox(store entity.Store, installer, from, as string) error {
 	return grantOutbox(store, ref, as)
 }
 
-// grantOutbox writes an outbox's grant lines for the io acting as `as`.
+// grantOutbox writes an outbox's grant line for the io acting as `as`, BESIDE whatever else the
+// place holds out — the installer's own lines are theirs — and in place of a line it held before,
+// so holding again does not stack a second.
 func grantOutbox(store entity.Store, ref entity.Ref, as string) error {
-	grants := []entity.Grant{{At: entity.SegsOf(ref), Below: true, To: map[entity.Level][]string{
-		entity.Read:       {as},
-		entity.OwnerLevel: {as},
-	}}}
-	return entity.SetGrants(store, ref, grants)
+	if err := entity.Revoke(store, ref, outboxLevels(as)); err != nil {
+		return err
+	}
+	return entity.AddGrant(store, ref, entity.Grant{At: entity.SegsOf(ref), Below: true, To: outboxLevels(as)})
+}
+
+// outboxLevels is what an outbox holds out to the io that reads it: read beneath, and owner of
+// what it creates there.
+func outboxLevels(as string) entity.Levels {
+	return entity.Levels{entity.Read: {as}, entity.OwnerLevel: {as}}
 }
 
 // AN OUTBOX'S GRANT FOLLOWS BOTH SIDES: it stands while the package declares the outbox AND an io
@@ -111,8 +121,9 @@ func grantOutbox(store entity.Store, ref entity.Ref, as string) error {
 // installed again to be heard. Written as the system: the outboxes are other people's places,
 // and this is the bookkeeping of a declaration they made, not an act of whoever moves the io.
 
-// releaseOutboxesTo takes back the grants of every outbox sending to one of places.
-func (s *Server) releaseOutboxesTo(places []string) {
+// releaseOutboxesTo takes back what every outbox sending to one of places held out to the io
+// acting as `as`.
+func (s *Server) releaseOutboxesTo(places []string, as string) {
 	sys := entity.As(s.Store, entity.SystemDefault)
 	for _, place := range places {
 		ref, err := entity.ParseAddr(place)
@@ -120,7 +131,7 @@ func (s *Server) releaseOutboxesTo(places []string) {
 			continue
 		}
 		for _, send := range s.outboxesTo(ref.KPath()) {
-			releaseOutbox(sys, send.From)
+			releaseOutbox(sys, send.From, as)
 		}
 	}
 }
@@ -145,15 +156,17 @@ func (s *Server) grantOutboxesTo(places []string, as string) {
 	}
 }
 
-// releaseOutbox takes back what holdOutbox held out, for an entry or a package that went. Said on
-// stderr rather than refused, as unseedOut does: the grant is visible to `verse perms` either way.
-func releaseOutbox(store entity.Store, from string) {
+// releaseOutbox takes back what holdOutbox held out to the io acting as `as`, for an entry or a
+// package that went, and nothing else the place holds out (git-issue ne9fce9dh12ks1q4qsn0). Said
+// on stderr rather than refused, as unseedOut does: the grant is visible to `verse perms` either
+// way.
+func releaseOutbox(store entity.Store, from, as string) {
 	ref, err := entity.ParseAddr(from)
 	if err != nil {
 		return
 	}
-	if err := entity.SetGrants(store, ref, nil); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: outbox %s: its grants still stand: %v\n", from, err)
+	if err := entity.Revoke(store, ref, outboxLevels(as)); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: outbox %s: its grant to %s still stands: %v\n", from, as, err)
 	}
 }
 

@@ -597,7 +597,7 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	s.stopSource(ref)
 	// The outboxes sending to it lose their grant, whichever way the removal goes (outbox.go).
 	if e.Out != nil {
-		s.releaseOutboxesTo(e.Out.Places)
+		s.releaseOutboxesTo(e.Out.Places, e.Out.As)
 	}
 
 	out := map[string]any{"removed": ref.String()}

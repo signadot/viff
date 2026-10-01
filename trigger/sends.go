@@ -23,14 +23,15 @@ import (
 //	- from: out.slack                # inside this package's address
 //	  to: slack.Signadot.out         # an io's out place, as its registration names it
 //
-// ONE IO PER ENTRY: a `from` feeds exactly one `to`, which is the simplest thing to audit.
+// ONE IO PER ENTRY: a `from` feeds exactly one `to`, which is the simplest thing to audit. And no
+// `from` beneath another: an io reads its outbox at every depth, so an outbox inside another would
+// be read by both ios, each writing a status beside the same inputs.
 const SendsField = "sends"
 
 // Send is one outbox: From is the place inside the package (as an address, once read against the
 // package's own), and To the io out place it sends to.
 type Send struct {
-	From string `tony:"field=from"`
-	To   string `tony:"field=to"`
+	From, To string
 }
 
 // sendKeys are the keys an entry of `sends:` carries, and the only ones.
@@ -42,7 +43,7 @@ const (
 // SendsFromNode reads a fielded charter's `sends:`, each `from` read against at, the package's
 // address. A charter with no `sends:` declares no outbox.
 func SendsFromNode(node *ir.Node, at string) ([]Send, error) {
-	field := fieldOf(unwrap(node), SendsField)
+	field := unwrap(entity.Get(unwrap(node), SendsField))
 	if field == nil {
 		return nil, nil
 	}
@@ -71,6 +72,15 @@ func SendsFromNode(node *ir.Node, at string) ([]Send, error) {
 		}
 		seen[send.From] = true
 		out = append(out, send)
+	}
+	for i, a := range out {
+		for _, b := range out {
+			if a.From != b.From && strings.HasPrefix(a.From, b.From+".") {
+				return nil, fmt.Errorf("sends[%d]: %s is inside %s, which is sent from too — an io "+
+					"reads its outbox at every depth, so both ios would answer for what is asked "+
+					"there", i, a.From, b.From)
+			}
+		}
 	}
 	return out, nil
 }
@@ -139,19 +149,6 @@ func SendsOf(p entity.Payload) []Send {
 		}
 	}
 	return out
-}
-
-// fieldOf is an object's field by name, or nil.
-func fieldOf(n *ir.Node, name string) *ir.Node {
-	if n == nil || n.Type != ir.ObjectType {
-		return nil
-	}
-	for i, key := range n.Fields {
-		if key != nil && key.Type == ir.StringType && key.String == name {
-			return unwrap(n.Values[i])
-		}
-	}
-	return nil
 }
 
 func sendKeyText(k *ir.Node) string {

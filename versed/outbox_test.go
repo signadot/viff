@@ -114,6 +114,8 @@ func TestAnOutboxDeclarationIsChecked(t *testing.T) {
 		"no io reads it": {`{at: demo.x, sends: [{from: out, to: mail.out}], rules: []}`, "no io's out place"},
 		"a from twice": {`{at: demo.x, sends: [{from: out, to: slack.ws.out}, {from: out, to: slack.ws.out}]}`,
 			"sent from twice"},
+		"a from inside another": {`{at: demo.x, sends: [{from: out, to: slack.ws.out}, {from: out.linear, to: slack.ws.out}]}`,
+			"inside demo.x.out"},
 		"no address":       {`{sends: [{from: out, to: slack.ws.out}], rules: []}`, "belongs to a package"},
 		"a key it has not": {`{at: demo.x, sends: [{from: out, to: slack.ws.out, via: x}]}`, "neither"},
 		"half an entry":    {`{at: demo.x, sends: [{from: out}]}`, "names both"},
@@ -178,5 +180,37 @@ func TestAnOutboxFollowsItsIO(t *testing.T) {
 	}
 	if !answers() {
 		t.Fatal("the io installed again cannot answer in the outbox still declared for it")
+	}
+}
+
+// AN OUTBOX'S GRANT IS ITS OWN LINE (git-issue ne9fce9dh12ks1q4qsn0): held twice and taken back
+// once, the io holds nothing there, and taking it back takes nothing else the place holds out — a
+// line the installer wrote there for somebody else still stands.
+func TestAnOutboxTakesBackOnlyItsOwnGrant(t *testing.T) {
+	srv, ts := outboxServer(t)
+	for range 2 {
+		if resp := installAs(t, alice, ts.URL, announce); resp.StatusCode >= 300 {
+			t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
+		}
+	}
+	box := entity.RefAt("demo", "announce", "out", "slack")
+	input := entity.RefAt("demo", "announce", "out", "slack", "hello")
+	if err := write(srv.Store, alice, input, entity.Obj{"to": "C1", "text": "hi"}); err != nil {
+		t.Fatalf("the installer could not ask in the outbox: %v", err)
+	}
+	const bob = "user:bob@example.com"
+	if err := entity.AddGrant(srv.Store, box, entity.Grant{At: entity.SegsOf(box), Below: true,
+		To: entity.Levels{entity.Read: {bob}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := installAs(t, alice, ts.URL, `{at: demo.announce, rules: []}`); resp.StatusCode >= 300 {
+		t.Fatalf("re-install without sends: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	if _, ok, err := entity.As(srv.Store, slackIO).Get(input); err == nil && ok {
+		t.Error("the io still reads the outbox: a second hold stacked, or the release took nothing")
+	}
+	if _, ok, err := entity.As(srv.Store, bob).Get(input); err != nil || !ok {
+		t.Errorf("the installer's own grant went with the outbox's: ok %v, %v", ok, err)
 	}
 }

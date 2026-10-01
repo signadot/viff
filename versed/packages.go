@@ -628,7 +628,9 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	// Its outboxes go with it: the io stops being held out a place no package declares.
 	if sends, err := s.packageSends(at); err == nil {
 		for _, send := range sends {
-			releaseOutbox(store, send.From)
+			if e, ok := ioFor(s.Store, send.To); ok {
+				releaseOutbox(store, send.From, e.Out.As)
+			}
 		}
 	}
 	if err := s.removeDecl(store, trigger.PackageRef(confine.Stamp())); err != nil {
