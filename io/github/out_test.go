@@ -324,3 +324,58 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 		}
 	}
 }
+
+// GITHUB'S REFUSAL IS PERMANENT, and its rate limit is not (git-issue na9fce9dh12krdydqsn0). A
+// review of the io's own pull request is refused with a 422, which asking again cannot change: it
+// is asked once. A 403 that is GitHub's rate limit fixes itself: it is asked again.
+func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	r := f.repo("signadot/verse")
+	r.pr(42, "the io's own", "open", "2026-09-01T00:00:00Z", "abc").selfOpened = true
+	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	pass := func() {
+		t.Helper()
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatalf("pass: %v", err)
+		}
+	}
+	status := func(name string) entity.Obj {
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		return entity.ToObj(e.Payload)
+	}
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "own"),
+		entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "approve"}}.Payload())
+	pass()
+	if st := status("own"); st["failed"] != verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "own pull request") {
+		t.Fatalf("status %v, want GitHub's refusal, as permanent", st)
+	}
+	before, _ := f.counts()
+	pass()
+	pass()
+	if after, _ := f.counts(); after != before {
+		t.Fatalf("%d requests on two passes after a refusal, want none", after-before)
+	}
+
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "note"),
+		entity.Obj{"to": "issue.7", "text": "hello"}.Payload())
+	f.mu.Lock()
+	f.failWith = 403 // Forbidden, answered `API rate limit exceeded`
+	f.mu.Unlock()
+	pass()
+	if st := status("note"); st["failed"] != nil || !strings.Contains(fmt.Sprint(st["error"]), "rate limit") {
+		t.Fatalf("status %v, want the rate limit, not permanent", st)
+	}
+	f.mu.Lock()
+	f.failWith = 0
+	f.mu.Unlock()
+	pass()
+	if st := status("note"); st["comment"] == nil || st["error"] != nil {
+		t.Errorf("status %v, want the comment made once the limit lifted", st)
+	}
+}

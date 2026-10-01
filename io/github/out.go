@@ -112,23 +112,34 @@ func (g *GitHub) repoOf(place entity.Ref) string {
 func target(to string) (int, error) {
 	kind, num, ok := strings.Cut(to, ".")
 	if kind == "branch" {
-		return 0, fmt.Errorf("`to` %q names a branch, which takes `open`; a comment goes on pr.<number> or issue.<number>", to)
+		return 0, verseio.Permanent(fmt.Errorf("`to` %q names a branch, which takes `open`; a comment goes on pr.<number> or issue.<number>", to))
 	}
 	if !ok || (kind != "pr" && kind != "issue") {
-		return 0, fmt.Errorf("`to` is pr.<number> or issue.<number>, not %q", to)
+		return 0, verseio.Permanent(fmt.Errorf("`to` is pr.<number> or issue.<number>, not %q", to))
 	}
 	n, err := strconv.Atoi(num)
 	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("`to` %q: %q is not a pull request or issue number", to, num)
+		return 0, verseio.Permanent(fmt.Errorf("`to` %q: %q is not a pull request or issue number", to, num))
 	}
 	return n, nil
 }
 
-// Deliver comments on one issue or pull request, or updates the comment it already left there.
+// Deliver does what one input asks, and says GitHub's refusal of it as permanent (a 4xx other than
+// a timeout or a rate limit), so it is not asked again until the input changes (verseio.Permanent).
 func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+	fields, err := k.deliver(ctx, in)
+	var he *httpError
+	if err != nil && !verseio.IsPermanent(err) && asHTTPError(err, &he) && he.refusal() {
+		err = verseio.Permanent(err)
+	}
+	return fields, err
+}
+
+// deliver comments on one issue or pull request, or updates the comment it already left there.
+func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
 	repo := k.g.repoOf(in.Place)
 	if repo == "" {
-		return nil, fmt.Errorf("%s is no repository's out place this io serves", in.Place)
+		return nil, verseio.Permanent(fmt.Errorf("%s is no repository's out place this io serves", in.Place))
 	}
 	if spec := entity.Get(in.Value, "open"); spec != nil {
 		return k.open(ctx, repo, in, spec)
@@ -144,7 +155,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
-		return nil, fmt.Errorf("an input carries {to, text}, and this one has no text")
+		return nil, verseio.Permanent(fmt.Errorf("an input carries {to, text}, and this one has no text"))
 	}
 	fp := fingerprint(text)
 	now := k.now().UTC().Format(time.RFC3339)
@@ -193,11 +204,11 @@ func fingerprint(text string) string {
 func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
 	kind, branch, _ := strings.Cut(in.To, ".")
 	if kind != "branch" || branch == "" {
-		return nil, fmt.Errorf("`open` asks for a pull request from a branch: `to` is branch.<name>, not %q", in.To)
+		return nil, verseio.Permanent(fmt.Errorf("`open` asks for a pull request from a branch: `to` is branch.<name>, not %q", in.To))
 	}
 	title := strings.TrimSpace(entity.Str(spec, "title"))
 	if title == "" {
-		return nil, fmt.Errorf("`open` carries a title")
+		return nil, verseio.Permanent(fmt.Errorf("`open` carries a title"))
 	}
 	body := entity.Str(spec, "body")
 	fp := fingerprint(title + "\x00" + body)
@@ -253,8 +264,8 @@ func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec en
 	}
 	sha := entity.Str(spec, "sha")
 	if sha == "" {
-		return nil, fmt.Errorf("`merge` carries the sha it merges at, so a head that moved since " +
-			"the decision is not merged")
+		return nil, verseio.Permanent(fmt.Errorf("`merge` carries the sha it merges at, so a head that moved since " +
+			"the decision is not merged"))
 	}
 	p, err := k.g.api.readPull(ctx, repo, number)
 	if err != nil {
@@ -274,8 +285,8 @@ func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec en
 		if p.Head != nil {
 			head = p.Head.SHA
 		}
-		return nil, fmt.Errorf("pr.%d's head is %s, and the merge was decided at %s: a head that "+
-			"moved is a different change, so it is not merged", number, head, sha)
+		return nil, verseio.Permanent(fmt.Errorf("pr.%d's head is %s, and the merge was decided at %s: a head that "+
+			"moved is a different change, so it is not merged", number, head, sha))
 	}
 	m, err := k.g.api.mergePull(ctx, repo, number, sha, entity.Str(spec, "method"))
 	if err != nil {
@@ -296,11 +307,11 @@ func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec e
 	word := entity.Str(spec, "event")
 	event, ok := reviewEvents[word]
 	if !ok {
-		return nil, fmt.Errorf("a review's `event` is approve or request-changes, not %q", word)
+		return nil, verseio.Permanent(fmt.Errorf("a review's `event` is approve or request-changes, not %q", word))
 	}
 	body := entity.Str(spec, "body")
 	if event == "REQUEST_CHANGES" && strings.TrimSpace(body) == "" {
-		return nil, fmt.Errorf("a review requesting changes carries a body: GitHub refuses one without")
+		return nil, verseio.Permanent(fmt.Errorf("a review requesting changes carries a body: GitHub refuses one without"))
 	}
 	fp := fingerprint(word + "\x00" + body)
 	if entity.Str(in.Status, "posted") == fp {
@@ -331,8 +342,8 @@ func (k *Sink) close(ctx context.Context, repo string, in verseio.Input) (entity
 	}
 	asked, _, _ := strings.Cut(in.To, ".")
 	if is := map[bool]string{true: "pr", false: "issue"}[it.isPullRequest()]; is != asked {
-		return nil, fmt.Errorf("`to` is %s, and #%d is %s.%d: nothing is closed that was not named",
-			in.To, number, is, number)
+		return nil, verseio.Permanent(fmt.Errorf("`to` is %s, and #%d is %s.%d: nothing is closed that was not named",
+			in.To, number, is, number))
 	}
 	out := entity.Obj{"closed": true}
 	if it.State == "closed" {

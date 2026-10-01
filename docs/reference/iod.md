@@ -900,6 +900,14 @@ Its status holds `review` (its id), `event`, `url` and `reviewedAt`.
 GitHub refuses a review from the pull request's own author, so the io cannot review a pull
 request it opened. It also refuses `request-changes` without a body, which the io refuses first.
 
+**A refusal is not asked again.** GitHub may refuse a request with a 4xx other than a timeout or a
+rate limit, or the io may refuse an input itself: a `to` that is no target, a missing title, a head
+that moved, the wrong kind. Either way the status records `error` with `failed: permanent`, and the
+input is offered again only when it is edited
+([A refusal is permanent](io.md#what-is-asked-and-what-became-of-it)). A rate limit is not a
+refusal: a 429, or a 403 that says so (`x-ratelimit-remaining: 0`, `retry-after`, or GitHub's
+words). Neither is a 5xx. Both are tried again on the next pass.
+
 ## Deploying them
 
 The manifests are `deploy/git-io`, `deploy/git-issue-io`, `deploy/slack-io`,

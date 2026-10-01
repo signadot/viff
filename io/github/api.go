@@ -138,7 +138,8 @@ func (a *api) get(ctx context.Context, path string, out any) error {
 		// Said with the status and the body, because the two failures an operator actually
 		// hits are told apart by them: a 401 is the token, a 403 with a rate-limit body is the
 		// budget, and "GET failed" tells them neither.
-		return &httpError{status: resp.StatusCode, path: path, body: string(trimBody(body))}
+		return &httpError{status: resp.StatusCode, path: path, body: string(trimBody(body)),
+			limited: rateLimited(resp, body)}
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("github: GET %s: %w", path, err)
@@ -168,6 +169,30 @@ type httpError struct {
 	method string // "" is GET, which is every read
 	path   string
 	body   string
+	// limited is a refusal that is GitHub's rate limit, primary or secondary, and not a refusal of
+	// the request: it fixes itself, and asking again later is right.
+	limited bool
+}
+
+// refusal is whether GitHub refused the request itself, which asking the same way again would not
+// change: a 4xx other than a timeout or a rate limit (git-issue na9fce9dh12krdydqsn0).
+func (e *httpError) refusal() bool {
+	return e.status >= 400 && e.status < 500 && e.status != http.StatusRequestTimeout &&
+		e.status != http.StatusTooManyRequests && !e.limited
+}
+
+// rateLimited is whether an answer is GitHub's rate limit: a 429, or a 403 that says so —
+// `x-ratelimit-remaining: 0` for the primary limit, `retry-after` or its own words for the
+// secondary one.
+func rateLimited(resp *http.Response, body []byte) bool {
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests:
+		return true
+	case http.StatusForbidden:
+		return resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != "" ||
+			bytes.Contains(bytes.ToLower(body), []byte("rate limit"))
+	}
+	return false
 }
 
 func (e *httpError) Error() string {
@@ -209,7 +234,8 @@ func (a *api) send(ctx context.Context, method, path string, body, out any) erro
 		return fmt.Errorf("github: %s %s: %w", method, path, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return &httpError{status: resp.StatusCode, method: method, path: path, body: string(trimBody(answer))}
+		return &httpError{status: resp.StatusCode, method: method, path: path, body: string(trimBody(answer)),
+			limited: rateLimited(resp, answer)}
 	}
 	if out == nil || len(answer) == 0 {
 		return nil
@@ -744,7 +770,8 @@ func (a *api) graphql(ctx context.Context, query string, vars map[string]any, ou
 		return fmt.Errorf("github: graphql: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return &httpError{status: resp.StatusCode, path: "/graphql", body: string(trimBody(raw))}
+		return &httpError{status: resp.StatusCode, path: "/graphql", body: string(trimBody(raw)),
+			limited: rateLimited(resp, raw)}
 	}
 	var envelope struct {
 		Data   json.RawMessage `json:"data"`
