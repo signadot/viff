@@ -1,0 +1,24 @@
+!issue
+blocked_by:
+- j9vbwvjah12krs9tqsn0
+- jdvbwvjah12krsstqsn0
+- jhvbwvjah12krt9tqsn0
+- jnvbwvjah12krtstqsn0
+blocks: []
+branches: []
+commits: []
+created: "2026-10-01T12:11:20.703407+02:00"
+duplicates: []
+id: j5vbwvjah12ksj1hqsn0
+labels:
+- charter
+- design
+- system-repo-charter
+related_issues:
+- yjn5qagjh12kr1s0pnn0
+- f80cejyeh12kswm1nxn0
+- x4pfb0zfh12ksv3nqnn0
+- 2dchqs8jh12kr1s0pnn0
+- he301t4xh12krmkypxn0
+status: open
+updated: "2026-10-05T10:45:48.557949+02:00"
