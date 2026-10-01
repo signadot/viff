@@ -46,6 +46,17 @@ import (
 // unchanged one costs nothing. GitHub refuses a review from the pull request's own author, so an io
 // that opened the pull request cannot review it: the refusal lands on the status.
 //
+// AND A CLOSE, when the input carries `close`:
+//
+//	to:    pr.42      # or issue.42
+//	close: {}
+//
+// answered with `closed: true`, `closedAt`, and `closedBy`, the account GitHub says closed it. A
+// pull request is closed unmerged. One already closed is recorded as it is, with `already: true`:
+// that is how a close made around verse shows on the status. `to` says which kind it closes, and a
+// number that is the other kind is refused, since closing the wrong thing is not undone by a
+// status.
+//
 // AND A MERGE AT A SHA, when the input carries `merge` (step 3):
 //
 //	to:    pr.42
@@ -127,6 +138,9 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	if spec := entity.Get(in.Value, "review"); spec != nil {
 		return k.review(ctx, repo, in, spec)
+	}
+	if entity.Get(in.Value, "close") != nil {
+		return k.close(ctx, repo, in)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
@@ -300,4 +314,39 @@ func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec e
 		"review": strconv.FormatInt(r.ID, 10), "event": word, "url": r.HTMLURL,
 		"reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": fp,
 	}, nil
+}
+
+// close closes an issue or a pull request, once.
+func (k *Sink) close(ctx context.Context, repo string, in verseio.Input) (entity.Obj, error) {
+	if entity.Get(in.Status, "closed") != nil {
+		return nil, nil // closed, by this io or before it was asked: nothing is left to do
+	}
+	number, err := target(in.To)
+	if err != nil {
+		return nil, err
+	}
+	it, err := k.g.api.readIssue(ctx, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	asked, _, _ := strings.Cut(in.To, ".")
+	if is := map[bool]string{true: "pr", false: "issue"}[it.isPullRequest()]; is != asked {
+		return nil, fmt.Errorf("`to` is %s, and #%d is %s.%d: nothing is closed that was not named",
+			in.To, number, is, number)
+	}
+	out := entity.Obj{"closed": true}
+	if it.State == "closed" {
+		out["already"] = true // closed before this io was asked to: said as it is
+	} else if it, err = k.g.api.closeIssue(ctx, repo, number); err != nil {
+		return nil, err
+	}
+	if it.ClosedAt != "" {
+		out["closedAt"] = it.ClosedAt
+	} else {
+		out["closedAt"] = k.now().UTC().Format(time.RFC3339)
+	}
+	if it.ClosedBy != nil && it.ClosedBy.Login != "" {
+		out["closedBy"] = it.ClosedBy.Login
+	}
+	return out, nil
 }

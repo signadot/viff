@@ -32,6 +32,7 @@ type fakeGitHub struct {
 	edits       int      // comments and pull requests the out half changed
 	opened      int      // pull requests the out half opened
 	merges      int      // pull requests the out half merged
+	closes      int      // issues and pull requests the out half closed
 	reviews     []string // the events of the reviews the out half posted, in order
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
@@ -99,9 +100,11 @@ type fakeItem struct {
 	base      string // pulls only, and only one the out half opened; "" renders as main
 	// selfOpened is a pull request the out half opened, which GitHub will not let it review.
 	selfOpened bool
-	body       string
-	headSHA    string
-	labels     []string
+	// closedBy is who closed it, as GitHub answers on the item's own read.
+	closedBy string
+	body     string
+	headSHA  string
+	labels   []string
 }
 
 func newFake() *fakeGitHub {
@@ -512,6 +515,14 @@ func (i *fakeItem) renderAs(asPull, detail bool) map[string]any {
 		"user":     map[string]any{"login": "ana"},
 		"labels":   labels,
 	}
+	if i.closedBy != "" {
+		// When it closed is in the listings and the single read alike; who closed it is on the
+		// issue's own read only, which is the one the out half's close reads.
+		m["closed_at"] = i.updatedAt
+		if detail {
+			m["closed_by"] = map[string]any{"login": i.closedBy}
+		}
+	}
 	if asPull {
 		if !detail {
 			// GitHub's pulls LISTING does not carry a comment count; only the single-pull read
@@ -572,6 +583,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		Base  string `json:"base"`
 		SHA   string `json:"sha"`
 		Event string `json:"event"`
+		State string `json:"state"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
@@ -632,6 +644,16 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			f.merges++
 			writeJSON(w, map[string]any{"sha": "dddd4444", "merged": true})
 		}
+	case r.Method == http.MethodPatch && len(rest) == 2 && rest[0] == "issues" && body.State == "closed":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		if i == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		i.state, i.closedBy, i.updatedAt = "closed", "verse-bot", "2026-10-01T12:00:00Z"
+		f.closes++
+		writeJSON(w, i.renderAs(false, true))
 	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "pulls":
 		number := 1
 		for _, i := range repo.items {
@@ -693,6 +715,13 @@ func (f *fakeGitHub) mergeCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.merges
+}
+
+// closeCount is how many issues and pull requests the out half closed.
+func (f *fakeGitHub) closeCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.closes
 }
 
 // reviewEvents is the events of the reviews the out half posted, in order.

@@ -199,6 +199,74 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 	}
 }
 
+// A CLOSE: once, by the kind `to` names, and recorded as it is where somebody closed it first.
+func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	r := f.repo("signadot/verse")
+	r.pr(42, "abandoned", "open", "2026-09-01T00:00:00Z", "abc")
+	r.pr(43, "closed by a person", "closed", "2026-09-02T00:00:00Z", "def").closedBy = "ana"
+	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
+	r.issue(8, "done", "open", "2026-09-01T00:00:00Z")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	pass := func() {
+		t.Helper()
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatalf("pass: %v", err)
+		}
+	}
+	ask := func(name string, input entity.Obj) {
+		t.Helper()
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+	}
+	status := func(name string) entity.Obj {
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		return entity.ToObj(e.Payload)
+	}
+
+	// The wrong kind is refused, and nothing is closed.
+	ask("wrong", entity.Obj{"to": "pr.7", "close": entity.Obj{}})
+	pass()
+	if e, _ := status("wrong")["error"].(string); f.closeCount() != 0 || !strings.Contains(e, "issue.7") {
+		t.Fatalf("pr.7 naming an issue: %d closed, status %v, want refused naming issue.7", f.closeCount(), status("wrong"))
+	}
+
+	ask("shut", entity.Obj{"to": "pr.42", "close": entity.Obj{}})
+	ask("issue", entity.Obj{"to": "issue.8", "close": entity.Obj{}})
+	pass()
+	for _, name := range []string{"shut", "issue"} {
+		if st := status(name); st["closed"] != true || st["already"] != nil || st["closedBy"] != "verse-bot" || st["closedAt"] == nil {
+			t.Errorf("%s: status %v, want closed by the io", name, st)
+		}
+	}
+	if f.closeCount() != 2 || r.find(42).state != "closed" || r.find(8).state != "closed" || r.find(7).state != "open" {
+		t.Fatalf("closes %d, #42 %s, #8 %s, #7 %s: want #42 and #8 closed and #7 left open",
+			f.closeCount(), r.find(42).state, r.find(8).state, r.find(7).state)
+	}
+	// Closed is settled: a later pass asks GitHub nothing about it.
+	for _, name := range []string{"wrong", "wrong" + verseio.StatusSuffix} {
+		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", name).At()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, _ := f.counts()
+	pass()
+	if after, _ := f.counts(); f.closeCount() != 2 || after != before {
+		t.Fatalf("closed items: %d closed, %d requests on a later pass, want none", f.closeCount(), after-before)
+	}
+
+	ask("around", entity.Obj{"to": "pr.43", "close": entity.Obj{}})
+	pass()
+	if st := status("around"); f.closeCount() != 2 || st["closed"] != true || st["already"] != true || st["closedBy"] != "ana" {
+		t.Fatalf("a pull request closed before the io was asked: %d closed, status %v, want it recorded as ana's close",
+			f.closeCount(), st)
+	}
+}
+
 // A REVIEW MIRRORING AN ASK: posted, left alone while it says the same, and posted again when it
 // changes, since a reviewer's latest review is the one GitHub counts. A pull request the io opened
 // cannot be reviewed by it, and GitHub's refusal lands on the status.

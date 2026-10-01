@@ -284,6 +284,23 @@ func (a *api) createReview(ctx context.Context, repo string, number int, event, 
 	return r, err
 }
 
+// readIssue reads one issue or pull request through the issues endpoint, which answers both and
+// says which with `pull_request`, and carries who closed it.
+func (a *api) readIssue(ctx context.Context, repo string, number int) (issue, error) {
+	var i issue
+	err := a.get(ctx, "/repos/"+repo+"/issues/"+strconv.Itoa(number), &i)
+	return i, err
+}
+
+// closeIssue closes an issue or a pull request: a pull request is an issue to this endpoint, and
+// closing one leaves it unmerged.
+func (a *api) closeIssue(ctx context.Context, repo string, number int) (issue, error) {
+	var i issue
+	err := a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/"+strconv.Itoa(number),
+		map[string]string{"state": "closed"}, &i)
+	return i, err
+}
+
 // updateComment changes the text of a comment this io made.
 func (a *api) updateComment(ctx context.Context, repo string, id int64, text string) error {
 	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/comments/"+strconv.FormatInt(id, 10),
@@ -359,6 +376,7 @@ type issue struct {
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
 	ClosedAt    string  `json:"closed_at"`
+	ClosedBy    *user   `json:"closed_by"`
 	Comments    int     `json:"comments"`
 	User        *user   `json:"user"`
 	Assignees   []user  `json:"assignees"`

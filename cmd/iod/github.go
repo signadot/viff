@@ -36,9 +36,10 @@ func githubMain(args []string) error {
 		"refuse a repository with more open items than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
 	out := fs.Bool("out", false,
-		"also act back: keep a comment on an issue or pull request in step with each input "+
-			"written under github.<org>.<name>.out, or in an outbox a package declares for it. "+
-			"The token then needs write access to issues and pull requests")
+		"also act back on each input written under github.<org>.<name>.out, or in an outbox a "+
+			"package declares for it: comment, open or adopt a pull request, merge one at a sha, "+
+			"review one, or close an issue or pull request. The token then needs write access to "+
+			"issues and pull requests, and to contents to merge")
 	discussions := fs.Bool("discussions", false,
 		"reflect discussions. Off by default: they are GraphQL, so they carry no ETag and are "+
 			"the whole of what a quiet repository costs against the rate limit, and they are "+

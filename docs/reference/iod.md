@@ -721,7 +721,7 @@ iod github -repo <org>/<name>   a repository to reflect (repeatable, comma-separ
                -comments <n>        comments kept per repo (default 200)
                -max-open <n>        refuse a repo with more open items than this (default 2000)
                -discussions         reflect discussions (default false)
-               -out                 also keep comments in step with inputs (default false)
+               -out                 also act back: comment, open, merge, review, close (default false)
 ```
 
 In the repository, set Settings → Webhooks to `https://<host>/github/webhook`, with the
@@ -809,14 +809,15 @@ stays and does not change. Nothing covers it, so nothing tombstones it.
 
 ### The out half of github
 
-With `-out`, `iod github` comments on issues and pull requests. It reads inputs under one
+With `-out`, `iod github` comments on issues and pull requests, opens, merges and reviews pull
+requests, and closes either. It reads inputs under one
 address for each repository, `github.<org>.<name>.out`, and in the
 [outboxes](../glossary.md#outbox) that packages declare for it. Each address is inside the
 claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review` (below) |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
 | status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
@@ -862,6 +863,23 @@ Its status holds `merged: true`, the merge commit as `commit`, `head` and `merge
 | is open, and its head is another commit | It refuses, naming both: a head that moved is a different change. |
 | is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. |
 | is merged, by an earlier pass | Nothing, and no request to GitHub. |
+
+**A close.** An input that carries `close` asks for an issue or a pull request to be closed:
+
+```tony
+to: pr.42        # or issue.42
+close: {}
+```
+
+Its status holds `closed: true`, `closedAt`, and `closedBy`, the account that GitHub says closed it.
+A pull request is closed unmerged.
+
+| The item | What the pass does |
+|---|---|
+| is open, and is the kind that `to` names | It closes it. |
+| is the other kind (`to: pr.7`, and #7 is an issue) | It refuses, naming what #7 is. GitHub numbers both in one sequence, so a wrong kind is a wrong item. |
+| is already closed | It records `closed: true` with `already: true`. That is how a close made around verse shows. |
+| is closed, by an earlier pass | Nothing, and no request to GitHub. |
 
 **A review.** An input that carries `review` asks for the io's own review on a pull request,
 which is how the state of an ask is shown in GitHub:
