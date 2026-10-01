@@ -29,7 +29,8 @@ type fakeGitHub struct {
 	requests    int   // every request that reached a handler
 	notModified int   // those answered 304
 	nextComment int64 // the id of the last comment the out half made, past 9000
-	edits       int   // comments the out half changed
+	edits       int   // comments and pull requests the out half changed
+	opened      int   // pull requests the out half opened
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
 	failWith int
@@ -93,6 +94,8 @@ type fakeItem struct {
 	pull      bool
 	comments  int
 	head      string // pulls only
+	base      string // pulls only, and only one the out half opened; "" renders as main
+	body      string
 	headSHA   string
 	labels    []string
 }
@@ -455,10 +458,14 @@ func pageBounds(r *http.Request, n int) (int, int) {
 func (f *fakeGitHub) list(repo *fakeRepo, what string, r *http.Request) []map[string]any {
 	q := r.URL.Query()
 	state := q.Get("state")
+	_, head, _ := strings.Cut(q.Get("head"), ":") // `head=<org>:<branch>`, as GitHub takes it
 
 	var picked []*fakeItem
 	for _, i := range repo.items {
 		if what == "pulls" && !i.pull {
+			continue
+		}
+		if head != "" && (!i.pull || i.head != head) {
 			continue
 		}
 		// The issues endpoint returns pull requests too. That is not an oddity of this fake;
@@ -510,7 +517,12 @@ func (i *fakeItem) renderAs(asPull, detail bool) map[string]any {
 		}
 		m["draft"] = false
 		m["merged"] = i.state == "closed"
-		m["base"] = map[string]any{"ref": "main", "sha": "bbbb2222"}
+		base := i.base
+		if base == "" {
+			base = "main"
+		}
+		m["base"] = map[string]any{"ref": base, "sha": "bbbb2222"}
+		m["body"] = i.body
 		m["head"] = map[string]any{"ref": i.head, "sha": i.headSHA}
 		return m
 	}
@@ -550,7 +562,10 @@ func (f *fakeGitHub) reply(w http.ResponseWriter, r *http.Request, v any) {
 // what landed on GitHub.
 func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRepo, rest []string) {
 	var body struct {
-		Body string `json:"body"`
+		Body  string `json:"body"`
+		Title string `json:"title"`
+		Head  string `json:"head"`
+		Base  string `json:"base"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
@@ -581,9 +596,39 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			}
 		}
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "pulls":
+		number := 1
+		for _, i := range repo.items {
+			if i.number >= number {
+				number = i.number + 1
+			}
+		}
+		i := &fakeItem{number: number, title: body.Title, body: body.Body, state: "open", pull: true,
+			head: body.Head, base: body.Base, headSHA: "cccc3333", updatedAt: "2026-10-01T00:00:00Z"}
+		repo.items = append(repo.items, i)
+		f.opened++
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, i.render(true))
+	case r.Method == http.MethodPatch && len(rest) == 2 && rest[0] == "pulls":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		if i == nil || !i.pull {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		i.title, i.body = body.Title, body.Body
+		f.edits++
+		writeJSON(w, i.render(true))
 	default:
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 	}
+}
+
+// openedCount is how many pull requests the out half opened.
+func (f *fakeGitHub) openedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.opened
 }
 
 // commentsOn is the bodies of the comments on one issue or pull request, in the order made.

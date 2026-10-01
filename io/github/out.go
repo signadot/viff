@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 )
@@ -33,6 +35,16 @@ import (
 //
 // A comment that already carries this text is left alone, and a changed text is an update of the
 // same comment rather than a second one.
+//
+// AND A PULL REQUEST FOR A BRANCH, when the input carries `open` (step 2):
+//
+//	to:   branch.verse/repo-charter-review-x     # everything after the first dot is the branch
+//	open: {base: main, title: "…", body: "…"}  # base defaults to the repository's default branch
+//
+// answered with `number, url, postedAt, updatedAt, posted`, and `adopted: true` where a person had
+// already opened one from that branch. A pull request this io opened follows the input's title
+// and body; one it ADOPTED keeps its author's, since what a person wrote on their own pull request
+// is not this io's to rewrite.
 type Sink struct {
 	g   *GitHub
 	now func() time.Time
@@ -69,6 +81,9 @@ func (g *GitHub) repoOf(place entity.Ref) string {
 // target reads an input's `to`: `pr.<n>` or `issue.<n>`.
 func target(to string) (int, error) {
 	kind, num, ok := strings.Cut(to, ".")
+	if kind == "branch" {
+		return 0, fmt.Errorf("`to` %q names a branch, which takes `open`; a comment goes on pr.<number> or issue.<number>", to)
+	}
 	if !ok || (kind != "pr" && kind != "issue") {
 		return 0, fmt.Errorf("`to` is pr.<number> or issue.<number>, not %q", to)
 	}
@@ -84,6 +99,9 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	repo := k.g.repoOf(in.Place)
 	if repo == "" {
 		return nil, fmt.Errorf("%s is no repository's out place this io serves", in.Place)
+	}
+	if spec := entity.Get(in.Value, "open"); spec != nil {
+		return k.open(ctx, repo, in, spec)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
@@ -129,4 +147,58 @@ func commentID(status entity.Payload) (int64, bool) {
 func fingerprint(text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return hex.EncodeToString(sum[:8])
+}
+
+// open keeps one pull request for a branch: adopted where a person opened one, opened otherwise,
+// and, for one this io opened, its title and body in step with the input.
+func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	kind, branch, _ := strings.Cut(in.To, ".")
+	if kind != "branch" || branch == "" {
+		return nil, fmt.Errorf("`open` asks for a pull request from a branch: `to` is branch.<name>, not %q", in.To)
+	}
+	title := strings.TrimSpace(entity.Str(spec, "title"))
+	if title == "" {
+		return nil, fmt.Errorf("`open` carries a title")
+	}
+	body := entity.Str(spec, "body")
+	fp := fingerprint(title + "\x00" + body)
+	now := k.now().UTC().Format(time.RFC3339)
+	if number, ok := prNumber(in.Status); ok {
+		if entity.Get(in.Status, "adopted") != nil || entity.Str(in.Status, "posted") == fp {
+			return nil, nil // in step, or a person's pull request whose words are theirs
+		}
+		if err := k.g.api.updatePull(ctx, repo, number, title, body); err != nil {
+			return nil, err
+		}
+		return entity.Obj{"updatedAt": now, "posted": fp}, nil
+	}
+	if p, ok, err := k.g.api.openPullFor(ctx, repo, branch); err != nil {
+		return nil, err
+	} else if ok {
+		return entity.Obj{"number": p.Number, "url": p.HTMLURL, "adopted": true, "postedAt": now}, nil
+	}
+	base := entity.Str(spec, "base")
+	if base == "" {
+		r, _, err := k.g.api.readRepo(ctx, repo)
+		if err != nil {
+			return nil, err
+		}
+		base = r.DefaultBranch
+	}
+	p, err := k.g.api.createPull(ctx, repo, branch, base, title, body)
+	if err != nil {
+		return nil, err
+	}
+	return entity.Obj{
+		"number": p.Number, "url": p.HTMLURL, "postedAt": now, "updatedAt": now, "posted": fp,
+	}, nil
+}
+
+// prNumber is the pull request a status says this input opened or adopted.
+func prNumber(status entity.Payload) (int, bool) {
+	n := ir.Uncomment(entity.Get(status, "number"))
+	if n == nil || n.Int64 == nil {
+		return 0, false
+	}
+	return int(*n.Int64), true
 }

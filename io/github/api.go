@@ -215,6 +215,34 @@ func (a *api) createComment(ctx context.Context, repo string, number int, text s
 	return c, err
 }
 
+// openPullFor is the open pull request whose head is branch, in repo's own organization, if there
+// is one.
+func (a *api) openPullFor(ctx context.Context, repo, branch string) (pull, bool, error) {
+	org, _, _ := strings.Cut(repo, "/")
+	var ps []pull
+	if err := a.get(ctx, "/repos/"+repo+"/pulls?state=open&head="+url.QueryEscape(org+":"+branch), &ps); err != nil {
+		return pull{}, false, err
+	}
+	if len(ps) == 0 {
+		return pull{}, false, nil
+	}
+	return ps[0], true, nil
+}
+
+// createPull opens a pull request from head into base.
+func (a *api) createPull(ctx context.Context, repo, head, base, title, body string) (pull, error) {
+	var p pull
+	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/pulls",
+		map[string]string{"head": head, "base": base, "title": title, "body": body}, &p)
+	return p, err
+}
+
+// updatePull changes the title and body of a pull request this io opened.
+func (a *api) updatePull(ctx context.Context, repo string, number int, title, body string) error {
+	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/pulls/"+strconv.Itoa(number),
+		map[string]string{"title": title, "body": body}, nil)
+}
+
 // updateComment changes the text of a comment this io made.
 func (a *api) updateComment(ctx context.Context, repo string, id int64, text string) error {
 	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/comments/"+strconv.FormatInt(id, 10),

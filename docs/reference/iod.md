@@ -816,7 +816,7 @@ claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text` |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open` (below) |
 | status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
@@ -827,6 +827,24 @@ default.
 | is new | It writes a comment on the pull request or issue. GitHub numbers both in one sequence. |
 | has a text that changed | It updates the same comment. It does not write a second comment. |
 | has the text that the comment carries | Nothing. |
+
+**A pull request for a branch.** An input that carries `open` asks for a pull request from a
+branch:
+
+```tony
+to: branch.verse/repo-charter-review-x     # everything after the first dot is the branch
+open: {base: main, title: "…", body: "…"}  # base defaults to the repository's default branch
+```
+
+Its status holds `number, url, postedAt, updatedAt, posted`, and `adopted: true` when a person had
+already opened a pull request from that branch.
+
+| The input | What the pass does |
+|---|---|
+| is new, and the branch has an open pull request | It adopts that pull request. Its title and body stay its author's. |
+| is new, and the branch has none | It opens one, from the branch into `base`. |
+| has a title or body that changed | It updates the pull request it opened. An adopted one is left as its author wrote it. |
+| has the title and body the pull request carries | Nothing. |
 
 ## Deploying them
 
