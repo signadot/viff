@@ -1,0 +1,17 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-10-01T16:34:09.502931+02:00"
+duplicates: []
+id: 8q4azhtjh12krrbfqsn0
+labels:
+- design
+- perms
+related_issues:
+- jdvbwvjah12krsstqsn0
+- amwvs9t2h12ksxtxmsn0
+- b737wbpbh12kscjjp1n0
+status: open
+updated: "2026-10-01T16:34:19.816348+02:00"
