@@ -476,9 +476,11 @@ kubectl -n verse get secret verse-git -o go-template='{{range $k,$v := .data}}{{
 and the first one used. Read-only on **Contents, Metadata, Issues, Pull requests and Actions**
 (plus Discussions with `githubDiscussions`). Without Contents the connector's first read is a
 `403 Resource not accessible by personal access token` on `git/ref/heads/<branch>` — it reads
-the default branch's ref before anything else. Get the set wrong and it costs a new token: GitHub
-documents creating and deleting fine-grained tokens and not editing one's permissions. Updating
-the entry afterwards is `put-secret-value`, not `create-secret` — the name already exists:
+the default branch's ref before anything else. Get the set wrong and you edit the token's
+permissions in place (Settings → Developer settings → Fine-grained tokens → the token → Edit): the
+token does not change, so the secret needs no update. A new token — regenerated, or minted to
+replace one — does need the entry updated, and that is `put-secret-value`, not `create-secret`,
+since the name already exists:
 
 ```sh
 printf '{"GITHUB_TOKEN":"%s"}' "$tok" > /tmp/e.json
