@@ -35,6 +35,7 @@ type api struct {
 
 	mu     sync.Mutex
 	cached map[string]cachedResponse
+	login  string // who the credential is, once asked (self)
 }
 
 // cachedResponse is one endpoint's last successful answer, kept for the conditional request
@@ -103,10 +104,26 @@ func (a *api) authorize(req *http.Request) error {
 // to tombstone everything under them, so a source that turned a bad minute into "the repository
 // has no issues" would delete a slice.
 func (a *api) get(ctx context.Context, path string, out any) error {
+	return a.read(ctx, path, out, true)
+}
+
+// getOnce is a GET of what is read once and not again — one pull request or issue, read for an
+// act on it — and so is neither cached nor conditional: a body kept for every number the out half
+// ever acts on is memory spent on reads that never repeat (git-issue ne9fce9dh12ks1q4qsn0).
+func (a *api) getOnce(ctx context.Context, path string, out any) error {
+	return a.read(ctx, path, out, false)
+}
+
+// read is get, and getOnce where keep is false.
+func (a *api) read(ctx context.Context, path string, out any, keep bool) error {
 	target := a.base + path
-	a.mu.Lock()
-	prev, hadPrev := a.cached[target]
-	a.mu.Unlock()
+	var prev cachedResponse
+	hadPrev := false
+	if keep {
+		a.mu.Lock()
+		prev, hadPrev = a.cached[target]
+		a.mu.Unlock()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
@@ -121,7 +138,7 @@ func (a *api) get(ctx context.Context, path string, out any) error {
 		req.Header.Set("If-None-Match", prev.etag)
 	}
 
-	resp, err := a.cl.Do(req)
+	resp, err := a.do(req, nil)
 	if err != nil {
 		return fmt.Errorf("github: GET %s: %w", path, err)
 	}
@@ -144,12 +161,38 @@ func (a *api) get(ctx context.Context, path string, out any) error {
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("github: GET %s: %w", path, err)
 	}
-	if etag := resp.Header.Get("ETag"); etag != "" {
+	if etag := resp.Header.Get("ETag"); etag != "" && keep {
 		a.mu.Lock()
 		a.cached[target] = cachedResponse{etag: etag, body: body}
 		a.mu.Unlock()
 	}
 	return nil
+}
+
+// do sends req, and sends it once more with a token minted afresh where GitHub refused the one it
+// carried (401) and the credential is one that mints. The io replaces a token before the expiry
+// GitHub gave, by its own clock; a clock running slow, or a token revoked, is a 401 that is the
+// io's to fix, not GitHub refusing the request, and a refusal is recorded as permanent
+// (git-issue ne9fce9dh12ks1q4qsn0). A 401 that a fresh token gets too is believed.
+func (a *api) do(req *http.Request, body []byte) (*http.Response, error) {
+	resp, err := a.cl.Do(req)
+	if err != nil || resp.StatusCode != http.StatusUnauthorized {
+		return resp, err
+	}
+	r, ok := a.cred.(renewable)
+	if !ok {
+		return resp, nil
+	}
+	r.invalidate(req.Header.Get("Authorization"))
+	again := req.Clone(req.Context())
+	if body != nil {
+		again.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	if err := a.authorize(again); err != nil {
+		return resp, nil // the 401 stands, and says more than a failure to mint would
+	}
+	resp.Body.Close()
+	return a.cl.Do(again)
 }
 
 // maxBody bounds one response. A listing of 100 issues with bodies is comfortably inside it;
@@ -224,7 +267,7 @@ func (a *api) send(ctx context.Context, method, path string, body, out any) erro
 	if err := a.authorize(req); err != nil {
 		return err
 	}
-	resp, err := a.cl.Do(req)
+	resp, err := a.do(req, raw)
 	if err != nil {
 		return fmt.Errorf("github: %s %s: %w", method, path, err)
 	}
@@ -266,7 +309,7 @@ func (a *api) createComment(ctx context.Context, repo string, number int, text s
 func (a *api) openPullFor(ctx context.Context, repo, branch string) (pull, bool, error) {
 	org, _, _ := strings.Cut(repo, "/")
 	var ps []pull
-	if err := a.get(ctx, "/repos/"+repo+"/pulls?state=open&head="+url.QueryEscape(org+":"+branch), &ps); err != nil {
+	if err := a.getOnce(ctx, "/repos/"+repo+"/pulls?state=open&head="+url.QueryEscape(org+":"+branch), &ps); err != nil {
 		return pull{}, false, err
 	}
 	if len(ps) == 0 {
@@ -292,7 +335,7 @@ func (a *api) updatePull(ctx context.Context, repo string, number int, title, bo
 // readPull reads one pull request, its head and whether it is merged with it.
 func (a *api) readPull(ctx context.Context, repo string, number int) (pull, error) {
 	var p pull
-	err := a.get(ctx, "/repos/"+repo+"/pulls/"+strconv.Itoa(number), &p)
+	err := a.getOnce(ctx, "/repos/"+repo+"/pulls/"+strconv.Itoa(number), &p)
 	return p, err
 }
 
@@ -330,11 +373,39 @@ func (a *api) createReview(ctx context.Context, repo string, number int, event, 
 	return r, err
 }
 
+// self is the login the credential acts as: the app's bot (`<slug>[bot]`) for an installation,
+// and the token's owner otherwise. Asked once, when first needed.
+func (a *api) self(ctx context.Context) (string, error) {
+	a.mu.Lock()
+	login := a.login
+	a.mu.Unlock()
+	if login != "" {
+		return login, nil
+	}
+	if inst, ok := a.cred.(*installation); ok {
+		slug, err := inst.slug(ctx)
+		if err != nil {
+			return "", err
+		}
+		login = slug + "[bot]"
+	} else {
+		var u user
+		if err := a.getOnce(ctx, "/user", &u); err != nil {
+			return "", err
+		}
+		login = u.Login
+	}
+	a.mu.Lock()
+	a.login = login
+	a.mu.Unlock()
+	return login, nil
+}
+
 // readIssue reads one issue or pull request through the issues endpoint, which answers both and
 // says which with `pull_request`, and carries who closed it.
 func (a *api) readIssue(ctx context.Context, repo string, number int) (issue, error) {
 	var i issue
-	err := a.get(ctx, "/repos/"+repo+"/issues/"+strconv.Itoa(number), &i)
+	err := a.getOnce(ctx, "/repos/"+repo+"/issues/"+strconv.Itoa(number), &i)
 	return i, err
 }
 
@@ -760,7 +831,7 @@ func (a *api) graphql(ctx context.Context, query string, vars map[string]any, ou
 	if err := a.authorize(req); err != nil {
 		return err
 	}
-	resp, err := a.cl.Do(req)
+	resp, err := a.do(req, body)
 	if err != nil {
 		return fmt.Errorf("github: graphql: %w", err)
 	}

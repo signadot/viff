@@ -163,10 +163,16 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 		if entity.Str(in.Status, "posted") == fp {
 			return nil, nil // in step: the comment carries this text
 		}
-		if err := k.g.api.updateComment(ctx, repo, id, text); err != nil {
+		err := k.g.api.updateComment(ctx, repo, id, text)
+		if err == nil {
+			return entity.Obj{"updatedAt": now, "posted": fp}, nil
+		}
+		// GONE: somebody deleted the comment. The input still asks for one saying this, so it is
+		// said again, rather than an edit of what is not there refused for good
+		// (git-issue ne9fce9dh12ks1q4qsn0).
+		if !NotFound(err) {
 			return nil, err
 		}
-		return entity.Obj{"updatedAt": now, "posted": fp}, nil
 	}
 	number, err := target(in.To)
 	if err != nil {
@@ -225,6 +231,19 @@ func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec ent
 	if p, ok, err := k.g.api.openPullFor(ctx, repo, branch); err != nil {
 		return nil, err
 	} else if ok {
+		// THE IO'S OWN, found again: it opened this one and the status that said so was lost
+		// (git-issue ne9fce9dh12ks1q4qsn0). Recorded as opened, its words as GitHub has them, so a
+		// title or body that differs is put in step — not frozen as a person's.
+		self, err := k.g.api.self(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p.User != nil && strings.EqualFold(p.User.Login, self) {
+			return entity.Obj{
+				"number": p.Number, "url": p.HTMLURL, "postedAt": now, "updatedAt": now,
+				"posted": fingerprint(p.Title + "\x00" + p.Body),
+			}, nil
+		}
 		return entity.Obj{"number": p.Number, "url": p.HTMLURL, "adopted": true, "postedAt": now}, nil
 	}
 	base := entity.Str(spec, "base")

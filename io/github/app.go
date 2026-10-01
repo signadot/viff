@@ -30,6 +30,14 @@ type credential interface {
 	authorization(ctx context.Context) (string, error)
 }
 
+// renewable is a credential that can mint its token again, which a 401 asks it to before the 401
+// is believed (api.do).
+type renewable interface {
+	// invalidate drops the token a request was refused with, where it is still the one held: a
+	// token minted since by another request is good.
+	invalidate(authorization string)
+}
+
 // bearer is a token somebody issued.
 type bearer string
 
@@ -106,6 +114,14 @@ func (i *installation) authorization(ctx context.Context) (string, error) {
 	return "Bearer " + i.token, nil
 }
 
+func (i *installation) invalidate(authorization string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.token != "" && authorization == "Bearer "+i.token {
+		i.token = ""
+	}
+}
+
 // mint exchanges a fresh JWT for an installation token.
 func (i *installation) mint(ctx context.Context) error {
 	jwt, err := i.jwt()
@@ -140,6 +156,34 @@ func (i *installation) mint(ctx context.Context) error {
 	}
 	i.token, i.expires = got.Token, got.ExpiresAt
 	return nil
+}
+
+// slug is the app's name on GitHub, which its bot acts as (`<slug>[bot]`): GET /app, as the app.
+func (i *installation) slug(ctx context.Context) (string, error) {
+	jwt, err := i.jwt()
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, i.base+"/app", nil)
+	if err != nil {
+		return "", fmt.Errorf("github: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	resp, err := i.cl.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("github: reading app %s: %w", i.appID, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var got struct {
+		Slug string `json:"slug"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &got) != nil || got.Slug == "" {
+		return "", fmt.Errorf("github: reading app %s: %s: %s", i.appID, resp.Status, strings.TrimSpace(string(body)))
+	}
+	return got.Slug, nil
 }
 
 // jwt is the app's own assertion, RS256 over {iat, exp, iss}. Issued a minute in the past, as

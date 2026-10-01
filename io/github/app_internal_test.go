@@ -54,3 +54,37 @@ func TestAnInstallationTokenIsReplacedBeforeItExpires(t *testing.T) {
 		t.Errorf("minted %d, want 2", minted)
 	}
 }
+
+// A SINGLE READ IS NOT CACHED (git-issue ne9fce9dh12ks1q4qsn0): one pull request or issue, read to
+// act on it, is not read again, so keeping its body is memory spent for nothing. A listing is kept,
+// for the 304 that makes a quiet pass free.
+func TestASingleReadIsNotCached(t *testing.T) {
+	conditional := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") != "" {
+			conditional++
+		}
+		w.Header().Set("ETag", `"v1"`)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	a, err := newAPI("t", nil, srv.URL, srv.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct{}
+	for range 2 {
+		if err := a.getOnce(context.Background(), "/repos/o/r/pulls/1", &out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(a.cached) != 0 || conditional != 0 {
+		t.Errorf("cached %d, asked conditionally %d times, want neither", len(a.cached), conditional)
+	}
+	if err := a.get(context.Background(), "/repos/o/r/pulls", &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.cached) != 1 {
+		t.Errorf("a listing cached %d, want 1", len(a.cached))
+	}
+}

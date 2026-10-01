@@ -166,6 +166,18 @@ func (r *fakeRepo) discussion(number int, title string, closed bool, updated str
 	return d
 }
 
+// fakeSelf is who the fake says the credential is: the token's owner on GET /user, and the app's
+// bot for an installation. What the out half opens is theirs.
+const fakeSelf = "verse-bot"
+
+// author is who opened an item: the io, or a person.
+func (i *fakeItem) author() string {
+	if i.selfOpened {
+		return fakeSelf
+	}
+	return "ana"
+}
+
 func (r *fakeRepo) find(number int) *fakeItem {
 	for _, i := range r.items {
 		if i.number == number {
@@ -207,8 +219,16 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		f.mint(w, r)
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Path == "/app" {
+		writeJSON(w, map[string]any{"slug": strings.TrimSuffix(fakeSelf, "[bot]")})
+		return
+	}
 	if !f.authorized(r.Header.Get("Authorization")) {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/user" {
+		writeJSON(w, map[string]any{"login": fakeSelf})
 		return
 	}
 	if r.URL.Path == "/graphql" {
@@ -524,7 +544,7 @@ func (i *fakeItem) renderAs(asPull, detail bool) map[string]any {
 		"comments":   i.comments,
 		"updated_at": i.updatedAt, "created_at": "2026-01-01T00:00:00Z",
 		"html_url": "https://github.com/x/y/" + strconv.Itoa(i.number),
-		"user":     map[string]any{"login": "ana"},
+		"user":     map[string]any{"login": i.author()},
 		"labels":   labels,
 	}
 	if i.closedBy != "" {
@@ -746,6 +766,16 @@ func (f *fakeGitHub) authorized(h string) bool {
 		}
 	}
 	return false
+}
+
+// revokeTokens makes every token minted so far one GitHub no longer accepts, as a revoked token or
+// one the io kept past its expiry is.
+func (f *fakeGitHub) revokeTokens() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.minted {
+		f.minted[i] = "revoked:" + f.minted[i]
+	}
 }
 
 // mintCount is how many installation tokens the fake minted.

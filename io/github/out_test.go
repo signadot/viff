@@ -66,6 +66,20 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 		t.Fatalf("comments on #42 after a change: %q, want the one comment updated", got)
 	}
 
+	// DELETED ON GITHUB, and the text changed: the comment is said again, not refused for good as
+	// an edit of what is not there (git-issue ne9fce9dh12ks1q4qsn0).
+	was := status("trial")["comment"]
+	f.mu.Lock()
+	f.repos["signadot/verse"].comments = nil
+	f.mu.Unlock()
+	ask("trial", entity.Obj{"to": "pr.42", "text": "the trial found two changes"})
+	pass()
+	st = status("trial")
+	if got := f.commentsOn("signadot/verse", 42); len(got) != 1 || got[0] != "the trial found two changes" ||
+		st["comment"] == was || st["error"] != nil {
+		t.Fatalf("a deleted comment: comments %q, status %v, want it said again under a new id", got, st)
+	}
+
 	ask("bad", entity.Obj{"to": "branch.main", "text": "x"})
 	pass()
 	if e, _ := status("bad")["error"].(string); !strings.Contains(e, "pr.<number>") {
@@ -116,6 +130,21 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 		t.Fatalf("a changed title: %d opened, %d edits, want the one pull request edited", f.openedCount(), f.editCount())
 	}
 
+	// THE IO'S OWN, FOUND AGAIN after its status was lost (git-issue ne9fce9dh12ks1q4qsn0): opened,
+	// not adopted, so a changed title still reaches it.
+	if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", "review-x"+verseio.StatusSuffix).At()}); err != nil {
+		t.Fatal(err)
+	}
+	pass()
+	if st := status("review-x"); f.openedCount() != 1 || st["adopted"] != nil || st["number"] == nil {
+		t.Fatalf("the io's own pull request found again: %d opened, status %v, want it recorded as opened", f.openedCount(), st)
+	}
+	ask("review-x", entity.Obj{"to": "branch.verse/repo-charter-review-x", "open": open("charters: x, revised again")})
+	pass()
+	if f.editCount() != 2 {
+		t.Fatalf("the io's own pull request, found again, was not kept in step: %d edits, want 2", f.editCount())
+	}
+
 	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("verse's title")})
 	pass()
 	st = status("person")
@@ -124,7 +153,7 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	}
 	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("verse's title, again")})
 	pass()
-	if f.editCount() != 1 {
+	if f.editCount() != 2 {
 		t.Fatalf("an adopted pull request was rewritten: %d edits", f.editCount())
 	}
 

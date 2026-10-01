@@ -438,6 +438,7 @@ says it posted, and does only what is missing.
 |---|---|
 | is new | It posts the message. |
 | would show differently: its `posted` fingerprint does not match | It sends a `chat.update` of the same message. It does not post a second message. |
+| would show differently, and its message was deleted (`message_not_found`) | It posts the message again. |
 | already shows as asked | Nothing. So after a restart the io resumes from the statuses, and does not repeat a message. |
 | is refused | It writes `error` once, in the words of Slack, with `failed: permanent`, and offers the input again only when it is edited ([A refusal is permanent](io.md#what-is-asked-and-what-became-of-it)). |
 | fails another way (`ratelimited`, `service_unavailable`, `internal_error`, `fatal_error`, `request_timeout`, a 5xx) | It writes `error` once. The next pass tries again. |
@@ -686,6 +687,7 @@ default.
 |---|---|
 | is new | It finds the issue by its identifier, and writes a comment on it. |
 | has a text that changed | It updates the same comment. It does not write a second comment. |
+| has a text that changed, and its comment was deleted (`Entity not found`) | It comments again. |
 | has the text that the comment carries | Nothing. |
 | is refused: a 4xx, an error Linear marks as the request's own (`userError`), an issue the credential cannot see, or no text | It writes `error` once, with `failed: permanent`, and offers the input again only when it is edited ([A refusal is permanent](io.md#what-is-asked-and-what-became-of-it)). |
 | fails another way: a rate limit, a 5xx, an error Linear does not mark | It writes `error` once. The next pass tries again. |
@@ -707,7 +709,7 @@ default.
 | Environment | What it is |
 |---|---|
 | `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, and on **Contents** to merge. Required, unless the app below is set. |
-| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The io authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would. |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The io authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. A token GitHub refuses (401), because the io's clock runs slow or the token was revoked, is minted again and the request sent once more. A 401 a fresh token gets too is believed. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
 
@@ -828,6 +830,7 @@ default.
 |---|---|
 | is new | It writes a comment on the pull request or issue. GitHub numbers both in one sequence. |
 | has a text that changed | It updates the same comment. It does not write a second comment. |
+| has a text that changed, and its comment was deleted (404) | It comments again. |
 | has the text that the comment carries | Nothing. |
 
 **A pull request for a branch.** An input that carries `open` asks for a pull request from a
@@ -843,7 +846,7 @@ already opened a pull request from that branch.
 
 | The input | What the pass does |
 |---|---|
-| is new, and the branch has an open pull request | It adopts that pull request. Its title and body stay its author's. |
+| is new, and the branch has an open pull request | It adopts that pull request. Its title and body stay its author's. One the io opened itself, whose status was lost, is recorded as opened and kept in step. |
 | is new, and the branch has none | It opens one, from the branch into `base`. |
 | has a title or body that changed | It updates the pull request it opened. An adopted one is left as its author wrote it. |
 | has the title and body the pull request carries | Nothing. |
@@ -862,7 +865,7 @@ Its status holds `merged: true`, the merge commit as `commit`, `head` and `merge
 |---|---|
 | is open, and its head is `sha` | It merges it, with GitHub's own check that the head is still `sha`. |
 | is open, and its head is another commit | It refuses, naming both: a head that moved is a different change. |
-| is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. |
+| is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. A merge the io made whose status write was lost shows the same way, because the next pass cannot tell the two apart (git-issue nj9fce9dh, open). |
 | is merged, by an earlier pass | Nothing, and no request to GitHub. |
 
 **A close.** An input that carries `close` asks for an issue or a pull request to be closed:
