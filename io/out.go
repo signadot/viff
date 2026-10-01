@@ -2,6 +2,9 @@ package io
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -46,8 +49,11 @@ import (
 //   - the status is merged, never replaced, so two fields written by two passes both stand;
 //   - a failure is written once with the instant it began, and cleared by the next success — a
 //     connector that stays broken costs one commit, not one per pass;
+//   - a REFUSAL is permanent (Permanent): the status says `failed: permanent`, and the input is not
+//     asked again until it changes, since the same request would only be refused again;
 //   - and the sink is asked on EVERY pass, including the passes where nothing has changed, which
-//     is how it keeps whatever it remembers about its own deliveries current.
+//     is how it keeps whatever it remembers about its own deliveries current. The one exception is
+//     an input refused for good, which a Keeper is told about instead.
 //
 // This half never writes an input. Its own writes are statuses, so nothing it does can be read
 // back by the next pass as a new request — the property that makes the loop terminate.
@@ -73,8 +79,65 @@ type Out struct {
 type Sink interface {
 	// Deliver makes the external system match in, and answers the fields to merge onto its
 	// status. Nil fields and no error is "nothing needed doing"; an error is recorded on the
-	// status and retried on the next pass.
+	// status and retried on the next pass, unless it is Permanent.
 	Deliver(ctx context.Context, in Input) (entity.Obj, error)
+}
+
+// Keeper is a sink that keeps something current about its deliveries on every pass, and so is
+// told about an input it is not asked to deliver: one refused for good (Permanent), which stands
+// unchanged. Slack's remembers which thread a message's replies land in.
+type Keeper interface {
+	Keep(in Input)
+}
+
+// Permanent marks err as a refusal the same input would get again: the far side said no to what
+// was asked (most 4xx), or the sink refuses the input itself (it carries no text, it names a target
+// that is no target). The status records `failed: permanent` with a fingerprint of the input, and
+// the input is not handed to the sink again until it changes. Editing it is how a requester asks
+// again.
+//
+// NOT EVERY FAILURE. A failure the same request may not meet next time — the far side down, a rate
+// limit, the network — is not marked, and is tried again on every pass, as is anything a sink has
+// not said is permanent. A request sent again every pass after it was refused is what tripped
+// GitHub's secondary rate limit for the account it was made as (git-issue na9fce9dh12krdydqsn0).
+func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return permanentError{err}
+}
+
+// IsPermanent reports whether err, or anything it wraps, was marked Permanent.
+func IsPermanent(err error) bool {
+	var p permanentError
+	return errors.As(err, &p)
+}
+
+type permanentError struct{ error }
+
+func (p permanentError) Unwrap() error { return p.error }
+
+// PermanentFailure is what `failed` says on the status of an input refused for good.
+const PermanentFailure = "permanent"
+
+// fingerprint is a short digest of an input as it was asked, so a refusal can say which asking it
+// refused and an edit is a new one.
+func fingerprint(v *ir.Node) string {
+	b, err := codec.Marshal(v, codec.Tony)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+// refused reports whether in was refused for good as it stands.
+func refused(in Input) bool {
+	if entity.Str(in.Status, "failed") != PermanentFailure {
+		return false
+	}
+	fp := fingerprint(in.Value)
+	return fp != "" && entity.Str(in.Status, "failedOn") == fp
 }
 
 // Input is one thing asked of an out half, and what the last pass did about it.
@@ -212,6 +275,14 @@ func (o *Out) report(p OutPass) {
 // deliver asks the sink about one input and records what it answered. It reports whether the sink
 // got its way — an input already matching counts as delivered, since nothing is wrong with it.
 func (o *Out) deliver(ctx context.Context, in Input) bool {
+	// REFUSED FOR GOOD, AS IT STANDS: asking again would be refused again, so it is not asked.
+	// It still counts as failed — it stands unmet — and a Keeper still hears of it.
+	if refused(in) {
+		if k, ok := o.sink.(Keeper); ok {
+			k.Keep(in)
+		}
+		return false
+	}
 	// A TARGET IS FIXED AT FIRST DELIVERY, and a changed one is refused here rather than in each
 	// connector.
 	//
@@ -226,9 +297,9 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 	// avoid. A status written before this carries no `to` and is left alone — the next delivery
 	// records one.
 	if was := entity.Str(in.Status, "to"); was != "" && was != in.To {
-		o.fail(in, fmt.Errorf("this was delivered to %s and now asks for %s: a target is fixed "+
-			"at first delivery, because what was said is addressed by what the status already "+
-			"holds. Ask under a new name, or put %s back", was, in.To, was))
+		o.fail(in, Permanent(fmt.Errorf("this was delivered to %s and now asks for %s: a target is "+
+			"fixed at first delivery, because what was said is addressed by what the status "+
+			"already holds. Ask under a new name, or put %s back", was, in.To, was)))
 		return false
 	}
 	fields, err := o.sink.Deliver(ctx, in)
@@ -244,6 +315,8 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 	if _, said := fields["error"]; !said {
 		fields["error"] = entity.Removed()
 		fields["failedAt"] = entity.Removed()
+		fields["failed"] = entity.Removed()
+		fields["failedOn"] = entity.Removed()
 	}
 	// WHO IT WENT TO, as the input said it. The connector's own fields say where it landed on
 	// the far side — a channel id, a comment uuid — which is not the address a requester wrote
@@ -259,13 +332,23 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 // fail records a failure on the status, keeping whatever the status already says was done. The
 // same failure again is not written again: an input that stays broken would otherwise cost a
 // commit a pass, saying nothing new, and the instant it began would slide forward while it did.
+//
+// A PERMANENT ONE SAYS WHICH ASKING IT REFUSED, and that is part of "the same": an input edited and
+// refused again with the same words is a new refusal, and one recorded against the old fingerprint
+// would be asked again on every pass.
 func (o *Out) fail(in Input, err error) {
-	if entity.Str(in.Status, "error") == err.Error() {
+	fields := entity.Obj{"error": err.Error(), "failedAt": o.now().UTC().Format(time.RFC3339)}
+	on := ""
+	if IsPermanent(err) {
+		on = fingerprint(in.Value)
+		fields["failed"], fields["failedOn"] = PermanentFailure, on
+	} else {
+		fields["failed"], fields["failedOn"] = entity.Removed(), entity.Removed()
+	}
+	if entity.Str(in.Status, "error") == err.Error() && entity.Str(in.Status, "failedOn") == on {
 		return
 	}
-	o.Write(in, entity.Obj{
-		"error": err.Error(), "failedAt": o.now().UTC().Format(time.RFC3339),
-	})
+	o.Write(in, fields)
 }
 
 // Write merges fields into one input's status, which stands beside the input at whatever depth it

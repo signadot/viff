@@ -125,23 +125,30 @@ func TestAChangedInputEditsTheComment(t *testing.T) {
 	}
 }
 
-// An issue this credential cannot see is a failure on the status, in the connector's words, and
-// the next pass tries again — the same shape as a Slack refusal, which is the framework's doing.
-func TestAnIssueItCannotSeeIsRecordedAndRetried(t *testing.T) {
+// An issue this credential cannot see is a refusal on the status, in the connector's words, and is
+// permanent: asked the same way, the answer is the same (git-issue na9fce9dh12krdydqsn0). Editing
+// the input asks again — the same shape as a Slack refusal, which is the framework's doing.
+func TestAnIssueItCannotSeeIsRecordedAndAskedAgainOnlyWhenEdited(t *testing.T) {
 	r := newOutRig(t)
 	r.fake.noIssue = true
 	r.ask(t, "ENG-9999", "review", entity.Obj{"text": "waiting"})
 	r.pass(t)
 	st := r.status(t, "review")
-	if err, _ := st["error"].(string); !strings.Contains(err, "no issue ENG-9999") {
-		t.Fatalf("status %v, want the issue named", st)
+	if err, _ := st["error"].(string); !strings.Contains(err, "no issue ENG-9999") || st["failed"] != verseio.PermanentFailure {
+		t.Fatalf("status %v, want the issue named, as permanent", st)
 	}
 
-	r.fake.noIssue = false
+	r.fake.noIssue = false // the credential is given the team
+	r.pass(t)
+	if st := r.status(t, "review"); st["comment"] != nil {
+		t.Fatalf("status %v, want a refused input not asked again until it is edited", st)
+	}
+
+	r.ask(t, "ENG-9999", "review", entity.Obj{"text": "waiting."})
 	r.pass(t)
 	st = r.status(t, "review")
-	if st["comment"] == nil || st["error"] != nil {
-		t.Errorf("status %v, want the retry commented and the error gone", st)
+	if st["comment"] == nil || st["error"] != nil || st["failed"] != nil {
+		t.Errorf("status %v, want the edit commented and the refusal gone", st)
 	}
 }
 

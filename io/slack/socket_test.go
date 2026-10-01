@@ -76,6 +76,8 @@ type socketRig struct {
 	kicked chan struct{}
 	hints  chan []entity.Ref
 	ts     string // the message asking the question, which a reply threads under
+	src    *slack.Slack
+	verse  *client.Client
 }
 
 const askedQuestion = "verse.trigger.review.review~1"
@@ -105,6 +107,7 @@ func newSocketRig(t *testing.T) *socketRig {
 	sink := src.Sink(verse)
 	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
 	r.outRig = &outRig{store: store, fake: f, sink: sink, out: out}
+	r.src, r.verse = src, verse
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -514,4 +517,35 @@ func TestTheSocketDialsAgainOnDisconnect(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("%d connections, want a second after the disconnect", r.sock.connections())
+}
+
+// A MESSAGE WHOSE EDIT WAS REFUSED FOR GOOD STILL STANDS IN SLACK, and a reply in its thread is
+// still about its question. The input is not delivered again (git-issue na9fce9dh12krdydqsn0), so
+// what a delivery would remember is kept instead: a sink that starts afresh — a restarted io —
+// learns the thread from one pass.
+func TestARefusedEditStillKeepsItsThread(t *testing.T) {
+	r := newSocketRig(t)
+	r.asking(t)
+	r.fake.fail["chat.update"] = "msg_too_long"
+	r.ask(t, "C999", "review", entity.Obj{
+		"text": "the review is waiting on you, and here is a great deal more", "asks": askedQuestion,
+	})
+	r.pass(t)
+	if st := r.status(t, "review"); st["failed"] != verseio.PermanentFailure {
+		t.Fatalf("status %v, want the edit refused for good", st)
+	}
+
+	fresh := r.src.Sink(r.verse)
+	if got := fresh.Asked("C999", r.ts); len(got) != 0 {
+		t.Fatalf("a fresh sink already knows %v", got)
+	}
+	if err := verseio.NewOut(fresh, r.src.OutRef(), r.verse, nil).Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := fresh.Asked("C999", r.ts); len(got) != 1 {
+		t.Fatalf("after a pass, the thread asks %v, want the message's question", got)
+	}
+	if n := r.fake.called("chat.update"); n != 1 {
+		t.Errorf("chat.update asked %d times, want once: the refused edit is not sent again", n)
+	}
 }

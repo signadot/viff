@@ -168,21 +168,45 @@ func TestOutSaysInAChannelDirectly(t *testing.T) {
 	}
 }
 
-// A refusal is written on the status, in Slack's words, and the next pass tries again; once it
-// works, the error is gone.
-func TestOutRecordsAFailureAndRetries(t *testing.T) {
+// A refusal is written on the status, in Slack's words, as permanent: asked the same way, Slack
+// says the same thing, so it is not asked again (git-issue na9fce9dh12krdydqsn0). Editing the
+// input asks again — after the bot is invited, say — and once that works, the error is gone.
+func TestOutRecordsARefusalAndAsksAgainOnlyWhenEdited(t *testing.T) {
 	r := newOutRig(t)
 	r.fake.fail["chat.postMessage"] = "not_in_channel"
 	r.ask(t, "C999", "release", entity.Obj{"text": "staging.3 is out"})
 	r.pass(t)
-	if st := r.status(t, "release"); !strings.Contains(st["error"].(string), "not_in_channel") {
-		t.Fatalf("status %v, want Slack's refusal", st)
+	if st := r.status(t, "release"); !strings.Contains(st["error"].(string), "not_in_channel") ||
+		st["failed"] != verseio.PermanentFailure {
+		t.Fatalf("status %v, want Slack's refusal, as permanent", st)
 	}
 
-	delete(r.fake.fail, "chat.postMessage")
+	delete(r.fake.fail, "chat.postMessage") // the bot is invited
+	r.pass(t)
+	if len(r.fake.posted) != 0 {
+		t.Fatalf("posted %v, want a refused input not asked again until it is edited", r.fake.posted)
+	}
+
+	r.ask(t, "C999", "release", entity.Obj{"text": "staging.3 is out."})
 	r.pass(t)
 	st := r.status(t, "release")
-	if st["ts"] == nil || st["error"] != nil {
+	if st["ts"] == nil || st["error"] != nil || st["failed"] != nil {
+		t.Errorf("status %v, want the edit posted and the refusal gone", st)
+	}
+}
+
+// A refusal Slack says fixes itself is asked again on the next pass.
+func TestOutAsksAgainAfterATransientRefusal(t *testing.T) {
+	r := newOutRig(t)
+	r.fake.fail["chat.postMessage"] = "service_unavailable"
+	r.ask(t, "C999", "release", entity.Obj{"text": "staging.3 is out"})
+	r.pass(t)
+	if st := r.status(t, "release"); st["failed"] != nil || !strings.Contains(st["error"].(string), "service_unavailable") {
+		t.Fatalf("status %v, want the failure, not permanent", st)
+	}
+	delete(r.fake.fail, "chat.postMessage")
+	r.pass(t)
+	if st := r.status(t, "release"); st["ts"] == nil || st["error"] != nil {
 		t.Errorf("status %v, want the retry posted and the error gone", st)
 	}
 }

@@ -299,3 +299,95 @@ func TestATargetThatNeverDeliveredMayBeCorrected(t *testing.T) {
 		t.Errorf("status %v, want the corrected target delivered and the error gone", st)
 	}
 }
+
+// A REFUSAL IS PERMANENT: said once, and not asked again while the input stands as it was refused.
+// Sending it again on every pass is what tripped GitHub's secondary rate limit for the account the
+// io acted as (git-issue na9fce9dh12krdydqsn0).
+func TestARefusalIsPermanentUntilTheInputChanges(t *testing.T) {
+	r := newOutRig(t)
+	r.sink.err = verseio.Permanent(errors.New("422: can not approve your own pull request"))
+	ask(t, r.store, "pr.47", "review", entity.Obj{"event": "approve"})
+	r.pass(t)
+	st := r.status(t, "review")
+	if st["failed"] != verseio.PermanentFailure || st["failedOn"] == nil || !strings.Contains(fmt.Sprint(st["error"]), "422") {
+		t.Fatalf("status %v, want the refusal recorded as permanent, with the input it refused", st)
+	}
+	for range 3 {
+		r.pass(t)
+	}
+	if n := r.sink.count(); n != 1 {
+		t.Fatalf("asked %d times, want once: a refusal is not asked again", n)
+	}
+
+	// Edited: a new asking, delivered once. Refused again with the same words, it is recorded
+	// against the new input, or it would be asked on every pass from here on.
+	ask(t, r.store, "pr.47", "review", entity.Obj{"event": "request-changes"})
+	r.pass(t)
+	r.pass(t)
+	if n := r.sink.count(); n != 2 {
+		t.Fatalf("asked %d times after one edit, want 2", n)
+	}
+	if on := r.status(t, "review")["failedOn"]; on == st["failedOn"] {
+		t.Errorf("failedOn %v, want the edited input's fingerprint", on)
+	}
+
+	// Edited and met: the refusal goes with the success that ends it.
+	r.sink.err, r.sink.fields = nil, entity.Obj{"review": "7001"}
+	ask(t, r.store, "pr.48", "review", entity.Obj{"event": "approve"})
+	r.pass(t)
+	if st := r.status(t, "review"); st["error"] != nil || st["failed"] != nil || st["failedOn"] != nil {
+		t.Errorf("status %v, want the refusal gone with the success that ended it", st)
+	}
+}
+
+// A failure that is not a refusal — the far side down, a rate limit — is asked again every pass,
+// as before.
+func TestAFailureThatIsNotARefusalIsAskedAgain(t *testing.T) {
+	r := newOutRig(t)
+	r.sink.err = errors.New("502 bad gateway")
+	ask(t, r.store, "pr.47", "note", entity.Obj{"text": "hi"})
+	for range 3 {
+		r.pass(t)
+	}
+	if n := r.sink.count(); n != 3 {
+		t.Fatalf("asked %d times over three passes, want 3", n)
+	}
+	if st := r.status(t, "note"); st["failed"] != nil {
+		t.Errorf("status %v, want a transient failure not marked permanent", st)
+	}
+}
+
+// keeping is a sink that also keeps something current every pass, and notes what it was told of.
+type keeping struct {
+	noted
+	kept []string
+}
+
+func (k *keeping) Keep(in verseio.Input) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.kept = append(k.kept, in.Name)
+}
+
+// A KEEPER HEARS OF AN INPUT IT IS NOT ASKED TO DELIVER, so what it keeps current every pass — a
+// Slack thread's questions — stays current for a message whose last edit was refused.
+func TestAKeeperIsToldOfARefusedInput(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	sink := &keeping{}
+	sink.err = verseio.Permanent(errors.New("msg_too_long"))
+	out := verseio.NewOut(sink, entity.RefAt("demo", "out"),
+		client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-io"), nil)
+	ask(t, store, "C111", "note", entity.Obj{"text": "long"})
+	for range 3 {
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if sink.delivers != 1 || len(sink.kept) != 2 {
+		t.Errorf("delivered %d and kept %d, want delivered once and kept on the two passes after", sink.delivers, len(sink.kept))
+	}
+}

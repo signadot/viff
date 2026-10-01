@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	verseio "github.com/signadot/verse/io"
 )
 
 // The Slack Web API, as much of it as a reflection and the out half need.
@@ -54,7 +56,20 @@ func (e envelope) err() error {
 	if e.Error == "" {
 		return fmt.Errorf("slack: refused, with no reason given")
 	}
-	return fmt.Errorf("slack: %s", e.Error)
+	err := fmt.Errorf("slack: %s", e.Error)
+	if transientCodes[e.Error] {
+		return err
+	}
+	// A REFUSAL: asked the same way, Slack says the same thing (verseio.Permanent).
+	return verseio.Permanent(err)
+}
+
+// transientCodes are the refusals Slack names that fix themselves, and are asked again. Every
+// other `error` is about what was asked, or the credential it was asked with, and asking again
+// the same way gets the same answer.
+var transientCodes = map[string]bool{
+	"ratelimited": true, "internal_error": true, "fatal_error": true,
+	"service_unavailable": true, "request_timeout": true,
 }
 
 func (e envelope) cursor() string { return e.Meta.NextCursor }
@@ -114,7 +129,11 @@ func (a *api) do(req *http.Request, method string, out answer) error {
 			resp.Header.Get("Retry-After"))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("slack %s: %s", method, resp.Status)
+		err := fmt.Errorf("slack %s: %s", method, resp.Status)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout {
+			return verseio.Permanent(err) // a 4xx is not asked again; a 429 is answered above
+		}
+		return err
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("slack %s: undecodable answer: %w", method, err)

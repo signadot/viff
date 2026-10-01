@@ -92,7 +92,7 @@ func (s *Slack) OutRef() entity.Ref { return entity.RefAt(s.place("out")...) }
 func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
 	text := entity.Str(in.Value, "text")
 	if text == "" {
-		return nil, fmt.Errorf("an input carries {text}, and this one has none")
+		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
 	body, asked, err := k.body(text, in.Value)
 	if err != nil {
@@ -492,6 +492,25 @@ func strs(n *ir.Node) []string {
 	return out
 }
 
+// Keep remembers what a message whose last edit was refused for good still asks, as a delivery
+// would: the message stands in Slack, and a reply in its thread is still matched to the question
+// it is about (socket.go). Nothing is asked of Slack.
+func (k *Sink) Keep(in verseio.Input) {
+	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
+	if ts == "" {
+		return // refused before anything was posted: there is no thread to match
+	}
+	_, asked, err := k.body(entity.Str(in.Value, "text"), in.Value)
+	if err != nil {
+		return
+	}
+	replies := ts
+	if thread := entity.Str(in.Value, "thread"); thread != "" {
+		replies = thread
+	}
+	k.remember(channel, replies, in.At.String(), asked)
+}
+
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.
 //
 // A PERSON MAY BE NAMED AS VERSE KNOWS THEM — `user:ana@acme.test`, or the bare email — and not
@@ -514,8 +533,8 @@ func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	case strings.HasPrefix(target, "C"), strings.HasPrefix(target, "G"), strings.HasPrefix(target, "D"):
 		return target, nil
 	}
-	return "", fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… a channel) "+
-		"nor somebody verse knows (user:<email>)", target)
+	return "", verseio.Permanent(fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… "+
+		"a channel) nor somebody verse knows (user:<email>)", target))
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is

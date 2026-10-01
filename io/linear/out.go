@@ -67,7 +67,7 @@ const OutPlace = "out"
 func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
-		return nil, fmt.Errorf("an input carries {text}, and this one has none")
+		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
 	fp := fingerprint(text)
 	id := entity.Str(in.Status, "comment")

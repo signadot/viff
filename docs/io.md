@@ -130,7 +130,7 @@ The sink differs from the source only in direction, and in what follows from dir
 | who dials | verse | the io |
 | what it carries | entities and covers | inputs, and a status per input |
 | the law | the single writer of what it covers; covered-and-omitted is tombstoned | what is asked is compared with what was done, and the difference is done |
-| failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass |
+| failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass; a refusal is permanent until the input changes |
 | who verse trusts | what the reflection answers | what the io says it did (it cannot see for itself) |
 
 The addresses a sink reads must lie **inside the io's claim and outside its covers**:

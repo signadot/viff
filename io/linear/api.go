@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	verseio "github.com/signadot/verse/io"
 )
 
 // Linear's GraphQL API, as much of it as a reflection needs.
@@ -78,24 +80,47 @@ func (a *api) query(ctx context.Context, q string, vars map[string]any, out any)
 		return fmt.Errorf("linear: rate limited (reset %s)",
 			resp.Header.Get("X-RateLimit-Requests-Reset"))
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("linear: %s: %s", resp.Status, snippet(raw))
-	}
 	var env struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {
-			Message string `json:"message"`
+			Message    string `json:"message"`
+			Extensions struct {
+				Code      string `json:"code"`
+				UserError bool   `json:"userError"`
+			} `json:"extensions"`
 		} `json:"errors"`
 	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return fmt.Errorf("linear: undecodable answer: %w", err)
+	undecodable := json.Unmarshal(raw, &env)
+	limited, refused := false, false
+	for _, e := range env.Errors {
+		limited = limited || e.Extensions.Code == "RATELIMITED"
+		refused = refused || e.Extensions.UserError
+	}
+	if limited {
+		return fmt.Errorf("linear: rate limited (reset %s)", resp.Header.Get("X-RateLimit-Requests-Reset"))
+	}
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("linear: %s: %s", resp.Status, snippet(raw))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout {
+			return verseio.Permanent(err) // a 4xx is not asked again (verseio.Permanent)
+		}
+		return err
+	}
+	if undecodable != nil {
+		return fmt.Errorf("linear: undecodable answer: %w", undecodable)
 	}
 	if len(env.Errors) > 0 {
 		msgs := make([]string, 0, len(env.Errors))
 		for _, e := range env.Errors {
 			msgs = append(msgs, e.Message)
 		}
-		return fmt.Errorf("linear: %s", strings.Join(msgs, "; "))
+		err := fmt.Errorf("linear: %s", strings.Join(msgs, "; "))
+		// A REFUSAL, where Linear says the error is the request's (`userError`); one it does not
+		// say that of is asked again, as before.
+		if refused {
+			return verseio.Permanent(err)
+		}
+		return err
 	}
 	if err := json.Unmarshal(env.Data, out); err != nil {
 		return fmt.Errorf("linear: undecodable data: %w", err)
@@ -313,7 +338,7 @@ func (a *api) issueID(ctx context.Context, identifier string) (string, error) {
 		return "", err
 	}
 	if r.Issue == nil || r.Issue.ID == "" {
-		return "", fmt.Errorf("linear: no issue %s this credential can see", identifier)
+		return "", verseio.Permanent(fmt.Errorf("linear: no issue %s this credential can see", identifier))
 	}
 	return r.Issue.ID, nil
 }

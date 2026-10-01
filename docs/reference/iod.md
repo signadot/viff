@@ -439,7 +439,8 @@ says it posted, and does only what is missing.
 | is new | It posts the message. |
 | would show differently: its `posted` fingerprint does not match | It sends a `chat.update` of the same message. It does not post a second message. |
 | already shows as asked | Nothing. So after a restart the io resumes from the statuses, and does not repeat a message. |
-| fails | It writes `error` once, in the words of Slack. The next pass tries again. |
+| is refused | It writes `error` once, in the words of Slack, with `failed: permanent`, and offers the input again only when it is edited ([A refusal is permanent](io.md#what-is-asked-and-what-became-of-it)). |
+| fails another way (`ratelimited`, `service_unavailable`, `internal_error`, `fatal_error`, `request_timeout`, a 5xx) | It writes `error` once. The next pass tries again. |
 
 **The status is a sibling, and not a child.** So an input can grow structure, and the
 structure does not collide with the status. The io never reads a name that ends in `~status`
@@ -686,6 +687,8 @@ default.
 | is new | It finds the issue by its identifier, and writes a comment on it. |
 | has a text that changed | It updates the same comment. It does not write a second comment. |
 | has the text that the comment carries | Nothing. |
+| is refused: a 4xx, an error Linear marks as the request's own (`userError`), an issue the credential cannot see, or no text | It writes `error` once, with `failed: permanent`, and offers the input again only when it is edited ([A refusal is permanent](io.md#what-is-asked-and-what-became-of-it)). |
+| fails another way: a rate limit, a 5xx, an error Linear does not mark | It writes `error` once. The next pass tries again. |
 
 ## github
 

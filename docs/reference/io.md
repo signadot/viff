@@ -334,7 +334,7 @@ a re-install lands back on a place whose grants stand.
 | | where | written by | holds |
 |---|---|---|---|
 | input | anywhere under `<place>` | whoever asks | `to` — whom or what it is about — and whatever the connector reads (`text`, Slack's `asks`) |
-| status | the sibling `<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands |
+| status | the sibling `<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands, with `failed: permanent` and `failedOn` for a refusal |
 
 **An input is a node that carries `to`, at any depth.** Whatever writes an input decides where it
 stands. A person types one under the place. The fan-out of a charter writes one per person under
@@ -351,6 +351,26 @@ pass recorded beside it. The connector answers what to record now, or nothing wh
 system already matches.
 
 A failure is written once, with the instant it began. The success that ends it clears it.
+
+**A refusal is permanent.** The far side may refuse what was asked: a 4xx, or Slack's `ok: false`
+with an error that is not a rate limit or an outage. Or the connector may refuse the input itself:
+no text, a target that is no target, a target changed after delivery. Asked the same way, the
+answer would be the same. So the status records `failed: permanent`, and `failedOn`, a fingerprint
+of the input as it was refused. The input is not offered to the connector again while it stands
+unchanged.
+
+- **To ask again, edit the input.** An edit is a new request: it is offered once, and is
+  permanent again only if it is refused again.
+- **This includes a credential the far side refuses.** Once the credential is fixed, a refused
+  input goes out when it is edited.
+- **A failure that is not a refusal is retried on every pass.** That covers the far side down, a
+  rate limit, and the network.
+
+A request sent again on every pass after it was refused is what tripped GitHub's secondary rate
+limit for the account an io acted as.
+
+A connector that keeps something current on every pass is still told of an input it does not
+offer. Slack's keeps the thread a message's replies are matched in.
 
 ### Health: verse is told
 
