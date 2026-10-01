@@ -268,6 +268,22 @@ func (a *api) mergePull(ctx context.Context, repo string, number int, sha, metho
 	return m, err
 }
 
+// review is what GitHub answers about a review it recorded.
+type review struct {
+	ID      int64  `json:"id"`
+	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
+}
+
+// createReview posts a review on a pull request: APPROVE or REQUEST_CHANGES, with a body. A later
+// review by the same reviewer supersedes an earlier one, which is how a review is changed.
+func (a *api) createReview(ctx context.Context, repo string, number int, event, body string) (review, error) {
+	var r review
+	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews",
+		map[string]string{"event": event, "body": body}, &r)
+	return r, err
+}
+
 // updateComment changes the text of a comment this io made.
 func (a *api) updateComment(ctx context.Context, repo string, id int64, text string) error {
 	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/comments/"+strconv.FormatInt(id, 10),

@@ -816,7 +816,7 @@ claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` (below) |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review` (below) |
 | status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
@@ -862,6 +862,24 @@ Its status holds `merged: true`, the merge commit as `commit`, `head` and `merge
 | is open, and its head is another commit | It refuses, naming both: a head that moved is a different change. |
 | is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. |
 | is merged, by an earlier pass | Nothing, and no request to GitHub. |
+
+**A review.** An input that carries `review` asks for the io's own review on a pull request,
+which is how the state of an ask is shown in GitHub:
+
+```tony
+to: pr.42
+review: {event: request-changes, body: "an objection stands: …"}   # or approve
+```
+
+Its status holds `review` (its id), `event`, `url` and `reviewedAt`.
+
+| The input | What the pass does |
+|---|---|
+| is new, or its event or body changed | It posts a review. A later review supersedes the io's earlier one, since GitHub counts a reviewer's latest. |
+| says what the io's latest review says | Nothing. |
+
+GitHub refuses a review from the pull request's own author, so the io cannot review a pull
+request it opened. It also refuses `request-changes` without a body, which the io refuses first.
 
 ## Deploying them
 

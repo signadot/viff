@@ -2,6 +2,7 @@ package github_test
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -195,5 +196,63 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 	if st := status("around"); f.mergeCount() != 1 || st["merged"] != true || st["commit"] != nil {
 		t.Fatalf("a pull request merged before the io was asked: %d merged, status %v, want it recorded with no commit of the io's",
 			f.mergeCount(), st)
+	}
+}
+
+// A REVIEW MIRRORING AN ASK: posted, left alone while it says the same, and posted again when it
+// changes, since a reviewer's latest review is the one GitHub counts. A pull request the io opened
+// cannot be reviewed by it, and GitHub's refusal lands on the status.
+func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "abc")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	pass := func() {
+		t.Helper()
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatalf("pass: %v", err)
+		}
+	}
+	ask := func(name string, input entity.Obj) {
+		t.Helper()
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+	}
+	status := func(name string) entity.Obj {
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		return entity.ToObj(e.Payload)
+	}
+
+	ask("ready", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "request-changes", "body": "ana objects: no tests"}})
+	pass()
+	pass()
+	if got := f.reviewEvents(); len(got) != 1 || got[0] != "REQUEST_CHANGES" {
+		t.Fatalf("reviews %v, want one REQUEST_CHANGES however many passes", got)
+	}
+	if st := status("ready"); st["review"] == nil || st["event"] != "request-changes" {
+		t.Fatalf("the status says %v, want the review and its event", st)
+	}
+	ask("ready", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "approve", "body": "the ask settled proceed"}})
+	pass()
+	if got := f.reviewEvents(); len(got) != 2 || got[1] != "APPROVE" {
+		t.Fatalf("reviews %v, want an APPROVE after the objection was withdrawn", got)
+	}
+
+	ask("self", entity.Obj{"to": "branch.verse/x", "open": entity.Obj{"title": "mine"}})
+	pass()
+	n := status("self")["number"]
+	ask("own", entity.Obj{"to": fmt.Sprintf("pr.%v", n), "review": entity.Obj{"event": "approve"}})
+	ask("silent-objection", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "request-changes"}})
+	ask("bad-event", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "comment"}})
+	pass()
+	for name, says := range map[string]string{
+		"own": "Can not approve your own", "silent-objection": "carries a body", "bad-event": "approve or request-changes",
+	} {
+		if e, _ := status(name)["error"].(string); !strings.Contains(e, says) {
+			t.Errorf("%s: status %v, want an error saying %q", name, status(name), says)
+		}
 	}
 }

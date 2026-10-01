@@ -26,12 +26,13 @@ type fakeGitHub struct {
 	mu    sync.Mutex
 	repos map[string]*fakeRepo
 
-	requests    int   // every request that reached a handler
-	notModified int   // those answered 304
-	nextComment int64 // the id of the last comment the out half made, past 9000
-	edits       int   // comments and pull requests the out half changed
-	opened      int   // pull requests the out half opened
-	merges      int   // pull requests the out half merged
+	requests    int      // every request that reached a handler
+	notModified int      // those answered 304
+	nextComment int64    // the id of the last comment the out half made, past 9000
+	edits       int      // comments and pull requests the out half changed
+	opened      int      // pull requests the out half opened
+	merges      int      // pull requests the out half merged
+	reviews     []string // the events of the reviews the out half posted, in order
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
 	failWith int
@@ -96,9 +97,11 @@ type fakeItem struct {
 	comments  int
 	head      string // pulls only
 	base      string // pulls only, and only one the out half opened; "" renders as main
-	body      string
-	headSHA   string
-	labels    []string
+	// selfOpened is a pull request the out half opened, which GitHub will not let it review.
+	selfOpened bool
+	body       string
+	headSHA    string
+	labels     []string
 }
 
 func newFake() *fakeGitHub {
@@ -568,6 +571,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		Head  string `json:"head"`
 		Base  string `json:"base"`
 		SHA   string `json:"sha"`
+		Event string `json:"event"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
@@ -598,6 +602,21 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			}
 		}
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	case r.Method == http.MethodPost && len(rest) == 3 && rest[0] == "pulls" && rest[2] == "reviews":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		switch {
+		case i == nil || !i.pull:
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+		case i.selfOpened:
+			http.Error(w, `{"message":"Unprocessable Entity","errors":["Can not approve your own pull request"]}`,
+				http.StatusUnprocessableEntity)
+		default:
+			f.nextComment++
+			f.reviews = append(f.reviews, body.Event)
+			writeJSON(w, map[string]any{"id": 7000 + f.nextComment, "state": body.Event,
+				"html_url": "https://github.com/r/" + strconv.FormatInt(7000+f.nextComment, 10)})
+		}
 	case r.Method == http.MethodPut && len(rest) == 3 && rest[0] == "pulls" && rest[2] == "merge":
 		n, _ := strconv.Atoi(rest[1])
 		i := repo.find(n)
@@ -621,7 +640,8 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			}
 		}
 		i := &fakeItem{number: number, title: body.Title, body: body.Body, state: "open", pull: true,
-			head: body.Head, base: body.Base, headSHA: "cccc3333", updatedAt: "2026-10-01T00:00:00Z"}
+			head: body.Head, base: body.Base, headSHA: "cccc3333", updatedAt: "2026-10-01T00:00:00Z",
+			selfOpened: true}
 		repo.items = append(repo.items, i)
 		f.opened++
 		w.WriteHeader(http.StatusCreated)
@@ -673,4 +693,11 @@ func (f *fakeGitHub) mergeCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.merges
+}
+
+// reviewEvents is the events of the reviews the out half posted, in order.
+func (f *fakeGitHub) reviewEvents() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.reviews...)
 }

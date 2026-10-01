@@ -36,6 +36,16 @@ import (
 // A comment that already carries this text is left alone, and a changed text is an update of the
 // same comment rather than a second one.
 //
+// AND A REVIEW, when the input carries `review` (step 4):
+//
+//	to:     pr.42
+//	review: {event: request-changes, body: "an objection stands: …"}   # or approve
+//
+// answered with `review` (its id), `event`, `url` and `reviewedAt`. A changed event or body posts a
+// new review, which supersedes the io's earlier one, since GitHub counts a reviewer's latest; an
+// unchanged one costs nothing. GitHub refuses a review from the pull request's own author, so an io
+// that opened the pull request cannot review it: the refusal lands on the status.
+//
 // AND A MERGE AT A SHA, when the input carries `merge` (step 3):
 //
 //	to:    pr.42
@@ -114,6 +124,9 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	if spec := entity.Get(in.Value, "merge"); spec != nil {
 		return k.merge(ctx, repo, in, spec)
+	}
+	if spec := entity.Get(in.Value, "review"); spec != nil {
+		return k.review(ctx, repo, in, spec)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
@@ -255,4 +268,36 @@ func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec en
 		return nil, err
 	}
 	return entity.Obj{"merged": true, "commit": m.SHA, "head": sha, "mergedAt": now}, nil
+}
+
+// reviewEvents maps the input's words to GitHub's events.
+var reviewEvents = map[string]string{"approve": "APPROVE", "request-changes": "REQUEST_CHANGES"}
+
+// review posts a review on a pull request, and a new one when what it should say changes.
+func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	number, err := target(in.To)
+	if err != nil {
+		return nil, err
+	}
+	word := entity.Str(spec, "event")
+	event, ok := reviewEvents[word]
+	if !ok {
+		return nil, fmt.Errorf("a review's `event` is approve or request-changes, not %q", word)
+	}
+	body := entity.Str(spec, "body")
+	if event == "REQUEST_CHANGES" && strings.TrimSpace(body) == "" {
+		return nil, fmt.Errorf("a review requesting changes carries a body: GitHub refuses one without")
+	}
+	fp := fingerprint(word + "\x00" + body)
+	if entity.Str(in.Status, "posted") == fp {
+		return nil, nil // in step: the io's latest review says this
+	}
+	r, err := k.g.api.createReview(ctx, repo, number, event, body)
+	if err != nil {
+		return nil, err
+	}
+	return entity.Obj{
+		"review": strconv.FormatInt(r.ID, 10), "event": word, "url": r.HTMLURL,
+		"reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": fp,
+	}, nil
 }
