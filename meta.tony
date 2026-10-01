@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-10-01T16:34:07.451562+02:00"
+duplicates: []
+id: 8k4azhtjh12krqvfqsn0
+labels:
+- deferred
+- design
+related_issues:
+- jdvbwvjah12krsstqsn0
+status: open
+updated: "2026-10-01T16:34:18.668246+02:00"
