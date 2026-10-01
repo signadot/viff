@@ -243,6 +243,31 @@ func (a *api) updatePull(ctx context.Context, repo string, number int, title, bo
 		map[string]string{"title": title, "body": body}, nil)
 }
 
+// readPull reads one pull request, its head and whether it is merged with it.
+func (a *api) readPull(ctx context.Context, repo string, number int) (pull, error) {
+	var p pull
+	err := a.get(ctx, "/repos/"+repo+"/pulls/"+strconv.Itoa(number), &p)
+	return p, err
+}
+
+// merged is what GitHub answers about a merge it made.
+type merged struct {
+	SHA    string `json:"sha"`
+	Merged bool   `json:"merged"`
+}
+
+// mergePull merges a pull request, but only while its head is sha: GitHub refuses the merge (409)
+// when the head moved, which is what makes "merge what was decided" exact.
+func (a *api) mergePull(ctx context.Context, repo string, number int, sha, method string) (merged, error) {
+	var m merged
+	body := map[string]string{"sha": sha}
+	if method != "" {
+		body["merge_method"] = method
+	}
+	err := a.send(ctx, http.MethodPut, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/merge", body, &m)
+	return m, err
+}
+
 // updateComment changes the text of a comment this io made.
 func (a *api) updateComment(ctx context.Context, repo string, id int64, text string) error {
 	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/comments/"+strconv.FormatInt(id, 10),

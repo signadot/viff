@@ -706,7 +706,7 @@ default.
 
 | Environment | What it is |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**. Required. |
+| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, and on **Contents** to merge. Required. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
 
@@ -816,7 +816,7 @@ claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open` (below) |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` (below) |
 | status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
@@ -845,6 +845,23 @@ already opened a pull request from that branch.
 | is new, and the branch has none | It opens one, from the branch into `base`. |
 | has a title or body that changed | It updates the pull request it opened. An adopted one is left as its author wrote it. |
 | has the title and body the pull request carries | Nothing. |
+
+**A merge at a sha.** An input that carries `merge` asks for a pull request to be merged at the
+head it was decided on:
+
+```tony
+to: pr.42
+merge: {sha: <head>, method: merge}   # merge, squash or rebase; merge by default
+```
+
+Its status holds `merged: true`, the merge commit as `commit`, `head` and `mergedAt`.
+
+| The pull request | What the pass does |
+|---|---|
+| is open, and its head is `sha` | It merges it, with GitHub's own check that the head is still `sha`. |
+| is open, and its head is another commit | It refuses, naming both: a head that moved is a different change. |
+| is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. |
+| is merged, by an earlier pass | Nothing, and no request to GitHub. |
 
 ## Deploying them
 

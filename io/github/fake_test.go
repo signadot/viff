@@ -31,6 +31,7 @@ type fakeGitHub struct {
 	nextComment int64 // the id of the last comment the out half made, past 9000
 	edits       int   // comments and pull requests the out half changed
 	opened      int   // pull requests the out half opened
+	merges      int   // pull requests the out half merged
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
 	failWith int
@@ -213,7 +214,7 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	rest := parts[3:]
 
 	// THE WRITES THE OUT HALF MAKES: a comment on an issue or pull request, and a change to one.
-	if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+	if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut {
 		f.write(w, r, repo, rest)
 		return
 	}
@@ -566,6 +567,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		Title string `json:"title"`
 		Head  string `json:"head"`
 		Base  string `json:"base"`
+		SHA   string `json:"sha"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
@@ -596,6 +598,21 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			}
 		}
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	case r.Method == http.MethodPut && len(rest) == 3 && rest[0] == "pulls" && rest[2] == "merge":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		switch {
+		case i == nil || !i.pull:
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+		case i.state != "open":
+			http.Error(w, `{"message":"Pull Request is not mergeable"}`, http.StatusMethodNotAllowed)
+		case body.SHA != "" && body.SHA != i.headSHA:
+			http.Error(w, `{"message":"Head branch was modified. Review and try the merge again."}`, http.StatusConflict)
+		default:
+			i.state = "closed" // which the fake renders as merged
+			f.merges++
+			writeJSON(w, map[string]any{"sha": "dddd4444", "merged": true})
+		}
 	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "pulls":
 		number := 1
 		for _, i := range repo.items {
@@ -649,4 +666,11 @@ func (f *fakeGitHub) editCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.edits
+}
+
+// mergeCount is how many pull requests the out half merged.
+func (f *fakeGitHub) mergeCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.merges
 }

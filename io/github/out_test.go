@@ -136,3 +136,64 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 		}
 	}
 }
+
+// A MERGE AT A SHA: refused while the head is not the sha decided on, made when it is, and made
+// once; a pull request merged before the io was asked is recorded with no commit of the io's.
+func TestTheOutHalfMergesAtASha(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	r := f.repo("signadot/verse")
+	r.pr(42, "decided", "open", "2026-09-01T00:00:00Z", "abc")
+	r.pr(43, "merged by a person", "closed", "2026-09-01T00:00:00Z", "def")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	pass := func() {
+		t.Helper()
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatalf("pass: %v", err)
+		}
+	}
+	ask := func(name string, input entity.Obj) {
+		t.Helper()
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+	}
+	status := func(name string) entity.Obj {
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		return entity.ToObj(e.Payload)
+	}
+
+	ask("stale", entity.Obj{"to": "pr.42", "merge": entity.Obj{"sha": "zzz"}})
+	pass()
+	if e, _ := status("stale")["error"].(string); f.mergeCount() != 0 || !strings.Contains(e, "head is abc") {
+		t.Fatalf("a merge decided at another sha: %d merged, status %v, want refused naming the head", f.mergeCount(), status("stale"))
+	}
+
+	// The refused input is withdrawn, so the passes below ask GitHub about nothing else.
+	for _, name := range []string{"stale", "stale" + verseio.StatusSuffix} {
+		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", name).At()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ask("land", entity.Obj{"to": "pr.42", "merge": entity.Obj{"sha": "abc"}})
+	pass()
+	if st := status("land"); f.mergeCount() != 1 || st["merged"] != true || st["commit"] != "dddd4444" {
+		t.Fatalf("merging at the head: %d merged, status %v, want merged with its commit", f.mergeCount(), st)
+	}
+	// Merged is settled: a later pass asks GitHub nothing about it, which is a read saved per pass.
+	before, _ := f.counts()
+	pass()
+	if after, _ := f.counts(); f.mergeCount() != 1 || after != before {
+		t.Fatalf("a merged pull request: %d merged, %d requests on a later pass, want none", f.mergeCount(), after-before)
+	}
+
+	ask("around", entity.Obj{"to": "pr.43", "merge": entity.Obj{"sha": "def"}})
+	pass()
+	if st := status("around"); f.mergeCount() != 1 || st["merged"] != true || st["commit"] != nil {
+		t.Fatalf("a pull request merged before the io was asked: %d merged, status %v, want it recorded with no commit of the io's",
+			f.mergeCount(), st)
+	}
+}

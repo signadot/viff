@@ -36,6 +36,15 @@ import (
 // A comment that already carries this text is left alone, and a changed text is an update of the
 // same comment rather than a second one.
 //
+// AND A MERGE AT A SHA, when the input carries `merge` (step 3):
+//
+//	to:    pr.42
+//	merge: {sha: <head>, method: merge}   # method is merge, squash or rebase; merge by default
+//
+// merged only while the pull request's head is still that sha, and answered with `merged: true`,
+// the merge commit as `commit`, and `mergedAt`. A pull request already merged is recorded as it is,
+// with no `commit` of this io's: that is how a merge made around verse shows on the status.
+//
 // AND A PULL REQUEST FOR A BRANCH, when the input carries `open` (step 2):
 //
 //	to:   branch.verse/repo-charter-review-x     # everything after the first dot is the branch
@@ -102,6 +111,9 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	if spec := entity.Get(in.Value, "open"); spec != nil {
 		return k.open(ctx, repo, in, spec)
+	}
+	if spec := entity.Get(in.Value, "merge"); spec != nil {
+		return k.merge(ctx, repo, in, spec)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
@@ -201,4 +213,46 @@ func prNumber(status entity.Payload) (int, bool) {
 		return 0, false
 	}
 	return int(*n.Int64), true
+}
+
+// merge merges a pull request at the sha it was asked for, once.
+func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	if entity.Get(in.Status, "merged") != nil {
+		return nil, nil // merged, by this io or before it was asked: nothing is left to do
+	}
+	number, err := target(in.To)
+	if err != nil {
+		return nil, err
+	}
+	sha := entity.Str(spec, "sha")
+	if sha == "" {
+		return nil, fmt.Errorf("`merge` carries the sha it merges at, so a head that moved since " +
+			"the decision is not merged")
+	}
+	p, err := k.g.api.readPull(ctx, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	now := k.now().UTC().Format(time.RFC3339)
+	if p.Merged {
+		// Merged before this io was asked to: said as it is, with no commit of this io's.
+		out := entity.Obj{"merged": true, "mergedAt": p.MergedAt}
+		if p.Head != nil {
+			out["head"] = p.Head.SHA
+		}
+		return out, nil
+	}
+	if p.Head == nil || p.Head.SHA != sha {
+		head := ""
+		if p.Head != nil {
+			head = p.Head.SHA
+		}
+		return nil, fmt.Errorf("pr.%d's head is %s, and the merge was decided at %s: a head that "+
+			"moved is a different change, so it is not merged", number, head, sha)
+	}
+	m, err := k.g.api.mergePull(ctx, repo, number, sha, entity.Str(spec, "method"))
+	if err != nil {
+		return nil, err
+	}
+	return entity.Obj{"merged": true, "commit": m.SHA, "head": sha, "mergedAt": now}, nil
 }
