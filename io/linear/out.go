@@ -76,10 +76,16 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	}
 	now := k.now().UTC().Format(time.RFC3339)
 	if id != "" {
-		if err := k.l.api.updateComment(ctx, id, text); err != nil {
+		err := k.l.api.updateComment(ctx, id, text)
+		if err == nil {
+			return entity.Obj{"updatedAt": now, "posted": fp}, nil
+		}
+		// GONE: somebody deleted the comment. The input still asks for one saying this, so it is
+		// said again, rather than an edit of what is not there refused for good
+		// (git-issue ne9fce9dh12ks1q4qsn0).
+		if !strings.Contains(err.Error(), "Entity not found") {
 			return nil, err
 		}
-		return entity.Obj{"updatedAt": now, "posted": fp}, nil
 	}
 
 	// A person types `ENG-42`; Linear's mutation takes the issue's uuid. The lookup is the one

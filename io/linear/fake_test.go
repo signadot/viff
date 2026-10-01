@@ -133,10 +133,18 @@ func (f *fakeLinear) handle(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(req.Query, "commentUpdate"):
 		id, _ := req.Variables["id"].(string)
 		body, _ := req.Variables["body"].(string)
+		found := false
 		for _, c := range f.comments {
 			if c["id"] == id {
-				c["body"] = body
+				c["body"], found = body, true
 			}
+		}
+		if !found {
+			// Linear's own answer for a comment that is not there: HTTP 200, and an error it says
+			// is the request's.
+			writeJSON(w, map[string]any{"errors": []map[string]any{{"message": "Entity not found: Comment",
+				"extensions": map[string]any{"code": "INPUT_ERROR", "userError": true}}}})
+			return
 		}
 		writeJSON(w, map[string]any{"data": map[string]any{
 			"commentUpdate": map[string]any{"success": true},

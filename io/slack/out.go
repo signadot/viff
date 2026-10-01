@@ -137,10 +137,19 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	now := k.now().UTC().Format(time.RFC3339)
 
 	if ts != "" {
-		if err := k.s.api.updateMessage(ctx, channel, ts, body); err != nil {
+		err := k.s.api.updateMessage(ctx, channel, ts, body)
+		if err == nil {
+			return entity.Obj{"updatedAt": now, "posted": fp}, nil
+		}
+		// GONE: somebody deleted the message. The input still asks for one showing this, so it is
+		// said again, rather than an edit of what is not there refused for good
+		// (git-issue ne9fce9dh12ks1q4qsn0). A reply under the old one has nowhere to land.
+		if !strings.Contains(err.Error(), "message_not_found") {
 			return nil, err
 		}
-		return entity.Obj{"updatedAt": now, "posted": fp}, nil
+		if thread == "" {
+			k.remember(channel, ts, in.At.String(), nil)
+		}
 	}
 
 	if channel == "" {

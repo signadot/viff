@@ -125,6 +125,22 @@ func TestAChangedInputEditsTheComment(t *testing.T) {
 	}
 }
 
+// A COMMENT DELETED IN LINEAR is said again when the input changes, not refused for good as an edit
+// of what is not there (git-issue ne9fce9dh12ks1q4qsn0).
+func TestADeletedCommentIsSaidAgain(t *testing.T) {
+	r := newOutRig(t)
+	r.ask(t, "ENG-42", "review", entity.Obj{"text": "waiting"})
+	r.pass(t)
+	r.fake.comments = nil // deleted in Linear: nothing an edit can reach, so only a new comment lands
+
+	r.ask(t, "ENG-42", "review", entity.Obj{"text": "answered: proceed"})
+	r.pass(t)
+	st := r.status(t, "review")
+	if len(r.fake.comments) != 1 || r.fake.comments[0]["body"] != "answered: proceed" || st["error"] != nil {
+		t.Fatalf("comments %v, status %v, want it said again", r.fake.comments, st)
+	}
+}
+
 // An issue this credential cannot see is a refusal on the status, in the connector's words, and is
 // permanent: asked the same way, the answer is the same (git-issue na9fce9dh12krdydqsn0). Editing
 // the input asks again — the same shape as a Slack refusal, which is the framework's doing.

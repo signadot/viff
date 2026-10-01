@@ -122,6 +122,23 @@ func TestOutUpdatesTheMessageWhenTheInputChanges(t *testing.T) {
 	}
 }
 
+// A MESSAGE DELETED IN SLACK is said again when the input changes, not refused for good as an edit
+// of what is not there (git-issue ne9fce9dh12ks1q4qsn0).
+func TestOutSaysADeletedMessageAgain(t *testing.T) {
+	r := newOutRig(t)
+	r.ask(t, "C999", "hello", entity.Obj{"text": "hi"})
+	r.pass(t)
+	first := r.status(t, "hello")
+	r.fake.fail["chat.update"] = "message_not_found" // deleted in Slack
+
+	r.ask(t, "C999", "hello", entity.Obj{"text": "hi, again"})
+	r.pass(t)
+	st := r.status(t, "hello")
+	if len(r.fake.posted) != 2 || st["ts"] == first["ts"] || st["error"] != nil {
+		t.Fatalf("posted %d, status %v, want it said again as a new message", len(r.fake.posted), st)
+	}
+}
+
 // A person may be named as verse knows them, which is what lets a charter address the people a
 // question waits on: what it reads off the record is a principal, not a Slack id.
 func TestOutSaysToSomebodyVerseKnows(t *testing.T) {
