@@ -26,8 +26,10 @@ type fakeGitHub struct {
 	mu    sync.Mutex
 	repos map[string]*fakeRepo
 
-	requests    int // every request that reached a handler
-	notModified int // those answered 304
+	requests    int   // every request that reached a handler
+	notModified int   // those answered 304
+	nextComment int64 // the id of the last comment the out half made, past 9000
+	edits       int   // comments the out half changed
 	// failWith makes every request answer with this status, which is how a test asks what a
 	// source does when GitHub is refusing rather than when it is empty.
 	failWith int
@@ -206,6 +208,12 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rest := parts[3:]
+
+	// THE WRITES THE OUT HALF MAKES: a comment on an issue or pull request, and a change to one.
+	if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+		f.write(w, r, repo, rest)
+		return
+	}
 
 	switch {
 	case len(rest) == 0:
@@ -536,4 +544,64 @@ func (f *fakeGitHub) reply(w http.ResponseWriter, r *http.Request, v any) {
 	if _, err := w.Write(body); err != nil {
 		panic(fmt.Sprintf("fake github: %v", err))
 	}
+}
+
+// write answers the two writes the out half makes, recording what it was asked so a test can see
+// what landed on GitHub.
+func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRepo, rest []string) {
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case r.Method == http.MethodPost && len(rest) == 3 && rest[0] == "issues" && rest[2] == "comments":
+		on, err := strconv.Atoi(rest[1])
+		if err != nil || repo.find(on) == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		f.nextComment++
+		id := 9000 + f.nextComment
+		repo.comments = append(repo.comments, &fakeComment{id: id, on: on, body: body.Body})
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, map[string]any{"id": id, "html_url": "https://github.com/c/" + strconv.FormatInt(id, 10)})
+	case r.Method == http.MethodPatch && len(rest) == 3 && rest[0] == "issues" && rest[1] == "comments":
+		id, _ := strconv.ParseInt(rest[2], 10, 64)
+		for _, c := range repo.comments {
+			if c.id == id {
+				c.body = body.Body
+				f.edits++
+				writeJSON(w, map[string]any{"id": id})
+				return
+			}
+		}
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	default:
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+	}
+}
+
+// commentsOn is the bodies of the comments on one issue or pull request, in the order made.
+func (f *fakeGitHub) commentsOn(repo string, on int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, c := range f.repos[repo].comments {
+		if c.on == on {
+			out = append(out, c.body)
+		}
+	}
+	return out
+}
+
+// editCount is how many comment edits the out half made.
+func (f *fakeGitHub) editCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.edits
 }

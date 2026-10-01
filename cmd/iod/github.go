@@ -35,6 +35,10 @@ func githubMain(args []string) error {
 	maxOpen := fs.Int("max-open", github.DefaultMaxOpen,
 		"refuse a repository with more open items than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
+	out := fs.Bool("out", false,
+		"also act back: keep a comment on an issue or pull request in step with each input "+
+			"written under github.<org>.<name>.out, or in an outbox a package declares for it. "+
+			"The token then needs write access to issues and pull requests")
 	discussions := fs.Bool("discussions", false,
 		"reflect discussions. Off by default: they are GraphQL, so they carry no ETag and are "+
 			"the whole of what a quiet repository costs against the rate limit, and they are "+
@@ -74,6 +78,14 @@ func githubMain(args []string) error {
 	}
 	routes := map[string]http.Handler{
 		"POST /github/webhook": src.Webhook(signing, c.hinter()),
+	}
+
+	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
+	// repository's place, all of them the same sink, which reads the repository off the place.
+	if *out {
+		if _, err := c.outHalf(ctx, src.Root(), src.Sink(), src.OutRefs()); err != nil {
+			return err
+		}
 	}
 	return c.serve(src.Root(), src, routes)
 }

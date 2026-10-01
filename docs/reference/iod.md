@@ -702,10 +702,11 @@ default.
 | `-comments` | `<n>` | `200` | the number of comments that the io keeps for each repository |
 | `-max-open` | `<n>` | `2000` | The io refuses a repository that has more open items than this. |
 | `-discussions` | | `false` | The io reflects discussions. |
+| `-out` | | `false` | The io also acts back: see [The out half of github](#the-out-half-of-github). |
 
 | Environment | What it is |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. Required. |
+| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**. Required. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
 
@@ -720,6 +721,7 @@ iod github -repo <org>/<name>   a repository to reflect (repeatable, comma-separ
                -comments <n>        comments kept per repo (default 200)
                -max-open <n>        refuse a repo with more open items than this (default 2000)
                -discussions         reflect discussions (default false)
+               -out                 also keep comments in step with inputs (default false)
 ```
 
 In the repository, set Settings → Webhooks to `https://<host>/github/webhook`, with the
@@ -804,6 +806,27 @@ In three cases the io drops the covers of the discussions *with* the entities:
 The io then leaves what stands in the store. It does not read an empty answer as "there are
 none". So when you switch discussions off after the io reflected some, what the io wrote
 stays and does not change. Nothing covers it, so nothing tombstones it.
+
+### The out half of github
+
+With `-out`, `iod github` comments on issues and pull requests. It reads inputs under one
+address for each repository, `github.<org>.<name>.out`, and in the
+[outboxes](../glossary.md#outbox) that packages declare for it. Each address is inside the
+claim of its repository and outside every cover of the reflection.
+
+| | where | written by | holds |
+|---|---|---|---|
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text` |
+| status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
+
+A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
+default.
+
+| The input | What the pass does |
+|---|---|
+| is new | It writes a comment on the pull request or issue. GitHub numbers both in one sequence. |
+| has a text that changed | It updates the same comment. It does not write a second comment. |
+| has the text that the comment carries | Nothing. |
 
 ## Deploying them
 

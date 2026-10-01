@@ -145,12 +145,80 @@ func trimBody(b []byte) []byte {
 // httpError is a non-200 from GitHub, carrying enough to tell the ordinary failures apart.
 type httpError struct {
 	status int
+	method string // "" is GET, which is every read
 	path   string
 	body   string
 }
 
 func (e *httpError) Error() string {
-	return fmt.Sprintf("github: GET %s: %s: %s", e.path, http.StatusText(e.status), e.body)
+	method := e.method
+	if method == "" {
+		method = http.MethodGet
+	}
+	return fmt.Sprintf("github: %s %s: %s: %s", method, e.path, http.StatusText(e.status), e.body)
+}
+
+// send issues one write — a POST, PATCH or PUT with a JSON body — and decodes the answer into out
+// when it is not nil.
+//
+// NOT CONDITIONAL AND NOT CACHED, which is the difference from get: a write asks GitHub to do
+// something, so an earlier answer cannot stand in for it, and its body is not what any read would
+// return. A failure says the method, the status and GitHub's own words, as a read's does.
+func (a *api) send(ctx context.Context, method, path string, body, out any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("github: %s %s: %w", method, path, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, a.base+path, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("github: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
+	}
+	resp, err := a.cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("github: %s %s: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return fmt.Errorf("github: %s %s: %w", method, path, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return &httpError{status: resp.StatusCode, method: method, path: path, body: string(trimBody(answer))}
+	}
+	if out == nil || len(answer) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(answer, out); err != nil {
+		return fmt.Errorf("github: %s %s: %w", method, path, err)
+	}
+	return nil
+}
+
+// postedComment is what GitHub answers about a comment it made or changed.
+type postedComment struct {
+	ID      int64  `json:"id"`
+	HTMLURL string `json:"html_url"`
+}
+
+// createComment comments on an issue or a pull request, which GitHub numbers in one sequence and
+// comments on through one route.
+func (a *api) createComment(ctx context.Context, repo string, number int, text string) (postedComment, error) {
+	var c postedComment
+	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/issues/"+strconv.Itoa(number)+"/comments",
+		map[string]string{"body": text}, &c)
+	return c, err
+}
+
+// updateComment changes the text of a comment this io made.
+func (a *api) updateComment(ctx context.Context, repo string, id int64, text string) error {
+	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/comments/"+strconv.FormatInt(id, 10),
+		map[string]string{"body": text}, nil)
 }
 
 // NotFound reports whether an error is GitHub answering that something is not there — which is
