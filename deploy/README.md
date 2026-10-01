@@ -129,6 +129,17 @@ cluster. (The minikube profile sets `hostPV: true`, `hostPath: /mnt/verse`.)
 > kubectl -n verse get pvc              # confirm data-docd-0 → the PV you expect
 > ```
 
+> ⚠️ **Changing `storageSize` needs an orphan delete, not a reset.** The apply of a changed
+> `volumeClaimTemplate` is refused (`spec: Forbidden: updates to statefulset spec for fields
+> other than …`). On a class that allows expansion (staging's `gp3` does), grow the claim that
+> stands and let the StatefulSet be recreated around it, keeping the pod and the data:
+> ```sh
+> kubectl --context <ctx> -n verse patch pvc data-docd-0 -p '{"spec":{"resources":{"requests":{"storage":"30Gi"}}}}'
+> kubectl --context <ctx> -n verse delete statefulset docd --cascade=orphan
+> make deploy PROFILE=staging           # recreates docd with the new template; it takes over docd-0 and its claim
+> ```
+> An EBS volume never shrinks, and is modified at most once every six hours.
+
 **staging (EKS)** — docd lands on the cluster's dedicated `stateful` node pool (on-demand),
 on a dynamic volume from the cluster's `gp3` StorageClass; versed prefers `SPOT` and floats
 over the rest. The pool is *reserved*, not merely labelled — its nodes carry a
