@@ -1,0 +1,15 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-10-01T19:21:28.168346+02:00"
+duplicates: []
+id: 8v4azhtjh12ks64pqsn0
+labels:
+- charter
+- design
+related_issues:
+- 84a83gkwh12krst5phn0
+status: open
+updated: "2026-10-01T19:21:43.224647+02:00"
