@@ -1,0 +1,9 @@
+# The logd config docd's `o sys up` is given as -config, emitted only when the profile sets
+# docdCompactionCutoff; build.tony fills it in from the knob.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docd-logd-config
+  labels: {app: verse, tier: docd}
+data:
+  logd.tony: ""
