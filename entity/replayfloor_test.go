@@ -87,4 +87,30 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	if want := fmt.Sprintf("from commit %d", store.ReplayFloor()+1); !strings.Contains(err.Error(), want) {
 		t.Errorf("the refusal does not say what the store still has (%q): %v", want, err)
 	}
+
+	// THE SAME FLOOR UNDER A STATE READ. logd answers a read at a compacted revision at a later
+	// snapshot and says so; AsOf holds it to the revision asked, so the rule that reads there
+	// learns its world is gone rather than acting on another one. Present or absent alike:
+	// "nothing there" at the later snapshot is not "nothing there" at the revision.
+	low, head := from+1, s.Rev()
+	if low >= head {
+		t.Fatalf("no compacted revision below the head %d to read at", head)
+	}
+	if _, err := s.AsOf(low); !errors.Is(err, ErrReplayTooOld) {
+		t.Errorf("AsOf(%d) below the floor = %v; want ErrReplayTooOld", low, err)
+	}
+	if _, err := s.AsOf(low, []string{"nosuch"}); !errors.Is(err, ErrReplayTooOld) {
+		t.Errorf("AsOf(%d) of an absent slice below the floor = %v; want ErrReplayTooOld", low, err)
+	}
+	// …and the revision compaction kept a snapshot at still reads, absent slices included.
+	snap, err := s.AsOf(head)
+	if err != nil {
+		t.Fatalf("AsOf(%d) at the head: %v", head, err)
+	}
+	if _, ok, err := snap.Get(RefAt("demo", "pr", "a")); err != nil || !ok {
+		t.Errorf("AsOf(%d) lost demo.pr.a: ok=%v err=%v", head, ok, err)
+	}
+	if _, err := s.AsOf(head, []string{"nosuch"}); err != nil {
+		t.Errorf("AsOf(%d) of an absent slice at the head = %v; want nothing there", head, err)
+	}
 }
