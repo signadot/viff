@@ -89,6 +89,23 @@ build:
     # the pod before moving it rather than picking a number.
     docdGoMemLimit: ""
 
+    # docd's compaction cutoff, "" to leave compaction off — which is logd's default, and on a
+    # long-lived store means every root snapshot ever written stays on the disk. Snapshots bound
+    # what a read replays, not what the volume holds: on staging a root snapshot is ~16MB and one
+    # lands every 1000 commits or 4MiB of delta, and that filled 10Gi in eleven days with
+    # compaction off (git-issue hkh7km3th12ksxfdqsn0).
+    #
+    # Inside the cutoff every patch is kept, so a replay or a read at a commit is exact; past it
+    # history thins to logd's snapshot tiers, and a read there is answered approximately
+    # (tony-format cpqj2tf6h12kr5jxqxn0 has logd answer it at a nearby snapshot and report which,
+    # for verse's AsOf to hold to its contract; until then it says nothing). verse reads at a firing's causing
+    # commit when the action runs — after a gate, at a hook, at a sequence step — so the cutoff
+    # wants to be longer than any of those waits, not as short as `verse up`'s 1h.
+    #
+    # Set, it is a ConfigMap (deploy/docd-config) passed to `o sys up` as -config. Only the
+    # cutoff is stated; the tiers and the snapshot policy stay upstream's.
+    docdCompactionCutoff: ""
+
     # Put the versed API and docd's mount face on the tailnet, through the Tailscale
     # Kubernetes operator — which has to be installed already; these are just annotations it
     # watches for, and nothing here notices if nobody is watching. The devices are named after
@@ -234,6 +251,9 @@ build:
   # Unconditional, unlike the dirs below: each file in it deletes itself when its own knob is
   # empty, which is one rule per credential rather than an `if` here that has to name six.
   - dir: secrets
+  # Before docd for the same reason: the config is read when the pod starts.
+  - if: '.[ docdCompactionCutoff != "" ]'
+    dir: docd-config
   - dir: source
   - if: '.[emitStorageClass]'
     dir: eks
@@ -520,6 +540,42 @@ build:
               env: !key(name)
               - name: GOMEMLIMIT
                 value: $[docdGoMemLimit]
+
+  # docd compaction (see the knob). The file is mounted at /etc/logd and named with -config
+  # through args, which kubernetes appends to the source's command. The cutoff is also
+  # on the pod template, because `o sys up` reads the file once: a changed ConfigMap alone
+  # would reach the mount and not the store, and an annotation that changes is a rollout.
+  - if: '.[ docdCompactionCutoff != "" ]'
+    match:
+      kind: ConfigMap
+      metadata:
+        name: docd-logd-config
+    patch:
+      data:
+        logd.tony: "compaction: {cutoff: $[docdCompactionCutoff]}\n"
+  - if: '.[ docdCompactionCutoff != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          metadata:
+            annotations:
+              verse.signadot.com/compaction-cutoff: $[docdCompactionCutoff]
+          spec:
+            containers: !key(name)
+            - name: docd
+              args:
+              - -config
+              - /etc/logd/logd.tony
+              volumeMounts: !key(name)
+              - name: logd-config
+                mountPath: /etc/logd
+                readOnly: true
+            volumes: !key(name)
+            - name: logd-config
+              configMap:
+                name: docd-logd-config
 
   # docd volumeClaimTemplate — always present. Base: no storageClassName (omitting it =
   # "cluster default"; "" would disable dynamic provisioning). eks/minikube override below.

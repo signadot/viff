@@ -2449,7 +2449,8 @@ func (s *LogdStore) Since(from int64, patterns ...*kpath.KPath) ([]Commit, error
 // question would be consistent too, but would put a round trip on every predicate a rule
 // evaluates. See docSnapshot.
 //
-// A revision the store cannot answer at — out of range, or beyond current — is an error,
+// A revision the store cannot answer at — out of range, beyond current, or older than
+// compaction keeps exactly (matchAt) — is an error,
 // unlike docAt's replay base, which degrades to an empty document because the replay
 // carries every commit it needs. Here there is nothing to make up the difference: a
 // snapshot that quietly read current state instead would be indistinguishable from one that
@@ -2509,15 +2510,34 @@ func (s *LogdStore) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 // matchAt reads one path at a revision, reporting "nothing there" as a nil node rather than an
 // error — a never-written slice is a real state, and a rule evaluated against it selects
 // nothing.
+//
+// AT THE REVISION ASKED, OR NOT AT ALL. Beyond compaction's cutoff logd answers a read at the
+// first snapshot after the revision, which holds the revision's write and whatever came
+// between, and says which commit it answered (tony-format cpqj2tf6h12kr5jxqxn0). That is
+// history the store no longer retains exactly, which is an error here (Store.AsOf): a rule
+// held at a gate would otherwise act on a world it was not evaluated against, and say nothing.
+// "Nothing there" is answered the same way, carrying the commit it was found absent at, and
+// absent later is not absent at rev. An older logd echoes rev, so against one this changes nothing.
 func (s *LogdStore) matchAt(ctx context.Context, path string, rev int64) (*ir.Node, error) {
-	node, err := s.sess.MatchAt(ctx, path, rev)
+	node, at, err := s.sess.MatchAtCommit(ctx, path, rev)
 	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
+		if !isNotFound(err) {
+			return nil, fmt.Errorf("read %s at rev %d: %w", path, rev, err)
 		}
-		return nil, fmt.Errorf("read %s at rev %d: %w", path, rev, err)
+		var se *logdapi.SessionError
+		if errors.As(err, &se) && se.Commit != nil && *se.Commit != rev {
+			return nil, notRetainedAt(path, rev, *se.Commit)
+		}
+		return nil, nil
+	}
+	if at != rev {
+		return nil, notRetainedAt(path, rev, at)
 	}
 	return node, nil
+}
+
+func notRetainedAt(path string, rev, at int64) error {
+	return fmt.Errorf("read %s at rev %d: compaction answers it at rev %d: %w", path, rev, at, ErrReplayTooOld)
 }
 
 func nodeOrEmpty(n *ir.Node) *ir.Node {
