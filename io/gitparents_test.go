@@ -83,7 +83,8 @@ func TestCommitParentsAreAList(t *testing.T) {
 	// payload — and it answers no for a sha that is merely a parent of something else.
 	match := func(sha, of string) bool {
 		t.Helper()
-		pat, err := codec.ParseNode([]byte("{parents: !key() ["+sha+"]}"), codec.Tony)
+		// Quoted: a sha is a string, and one that begins with digits reads as a number otherwise.
+		pat, err := codec.ParseNode([]byte("{parents: !key() [\""+sha+"\"]}"), codec.Tony)
 		if err != nil {
 			t.Fatalf("pattern: %v", err)
 		}
