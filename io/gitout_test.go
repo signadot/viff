@@ -49,7 +49,9 @@ func TestGitReflectsTheTreeOfAConfiguredPath(t *testing.T) {
 
 	g := verseio.NewGit()
 	g.AddRepo("r", dir)
-	g.AddTree("charters/")
+	if err := g.AddTree("charters/"); err != nil {
+		t.Fatal(err)
+	}
 	rn, err := g.Reflect(context.Background(), entity.Ref{})
 	if err != nil {
 		t.Fatal(err)

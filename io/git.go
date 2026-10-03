@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,10 +35,11 @@ const GitRoot = "git"
 type Git struct {
 	repos       repoSet
 	commitDepth int // how many tip commits to reflect as git.<repo>.commit.<sha>
-	// trees are the paths whose tree object is reflected on every ref, as `tree: {<path>: <sha>}`:
-	// the identity of a directory's contents at that ref, which is what a charter compares when
-	// "the same rules" has to mean the same bytes and not the same commit (AddTree).
-	trees []string
+	// trees are the directories whose tree object is reflected on every ref, as
+	// `tree: {<name>: <sha>}`: the identity of a directory's contents at that ref, which is what
+	// a charter compares when "the same rules" has to mean the same bytes and not the same
+	// commit (AddTree). Each is a name and the path it stands for.
+	trees []tree
 	// root is the slice this source writes, GitRoot unless an operator said otherwise.
 	// Set once before serving and read without the lock thereafter, as a Config field would be
 	// on the connectors that have one — see SetRoot.
@@ -74,17 +74,40 @@ func (g *Git) SetRoot(root string) error {
 	return nil
 }
 
-// AddTree reflects the tree object of path on every ref of every repository, as
-// `tree: {<path>: <object sha>}` on `git.<repo>.ref.<name>`, where the path exists at that ref.
+// tree is one directory a Git reflects the tree sha of: under name, for the path.
+type tree struct{ name, path string }
+
+// AddTree reflects the tree object of a directory on every ref of every repository, as
+// `tree: {<name>: <object sha>}` on `git.<repo>.ref.<name>`, where the directory exists at that
+// ref. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.verse/charters`
+// is reflected as `tree.charters`. The name is one plain word, so a charter can spell it in a
+// reference (`$subject.value.tree.charters`), which a path with a dot or a slash in it cannot be.
+//
 // A tree's sha is the identity of a directory's contents, so two refs that differ only outside
-// the path carry the same one, and a squash or a rebase of the same change keeps it. That is what
-// an approval of a repository's charters keys on (git-issue j9vbwvjah12krs9tqsn0).
-func (g *Git) AddTree(path string) {
-	path = strings.Trim(strings.TrimSpace(path), "/")
-	if path == "" || slices.Contains(g.trees, path) {
-		return
+// the directory carry the same one, and a squash or a rebase of the same change keeps it. That
+// is what an approval of a repository's charters keys on (git-issue j9vbwvjah12krs9tqsn0).
+func (g *Git) AddTree(spec string) error {
+	name, path, named := strings.Cut(strings.TrimSpace(spec), "=")
+	if !named {
+		path, name = name, ""
 	}
-	g.trees = append(g.trees, path)
+	path = strings.Trim(strings.TrimSpace(path), "/")
+	if path == "" {
+		return fmt.Errorf("-tree %q: want [<name>=]<path>", spec)
+	}
+	if name == "" {
+		name = path[strings.LastIndex(path, "/")+1:]
+	}
+	if strings.ContainsAny(name, "./ \t") {
+		return fmt.Errorf("-tree %q: the name %q is one plain word, so a charter can reference it; say <name>=<path>", spec, name)
+	}
+	for _, t := range g.trees {
+		if t.name == name {
+			return fmt.Errorf("-tree %q: %q is already the name of %s", spec, name, t.path)
+		}
+	}
+	g.trees = append(g.trees, tree{name: name, path: path})
+	return nil
 }
 
 // AddRepo registers a repository under id (defaults to the dir's base name) and returns the
@@ -379,7 +402,7 @@ func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) 
 // that exist there. One `cat-file --batch-check` for all of them: a mirror has hundreds of refs,
 // and a process per ref per path is what a pass every minute cannot afford. A ref that is an
 // annotated tag peels to its commit, as `<sha>:<path>` does.
-func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]refInfo) map[string]map[string]string {
+func gitTrees(ctx context.Context, dir string, paths []tree, refs map[string]refInfo) map[string]map[string]string {
 	if len(paths) == 0 || len(refs) == 0 {
 		return nil
 	}
@@ -397,7 +420,7 @@ func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]r
 	var in strings.Builder
 	for _, sha := range shas {
 		for _, p := range paths {
-			fmt.Fprintf(&in, "%s:%s\n", sha, p)
+			fmt.Fprintf(&in, "%s:%s\n", sha, p.path)
 		}
 	}
 	out, err := gitCmdIn(ctx, dir, in.String(), "cat-file", "--batch-check=%(objectname) %(objecttype) %(rest)")
@@ -422,7 +445,7 @@ func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]r
 			if trees[sha] == nil {
 				trees[sha] = map[string]string{}
 			}
-			trees[sha][p] = f[0]
+			trees[sha][p.name] = f[0]
 		}
 	}
 	return trees

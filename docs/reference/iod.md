@@ -100,7 +100,7 @@ and in the shell history, and an environment variable is not.
 | `-repo` | `[<id>=]<dir>` | | | a repository that is already on disk. The flag is repeatable, and one value may hold several, separated by commas. |
 | `-mirror` | `[<id>=]<url>` | | | a remote repository to mirror and keep fetched. The flag is repeatable. |
 | `-state` | `<dir>` | `SOURCED_STATE` | `/repos` | the directory that holds the clones of `-mirror`, one directory for each repository id |
-| `-tree` | `<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<path>`: the identity of its contents at that ref. The flag is repeatable. |
+| `-tree` | `[<name>=]<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<name>`: the identity of its contents at that ref. The name defaults to the path's last segment, and is one plain word. The flag is repeatable. |
 | `-out` | | | `false` | The io also runs the out half ([the out half](#the-out-half-of-git)): a tag made, a branch moved. |
 
 `iod git` needs at least one `-repo` or one `-mirror`.
@@ -113,7 +113,7 @@ and in the shell history, and an environment variable is not.
 iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
             -mirror [<id>=]<url>    a remote to mirror and keep fetched (repeatable)
             -state  <dir>           where -mirror clones live (SOURCED_STATE, default /repos)
-            -tree   <path>          reflect the tree sha of this directory on every ref (repeatable)
+            -tree   [<name>=]<path> reflect the tree sha of this directory on every ref (repeatable)
             -out                    also make the tags and move the branches asked for under
                                     git.<repo>.out (see below)
 ```
@@ -141,7 +141,7 @@ converges at the full reflection of every minute.
 
 | Entity | Payload |
 |---|---|
-| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` where `-tree` names a path that exists at that ref: `tree: {<path>: <object sha>}`. These are branches, tags and remote-tracking branches, and nothing else. |
+| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` where `-tree` names a directory that exists at that ref: `tree: {<name>: <object sha>}`. These are branches, tags and remote-tracking branches, and nothing else. |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
@@ -187,10 +187,11 @@ when a commit has no trailer block. It is not an empty object on every commit.
 Match a key that has a **namespace**, such as `Verse-Task`. Do not match a bare `Status`.
 [Every trailer key is reflected](#every-trailer-key-is-reflected) gives the reason.
 
-**`tree`** is the sha of a directory's tree object at the ref, for each path `-tree` names. A
-tree's sha is the identity of the directory's contents: two refs that differ only outside the
-directory carry the same one, and so does the same change after a squash or a rebase. A charter
-that keeps a repository's rules installed compares this, not the commit (git-issue j9vbwvja).
+**`tree`** is the sha of a directory's tree object at the ref, for each directory `-tree`
+names, under the name given it (`-tree .verse/charters` is `tree.charters`). A tree's sha is the
+identity of the directory's contents: two refs that differ only outside the directory carry the
+same one, and so does the same change after a squash or a rebase. A charter that keeps a
+repository's rules installed compares this, not the commit (git-issue j9vbwvja).
 
 ```tony
 condition:
@@ -198,7 +199,7 @@ condition:
     path: "git.verse.ref.\"origin/main\""
     value:
       tree:
-        ".verse/charters": !glob "*"
+        charters: !glob "*"
 ```
 
 ### The out half of git

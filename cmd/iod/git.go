@@ -27,8 +27,9 @@ func gitMain(args []string) error {
 	state := fs.String("state", envOr("SOURCED_STATE", "/repos"),
 		"where -mirror clones live (one directory per repo id)")
 	var trees strs
-	fs.Var(&trees, "tree", "a path whose tree sha is reflected on every ref, as tree.<path> "+
-		"(repeatable): the identity of a directory's contents at that ref")
+	fs.Var(&trees, "tree", "a directory whose tree sha is reflected on every ref, as [<name>=]<path> "+
+		"(repeatable): tree.<name> is the identity of its contents at that ref; the name defaults to "+
+		"the path's last segment")
 	out := fs.Bool("out", false,
 		"also act back on each input written under git.<repo>.out, or in an outbox a package "+
 			"declares for it: {to: tag.<name>, sha} makes a tag, {to: branch.<name>, sha} moves a "+
@@ -67,7 +68,9 @@ func gitMain(args []string) error {
 		log.Printf("reflecting %s, mirrored from %s into %s", id, remote, dir)
 	}
 	for _, t := range trees {
-		git.AddTree(t)
+		if err := git.AddTree(t); err != nil {
+			return err
+		}
 	}
 	// No delivery routes: git's hint is a git hook (verseio.Git.InstallHook), which posts to
 	// verse directly. There is nothing for this program to receive — which is the shape every
