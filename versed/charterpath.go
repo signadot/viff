@@ -134,7 +134,7 @@ func (s *Server) charterPathNotFound(at string, rest []string) string {
 		return fmt.Sprintf("no charter is installed at %s, and none under it", where)
 	}
 	// A FIRST SEGMENT THAT IS NOT A KEY is a question about a PLACE, not about something
-	// inside one: `verse c nowhere.at.all` reached no address, so answering "baseline holds no
+	// inside one: `verse c nowhere at all` reached no address, so answering "baseline holds no
 	// nowhere.at.all" describes the wrong failure — nobody asked baseline anything.
 	if !charterKeys[rest[0]] {
 		return fmt.Sprintf("no charter is installed at %s, and none under it",

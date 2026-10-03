@@ -22,15 +22,15 @@ import (
 //	verse c                                 baseline's charter, as its file; stderr names the rest
 //	verse c verse-dev drift                 …the one installed there, as its file
 //	verse c verse-dev -d <dir>              …every charter at or under it, a file apiece
-//	verse c verse-dev.drift rules           …its rules
-//	verse c verse-dev.drift rules watcher   …one of them, and `… watcher action` reaches in
+//	verse c verse-dev drift rules           …its rules
+//	verse c verse-dev drift rules watcher   …one of them, and `… watcher action` reaches in
 //	verse c rules watcher                   baseline's, which has no address
 //	verse c --depth 0                       this address alone
-//	verse c -a demo.pr -f <file>            install a charter there (or baseline, with no path)
+//	verse c -a demo pr -f <file>            install a charter there (or baseline, with no path)
 //	verse c -a -d <dir>                     install every charter file in a directory, as one step
 //	verse c -a demo -d <dir> --prune        …and remove what it leaves out at and under demo
-//	verse c -r verse-dev.drift              take that package down whole
-//	verse c -r verse-dev.drift rules watcher   …or one rule out of it
+//	verse c -r verse-dev drift              take that package down whole
+//	verse c -r verse-dev drift rules watcher   …or one rule out of it
 //	verse c -R verse-dev                    …or a place and everything under it
 //
 // ONE PATH, and `show` is gone because of it: a path that reaches a rule is the same path that
@@ -48,7 +48,7 @@ import (
 // package at `rm` by a `--` the operator had to know about. There is nothing to tell apart now.
 //
 // It also retires two meanings of `--at`. Installing took `--at <address>`; reading took `--at`
-// to say where an address ended. Both are the positional path now: `verse c -a demo.pr -f f` is
+// to say where an address ended. Both are the positional path now: `verse c -a demo pr -f f` is
 // where to install, and `verse c verse-dev -- rules` is where the address ends.
 type charterFlags struct {
 	// Depth is how far under the address to go: 0 is that address alone, 1 adds its immediate
@@ -158,7 +158,7 @@ func charterCmd() *cli.Command {
 //
 // A `--` AMONG THE STEPS says where the address ends, for the one case the server's greedy split
 // cannot get right on its own: a package whose address ends in `rules` or `strata` shadows that
-// key of the address above it. `verse c verse-dev -- rules` is the key; `verse c verse-dev.rules`
+// key of the address above it. `verse c verse-dev -- rules` is the key; `verse c verse-dev rules`
 // is the package. It rides as `?at=`, which is what that query has always meant.
 func printCharter(cc *cli.Context, steps []string) error {
 	q := url.Values{}
@@ -233,12 +233,9 @@ func printCharter(cc *cli.Context, steps []string) error {
 // STEPS, AS `verse data` READS THEM, so a word means the same thing on every command that takes
 // a path: a word is one segment whatever is inside it, the quoted clause is a name, and an access
 // or a wildcard is refused — a charter path names one place, made of names. The path is written
-// `verse c verse-dev drift rules watcher`.
-//
-// NOT YET WHAT THE SERVER DOES WITH IT. The charter tree keeps package addresses as dotted strings
-// and matches segments by joining them with dots (versed/charterpath.go), so the one segment
-// `verse-dev.drift` still reaches the package at `verse-dev.drift`. A charter address as a kpath
-// from the file to the route.
+// `verse c verse-dev drift rules watcher`. A word holding a dot is one segment, and JoinSegs
+// quotes it, so `verse c verse-dev.drift` asks about a place called `"verse-dev.drift"` and the
+// server answers that nothing is installed there (versed TestOneSegmentReachesNoTwoSegmentPackage).
 func charterPath(steps []string) (string, error) {
 	names, err := entity.StepNames(steps)
 	if err != nil {
@@ -610,9 +607,9 @@ func postGroup(route string, q url.Values, defs []*ir.Node) error {
 // charterRm takes something out of the charter, and WHAT is said by the path rather than by a
 // verb.
 //
-//	verse c -r verse-dev.drift                take the package down whole
-//	verse c -r verse-dev.drift rules watcher  take one rule out of it
-//	verse c -r verse-dev.drift strata base    …or one level
+//	verse c -r verse-dev drift                take the package down whole
+//	verse c -r verse-dev drift rules watcher  take one rule out of it
+//	verse c -r verse-dev drift strata base    …or one level
 //	verse c -r rules watcher                  baseline's, which has no address
 //	verse c -R verse-dev                      a place, and every charter under it
 //
