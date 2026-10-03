@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,10 +32,14 @@ const GitRoot = "git"
 // and covers its own repository's place and nothing beside it. It reflects git-*aware* state (what SDLC flows
 // react to — "commit landed on main", "branch deleted", "tag created"), an index not a
 // warehouse: a task needing a diff follows the ref into the real repo (`git show`). Acting
-// back on a repo (commit, tag, push) is the separate outbound executor path, not here.
+// back on a repo is the out half (gitout.go): a tag made, a branch moved, and nothing else.
 type Git struct {
 	repos       repoSet
 	commitDepth int // how many tip commits to reflect as git.<repo>.commit.<sha>
+	// trees are the paths whose tree object is reflected on every ref, as `tree: {<path>: <sha>}`:
+	// the identity of a directory's contents at that ref, which is what a charter compares when
+	// "the same rules" has to mean the same bytes and not the same commit (AddTree).
+	trees []string
 	// root is the slice this source writes, GitRoot unless an operator said otherwise.
 	// Set once before serving and read without the lock thereafter, as a Config field would be
 	// on the connectors that have one — see SetRoot.
@@ -67,6 +72,19 @@ func (g *Git) SetRoot(root string) error {
 	}
 	g.root = root
 	return nil
+}
+
+// AddTree reflects the tree object of path on every ref of every repository, as
+// `tree: {<path>: <object sha>}` on `git.<repo>.ref.<name>`, where the path exists at that ref.
+// A tree's sha is the identity of a directory's contents, so two refs that differ only outside
+// the path carry the same one, and a squash or a rebase of the same change keeps it. That is what
+// an approval of a repository's charters keys on (git-issue j9vbwvjah12krs9tqsn0).
+func (g *Git) AddTree(path string) {
+	path = strings.Trim(strings.TrimSpace(path), "/")
+	if path == "" || slices.Contains(g.trees, path) {
+		return
+	}
+	g.trees = append(g.trees, path)
 }
 
 // AddRepo registers a repository under id (defaults to the dir's base name) and returns the
@@ -286,10 +304,14 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	trees := gitTrees(ctx, dir, g.trees, refs)
 	for _, name := range names {
 		r := refs[name]
-		rn.Add(entity.RefAt(g.root, id, "ref", name),
-			entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ})
+		p := entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
+		if t := trees[r.sha]; len(t) > 0 {
+			p["tree"] = t
+		}
+		rn.Add(entity.RefAt(g.root, id, "ref", name), p)
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
@@ -351,6 +373,52 @@ func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) 
 		}
 	}
 	return refs, nil
+}
+
+// gitTrees is the tree object of each path at each ref's sha, by sha then path, for the paths
+// that exist there. One `cat-file --batch-check` for all of them: a mirror has hundreds of refs,
+// and a process per ref per path is what a pass every minute cannot afford. A ref that is an
+// annotated tag peels to its commit, as `<sha>:<path>` does.
+func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]refInfo) map[string]map[string]string {
+	if len(paths) == 0 || len(refs) == 0 {
+		return nil
+	}
+	shas := map[string]bool{}
+	for _, r := range refs {
+		shas[r.sha] = true
+	}
+	var in strings.Builder
+	for sha := range shas {
+		for _, p := range paths {
+			fmt.Fprintf(&in, "%s:%s\n", sha, p)
+		}
+	}
+	out, err := gitCmdIn(ctx, dir, in.String(), "cat-file", "--batch-check=%(objectname) %(objecttype) %(rest)")
+	if err != nil {
+		return nil // a read that fails leaves the field off, as a path that is not there does
+	}
+	trees := map[string]map[string]string{}
+	// Answers come in the order asked; a line for an object that is not there reads
+	// `<sha>:<path> missing`, and nothing of the format above.
+	i := 0
+	for sha := range shas {
+		for _, p := range paths {
+			if i >= len(nonEmptyLines(out)) {
+				return trees
+			}
+			line := nonEmptyLines(out)[i]
+			i++
+			f := strings.Fields(line)
+			if len(f) < 2 || f[1] != "tree" {
+				continue
+			}
+			if trees[sha] == nil {
+				trees[sha] = map[string]string{}
+			}
+			trees[sha][p] = f[0]
+		}
+	}
+	return trees
 }
 
 // gitHead returns the git.<repo>.head payload, or nil for an unborn repo (no HEAD sha yet).
@@ -504,8 +572,16 @@ func trailerKey(s string) bool {
 // into the registration's lastError. (cmd.Output fills ExitError.Stderr only while Stderr is
 // nil, and setting it — which is what captures the message — is exactly what empties that.)
 func gitCmd(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitCmdIn(ctx, dir, "", args...)
+}
+
+// gitCmdIn is gitCmd with stdin, for the plumbing that takes its questions there.
+func gitCmdIn(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

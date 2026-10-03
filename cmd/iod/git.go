@@ -26,6 +26,13 @@ func gitMain(args []string) error {
 	fs.Var(&mirrors, "mirror", "a remote to mirror and keep fetched, as [<id>=]<url> (repeatable)")
 	state := fs.String("state", envOr("SOURCED_STATE", "/repos"),
 		"where -mirror clones live (one directory per repo id)")
+	var trees strs
+	fs.Var(&trees, "tree", "a path whose tree sha is reflected on every ref, as tree.<path> "+
+		"(repeatable): the identity of a directory's contents at that ref")
+	out := fs.Bool("out", false,
+		"also act back on each input written under git.<repo>.out, or in an outbox a package "+
+			"declares for it: {to: tag.<name>, sha} makes a tag, {to: branch.<name>, sha} moves a "+
+			"branch, each answered on <name>~status; a mirror pushes with the credential it fetches with")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -59,11 +66,21 @@ func gitMain(args []string) error {
 		}
 		log.Printf("reflecting %s, mirrored from %s into %s", id, remote, dir)
 	}
+	for _, t := range trees {
+		git.AddTree(t)
+	}
 	// No delivery routes: git's hint is a git hook (verseio.Git.InstallHook), which posts to
 	// verse directly. There is nothing for this program to receive — which is the shape every
 	// source would have if every external system let you install a four-line shell script.
 	if err := git.SetRoot(c.root); err != nil {
 		return err
+	}
+	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
+	// repository, writing refs where this program reads them.
+	if *out {
+		if _, err := c.outHalf(ctx, git.Root(), git.Sink(), git.OutRefs()); err != nil {
+			return err
+		}
 	}
 	return c.serve(git.Root(), git, nil)
 }

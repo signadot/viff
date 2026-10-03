@@ -100,17 +100,22 @@ and in the shell history, and an environment variable is not.
 | `-repo` | `[<id>=]<dir>` | | | a repository that is already on disk. The flag is repeatable, and one value may hold several, separated by commas. |
 | `-mirror` | `[<id>=]<url>` | | | a remote repository to mirror and keep fetched. The flag is repeatable. |
 | `-state` | `<dir>` | `SOURCED_STATE` | `/repos` | the directory that holds the clones of `-mirror`, one directory for each repository id |
+| `-tree` | `<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<path>`: the identity of its contents at that ref. The flag is repeatable. |
+| `-out` | | | `false` | The io also runs the out half ([the out half](#the-out-half-of-git)): a tag made, a branch moved. |
 
 `iod git` needs at least one `-repo` or one `-mirror`.
 
 | Credential | What it is |
 |---|---|
-| none of its own | `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-io` gives git a credential helper that reads a Secret. |
+| none of its own | `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-io` gives git a credential helper that reads a Secret. With `-out`, a mirror pushes with the same credential, which must then be allowed to push. |
 
 ```
 iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
             -mirror [<id>=]<url>    a remote to mirror and keep fetched (repeatable)
             -state  <dir>           where -mirror clones live (SOURCED_STATE, default /repos)
+            -tree   <path>          reflect the tree sha of this directory on every ref (repeatable)
+            -out                    also make the tags and move the branches asked for under
+                                    git.<repo>.out (see below)
 ```
 
 **`-repo`** is for a machine that already has the repository. Verse can also reflect a local
@@ -121,7 +126,8 @@ repository with no program at all: `verse io add -dir`.
 fetched. A pod has no repositories, so the io clones the remote at startup and fetches it at
 every reflection.
 
-- **Fetching is the read.** The io never pushes anything.
+- **Fetching is the read.** The reflection never pushes anything. The out half pushes exactly
+  the refs it is asked for, and nothing else.
 - A fetch that fails makes the reflection fail. So a mirror that stops following its remote
   says so in `lastError`. It does not answer with old shas.
 - An unreachable remote, or a missing credential, is a failure at **startup**. It is not a
@@ -135,7 +141,7 @@ converges at the full reflection of every minute.
 
 | Entity | Payload |
 |---|---|
-| `git.<repo>.ref.<name>` | `repo, name, sha, type`. These are branches, tags and remote-tracking branches, and nothing else. |
+| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` where `-tree` names a path that exists at that ref: `tree: {<path>: <object sha>}`. These are branches, tags and remote-tracking branches, and nothing else. |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
@@ -180,6 +186,50 @@ when a commit has no trailer block. It is not an empty object on every commit.
 
 Match a key that has a **namespace**, such as `Verse-Task`. Do not match a bare `Status`.
 [Every trailer key is reflected](#every-trailer-key-is-reflected) gives the reason.
+
+**`tree`** is the sha of a directory's tree object at the ref, for each path `-tree` names. A
+tree's sha is the identity of the directory's contents: two refs that differ only outside the
+directory carry the same one, and so does the same change after a squash or a rebase. A charter
+that keeps a repository's rules installed compares this, not the commit (git-issue j9vbwvja).
+
+```tony
+condition:
+  subject:
+    path: "git.verse.ref.\"origin/main\""
+    value:
+      tree:
+        charters: !glob "*"
+```
+
+### The out half of git
+
+With `-out`, `iod git` writes refs where it reads them. Somebody, a person or a charter, writes
+an **input** under the repository's out place, `git.<repo>.out`, and the io answers with a
+**status** beside it, as the other out halves do ([the out half](io.md#the-out-half)).
+
+| input | does | status |
+|---|---|---|
+| `{to: tag.<name>, sha}` | makes the tag at the commit | `ref, sha, at` |
+| `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
+
+```sh
+verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
+verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
+```
+
+- **`sha`** is any name the repository resolves to a commit: a full sha, a short one, a tag. One
+  the repository does not have is refused for good.
+- **A tag is not moved.** A tag that stands at another sha is refused for good. A tag is a
+  record, and a rollback is a new tag on the older commit.
+- **A branch moves with a lease** on the sha it last stood at, so a move somebody else made
+  meanwhile is a refusal that is tried again, and never an overwrite.
+- **A ref already at the sha costs nothing.**
+- **Where the ref is written.** A mirror pushes to the remote it fetches from, with the
+  credential it fetches with, and writes its own copy so the next reflection sees it. A
+  repository on disk gets the ref written in place.
+
+This half is what the repo-charters reconciler uses to record an install as a tag and to keep
+`verse/live` at the running sha (git-issue j9vbwvja). It makes no commit and no tree.
 
 ## git-issue
 
