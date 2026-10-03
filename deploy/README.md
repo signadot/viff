@@ -377,10 +377,15 @@ crash-loops until that Secret exists, with git's own "could not read Username" i
 ### The git io has no repositories
 
 A pod has none, so `-mirror` makes one: it clones the remote at startup and fetches on every
-pass. That is the read — nothing is ever pushed. The mirror lives on an `emptyDir`, so a restart
-re-clones; swap in a PVC if that gets expensive. For a repository that already exists somewhere,
-run the same binary next to it with `-repo`, or skip the deployment entirely and use
-`verse io add -dir`.
+pass. That is the read. The pod also runs the git io's out half (`-out`): a tag or a branch
+asked for under `git.<repo>.out` is pushed to the remote with the same credential, so the
+`verse-git` credential must be allowed to push ([the out half of
+git](../docs/reference/iod.md#the-out-half-of-git)); nothing is pushed that nobody asked for.
+And it reflects the tree sha of each repository's `.verse/charters` directory on every ref
+(`-tree .verse/charters`), which is what the repo-charters reconciler keys approval on. The mirror
+lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expensive. For a
+repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
+the deployment entirely and use `verse io add -dir`.
 
 `gitIssueIO` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential

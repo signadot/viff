@@ -1,9 +1,13 @@
 # The git Source, as a deployed program: `iod git`, mirroring a remote.
 #
 # A pod has no repositories, so this one makes its own — `-mirror` clones the remote at
-# startup and fetches on every pass. That is the read; nothing is ever pushed. For a repo that
-# already exists somewhere (a build host, a laptop), run the same binary there with `-repo`
-# instead, or use verse's in-process path (`verse io add --dir`) and skip this entirely.
+# startup and fetches on every pass. That is the read. The out half (`-out`) pushes exactly the
+# refs it is asked for under git.<repo>.out, a tag or a branch at a sha, with the same
+# credential, which must therefore be allowed to push (docs/reference/iod.md, "The out half of
+# git"). `-tree .verse/charters` puts the tree sha of the charters directory on every ref, which is what
+# the repo-charters reconciler keys approval on. For a repo that already exists somewhere (a
+# build host, a laptop), run the same binary there with `-repo` instead, or use verse's
+# in-process path (`verse io add --dir`) and skip this entirely.
 #
 # Install it once the pods are up. The name is free here, unlike the Slack/Linear/GitHub ones:
 # those bake a hint url containing their name into the pod, so the name has to be decided
@@ -51,6 +55,9 @@ spec:
         - /repos
         - -mirror
         - https://github.com/signadot/verse.git
+        - -tree
+        - .verse/charters
+        - -out
         ports:
         - name: source
           containerPort: 9801
@@ -76,6 +83,11 @@ spec:
         # every fetch, which is once a minute forever. This one only ever reads, and answers
         # nothing for `store` and `erase`.
         env:
+        # The out half reads what is asked of it from versed, which the reflection never dials
+        # (versed dials it). The other ios derive this from their hint url; git has no hint url,
+        # since its hint is a hook, so it is named here.
+        - name: VERSE_ADDR
+          value: verse:9797
         - name: GIT_CONFIG_COUNT
           value: "1"
         - name: GIT_CONFIG_KEY_0

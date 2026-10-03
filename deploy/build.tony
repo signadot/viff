@@ -863,6 +863,12 @@ build:
               - /repos
               - -mirror
               - $[gitMirror]
+              # The tree sha of the charters directory on every ref, and the out half that
+              # makes the tags and moves the branches the repo-charters reconciler asks for
+              # (deploy/git-io). VERSE_ADDR in the source manifest says where it reads them.
+              - -tree
+              - .verse/charters
+              - -out
 
   # TWO BLOCKS, one knob: a set of its own when gitIssueMirror names one, and gitMirror's when
   # it does not. A command is a list, so there is nothing to merge into and no way to write a

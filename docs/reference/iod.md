@@ -198,7 +198,7 @@ condition:
     path: "git.verse.ref.\"origin/main\""
     value:
       tree:
-        charters: !glob "*"
+        ".verse/charters": !glob "*"
 ```
 
 ### The out half of git
