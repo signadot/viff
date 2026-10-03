@@ -19,7 +19,7 @@ var deployOrder = []string{
 	"signadot/repo/signadot/pr.tony",
 	"verse/workspace/Signadot/gate-ask.tony",
 	"verse/workspace/Signadot/deploy-announce.tony",
-	"verse/repo/verse/issue-triage.tony",
+	"verse/repo/verse/issue-next.tony",
 }
 
 // EVERY DEPLOYED CHARTER INSTALLS, into one verse, in the order a deployment installs them. A

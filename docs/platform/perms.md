@@ -192,7 +192,7 @@ Installing is open in the seed: `verse.trigger.rule` says `child-owner: ["*"]`. 
 install. A rule's record holds out `read: ["*"]` by the root's default. So anybody may read what
 is installed.
 
-**A package takes its address.** Installing at `verse-dev.triage` writes an owner record there
+**A package takes its address.** Installing at `verse-dev.git-issue` writes an owner record there
 for the installer. So every row that the package's rules derive beneath that address is owned
 through that one record. The rows do not each carry their own record. Verse refuses somebody
 else who installs at the same address, and says who owns it.

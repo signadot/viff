@@ -187,8 +187,7 @@ func TestStateFiltersOnThePayload(t *testing.T) {
 // --if and --trim ask of the entities at the depth the PATH asks at, and a reflected issue is
 // four segments down (`git-issue.verse.issue.<id>`, a repository being a level). Read at three
 // segments the map of issues is the one entity, and an --if about an issue's status keeps
-// nothing — which is how the triage seed came to seed nothing and the drive judged the backlog.
-// The `*` is what says "each issue", in either spelling: the kinded path's segment wildcard, or
+// nothing. The `*` is what says "each issue", in either spelling: the kinded path's segment wildcard, or
 // a whole `*` step. The id that is an asterisk is the quoted step `"*"`.
 func TestAFilterAsksAtThePathsDepth(t *testing.T) {
 	serve(t)
