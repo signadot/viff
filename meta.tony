@@ -1,0 +1,14 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits: []
+created: "2026-10-04T01:58:19.186366+02:00"
+duplicates: []
+id: 6j5ngfq9h12ks6wpr5n0
+labels:
+- defect
+- smoke
+related_issues: []
+status: open
+updated: "2026-10-04T01:58:19.330838+02:00"
