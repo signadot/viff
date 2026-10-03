@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 )
 
@@ -26,6 +28,8 @@ import (
 //
 //	to:  branch.verse/live       # a branch, moved to the sha, forward or back
 //	sha: 4f668c1c…
+//	create: true                 # or: made where it is absent, and left alone where it stands
+//	                             # (a tag takes it too)
 //
 // and this answers at `<name>~status` with `ref` (the full ref name), `sha` (the commit, in full),
 // `at`, and for a branch `was`, the sha it stood at before. A ref already at the sha costs
@@ -112,6 +116,16 @@ func (k *GitSink) Deliver(ctx context.Context, in Input) (entity.Obj, error) {
 	}
 	cur, _ := gitCmd(ctx, rp.dir, "rev-parse", "--verify", "-q", ref)
 	now := k.now().UTC().Format(time.RFC3339)
+	// CREATE ONLY: a ref made once where it is absent and left alone where it stands. A branch
+	// somebody else moves on, verse/live under the pull requests verse merges into it, is never
+	// moved back by this; a tag that marks the first commit a tree ran at is not refused when
+	// the tree runs again from another.
+	if c := ir.Uncomment(entity.Get(in.Value, "create")); c != nil && c.Type == ir.BoolType && c.Bool && cur != "" {
+		if entity.Str(in.Status, "ref") == ref {
+			return nil, nil
+		}
+		return entity.Obj{"ref": ref, "sha": cur, "at": now, "kept": true}, nil
+	}
 	if cur == sha {
 		if entity.Str(in.Status, "sha") == sha {
 			return nil, nil // in step, and the status says so

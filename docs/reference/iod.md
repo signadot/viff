@@ -212,6 +212,7 @@ an **input** under the repository's out place, `git.<repo>.out`, and the io answ
 |---|---|---|
 | `{to: tag.<name>, sha}` | makes the tag at the commit | `ref, sha, at` |
 | `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
+| `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
 
 ```sh
 verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
@@ -901,6 +902,13 @@ already opened a pull request from that branch.
 | is new, and the branch has none | It opens one, from the branch into `base`. |
 | has a title or body that changed | It updates the pull request it opened. An adopted one is left as its author wrote it. |
 | has the title and body the pull request carries | Nothing. |
+
+An `open` input may also carry what a `pr.<n>` input carries, for a charter that cannot know the
+number before the pull request exists: `text` and `asks` keep the question's comment on the pull
+request it opened and hear the answer there (the comment's fields stand beside the pull request's
+as `comment`, `commentUrl`, `commentPosted`, `commentAt`); `merge` merges it at the head decided
+on, as below; `closed: true` closes it unmerged, once. The io never merges or closes a pull
+request it adopted.
 
 **A merge at a sha.** An input that carries `merge` asks for a pull request to be merged at the
 head it was decided on:

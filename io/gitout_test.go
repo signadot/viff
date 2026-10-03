@@ -172,6 +172,20 @@ func TestTheGitOutHalfTagsAndMovesABranchInARepositoryOnDisk(t *testing.T) {
 	if got := refSha(t, dir, "refs/heads/verse/live"); got != one {
 		t.Errorf("verse/live did not move back: %q", got)
 	}
+	// Create only: a branch that stands is kept where it is, and said so once; one that does
+	// not is made.
+	r.ask(t, "kept", entity.Obj{"to": "branch.verse/live", "sha": two, "create": true})
+	r.ask(t, "made", entity.Obj{"to": "branch.verse/new", "sha": two, "create": true})
+	r.pass(t)
+	if got := refSha(t, dir, "refs/heads/verse/live"); got != one {
+		t.Errorf("create: true moved a branch that stood: %q", got)
+	}
+	if st := r.status(t, "kept"); st["kept"] != true || st["sha"] != one {
+		t.Errorf("status of a kept branch = %v", st)
+	}
+	if got := refSha(t, dir, "refs/heads/verse/new"); got != two {
+		t.Errorf("create: true did not make an absent branch: %q", got)
+	}
 
 	// Refused for good: a sha the repository lacks, a target that is neither kind, no sha.
 	for name, in := range map[string]entity.Obj{
