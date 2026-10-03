@@ -1525,10 +1525,19 @@ func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *t
 // run --driver scripted` and of nothing else, so it lives on that path now (cmd/verse/task.go)
 // rather than travelling to charters that typed nothing.
 func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registry) *task.Task {
-	// An empty prompt is an empty list: the task completes having done nothing, which is
-	// what the old driver did with a blank command.
+	// A LIST THE SPAWN WROTE IS THE LIST, and the prompt is read only where there is none: a
+	// charter's `calls:` reaches this builder as l.Calls, and a builder that read the prompt
+	// alone ran such a task to `done` having done nothing. An empty prompt and no list is an
+	// empty list: the task completes having done nothing, which is what the old driver did
+	// with a blank command.
 	var calls []task.Call
-	if strings.TrimSpace(l.Prompt) != "" {
+	switch {
+	case len(l.Calls) > 0:
+		if err := task.CheckCalls(l.Calls); err != nil {
+			return task.NewFailed(l.ID, reg, err.Error())
+		}
+		calls = l.Calls
+	case strings.TrimSpace(l.Prompt) != "":
 		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
 	}
 	return task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env})
