@@ -181,10 +181,18 @@ func describe(o StepOutcome, r StepResult) string {
 type callsDriver struct {
 	calls []Call
 	i     int
+	// last is the output of the last call that ran: the list's result (Result). A list that
+	// ends in `ask` answers with the answer, which is what a charter's `$result` reads.
+	last string
 }
 
 // NewCallsDriver returns a driver that proposes calls in order.
 func NewCallsDriver(calls []Call) Driver { return &callsDriver{calls: calls} }
+
+// Result is the output of the list's last call, so a charter reads what the list found out:
+// the answer to the `ask` it ended with, or what its last command printed. Empty before any
+// call has run.
+func (d *callsDriver) Result() string { return d.last }
 
 // Next proposes the next call, unless the last one ended the list.
 //
@@ -195,6 +203,7 @@ func NewCallsDriver(calls []Call) Driver { return &callsDriver{calls: calls} }
 // outside — "call 2 of 4 (push): refused" is the whole of what a reader gets.
 func (d *callsDriver) Next(_ context.Context, prev StepResult) (ToolUse, bool, error) {
 	if d.i > 0 {
+		d.last = prev.Output
 		c := d.calls[d.i-1]
 		if o, fatal := c.fatalFor(prev); fatal {
 			return ToolUse{}, false, fmt.Errorf("call %d of %d (%s): %s",
