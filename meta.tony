@@ -1,0 +1,17 @@
+!issue
+blocked_by: []
+blocks: []
+branches: []
+commits:
+- 393146177e94ed07067e18b864bf7a9d63821ae2
+- d8d3b7b1b80339932d7a933853b863c5eca40f72
+created: "2026-10-03T09:40:27.056279+02:00"
+duplicates: []
+id: 4pje9xn9h12krtxhr1n0
+labels:
+- branch
+related_issues:
+- p0earts9h12ksy8nmxn0
+- 19vw6rc8h12ksxzbn1n0
+status: open
+updated: "2026-10-03T10:09:15.703147+02:00"
