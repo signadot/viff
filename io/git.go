@@ -383,12 +383,19 @@ func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]r
 	if len(paths) == 0 || len(refs) == 0 {
 		return nil
 	}
-	shas := map[string]bool{}
+	// ONE ORDER, held in a slice: the answers come back in the order asked, and the asking and
+	// the reading must walk the same sequence, which two walks of a map do not.
+	seen := map[string]bool{}
+	var shas []string
 	for _, r := range refs {
-		shas[r.sha] = true
+		if !seen[r.sha] {
+			seen[r.sha] = true
+			shas = append(shas, r.sha)
+		}
 	}
+	sort.Strings(shas)
 	var in strings.Builder
-	for sha := range shas {
+	for _, sha := range shas {
 		for _, p := range paths {
 			fmt.Fprintf(&in, "%s:%s\n", sha, p)
 		}
@@ -398,17 +405,17 @@ func gitTrees(ctx context.Context, dir string, paths []string, refs map[string]r
 		return nil // a read that fails leaves the field off, as a path that is not there does
 	}
 	trees := map[string]map[string]string{}
-	// Answers come in the order asked; a line for an object that is not there reads
-	// `<sha>:<path> missing`, and nothing of the format above.
+	// A line for an object that is not there reads `<sha>:<path> missing`, and nothing of the
+	// format above.
+	lines := nonEmptyLines(out)
 	i := 0
-	for sha := range shas {
+	for _, sha := range shas {
 		for _, p := range paths {
-			if i >= len(nonEmptyLines(out)) {
+			if i >= len(lines) {
 				return trees
 			}
-			line := nonEmptyLines(out)[i]
+			f := strings.Fields(lines[i])
 			i++
-			f := strings.Fields(line)
 			if len(f) < 2 || f[1] != "tree" {
 				continue
 			}
