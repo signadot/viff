@@ -74,6 +74,35 @@ Verse refuses a bare word such as `-as coderunner`, and the refusal gives the gr
 [self-asserted](perms.md#principals-and-grantees): everything below is about what a name may do,
 not about who holds it.
 
+**A verse can verify a person instead.** Where its config names an identity provider, you log in
+to that provider, and the CLI sends the token it is given in place of a name. Verse checks the
+token, and the request is made as the person it proves.
+
+```sh
+verse login          # prints a URL, and a code to confirm there
+verse whoami         # user:walter@example.com (google)
+verse logout
+```
+
+The CLI's config names the same providers as the verse's (`auth.principal.providers`). Four
+things then differ from what is above:
+
+- The name comes from the account, not from the config. The first time verse sees an account, it
+  binds it to `user:<the account's email>`, and from then on that account is that principal. A
+  login comes before `user:` in the config.
+- `verse whoami` says how verse knows you: the provider's name, or `asserted` for a name it took
+  as given.
+- `-as` still names somebody else, and the CLI then sends that name alone, as an assertion. So
+  does a CLI with `agent:` in its config. Agents and runners are not verified. They are still
+  whoever they say they are.
+- A token that does not check out is refused with `401`, and the refusal says why. Verse does not
+  fall back to a name sent beside it.
+
+If you have an account at a second provider the verse names, `verse login --link <provider>`
+binds it to who you are logged in as. Either account's token is then you.
+
+[Who a request is from](reference/perms.md#who-a-request-is-from) has the rules.
+
 Know two things before the first step. Each is a reasonable guess that is wrong:
 
 - **A group is not a principal.** `group:<name>` is a [grantee](glossary.md#grantee). It

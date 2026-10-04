@@ -443,7 +443,7 @@ func (f *fakeGitHub) listComments(repo *fakeRepo, review bool, r *http.Request) 
 // full one cannot disagree about a comment's shape — the asymmetry that bit the pull request.
 func (f *fakeGitHub) renderComment(c *fakeComment) map[string]any {
 	m := map[string]any{
-		"id": c.id, "body": c.body, "user": map[string]any{"login": "ana"},
+		"id": c.id, "body": c.body, "user": map[string]any{"login": "ana", "id": 101},
 		"created_at": "2026-01-01T00:00:00Z", "updated_at": c.updated,
 		"html_url": "https://github.com/x/y/comment/" + strconv.FormatInt(c.id, 10),
 	}

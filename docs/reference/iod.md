@@ -791,7 +791,7 @@ content type `application/json`.
 | `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
 | `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
-| `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, body, url, createdAt, updatedAt` |
+| `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. |
 
 **A repository is two levels of the address**, because it is two levels at GitHub. Everything
 that `signadot/verse` reflects stands under `github.signadot.verse`. A number is quoted where

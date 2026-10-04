@@ -171,6 +171,8 @@ type Server struct {
 	routes []api.Route
 	// unattributed is the patterns a request may write through naming nobody (router.handleUnattributed).
 	unattributed map[string]bool
+	// auth is how people are authenticated at the door (SetAuth); nil verifies nobody.
+	auth *authn
 
 	// susp is baseline's suspension table, which baseline's engine and every package's ask; a
 	// scope's is beside its engine. suspMu is the one writer's lock: a suspension's record and
@@ -1349,6 +1351,17 @@ func (s *Server) Handler() http.Handler {
 	// And the out half's counterpart. Verse dials a reflection and therefore knows how it is
 	// doing; it never dials an out half, so the only way it can know is to be told.
 	rt.handleUnattributed("POST /io/{name}/pass", s.passIO, "", nothing)
+	// accounts — which account in an external system is which principal (identity.go). A person
+	// claims an account and proves it; the system binds it; an io looks a comment's author up.
+	// Who the request is from, and how versed knows: the provider that verified them, or their
+	// own say-so (auth.go).
+	rt.handle("GET /whoami", s.whoami, "", nothing)
+	rt.handle("GET /accounts", s.listAccounts, "", nothing)
+	rt.handle("POST /accounts/github", s.claimAccount, "", nothing)
+	rt.handle("POST /accounts/github/verify", s.verifyAccount, "", nothing)
+	rt.handle("POST /accounts/{provider}/link", s.linkAccount, "", nothing)
+	rt.handle("GET /accounts/{provider}/who", s.whoIsAccount, "", nothing)
+	rt.handle("DELETE /accounts/{provider}/{sub}", s.revokeAccount, "", nothing)
 	rt.handle("GET /runners", s.listRunners, "", nothing)
 	rt.handle("POST /runners", s.addRunner, "", nothing)
 	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
@@ -1428,9 +1441,13 @@ func (s *Server) Handler() http.Handler {
 // It is a middleware rather than a line in scopedStore because reads present a principal too,
 // and a party that only ever looked is still a party the verse has met.
 //
-// WHAT A REQUEST MAY PRESENT is `user:`, `agent:` or `runner:`, self-asserted within the three,
-// and a bare email, which is respelled `user:` on the request itself so every write and check
-// below reads the one form. A name the grammar does not read is refused. So are the names versed
+// WHO A REQUEST IS FROM is its bearer's, where it carries one: an id_token from an identity
+// provider the deployment names is verified, and the principal its account is bound to is set on
+// the request, so every write and check below reads it where it reads the header (auth.go).
+//
+// WHAT A REQUEST MAY PRESENT without one is `user:`, `agent:` or `runner:`, self-asserted within
+// the three, and a bare email, which is respelled `user:` on the request itself so every write and
+// check below reads the one form. A name the grammar does not read is refused. So are the names versed
 // makes — `via:` when a rule fires, a source reflects or a resolver answers, `system:` when versed
 // acts — since a header saying either is precisely the assertion that was fine while nothing was
 // refused and is a way to hold what it names once something is. What installs a system-owned
@@ -1449,6 +1466,20 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) http.Handler {
 	var h http.Handler = mux
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A bearer is who the request is from, verified, and it is read ahead of the header: the
+		// header then names the same principal or nobody (auth.go).
+		if token := bearerOf(r); token != "" {
+			who, provider, refused := s.authenticate(r.Context(), token, principalOf(r))
+			if refused != nil {
+				if refused.code == http.StatusUnauthorized {
+					w.Header().Set("WWW-Authenticate", "Bearer")
+				}
+				http.Error(w, refused.msg, refused.code)
+				return
+			}
+			r = authenticated(r, provider)
+			r.Header.Set(api.PrincipalHeader, who)
+		}
 		p := principalOf(r)
 		if p == "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if _, pattern := mux.Handler(r); !unattributed[pattern] {
@@ -1735,8 +1766,9 @@ func actor(w http.ResponseWriter, store entity.Store, by string) (string, bool) 
 	return "", false
 }
 
-// principalOf is who a request says it is made by (api.PrincipalHeader), and "" for a request
-// that did not say. Self-asserted, and read as such: it is recorded, never verified.
+// principalOf is who a request is made by (api.PrincipalHeader), and "" for a request that did
+// not say. Past the door it is the principal a verified bearer proved, where the request carried
+// one, and otherwise what the request asserted (authenticatedBy says which).
 func principalOf(r *http.Request) string { return r.Header.Get(api.PrincipalHeader) }
 
 // queryPattern reads the PAYLOAD half of the selector a read-plane route was given: ?if is a

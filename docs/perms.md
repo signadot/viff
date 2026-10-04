@@ -45,9 +45,12 @@ group's members, `audience:<address>` for whoever holds the same level at that a
 Every request names who makes it. The CLI sends the `user:` or `agent:` in its config, and
 `-as` names somebody else. Verse refuses a request that writes and names nobody.
 
-**A principal is self-asserted.** Verse has no login. Verse trusts a name as much as it trusts
-`-as`, and no more. The model does give one thing: every act names a party, and verse checks
-the act against what that party may do. When verse verifies names, nothing else has to change.
+**A principal is self-asserted, unless the verse verifies it.** By default verse trusts a name
+as much as it trusts `-as`, and no more. A deployment can name the identity providers its people
+sign in with. A request that carries a token from one of them is then made as the person the
+token proves, and verse refuses a token that proves nobody. The rest of the model is the same
+either way: every act names a party, and verse checks the act against what that party may do.
+[Who a request is from](reference/perms.md#who-a-request-is-from) is in the reference.
 
 ## Ownership
 

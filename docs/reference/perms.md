@@ -254,6 +254,131 @@ record. Its `under` is what asked it. A person's ask is its asker's record inste
   or a remote runner, who is working the task is who claimed it. How verse reads what such a
   worker sends is in [perms.md](../platform/perms.md#a-relayed-tasks-frames), in the repository.
 
+## Who a request is from
+
+A request says who makes it in one of two ways.
+
+- **A token.** `Authorization: Bearer <id_token>` carries an OpenID Connect id_token from an
+  **identity provider** the deployment names (`auth.principal` in its
+  [config](up.md#configuration)). Verse verifies it, and the request is made as the person it
+  proves.
+- **A name.** `Verse-Principal: <principal>` is taken as given. It is `user:`, `agent:` or
+  `runner:`.
+
+A token is checked before the name is read:
+
+1. Its `iss` names one of the deployment's providers.
+2. Its signature verifies against the keys that provider publishes. Verse reads a provider's
+   discovery document the first time a token names it, and reads its keys again for a key id it
+   has not seen.
+3. Its `aud` holds the provider's `clientId`, and it is in date (`exp`, `nbf`).
+4. **The principal is the binding, not the claim.** The token's `sub` is an account, and the
+   [binding](#accounts-in-other-systems) at `verse.identity.<provider>.account.<sub>` says which
+   principal that account is. So a person whose email changes at the provider keeps their
+   principal.
+5. **First sight.** An account with no binding is bound to `user:<email>`, when the token carries
+   an `email` with `email_verified: true` in one of the provider's `domains`. The email is
+   lower-cased. The binding's proof is `{method: oidc, iss, sub, iat, at}`, and its `claimant` is
+   the provider. Verse never stores the token.
+
+| a request with | is answered |
+|---|---|
+| a token that passes | as the principal its account is bound to |
+| a token that fails any check above | 401, saying which. It never falls back to the name beside it. |
+| a token, at a verse that names no provider or whose mode is `off` | 401 |
+| a token whose provider cannot be reached | 503. Requests with no token are still served. |
+| a token that passes, and a `Verse-Principal` naming somebody else | 403 |
+| no token | as the `Verse-Principal` it names, or as nobody |
+
+`auth.principal.mode` says how far the verse insists on a token. `off` verifies nobody.
+`optional` verifies a token where a request carries one, and still takes a bare name.
+
+**What is not verified.** `agent:` and `runner:` principals are always taken as given. Under
+`optional`, so is a `user:` that carries no token. A binding records which of the two its
+claimant was (`claimant`), so a reader can tell a verified name from an asserted one.
+
+`GET /whoami` answers who the request is from and how verse knows: `{principal, by}`, where `by`
+is the provider that verified the caller, or `asserted`. A request that names nobody is answered
+`{}`.
+
+### Logging in
+
+| command | does |
+|---|---|
+| `verse login [<provider>]` | logs in to a provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
+| `verse login --link <provider>` | logs in to a second provider and binds your account there to who you are logged in as. The login in use does not change. |
+| `verse whoami` | prints who the verse takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
+| `verse logout [<provider>]` | drops the login toward this verse: every provider's, or the one named |
+
+- **How it logs in.** Where the provider offers the device authorization grant (RFC 8628), the
+  CLI prints a URL and a code, and waits while you confirm the code in any browser. Otherwise it
+  prints the provider's login URL and listens on a loopback port for the browser to come back
+  (authorization code with PKCE). It asks for the scopes `openid` and `email`, and for
+  `offline_access` where the provider lists it.
+- **What is kept.** The id_token, when it expires, the refresh token if the provider gave one,
+  and the principal the verse answered. There is one entry for each verse address and provider.
+- **What is sent.** After a login, every request carries the id_token and no `Verse-Principal`.
+  The login comes before `user` in the config.
+- **When the CLI acts as somebody else.** With `-as`, or with `agent` in the config, the CLI
+  sends that name alone and no token. A token beside another name is refused.
+- **Renewal.** An id_token that has expired is renewed with the refresh token before the request
+  is sent. Where it cannot be renewed, the command fails and says to log in again. It is not
+  sent under the config's `user` instead.
+- **A login the verse refuses is not kept.** `verse login` asks the verse who the token proves
+  before it reports success, which is also when a first sight is bound.
+
+## Accounts in other systems
+
+An **account binding** says which account in another system is which principal. It is how an io
+answers as the person who wrote something there, without keeping a table of its own.
+
+An account is keyed by its issuer and the issuer's own id for it, `(iss, sub)`, as OIDC keys one.
+Bindings are kept per **provider**, which is the name a deployment gives an issuer. `github` is the
+first provider. Its `iss` is `https://github.com` and its `sub` is the user's number. A login can
+be renamed, so it is kept only as a hint, and a binding survives a rename.
+
+**The person claims, and the system binds.** A binding is written only by `system:identity`, from
+evidence that verse read itself. It is not on the person's own records, since what a person owns
+they could rewrite.
+
+| route | as | does |
+|---|---|---|
+| `POST /accounts/github {login}` | the person | claims the login, and answers `{nonce, expires, say}`. The nonce stands for an hour. |
+| `POST /accounts/github/verify {nonce}` | the person | binds the account, once the account has said `/verse link <nonce>` |
+| `POST /accounts/<provider>/link {idToken}` | the person, verified | binds the account that the id_token names, at an identity provider the verse names |
+| `GET /accounts` | anyone | the caller's bindings, under every provider |
+| `GET /accounts/<provider>/who?sub=…` or `?login=…` | an io | the binding of that account: `{provider, principal, iss, sub, login, claimant, proof}` |
+| `DELETE /accounts/<provider>/{sub}` | the person | revokes their own binding |
+
+- **The proof** of a GitHub account is a comment that says `/verse link <nonce>` on a line of its
+  own. It must be written by the claimed login, on a repository the [github io](iod.md#github)
+  reflects, and it must carry the author's number (`authorId`). Until that comment is reflected,
+  verify answers 404 and the claim still stands. An expired claim answers 410, and is removed.
+- **One account is one principal.** Proving an account that is bound to somebody else is refused
+  with 409, until they revoke it. Proving it again for the same principal answers 200. One
+  principal may hold many accounts.
+- **Who reads what.** A claim is read by its principal. A binding is read by its principal and by
+  `agent:*`, which is what lets an io look an author up. Anyone else asking `who` gets 404.
+- **Where they stand.** Claims are at `verse.identity.<provider>.claim.<nonce>`, and bindings are
+  at `verse.identity.<provider>.account.<sub>`. A `sub` is one segment of the address whatever
+  characters its issuer put in it. A binding records how it was proved:
+  `proof: {method: comment, evidence: <the comment's address>, at}`.
+- **Linking a second provider.** A caller that one provider has verified presents an id_token
+  from another as evidence, and verse binds that account to them. No nonce is needed, since the
+  token proves the account. The token must be the named provider's and must verify, or the link
+  is refused with 400. A caller who is only asserted is refused with 403: the binding would let
+  the account's token act as a name nobody proved. `verse login --link <provider>` does this from
+  the CLI.
+- **The claimant.** A binding also records how the caller who proved it was authenticated:
+  `claimant` is the provider that verified them, or `asserted` for a caller who was whoever their
+  request said. A binding is only as good as the name it binds to, so it says which kind of name
+  that was. An `asserted` binding that a verified caller proves again takes that provider as its
+  claimant. Proving a binding again as an asserted caller changes nothing.
+- **Trust.** The evidence of a GitHub account is as trustworthy as the io that reflected it. That
+  is the same trust verse gives an io's asserted principal today. An account at an identity
+  provider is bound from a [verified token](#who-a-request-is-from), which is the same binding
+  with a different proof.
+
 ## What each act writes
 
 | act | writes |
@@ -265,6 +390,8 @@ record. Its `under` is what asked it. A person's ask is its asker's record inste
 | a grant to a resolver | its `answer` line, at `verse.for.<you>` or at the place |
 | an install | the thing, as its installer, with their record |
 | a suspension | as the system, naming who holds it under `held` |
+| verifying an account | its binding, as `system:identity` |
+| a first request with a provider's token | the account's binding, as `system:identity` |
 
 ## The root, and the config
 

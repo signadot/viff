@@ -807,7 +807,8 @@ See [Ios (reference)](reference/io.md#the-out-half).
 ### principal
 
 A principal is who acts. It is a name with its kind in front, such as `user:ana@example.com`.
-Every write names one. Verse has no login: a principal is the name that the request gives.
+Every write names one. A principal is the name that the request gives, or the person that the
+request's token proves where the verse names an identity provider.
 
 See [Permissions](perms.md#principals-and-grantees).
 

@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -16,8 +17,8 @@ import (
 
 // heard is what a stub server was told about the request.
 type heard struct {
-	version, principal, contentType, accept, query, body string
-	hit                                                  bool
+	version, principal, authorization, contentType, accept, query, body string
+	hit                                                                 bool
 }
 
 // stub answers claiming version claims ("" claims nothing), with status and body, and records what
@@ -29,7 +30,8 @@ func stub(t *testing.T, claims string, status int, body string) (*httptest.Serve
 		b, _ := io.ReadAll(r.Body)
 		*h = heard{
 			version: r.Header.Get(api.VersionHeader), principal: r.Header.Get(api.PrincipalHeader),
-			contentType: r.Header.Get("Content-Type"), accept: r.Header.Get("Accept"),
+			authorization: r.Header.Get("Authorization"),
+			contentType:   r.Header.Get("Content-Type"), accept: r.Header.Get("Accept"),
 			query: r.URL.RawQuery, body: string(b), hit: true,
 		}
 		if claims != "" {
@@ -60,6 +62,49 @@ func TestTransportStampsVersionAndPrincipal(t *testing.T) {
 	resp.Body.Close()
 	if h.version != "v1.2.0" || h.principal != "agent:slack-io" {
 		t.Errorf("the server heard version %q, principal %q", h.version, h.principal)
+	}
+}
+
+// A bearer proves who is asking, so the request carries it and no name: the server makes the
+// request as whoever the token proves, and a name beside it could only disagree. With no bearer
+// to send, the name goes as before.
+func TestTransportSendsABearerInPlaceOfAName(t *testing.T) {
+	ts, h := stub(t, "", http.StatusOK, "ok: true\n")
+	token := "tok"
+	c := &client.Client{Addr: addr(ts), HTTP: &http.Client{Transport: client.Transport{
+		Principal: client.Static("user:ana@example.com"),
+		Bearer:    func(context.Context) (string, error) { return token, nil },
+	}}}
+	resp, err := c.Get("/status", nil)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "Bearer tok" || h.principal != "" {
+		t.Errorf("the server heard Authorization %q and principal %q, want the bearer alone", h.authorization, h.principal)
+	}
+	token = ""
+	if resp, err = c.Get("/status", nil); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "" || h.principal != "user:ana@example.com" {
+		t.Errorf("with no bearer the server heard Authorization %q and principal %q", h.authorization, h.principal)
+	}
+}
+
+// A bearer that cannot be had fails the request rather than sending it under a name alone.
+func TestTransportBearerErrorFailsTheRequest(t *testing.T) {
+	ts, h := stub(t, "", http.StatusOK, "")
+	c := &client.Client{Addr: addr(ts), HTTP: &http.Client{Transport: client.Transport{
+		Principal: client.Static("user:ana@example.com"),
+		Bearer:    func(context.Context) (string, error) { return "", errors.New("the login has expired") },
+	}}}
+	if _, err := c.Get("/status", nil); err == nil {
+		t.Fatal("a request whose bearer failed was sent")
+	}
+	if h.hit {
+		t.Error("the server was reached under the name alone")
 	}
 }
 

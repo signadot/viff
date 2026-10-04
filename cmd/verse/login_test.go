@@ -1,0 +1,317 @@
+package main
+
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/versed"
+	"github.com/signadot/verse/versed/idptest"
+)
+
+// `verse login` proves who is at the keyboard to the verse's identity provider, and from then on
+// the CLI's requests carry the token it was given, in place of a name.
+
+const loginClient = "verse-cli"
+
+// serveLogin stands up a verse that takes tokens from a fake IdP named `corp`, and a config that
+// names the same provider, so the CLI can log in to it. The account that logs in is ana's.
+func serveLogin(t *testing.T, device bool) (entity.Store, *idptest.Logins) {
+	t.Helper()
+	idp := idptest.New(t)
+	l := idp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, device)
+
+	store := entitytest.Store(t)
+	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"corp": {Issuer: idp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+
+	cfg := filepath.Join(t.TempDir(), "verse.tony")
+	body := "auth:\n  principal:\n    providers:\n      corp:\n        issuer: \"" + idp.URL + "\"\n        clientId: " + loginClient + "\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, cfg)
+	return store, l
+}
+
+// visitor is the browser of a login by authorization code: it opens the first URL the CLI prints
+// and follows it back to the CLI's loopback port.
+type visitor struct {
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	once sync.Once
+}
+
+var printedURL = regexp.MustCompile(`https?://\S+`)
+
+func (v *visitor) Write(p []byte) (int, error) {
+	v.mu.Lock()
+	v.buf.Write(p)
+	found := printedURL.FindString(v.buf.String())
+	v.mu.Unlock()
+	if found != "" && strings.HasSuffix(strings.TrimRight(v.buf.String(), " "), "\n") {
+		v.once.Do(func() {
+			go func() {
+				if resp, err := http.Get(found); err == nil {
+					resp.Body.Close()
+				}
+			}()
+		})
+	}
+	return len(p), nil
+}
+
+func (v *visitor) Close() error { return nil }
+
+// runLogin is runCLI for a login by authorization code, with a browser.
+func runLogin(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cc := &cli.Context{
+		Out: nopCloser{&out}, Err: &visitor{},
+		In: io.NopCloser(strings.NewReader("")), Go: t.Context(),
+	}
+	cmd := rootCmd()
+	g.Addr = testAddr
+	sub := cmd.FindSub(cc, args[0])
+	err := sub.Run(cc, args[1:])
+	return out.String(), err
+}
+
+// expireLogin makes the kept login one whose id_token ran out a minute ago, as time would.
+func expireLogin(t *testing.T) {
+	t.Helper()
+	logins = nil
+	c, err := loadLogins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range c.Verses {
+		for _, e := range v.Providers {
+			e.Expiry = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+		}
+	}
+	if err := saveLogins(c); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestALoginByDeviceCodeActsAsThePersonItProves(t *testing.T) {
+	store, _ := serveLogin(t, true)
+
+	// Before a login, the CLI is the config's user, asserted.
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
+		t.Fatalf("whoami before a login = %q, %v", out, err)
+	}
+	out, err := runCLI(t, "login")
+	if err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
+		t.Fatalf("login = %q, %v", out, err)
+	}
+	st, err := os.Stat(config.TokensPath())
+	if err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("the tokens file: %v, mode %v, want 0600", err, st.Mode().Perm())
+	}
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "user:ana@example.com (corp)" {
+		t.Fatalf("whoami after a login = %q, %v", out, err)
+	}
+	// What the CLI writes is the person's, over the config's `user:`.
+	if _, err := runCLI(t, "data", "demo", "pr", "1", "--put", `{stage: open}`); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	rec, ok, err := store.Get(entity.PermsRef(entity.RefAt("demo")))
+	if err != nil || !ok || entity.Str(rec.Payload, entity.OwnerField) != "user:ana@example.com" {
+		t.Fatalf("owner of what the logged-in CLI put = %q (ok=%v err=%v)", entity.Str(rec.Payload, entity.OwnerField), ok, err)
+	}
+
+	// As an agent, the CLI is the agent, and sends no token beside that name.
+	t.Setenv("VERSE_AGENT", "ci")
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "agent:ci (asserted)" {
+		t.Errorf("whoami as an agent, logged in = %q, %v", out, err)
+	}
+	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "a login is a person's") {
+		t.Errorf("a login as an agent: %v", err)
+	}
+	t.Setenv("VERSE_AGENT", "")
+
+	if out, err := runCLI(t, "logout"); err != nil || !strings.Contains(out, "logged out") {
+		t.Fatalf("logout = %q, %v", out, err)
+	}
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
+		t.Errorf("whoami after a logout = %q, %v", out, err)
+	}
+	if out, err := runCLI(t, "logout"); err != nil || !strings.Contains(out, "not logged in") {
+		t.Errorf("a second logout = %q, %v", out, err)
+	}
+}
+
+// `--as` names somebody else, so the CLI sends that name alone: a token beside it would have the
+// verse make the request as the person who logged in, whatever the command said.
+func TestAsSendsTheNameAndNotTheToken(t *testing.T) {
+	serveLogin(t, true)
+	if _, err := runCLI(t, "login"); err != nil {
+		t.Fatal(err)
+	}
+	if token, err := bearer(t.Context()); err != nil || token == "" {
+		t.Fatalf("the logged-in CLI's bearer = %q, %v", token, err)
+	}
+	who, err := principal("bo@example.com") // what a command's --as does
+	if err != nil || who != "user:bo@example.com" {
+		t.Fatalf("--as bo = %q, %v", who, err)
+	}
+	if token, err := bearer(t.Context()); err != nil || token != "" {
+		t.Fatalf("the bearer beside --as = %q, %v, want none", token, err)
+	}
+	asOverride = ""
+}
+
+func TestALoginByAuthorizationCode(t *testing.T) {
+	_, l := serveLogin(t, false)
+	out, err := runLogin(t, "login", "corp")
+	if err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
+		t.Fatalf("login = %q, %v", out, err)
+	}
+	if !strings.Contains(l.Scopes, "openid") || !strings.Contains(l.Scopes, "email") {
+		t.Errorf("the login asked for %q, want openid and email", l.Scopes)
+	}
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "user:ana@example.com (corp)" {
+		t.Fatalf("whoami = %q, %v", out, err)
+	}
+}
+
+func TestAnExpiredLoginIsRenewed(t *testing.T) {
+	_, l := serveLogin(t, true)
+	if _, err := runCLI(t, "login"); err != nil {
+		t.Fatal(err)
+	}
+	expireLogin(t)
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "user:ana@example.com (corp)" {
+		t.Fatalf("whoami on an expired token = %q, %v", out, err)
+	}
+	if l.Refreshes != 1 {
+		t.Fatalf("the login was renewed %d times, want once", l.Refreshes)
+	}
+	// The renewed token is kept: the next command sends it and renews nothing.
+	if _, err := runCLI(t, "whoami"); err != nil || l.Refreshes != 1 {
+		t.Errorf("a second command: %v, %d renewals", err, l.Refreshes)
+	}
+}
+
+// A provider that answers a refresh with no id_token cannot renew a login, and the CLI says so
+// rather than sending the request as the config's user.
+func TestALoginThatCannotBeRenewedFailsTheRequest(t *testing.T) {
+	for what, set := range map[string]func(*idptest.Logins){
+		"a refresh that gives no id_token": func(l *idptest.Logins) { l.NoIDTokenOnRefresh = true },
+		"no refresh token":                 func(l *idptest.Logins) { l.NoRefreshToken = true },
+	} {
+		_, l := serveLogin(t, true)
+		set(l)
+		if _, err := runCLI(t, "login"); err != nil {
+			t.Fatalf("%s: login: %v", what, err)
+		}
+		expireLogin(t)
+		out, err := runCLI(t, "whoami")
+		if err == nil || !strings.Contains(err.Error(), "verse login") {
+			t.Errorf("%s: whoami = %q, %v, want a failure that says to log in again", what, out, err)
+		}
+		// Logging out is how to go on as the config's user.
+		if _, err := runCLI(t, "logout"); err != nil {
+			t.Errorf("%s: logout: %v", what, err)
+		}
+		if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
+			t.Errorf("%s: whoami after a logout = %q, %v", what, out, err)
+		}
+	}
+}
+
+// A token the verse does not take is no login: nothing is kept of it.
+func TestALoginTheVerseRefusesIsNotKept(t *testing.T) {
+	_, l := serveLogin(t, true)
+	l.Claims = map[string]any{"email": "ana@elsewhere.org", "email_verified": true}
+	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "in none of them") {
+		t.Fatalf("a login from a domain the verse does not admit: %v", err)
+	}
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
+		t.Errorf("whoami after a refused login = %q, %v", out, err)
+	}
+}
+
+func TestLoginNamesItsProvider(t *testing.T) {
+	serveLogin(t, true)
+	if _, err := runCLI(t, "login", "okta"); err == nil || !strings.Contains(err.Error(), "corp") {
+		t.Errorf("a login to a provider the config does not name: %v", err)
+	}
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "none.tony"))
+	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "names no identity provider") {
+		t.Errorf("a login with no provider configured: %v", err)
+	}
+}
+
+// `verse login --link` binds a second provider's account to who the CLI is logged in as, and
+// leaves the login in use as it was.
+func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
+	corp, okta := idptest.New(t), idptest.New(t)
+	corp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, true)
+	okta.Login(loginClient, "okta-7", nil, false)
+
+	store := entitytest.Store(t)
+	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"corp": {Issuer: corp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
+		"okta": {Issuer: okta.URL, ClientID: loginClient},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+	cfg := filepath.Join(t.TempDir(), "verse.tony")
+	body := "auth: {principal: {providers: {corp: {issuer: \"" + corp.URL + "\", clientId: " + loginClient + "}, " +
+		"okta: {issuer: \"" + okta.URL + "\", clientId: " + loginClient + "}}}}\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, cfg)
+
+	// With nobody logged in there is nobody to link to.
+	if _, err := runCLI(t, "login", "--link", "okta"); err == nil || !strings.Contains(err.Error(), "not logged in") {
+		t.Fatalf("a link with no login: %v", err)
+	}
+	// With several providers, a login names the one.
+	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "several identity providers") {
+		t.Fatalf("a login naming none of two providers: %v", err)
+	}
+	if _, err := runCLI(t, "login", "corp"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runLogin(t, "login", "--link", "okta")
+	if err != nil || !strings.Contains(out, "linked the okta account okta-7 to user:ana@example.com") {
+		t.Fatalf("login --link = %q, %v", out, err)
+	}
+	rec, ok, err := entity.As(store, entity.SystemIdentity).Get(entity.VerseRef("identity", "okta", "account", "okta-7"))
+	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:ana@example.com" || entity.Str(rec.Payload, "claimant") != "corp" {
+		t.Fatalf("the linked binding = %v (ok=%v err=%v)", rec.Payload, ok, err)
+	}
+	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "user:ana@example.com (corp)" {
+		t.Errorf("whoami after a link = %q, %v, want the login in use unchanged", out, err)
+	}
+}

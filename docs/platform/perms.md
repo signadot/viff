@@ -115,6 +115,7 @@ installed as the system and acts as the system.
 |---|---|
 | a worker's claim | `read-write` and `control` for the claimant on the task's record and the run's, as `system:mirror`. Every report after that is written as the claimant. A runner reached by url gets the same at the first reflection, as `runner:` its `identity`. |
 | the deployment's charter | as `system:charter`, at start, after the restore |
+| an account claim, and the binding a verify writes | as `system:identity`, at `verse.identity.<provider>.*`, with the system's record holding `read` out to the principal (and, on a binding, to `agent:*`). See [Accounts in other systems](../reference/perms.md#accounts-in-other-systems). |
 
 ## Reads by a worker and by a task's routes
 

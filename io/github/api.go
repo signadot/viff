@@ -541,6 +541,9 @@ type branch struct {
 
 type user struct {
 	Login string `json:"login"`
+	// ID is GitHub's own number for the account, which a rename does not change: what an identity
+	// binding is keyed on (git-issue 9b4azhtjh12kszwyqsn0), where the login is only a name.
+	ID int64 `json:"id"`
 }
 
 type label struct {

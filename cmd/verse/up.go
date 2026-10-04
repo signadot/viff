@@ -301,6 +301,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	srv.SystemCharter = appCfg.SystemCharter
+	// How people are authenticated at the door. Refused at startup where it cannot be served, as
+	// the pace below is: a verse believed to verify its callers and not doing so is the worse one.
+	if err := srv.SetAuth(authOf(appCfg.Auth)); err != nil {
+		return err
+	}
 	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
 	// running at a rate nobody asked for is exactly what the setting exists to prevent.
 	if d, set, err := appCfg.TripPace(); err != nil {
@@ -478,4 +483,16 @@ func permsPolicy(c config.PermsConfig) (versed.Perms, error) {
 		p.Admins = append(p.Admins, g.String())
 	}
 	return p, nil
+}
+
+// authOf is the config's `auth.principal` as the server takes it.
+func authOf(c config.AuthConfig) versed.Auth {
+	a := versed.Auth{Mode: c.Principal.Mode}
+	if len(c.Principal.Providers) > 0 {
+		a.Providers = map[string]versed.AuthProvider{}
+	}
+	for name, p := range c.Principal.Providers {
+		a.Providers[name] = versed.AuthProvider{Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains}
+	}
+	return a
 }

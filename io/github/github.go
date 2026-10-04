@@ -786,6 +786,11 @@ func commentPayload(repo string, c comment, kind string) entity.Obj {
 	p := entity.Obj{"repo": repo, "on": c.number(), "id": c.ID, "kind": kind}
 	if c.User != nil {
 		p["author"] = c.User.Login
+		// AND THE ACCOUNT'S NUMBER, which survives a rename: a comment is evidence of who wrote it,
+		// and an identity binding keys on the number (git-issue 9b4azhtjh12kszwyqsn0).
+		if c.User.ID != 0 {
+			p["authorId"] = c.User.ID
+		}
 	}
 	for k, v := range map[string]string{
 		"body": text(c.Body), "url": c.HTMLURL,

@@ -142,6 +142,8 @@ func rootCmd() *cli.Command {
 	// The same for who the tree acts as: a --as recorded by one command must not ride the
 	// requests of the next, which only a process building the tree twice can see.
 	asOverride = ""
+	// And for the tokens file, which a login or a logout rewrites.
+	logins = nil
 	// Config precedence: /etc ← ~/.config ← env ← CLI. Load the file+env layers, use
 	// them as the flag defaults, and let an explicit flag win.
 	c, err := config.Load()
@@ -211,6 +213,9 @@ func rootCmd() *cli.Command {
 			connectCmd(),
 			disconnectCmd(),
 			statusCmd(),
+			loginCmd(),
+			logoutCmd(),
+			whoamiCmd(),
 			schemaCmd(),
 			downCmd(),
 		)

@@ -300,3 +300,59 @@ func TestASpawnsCredentialBeatsTheVersesOwn(t *testing.T) {
 		t.Errorf("neither → %q, want no virtual key", got)
 	}
 }
+
+// The auth block names the identity providers people arrive from, and is refused at load where it
+// names one that could not be used.
+func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
+	load := func(body string) (*Config, error) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "verse.tony")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(EnvConfigPath, path)
+		return Load()
+	}
+	c, err := load(`auth:
+  principal:
+    mode: optional
+    providers:
+      google:
+        issuer: https://accounts.google.com
+        clientId: 1234.apps.googleusercontent.com
+        domains: [example.com]
+      okta:
+        issuer: https://example.okta.com
+        clientId: "0oa1"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := c.Auth.Principal
+	if p.Mode != AuthOptional || len(p.Providers) != 2 {
+		t.Fatalf("auth.principal = %+v", p)
+	}
+	if g := p.Providers["google"]; g.Issuer != "https://accounts.google.com" ||
+		g.ClientID != "1234.apps.googleusercontent.com" || len(g.Domains) != 1 || g.Domains[0] != "example.com" {
+		t.Errorf("google = %+v", g)
+	}
+
+	// A verse with no auth block is one that verifies nobody.
+	if c, err := load("addr: \"x:1\"\n"); err != nil || c.Auth.Principal.Mode != "" || len(c.Auth.Principal.Providers) != 0 {
+		t.Errorf("no auth block = %+v, %v", c.Auth, err)
+	}
+
+	for _, bad := range []struct{ what, body, want string }{
+		{"an unknown mode", "auth: {principal: {mode: sometimes}}", "not a mode"},
+		{"a provider with no client", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\"}}}}", "clientId is required"},
+		{"a provider with no issuer", "auth: {principal: {providers: {google: {clientId: a}}}}", "not an issuer's URL"},
+		{"an issuer that is no URL", "auth: {principal: {providers: {google: {issuer: accounts, clientId: a}}}}", "not an issuer's URL"},
+		{"a provider named github", "auth: {principal: {providers: {github: {issuer: \"https://github.com\", clientId: a}}}}", "proof by"},
+		{"a name that is not one segment", "auth: {principal: {providers: {\"a.b\": {issuer: \"https://a.example.com\", clientId: a}}}}", "one plain address segment"},
+		{"two providers of one issuer", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}, b: {issuer: \"https://a.example.com\", clientId: b}}}}", "names one"},
+	} {
+		if _, err := load(bad.body); err == nil || !strings.Contains(err.Error(), bad.want) {
+			t.Errorf("%s: err = %v, want one saying %q", bad.what, err, bad.want)
+		}
+	}
+}

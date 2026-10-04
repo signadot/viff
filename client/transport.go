@@ -1,14 +1,16 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/signadot/verse/api"
 )
 
-// Transport stamps every request with the contract version this program speaks and the principal
-// it acts as, and compares the version the server answers with.
+// Transport stamps every request with the contract version this program speaks and who it acts
+// as — a principal it names, or a bearer that proves one — and compares the version the server
+// answers with.
 //
 // It is a TRANSPORT rather than a check at each call site because a program's call sites are a
 // listing, a write, a stream and a poll, and a stamp that covers three of the four is one that is
@@ -28,6 +30,11 @@ type Transport struct {
 	// between requests (the CLI's `--as`) presents the one in force. "" presents nobody, and an
 	// error fails the request rather than sending it as nobody.
 	Principal func() (string, error)
+	// Bearer is the id_token that proves who is asking, asked on every request so one that has
+	// expired can be renewed before it is sent. When it answers one, the request carries it and no
+	// Principal: the server makes the request as whoever the token proves, and a name beside it
+	// could only disagree. "" sends none, and an error fails the request.
+	Bearer func(ctx context.Context) (string, error)
 	// Warn is told when the server's version DRIFTS from Version: the request is served, and
 	// what to do with the news is the program's (the CLI says it once, on stderr). Nil says nothing.
 	Warn func(msg string)
@@ -45,7 +52,18 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if t.Version != "" {
 		r.Header.Set(api.VersionHeader, t.Version)
 	}
-	if t.Principal != nil {
+	proved := false
+	if t.Bearer != nil {
+		token, err := t.Bearer(r.Context())
+		if err != nil {
+			return nil, err
+		}
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+			proved = true
+		}
+	}
+	if t.Principal != nil && !proved {
 		p, err := t.Principal()
 		if err != nil {
 			return nil, err

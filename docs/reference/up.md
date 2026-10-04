@@ -216,8 +216,10 @@ that the request makes. It checks each write and each read against what the
 [grammar](../perms.md#principals-and-grantees). A bare email goes on the wire as
 `user:<email>`. A worker sets `runner:<identity>`. Verse refuses a bare word.
 
-Verse takes `user` as given. There is no login. `-as` overrides it on the commands that take
-`-as`. When the config names a user, those commands do not require `-as`.
+Verse takes `user` as given. `-as` overrides it on the commands that take `-as`. When the
+config names a user, those commands do not require `-as`. Where the verse names an identity
+provider, `verse login` proves who you are instead, and the CLI then acts as that person
+whatever `user` says ([logging in](perms.md#logging-in)).
 
 With no `user` and no `agent`, the CLI acts as the local user, `user:<login>@localhost`,
 toward a verse on this machine (`localhost`, `127.0.0.1`, `::1`). Toward any other verse, it
@@ -231,6 +233,38 @@ names somebody else.
 **`systemCharter`** is read by the server. It is the path of a charter file that `verse up`
 installs at start as `system:charter`. These are the rules that the deployment itself stands
 behind. A request cannot be made as the system, so this key is the way to install them.
+
+**`auth: {principal: {…}}`** says how people are authenticated. The server reads it to verify a
+request's token ([who a request is from](perms.md#who-a-request-is-from)). Without it, a
+request is whoever it says it is. The CLI reads the same `providers` to know where
+`verse login` can log in, so a person's config carries the block as the server's does. It
+ignores `mode`.
+
+```tony
+auth:
+  principal:
+    mode: optional
+    providers:
+      google:
+        issuer: https://accounts.google.com
+        clientId: "1234.apps.googleusercontent.com"
+        domains: [example.com]
+```
+
+- `mode` is `off` or `optional`. Unset is `off`: no token is verified. Under `optional`, a
+  token is verified where a request carries one, and a request without one is still whoever it
+  says it is.
+- `providers` are the OpenID Connect issuers whose id_tokens the verse accepts. Each is under a
+  name the deployment gives it. The name is where its accounts are bound
+  (`verse.identity.<name>`), so it is one plain word. `github` is taken:
+  [GitHub accounts](perms.md#accounts-in-other-systems) are bound under it another way.
+- `issuer` is the issuer's URL. `clientId` is the OAuth client registered there for this verse.
+  It is a public client, with no secret. Quote a `clientId` that starts with a digit.
+- `domains` are the email domains a person may arrive from the first time. With none, only an
+  account that is already bound is admitted.
+
+`verse up` refuses to start on an `auth` block it cannot serve. It does not read a provider at
+start, so a provider that is down stops only the requests that carry its tokens.
 
 **`perms: {child-grants: {…}}`** is read by the server. It is the `child-grants` of the
 [root](../glossary.md#root-of-the-store): what a node that is created with no record above it
@@ -273,10 +307,14 @@ Every key, and the variable that sets it:
 | `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
+| `auth: {principal: {mode, providers}}` | | `verse up`, `verse login` | the identity providers whose tokens say who a request is from |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
 | `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
 | `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the agent driver uses |
+
+`verse login` keeps its tokens in `verse-tokens.tony`, beside the per-user config, or beside
+the file `VERSE_CONFIG` names. Only its owner can read it.
 
 `VERSE_CONFIG=<file>` names one config file in place of both file layers. `VERSE_RESEED_PERMS`
 is `-reseed-perms`. `VERSE_LOG` sets how much `verse up` logs: `debug`, `info`, `warn` or

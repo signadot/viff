@@ -1047,6 +1047,11 @@ func TestCommentsAreReflectedAndWindowed(t *testing.T) {
 	if entity.Str(mustGet(t, store, onPR), "kind") != "conversation" {
 		t.Fatal("a PR conversation comment is not a review comment")
 	}
+	// Who wrote it, by the account's number as well as its login: the number survives a rename,
+	// which is what an identity binding keys on.
+	if c := entity.ToObj(mustGet(t, store, onPR)); c["author"] != "ana" || c["authorId"] != int64(101) {
+		t.Fatalf("the comment's author is %v / %v, want ana and her account's number", c["author"], c["authorId"])
+	}
 
 	// The window slides: two newer conversation comments push the oldest out.
 	r.comment(103, 1, "newer", false, "2026-01-05T00:00:00Z")

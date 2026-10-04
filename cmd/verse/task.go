@@ -1216,8 +1216,10 @@ func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 var asOverride string
 
 // principal resolves who a command acts as, spelled in the grammar (entity.Grammar): its --as
-// where it took one, else the config's `agent:` as `agent:<name>`, else its `user:`, else the
-// local user when the verse is on this machine (localUser) and nobody when it is not. --as and
+// where it took one, else the config's `agent:` as `agent:<name>`, else whoever is logged in
+// toward this verse (`verse login`), else the config's `user:`, else the local user when the verse
+// is on this machine (localUser) and nobody when it is not. A login comes before `user:` because
+// its token is what the request carries, and the verse makes the request as whoever that proves. --as and
 // `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused
 // rather than guessed at, so `--as coderunner` is an error and `--as runner:coderunner` a
 // worker. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
@@ -1246,6 +1248,9 @@ func principal(as string) (string, error) {
 			return "", fmt.Errorf("config agent: %q is not an agent's name — %s", appCfg.Agent, entity.Grammar())
 		}
 		return g.String(), nil
+	}
+	if who := loginPrincipal(); who != "" {
+		return who, nil
 	}
 	if appCfg.User != "" {
 		g, err := entity.ParsePrincipal(appCfg.User)

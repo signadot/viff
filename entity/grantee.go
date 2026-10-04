@@ -259,6 +259,9 @@ const (
 	SystemSeed = SystemKind + ":seed"
 	// SystemCharter installs the charter the deployment stands behind, so its rules resolve to it.
 	SystemCharter = SystemKind + ":charter"
+	// SystemIdentity writes identity claims and the bindings verified from them: which external
+	// account is which principal (versed/identity.go).
+	SystemIdentity = SystemKind + ":identity"
 	// SystemDefault is what remains: the restore at start, and whatever else names no part. It
 	// is the owner of the root.
 	SystemDefault = SystemKind + ":default"

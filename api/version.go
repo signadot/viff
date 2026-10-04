@@ -25,9 +25,14 @@ const VersionHeader = "Verse-Version"
 // self-asserted, exactly as `--as` is, and the server trusts it no harder — what it buys is
 // that a write names a party, on the write, rather than in a field only some verbs carry.
 //
-// A request without it names nobody, and may read: every method but GET and HEAD is refused 400
-// (versed's principals), since what nobody writes would be the system's. One carrying a name the
-// grammar does not read, or a name versed makes — `via:`, `system:` — is refused 400 too.
+// A PERSON IS VERIFIED BY A BEARER INSTEAD, where the deployment names an identity provider:
+// `Authorization: Bearer <id_token>` is checked at the door ahead of this header, and the request
+// is made as the principal the token's account is bound to (versed's auth.go). The header beside
+// a verified bearer names that same principal or is left off; naming another is refused 403.
+//
+// A request without either names nobody, and may read: every method but GET and HEAD is refused
+// 400 (versed's principals), since what nobody writes would be the system's. One carrying a name
+// the grammar does not read, or a name versed makes — `via:`, `system:` — is refused 400 too.
 const PrincipalHeader = "Verse-Principal"
 
 // ResolverHeader names the resolver a request is made AS: its name, or its address. The request

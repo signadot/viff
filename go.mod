@@ -3,6 +3,7 @@ module github.com/signadot/verse
 go 1.27.1
 
 require (
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/fatih/color v1.19.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/gops v0.3.28
@@ -10,6 +11,7 @@ require (
 	github.com/signadot/tony-format/git-issue v0.3.2
 	github.com/signadot/tony-format/go-tony v0.0.243
 	golang.org/x/net v0.59.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -24,6 +26,7 @@ require (
 	github.com/go-air/gini v1.0.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect

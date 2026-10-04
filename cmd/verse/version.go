@@ -30,8 +30,9 @@ var (
 )
 
 // skewCheck is client.Transport with what is the CLI's to say: the principal is asked afresh on
-// each request, because `--as` on a command changes it after the client exists, and drift is
-// said once per invocation, on stderr.
+// each request, because `--as` on a command changes it after the client exists; the bearer is
+// the login's, where the CLI acts as whoever logged in (login.go); and drift is said once per
+// invocation, on stderr.
 //
 // mine is stated rather than read on each request, which is also what makes it testable: every
 // binary in a test tree reports "(devel)", so a skew cannot be arranged by building one.
@@ -45,6 +46,7 @@ func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 		Base:      s.base,
 		Version:   s.mine,
 		Principal: func() (string, error) { return principal("") },
+		Bearer:    bearer,
 		Warn: func(msg string) {
 			skewWarned.Do(func() { fmt.Fprintf(warnTo, "verse: %s\n", msg) })
 		},

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,8 +57,9 @@ type Config struct {
 	// User is the principal this CLI acts as: who every request is made by, and so who every
 	// write it causes is attributed to and who owns what it creates. An email for a person,
 	// which goes on the wire as `user:<email>`; a principal of another kind spelled as one
-	// (`runner:coderunner`). Self-asserted — there is no login here — and `--as` overrides it on
-	// the commands that take one. Env: VERSE_USER.
+	// (`runner:coderunner`). Self-asserted, and `--as` overrides it on the commands that take one.
+	// A login (`verse login`) comes before it: the CLI then acts as whoever the login proves.
+	// Env: VERSE_USER.
 	User string `tony:"field=user,omitzero"`
 	// Agent is the operator agent this CLI acts as, when it is one: a harness driving verse
 	// through the api is a principal of its own, and not the person whose terminal it runs in.
@@ -86,6 +88,98 @@ type Config struct {
 	// the server's model credentials included. Empty means task.DefaultShellEnv. Server-side,
 	// read by `verse up`.
 	ShellEnv []string `tony:"field=shellEnv,omitzero"`
+	// Auth is how the parties that arrive at a verse are authenticated, one block per kind of
+	// party. Unset, a request is whoever it says it is.
+	Auth AuthConfig `tony:"field=auth,omitzero"`
+}
+
+// AuthConfig holds one block per kind of party that arrives at a verse. `principal` is the
+// people.
+//
+//tony:schemagen=verse-auth-config,notag
+type AuthConfig struct {
+	// Principal is how a person is authenticated: the identity providers whose id_tokens this
+	// verse accepts. The server reads it to verify a request's bearer, and the CLI reads it to
+	// know which providers `verse login` can log in to.
+	Principal PrincipalAuthConfig `tony:"field=principal,omitzero"`
+}
+
+// The modes of auth.principal.
+const (
+	// AuthOff verifies nobody: a request is whoever its Verse-Principal header says.
+	AuthOff = "off"
+	// AuthOptional uses a verified bearer where a request carries one, and still admits a bare
+	// header.
+	AuthOptional = "optional"
+	// AuthRequired admits a `user:` principal only from a verified bearer.
+	AuthRequired = "required"
+)
+
+// PrincipalAuthConfig is the OpenID Connect providers a verse accepts people from, and how far
+// it insists on them.
+//
+//tony:schemagen=verse-principal-auth-config,notag
+type PrincipalAuthConfig struct {
+	// Mode is `off`, `optional` or `required`; unset is `off`. Server-side, read by `verse up`.
+	Mode string `tony:"field=mode,omitzero"`
+	// Providers are the issuers, each under the name this deployment gives it. The name is an
+	// address segment: an account's binding stands at `verse.identity.<name>.account.<sub>`.
+	Providers map[string]AuthProviderConfig `tony:"field=providers,omitzero"`
+}
+
+// AuthProviderConfig is one OpenID Connect issuer.
+//
+//tony:schemagen=verse-auth-provider-config,notag
+type AuthProviderConfig struct {
+	// Issuer is the issuer's URL, which its discovery document is found under and which every
+	// token's `iss` equals.
+	Issuer string `tony:"field=issuer,omitzero"`
+	// ClientID is the OAuth client registered at the issuer for this verse: a token's `aud` holds
+	// it, and the CLI logs in as it. It is a public client, with no secret.
+	ClientID string `tony:"field=clientId,omitzero"`
+	// Domains are the email domains a person may arrive from the first time: a token nobody has
+	// been bound from before needs a verified email in one of them. Empty admits nobody new.
+	Domains []string `tony:"field=domains,omitzero"`
+}
+
+// GitHubProvider is the provider GitHub accounts are bound under. GitHub issues no id_token for
+// a person, so it is never an OpenID Connect provider and its name is not one's to take.
+const GitHubProvider = "github"
+
+// validate refuses an auth block that names no usable provider or mode, at load, where the
+// refusal is a line in a config file.
+func (a AuthConfig) validate() error {
+	p := a.Principal
+	switch p.Mode {
+	case "", AuthOff, AuthOptional, AuthRequired:
+	default:
+		return fmt.Errorf("auth.principal.mode: %q is not a mode: %s, %s or %s",
+			p.Mode, AuthOff, AuthOptional, AuthRequired)
+	}
+	issuers := map[string]string{}
+	for name, prov := range p.Providers {
+		at := "auth.principal.providers." + name
+		switch {
+		case name == GitHubProvider:
+			return fmt.Errorf("%s: %q is the provider GitHub accounts are bound under, by proof by "+
+				"action, and GitHub is no OpenID Connect issuer for people; give the provider "+
+				"another name", at, name)
+		case strings.TrimSpace(name) != name || name == "" || strings.ContainsAny(name, ".*/ "):
+			return fmt.Errorf("%s: a provider's name is one plain address segment", at)
+		case prov.ClientID == "":
+			return fmt.Errorf("%s.clientId is required: a token is accepted for one client", at)
+		}
+		u, err := url.Parse(prov.Issuer)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return fmt.Errorf("%s.issuer: %q is not an issuer's URL", at, prov.Issuer)
+		}
+		if other, dup := issuers[prov.Issuer]; dup {
+			return fmt.Errorf("%s.issuer: %s is %s's issuer too, and a token's issuer names one "+
+				"provider", at, prov.Issuer, other)
+		}
+		issuers[prov.Issuer] = name
+	}
+	return nil
 }
 
 // PermsConfig is what a deployment sets about permissions that no record can say: the root's
@@ -259,6 +353,20 @@ func UserPath() string {
 	return filepath.Join(home, ".config", "verse")
 }
 
+// TokensPath is where the CLI keeps what `verse login` was given: `verse-tokens.tony` beside the
+// config, which is beside the file VERSE_CONFIG names when it names one and beside the per-user
+// layer otherwise. "" where there is no home to keep it in.
+func TokensPath() string {
+	const name = "verse-tokens.tony"
+	if explicit := os.Getenv(EnvConfigPath); explicit != "" {
+		return filepath.Join(filepath.Dir(explicit), name)
+	}
+	if u := UserPath(); u != "" {
+		return filepath.Join(filepath.Dir(u), name)
+	}
+	return ""
+}
+
 // resolveLayer finds the one file a layer's base path names, probing the known suffixes.
 // A base that already carries a recognized suffix is taken literally.
 //
@@ -318,6 +426,9 @@ func Load() (*Config, error) {
 		return c, fmt.Errorf("config: %w", envErr)
 	}
 	if err := c.Format.validate(); err != nil {
+		return c, fmt.Errorf("config: %w", err)
+	}
+	if err := c.Auth.validate(); err != nil {
 		return c, fmt.Errorf("config: %w", err)
 	}
 	return c, nil
